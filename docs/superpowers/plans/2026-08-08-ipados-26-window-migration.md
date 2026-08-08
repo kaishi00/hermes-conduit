@@ -141,9 +141,28 @@ git commit -m "Migrate iPad orientation support for iPadOS 26"
 
 - [ ] **Step 1: Run the complete iPhone simulator test suite**
 
-Run `xcodegen generate`, then:
+Run `xcodegen generate`, select an available iPhone simulator, then:
 
 ```bash
+simulator="$(
+  xcrun simctl list devices available -j | python3 -c '
+import json, sys
+data = json.load(sys.stdin)
+for runtime, devices in data["devices"].items():
+    if "iOS" not in runtime:
+        continue
+    for device in devices:
+        if "iPhone" in device["name"]:
+            print(device["udid"])
+            sys.exit(0)
+sys.exit(1)
+'
+)"
+if [ -z "$simulator" ]; then
+  echo "::error::No iPhone simulator found"
+  exit 1
+fi
+
 xcodebuild test \
   -project Conduit.xcodeproj \
   -scheme Conduit \
@@ -157,10 +176,29 @@ Expected: all existing tests pass with zero failures.
 - [ ] **Step 2: Build for the iPad simulator and inspect the shipped plist**
 
 ```bash
+ipad_simulator="$(
+  xcrun simctl list devices available -j | python3 -c '
+import json, sys
+data = json.load(sys.stdin)
+for runtime, devices in data["devices"].items():
+    if "iOS" not in runtime:
+        continue
+    for device in devices:
+        if "iPad" in device["name"]:
+            print(device["udid"])
+            sys.exit(0)
+sys.exit(1)
+'
+)"
+if [ -z "$ipad_simulator" ]; then
+  echo "::error::No iPad simulator found"
+  exit 1
+fi
+
 xcodebuild build \
   -project Conduit.xcodeproj \
   -scheme Conduit \
-  -destination "platform=iOS Simulator,id=0A743B4B-B5DE-4974-8263-D867D98329F0" \
+  -destination "platform=iOS Simulator,id=$ipad_simulator" \
   -derivedDataPath /tmp/hermes-conduit-ipados26-ui-derived
 plutil -p /tmp/hermes-conduit-ipados26-ui-derived/Build/Products/Debug-iphonesimulator/Conduit.app/Info.plist
 ```

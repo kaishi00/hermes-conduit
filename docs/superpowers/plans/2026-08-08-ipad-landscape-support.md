@@ -11,8 +11,8 @@
 ## Global Constraints
 
 - iPhone remains portrait-only.
-- iPad supports portrait, landscape-left, and landscape-right with automatic rotation.
-- `UIRequiresFullScreen` remains unchanged.
+- iPad supports portrait, portrait-upside-down, landscape-left, and landscape-right with automatic rotation.
+- `UIRequiresFullScreen` is absent so iPadOS can manage dynamic scene sizing.
 - Do not change production SwiftUI views for this orientation-only feature.
 - Preserve the existing user changes in the main checkout; work in `/tmp/hermes-conduit-ipad-orientation`.
 
@@ -101,7 +101,7 @@ iPad-specific plist key does not exist yet.
 **Interfaces:**
 - Consumes: the failing bundle contract from Task 1.
 - Produces: a shipped plist whose base key is portrait-only and whose iPad
-  override contains all three supported orientations.
+  override contains all four supported orientations.
 
 - [ ] **Step 1: Add the minimal production configuration**
 
@@ -112,10 +112,13 @@ after its array:
 <key>UISupportedInterfaceOrientations~ipad</key>
 <array>
     <string>UIInterfaceOrientationPortrait</string>
+    <string>UIInterfaceOrientationPortraitUpsideDown</string>
     <string>UIInterfaceOrientationLandscapeLeft</string>
     <string>UIInterfaceOrientationLandscapeRight</string>
 </array>
 ```
+
+Remove the deprecated `UIRequiresFullScreen` key if it is present.
 
 - [ ] **Step 2: Run the targeted tests to verify they pass**
 
@@ -189,8 +192,9 @@ plutil -p \
   | sed -n '/UISupportedInterfaceOrientations/,+12p'
 ```
 
-Expected: the built app contains the portrait-only universal array and the
-three-entry `UISupportedInterfaceOrientations~ipad` array.
+Expected: the built app contains the portrait-only universal array, the
+four-entry `UISupportedInterfaceOrientations~ipad` array, and no
+`UIRequiresFullScreen` key.
 
 - [ ] **Step 3: Confirm the worktree is clean and report the evidence**
 
