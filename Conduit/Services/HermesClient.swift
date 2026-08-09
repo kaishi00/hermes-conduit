@@ -553,6 +553,8 @@ final class HermesClient: ObservableObject {
                 // Hermes' established React Native client uses WebSocket text
                 // frames (`socket.send(JSON.stringify(...))`). The gateway accepts
                 // the connection but does not dispatch binary JSON-RPC frames.
+                // JSONEncoder output is valid UTF-8; keep this transport conversion nonfailable.
+                // swiftlint:disable:next optional_data_string_conversion
                 let text = String(decoding: body, as: UTF8.self)
                 socket.send(.string(text)) { [weak self] error in
                     if let error {

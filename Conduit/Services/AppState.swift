@@ -504,7 +504,9 @@ final class AppState: ObservableObject {
     /// Hermes currently starts its automatic title task against the launch
     /// profile's database. Keep a small, one-per-session recovery task for a
     /// secondary profile, then stand down as soon as Hermes has written one.
-    private var secondaryProfileTitleRecoveryTasks: [String: Task<Void, Never>] = [:]
+    private let sessionTitleRecoveryTracker = SessionTitleRecoveryTracker()
+    private let sessionRenameOperationsOverride: SessionRenameOperation.Operations?
+    private let sessionCatalogLoaderOverride: ((Bool) async throws -> [SessionSummary])?
     private var reconnectAttempts = 0
     private var connectedAt: Date?
     private var profileSessionCache: [String: [SessionSummary]] = [:]
@@ -646,7 +648,10 @@ final class AppState: ObservableObject {
         },
         reconnectScheduler: ChatResumeReconnectScheduler? = nil,
         reconnectExecutor: ChatResumeReconnectExecutor? = nil,
-        chatResumeLifecycleOperations: ChatResumeLifecycleOperations = .live
+        chatResumeLifecycleOperations: ChatResumeLifecycleOperations = .live,
+        sessionRenameOperations: SessionRenameOperation.Operations? = nil,
+        sessionCatalogLoader: ((Bool) async throws -> [SessionSummary])? = nil,
+        restoreSavedConnection: Bool? = nil
     ) {
         self.defaults = defaults
         self.chatResumeCoordinator = chatResumeCoordinator
@@ -662,6 +667,8 @@ final class AppState: ObservableObject {
             ?? defaults.string(forKey: "conduit.dashboardURL")
                 .flatMap(Self.normalizedChatResumeServerIdentity)
         chatResumeBehavior = self.chatResumeCoordinator.behavior
+        sessionRenameOperationsOverride = sessionRenameOperations
+        sessionCatalogLoaderOverride = sessionCatalogLoader
         defaultProfileName = ProfileAppearanceStore.loadDefaultName()
         profileAvatarURLs = ProfileAppearanceStore.loadAvatarURLs()
         appIconChoice = UIApplication.shared.alternateIconName == AppIconChoice.light.alternateIconName ? .light : .dark
@@ -685,7 +692,7 @@ final class AppState: ObservableObject {
         }
         restoreActiveSessionState(for: activeProfile)
         restorePinnedSessions(for: activeProfile)
-        if shouldLoadSavedConnection {
+        if restoreSavedConnection ?? shouldLoadSavedConnection {
             loadSavedConnection()
         }
     }
@@ -2846,32 +2853,49 @@ final class AppState: ObservableObject {
            !chatViewportTransitionIsCurrent(generation: requiredViewportTransitionGeneration) {
             return false
         }
-        guard let client else { return false }
+        let activeClient = client
+        guard activeClient != nil || sessionCatalogLoaderOverride != nil else { return false }
         let profile = activeProfile
         let retainedActiveTurn = activeTurnCatalogSession()
         do {
-            let loadedSessions = try await profileSessions(using: client, forceRefresh: forceRefresh)
+            let loadedSessions: [SessionSummary]
+            if let sessionCatalogLoaderOverride {
+                loadedSessions = try await sessionCatalogLoaderOverride(forceRefresh)
+            } else if let activeClient {
+                loadedSessions = try await profileSessions(
+                    using: activeClient,
+                    forceRefresh: forceRefresh
+                )
+            } else {
+                return false
+            }
             guard profile == activeProfile,
-                  self.client === client,
                   requiredViewportTransitionGeneration.map({
                       chatViewportTransitionIsCurrent(generation: $0)
                   }) ?? true else { return false }
+            if sessionCatalogLoaderOverride == nil {
+                guard let activeClient, self.client === activeClient else { return false }
+            }
             let allSessions = uniqueSessions(
                 [retainedActiveTurn].compactMap { $0 } + loadedSessions
             )
             sessions = allSessions.filter { $0.source != .cron }
             cronSessions = allSessions.filter { $0.source == .cron }
             if let activeSessionId { updateActiveSessionTitle(for: activeSessionId) }
-            Task { [weak self] in
-                await self?.loadProjects(using: client, profile: profile)
+            if let activeClient {
+                Task { [weak self] in
+                    await self?.loadProjects(using: activeClient, profile: profile)
+                }
             }
             return true
         } catch {
             guard profile == activeProfile,
-                  self.client === client,
                   requiredViewportTransitionGeneration.map({
                       chatViewportTransitionIsCurrent(generation: $0)
                   }) ?? true else { return false }
+            if sessionCatalogLoaderOverride == nil {
+                guard let activeClient, self.client === activeClient else { return false }
+            }
             errorMessage = "Failed to load sessions: \(error.localizedDescription)"
             return false
         }
@@ -2951,6 +2975,84 @@ final class AppState: ObservableObject {
         } catch {
             guard profile == activeProfile else { return false }
             errorMessage = "Could not \(archived ? "archive" : "restore") this conversation: \(error.localizedDescription)"
+            return false
+        }
+    }
+    @discardableResult
+    func renameSession(_ session: SessionSummary, to title: String) async -> Bool {
+        guard let trimmedTitle = SessionRenameOperation.normalizedTitle(
+            title,
+            currentTitle: session.title
+        ),
+              sessionMutationID == nil,
+              sessionBelongsToProfile(session, profile: activeProfile),
+              sessionRenameOperationsOverride != nil || dashboardTicketBridge != nil else { return false }
+
+        let profile = activeProfile
+        let knownIDs = [session.id] + session.alternateIds
+        let titleRecoveryTaskKeys = Set(knownIDs.filter { !$0.isEmpty }.map { "\(profile)|\($0)" })
+        sessionTitleRecoveryTracker.suppress(titleRecoveryTaskKeys)
+        sessionMutationID = session.id
+        defer {
+            sessionMutationID = nil
+            sessionTitleRecoveryTracker.unsuppress(titleRecoveryTaskKeys)
+        }
+
+        await sessionTitleRecoveryTracker.cancel(titleRecoveryTaskKeys)
+        guard profile == activeProfile else { return false }
+
+        let operations: SessionRenameOperation.Operations
+        if let sessionRenameOperationsOverride {
+            operations = sessionRenameOperationsOverride
+        } else {
+            guard let dashboardTicketBridge else { return false }
+            let activeClient = client
+            let runtimeRenameExpected = activeClient != nil
+                && activeSessionId.map { knownIDs.contains($0) } == true
+            operations = SessionRenameOperation.Operations(
+                renameRuntime: activeClient.map { client in
+                    { [weak self, weak client] sessionID, title in
+                        guard let self, let client else {
+                            throw SessionRenameOperation.ContextChanged()
+                        }
+                        try await client.setSessionTitle(sessionID, title: title)
+                        guard profile == self.activeProfile, self.client === client else {
+                            throw SessionRenameOperation.ContextChanged()
+                        }
+                    }
+                },
+                renameStored: { [weak self, weak dashboardTicketBridge] sessionID, title in
+                    guard let self, let dashboardTicketBridge,
+                          profile == self.activeProfile,
+                          !runtimeRenameExpected || self.client === activeClient else {
+                        throw SessionRenameOperation.ContextChanged()
+                    }
+                    _ = try await dashboardTicketBridge.requestJSON(
+                        path: self.dashboardPath(
+                            "/api/sessions/\(self.encodedSessionID(sessionID))",
+                            profile: profile
+                        ),
+                        method: "PATCH",
+                        body: ["title": title]
+                    )
+                }
+            )
+        }
+
+        do {
+            guard let result = try await SessionRenameOperation.perform(
+                session: session,
+                activeSessionID: activeSessionId,
+                title: trimmedTitle,
+                operations: operations
+            ), profile == activeProfile else { return false }
+            applyRecoveredSessionTitle(result.title, sessionIDs: result.sessionIDs)
+            return true
+        } catch is SessionRenameOperation.ContextChanged {
+            return false
+        } catch {
+            guard profile == activeProfile else { return false }
+            errorMessage = SessionRenameOperation.failureMessage(error)
             return false
         }
     }
@@ -5130,8 +5232,15 @@ final class AppState: ObservableObject {
     // MARK: - Secondary profile title recovery
 
     private func cancelSecondaryProfileTitleRecovery() {
-        secondaryProfileTitleRecoveryTasks.values.forEach { $0.cancel() }
-        secondaryProfileTitleRecoveryTasks.removeAll()
+        sessionTitleRecoveryTracker.cancelAll()
+    }
+
+    private func cancelSecondaryProfileTitleRecovery(
+        profile: String,
+        sessionIDs: [String]
+    ) async {
+        let taskKeys = Set(sessionIDs.filter { !$0.isEmpty }.map { "\(profile)|\($0)" })
+        await sessionTitleRecoveryTracker.cancel(taskKeys)
     }
 
     private func titleGenerationSettings(for profile: String) async -> TitleGenerationSettings? {
@@ -5199,9 +5308,13 @@ final class AppState: ObservableObject {
               !assistantMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
 
         let taskKey = "\(profile)|\(sessionId)"
-        guard secondaryProfileTitleRecoveryTasks[taskKey] == nil else { return }
-        secondaryProfileTitleRecoveryTasks[taskKey] = Task { [weak self, weak client] in
-            defer { self?.secondaryProfileTitleRecoveryTasks.removeValue(forKey: taskKey) }
+        guard !sessionTitleRecoveryTracker.isSuppressed(taskKey),
+              !sessionTitleRecoveryTracker.hasTask(for: taskKey) else { return }
+        let token = UUID()
+        let task = Task { [weak self, weak client] in
+            defer {
+                self?.sessionTitleRecoveryTracker.finish(token, for: taskKey)
+            }
             do {
                 try await Task.sleep(nanoseconds: 2_500_000_000)
             } catch {
@@ -5210,12 +5323,17 @@ final class AppState: ObservableObject {
             guard let self,
                   let client,
                   !Task.isCancelled,
+                  self.sessionTitleRecoveryTracker.isCurrent(token, for: taskKey),
                   self.activeProfile == profile,
                   self.client === client else { return }
 
             do {
                 // Give Hermes' built-in asynchronous title task precedence.
                 if let existingTitle = try await client.sessionTitle(sessionId) {
+                    guard !Task.isCancelled,
+                          self.sessionTitleRecoveryTracker.isCurrent(token, for: taskKey),
+                          self.activeProfile == profile,
+                          self.client === client else { return }
                     self.applyRecoveredSessionTitle(existingTitle, sessionIDs: [sessionId])
                     titleGenerationLog.notice(
                         "Used Hermes title for \(sessionId, privacy: .public) in \(profile, privacy: .public)"
@@ -5225,6 +5343,7 @@ final class AppState: ObservableObject {
                 guard let settings = await self.titleGenerationSettings(for: profile),
                       settings.enabled,
                       !Task.isCancelled,
+                      self.sessionTitleRecoveryTracker.isCurrent(token, for: taskKey),
                       self.activeProfile == profile,
                       self.client === client else { return }
                 guard let generated = try await client.generateSessionTitle(
@@ -5232,10 +5351,17 @@ final class AppState: ObservableObject {
                     userMessage: userMessage,
                     assistantMessage: assistantMessage,
                     language: settings.language
-                ), let title = Self.normalizedGeneratedSessionTitle(generated), !Task.isCancelled,
-                      self.activeProfile == profile, self.client === client else { return }
+                ), let title = Self.normalizedGeneratedSessionTitle(generated),
+                      !Task.isCancelled,
+                      self.sessionTitleRecoveryTracker.isCurrent(token, for: taskKey),
+                      self.activeProfile == profile,
+                      self.client === client else { return }
 
                 try await client.setSessionTitle(sessionId, title: title)
+                guard !Task.isCancelled,
+                      self.sessionTitleRecoveryTracker.isCurrent(token, for: taskKey),
+                      self.activeProfile == profile,
+                      self.client === client else { return }
                 self.applyRecoveredSessionTitle(title, sessionIDs: [sessionId])
                 titleGenerationLog.notice(
                     "Generated title for \(sessionId, privacy: .public) in \(profile, privacy: .public)"
@@ -5248,6 +5374,7 @@ final class AppState: ObservableObject {
                 )
             }
         }
+        sessionTitleRecoveryTracker.register(task, token: token, for: taskKey)
     }
 
     static func normalizedGeneratedSessionTitle(_ value: String) -> String? {
@@ -5273,18 +5400,18 @@ final class AppState: ObservableObject {
     }
 
     private func applyRecoveredSessionTitle(_ title: String, sessionIDs: [String]) {
+        let result = SessionRenameOperation.Result(title: title, sessionIDs: sessionIDs)
         let titleSessionIDs = Set(sessionIDs.filter { !$0.isEmpty })
         guard !titleSessionIDs.isEmpty else { return }
-        var matchesActiveSession = activeSessionId.map { titleSessionIDs.contains($0) } ?? false
+        var matchesActiveSession = result.matches(sessionID: activeSessionId)
         func updated(_ session: SessionSummary) -> SessionSummary {
-            let summaryIDs = Set([session.id] + session.alternateIds)
-            guard !summaryIDs.isDisjoint(with: titleSessionIDs) else { return session }
-            if let activeSessionId, summaryIDs.contains(activeSessionId) {
+            let updated = result.updating(session)
+            guard updated != session else { return session }
+            if let activeSessionId,
+               Set([session.id] + session.alternateIds).contains(activeSessionId) {
                 matchesActiveSession = true
             }
-            var copy = session
-            copy.title = title
-            return copy
+            return updated
         }
         sessions = sessions.map(updated)
         cronSessions = cronSessions.map(updated)
@@ -5297,7 +5424,7 @@ final class AppState: ObservableObject {
     func handleStreamEvent(_ event: StreamEvent) {
         if case .sessionTitle(let runtimeSessionId, let storedSessionId, let title) = event {
             let taskKey = "\(activeProfile)|\(runtimeSessionId)"
-            secondaryProfileTitleRecoveryTasks[taskKey]?.cancel()
+            sessionTitleRecoveryTracker.cancel(taskKey)
             applyRecoveredSessionTitle(
                 title,
                 sessionIDs: [runtimeSessionId, storedSessionId]
