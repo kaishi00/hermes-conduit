@@ -267,35 +267,55 @@ struct MessageBubble: View {
     @EnvironmentObject var appState: AppState
 
     var body: some View {
-        switch message.role {
-        case .user:
-            UserBubble(message: message)
-        case .assistant:
-            AssistantBubble(message: message)
-        case .reasoning:
-            ThinkingCard(message: message)
-        case .tool:
-            ToolCard(message: message)
-        case .clarify:
-            ClarifyCard(message: message)
-        case .approval:
-            ApprovalCard(message: message)
-        case .system:
-            if let review = message.review ?? MessageNormalizer.reviewActivity(fromText: message.content) {
-                ReviewSummaryCard(activity: review, timestamp: message.timestamp)
-            } else if let modelChange = MessageNormalizer.modelChangeActivity(
-                fromText: message.rawContent ?? message.content
-            ) {
-                ModelChangeSummaryCard(
-                    model: modelChange.model,
-                    provider: modelChange.provider,
-                    timestamp: message.timestamp
-                )
-            } else {
-                SystemBubble(message: message)
+        Group {
+            switch message.role {
+            case .user:
+                UserBubble(message: message)
+            case .assistant:
+                AssistantBubble(message: message)
+            case .reasoning:
+                ThinkingCard(message: message)
+            case .tool:
+                ToolCard(message: message)
+            case .clarify:
+                ClarifyCard(message: message)
+            case .approval:
+                ApprovalCard(message: message)
+            case .system:
+                if let review = message.review ?? MessageNormalizer.reviewActivity(fromText: message.content) {
+                    ReviewSummaryCard(activity: review, timestamp: message.timestamp)
+                } else if let modelChange = MessageNormalizer.modelChangeActivity(
+                    fromText: message.rawContent ?? message.content
+                ) {
+                    ModelChangeSummaryCard(
+                        model: modelChange.model,
+                        provider: modelChange.provider,
+                        timestamp: message.timestamp
+                    )
+                } else {
+                    SystemBubble(message: message)
+                }
+            case .partial:
+                AssistantBubble(message: message)
             }
-        case .partial:
-            AssistantBubble(message: message)
+        }
+        .modifier(
+            ChatTextSelectionModifier(
+                enabled: ChatTextSelectionPolicy.allowsTextSelection(for: message.role)
+            )
+        )
+    }
+}
+
+private struct ChatTextSelectionModifier: ViewModifier {
+    let enabled: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if enabled {
+            content.textSelection(.enabled)
+        } else {
+            content.textSelection(.disabled)
         }
     }
 }
@@ -1209,10 +1229,10 @@ struct StreamingBubble: View {
                     await appState.gatewayMediaDataURL(for: path, profile: appState.activeProfile)
                 }
             )
-            .textSelection(.disabled)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .textSelection(.enabled)
     }
 }
 
