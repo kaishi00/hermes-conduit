@@ -207,71 +207,87 @@ final class DashboardTicketBridge: NSObject {
         let timeout = max(1_000, timeoutMilliseconds)
         let responseLimit = max(1_024, maxResponseBytes)
 
-        return try await withCheckedThrowingContinuation { continuation in
-            pendingRequests[id] = continuation
-            let script = """
-            (async function() {
-                try {
-                    const requestBody = \(bodyLiteral);
-                    const controller = new AbortController();
-                    const timeout = setTimeout(() => controller.abort(), \(timeout));
-                    const response = await fetch(\(pathLiteral), {
-                        method: \(methodLiteral),
-                        credentials: 'include',
-                        headers: requestBody === null
-                            ? { Accept: 'application/json' }
-                            : { Accept: 'application/json', 'Content-Type': 'application/json' },
-                        body: requestBody === null ? undefined : JSON.stringify(requestBody),
-                        signal: controller.signal
-                    });
-                    const declaredLength = Number(response.headers.get('content-length') || 0);
-                    if (declaredLength > \(responseLimit)) throw new Error('response_too_large');
-                    const text = await (async function() {
-                        if (!response.body || typeof response.body.getReader !== 'function') {
-                            if (!Number.isFinite(declaredLength) || declaredLength <= 0) throw new Error('bounded_response_unavailable');
-                            return response.text();
-                        }
-                        const reader = response.body.getReader();
-                        const decoder = new TextDecoder();
-                        let totalBytes = 0;
-                        let result = '';
-                        while (true) {
-                            const chunk = await reader.read();
-                            if (chunk.done) {
-                                result += decoder.decode();
-                                return result;
-                            }
-                            totalBytes += chunk.value.byteLength;
-                            if (totalBytes > \(responseLimit)) {
-                                await reader.cancel();
-                                throw new Error('response_too_large');
-                            }
-                            result += decoder.decode(chunk.value, { stream: true });
-                        }
-                    })();
-                    clearTimeout(timeout);
-                    let body = null;
-                    try { body = text ? JSON.parse(text) : null; } catch (_) { body = text; }
-                    const normalizedBody = Array.isArray(body) ? { _array: body } : (body && typeof body === 'object' ? body : { value: body });
-                    window.webkit.messageHandlers['dashboard-response'].postMessage(JSON.stringify({
-                        type: 'dashboard-response', id: \(id), ok: response.ok,
-                        status: response.status, body: normalizedBody,
-                        error: !response.ok && body && typeof body === 'object'
-                            ? (body.error || body.message || body.detail) : null
-                    }));
-                } catch (error) {
-                    window.webkit.messageHandlers['dashboard-response'].postMessage(JSON.stringify({
-                        type: 'dashboard-response', id: \(id), ok: false, status: 0, error: String(error)
-                    }));
+        return try await withTaskCancellationHandler(operation: {
+            try await withCheckedThrowingContinuation { continuation in
+                guard !Task.isCancelled else {
+                    continuation.resume(throwing: CancellationError())
+                    return
                 }
-            })();
-            true;
-            """
-            webView.evaluateJavaScript(script) { _, error in
-                guard let error, let pending = self.pendingRequests.removeValue(forKey: id) else { return }
-                pending.resume(throwing: error)
+
+                pendingRequests[id] = continuation
+                let script = """
+                (async function() {
+                    try {
+                        const requestBody = \(bodyLiteral);
+                        const controller = new AbortController();
+                        const timeout = setTimeout(() => controller.abort(), \(timeout));
+                        const response = await fetch(\(pathLiteral), {
+                            method: \(methodLiteral),
+                            credentials: 'include',
+                            headers: requestBody === null
+                                ? { Accept: 'application/json' }
+                                : { Accept: 'application/json', 'Content-Type': 'application/json' },
+                            body: requestBody === null ? undefined : JSON.stringify(requestBody),
+                            signal: controller.signal
+                        });
+                        const declaredLength = Number(response.headers.get('content-length') || 0);
+                        if (declaredLength > \(responseLimit)) throw new Error('response_too_large');
+                        const text = await (async function() {
+                            if (!response.body || typeof response.body.getReader !== 'function') {
+                                if (!Number.isFinite(declaredLength) || declaredLength <= 0) throw new Error('bounded_response_unavailable');
+                                return response.text();
+                            }
+                            const reader = response.body.getReader();
+                            const decoder = new TextDecoder();
+                            let totalBytes = 0;
+                            let result = '';
+                            while (true) {
+                                const chunk = await reader.read();
+                                if (chunk.done) {
+                                    result += decoder.decode();
+                                    return result;
+                                }
+                                totalBytes += chunk.value.byteLength;
+                                if (totalBytes > \(responseLimit)) {
+                                    await reader.cancel();
+                                    throw new Error('response_too_large');
+                                }
+                                result += decoder.decode(chunk.value, { stream: true });
+                            }
+                        })();
+                        clearTimeout(timeout);
+                        let body = null;
+                        try { body = text ? JSON.parse(text) : null; } catch (_) { body = text; }
+                        const normalizedBody = Array.isArray(body) ? { _array: body } : (body && typeof body === 'object' ? body : { value: body });
+                        window.webkit.messageHandlers['dashboard-response'].postMessage(JSON.stringify({
+                            type: 'dashboard-response', id: \(id), ok: response.ok,
+                            status: response.status, body: normalizedBody,
+                            error: !response.ok && body && typeof body === 'object'
+                                ? (body.error || body.message || body.detail) : null
+                        }));
+                    } catch (error) {
+                        window.webkit.messageHandlers['dashboard-response'].postMessage(JSON.stringify({
+                            type: 'dashboard-response', id: \(id), ok: false, status: 0, error: String(error)
+                        }));
+                    }
+                })();
+                true;
+                """
+                webView.evaluateJavaScript(script) { _, error in
+                    guard let error, let pending = self.pendingRequests.removeValue(forKey: id) else { return }
+                    pending.resume(throwing: error)
+                }
             }
-        }
+        }, onCancel: {
+            Task { @MainActor [weak self] in
+                self?.cancelPendingRequest(id: id)
+            }
+        })
+    }
+
+    private func cancelPendingRequest(id: Int) {
+        guard let continuation = pendingRequests.removeValue(forKey: id) else { return }
+        continuation.resume(throwing: CancellationError())
     }
 
     private func javaScriptLiteral(_ value: Any) throws -> String {

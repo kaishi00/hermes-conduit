@@ -1023,7 +1023,7 @@ private struct ReviewSummaryCard: View {
 
             if let fullSessionId = activity.fullSessionId, !fullSessionId.isEmpty {
                 Button {
-                    Task { await appState.openSession(fullSessionId) }
+                    appState.requestOpenSession(fullSessionId)
                 } label: {
                     Label("Open full review", systemImage: "arrow.up.forward.square")
                         .font(.subheadline.weight(.semibold))

@@ -532,34 +532,51 @@ final class HermesClient: ObservableObject {
         let body = try JSONEncoder().encode(request)
         logger.notice("Sending RPC id \(id) method \(method, privacy: .public)")
 
-        return try await withCheckedThrowingContinuation { continuation in
-            // Timeout
-            let timer = Timer.scheduledTimer(withTimeInterval: timeout, repeats: false) { [weak self] _ in
-                Task { @MainActor in
-                    if let pending = self?.pending.removeValue(forKey: id) {
-                        pending.continuation.resume(throwing: HermesError.timeout(method))
-                    }
+        return try await withTaskCancellationHandler(operation: {
+            try await withCheckedThrowingContinuation { continuation in
+                guard !Task.isCancelled else {
+                    continuation.resume(throwing: CancellationError())
+                    return
                 }
-            }
 
-            pending[id] = PendingRequest(continuation: continuation, timer: timer)
-
-            // Hermes' established React Native client uses WebSocket text
-            // frames (`socket.send(JSON.stringify(...))`). The gateway accepts
-            // the connection but does not dispatch binary JSON-RPC frames.
-            let text = String(decoding: body, as: UTF8.self)
-            socket.send(.string(text)) { [weak self] error in
-                if let error {
-                    self?.logger.error("RPC send failed for \(method, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                // Timeout
+                let timer = Timer.scheduledTimer(withTimeInterval: timeout, repeats: false) { [weak self] _ in
                     Task { @MainActor in
                         if let pending = self?.pending.removeValue(forKey: id) {
-                            pending.timer?.invalidate()
-                            pending.continuation.resume(throwing: error)
+                            pending.continuation.resume(throwing: HermesError.timeout(method))
+                        }
+                    }
+                }
+
+                pending[id] = PendingRequest(continuation: continuation, timer: timer)
+
+                // Hermes' established React Native client uses WebSocket text
+                // frames (`socket.send(JSON.stringify(...))`). The gateway accepts
+                // the connection but does not dispatch binary JSON-RPC frames.
+                let text = String(decoding: body, as: UTF8.self)
+                socket.send(.string(text)) { [weak self] error in
+                    if let error {
+                        self?.logger.error("RPC send failed for \(method, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                        Task { @MainActor in
+                            if let pending = self?.pending.removeValue(forKey: id) {
+                                pending.timer?.invalidate()
+                                pending.continuation.resume(throwing: error)
+                            }
                         }
                     }
                 }
             }
-        }
+        }, onCancel: {
+            Task { @MainActor [weak self] in
+                self?.cancelPendingRequest(id: id)
+            }
+        })
+    }
+
+    private func cancelPendingRequest(id: Int) {
+        guard let pending = pending.removeValue(forKey: id) else { return }
+        pending.timer?.invalidate()
+        pending.continuation.resume(throwing: CancellationError())
     }
 
     private func incrementRequestId() -> Int {
