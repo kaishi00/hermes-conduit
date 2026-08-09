@@ -217,7 +217,8 @@ struct ChatView: View {
                         sessionKey: value.scope.sessionKey,
                         transitionGeneration: value.scope.viewportTransitionGeneration,
                         transcriptRevision: value.scope.transcriptRevision,
-                        renderRevision: value.scope.cacheRevision
+                        renderRevision: value.scope.cacheRevision,
+                        receivedScopedPreference: true
                     )
                 }
                 .onPreferenceChange(ChatRenderedScrollTargetsPreferenceKey.self) { value in

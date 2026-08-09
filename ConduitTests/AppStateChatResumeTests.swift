@@ -3,6 +3,275 @@ import XCTest
 
 @MainActor
 final class AppStateChatResumeTests: XCTestCase {
+    func testCancellingSceneReconnectTaskWhileMintingIgnoresLateSignInFailure() async {
+        let mintGate = ControlledSuspension()
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                mintTicket: { _ in
+                    await mintGate.suspend()
+                    throw DashboardTicketBridgeError.signInRequired
+                }
+            )
+        )
+        let savedConnection = HermesConnection(
+            baseUrl: "https://one.example",
+            ticket: "saved-ticket"
+        )
+        let originalClient = HermesClient(connection: savedConnection, profile: "default")
+        harness.appState.connection = savedConnection
+        harness.appState.client = originalClient
+        harness.appState.showLogin = false
+
+        let sceneReconnect = harness.appState.handleScenePhase(.active)
+        await mintGate.waitUntilSuspended()
+        XCTAssertTrue(harness.appState.isConnecting)
+
+        harness.appState.handleScenePhase(.background)
+        mintGate.resume()
+        await sceneReconnect?.value
+
+        XCTAssertFalse(harness.appState.showLogin)
+        XCTAssertEqual(harness.appState.connection, savedConnection)
+        XCTAssertTrue(harness.appState.client === originalClient)
+        XCTAssertFalse(harness.appState.isConnecting)
+        XCTAssertEqual(harness.appState.turnState, .idle)
+    }
+
+    func testSameEpochAutomaticSyncAttemptCannotOverwriteNewerAttempt() async {
+        let staleCatalogGate = ControlledSuspension()
+        var catalogLoadCount = 0
+        let staleMessages = [
+            ChatMessage(id: "stale", role: .assistant, content: "Stale", timestamp: "1")
+        ]
+        let currentMessages = [
+            ChatMessage(id: "current", role: .assistant, content: "Current", timestamp: "2")
+        ]
+        let harness = makeHarness(
+            behavior: .latestActivity,
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in
+                    catalogLoadCount += 1
+                    if catalogLoadCount == 1 {
+                        await staleCatalogGate.suspend()
+                        return [self.session("stored-stale")]
+                    }
+                    return [self.session("stored-current")]
+                },
+                openSession: { _, sessionID in
+                    SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: sessionID == "stored-current" ? currentMessages : staleMessages,
+                        snapshot: SessionRuntimeSnapshot(object: [:])
+                    )
+                },
+                refreshContext: { _, _ in }
+            )
+        )
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        harness.appState.client = HermesClient(connection: connection, profile: "default")
+        harness.appState.sessions = [session("stored-a")]
+        harness.appState.activeSessionId = "stored-a"
+        let automaticWork = harness.appState.beginAutomaticChatResumeWork()
+        let reconciliation = harness.appState.beginReconciliation()
+
+        let staleSync = Task { @MainActor in
+            await harness.appState.syncSession(
+                purpose: .automaticReturn,
+                using: reconciliation,
+                automaticWorkToken: automaticWork
+            )
+        }
+        await staleCatalogGate.waitUntilSuspended()
+
+        await harness.appState.syncSession(
+            purpose: .automaticReturn,
+            using: reconciliation,
+            automaticWorkToken: automaticWork
+        )
+        XCTAssertEqual(harness.appState.activeSessionId, "stored-current")
+        XCTAssertEqual(harness.appState.messages, currentMessages)
+
+        staleCatalogGate.resume()
+        await staleSync.value
+
+        XCTAssertEqual(harness.appState.sessions.map(\.id), ["stored-current"])
+        XCTAssertEqual(harness.appState.activeSessionId, "stored-current")
+        XCTAssertEqual(harness.appState.messages, currentMessages)
+    }
+
+    func testAuthoritativeEmptyTranscriptSettlesFromScopedRevisionZeroLayout() async {
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                openSession: { _, sessionID in
+                    SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: [:])
+                    )
+                },
+                refreshContext: { _, _ in }
+            )
+        )
+        let sessionA = session("stored-a")
+        let sessionB = session("stored-b")
+        let keyB = ChatScrollSessionKey(profile: "default", sessionID: sessionB.id)
+        harness.appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+        harness.appState.sessions = [sessionA, sessionB]
+        harness.appState.activeSessionId = sessionA.id
+        harness.appState.installChatViewportSnapshotProvider(id: UUID()) {
+            ChatScrollSnapshot(anchorMessageID: "old-anchor", followsLatest: false)
+        }
+
+        let openedEmptySession = await harness.appState.openSession(sessionB.id)
+        XCTAssertTrue(openedEmptySession)
+        harness.appState.chatViewportLayoutDidSettle(
+            sessionKey: keyB,
+            transitionGeneration: harness.appState.chatViewportTransitionGeneration,
+            transcriptRevision: harness.appState.chatTranscriptRevision,
+            renderRevision: 0,
+            receivedScopedPreference: true
+        )
+        harness.appState.recordChatViewport(.latest, for: keyB)
+        harness.appState.flushChatResumeViewport()
+
+        XCTAssertEqual(harness.store.snapshot(for: keyB), .latest)
+    }
+
+    func testPostAuthoritativeTranscriptMutationAdvancesExpectedLayoutRevision() async {
+        let appReference = WeakAppStateReference()
+        let oldMessages = [
+            ChatMessage(id: "old", role: .assistant, content: "Old", timestamp: "1")
+        ]
+        let authoritativeMessages = [
+            ChatMessage(id: "new", role: .assistant, content: "New", timestamp: "2")
+        ]
+        let lateMessage = ChatMessage(
+            id: "late",
+            role: .assistant,
+            content: "Late authoritative event",
+            timestamp: "3"
+        )
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                openSession: { _, sessionID in
+                    SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: authoritativeMessages,
+                        snapshot: SessionRuntimeSnapshot(object: [:])
+                    )
+                },
+                refreshContext: { _, _ in
+                    appReference.value?.messages.append(lateMessage)
+                }
+            )
+        )
+        appReference.value = harness.appState
+        let active = session("stored-a")
+        let key = ChatScrollSessionKey(profile: "default", sessionID: active.id)
+        let captured = ChatScrollSnapshot(anchorMessageID: "old-anchor", followsLatest: false)
+        harness.appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        harness.appState.messages = oldMessages
+        harness.appState.installChatViewportSnapshotProvider(id: UUID()) { captured }
+
+        await harness.appState.refreshActiveSession()
+        let generation = harness.appState.chatViewportTransitionGeneration
+        let currentRevision = harness.appState.chatTranscriptRevision
+        XCTAssertEqual(harness.appState.messages, authoritativeMessages + [lateMessage])
+
+        harness.appState.chatViewportLayoutDidSettle(
+            sessionKey: key,
+            transitionGeneration: generation,
+            transcriptRevision: currentRevision - 1,
+            renderRevision: 8,
+            receivedScopedPreference: true
+        )
+        harness.appState.recordChatViewport(.latest, for: key)
+        harness.appState.flushChatResumeViewport()
+        XCTAssertEqual(harness.store.snapshot(for: key), captured)
+
+        harness.appState.chatViewportLayoutDidSettle(
+            sessionKey: key,
+            transitionGeneration: generation,
+            transcriptRevision: currentRevision,
+            renderRevision: 9,
+            receivedScopedPreference: true
+        )
+        harness.appState.recordChatViewport(.latest, for: key)
+        harness.appState.flushChatResumeViewport()
+        XCTAssertEqual(harness.store.snapshot(for: key), .latest)
+    }
+
+    func testStaleNotificationContinuationCannotSupersedeNewerSessionTransition() async {
+        let notificationCatalogGate = ControlledSuspension()
+        let messagesB = [
+            ChatMessage(id: "b", role: .assistant, content: "B", timestamp: "1")
+        ]
+        let messagesC = [
+            ChatMessage(id: "c", role: .assistant, content: "C", timestamp: "2")
+        ]
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in
+                    await notificationCatalogGate.suspend()
+                    return [self.session("stored-b")]
+                },
+                openSession: { _, sessionID in
+                    SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: sessionID == "stored-c" ? messagesC : messagesB,
+                        snapshot: SessionRuntimeSnapshot(object: [:])
+                    )
+                },
+                refreshContext: { _, _ in }
+            )
+        )
+        let sessionA = session("stored-a")
+        let sessionC = session("stored-c")
+        let keyC = ChatScrollSessionKey(profile: "default", sessionID: sessionC.id)
+        harness.appState.connection = HermesConnection(
+            baseUrl: "https://one.example",
+            ticket: "ticket"
+        )
+        harness.appState.client = HermesClient(
+            connection: harness.appState.connection!,
+            profile: "default"
+        )
+        harness.appState.sessions = [sessionA, sessionC]
+        harness.appState.activeSessionId = sessionA.id
+
+        let notification = Task { @MainActor in
+            await harness.appState.openNotificationTarget(
+                ConduitNotificationTarget(profile: nil, sessionId: "stored-b", type: nil)
+            )
+        }
+        await notificationCatalogGate.waitUntilSuspended()
+
+        let openedNewerSession = await harness.appState.openSession(sessionC.id)
+        XCTAssertTrue(openedNewerSession)
+        harness.appState.chatViewportLayoutDidSettle(
+            sessionKey: keyC,
+            transitionGeneration: harness.appState.chatViewportTransitionGeneration,
+            transcriptRevision: harness.appState.chatTranscriptRevision,
+            renderRevision: 4,
+            receivedScopedPreference: true
+        )
+        notificationCatalogGate.resume()
+        let openedNotification = await notification.value
+        XCTAssertFalse(openedNotification)
+
+        XCTAssertEqual(harness.appState.activeSessionId, sessionC.id)
+        XCTAssertEqual(harness.appState.messages, messagesC)
+        XCTAssertEqual(harness.appState.sessions.map(\.id), [sessionA.id, sessionC.id])
+    }
+
     func testCancelledAutomaticSyncRestoresComposerStateAfterCatalogReturns() async {
         let gate = ControlledSuspension()
         let catalog = [session("stored-b"), session("stored-a")]
@@ -205,7 +474,8 @@ final class AppStateChatResumeTests: XCTestCase {
             sessionKey: key,
             transitionGeneration: generation,
             transcriptRevision: transcriptRevision - 1,
-            renderRevision: 7
+            renderRevision: 7,
+            receivedScopedPreference: true
         )
         harness.appState.recordChatViewport(.latest, for: key)
         harness.appState.flushChatResumeViewport()
@@ -215,7 +485,8 @@ final class AppStateChatResumeTests: XCTestCase {
             sessionKey: key,
             transitionGeneration: generation,
             transcriptRevision: transcriptRevision,
-            renderRevision: 7
+            renderRevision: 7,
+            receivedScopedPreference: true
         )
         harness.appState.recordChatViewport(.latest, for: key)
         harness.appState.flushChatResumeViewport()
@@ -263,7 +534,8 @@ final class AppStateChatResumeTests: XCTestCase {
             sessionKey: keyB,
             transitionGeneration: harness.appState.chatViewportTransitionGeneration,
             transcriptRevision: harness.appState.chatTranscriptRevision,
-            renderRevision: 2
+            renderRevision: 2,
+            receivedScopedPreference: true
         )
         harness.appState.recordChatViewport(.latest, for: keyA)
         harness.appState.flushChatResumeViewport()
@@ -1002,6 +1274,11 @@ private enum ControlledLifecycleError: Error {
 @MainActor
 private final class CacheClearSpy {
     var count = 0
+}
+
+@MainActor
+private final class WeakAppStateReference {
+    weak var value: AppState?
 }
 
 @MainActor
