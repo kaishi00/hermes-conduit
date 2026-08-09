@@ -5,6 +5,17 @@ enum ChatResumeBehavior: String, Codable, CaseIterable {
     case latestActivity
 }
 
+extension ChatResumeBehavior {
+    var title: String {
+        switch self {
+        case .continueWhereLeftOff:
+            "Continue where I left off"
+        case .latestActivity:
+            "Jump to latest activity"
+        }
+    }
+}
+
 enum ChatResumeSyncPurpose: Equatable {
     case automaticReturn
     case preserveCurrent

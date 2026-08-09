@@ -1068,6 +1068,7 @@ final class AppState: ObservableObject {
             defaultProfileName: defaultProfileName,
             theme: themePreference,
             busyInputMode: busyInputMode,
+            chatResumeBehavior: chatResumeBehavior,
             displayPreferences: displayPreferences,
             cloudflareAccess: KeychainHelper.loadCloudflareAccess(for: connection?.baseUrl)
         )

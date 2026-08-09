@@ -110,6 +110,7 @@ struct SettingsSnapshot: Identifiable {
     let defaultProfileName: String
     let theme: ThemePreference
     let busyInputMode: BusyInputMode
+    let chatResumeBehavior: ChatResumeBehavior
     let displayPreferences: ProfileDisplayPreferences
     let cloudflareAccess: CloudflareAccessCredentials?
 }
@@ -454,6 +455,7 @@ struct SettingsView: View {
     let snapshot: SettingsSnapshot
     let saveTheme: (ThemePreference) -> Void
     let persistBusyInputMode: (BusyInputMode) async -> Bool
+    let persistChatResumeBehavior: (ChatResumeBehavior) -> Void
     let loadProfileSettings: ([String]) async -> [String: ProfileSettingValue]
     let persistProfileSetting: (String, ProfileSettingValue) async -> Bool
     let loadProfileConfigOptions: () async -> ProfileConfigOptions
@@ -495,6 +497,8 @@ struct SettingsView: View {
             ChatSettingsDetail(
                 busyInputMode: snapshot.busyInputMode,
                 persistBusyInputMode: persistBusyInputMode,
+                chatResumeBehavior: snapshot.chatResumeBehavior,
+                persistChatResumeBehavior: persistChatResumeBehavior,
                 load: loadProfileSettings,
                 save: persistProfileSetting,
                 loadOptions: loadProfileConfigOptions
@@ -697,6 +701,8 @@ private struct ProfileSettingsDetail: View {
 private struct ChatSettingsDetail: View {
     let busyInputMode: BusyInputMode
     let persistBusyInputMode: (BusyInputMode) async -> Bool
+    let chatResumeBehavior: ChatResumeBehavior
+    let persistChatResumeBehavior: (ChatResumeBehavior) -> Void
     let load: ([String]) async -> [String: ProfileSettingValue]
     let save: (String, ProfileSettingValue) async -> Bool
     let loadOptions: () async -> ProfileConfigOptions
@@ -711,7 +717,15 @@ private struct ChatSettingsDetail: View {
             save: save,
             showsNavigationTitle: false,
             optionOverrides: ["display.personality": ["", "helpful", "concise", "technical", "creative", "teacher", "kawaii", "catgirl", "pirate", "shakespeare", "surfer", "noir", "uwu", "philosopher", "hype"] + options.personalities],
-            leadingSection: AnyView(ResponseBehaviorSettings(initialMode: busyInputMode, save: persistBusyInputMode)),
+            leadingSection: AnyView(
+                VStack(spacing: 14) {
+                    ChatReturnBehaviorSettings(
+                        initialBehavior: chatResumeBehavior,
+                        persist: persistChatResumeBehavior
+                    )
+                    ResponseBehaviorSettings(initialMode: busyInputMode, save: persistBusyInputMode)
+                }
+            ),
             trailingSection: AnyView(DeviceHapticsSettings())
         )
         .navigationTitle("Chat")
@@ -745,6 +759,42 @@ private struct DeviceHapticsSettings: View {
                 .labelsHidden()
                 .tint(.conduitAccent)
         }
+}
+
+private struct ChatReturnBehaviorSettings: View {
+    let persist: (ChatResumeBehavior) -> Void
+    @State private var behavior: ChatResumeBehavior
+
+    init(
+        initialBehavior: ChatResumeBehavior,
+        persist: @escaping (ChatResumeBehavior) -> Void
+    ) {
+        self.persist = persist
+        _behavior = State(initialValue: initialBehavior)
+    }
+
+    var body: some View {
+        ConduitSettingsSection(
+            title: "When returning to Conduit",
+            symbol: "arrow.uturn.backward.circle",
+            tint: .conduitAccent
+        ) {
+            Text("Stored only on this device, not in your Hermes profile. Choose whether Conduit preserves your exact reading position or follows the newest conversation.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Picker("When returning to Conduit", selection: Binding(get: { behavior }, set: choose)) {
+                Text("Continue").tag(ChatResumeBehavior.continueWhereLeftOff)
+                Text("Latest").tag(ChatResumeBehavior.latestActivity)
+            }
+            .pickerStyle(.segmented)
+            .accessibilityHint("Stored only on this device, not in your Hermes profile.")
+        }
+    }
+
+    private func choose(_ next: ChatResumeBehavior) {
+        guard next != behavior else { return }
+        behavior = next
+        persist(next)
     }
 }
 
