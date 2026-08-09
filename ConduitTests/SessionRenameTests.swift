@@ -190,35 +190,28 @@ final class SessionRenameTests: XCTestCase {
         XCTAssertEqual(appState.sessions.first { $0.id == active.id }?.title, "Active")
     }
 
-    func testTerminalFailurePreservesCatalogAndSurfacesExistingError() async {
-        let session = makeSession()
-        var catalog = [session]
-        var activeTitle = session.title
-        var errorMessage: String?
+    func testTerminalFailurePreservesAppStateAndSurfacesExistingError() async {
+        let appState = AppState(
+            sessionRenameOperations: .init(
+                renameRuntime: { _, _ in throw TestError.rejected },
+                renameStored: { _, _ in throw TestError.rejected }
+            ),
+            restoreSavedConnection: false
+        )
+        let session = makeSession(profile: appState.activeProfile)
+        appState.sessions = [session]
+        appState.activeSessionId = "runtime-id"
+        let previousActiveTitle = appState.activeSessionTitle
 
-        do {
-            if let result = try await SessionRenameOperation.perform(
-                session: session,
-                activeSessionID: nil,
-                title: "Renamed",
-                operations: .init(
-                    renameRuntime: nil,
-                    renameStored: { _, _ in throw TestError.rejected }
-                )
-            ) {
-                catalog = catalog.map(result.updating)
-                if result.matches(sessionID: "runtime-id") {
-                    activeTitle = result.title
-                }
-            }
-            XCTFail("Expected the stored rename to fail")
-        } catch {
-            errorMessage = SessionRenameOperation.failureMessage(error)
-        }
+        let didRename = await appState.renameSession(session, to: "Renamed")
 
-        XCTAssertEqual(catalog.map(\.title), ["Original"])
-        XCTAssertEqual(activeTitle, "Original")
-        XCTAssertEqual(errorMessage, "Could not rename this conversation: Gateway rejected rename")
+        XCTAssertFalse(didRename)
+        XCTAssertEqual(appState.sessions.map(\.title), ["Original"])
+        XCTAssertEqual(appState.activeSessionTitle, previousActiveTitle)
+        XCTAssertEqual(
+            appState.errorMessage,
+            "Could not rename this conversation: Gateway rejected rename"
+        )
     }
 
     func testTransportCancellationRemainsAUserVisibleFailure() async {
