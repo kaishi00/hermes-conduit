@@ -18,6 +18,7 @@ struct ChatView: View {
     @State private var chatScrollState = ChatScrollStateStore()
     @State private var chatMessageScrollTargetCache = ChatMessageScrollTargetCache()
     @State private var pendingScrollRestoration: ChatScrollPendingRestoration?
+    @State private var renderedScrollSessionKey: ChatScrollSessionKey?
     @State private var notificationHandoffPending = false
     @State private var notificationHandoffSessionKey: ChatScrollSessionKey?
     @State private var notificationHandoffHasMeasuredLayout = false
@@ -128,6 +129,7 @@ struct ChatView: View {
                     }
                 }
                 .onAppear {
+                    renderedScrollSessionKey = activeScrollSessionKey
                     chatMessageScrollTargetCache.update(for: appState.messages)
                 }
                 .onPreferenceChange(ChatBottomMarkerPreferenceKey.self) { value in
@@ -177,6 +179,13 @@ struct ChatView: View {
                         scrollToLatest(using: proxy)
                     }
                 }
+                .onChange(of: topVisibleChatID) { _, _ in
+                    // Persist the browsing position while the old transcript
+                    // is still rendered. A session switch clears messages in
+                    // the same main-actor turn, so waiting until the switch
+                    // callback would leave us with no anchor to save.
+                    saveChatScrollPosition(for: renderedScrollSessionKey)
+                }
                 .onChange(of: appState.chatScrollRequest) { _, _ in
                     cancelPendingChatScrollRestoration()
                     followsLatest = true
@@ -191,31 +200,72 @@ struct ChatView: View {
                         return
                     }
                     let identity = appState.activeChatScrollSessionIdentity
-                    guard !identity.areEquivalent(
-                        identity.key(for: oldSessionID),
-                        identity.key(for: newSessionID)
-                    ) else { return }
-                    cancelPendingChatScrollRestoration()
-                    followsLatest = true
-                    scrollToLatest(using: proxy)
+                    let oldKey = renderedScrollSessionKey ?? identity.key(for: oldSessionID)
+                    let newKey = activeScrollSessionKey
+                    renderedScrollSessionKey = newKey
+                    guard !identity.areEquivalent(oldKey, newKey) else { return }
+
+                    let action = ChatScrollSessionTransitionPolicy.action(
+                        from: oldKey,
+                        to: newKey,
+                        snapshot: newKey.flatMap { chatScrollState.snapshot(for: $0) }
+                    )
+                    switch action {
+                    case .ignore:
+                        break
+                    case .latest:
+                        cancelPendingChatScrollRestoration()
+                        followsLatest = true
+                        scrollToLatest(using: proxy)
+                    case .restore:
+                        beginChatScrollRestoration()
+                        DispatchQueue.main.async {
+                            finishChatScrollRestorationIfReady(using: proxy)
+                        }
+                    }
                 }
                 .onChange(of: appState.activeProfile) { _, _ in
-                    cancelPendingChatScrollRestoration()
                     topVisibleChatID = nil
                     chatMessageScrollTargetCache = ChatMessageScrollTargetCache()
                     chatMessageScrollTargetCache.update(for: appState.messages)
+                    let oldKey = renderedScrollSessionKey
+                    let newKey = activeScrollSessionKey
+                    renderedScrollSessionKey = newKey
                     guard !appState.isOpeningNotificationSession else {
                         notificationHandoffPending = true
-                        notificationHandoffSessionKey = activeScrollSessionKey
+                        notificationHandoffSessionKey = newKey
                         notificationHandoffHasMeasuredLayout = false
                         followsLatest = false
                         return
                     }
-                    followsLatest = true
-                    scrollToLatest(using: proxy)
+                    let action = ChatScrollSessionTransitionPolicy.action(
+                        from: oldKey,
+                        to: newKey,
+                        snapshot: newKey.flatMap { chatScrollState.snapshot(for: $0) }
+                    )
+                    switch action {
+                    case .ignore:
+                        break
+                    case .latest:
+                        cancelPendingChatScrollRestoration()
+                        followsLatest = true
+                        scrollToLatest(using: proxy)
+                    case .restore:
+                        beginChatScrollRestoration()
+                        DispatchQueue.main.async {
+                            finishChatScrollRestorationIfReady(using: proxy)
+                        }
+                    }
                 }
                 .onChange(of: appState.activeChatScrollSessionIdentity) { _, _ in
                     guard !appState.isOpeningNotificationSession else { return }
+                    if let activeScrollSessionKey,
+                       appState.activeChatScrollSessionIdentity.areEquivalent(
+                           renderedScrollSessionKey,
+                           activeScrollSessionKey
+                       ) {
+                        renderedScrollSessionKey = activeScrollSessionKey
+                    }
                     // Reconciliation publishes after replacing the transcript.
                     // Let SwiftUI install the new semantic targets, then retry.
                     DispatchQueue.main.async {
@@ -308,16 +358,18 @@ struct ChatView: View {
         .animation(.easeInOut(duration: 0.18), value: appState.isOpeningNotificationSession)
     }
 
-    private func saveChatScrollPosition() {
-        guard let sessionKey = activeScrollSessionKey else { return }
+    private func saveChatScrollPosition(for preferredKey: ChatScrollSessionKey? = nil) {
+        guard let sessionKey = preferredKey ?? renderedScrollSessionKey ?? activeScrollSessionKey else { return }
         let anchorTarget = chatMessageScrollTargetCache.targets.first {
             $0.semanticID == topVisibleChatID
         }
+        guard followsLatest || anchorTarget != nil else { return }
         chatScrollState.save(
             ChatScrollSnapshot(
                 anchorMessageID: followsLatest ? nil : anchorTarget?.semanticID,
                 followsLatest: followsLatest,
-                anchorMetadata: followsLatest ? nil : anchorTarget?.restorationMetadata
+                anchorMetadata: followsLatest ? nil : anchorTarget?.restorationMetadata,
+                anchorSourceMessageID: followsLatest ? nil : anchorTarget?.id
             ),
             for: sessionKey
         )

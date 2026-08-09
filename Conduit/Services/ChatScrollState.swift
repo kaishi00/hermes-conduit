@@ -162,6 +162,30 @@ struct ChatScrollSessionKey: Hashable {
     }
 }
 
+enum ChatSessionPersistenceIdentity {
+    static func canonicalID(
+        for sessionID: String?,
+        identity: ChatScrollSessionIdentity,
+        catalog: [SessionSummary]
+    ) -> String? {
+        guard let sessionID,
+              !sessionID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+
+        if let catalogSession = catalog.first(where: {
+            $0.id == sessionID || $0.alternateIds.contains(sessionID)
+        }) {
+            return catalogSession.id
+        }
+
+        if identity.contains(sessionID) {
+            return identity.canonicalSessionID ?? sessionID
+        }
+        return sessionID
+    }
+}
+
 struct ChatScrollSessionCatalogIdentity: Equatable {
     let profile: String
     let canonicalSessionID: String
@@ -377,6 +401,7 @@ struct ChatScrollRestorationGate: Equatable {
 struct ChatScrollTargetAvailability: Equatable {
     private let messageIDs: Set<String>
     private let metadataByMessageID: [String: ChatScrollAnchorMetadata]
+    private let semanticIDBySourceMessageID: [String: String]
 
     init(targets: [ChatMessageScrollTarget]) {
         messageIDs = Set(targets.map(\.semanticID))
@@ -384,11 +409,16 @@ struct ChatScrollTargetAvailability: Equatable {
             targets.map { ($0.semanticID, $0.restorationMetadata) },
             uniquingKeysWith: { existing, _ in existing }
         )
+        semanticIDBySourceMessageID = Dictionary(
+            targets.map { ($0.id, $0.semanticID) },
+            uniquingKeysWith: { existing, _ in existing }
+        )
     }
 
     init(messageIDs: Set<String>) {
         self.messageIDs = messageIDs
         metadataByMessageID = [:]
+        semanticIDBySourceMessageID = [:]
     }
 
     fileprivate func contains(_ messageID: String) -> Bool {
@@ -398,21 +428,28 @@ struct ChatScrollTargetAvailability: Equatable {
     fileprivate func metadata(for messageID: String) -> ChatScrollAnchorMetadata? {
         metadataByMessageID[messageID]
     }
+
+    fileprivate func semanticID(forSourceMessageID sourceMessageID: String) -> String? {
+        semanticIDBySourceMessageID[sourceMessageID]
+    }
 }
 
 struct ChatScrollSnapshot: Equatable {
     let anchorMessageID: String?
     let followsLatest: Bool
     let anchorMetadata: ChatScrollAnchorMetadata?
+    let anchorSourceMessageID: String?
 
     init(
         anchorMessageID: String?,
         followsLatest: Bool,
-        anchorMetadata: ChatScrollAnchorMetadata? = nil
+        anchorMetadata: ChatScrollAnchorMetadata? = nil,
+        anchorSourceMessageID: String? = nil
     ) {
         self.anchorMessageID = anchorMessageID
         self.followsLatest = followsLatest
         self.anchorMetadata = anchorMetadata
+        self.anchorSourceMessageID = anchorSourceMessageID
     }
 
     static let latest = ChatScrollSnapshot(anchorMessageID: nil, followsLatest: true)
@@ -429,6 +466,24 @@ enum ChatScrollRestorationDecision: Equatable {
     case cancel
     case latest
     case anchor(String)
+}
+
+enum ChatScrollSessionTransitionAction: Equatable {
+    case ignore
+    case latest
+    case restore
+}
+
+enum ChatScrollSessionTransitionPolicy {
+    static func action(
+        from oldSessionKey: ChatScrollSessionKey?,
+        to newSessionKey: ChatScrollSessionKey?,
+        snapshot: ChatScrollSnapshot?
+    ) -> ChatScrollSessionTransitionAction {
+        guard oldSessionKey != newSessionKey else { return .ignore }
+        guard let snapshot, !snapshot.followsLatest else { return .latest }
+        return .restore
+    }
 }
 
 enum ChatScrollRestorationResolver {
@@ -550,14 +605,25 @@ struct ChatScrollStateStore {
     ) -> ChatScrollSnapshot? {
         guard let snapshot = snapshot(for: key) else { return nil }
         guard !snapshot.followsLatest else { return .latest }
-        guard let anchor = snapshot.anchorMessageID,
-              availableTargets.contains(anchor) else {
+        if let anchor = snapshot.anchorMessageID,
+           availableTargets.contains(anchor),
+           (snapshot.anchorMetadata == nil || availableTargets.metadata(for: anchor) == snapshot.anchorMetadata) {
+            return snapshot
+        }
+
+        // A streaming projection can keep the same source message while its
+        // content (and therefore semantic fingerprint) changes. Re-anchor by
+        // source identity before giving up and jumping to the newest message.
+        guard let sourceMessageID = snapshot.anchorSourceMessageID,
+              let refreshedAnchor = availableTargets.semanticID(forSourceMessageID: sourceMessageID),
+              let refreshedMetadata = availableTargets.metadata(for: refreshedAnchor) else {
             return .latest
         }
-        if let expectedMetadata = snapshot.anchorMetadata,
-           availableTargets.metadata(for: anchor) != expectedMetadata {
-            return .latest
-        }
-        return snapshot
+        return ChatScrollSnapshot(
+            anchorMessageID: refreshedAnchor,
+            followsLatest: false,
+            anchorMetadata: refreshedMetadata,
+            anchorSourceMessageID: sourceMessageID
+        )
     }
 }

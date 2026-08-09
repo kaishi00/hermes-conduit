@@ -908,4 +908,102 @@ final class ChatScrollStateTests: XCTestCase {
 
         XCTAssertNil(store.snapshot(for: key))
     }
+
+    func testSessionSwitchPreservesSavedBrowsePositionInsteadOfForcingLatest() {
+        let oldKey = ChatScrollSessionKey(profile: "default", sessionID: "old")
+        let newKey = ChatScrollSessionKey(profile: "default", sessionID: "new")
+        let snapshot = ChatScrollSnapshot(anchorMessageID: "message-12", followsLatest: false)
+
+        XCTAssertEqual(
+            ChatScrollSessionTransitionPolicy.action(
+                from: oldKey,
+                to: newKey,
+                snapshot: snapshot
+            ),
+            .restore
+        )
+    }
+
+    func testSessionSwitchWithoutSavedBrowsePositionStillUsesLatest() {
+        let oldKey = ChatScrollSessionKey(profile: "default", sessionID: "old")
+        let newKey = ChatScrollSessionKey(profile: "default", sessionID: "new")
+
+        XCTAssertEqual(
+            ChatScrollSessionTransitionPolicy.action(
+                from: oldKey,
+                to: newKey,
+                snapshot: nil
+            ),
+            .latest
+        )
+    }
+
+    func testRestorationReanchorsBySourceMessageWhenContentProjectionChanges() {
+        let original = ChatMessage(
+            id: "stable-source-id",
+            role: .assistant,
+            content: "The response is still streaming",
+            timestamp: "now"
+        )
+        let refreshed = ChatMessage(
+            id: "stable-source-id",
+            role: .assistant,
+            content: "The response is still streaming, but now complete",
+            timestamp: "stored"
+        )
+        let originalTarget = ChatMessageScrollTargets.make(for: [original])[0]
+        let refreshedTarget = ChatMessageScrollTargets.make(for: [refreshed])[0]
+        let key = ChatScrollSessionKey(profile: "default", sessionID: "session")
+        var store = ChatScrollStateStore()
+        store.save(
+            ChatScrollSnapshot(
+                anchorMessageID: originalTarget.semanticID,
+                followsLatest: false,
+                anchorMetadata: originalTarget.restorationMetadata,
+                anchorSourceMessageID: originalTarget.id
+            ),
+            for: key
+        )
+
+        let restored = store.restoration(
+            for: key,
+            availableTargets: ChatScrollTargetAvailability(targets: [refreshedTarget])
+        )
+
+        XCTAssertEqual(restored?.anchorMessageID, refreshedTarget.semanticID)
+        XCTAssertEqual(restored?.anchorSourceMessageID, "stable-source-id")
+    }
+
+    func testRuntimeSessionIDPersistsAsCatalogCanonicalID() {
+        let identity = ChatScrollSessionIdentity(
+            profile: "default",
+            canonicalSessionID: "catalog-session",
+            equivalentSessionIDs: ["runtime-session"],
+            isReconciling: true,
+            settledRevision: 0
+        )
+        let catalog = [
+            SessionSummary(
+                id: "catalog-session",
+                alternateIds: [],
+                title: "Conversation",
+                model: "Hermes",
+                updatedLabel: "now",
+                profile: "default",
+                source: .chat,
+                isActive: true,
+                isArchived: false,
+                lineageRootId: nil
+            )
+        ]
+
+        XCTAssertEqual(
+            ChatSessionPersistenceIdentity.canonicalID(
+                for: "runtime-session",
+                identity: identity,
+                catalog: catalog
+            ),
+            "catalog-session"
+        )
+    }
 }

@@ -471,8 +471,12 @@ final class AppState: ObservableObject {
 
     private func setActiveSessionState(id: String?, title: String? = nil) {
         activeSessionId = id
-        if let id, !id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            activeSessionIDsByProfile[activeProfile] = id
+        if let persistedID = ChatSessionPersistenceIdentity.canonicalID(
+            for: id,
+            identity: activeChatScrollSessionIdentity,
+            catalog: sessions + cronSessions
+        ) {
+            activeSessionIDsByProfile[activeProfile] = persistedID
         } else {
             activeSessionIDsByProfile.removeValue(forKey: activeProfile)
         }
