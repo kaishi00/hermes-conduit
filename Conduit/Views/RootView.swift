@@ -147,6 +147,7 @@ struct MainView: View {
                 snapshot: snapshot,
                 saveTheme: { appState.themePreference = $0 },
                 persistBusyInputMode: { mode in await appState.setBusyInputMode(mode) },
+                persistChatResumeBehavior: { appState.setChatResumeBehavior($0) },
                 loadProfileSettings: { keys in await appState.loadProfileSettings(keys: keys) },
                 persistProfileSetting: { key, value in await appState.setProfileSetting(key, value: value) },
                 loadProfileConfigOptions: { await appState.loadProfileConfigOptions() },

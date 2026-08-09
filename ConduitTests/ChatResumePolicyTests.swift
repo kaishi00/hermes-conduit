@@ -104,6 +104,11 @@ final class ChatResumePolicyTests: XCTestCase {
         XCTAssertEqual(selected?.id, "cron-a")
     }
 
+    func testResumeBehaviorPresentationCopyIsStable() {
+        XCTAssertEqual(ChatResumeBehavior.continueWhereLeftOff.title, "Continue where I left off")
+        XCTAssertEqual(ChatResumeBehavior.latestActivity.title, "Jump to latest activity")
+    }
+
     func testPersistedAnchorSurvivesWhenTargetExists() {
         let message = ChatMessage(
             id: "source-12",
