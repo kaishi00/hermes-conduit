@@ -38,7 +38,6 @@ enum ChatMessageScrollUpdatePolicy {
 struct ChatMessageScrollTargetCache: Equatable {
     private(set) var targets: [ChatMessageScrollTarget] = []
     private(set) var renderingRevision: UInt64 = 0
-    private(set) var semanticTargetIDs: Set<String> = []
     private var fingerprints: [String] = []
 
     @discardableResult
@@ -62,34 +61,62 @@ struct ChatMessageScrollTargetCache: Equatable {
             for: messages,
             fingerprints: updatedFingerprints
         )
-        semanticTargetIDs = Set(targets.map(\.semanticID))
         renderingRevision &+= 1
         return .semanticsChanged
     }
 }
 
-struct ChatRenderedScrollContent: Equatable {
+struct ChatRenderedScrollScope: Hashable {
     let sessionKey: ChatScrollSessionKey
     let cacheRevision: UInt64
-    let semanticTargetIDs: Set<String>
-    let bottomAnchorID: String
     let restorationGeneration: UInt64?
+    let transcriptRevision: UInt64
     let viewportTransitionGeneration: UInt64
+}
 
-    init(
-        sessionKey: ChatScrollSessionKey,
-        cacheRevision: UInt64,
-        semanticTargetIDs: Set<String>,
-        bottomAnchorID: String,
-        restorationGeneration: UInt64? = nil,
-        viewportTransitionGeneration: UInt64 = 0
+struct ChatRenderedScrollContent: Equatable {
+    let scope: ChatRenderedScrollScope
+}
+
+/// A preference payload emitted only by targets SwiftUI has instantiated.
+/// The cache deliberately cannot populate this value: lazy offscreen rows
+/// become ready only when their own geometry participates in the layout pass.
+struct ChatRenderedScrollTargets: Equatable {
+    private(set) var rowsByScope: [ChatRenderedScrollScope: Set<String>] = [:]
+    private(set) var bottomsByScope: [ChatRenderedScrollScope: Set<String>] = [:]
+
+    static func row(
+        semanticID: String,
+        scope: ChatRenderedScrollScope
+    ) -> ChatRenderedScrollTargets {
+        ChatRenderedScrollTargets(rowsByScope: [scope: [semanticID]])
+    }
+
+    static func bottom(
+        anchorID: String,
+        scope: ChatRenderedScrollScope
+    ) -> ChatRenderedScrollTargets {
+        ChatRenderedScrollTargets(bottomsByScope: [scope: [anchorID]])
+    }
+
+    static func reduce(
+        value: inout ChatRenderedScrollTargets,
+        nextValue: ChatRenderedScrollTargets
     ) {
-        self.sessionKey = sessionKey
-        self.cacheRevision = cacheRevision
-        self.semanticTargetIDs = semanticTargetIDs
-        self.bottomAnchorID = bottomAnchorID
-        self.restorationGeneration = restorationGeneration
-        self.viewportTransitionGeneration = viewportTransitionGeneration
+        for (scope, rows) in nextValue.rowsByScope {
+            value.rowsByScope[scope, default: []].formUnion(rows)
+        }
+        for (scope, bottoms) in nextValue.bottomsByScope {
+            value.bottomsByScope[scope, default: []].formUnion(bottoms)
+        }
+    }
+
+    func contains(row semanticID: String, in scope: ChatRenderedScrollScope) -> Bool {
+        rowsByScope[scope]?.contains(semanticID) == true
+    }
+
+    func contains(bottom anchorID: String, in scope: ChatRenderedScrollScope) -> Bool {
+        bottomsByScope[scope]?.contains(anchorID) == true
     }
 }
 
@@ -140,7 +167,9 @@ struct ChatResumeRenderRestorationState {
 
     mutating func nextAction(
         renderedContent: ChatRenderedScrollContent?,
+        installedTargets: ChatRenderedScrollTargets,
         cacheRevision: UInt64,
+        transcriptRevision: UInt64,
         topVisibleID: String?,
         isNearBottom: Bool
     ) -> ChatResumeRenderRestorationAction {
@@ -148,35 +177,49 @@ struct ChatResumeRenderRestorationState {
         checkCount += 1
 
         guard let renderedContent,
-              renderedContent.restorationGeneration == generation,
-              renderedContent.sessionKey == sessionKey,
-              renderedContent.cacheRevision == cacheRevision,
-              targetIsInstalled(in: renderedContent) else {
+              renderedContent.scope.restorationGeneration == generation,
+              renderedContent.scope.sessionKey == sessionKey,
+              renderedContent.scope.cacheRevision == cacheRevision,
+              renderedContent.scope.transcriptRevision == transcriptRevision else {
             return checkCount > maximumChecks ? .abandon : .wait
         }
 
-        if lastScrollCheck != nil, destinationIsConfirmed(
+        if lastScrollCheck != nil,
+           targetIsInstalled(in: installedTargets, scope: renderedContent.scope),
+           destinationIsConfirmed(
             topVisibleID: topVisibleID,
             isNearBottom: isNearBottom
         ) {
             return .complete
         }
 
+        guard checkCount <= maximumChecks else { return .abandon }
+
         if lastScrollCheck.map({ checkCount - $0 >= retryInterval }) ?? true {
             lastScrollCheck = checkCount
             return .scroll(destination)
         }
 
-        return checkCount > maximumChecks ? .abandon : .wait
+        return .wait
     }
 
-    private func targetIsInstalled(in content: ChatRenderedScrollContent) -> Bool {
+    private func targetIsInstalled(
+        in installedTargets: ChatRenderedScrollTargets,
+        scope: ChatRenderedScrollScope
+    ) -> Bool {
         switch destination {
         case .latest:
-            return !content.bottomAnchorID.isEmpty
+            return installedTargets.contains(
+                bottom: bottomAnchorID(for: scope.sessionKey),
+                in: scope
+            )
         case .anchor(let anchor):
-            return content.semanticTargetIDs.contains(anchor)
+            return installedTargets.contains(row: anchor, in: scope)
         }
+    }
+
+    private func bottomAnchorID(for sessionKey: ChatScrollSessionKey) -> String {
+        "chat-latest-\(sessionKey.profile)-\(sessionKey.sessionID)"
     }
 
     private func destinationIsConfirmed(

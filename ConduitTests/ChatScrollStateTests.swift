@@ -13,18 +13,22 @@ final class ChatScrollStateTests: XCTestCase {
             maximumChecks: 8,
             retryInterval: 2
         )
-        let staleContent = ChatRenderedScrollContent(
+        let staleScope = ChatRenderedScrollScope(
             sessionKey: sessionB,
             cacheRevision: 7,
-            semanticTargetIDs: [anchor],
-            bottomAnchorID: "chat-latest-default-session-b",
-            restorationGeneration: 41
+            restorationGeneration: 41,
+            transcriptRevision: 12,
+            viewportTransitionGeneration: 2
         )
+        let staleContent = ChatRenderedScrollContent(scope: staleScope)
+        var installedTargets = ChatRenderedScrollTargets()
 
         XCTAssertEqual(
             restoration.nextAction(
                 renderedContent: staleContent,
+                installedTargets: installedTargets,
                 cacheRevision: 7,
+                transcriptRevision: 12,
                 topVisibleID: nil,
                 isNearBottom: false
             ),
@@ -33,7 +37,9 @@ final class ChatScrollStateTests: XCTestCase {
         XCTAssertEqual(
             restoration.nextAction(
                 renderedContent: staleContent,
+                installedTargets: installedTargets,
                 cacheRevision: 7,
+                transcriptRevision: 12,
                 topVisibleID: nil,
                 isNearBottom: false
             ),
@@ -41,70 +47,92 @@ final class ChatScrollStateTests: XCTestCase {
             "A delayed row must not be treated as installed after one task yield"
         )
 
-        let staleGeneration = ChatRenderedScrollContent(
+        let staleGenerationScope = ChatRenderedScrollScope(
             sessionKey: sessionA,
             cacheRevision: 8,
-            semanticTargetIDs: [anchor],
-            bottomAnchorID: "chat-latest-default-session-a",
-            restorationGeneration: 40
+            restorationGeneration: 40,
+            transcriptRevision: 13,
+            viewportTransitionGeneration: 2
         )
+        let staleGeneration = ChatRenderedScrollContent(scope: staleGenerationScope)
         XCTAssertEqual(
             restoration.nextAction(
                 renderedContent: staleGeneration,
+                installedTargets: installedTargets,
                 cacheRevision: 8,
+                transcriptRevision: 13,
                 topVisibleID: anchor,
                 isNearBottom: false
             ),
             .wait
         )
 
-        let matchingContentWithoutAnchor = ChatRenderedScrollContent(
+        let matchingScope = ChatRenderedScrollScope(
             sessionKey: sessionA,
             cacheRevision: 8,
-            semanticTargetIDs: ["different-anchor"],
-            bottomAnchorID: "chat-latest-default-session-a",
-            restorationGeneration: 41
+            restorationGeneration: 41,
+            transcriptRevision: 13,
+            viewportTransitionGeneration: 2
+        )
+        let matchingContentWithoutAnchor = ChatRenderedScrollContent(scope: matchingScope)
+        XCTAssertEqual(
+            restoration.nextAction(
+                renderedContent: matchingContentWithoutAnchor,
+                installedTargets: installedTargets,
+                cacheRevision: 8,
+                transcriptRevision: 13,
+                topVisibleID: nil,
+                isNearBottom: false
+            ),
+            .scroll(.anchor(anchor)),
+            "A matching container may bootstrap an offscreen lazy target"
+        )
+
+        ChatRenderedScrollTargets.reduce(
+            value: &installedTargets,
+            nextValue: ChatRenderedScrollTargets.row(
+                semanticID: "different-anchor",
+                scope: matchingScope
+            )
         )
         XCTAssertEqual(
             restoration.nextAction(
                 renderedContent: matchingContentWithoutAnchor,
+                installedTargets: installedTargets,
                 cacheRevision: 8,
-                topVisibleID: nil,
-                isNearBottom: false
-            ),
-            .wait
-        )
-
-        let installedContent = ChatRenderedScrollContent(
-            sessionKey: sessionA,
-            cacheRevision: 8,
-            semanticTargetIDs: [anchor],
-            bottomAnchorID: "chat-latest-default-session-a",
-            restorationGeneration: 41
-        )
-        XCTAssertEqual(
-            restoration.nextAction(
-                renderedContent: installedContent,
-                cacheRevision: 8,
-                topVisibleID: nil,
-                isNearBottom: false
-            ),
-            .scroll(.anchor(anchor))
-        )
-        XCTAssertEqual(
-            restoration.nextAction(
-                renderedContent: installedContent,
-                cacheRevision: 8,
+                transcriptRevision: 13,
                 topVisibleID: nil,
                 isNearBottom: false
             ),
             .wait,
-            "A scroll request that did not move geometry must not complete restoration"
+            "A different rendered row must not confirm an offscreen cache target"
+        )
+
+        ChatRenderedScrollTargets.reduce(
+            value: &installedTargets,
+            nextValue: ChatRenderedScrollTargets.row(
+                semanticID: anchor,
+                scope: matchingScope
+            )
         )
         XCTAssertEqual(
             restoration.nextAction(
-                renderedContent: installedContent,
+                renderedContent: matchingContentWithoutAnchor,
+                installedTargets: installedTargets,
                 cacheRevision: 8,
+                transcriptRevision: 13,
+                topVisibleID: nil,
+                isNearBottom: false
+            ),
+            .scroll(.anchor(anchor)),
+            "Installing the delayed target retries the scroll but does not complete it"
+        )
+        XCTAssertEqual(
+            restoration.nextAction(
+                renderedContent: matchingContentWithoutAnchor,
+                installedTargets: installedTargets,
+                cacheRevision: 8,
+                transcriptRevision: 13,
                 topVisibleID: anchor,
                 isNearBottom: false
             ),
@@ -124,21 +152,84 @@ final class ChatScrollStateTests: XCTestCase {
         )
         restoration.cancel()
 
-        let installedContent = ChatRenderedScrollContent(
+        let scope = ChatRenderedScrollScope(
             sessionKey: session,
             cacheRevision: 3,
-            semanticTargetIDs: [anchor],
-            bottomAnchorID: "chat-latest-default-session-a",
-            restorationGeneration: 42
+            restorationGeneration: 42,
+            transcriptRevision: 1,
+            viewportTransitionGeneration: 0
         )
+        let installedContent = ChatRenderedScrollContent(scope: scope)
+        let installedTargets = ChatRenderedScrollTargets.row(semanticID: anchor, scope: scope)
         XCTAssertEqual(
             restoration.nextAction(
                 renderedContent: installedContent,
+                installedTargets: installedTargets,
                 cacheRevision: 3,
+                transcriptRevision: 1,
                 topVisibleID: anchor,
                 isNearBottom: false
             ),
             .cancelled
+        )
+    }
+
+    func testMatchingScrollPositionCannotCompleteBeforeActualRowRegistration() {
+        let session = ChatScrollSessionKey(profile: "default", sessionID: "session-a")
+        let anchor = "offscreen-anchor"
+        let scope = ChatRenderedScrollScope(
+            sessionKey: session,
+            cacheRevision: 5,
+            restorationGeneration: 45,
+            transcriptRevision: 2,
+            viewportTransitionGeneration: 0
+        )
+        let content = ChatRenderedScrollContent(scope: scope)
+        var restoration = ChatResumeRenderRestorationState(
+            generation: 45,
+            sessionKey: session,
+            destination: .anchor(anchor),
+            maximumChecks: 8,
+            retryInterval: 4
+        )
+
+        XCTAssertEqual(
+            restoration.nextAction(
+                renderedContent: content,
+                installedTargets: ChatRenderedScrollTargets(),
+                cacheRevision: 5,
+                transcriptRevision: 2,
+                topVisibleID: nil,
+                isNearBottom: false
+            ),
+            .scroll(.anchor(anchor))
+        )
+        XCTAssertEqual(
+            restoration.nextAction(
+                renderedContent: content,
+                installedTargets: ChatRenderedScrollTargets(),
+                cacheRevision: 5,
+                transcriptRevision: 2,
+                topVisibleID: anchor,
+                isNearBottom: false
+            ),
+            .wait
+        )
+
+        let installed = ChatRenderedScrollTargets.row(
+            semanticID: anchor,
+            scope: scope
+        )
+        XCTAssertEqual(
+            restoration.nextAction(
+                renderedContent: content,
+                installedTargets: installed,
+                cacheRevision: 5,
+                transcriptRevision: 2,
+                topVisibleID: anchor,
+                isNearBottom: false
+            ),
+            .complete
         )
     }
 
@@ -151,18 +242,25 @@ final class ChatScrollStateTests: XCTestCase {
             maximumChecks: 8,
             retryInterval: 2
         )
-        let installedContent = ChatRenderedScrollContent(
+        let scope = ChatRenderedScrollScope(
             sessionKey: session,
             cacheRevision: 4,
-            semanticTargetIDs: [],
-            bottomAnchorID: "chat-latest-default-session-a",
-            restorationGeneration: 43
+            restorationGeneration: 43,
+            transcriptRevision: 1,
+            viewportTransitionGeneration: 0
+        )
+        let installedContent = ChatRenderedScrollContent(scope: scope)
+        let installedTargets = ChatRenderedScrollTargets.bottom(
+            anchorID: "chat-latest-default-session-a",
+            scope: scope
         )
 
         XCTAssertEqual(
             restoration.nextAction(
                 renderedContent: installedContent,
+                installedTargets: installedTargets,
                 cacheRevision: 4,
+                transcriptRevision: 1,
                 topVisibleID: nil,
                 isNearBottom: false
             ),
@@ -171,7 +269,9 @@ final class ChatScrollStateTests: XCTestCase {
         XCTAssertEqual(
             restoration.nextAction(
                 renderedContent: installedContent,
+                installedTargets: installedTargets,
                 cacheRevision: 4,
+                transcriptRevision: 1,
                 topVisibleID: nil,
                 isNearBottom: false
             ),
@@ -180,11 +280,66 @@ final class ChatScrollStateTests: XCTestCase {
         XCTAssertEqual(
             restoration.nextAction(
                 renderedContent: installedContent,
+                installedTargets: installedTargets,
                 cacheRevision: 4,
+                transcriptRevision: 1,
                 topVisibleID: nil,
                 isNearBottom: true
             ),
             .complete
+        )
+    }
+
+    func testRenderRestorationTimesOutWithoutAnActuallyRegisteredTarget() {
+        let session = ChatScrollSessionKey(profile: "default", sessionID: "session-a")
+        let scope = ChatRenderedScrollScope(
+            sessionKey: session,
+            cacheRevision: 9,
+            restorationGeneration: 44,
+            transcriptRevision: 3,
+            viewportTransitionGeneration: 0
+        )
+        let content = ChatRenderedScrollContent(scope: scope)
+        var restoration = ChatResumeRenderRestorationState(
+            generation: 44,
+            sessionKey: session,
+            destination: .anchor("offscreen-anchor"),
+            maximumChecks: 2,
+            retryInterval: 1
+        )
+
+        XCTAssertEqual(
+            restoration.nextAction(
+                renderedContent: content,
+                installedTargets: ChatRenderedScrollTargets(),
+                cacheRevision: 9,
+                transcriptRevision: 3,
+                topVisibleID: nil,
+                isNearBottom: false
+            ),
+            .scroll(.anchor("offscreen-anchor"))
+        )
+        XCTAssertEqual(
+            restoration.nextAction(
+                renderedContent: content,
+                installedTargets: ChatRenderedScrollTargets(),
+                cacheRevision: 9,
+                transcriptRevision: 3,
+                topVisibleID: nil,
+                isNearBottom: false
+            ),
+            .scroll(.anchor("offscreen-anchor"))
+        )
+        XCTAssertEqual(
+            restoration.nextAction(
+                renderedContent: content,
+                installedTargets: ChatRenderedScrollTargets(),
+                cacheRevision: 9,
+                transcriptRevision: 3,
+                topVisibleID: nil,
+                isNearBottom: false
+            ),
+            .abandon
         )
     }
 
