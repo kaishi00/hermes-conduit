@@ -589,6 +589,17 @@ struct ChatScrollStateStore {
         return snapshots[key]
     }
 
+    mutating func migrateSnapshot(
+        from oldKey: ChatScrollSessionKey,
+        to newKey: ChatScrollSessionKey
+    ) {
+        guard oldKey.isValid,
+              newKey.isValid,
+              oldKey != newKey,
+              let snapshot = snapshots[oldKey] else { return }
+        snapshots[newKey] = snapshot
+    }
+
     func restoration(
         for key: ChatScrollSessionKey,
         availableMessageIDs: Set<String>

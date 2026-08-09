@@ -1006,4 +1006,16 @@ final class ChatScrollStateTests: XCTestCase {
             "catalog-session"
         )
     }
+
+    func testSessionSnapshotMigratesWhenRuntimeIDBecomesCanonicalID() {
+        let runtimeKey = ChatScrollSessionKey(profile: "default", sessionID: "runtime-session")
+        let canonicalKey = ChatScrollSessionKey(profile: "default", sessionID: "catalog-session")
+        let snapshot = ChatScrollSnapshot(anchorMessageID: "message-12", followsLatest: false)
+        var store = ChatScrollStateStore()
+
+        store.save(snapshot, for: runtimeKey)
+        store.migrateSnapshot(from: runtimeKey, to: canonicalKey)
+
+        XCTAssertEqual(store.snapshot(for: canonicalKey), snapshot)
+    }
 }

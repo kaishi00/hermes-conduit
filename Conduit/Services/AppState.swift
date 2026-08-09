@@ -197,10 +197,30 @@ final class AppState: ObservableObject {
         let token: UUID
         let requestedSessionId: String
         var resolvedSessionId: String?
+        var acceptedSessionIDs: Set<String>
+        let acceptsAnySession: Bool
         var bufferedEvents: [StreamEvent] = []
 
+        init(
+            token: UUID,
+            requestedSessionId: String,
+            acceptedSessionIDs: Set<String> = [],
+            acceptsAnySession: Bool = false,
+            bufferedEvents: [StreamEvent] = []
+        ) {
+            self.token = token
+            self.requestedSessionId = requestedSessionId
+            self.acceptedSessionIDs = acceptedSessionIDs
+            self.acceptsAnySession = acceptsAnySession
+            self.bufferedEvents = bufferedEvents
+        }
+
         func accepts(_ sessionId: String) -> Bool {
-            !sessionId.isEmpty && (sessionId == requestedSessionId || sessionId == resolvedSessionId)
+            guard !sessionId.isEmpty else { return false }
+            if acceptsAnySession { return true }
+            return acceptedSessionIDs.contains(sessionId)
+                || sessionId == requestedSessionId
+                || sessionId == resolvedSessionId
         }
     }
 
@@ -898,7 +918,12 @@ final class AppState: ObservableObject {
                 allSessions.first { $0.id == savedId || $0.alternateIds.contains(savedId) }
             }
             if let target = savedSession ?? sessions.first(where: { $0.source == .chat }) ?? sessions.first {
-                await reconcile(sessionId: target.id, using: client, token: token)
+                await reconcile(
+                    sessionId: target.id,
+                    using: client,
+                    token: token,
+                    acceptedSessionIDs: Set([target.id] + target.alternateIds)
+                )
             } else {
                 await createAndReconcileSession(using: client, profile: profile, token: token)
             }
@@ -918,8 +943,14 @@ final class AppState: ObservableObject {
 
     private func beginReconciliation() -> UUID {
         let token = UUID()
+        let bufferedEvents = reconciliation?.bufferedEvents ?? []
         reconciliationToken = token
-        reconciliation = nil
+        reconciliation = Reconciliation(
+            token: token,
+            requestedSessionId: activeSessionId ?? "",
+            acceptsAnySession: true,
+            bufferedEvents: bufferedEvents
+        )
         refreshActiveChatScrollSessionIdentity(isReconciling: true)
         return token
     }
@@ -945,8 +976,21 @@ final class AppState: ObservableObject {
     }
 
     @discardableResult
-    private func reconcile(sessionId: String, using client: HermesClient, token: UUID) async -> Bool {
-        reconciliation = Reconciliation(token: token, requestedSessionId: sessionId)
+    private func reconcile(
+        sessionId: String,
+        using client: HermesClient,
+        token: UUID,
+        acceptedSessionIDs: Set<String> = []
+    ) async -> Bool {
+        let bufferedEvents = reconciliation?.token == token
+            ? reconciliation?.bufferedEvents ?? []
+            : []
+        reconciliation = Reconciliation(
+            token: token,
+            requestedSessionId: sessionId,
+            acceptedSessionIDs: acceptedSessionIDs.union([sessionId]),
+            bufferedEvents: bufferedEvents
+        )
         refreshActiveChatScrollSessionIdentity(isReconciling: true)
         turnState = .synchronizing
         let profile = activeProfile
@@ -976,6 +1020,7 @@ final class AppState: ObservableObject {
 
             var context = reconciliation
             context?.resolvedSessionId = result.sessionId
+            context?.acceptedSessionIDs.insert(result.sessionId)
             reconciliation = context
             refreshActiveChatScrollSessionIdentity(isReconciling: true)
 
@@ -1017,7 +1062,11 @@ final class AppState: ObservableObject {
             applyResume(presentationResult)
             await refreshContextUsage(sessionId: result.sessionId, using: client)
 
-            let bufferedEvents = reconciliation?.token == token ? reconciliation?.bufferedEvents ?? [] : []
+            let bufferedEvents = reconciliation?.token == token
+                ? (reconciliation?.bufferedEvents ?? []).filter {
+                    reconciliation?.accepts(sessionID(for: $0)) == true
+                }
+                : []
             bufferedEvents.forEach(applyStreamEvent)
             settleReconciliation(token)
             return true
@@ -1637,6 +1686,15 @@ final class AppState: ObservableObject {
         return !left.isDisjoint(with: right)
     }
 
+    private func knownSessionIDs(for sessionID: String) -> Set<String> {
+        guard let session = (sessions + cronSessions).first(where: {
+            $0.id == sessionID || $0.alternateIds.contains(sessionID)
+        }) else {
+            return [sessionID]
+        }
+        return Set([session.id] + session.alternateIds)
+    }
+
     private func sessionMatchesActiveSession(_ session: SessionSummary) -> Bool {
         guard let activeSessionId else { return false }
         return Set([session.id] + session.alternateIds).contains(activeSessionId)
@@ -1682,13 +1740,19 @@ final class AppState: ObservableObject {
         // cleared message array while reconciliation is in flight.
         flushPendingPresentationCache()
         let token = beginReconciliation()
+        let acceptedSessionIDs = knownSessionIDs(for: sessionId)
         setActiveSessionState(id: sessionId)
         messages = []
         clearStreamingText()
         activeAssistantMessageId = nil
         activeReasoningMessageId = nil
         updateActiveSessionTitle(for: sessionId)
-        return await reconcile(sessionId: sessionId, using: client, token: token)
+        return await reconcile(
+            sessionId: sessionId,
+            using: client,
+            token: token,
+            acceptedSessionIDs: acceptedSessionIDs
+        )
     }
 
     /// Routes a notification to its originating profile/session without
@@ -1756,7 +1820,12 @@ final class AppState: ObservableObject {
         defer { isChatRefreshing = false }
 
         let token = beginReconciliation()
-        await reconcile(sessionId: sessionId, using: client, token: token)
+        await reconcile(
+            sessionId: sessionId,
+            using: client,
+            token: token,
+            acceptedSessionIDs: knownSessionIDs(for: sessionId)
+        )
         await loadSessions()
     }
 
@@ -1829,7 +1898,12 @@ final class AppState: ObservableObject {
 
             activeSessionTitle = title
             let token = beginReconciliation()
-            await reconcile(sessionId: branched.sessionId, using: client, token: token)
+            await reconcile(
+                sessionId: branched.sessionId,
+                using: client,
+                token: token,
+                acceptedSessionIDs: knownSessionIDs(for: branched.sessionId)
+            )
             await loadSessions()
         } catch {
             guard profile == activeProfile, self.client === client else { return }
@@ -3697,7 +3771,25 @@ final class AppState: ObservableObject {
 
     private func eventBelongsToActiveSession(_ sessionId: String) -> Bool {
         guard let activeSessionId, !sessionId.isEmpty else { return false }
-        return sessionId == activeSessionId
+        if sessionId == activeSessionId { return true }
+
+        if let activeSession = (sessions + cronSessions).first(where: {
+            $0.id == activeSessionId || $0.alternateIds.contains(activeSessionId)
+        }) {
+            let activeIDs = Set([activeSession.id] + activeSession.alternateIds)
+            if activeIDs.contains(sessionId) { return true }
+        }
+
+        // During resume, the gateway may switch between the requested and
+        // runtime IDs before the catalog has caught up. Only accept those
+        // aliases when the active ID is part of the same reconciliation set;
+        // this prevents a prior session's buffered events from leaking into a
+        // newly selected transcript.
+        guard let reconciliation,
+              reconciliation.acceptedSessionIDs.contains(activeSessionId) else {
+            return false
+        }
+        return reconciliation.acceptedSessionIDs.contains(sessionId)
     }
 
     private func applyStreamEvent(_ event: StreamEvent) {
