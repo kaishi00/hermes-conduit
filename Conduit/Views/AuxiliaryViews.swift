@@ -798,7 +798,6 @@ private struct ChatReturnBehaviorSettings: View {
         persist(next)
     }
 }
-
 private struct ResponseBehaviorSettings: View {
     let initialMode: BusyInputMode
     let save: (BusyInputMode) async -> Bool
