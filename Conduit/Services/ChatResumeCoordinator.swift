@@ -73,7 +73,7 @@ final class ChatResumeCoordinator {
             ChatScrollSessionKey(profile: profile, sessionID: $0.id)
         }.flatMap { $0.isValid ? $0 : nil }
         pendingFallbackSelection = pendingFallbackSelection && pendingSessionKey != nil
-        viewportIsFrozen = pendingSessionKey != nil
+        viewportIsFrozen = true
         return selected
     }
 

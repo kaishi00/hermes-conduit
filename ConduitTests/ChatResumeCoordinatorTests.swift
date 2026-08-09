@@ -137,6 +137,37 @@ final class ChatResumeCoordinatorTests: XCTestCase {
         XCTAssertEqual(request?.destination, .latest)
     }
 
+    func testAutomaticNilTargetKeepsViewportFrozenUntilCreatedSessionSettles() {
+        let harness = makeHarness()
+        let oldKey = ChatScrollSessionKey(profile: "default", sessionID: "stored-a")
+        let oldReading = ChatScrollSnapshot(anchorMessageID: "anchor-12", followsLatest: false)
+        harness.coordinator.recordViewport(oldReading, for: oldKey)
+        harness.coordinator.freezeViewport()
+
+        let missingTarget = harness.coordinator.selectTarget(
+            in: [],
+            profile: "default",
+            purpose: .automaticReturn,
+            currentSessionID: "stored-a"
+        )
+        XCTAssertNil(missingTarget)
+
+        harness.coordinator.recordViewport(.latest, for: oldKey)
+        let created = session("stored-created")
+        _ = harness.coordinator.selectTarget(
+            in: [created],
+            profile: "default",
+            purpose: .automaticReturn,
+            currentSessionID: nil
+        )
+        let createdKey = ChatScrollSessionKey(profile: "default", sessionID: created.id)
+        let request = harness.coordinator.reconciliationSettled(sessionKey: createdKey)
+        harness.coordinator.flush()
+
+        XCTAssertEqual(harness.store.snapshot(for: oldKey), oldReading)
+        XCTAssertEqual(request?.destination, .latest)
+    }
+
     func testViewportUpdatePersistsOnlyAfterExplicitFlush() {
         let harness = makeHarness()
         let key = ChatScrollSessionKey(profile: "default", sessionID: "stored-a")
