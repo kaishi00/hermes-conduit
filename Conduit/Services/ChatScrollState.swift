@@ -37,6 +37,8 @@ enum ChatMessageScrollUpdatePolicy {
 
 struct ChatMessageScrollTargetCache: Equatable {
     private(set) var targets: [ChatMessageScrollTarget] = []
+    private(set) var renderingRevision: UInt64 = 0
+    private(set) var semanticTargetIDs: Set<String> = []
     private var fingerprints: [String] = []
 
     @discardableResult
@@ -51,6 +53,7 @@ struct ChatMessageScrollTargetCache: Equatable {
                     restorationMetadata: target.restorationMetadata
                 )
             }
+            renderingRevision &+= 1
             return .renderingChanged
         }
 
@@ -59,7 +62,133 @@ struct ChatMessageScrollTargetCache: Equatable {
             for: messages,
             fingerprints: updatedFingerprints
         )
+        semanticTargetIDs = Set(targets.map(\.semanticID))
+        renderingRevision &+= 1
         return .semanticsChanged
+    }
+}
+
+struct ChatRenderedScrollContent: Equatable {
+    let sessionKey: ChatScrollSessionKey
+    let cacheRevision: UInt64
+    let semanticTargetIDs: Set<String>
+    let bottomAnchorID: String
+    let restorationGeneration: UInt64?
+    let viewportTransitionGeneration: UInt64
+
+    init(
+        sessionKey: ChatScrollSessionKey,
+        cacheRevision: UInt64,
+        semanticTargetIDs: Set<String>,
+        bottomAnchorID: String,
+        restorationGeneration: UInt64? = nil,
+        viewportTransitionGeneration: UInt64 = 0
+    ) {
+        self.sessionKey = sessionKey
+        self.cacheRevision = cacheRevision
+        self.semanticTargetIDs = semanticTargetIDs
+        self.bottomAnchorID = bottomAnchorID
+        self.restorationGeneration = restorationGeneration
+        self.viewportTransitionGeneration = viewportTransitionGeneration
+    }
+}
+
+enum ChatResumeRenderRestorationAction: Equatable {
+    case wait
+    case scroll(ChatResumeViewportDestination)
+    case complete
+    case abandon
+    case cancelled
+}
+
+/// A deterministic policy for the view-owned part of restoration. SwiftUI
+/// supplies actual layout observations; the policy never treats a derived
+/// message cache as proof that ScrollViewReader has installed its targets.
+struct ChatResumeRenderRestorationState {
+    let generation: UInt64
+    let sessionKey: ChatScrollSessionKey
+    private(set) var destination: ChatResumeViewportDestination
+    private let maximumChecks: Int
+    private let retryInterval: Int
+    private var checkCount = 0
+    private var lastScrollCheck: Int?
+    private var isCancelled = false
+
+    init(
+        generation: UInt64,
+        sessionKey: ChatScrollSessionKey,
+        destination: ChatResumeViewportDestination,
+        maximumChecks: Int = 80,
+        retryInterval: Int = 4
+    ) {
+        self.generation = generation
+        self.sessionKey = sessionKey
+        self.destination = destination
+        self.maximumChecks = max(maximumChecks, 1)
+        self.retryInterval = max(retryInterval, 1)
+    }
+
+    mutating func updateDestination(_ destination: ChatResumeViewportDestination) {
+        guard self.destination != destination else { return }
+        self.destination = destination
+        lastScrollCheck = nil
+    }
+
+    mutating func cancel() {
+        isCancelled = true
+    }
+
+    mutating func nextAction(
+        renderedContent: ChatRenderedScrollContent?,
+        cacheRevision: UInt64,
+        topVisibleID: String?,
+        isNearBottom: Bool
+    ) -> ChatResumeRenderRestorationAction {
+        guard !isCancelled else { return .cancelled }
+        checkCount += 1
+
+        guard let renderedContent,
+              renderedContent.restorationGeneration == generation,
+              renderedContent.sessionKey == sessionKey,
+              renderedContent.cacheRevision == cacheRevision,
+              targetIsInstalled(in: renderedContent) else {
+            return checkCount > maximumChecks ? .abandon : .wait
+        }
+
+        if lastScrollCheck != nil, destinationIsConfirmed(
+            topVisibleID: topVisibleID,
+            isNearBottom: isNearBottom
+        ) {
+            return .complete
+        }
+
+        if lastScrollCheck.map({ checkCount - $0 >= retryInterval }) ?? true {
+            lastScrollCheck = checkCount
+            return .scroll(destination)
+        }
+
+        return checkCount > maximumChecks ? .abandon : .wait
+    }
+
+    private func targetIsInstalled(in content: ChatRenderedScrollContent) -> Bool {
+        switch destination {
+        case .latest:
+            return !content.bottomAnchorID.isEmpty
+        case .anchor(let anchor):
+            return content.semanticTargetIDs.contains(anchor)
+        }
+    }
+
+    private func destinationIsConfirmed(
+        topVisibleID: String?,
+        isNearBottom: Bool
+    ) -> Bool {
+        switch destination {
+        case .latest:
+            return isNearBottom
+        case .anchor(let anchor):
+            return topVisibleID == anchor
+        }
     }
 }
 
