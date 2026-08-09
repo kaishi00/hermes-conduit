@@ -16,6 +16,7 @@ struct ChatResumeRestorationRequest: Identifiable, Equatable {
 @MainActor
 final class ChatResumeCoordinator {
     private let store: ChatResumeStore
+    private var pendingFallbackSelection = false
     private var pendingSessionKey: ChatScrollSessionKey?
     private var pendingFlushTask: Task<Void, Never>?
     private var viewportIsFrozen = false
@@ -50,20 +51,28 @@ final class ChatResumeCoordinator {
         purpose: ChatResumeSyncPurpose,
         currentSessionID: String?
     ) -> SessionSummary? {
+        let savedSessionID = store.lastSessionID(for: profile)
         let selected = ChatResumeSessionResolver.target(
             in: catalog,
             behavior: store.behavior,
             purpose: purpose,
-            savedSessionID: store.lastSessionID(for: profile),
+            savedSessionID: savedSessionID,
             currentSessionID: currentSessionID
         )
 
         guard purpose == .automaticReturn else { return selected }
 
         pendingRestoration = nil
+        let savedSessionIsMissing = savedSessionID.map { savedSessionID in
+            !catalog.contains { session in
+                session.id == savedSessionID || session.alternateIds.contains(savedSessionID)
+            }
+        } ?? false
+        pendingFallbackSelection = store.behavior == .continueWhereLeftOff && savedSessionIsMissing
         pendingSessionKey = selected.map {
             ChatScrollSessionKey(profile: profile, sessionID: $0.id)
         }.flatMap { $0.isValid ? $0 : nil }
+        pendingFallbackSelection = pendingFallbackSelection && pendingSessionKey != nil
         viewportIsFrozen = pendingSessionKey != nil
         return selected
     }
@@ -71,7 +80,7 @@ final class ChatResumeCoordinator {
     func recordViewport(_ snapshot: ChatScrollSnapshot, for key: ChatScrollSessionKey) {
         guard !viewportIsFrozen, key.isValid else { return }
 
-        store.save(snapshot, for: key, at: Date())
+        store.stageSnapshot(snapshot, for: key, at: Date())
         pendingFlushTask?.cancel()
         pendingFlushTask = Task { [weak self] in
             do {
@@ -99,8 +108,10 @@ final class ChatResumeCoordinator {
         guard pendingSessionKey == sessionKey, pendingRestoration == nil else { return nil }
 
         pendingSessionKey = nil
+        let isFallbackSelection = pendingFallbackSelection
+        pendingFallbackSelection = false
         let destination: ChatResumeRestorationDestination
-        if store.behavior == .latestActivity {
+        if isFallbackSelection || store.behavior == .latestActivity {
             destination = .latest
         } else if let snapshot = store.snapshot(for: sessionKey), !snapshot.followsLatest {
             destination = .snapshot(snapshot)
@@ -120,6 +131,7 @@ final class ChatResumeCoordinator {
     }
 
     func cancelRestoration() {
+        pendingFallbackSelection = false
         pendingSessionKey = nil
         pendingRestoration = nil
         viewportIsFrozen = false

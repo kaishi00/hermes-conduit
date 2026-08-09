@@ -90,11 +90,15 @@ final class ChatResumeStore {
     }
 
     func save(_ snapshot: ChatScrollSnapshot, for key: ChatScrollSessionKey, at updatedAt: Date) {
+        stageSnapshot(snapshot, for: key, at: updatedAt)
+        persist()
+    }
+
+    func stageSnapshot(_ snapshot: ChatScrollSnapshot, for key: ChatScrollSessionKey, at updatedAt: Date) {
         guard key.isValid else { return }
         payload.snapshots.removeAll { $0.key == key }
         payload.snapshots.append(StoredSnapshot(key: key, snapshot: snapshot, updatedAt: updatedAt))
         payload.snapshots = Self.pruned(payload.snapshots)
-        persist()
     }
 
     func migrateSnapshot(from oldKey: ChatScrollSessionKey, to newKey: ChatScrollSessionKey) {
