@@ -9,11 +9,51 @@ struct ChatMessageScrollTarget: Identifiable, Equatable {
     var id: String { message.id }
 }
 
+enum ChatMessageScrollTargetCacheUpdate: Equatable {
+    case unchanged
+    case renderingChanged
+    case semanticsChanged
+}
+
+struct ChatMessageScrollTargetCache: Equatable {
+    private(set) var targets: [ChatMessageScrollTarget] = []
+    private var fingerprints: [String] = []
+
+    @discardableResult
+    mutating func update(for messages: [ChatMessage]) -> ChatMessageScrollTargetCacheUpdate {
+        let updatedFingerprints = ChatMessageScrollTargets.fingerprints(for: messages)
+        if updatedFingerprints == fingerprints, targets.count == messages.count {
+            guard targets.map(\.message) != messages else { return .unchanged }
+            targets = zip(messages, targets).map { message, target in
+                ChatMessageScrollTarget(message: message, semanticID: target.semanticID)
+            }
+            return .renderingChanged
+        }
+
+        fingerprints = updatedFingerprints
+        targets = ChatMessageScrollTargets.make(
+            for: messages,
+            fingerprints: updatedFingerprints
+        )
+        return .semanticsChanged
+    }
+}
+
 enum ChatMessageScrollTargets {
     static func make(for messages: [ChatMessage]) -> [ChatMessageScrollTarget] {
+        make(for: messages, fingerprints: fingerprints(for: messages))
+    }
+
+    fileprivate static func fingerprints(for messages: [ChatMessage]) -> [String] {
+        messages.map(fingerprint)
+    }
+
+    fileprivate static func make(
+        for messages: [ChatMessage],
+        fingerprints: [String]
+    ) -> [ChatMessageScrollTarget] {
         var occurrences: [String: Int] = [:]
-        return messages.map { message in
-            let fingerprint = fingerprint(for: message)
+        return zip(messages, fingerprints).map { message, fingerprint in
             let occurrence = occurrences[fingerprint, default: 0]
             occurrences[fingerprint] = occurrence + 1
             return ChatMessageScrollTarget(
@@ -31,7 +71,6 @@ enum ChatMessageScrollTargets {
         fingerprint.append(message.code)
 
         fingerprint.append(message.tool?.name)
-        fingerprint.append(message.tool?.input)
 
         fingerprint.append(message.clarify?.question)
         fingerprint.append(message.clarify?.choices.count)
@@ -64,13 +103,72 @@ enum ChatMessageScrollTargets {
     }
 }
 
+private enum ChatScrollIdentityNormalization {
+    static func profile(_ profile: String?) -> String? {
+        guard let value = profile?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty else { return nil }
+        return value.lowercased()
+    }
+
+    static func sessionID(_ sessionID: String?) -> String? {
+        guard let value = sessionID?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty else { return nil }
+        return value
+    }
+}
+
+struct ChatScrollSessionKey: Hashable {
+    let profile: String
+    let sessionID: String
+
+    init(profile: String, sessionID: String) {
+        self.profile = ChatScrollIdentityNormalization.profile(profile) ?? ""
+        self.sessionID = ChatScrollIdentityNormalization.sessionID(sessionID) ?? ""
+    }
+
+    var isValid: Bool {
+        !profile.isEmpty && !sessionID.isEmpty
+    }
+}
+
+struct ChatScrollSessionCatalogIdentity: Equatable {
+    let profile: String
+    let canonicalSessionID: String
+    let alternateSessionIDs: Set<String>
+
+    init(
+        profile: String,
+        canonicalSessionID: String,
+        alternateSessionIDs: Set<String>
+    ) {
+        self.profile = ChatScrollIdentityNormalization.profile(profile) ?? ""
+        self.canonicalSessionID = ChatScrollIdentityNormalization.sessionID(canonicalSessionID) ?? ""
+        self.alternateSessionIDs = Set(
+            alternateSessionIDs.compactMap(ChatScrollIdentityNormalization.sessionID)
+        )
+    }
+
+    fileprivate var identifiers: Set<String> {
+        guard !canonicalSessionID.isEmpty else { return [] }
+        var result = alternateSessionIDs
+        result.insert(canonicalSessionID)
+        return result
+    }
+
+    fileprivate var isValid: Bool {
+        !canonicalSessionID.isEmpty
+    }
+}
+
 struct ChatScrollSessionIdentity: Equatable {
+    let profile: String?
     let canonicalSessionID: String?
     let equivalentSessionIDs: Set<String>
     let isReconciling: Bool
     let settledRevision: UInt64
 
     static let none = ChatScrollSessionIdentity(
+        profile: nil,
         canonicalSessionID: nil,
         equivalentSessionIDs: [],
         isReconciling: false,
@@ -78,36 +176,151 @@ struct ChatScrollSessionIdentity: Equatable {
     )
 
     init(
+        profile: String?,
         canonicalSessionID: String?,
         equivalentSessionIDs: Set<String>,
         isReconciling: Bool,
         settledRevision: UInt64
     ) {
-        let canonical = Self.normalized(canonicalSessionID)
-        var equivalents = Set(equivalentSessionIDs.compactMap(Self.normalized))
+        let normalizedProfile = ChatScrollIdentityNormalization.profile(profile)
+        let canonical = ChatScrollIdentityNormalization.sessionID(canonicalSessionID)
+        var equivalents = Set(
+            equivalentSessionIDs.compactMap(ChatScrollIdentityNormalization.sessionID)
+        )
         if let canonical { equivalents.insert(canonical) }
+        self.profile = normalizedProfile
         self.canonicalSessionID = canonical
         self.equivalentSessionIDs = equivalents
         self.isReconciling = isReconciling
         self.settledRevision = settledRevision
     }
 
+    var canonicalSessionKey: ChatScrollSessionKey? {
+        key(for: canonicalSessionID)
+    }
+
+    func key(for sessionID: String?) -> ChatScrollSessionKey? {
+        guard let profile,
+              let sessionID = ChatScrollIdentityNormalization.sessionID(sessionID) else {
+            return nil
+        }
+        let key = ChatScrollSessionKey(profile: profile, sessionID: sessionID)
+        return key.isValid ? key : nil
+    }
+
     func contains(_ sessionID: String?) -> Bool {
-        guard let sessionID = Self.normalized(sessionID) else { return false }
+        guard let sessionID = ChatScrollIdentityNormalization.sessionID(sessionID) else {
+            return false
+        }
         return equivalentSessionIDs.contains(sessionID)
     }
 
+    func contains(_ key: ChatScrollSessionKey?) -> Bool {
+        guard let key, key.isValid, key.profile == profile else { return false }
+        return equivalentSessionIDs.contains(key.sessionID)
+    }
+
     func areEquivalent(_ lhs: String?, _ rhs: String?) -> Bool {
-        guard let lhs = Self.normalized(lhs),
-              let rhs = Self.normalized(rhs) else { return false }
+        guard let lhs = ChatScrollIdentityNormalization.sessionID(lhs),
+              let rhs = ChatScrollIdentityNormalization.sessionID(rhs) else {
+            return false
+        }
         if lhs == rhs { return true }
         return equivalentSessionIDs.contains(lhs) && equivalentSessionIDs.contains(rhs)
     }
 
-    private static func normalized(_ sessionID: String?) -> String? {
-        guard let value = sessionID?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !value.isEmpty else { return nil }
-        return value
+    func areEquivalent(_ lhs: ChatScrollSessionKey?, _ rhs: ChatScrollSessionKey?) -> Bool {
+        guard let lhs, let rhs,
+              lhs.isValid, rhs.isValid,
+              lhs.profile == profile,
+              rhs.profile == profile else {
+            return false
+        }
+        if lhs == rhs { return true }
+        return equivalentSessionIDs.contains(lhs.sessionID)
+            && equivalentSessionIDs.contains(rhs.sessionID)
+    }
+}
+
+enum ChatScrollSessionIdentityResolver {
+    static func resolve(
+        profile: String,
+        activeSessionID: String?,
+        catalog: [ChatScrollSessionCatalogIdentity],
+        requestedSessionID: String? = nil,
+        resolvedSessionID: String? = nil,
+        previousIdentity current: ChatScrollSessionIdentity,
+        isReconciling: Bool,
+        advanceSettledRevision: Bool = false
+    ) -> ChatScrollSessionIdentity {
+        let normalizedProfile = ChatScrollIdentityNormalization.profile(profile)
+        let previous = current.profile == normalizedProfile
+            ? current
+            : ChatScrollSessionIdentity(
+                profile: normalizedProfile,
+                canonicalSessionID: nil,
+                equivalentSessionIDs: [],
+                isReconciling: current.isReconciling,
+                settledRevision: current.settledRevision
+            )
+        let profileCatalog = catalog.filter {
+            $0.isValid && ($0.profile.isEmpty || $0.profile == normalizedProfile)
+        }
+        func matchingSession(for ids: Set<String>) -> ChatScrollSessionCatalogIdentity? {
+            guard !ids.isEmpty else { return nil }
+            return profileCatalog.first { !$0.identifiers.isDisjoint(with: ids) }
+        }
+
+        let activeID = ChatScrollIdentityNormalization.sessionID(activeSessionID)
+        let reconciliationIDs = Set(
+            [requestedSessionID, resolvedSessionID]
+                .compactMap(ChatScrollIdentityNormalization.sessionID)
+        )
+        let reconciliationSession = matchingSession(for: reconciliationIDs)
+        let reconciliationCatalogIDs = reconciliationSession?.identifiers ?? []
+        let reconciliationContinuesPrevious = reconciliationIDs.isEmpty
+            || reconciliationIDs.contains(where: previous.contains)
+            || !reconciliationCatalogIDs.isDisjoint(with: previous.equivalentSessionIDs)
+            || activeID.map(reconciliationCatalogIDs.contains) == true
+
+        var candidates = reconciliationIDs
+        if reconciliationIDs.isEmpty || reconciliationContinuesPrevious,
+           let activeID {
+            candidates.insert(activeID)
+        }
+        let matchedSession = reconciliationSession ?? matchingSession(for: candidates)
+        let continuesPreviousIdentity = candidates.contains(where: previous.contains)
+
+        let canonicalSessionID: String?
+        if let matchedSession {
+            canonicalSessionID = matchedSession.canonicalSessionID
+        } else if continuesPreviousIdentity {
+            canonicalSessionID = previous.canonicalSessionID
+        } else if !reconciliationIDs.isEmpty {
+            canonicalSessionID = ChatScrollIdentityNormalization.sessionID(requestedSessionID)
+                ?? ChatScrollIdentityNormalization.sessionID(resolvedSessionID)
+                ?? activeID
+        } else {
+            canonicalSessionID = activeID
+        }
+
+        var equivalentSessionIDs = candidates
+        if let matchedSession {
+            equivalentSessionIDs.formUnion(matchedSession.identifiers)
+        }
+        if continuesPreviousIdentity {
+            equivalentSessionIDs.formUnion(previous.equivalentSessionIDs)
+        }
+
+        return ChatScrollSessionIdentity(
+            profile: normalizedProfile,
+            canonicalSessionID: canonicalSessionID,
+            equivalentSessionIDs: equivalentSessionIDs,
+            isReconciling: isReconciling,
+            settledRevision: advanceSettledRevision
+                ? current.settledRevision &+ 1
+                : current.settledRevision
+        )
     }
 }
 
@@ -135,6 +348,46 @@ struct ChatScrollSnapshot: Equatable {
     let followsLatest: Bool
 
     static let latest = ChatScrollSnapshot(anchorMessageID: nil, followsLatest: true)
+}
+
+struct ChatScrollPendingRestoration: Equatable {
+    let sessionKey: ChatScrollSessionKey
+    let snapshot: ChatScrollSnapshot
+    let gate: ChatScrollRestorationGate
+}
+
+enum ChatScrollRestorationDecision: Equatable {
+    case wait
+    case cancel
+    case latest
+    case anchor(String)
+}
+
+enum ChatScrollRestorationResolver {
+    static func decision(
+        for pending: ChatScrollPendingRestoration,
+        identity: ChatScrollSessionIdentity,
+        activeSessionKey: ChatScrollSessionKey?,
+        store: ChatScrollStateStore,
+        availableMessageIDs: Set<String>
+    ) -> ChatScrollRestorationDecision {
+        guard identity.areEquivalent(pending.sessionKey, activeSessionKey) else {
+            return .cancel
+        }
+        guard !pending.snapshot.followsLatest else { return .latest }
+        guard pending.gate.allowsNonLatestRestoration(using: identity) else {
+            return .wait
+        }
+        guard let resolved = store.restoration(
+            for: pending.sessionKey,
+            availableMessageIDs: availableMessageIDs
+        ) else {
+            return .cancel
+        }
+        if resolved.followsLatest { return .latest }
+        guard let anchor = resolved.anchorMessageID else { return .latest }
+        return .anchor(anchor)
+    }
 }
 
 private struct DeterministicChatFingerprint {
@@ -185,23 +438,23 @@ private struct DeterministicChatFingerprint {
 }
 
 struct ChatScrollStateStore {
-    private var snapshots: [String: ChatScrollSnapshot] = [:]
+    private var snapshots: [ChatScrollSessionKey: ChatScrollSnapshot] = [:]
 
-    mutating func save(_ snapshot: ChatScrollSnapshot, for sessionID: String) {
-        let key = sessionID.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !key.isEmpty else { return }
+    mutating func save(_ snapshot: ChatScrollSnapshot, for key: ChatScrollSessionKey) {
+        guard key.isValid else { return }
         snapshots[key] = snapshot
     }
 
-    func snapshot(for sessionID: String) -> ChatScrollSnapshot? {
-        snapshots[sessionID.trimmingCharacters(in: .whitespacesAndNewlines)]
+    func snapshot(for key: ChatScrollSessionKey) -> ChatScrollSnapshot? {
+        guard key.isValid else { return nil }
+        return snapshots[key]
     }
 
     func restoration(
-        for sessionID: String,
+        for key: ChatScrollSessionKey,
         availableMessageIDs: Set<String>
     ) -> ChatScrollSnapshot? {
-        guard let snapshot = snapshot(for: sessionID) else { return nil }
+        guard let snapshot = snapshot(for: key) else { return nil }
         guard !snapshot.followsLatest else { return .latest }
         guard let anchor = snapshot.anchorMessageID,
               availableMessageIDs.contains(anchor) else {
