@@ -183,6 +183,7 @@ final class AppState: ObservableObject {
     @Published var messages: [ChatMessage] = [] {
         didSet {
             chatTranscriptRevision &+= 1
+            advanceChatViewportExpectedTranscriptRevisionIfNeeded()
         }
     }
     @Published private(set) var activeSessionTitle = "New conversation"
@@ -384,6 +385,7 @@ final class AppState: ObservableObject {
     private var lastStreamingPublishBurst = 0
     private var lastStreamingPublishDate: Date?
     private var scenePhaseTask: Task<Void, Never>?
+    private var scenePhaseAttemptID: UUID?
     private var activeAutomaticChatResumeWork: ChatResumeAutomaticWorkToken?
     private var chatViewportSnapshotProvider: (
         id: UUID,
@@ -717,13 +719,7 @@ final class AppState: ObservableObject {
     }
 
     @discardableResult
-    func beginExplicitChatViewportTransition(
-        reusing generation: UInt64? = nil
-    ) -> UInt64 {
-        if let transition = chatViewportTransition,
-           generation == transition.generation {
-            return transition.generation
-        }
+    func beginExplicitChatViewportTransition() -> UInt64 {
         if let transition = chatViewportTransition {
             finishChatViewportTransition(generation: transition.generation)
         }
@@ -740,6 +736,14 @@ final class AppState: ObservableObject {
         return chatViewportTransitionGeneration
     }
 
+    private func chatViewportTransitionIsCurrent(generation: UInt64) -> Bool {
+        chatViewportTransition?.generation == generation
+    }
+
+    private func chatViewportTransitionIsCurrent(_ generation: UInt64?) -> Bool {
+        generation.map { chatViewportTransitionIsCurrent(generation: $0) } ?? true
+    }
+
     private func markChatViewportReplacement() {
         guard var transition = chatViewportTransition else { return }
         transition.hasReplacement = true
@@ -750,6 +754,19 @@ final class AppState: ObservableObject {
         guard var transition = chatViewportTransition,
               transition.hasReplacement else { return }
         transition.expectedSessionKey = currentChatScrollSessionKey
+        transition.expectedTranscriptRevision = chatTranscriptRevision
+        chatViewportTransition = transition
+    }
+
+    private func advanceChatViewportExpectedTranscriptRevisionIfNeeded() {
+        guard var transition = chatViewportTransition,
+              transition.hasReplacement,
+              transition.expectedTranscriptRevision != nil,
+              transition.expectedSessionKey.map({ expected in
+                  currentChatScrollSessionKey.map {
+                      activeChatScrollSessionIdentity.areEquivalent(expected, $0)
+                  } == true
+              }) == true else { return }
         transition.expectedTranscriptRevision = chatTranscriptRevision
         chatViewportTransition = transition
     }
@@ -780,13 +797,14 @@ final class AppState: ObservableObject {
         sessionKey: ChatScrollSessionKey,
         transitionGeneration: UInt64,
         transcriptRevision: UInt64,
-        renderRevision: UInt64
+        renderRevision: UInt64,
+        receivedScopedPreference: Bool
     ) {
         guard let transition = chatViewportTransition,
               transitionGeneration == transition.generation,
               transition.hasReplacement,
               transition.expectedTranscriptRevision == transcriptRevision,
-              renderRevision > 0,
+              receivedScopedPreference,
               transition.expectedSessionKey.map({ expected in
                   activeChatScrollSessionIdentity.areEquivalent(expected, sessionKey)
               }) == true,
@@ -847,9 +865,21 @@ final class AppState: ObservableObject {
     }
 
     private func automaticChatResumeWorkIsCurrent(
-        _ token: ChatResumeAutomaticWorkToken?
+        _ token: ChatResumeAutomaticWorkToken?,
+        syncOperationID: UUID? = nil,
+        reconnectOperationID: UUID? = nil
     ) -> Bool {
-        token.map(chatResumeCoordinator.isCurrent) ?? true
+        guard !Task.isCancelled,
+              token.map(chatResumeCoordinator.isCurrent) ?? true else { return false }
+        if let syncOperationID,
+           activeAutomaticSyncOperation?.id != syncOperationID {
+            return false
+        }
+        if let reconnectOperationID,
+           activeAutomaticReconnectOperation?.id != reconnectOperationID {
+            return false
+        }
+        return true
     }
 
     func cancelChatResumeRestoration() {
@@ -876,8 +906,13 @@ final class AppState: ObservableObject {
         return operation.id
     }
 
-    private func finishAutomaticSyncOperation(id: UUID?) {
+    private func finishAutomaticSyncOperation(id: UUID?, restoringBaseline: Bool = false) {
         guard let id, activeAutomaticSyncOperation?.id == id else { return }
+        if restoringBaseline,
+           let operation = activeAutomaticSyncOperation,
+           turnState == .synchronizing {
+            turnState = operation.previousTurnState
+        }
         activeAutomaticSyncOperation = nil
     }
 
@@ -896,8 +931,16 @@ final class AppState: ObservableObject {
         return operation.id
     }
 
-    private func finishAutomaticReconnectOperation(id: UUID?) {
+    private func finishAutomaticReconnectOperation(id: UUID?, restoringBaseline: Bool = false) {
         guard let id, activeAutomaticReconnectOperation?.id == id else { return }
+        if restoringBaseline, let operation = activeAutomaticReconnectOperation {
+            if isConnecting {
+                isConnecting = operation.previousIsConnecting
+            }
+            if turnState == .reconnecting {
+                turnState = operation.previousTurnState
+            }
+        }
         activeAutomaticReconnectOperation = nil
     }
 
@@ -1151,7 +1194,8 @@ final class AppState: ObservableObject {
         profile: String,
         syncPurpose: ChatResumeSyncPurpose,
         cancelsResumeRestoration: Bool,
-        automaticWorkToken existingAutomaticWorkToken: ChatResumeAutomaticWorkToken? = nil
+        automaticWorkToken existingAutomaticWorkToken: ChatResumeAutomaticWorkToken? = nil,
+        automaticReconnectOperationID: UUID? = nil
     ) async {
         if cancelsResumeRestoration {
             cancelChatResumeRestoration()
@@ -1167,7 +1211,10 @@ final class AppState: ObservableObject {
         let automaticWorkToken = syncPurpose == .automaticReturn
             ? (existingAutomaticWorkToken ?? beginAutomaticChatResumeWork())
             : nil
-        guard automaticChatResumeWorkIsCurrent(automaticWorkToken) else { return }
+        guard automaticChatResumeWorkIsCurrent(
+            automaticWorkToken,
+            reconnectOperationID: automaticReconnectOperationID
+        ) else { return }
         rememberDashboardURL(conn.baseUrl)
         cancelScheduledReconnect()
         isConnecting = true
@@ -1193,7 +1240,10 @@ final class AppState: ObservableObject {
 
         do {
             try await client.connect()
-            guard automaticChatResumeWorkIsCurrent(automaticWorkToken),
+            guard automaticChatResumeWorkIsCurrent(
+                    automaticWorkToken,
+                    reconnectOperationID: automaticReconnectOperationID
+                  ),
                   let activeClient = self.client, activeClient === client else { return }
             isConnected = true
             isConnecting = false
@@ -1202,22 +1252,37 @@ final class AppState: ObservableObject {
             KeychainHelper.saveConnection(conn)
 
             await loadProfiles()
-            guard automaticChatResumeWorkIsCurrent(automaticWorkToken) else { return }
+            guard automaticChatResumeWorkIsCurrent(
+                automaticWorkToken,
+                reconnectOperationID: automaticReconnectOperationID
+            ) else { return }
             await syncSession(
                 purpose: syncPurpose,
                 using: nil,
                 automaticWorkToken: automaticWorkToken
             )
-            guard automaticChatResumeWorkIsCurrent(automaticWorkToken),
+            guard automaticChatResumeWorkIsCurrent(
+                    automaticWorkToken,
+                    reconnectOperationID: automaticReconnectOperationID
+                  ),
                   let activeClient = self.client, activeClient === client else { return }
             await loadBusyInputMode(using: client)
-            guard automaticChatResumeWorkIsCurrent(automaticWorkToken),
+            guard automaticChatResumeWorkIsCurrent(
+                    automaticWorkToken,
+                    reconnectOperationID: automaticReconnectOperationID
+                  ),
                   let activeClient = self.client, activeClient === client else { return }
             await loadProfileDisplayPreferences()
-            guard automaticChatResumeWorkIsCurrent(automaticWorkToken) else { return }
+            guard automaticChatResumeWorkIsCurrent(
+                automaticWorkToken,
+                reconnectOperationID: automaticReconnectOperationID
+            ) else { return }
             Task { await loadSlashCommands() }
         } catch {
-            guard automaticChatResumeWorkIsCurrent(automaticWorkToken),
+            guard automaticChatResumeWorkIsCurrent(
+                    automaticWorkToken,
+                    reconnectOperationID: automaticReconnectOperationID
+                  ),
                   let activeClient = self.client, activeClient === client else { return }
             isConnecting = false
             isConnected = false
@@ -1239,7 +1304,7 @@ final class AppState: ObservableObject {
         recoverySequence.cancel()
         chatResumeRestorationRequest = nil
         invalidateReconciliation()
-        scenePhaseTask?.cancel()
+        cancelScenePhaseAttempt()
         client?.disconnect()
         isConnected = false
         isConnecting = false
@@ -1365,15 +1430,27 @@ final class AppState: ObservableObject {
     func syncSession(
         purpose: ChatResumeSyncPurpose,
         using existingReconciliationToken: UUID?,
-        automaticWorkToken existingAutomaticWorkToken: ChatResumeAutomaticWorkToken?
+        automaticWorkToken existingAutomaticWorkToken: ChatResumeAutomaticWorkToken?,
+        requiredViewportTransitionGeneration: UInt64? = nil
     ) async {
+        guard chatViewportTransitionIsCurrent(
+            requiredViewportTransitionGeneration
+        ) else { return }
         let purpose = beginChatResumeRecovery(purpose: purpose)
         let automaticWorkToken = purpose == .automaticReturn
             ? (existingAutomaticWorkToken ?? beginAutomaticChatResumeWork())
             : nil
         guard automaticChatResumeWorkIsCurrent(automaticWorkToken) else { return }
         let automaticOperationID = beginAutomaticSyncOperation(for: automaticWorkToken)
-        defer { finishAutomaticSyncOperation(id: automaticOperationID) }
+        defer {
+            finishAutomaticSyncOperation(
+                id: automaticOperationID,
+                restoringBaseline: !automaticChatResumeWorkIsCurrent(
+                    automaticWorkToken,
+                    syncOperationID: automaticOperationID
+                )
+            )
+        }
         guard let client else {
             if let existingReconciliationToken {
                 settleReconciliation(existingReconciliationToken)
@@ -1404,7 +1481,11 @@ final class AppState: ObservableObject {
             let allSessions = uniqueSessions(
                 [retainedActiveTurn].compactMap { $0 } + loadedSessions
             )
-            guard automaticChatResumeWorkIsCurrent(automaticWorkToken),
+            guard automaticChatResumeWorkIsCurrent(
+                    automaticWorkToken,
+                    syncOperationID: automaticOperationID
+                  ),
+                  chatViewportTransitionIsCurrent(requiredViewportTransitionGeneration),
                   token == reconciliationToken,
                   profile == activeProfile,
                   let activeClient = self.client,
@@ -1417,14 +1498,20 @@ final class AppState: ObservableObject {
                 settleReconciliation(token)
                 return
             }
-            guard automaticChatResumeWorkIsCurrent(automaticWorkToken) else {
+            guard automaticChatResumeWorkIsCurrent(
+                automaticWorkToken,
+                syncOperationID: automaticOperationID
+            ), chatViewportTransitionIsCurrent(requiredViewportTransitionGeneration) else {
                 settleReconciliation(token)
                 return
             }
             sessions = allSessions.filter { $0.source != .cron }
             cronSessions = allSessions.filter { $0.source == .cron }
 
-            guard automaticChatResumeWorkIsCurrent(automaticWorkToken) else {
+            guard automaticChatResumeWorkIsCurrent(
+                automaticWorkToken,
+                syncOperationID: automaticOperationID
+            ), chatViewportTransitionIsCurrent(requiredViewportTransitionGeneration) else {
                 settleReconciliation(token)
                 return
             }
@@ -1433,7 +1520,8 @@ final class AppState: ObservableObject {
                 profile: profile,
                 purpose: purpose,
                 currentSessionID: activeSessionId,
-                automaticWorkToken: automaticWorkToken
+                automaticWorkToken: automaticWorkToken,
+                automaticSyncOperationID: automaticOperationID
             )
             if let target {
                 let succeeded = await reconcile(
@@ -1441,11 +1529,16 @@ final class AppState: ObservableObject {
                     using: client,
                     token: token,
                     acceptedSessionIDs: Set([target.id] + target.alternateIds),
-                    automaticWorkToken: automaticWorkToken
+                    automaticWorkToken: automaticWorkToken,
+                    automaticSyncOperationID: automaticOperationID,
+                    requiredViewportTransitionGeneration: requiredViewportTransitionGeneration
                 )
                 if !succeeded,
                    purpose == .automaticReturn,
-                   automaticChatResumeWorkIsCurrent(automaticWorkToken),
+                   automaticChatResumeWorkIsCurrent(
+                    automaticWorkToken,
+                    syncOperationID: automaticOperationID
+                   ),
                    token == reconciliationToken,
                    profile == activeProfile {
                     scheduleReconnect(purpose: purpose)
@@ -1456,11 +1549,17 @@ final class AppState: ObservableObject {
                     profile: profile,
                     token: token,
                     resumePurpose: purpose,
-                    automaticWorkToken: automaticWorkToken
+                    automaticWorkToken: automaticWorkToken,
+                    automaticSyncOperationID: automaticOperationID,
+                    requiredViewportTransitionGeneration: requiredViewportTransitionGeneration
                 )
             }
         } catch {
-            guard automaticChatResumeWorkIsCurrent(automaticWorkToken),
+            guard automaticChatResumeWorkIsCurrent(
+                    automaticWorkToken,
+                    syncOperationID: automaticOperationID
+                  ),
+                  chatViewportTransitionIsCurrent(requiredViewportTransitionGeneration),
                   token == reconciliationToken,
                   profile == activeProfile,
                   let activeClient = self.client,
@@ -1518,9 +1617,13 @@ final class AppState: ObservableObject {
         profile: String,
         purpose: ChatResumeSyncPurpose,
         currentSessionID: String?,
-        automaticWorkToken: ChatResumeAutomaticWorkToken? = nil
+        automaticWorkToken: ChatResumeAutomaticWorkToken? = nil,
+        automaticSyncOperationID: UUID? = nil
     ) -> SessionSummary? {
-        guard automaticChatResumeWorkIsCurrent(automaticWorkToken) else { return nil }
+        guard automaticChatResumeWorkIsCurrent(
+            automaticWorkToken,
+            syncOperationID: automaticSyncOperationID
+        ) else { return nil }
         if purpose == .automaticReturn {
             chatResumeRestorationRequest = nil
         }
@@ -1550,9 +1653,13 @@ final class AppState: ObservableObject {
     }
 
     private func publishChatResumeRestorationIfReady(
-        automaticWorkToken: ChatResumeAutomaticWorkToken? = nil
+        automaticWorkToken: ChatResumeAutomaticWorkToken? = nil,
+        automaticSyncOperationID: UUID? = nil
     ) {
-        guard automaticChatResumeWorkIsCurrent(automaticWorkToken) else { return }
+        guard automaticChatResumeWorkIsCurrent(
+            automaticWorkToken,
+            syncOperationID: automaticSyncOperationID
+        ) else { return }
         guard let sessionKey = activeChatScrollSessionIdentity.canonicalSessionKey,
               let request = chatResumeCoordinator.reconciliationSettled(sessionKey: sessionKey) else {
             return
@@ -1563,15 +1670,25 @@ final class AppState: ObservableObject {
     @discardableResult
     func settleReconciliationAndPublish(
         _ token: UUID,
-        automaticWorkToken: ChatResumeAutomaticWorkToken? = nil
+        automaticWorkToken: ChatResumeAutomaticWorkToken? = nil,
+        automaticSyncOperationID: UUID? = nil
     ) -> Bool {
-        guard automaticChatResumeWorkIsCurrent(automaticWorkToken) else {
+        guard automaticChatResumeWorkIsCurrent(
+            automaticWorkToken,
+            syncOperationID: automaticSyncOperationID
+        ) else {
             settleReconciliation(token)
             return false
         }
         guard settleReconciliation(token) else { return false }
-        guard automaticChatResumeWorkIsCurrent(automaticWorkToken) else { return false }
-        publishChatResumeRestorationIfReady(automaticWorkToken: automaticWorkToken)
+        guard automaticChatResumeWorkIsCurrent(
+            automaticWorkToken,
+            syncOperationID: automaticSyncOperationID
+        ) else { return false }
+        publishChatResumeRestorationIfReady(
+            automaticWorkToken: automaticWorkToken,
+            automaticSyncOperationID: automaticSyncOperationID
+        )
         cancelScheduledReconnect()
         recoverySequence.complete()
         if automaticWorkToken != nil {
@@ -1586,9 +1703,16 @@ final class AppState: ObservableObject {
         using client: HermesClient,
         token: UUID,
         acceptedSessionIDs: Set<String> = [],
-        automaticWorkToken: ChatResumeAutomaticWorkToken? = nil
+        automaticWorkToken: ChatResumeAutomaticWorkToken? = nil,
+        automaticSyncOperationID: UUID? = nil,
+        requiredViewportTransitionGeneration: UInt64? = nil
     ) async -> Bool {
-        guard automaticChatResumeWorkIsCurrent(automaticWorkToken) else { return false }
+        guard automaticChatResumeWorkIsCurrent(
+            automaticWorkToken,
+            syncOperationID: automaticSyncOperationID
+        ), chatViewportTransitionIsCurrent(requiredViewportTransitionGeneration) else {
+            return false
+        }
         let bufferedEvents = reconciliation?.token == token
             ? reconciliation?.bufferedEvents ?? []
             : []
@@ -1620,7 +1744,11 @@ final class AppState: ObservableObject {
 
             let result = try await resumedSession
             let transcript = await persistedTranscript
-            guard automaticChatResumeWorkIsCurrent(automaticWorkToken),
+            guard automaticChatResumeWorkIsCurrent(
+                    automaticWorkToken,
+                    syncOperationID: automaticSyncOperationID
+                  ),
+                  chatViewportTransitionIsCurrent(requiredViewportTransitionGeneration),
                   token == reconciliationToken,
                   profile == activeProfile,
                   let activeClient = self.client,
@@ -1672,14 +1800,19 @@ final class AppState: ObservableObject {
 
             guard applyChatResume(
                 presentationResult,
-                automaticWorkToken: automaticWorkToken
+                automaticWorkToken: automaticWorkToken,
+                automaticSyncOperationID: automaticSyncOperationID
             ) else {
                 settleReconciliation(token)
                 return false
             }
             await refreshChatResumeContext(sessionId: result.sessionId, using: client)
 
-            guard automaticChatResumeWorkIsCurrent(automaticWorkToken),
+            guard automaticChatResumeWorkIsCurrent(
+                    automaticWorkToken,
+                    syncOperationID: automaticSyncOperationID
+                  ),
+                  chatViewportTransitionIsCurrent(requiredViewportTransitionGeneration),
                   token == reconciliationToken,
                   profile == activeProfile,
                   let activeClient = self.client,
@@ -1696,11 +1829,16 @@ final class AppState: ObservableObject {
             bufferedEvents.forEach(applyStreamEvent)
             return settleReconciliationAndPublish(
                 token,
-                automaticWorkToken: automaticWorkToken
+                automaticWorkToken: automaticWorkToken,
+                automaticSyncOperationID: automaticSyncOperationID
             )
 
         } catch {
-            guard automaticChatResumeWorkIsCurrent(automaticWorkToken),
+            guard automaticChatResumeWorkIsCurrent(
+                    automaticWorkToken,
+                    syncOperationID: automaticSyncOperationID
+                  ),
+                  chatViewportTransitionIsCurrent(requiredViewportTransitionGeneration),
                   token == reconciliationToken,
                   profile == activeProfile,
                   let activeClient = self.client,
@@ -1742,16 +1880,25 @@ final class AppState: ObservableObject {
         token: UUID,
         resumePurpose: ChatResumeSyncPurpose = .preserveCurrent,
         automaticWorkToken: ChatResumeAutomaticWorkToken? = nil,
+        automaticSyncOperationID: UUID? = nil,
+        requiredViewportTransitionGeneration: UInt64? = nil,
         cwd: String? = nil
     ) async {
-        guard automaticChatResumeWorkIsCurrent(automaticWorkToken) else { return }
+        guard automaticChatResumeWorkIsCurrent(
+            automaticWorkToken,
+            syncOperationID: automaticSyncOperationID
+        ), chatViewportTransitionIsCurrent(requiredViewportTransitionGeneration) else { return }
         do {
             let created = try await client.createSession(
                 model: runtime.model.isEmpty ? nil : runtime.model,
                 provider: runtime.provider.isEmpty ? nil : runtime.provider,
                 cwd: cwd
             )
-            guard automaticChatResumeWorkIsCurrent(automaticWorkToken),
+            guard automaticChatResumeWorkIsCurrent(
+                    automaticWorkToken,
+                    syncOperationID: automaticSyncOperationID
+                  ),
+                  chatViewportTransitionIsCurrent(requiredViewportTransitionGeneration),
                   token == reconciliationToken,
                   profile == activeProfile,
                   let activeClient = self.client,
@@ -1816,7 +1963,8 @@ final class AppState: ObservableObject {
                     profile: profile,
                     purpose: resumePurpose,
                     currentSessionID: runtimeSessionID,
-                    automaticWorkToken: automaticWorkToken
+                    automaticWorkToken: automaticWorkToken,
+                    automaticSyncOperationID: automaticSyncOperationID
                 )
             }
             Task { [weak self] in
@@ -1828,10 +1976,15 @@ final class AppState: ObservableObject {
             }
             settleReconciliationAndPublish(
                 token,
-                automaticWorkToken: automaticWorkToken
+                automaticWorkToken: automaticWorkToken,
+                automaticSyncOperationID: automaticSyncOperationID
             )
         } catch {
-            guard automaticChatResumeWorkIsCurrent(automaticWorkToken),
+            guard automaticChatResumeWorkIsCurrent(
+                    automaticWorkToken,
+                    syncOperationID: automaticSyncOperationID
+                  ),
+                  chatViewportTransitionIsCurrent(requiredViewportTransitionGeneration),
                   token == reconciliationToken,
                   profile == activeProfile,
                   let activeClient = self.client,
@@ -1851,9 +2004,13 @@ final class AppState: ObservableObject {
     @discardableResult
     func applyChatResume(
         _ result: SessionResumeResult,
-        automaticWorkToken: ChatResumeAutomaticWorkToken? = nil
+        automaticWorkToken: ChatResumeAutomaticWorkToken? = nil,
+        automaticSyncOperationID: UUID? = nil
     ) -> Bool {
-        guard automaticChatResumeWorkIsCurrent(automaticWorkToken) else { return false }
+        guard automaticChatResumeWorkIsCurrent(
+            automaticWorkToken,
+            syncOperationID: automaticSyncOperationID
+        ) else { return false }
         markChatViewportReplacement()
         setActiveSessionState(id: result.sessionId, title: "New conversation")
         updateActiveSessionTitle(
@@ -2046,7 +2203,15 @@ final class AppState: ObservableObject {
             : nil
         guard automaticChatResumeWorkIsCurrent(automaticWorkToken) else { return }
         let automaticOperationID = beginAutomaticReconnectOperation(for: automaticWorkToken)
-        defer { finishAutomaticReconnectOperation(id: automaticOperationID) }
+        defer {
+            finishAutomaticReconnectOperation(
+                id: automaticOperationID,
+                restoringBaseline: !automaticChatResumeWorkIsCurrent(
+                    automaticWorkToken,
+                    reconnectOperationID: automaticOperationID
+                )
+            )
+        }
         if purpose == .automaticReturn, reconnectTask != nil {
             cancelScheduledReconnect()
         }
@@ -2056,12 +2221,18 @@ final class AppState: ObservableObject {
         let connection: HermesConnection
         do {
             let ticket = try await mintChatResumeTicket(for: savedConnection)
-            guard automaticChatResumeWorkIsCurrent(automaticWorkToken) else { return }
+            guard automaticChatResumeWorkIsCurrent(
+                automaticWorkToken,
+                reconnectOperationID: automaticOperationID
+            ) else { return }
             connection = HermesConnection(baseUrl: savedConnection.baseUrl, ticket: ticket)
             self.connection = connection
             KeychainHelper.saveConnection(connection)
         } catch {
-            guard automaticChatResumeWorkIsCurrent(automaticWorkToken) else { return }
+            guard automaticChatResumeWorkIsCurrent(
+                automaticWorkToken,
+                reconnectOperationID: automaticOperationID
+            ) else { return }
             if let bridgeError = error as? DashboardTicketBridgeError, case .signInRequired = bridgeError {
                 if let credentials = KeychainHelper.loadCredentials(),
                    credentials.baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/")) == savedConnection.baseUrl.trimmingCharacters(in: CharacterSet(charactersIn: "/")) {
@@ -2070,7 +2241,10 @@ final class AppState: ObservableObject {
                             username: credentials.username,
                             password: credentials.password
                         )
-                        guard automaticChatResumeWorkIsCurrent(automaticWorkToken) else { return }
+                        guard automaticChatResumeWorkIsCurrent(
+                            automaticWorkToken,
+                            reconnectOperationID: automaticOperationID
+                        ) else { return }
                         // URLSession and WebKit have separate cookie stores.
                         // Reload the bridge so it receives the fresh session.
                         dashboardTicketBridge?.reload()
@@ -2079,17 +2253,29 @@ final class AppState: ObservableObject {
                             profile: activeProfile,
                             syncPurpose: purpose,
                             cancelsResumeRestoration: false,
-                            automaticWorkToken: automaticWorkToken
+                            automaticWorkToken: automaticWorkToken,
+                            automaticReconnectOperationID: automaticOperationID
                         )
                         return
                     } catch {
-                        guard automaticChatResumeWorkIsCurrent(automaticWorkToken) else { return }
+                        guard automaticChatResumeWorkIsCurrent(
+                            automaticWorkToken,
+                            reconnectOperationID: automaticOperationID
+                        ) else { return }
                         // This only determines whether recovery can be silent.
                         // Preserve the saved credentials for the login screen.
                     }
                 }
+                guard automaticChatResumeWorkIsCurrent(
+                    automaticWorkToken,
+                    reconnectOperationID: automaticOperationID
+                ) else { return }
                 requireSignIn(message: error.localizedDescription)
             } else {
+                guard automaticChatResumeWorkIsCurrent(
+                    automaticWorkToken,
+                    reconnectOperationID: automaticOperationID
+                ) else { return }
                 isConnected = false
                 isConnecting = false
                 turnState = .reconnecting
@@ -2100,14 +2286,20 @@ final class AppState: ObservableObject {
         }
 
         let previousClient = client
-        guard automaticChatResumeWorkIsCurrent(automaticWorkToken) else { return }
+        guard automaticChatResumeWorkIsCurrent(
+            automaticWorkToken,
+            reconnectOperationID: automaticOperationID
+        ) else { return }
         let client = makeClient(connection: connection, profile: activeProfile)
         self.client = client
         previousClient?.disconnect()
 
         do {
             try await client.connect()
-            guard automaticChatResumeWorkIsCurrent(automaticWorkToken),
+            guard automaticChatResumeWorkIsCurrent(
+                    automaticWorkToken,
+                    reconnectOperationID: automaticOperationID
+                  ),
                   let activeClient = self.client, activeClient === client else { return }
             isConnected = true
             isConnecting = false
@@ -2118,19 +2310,34 @@ final class AppState: ObservableObject {
                 using: nil,
                 automaticWorkToken: automaticWorkToken
             )
-            guard automaticChatResumeWorkIsCurrent(automaticWorkToken),
+            guard automaticChatResumeWorkIsCurrent(
+                    automaticWorkToken,
+                    reconnectOperationID: automaticOperationID
+                  ),
                   let activeClient = self.client, activeClient === client else { return }
             await loadBusyInputMode(using: client)
-            guard automaticChatResumeWorkIsCurrent(automaticWorkToken),
+            guard automaticChatResumeWorkIsCurrent(
+                    automaticWorkToken,
+                    reconnectOperationID: automaticOperationID
+                  ),
                   let activeClient = self.client, activeClient === client else { return }
             await loadProfiles()
-            guard automaticChatResumeWorkIsCurrent(automaticWorkToken),
+            guard automaticChatResumeWorkIsCurrent(
+                    automaticWorkToken,
+                    reconnectOperationID: automaticOperationID
+                  ),
                   let activeClient = self.client, activeClient === client else { return }
             await loadProfileDisplayPreferences()
-            guard automaticChatResumeWorkIsCurrent(automaticWorkToken) else { return }
+            guard automaticChatResumeWorkIsCurrent(
+                automaticWorkToken,
+                reconnectOperationID: automaticOperationID
+            ) else { return }
             Task { await loadSlashCommands() }
         } catch {
-            guard automaticChatResumeWorkIsCurrent(automaticWorkToken),
+            guard automaticChatResumeWorkIsCurrent(
+                    automaticWorkToken,
+                    reconnectOperationID: automaticOperationID
+                  ),
                   let activeClient = self.client, activeClient === client else { return }
             isConnected = false
             isConnecting = false
@@ -2148,23 +2355,29 @@ final class AppState: ObservableObject {
         return try await dashboardTicketBridge.mintTicket()
     }
 
-    func handleScenePhase(_ phase: ScenePhase) {
+    @discardableResult
+    func handleScenePhase(_ phase: ScenePhase) -> Task<Void, Never>? {
         switch phase {
         case .active:
             voiceConversationController.setForegroundActive(true)
-            guard connection != nil else { return }
-            scenePhaseTask?.cancel()
+            guard connection != nil else { return nil }
+            cancelScenePhaseAttempt()
             // Publish the foreground reconciliation boundary synchronously.
             // ChatView may receive the same scene transition before the health
             // check task runs, so geometry alone must not restore stale rows.
             let token = beginReconciliation()
             let automaticWorkToken = beginAutomaticChatResumeWork()
-            scenePhaseTask = Task { @MainActor [weak self] in
+            let sceneAttemptID = UUID()
+            self.scenePhaseAttemptID = sceneAttemptID
+            let task = Task { @MainActor [weak self] in
                 guard let self else { return }
+                defer { self.finishScenePhaseAttempt(id: sceneAttemptID) }
+                guard self.scenePhaseAttemptIsCurrent(sceneAttemptID) else { return }
                 if let client = self.client, client.isConnected {
                     do {
                         try await client.healthCheck()
-                        guard self.automaticChatResumeWorkIsCurrent(automaticWorkToken) else {
+                        guard self.scenePhaseAttemptIsCurrent(sceneAttemptID),
+                              self.automaticChatResumeWorkIsCurrent(automaticWorkToken) else {
                             self.settleReconciliation(token)
                             return
                         }
@@ -2174,7 +2387,8 @@ final class AppState: ObservableObject {
                             automaticWorkToken: automaticWorkToken
                         )
                     } catch {
-                        guard self.automaticChatResumeWorkIsCurrent(automaticWorkToken) else {
+                        guard self.scenePhaseAttemptIsCurrent(sceneAttemptID),
+                              self.automaticChatResumeWorkIsCurrent(automaticWorkToken) else {
                             self.settleReconciliation(token)
                             return
                         }
@@ -2182,7 +2396,8 @@ final class AppState: ObservableObject {
                         self.settleReconciliation(token)
                     }
                 } else {
-                    guard self.automaticChatResumeWorkIsCurrent(automaticWorkToken) else {
+                    guard self.scenePhaseAttemptIsCurrent(sceneAttemptID),
+                          self.automaticChatResumeWorkIsCurrent(automaticWorkToken) else {
                         self.settleReconciliation(token)
                         return
                     }
@@ -2190,6 +2405,8 @@ final class AppState: ObservableObject {
                     self.settleReconciliation(token)
                 }
             }
+            scenePhaseTask = task
+            return task
 
         case .background:
             voiceConversationController.setForegroundActive(false)
@@ -2200,27 +2417,64 @@ final class AppState: ObservableObject {
             // A suspended socket may still look open. Invalidate incomplete
             // snapshots so foreground always obtains a fresh authoritative one.
             invalidateReconciliation()
-            scenePhaseTask?.cancel()
+            cancelScenePhaseAttempt()
+            return nil
 
         case .inactive:
             chatResumeCoordinator.freezeViewport()
             voiceConversationController.setForegroundActive(false)
-            break
+            return nil
 
         @unknown default:
-            break
+            return nil
         }
+    }
+
+    private func scenePhaseAttemptIsCurrent(_ id: UUID) -> Bool {
+        !Task.isCancelled && scenePhaseAttemptID == id
+    }
+
+    private func cancelScenePhaseAttempt() {
+        scenePhaseAttemptID = nil
+        scenePhaseTask?.cancel()
+        scenePhaseTask = nil
+        cancelOwnedAutomaticOperations()
+    }
+
+    private func finishScenePhaseAttempt(id: UUID) {
+        guard scenePhaseAttemptID == id else { return }
+        scenePhaseAttemptID = nil
+        scenePhaseTask = nil
     }
 
     // MARK: - Session management
 
     func loadSessions(forceRefresh: Bool = false) async {
-        guard let client else { return }
+        _ = await loadSessions(
+            forceRefresh: forceRefresh,
+            requiredViewportTransitionGeneration: nil
+        )
+    }
+
+    @discardableResult
+    private func loadSessions(
+        forceRefresh: Bool,
+        requiredViewportTransitionGeneration: UInt64?
+    ) async -> Bool {
+        if let requiredViewportTransitionGeneration,
+           !chatViewportTransitionIsCurrent(generation: requiredViewportTransitionGeneration) {
+            return false
+        }
+        guard let client else { return false }
         let profile = activeProfile
         let retainedActiveTurn = activeTurnCatalogSession()
         do {
             let loadedSessions = try await profileSessions(using: client, forceRefresh: forceRefresh)
-            guard profile == activeProfile, self.client === client else { return }
+            guard profile == activeProfile,
+                  self.client === client,
+                  requiredViewportTransitionGeneration.map({
+                      chatViewportTransitionIsCurrent(generation: $0)
+                  }) ?? true else { return false }
             let allSessions = uniqueSessions(
                 [retainedActiveTurn].compactMap { $0 } + loadedSessions
             )
@@ -2230,9 +2484,15 @@ final class AppState: ObservableObject {
             Task { [weak self] in
                 await self?.loadProjects(using: client, profile: profile)
             }
+            return true
         } catch {
-            guard profile == activeProfile, self.client === client else { return }
+            guard profile == activeProfile,
+                  self.client === client,
+                  requiredViewportTransitionGeneration.map({
+                      chatViewportTransitionIsCurrent(generation: $0)
+                  }) ?? true else { return false }
             errorMessage = "Failed to load sessions: \(error.localizedDescription)"
+            return false
         }
     }
 
@@ -2419,9 +2679,18 @@ final class AppState: ObservableObject {
             errorMessage = "That conversation belongs to another workspace. Switch profiles to open it."
             return false
         }
-        let transitionGeneration = beginExplicitChatViewportTransition(
-            reusing: viewportTransitionGeneration
-        )
+        let transitionGeneration: UInt64
+        if let viewportTransitionGeneration {
+            guard chatViewportTransitionIsCurrent(
+                generation: viewportTransitionGeneration
+            ) else { return false }
+            transitionGeneration = viewportTransitionGeneration
+        } else {
+            transitionGeneration = beginExplicitChatViewportTransition()
+        }
+        guard chatViewportTransitionIsCurrent(generation: transitionGeneration) else {
+            return false
+        }
         markChatViewportReplacement()
         // Atomically switch session identity BEFORE clearing the transcript.
         // This prevents stale stream events from the old session falling
@@ -2440,8 +2709,12 @@ final class AppState: ObservableObject {
             sessionId: sessionId,
             using: client,
             token: token,
-            acceptedSessionIDs: acceptedSessionIDs
+            acceptedSessionIDs: acceptedSessionIDs,
+            requiredViewportTransitionGeneration: transitionGeneration
         )
+        guard chatViewportTransitionIsCurrent(generation: transitionGeneration) else {
+            return false
+        }
         if !reconciled {
             finishChatViewportTransition(generation: transitionGeneration)
         }
@@ -2460,10 +2733,13 @@ final class AppState: ObservableObject {
         defer { isOpeningNotificationSession = false }
         let targetProfile = notificationProfileID(target.profile)
         if let targetProfile, targetProfile != activeProfile {
-            await switchProfile(
+            guard await switchProfile(
                 to: targetProfile,
                 reusing: transitionGeneration
-            )
+            ) else { return false }
+        }
+        guard chatViewportTransitionIsCurrent(generation: transitionGeneration) else {
+            return false
         }
         if let targetProfile, activeProfile != targetProfile { return false }
         guard client != nil else { return false }
@@ -2477,7 +2753,13 @@ final class AppState: ObservableObject {
         // Do not share the sidebar refresh guard here. The notification route
         // needs one authoritative read even if a visual refresh is already in
         // progress, otherwise it can resolve against the stale catalog.
-        await loadSessions(forceRefresh: true)
+        guard await loadSessions(
+            forceRefresh: true,
+            requiredViewportTransitionGeneration: transitionGeneration
+        ) else { return false }
+        guard chatViewportTransitionIsCurrent(generation: transitionGeneration) else {
+            return false
+        }
         let requestedID = target.sessionId
         let matchingSession = (sessions + cronSessions).first { session in
             session.id == requestedID || session.alternateIds.contains(requestedID)
@@ -2534,7 +2816,8 @@ final class AppState: ObservableObject {
             sessionId: sessionId,
             using: client,
             token: token,
-            acceptedSessionIDs: knownSessionIDs(for: sessionId)
+            acceptedSessionIDs: knownSessionIDs(for: sessionId),
+            requiredViewportTransitionGeneration: transitionGeneration
         )
         if !succeeded || messages == previousMessages {
             finishChatViewportTransition(generation: transitionGeneration)
@@ -2634,7 +2917,8 @@ final class AppState: ObservableObject {
                 sessionId: branched.sessionId,
                 using: client,
                 token: token,
-                acceptedSessionIDs: knownSessionIDs(for: branched.sessionId)
+                acceptedSessionIDs: knownSessionIDs(for: branched.sessionId),
+                requiredViewportTransitionGeneration: transitionGeneration
             )
             if !reconciled {
                 finishChatViewportTransition(generation: transitionGeneration)
@@ -3480,19 +3764,28 @@ final class AppState: ObservableObject {
     }
 
     func switchProfile(to profile: String) async {
-        await switchProfile(to: profile, reusing: nil)
+        _ = await switchProfile(to: profile, reusing: nil)
     }
 
+    @discardableResult
     private func switchProfile(
         to profile: String,
         reusing viewportTransitionGeneration: UInt64?
-    ) async {
+    ) async -> Bool {
         let target = profile.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !target.isEmpty, target != activeProfile, let savedConnection = connection else { return }
-        guard !isProfileSwitching else { return }
-        let transitionGeneration = beginExplicitChatViewportTransition(
-            reusing: viewportTransitionGeneration
-        )
+        guard !target.isEmpty, target != activeProfile, let savedConnection = connection else {
+            return false
+        }
+        guard !isProfileSwitching else { return false }
+        let transitionGeneration: UInt64
+        if let viewportTransitionGeneration {
+            guard chatViewportTransitionIsCurrent(
+                generation: viewportTransitionGeneration
+            ) else { return false }
+            transitionGeneration = viewportTransitionGeneration
+        } else {
+            transitionGeneration = beginExplicitChatViewportTransition()
+        }
         cacheMessagePresentation()
         cancelSecondaryProfileTitleRecovery()
 
@@ -3516,6 +3809,9 @@ final class AppState: ObservableObject {
             prepareDashboardBridge(for: savedConnection.baseUrl)
             guard let dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
             let ticket = try await dashboardTicketBridge.mintTicket()
+            guard chatViewportTransitionIsCurrent(generation: transitionGeneration) else {
+                return false
+            }
             let freshConnection = HermesConnection(baseUrl: savedConnection.baseUrl, ticket: ticket)
             let previousClient = client
             let nextClient = makeClient(connection: freshConnection, profile: target)
@@ -3534,7 +3830,8 @@ final class AppState: ObservableObject {
             restoreActiveSessionState(for: target)
             restorePinnedSessions(for: target)
             try await nextClient.connect()
-            guard self.client === nextClient else { return }
+            guard chatViewportTransitionIsCurrent(generation: transitionGeneration),
+                  self.client === nextClient else { return false }
             // Keep the previous socket alive until the new profile has
             // actually connected, so a failed switch has a recovery path.
             previousClient?.disconnect()
@@ -3543,14 +3840,32 @@ final class AppState: ObservableObject {
             KeychainHelper.saveConnection(freshConnection)
             defaults.set(target, forKey: activeProfileKey)
 
-            await syncSession()
+            await syncSession(
+                purpose: .preserveCurrent,
+                using: nil,
+                automaticWorkToken: nil,
+                requiredViewportTransitionGeneration: transitionGeneration
+            )
+            guard chatViewportTransitionIsCurrent(generation: transitionGeneration) else {
+                return false
+            }
             finishChatViewportTransitionIfNoTranscriptReplacement(
                 generation: transitionGeneration
             )
             await loadBusyInputMode(using: nextClient)
+            guard chatViewportTransitionIsCurrent(generation: transitionGeneration) else {
+                return false
+            }
             await loadProfileDisplayPreferences()
+            guard chatViewportTransitionIsCurrent(generation: transitionGeneration) else {
+                return false
+            }
             Task { await loadSlashCommands() }
+            return true
         } catch {
+            guard chatViewportTransitionIsCurrent(generation: transitionGeneration) else {
+                return false
+            }
             errorMessage = "Could not switch workspace: \(error.localizedDescription)"
             activeProfile = previousProfile
             sessions = previousSessions
@@ -3568,6 +3883,7 @@ final class AppState: ObservableObject {
             turnState = .reconnecting
             finishChatViewportTransition(generation: transitionGeneration)
             await reconnect()
+            return false
         }
     }
 
