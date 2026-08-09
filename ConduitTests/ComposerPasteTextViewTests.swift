@@ -27,4 +27,27 @@ final class ComposerPasteTextViewTests: XCTestCase {
 
         wait(for: [callback], timeout: 1.0)
     }
+
+    func testPasteItemProvidersFallsBackToTextViewForText() {
+        let view = ImagePasteTextView()
+        view.frame = CGRect(x: 0, y: 0, width: 320, height: 44)
+        view.isEditable = true
+        view.becomeFirstResponder()
+
+        let provider = NSItemProvider(object: NSString(string: "pasted text"))
+        view.paste(itemProviders: [provider])
+
+        let textInserted = expectation(description: "text pasted")
+        let deadline = Date().addingTimeInterval(1.0)
+        func checkText() {
+            if view.text == "pasted text" {
+                textInserted.fulfill()
+            } else if Date() < deadline {
+                DispatchQueue.main.async { checkText() }
+            }
+        }
+        checkText()
+
+        wait(for: [textInserted], timeout: 1.0)
+    }
 }
