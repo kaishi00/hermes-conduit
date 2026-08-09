@@ -118,6 +118,39 @@ final class ChatResumeCoordinatorTests: XCTestCase {
         XCTAssertEqual(selected?.id, "stored-b")
     }
 
+    func testMissingContinueTargetEmitsLatestDespiteFallbackSnapshot() {
+        let harness = makeHarness()
+        let fallbackKey = ChatScrollSessionKey(profile: "default", sessionID: "stored-b")
+        let oldReading = ChatScrollSnapshot(anchorMessageID: "anchor-12", followsLatest: false)
+        harness.store.setLastSessionID("deleted-a", for: "default")
+        harness.store.save(oldReading, for: fallbackKey, at: Date())
+
+        let selected = harness.coordinator.selectTarget(
+            in: [session("stored-b")],
+            profile: "default",
+            purpose: .automaticReturn,
+            currentSessionID: "deleted-a"
+        )
+        let request = harness.coordinator.reconciliationSettled(sessionKey: fallbackKey)
+
+        XCTAssertEqual(selected?.id, "stored-b")
+        XCTAssertEqual(request?.destination, .latest)
+    }
+
+    func testViewportUpdatePersistsOnlyAfterExplicitFlush() {
+        let harness = makeHarness()
+        let key = ChatScrollSessionKey(profile: "default", sessionID: "stored-a")
+        let reading = ChatScrollSnapshot(anchorMessageID: "anchor-12", followsLatest: false)
+
+        harness.coordinator.recordViewport(reading, for: key)
+
+        XCTAssertNil(ChatResumeStore(defaults: harness.defaults).snapshot(for: key))
+
+        harness.coordinator.flush()
+
+        XCTAssertEqual(ChatResumeStore(defaults: harness.defaults).snapshot(for: key), reading)
+    }
+
     func testPreservingCurrentSessionDoesNotCreateARestorationRequest() {
         let harness = makeHarness()
         let key = ChatScrollSessionKey(profile: "default", sessionID: "stored-a")
