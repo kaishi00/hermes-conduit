@@ -10,9 +10,13 @@ import UIKit
 
 struct ChatView: View {
     @EnvironmentObject var appState: AppState
+    @Environment(\.scenePhase) private var scenePhase
     @State private var bottomMarkerMaxY: CGFloat?
     @State private var scrollViewportMaxY: CGFloat?
     @State private var followsLatest = true
+    @State private var topVisibleChatID: String?
+    @State private var chatScrollState = ChatScrollStateStore()
+    @State private var pendingScrollRestoration: PendingChatScrollRestoration?
     @State private var notificationHandoffPending = false
     @State private var notificationHandoffSessionID: String?
     @State private var notificationHandoffHasMeasuredLayout = false
@@ -22,6 +26,14 @@ struct ChatView: View {
     private var isNearBottom: Bool {
         guard let bottomMarkerMaxY, let scrollViewportMaxY else { return true }
         return bottomMarkerMaxY <= scrollViewportMaxY + 40
+    }
+
+    private var hasPendingNonLatestRestoration: Bool {
+        guard let pendingScrollRestoration,
+              pendingScrollRestoration.sessionID == appState.activeSessionId else {
+            return false
+        }
+        return !pendingScrollRestoration.snapshot.followsLatest
     }
 
     var body: some View {
@@ -61,6 +73,7 @@ struct ChatView: View {
                     }
                     .padding(.horizontal, 18)
                     .padding(.top, 18)
+                    .scrollTargetLayout()
                     .background {
                         // Measure the lazy stack itself, not its final child.
                         // SwiftUI can unload that child after the user scrolls
@@ -75,6 +88,7 @@ struct ChatView: View {
                     }
                 }
                 .scrollDismissesKeyboard(.interactively)
+                .scrollPosition(id: $topVisibleChatID, anchor: .top)
                 .onTapGesture {
                     UIApplication.shared.sendAction(
                         #selector(UIResponder.resignFirstResponder),
@@ -95,11 +109,17 @@ struct ChatView: View {
                     updateBottomMarker(value)
                     recordNotificationHandoffLayout()
                     finishNotificationHandoffIfReady(using: proxy)
+                    if !appState.isOpeningNotificationSession {
+                        finishChatScrollRestorationIfReady(using: proxy)
+                    }
                 }
                 .onPreferenceChange(ChatViewportBottomPreferenceKey.self) { value in
                     updateViewportBottom(value)
                     recordNotificationHandoffLayout()
                     finishNotificationHandoffIfReady(using: proxy)
+                    if !appState.isOpeningNotificationSession {
+                        finishChatScrollRestorationIfReady(using: proxy)
+                    }
                 }
                 .onChange(of: appState.messages.count) { _, _ in
                     guard !appState.isOpeningNotificationSession else {
@@ -148,6 +168,16 @@ struct ChatView: View {
                         scrollToLatest(using: proxy)
                     }
                 }
+                .onChange(of: scenePhase) { _, phase in
+                    switch phase {
+                    case .inactive, .background:
+                        saveChatScrollPosition()
+                    case .active:
+                        beginChatScrollRestoration()
+                    default:
+                        break
+                    }
+                }
                 .simultaneousGesture(
                     DragGesture(minimumDistance: 3)
                         .onChanged { _ in
@@ -194,6 +224,69 @@ struct ChatView: View {
         .animation(.easeInOut(duration: 0.18), value: appState.isOpeningNotificationSession)
     }
 
+    private func saveChatScrollPosition() {
+        guard let sessionID = appState.activeSessionId else { return }
+        let messageIDs = Set(appState.messages.map(\.id))
+        let anchor = messageIDs.contains(topVisibleChatID ?? "")
+            ? topVisibleChatID
+            : nil
+        chatScrollState.save(
+            ChatScrollSnapshot(
+                anchorMessageID: followsLatest ? nil : anchor,
+                followsLatest: followsLatest
+            ),
+            for: sessionID
+        )
+    }
+
+    private func beginChatScrollRestoration() {
+        guard let sessionID = appState.activeSessionId,
+              let snapshot = chatScrollState.snapshot(for: sessionID) else {
+            pendingScrollRestoration = nil
+            return
+        }
+
+        pendingScrollRestoration = PendingChatScrollRestoration(
+            sessionID: sessionID,
+            snapshot: snapshot
+        )
+        followsLatest = snapshot.followsLatest
+    }
+
+    private func finishChatScrollRestorationIfReady(using proxy: ScrollViewProxy) {
+        guard let pending = pendingScrollRestoration,
+              pending.sessionID == appState.activeSessionId else { return }
+
+        if pending.snapshot.followsLatest {
+            pendingScrollRestoration = nil
+            followsLatest = true
+            scrollToLatest(using: proxy)
+            return
+        }
+
+        let availableIDs = Set(appState.messages.map(\.id))
+        guard !availableIDs.isEmpty else { return }
+        guard let resolved = chatScrollState.restoration(
+            for: pending.sessionID,
+            availableMessageIDs: availableIDs
+        ) else {
+            pendingScrollRestoration = nil
+            return
+        }
+
+        pendingScrollRestoration = nil
+        if resolved.followsLatest {
+            followsLatest = true
+            scrollToLatest(using: proxy)
+        } else if let anchor = resolved.anchorMessageID {
+            var transaction = Transaction()
+            transaction.animation = nil
+            withTransaction(transaction) {
+                proxy.scrollTo(anchor, anchor: .top)
+            }
+        }
+    }
+
     private func scrollToLatest(using proxy: ScrollViewProxy) {
         withAnimation(ConduitMotion.response) {
             proxy.scrollTo(bottomAnchor, anchor: .bottom)
@@ -238,13 +331,18 @@ struct ChatView: View {
 
     private func updateBottomMarker(_ value: CGFloat?) {
         bottomMarkerMaxY = value
-        if isNearBottom { followsLatest = true }
+        if isNearBottom && !hasPendingNonLatestRestoration { followsLatest = true }
     }
 
     private func updateViewportBottom(_ value: CGFloat?) {
         scrollViewportMaxY = value
-        if isNearBottom { followsLatest = true }
+        if isNearBottom && !hasPendingNonLatestRestoration { followsLatest = true }
     }
+}
+
+private struct PendingChatScrollRestoration: Equatable {
+    let sessionID: String
+    let snapshot: ChatScrollSnapshot
 }
 
 private struct ChatBottomMarkerPreferenceKey: PreferenceKey {
