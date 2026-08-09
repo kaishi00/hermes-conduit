@@ -9,6 +9,7 @@
 
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 struct ComposerPasteTextView: UIViewRepresentable {
     static let minimumHeight: CGFloat = 44
@@ -96,6 +97,27 @@ final class ImagePasteTextView: UITextView {
         lastReportedHeight = height
         DispatchQueue.main.async { [weak self] in
             self?.onContentHeightChange?(height)
+        }
+    }
+
+    override func paste(itemProviders: [NSItemProvider]) {
+        guard let provider = itemProviders.first(where: { provider in
+            provider.registeredTypeIdentifiers.contains { identifier in
+                UTType(identifier)?.conforms(to: .image) == true
+            }
+        }),
+        let imageType = provider.registeredTypeIdentifiers.first(where: { identifier in
+            UTType(identifier)?.conforms(to: .image) == true
+        }) else {
+            super.paste(itemProviders: itemProviders)
+            return
+        }
+
+        provider.loadDataRepresentation(forTypeIdentifier: imageType) { [weak self] data, _ in
+            guard let data, !data.isEmpty else { return }
+            DispatchQueue.main.async {
+                self?.onPastedImage?(data)
+            }
         }
     }
 
