@@ -15,6 +15,29 @@ import UIKit
 private let sessionCatalogLog = Logger(subsystem: "com.milim.conduit", category: "SessionCatalog")
 private let titleGenerationLog = Logger(subsystem: "com.milim.conduit", category: "TitleGeneration")
 
+typealias ChatResumeReconnectCancellation = @MainActor () -> Void
+typealias ChatResumeReconnectScheduler = @MainActor (
+    _ delay: TimeInterval,
+    _ operation: @escaping @MainActor () async -> Void
+) -> ChatResumeReconnectCancellation
+
+@MainActor
+private func scheduleChatResumeReconnectTask(
+    after delay: TimeInterval,
+    operation: @escaping @MainActor () async -> Void
+) -> ChatResumeReconnectCancellation {
+    let task = Task { @MainActor in
+        do {
+            try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+        } catch {
+            return
+        }
+        guard !Task.isCancelled else { return }
+        await operation()
+    }
+    return { task.cancel() }
+}
+
 enum ChatResumeReconnectSchedulingDecision: Equatable {
     case schedule(ChatResumeSyncPurpose)
     case replace(ChatResumeSyncPurpose)
@@ -65,6 +88,7 @@ final class ChatResumeRecoverySequence {
 
     func complete() {
         currentPurpose = .preserveCurrent
+        queuedReconnectPurpose = nil
     }
 
     func cancel() {
@@ -312,7 +336,9 @@ final class AppState: ObservableObject {
     private var lastStreamingPublishBurst = 0
     private var lastStreamingPublishDate: Date?
     private var scenePhaseTask: Task<Void, Never>?
-    private var reconnectTask: Task<Void, Never>?
+    private var reconnectTask: ChatResumeReconnectCancellation?
+    private let reconnectScheduler: ChatResumeReconnectScheduler
+    private let scheduledReconnectExecutor: (@MainActor (ChatResumeSyncPurpose) async -> Void)?
     /// Coalesces presentation-cache flushes during streaming so we
     /// don't serialize and write UserDefaults on every WebSocket frame.
     private var presentationCacheFlushTask: Task<Void, Never>?
@@ -414,6 +440,7 @@ final class AppState: ObservableObject {
     private let chatResumeCoordinator: ChatResumeCoordinator
     private let recoverySequence: ChatResumeRecoverySequence
     private let clearSessionPresentationCache: () -> Void
+    private let initialChatResumeServerIdentity: String?
 
     private func mergeCachedReviews(into history: [ChatMessage], sessionId: String) -> [ChatMessage] {
         let records = cachedReviews().filter { $0.profile == activeProfile && $0.sessionId == sessionId }
@@ -460,13 +487,22 @@ final class AppState: ObservableObject {
         loadSavedConnection shouldLoadSavedConnection: Bool = true,
         clearSessionPresentationCache: @escaping () -> Void = {
             SessionPresentationCache.shared.clear()
-        }
+        },
+        reconnectScheduler: ChatResumeReconnectScheduler? = nil,
+        scheduledReconnectExecutor: (@MainActor (ChatResumeSyncPurpose) async -> Void)? = nil
     ) {
         self.defaults = defaults
         self.chatResumeCoordinator = chatResumeCoordinator
             ?? ChatResumeCoordinator(store: ChatResumeStore(defaults: defaults))
         self.recoverySequence = recoverySequence
         self.clearSessionPresentationCache = clearSessionPresentationCache
+        self.reconnectScheduler = reconnectScheduler ?? scheduleChatResumeReconnectTask
+        self.scheduledReconnectExecutor = scheduledReconnectExecutor
+        self.initialChatResumeServerIdentity = defaults
+            .string(forKey: "conduit.chatResumeServerIdentity.v1")
+            .flatMap(Self.normalizedChatResumeServerIdentity)
+            ?? defaults.string(forKey: "conduit.dashboardURL")
+                .flatMap(Self.normalizedChatResumeServerIdentity)
         chatResumeBehavior = self.chatResumeCoordinator.behavior
         defaultProfileName = ProfileAppearanceStore.loadDefaultName()
         profileAvatarURLs = ProfileAppearanceStore.loadAvatarURLs()
@@ -571,7 +607,14 @@ final class AppState: ObservableObject {
         defaults.set(activeSessionTitlesByProfile, forKey: activeSessionTitlesByProfileKey)
     }
 
+    private func cancelScheduledReconnect() {
+        reconnectTask?()
+        reconnectTask = nil
+        recoverySequence.clearQueuedReconnect()
+    }
+
     func setChatResumeBehavior(_ behavior: ChatResumeBehavior) {
+        cancelScheduledReconnect()
         chatResumeCoordinator.setBehavior(behavior)
         recoverySequence.cancel()
         chatResumeBehavior = chatResumeCoordinator.behavior
@@ -595,6 +638,7 @@ final class AppState: ObservableObject {
     }
 
     func cancelChatResumeRestoration() {
+        cancelScheduledReconnect()
         chatResumeCoordinator.cancelRestoration()
         recoverySequence.cancel()
         chatResumeRestorationRequest = nil
@@ -608,13 +652,15 @@ final class AppState: ObservableObject {
 
     @discardableResult
     func prepareChatResumeForConnection(to baseURL: String) -> Bool {
-        guard let identity = normalizedChatResumeServerIdentity(baseURL) else { return false }
+        guard let identity = Self.normalizedChatResumeServerIdentity(baseURL) else { return false }
         let previousIdentity = defaults.string(forKey: chatResumeServerIdentityKey)
-            ?? defaults.string(forKey: dashboardURLKey).flatMap(normalizedChatResumeServerIdentity)
+            .flatMap(Self.normalizedChatResumeServerIdentity)
+            ?? initialChatResumeServerIdentity
         defaults.set(identity, forKey: chatResumeServerIdentityKey)
         guard let previousIdentity, previousIdentity != identity else { return false }
 
         chatResumeCoordinator.clearResumeState()
+        cancelScheduledReconnect()
         recoverySequence.cancel()
         chatResumeRestorationRequest = nil
         invalidateReconciliation()
@@ -636,11 +682,13 @@ final class AppState: ObservableObject {
         pinnedSessionIDs = []
         defaults.removeObject(forKey: activeSessionTitlesByProfileKey)
         defaults.removeObject(forKey: pinnedSessionIDsByProfileKey)
+        defaults.removeObject(forKey: reviewSummaryCacheKey)
+        defaults.removeObject(forKey: knownProfilesKey)
         clearSessionPresentationCache()
         return true
     }
 
-    private func normalizedChatResumeServerIdentity(_ baseURL: String) -> String? {
+    private static func normalizedChatResumeServerIdentity(_ baseURL: String) -> String? {
         guard let normalized = try? ConnectionURLPolicy.normalizedBaseURL(baseURL),
               var components = URLComponents(string: normalized),
               let scheme = components.scheme?.lowercased(),
@@ -838,8 +886,7 @@ final class AppState: ObservableObject {
         }
         prepareChatResumeForConnection(to: normalizedBaseURL)
         rememberDashboardURL(conn.baseUrl)
-        reconnectTask?.cancel()
-        reconnectTask = nil
+        cancelScheduledReconnect()
         isConnecting = true
         showLogin = false
         connection = conn
@@ -891,11 +938,10 @@ final class AppState: ObservableObject {
 
     func disconnect() {
         chatResumeCoordinator.clearResumeState()
+        cancelScheduledReconnect()
         recoverySequence.cancel()
         chatResumeRestorationRequest = nil
         invalidateReconciliation()
-        reconnectTask?.cancel()
-        reconnectTask = nil
         scenePhaseTask?.cancel()
         client?.disconnect()
         isConnected = false
@@ -994,8 +1040,6 @@ final class AppState: ObservableObject {
         cancelChatResumeRestoration()
         invalidateReconciliation()
         cancelSecondaryProfileTitleRecovery()
-        reconnectTask?.cancel()
-        reconnectTask = nil
         client?.disconnect()
         client = nil
         isConnected = false
@@ -1197,6 +1241,7 @@ final class AppState: ObservableObject {
     func settleReconciliationAndPublish(_ token: UUID) -> Bool {
         guard settleReconciliation(token) else { return false }
         publishChatResumeRestorationIfReady()
+        cancelScheduledReconnect()
         recoverySequence.complete()
         return true
     }
@@ -1560,7 +1605,7 @@ final class AppState: ObservableObject {
         )
     }
 
-    private func scheduleReconnect(
+    func scheduleReconnect(
         immediately: Bool = false,
         purpose: ChatResumeSyncPurpose = .preserveCurrent
     ) {
@@ -1573,7 +1618,7 @@ final class AppState: ObservableObject {
         case .keepExisting:
             return
         case .replace:
-            reconnectTask?.cancel()
+            reconnectTask?()
             reconnectTask = nil
         case .schedule:
             break
@@ -1581,25 +1626,29 @@ final class AppState: ObservableObject {
         let delay = immediately ? 0.1 : min(5.0, pow(2.0, Double(reconnectAttempts)))
         if !immediately { reconnectAttempts += 1 }
 
-        reconnectTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-            guard !Task.isCancelled, let self else { return }
+        reconnectTask = reconnectScheduler(delay) { [weak self] in
+            guard let self else { return }
             self.reconnectTask = nil
             let purpose = self.recoverySequence.takeQueuedReconnectPurpose()
                 ?? .preserveCurrent
-            await self.reconnect(purpose: purpose)
+            if let scheduledReconnectExecutor = self.scheduledReconnectExecutor {
+                await scheduledReconnectExecutor(purpose)
+            } else {
+                await self.reconnectForRetry(purpose: purpose)
+            }
         }
     }
 
-    func reconnect(
-        purpose: ChatResumeSyncPurpose = .preserveCurrent
-    ) async {
+    func reconnect() async {
+        cancelChatResumeRestoration()
+        await reconnectForRetry(purpose: .preserveCurrent)
+    }
+
+    private func reconnectForRetry(purpose requestedPurpose: ChatResumeSyncPurpose) async {
         guard let savedConnection = connection else { return }
-        let purpose = beginChatResumeRecovery(purpose: purpose)
+        let purpose = beginChatResumeRecovery(purpose: requestedPurpose)
         if purpose == .automaticReturn, reconnectTask != nil {
-            reconnectTask?.cancel()
-            reconnectTask = nil
-            recoverySequence.clearQueuedReconnect()
+            cancelScheduledReconnect()
         }
         isConnecting = true
         turnState = .reconnecting
@@ -1690,11 +1739,11 @@ final class AppState: ObservableObject {
                         try await client.healthCheck()
                         await self.syncSession(purpose: .automaticReturn, using: token)
                     } catch {
-                        await self.reconnect(purpose: .automaticReturn)
+                        await self.reconnectForRetry(purpose: .automaticReturn)
                         self.settleReconciliation(token)
                     }
                 } else {
-                    await self.reconnect(purpose: .automaticReturn)
+                    await self.reconnectForRetry(purpose: .automaticReturn)
                     self.settleReconciliation(token)
                 }
             }
