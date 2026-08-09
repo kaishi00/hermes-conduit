@@ -102,18 +102,28 @@ final class ChatResumeStore {
     }
 
     func migrateSnapshot(from oldKey: ChatScrollSessionKey, to newKey: ChatScrollSessionKey) {
+        guard migrateSnapshotInPayload(from: oldKey, to: newKey) else { return }
+        persist()
+    }
+
+    func migrateSessionIdentity(from oldKey: ChatScrollSessionKey, to newKey: ChatScrollSessionKey) {
         guard oldKey.isValid,
               newKey.isValid,
-              oldKey != newKey,
-              let source = payload.snapshots.first(where: { $0.key == oldKey }) else {
-            return
+              oldKey.profile == newKey.profile,
+              oldKey != newKey else { return }
+
+        let migratedSnapshot = migrateSnapshotInPayload(from: oldKey, to: newKey)
+        let migratedLastSession: Bool
+        if payload.lastSessionIDsByProfile[oldKey.profile] == oldKey.sessionID {
+            payload.lastSessionIDsByProfile[oldKey.profile] = newKey.sessionID
+            migratedLastSession = true
+        } else {
+            migratedLastSession = false
         }
-        payload.snapshots.removeAll { $0.key == oldKey }
-        payload.snapshots.append(
-            StoredSnapshot(key: newKey, snapshot: source.snapshot, updatedAt: source.updatedAt)
-        )
-        payload.snapshots = Self.pruned(payload.snapshots)
-        persist()
+
+        if migratedSnapshot || migratedLastSession {
+            persist()
+        }
     }
 
     func clearResumeState() {
@@ -134,6 +144,25 @@ final class ChatResumeStore {
             lastSessionIDsByProfile: [:],
             snapshots: []
         )
+    }
+
+    @discardableResult
+    private func migrateSnapshotInPayload(
+        from oldKey: ChatScrollSessionKey,
+        to newKey: ChatScrollSessionKey
+    ) -> Bool {
+        guard oldKey.isValid,
+              newKey.isValid,
+              oldKey != newKey,
+              let source = payload.snapshots.first(where: { $0.key == oldKey }) else {
+            return false
+        }
+        payload.snapshots.removeAll { $0.key == oldKey }
+        payload.snapshots.append(
+            StoredSnapshot(key: newKey, snapshot: source.snapshot, updatedAt: source.updatedAt)
+        )
+        payload.snapshots = Self.pruned(payload.snapshots)
+        return true
     }
 
     private static func normalized(_ payload: Payload) -> Payload {

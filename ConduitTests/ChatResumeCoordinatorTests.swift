@@ -46,7 +46,7 @@ final class ChatResumeCoordinatorTests: XCTestCase {
         )
         let request = harness.coordinator.reconciliationSettled(sessionKey: key)!
 
-        harness.coordinator.cancelRestoration()
+        harness.coordinator.cancelViewportRestoration()
 
         XCTAssertFalse(harness.coordinator.isCurrent(generation: request.generation))
     }
@@ -226,7 +226,7 @@ final class ChatResumeCoordinatorTests: XCTestCase {
             purpose: .automaticReturn,
             currentSessionID: "stored-a"
         )
-        harness.coordinator.cancelRestoration()
+        harness.coordinator.cancelViewportRestoration()
         let recovery = harness.coordinator.selectTarget(
             in: catalog,
             profile: "default",

@@ -824,6 +824,13 @@ final class ChatScrollStateTests: XCTestCase {
         XCTAssertFalse(identity.areEquivalent("runtime-old", "different-session"))
     }
 
+    func testRenderedViewportSnapshotRejectsInvalidSessionScope() {
+        XCTAssertNil(ChatRenderedViewportSnapshot(
+            sessionKey: ChatScrollSessionKey(profile: "default", sessionID: "   "),
+            snapshot: .latest
+        ))
+    }
+
     func testEquivalentRawSessionIDsRemainSeparatedByProfile() {
         let identity = ChatScrollSessionIdentity(
             profile: "alpha",

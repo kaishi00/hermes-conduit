@@ -176,19 +176,27 @@ struct ChatView: View {
                     let followsLatestState = $followsLatest
                     let topVisibleChatIDState = $topVisibleChatID
                     let targetCacheState = $chatMessageScrollTargetCache
+                    let renderedSessionKeyState = $renderedScrollSessionKey
                     appState.installChatViewportSnapshotProvider(
                         id: viewportSnapshotProviderID,
-                        snapshot: {
+                        capture: {
+                            guard let sessionKey = renderedSessionKeyState.wrappedValue else {
+                                return nil
+                            }
                             let followsLatest = followsLatestState.wrappedValue
                             let target = targetCacheState.wrappedValue.targets.first {
                                 $0.semanticID == topVisibleChatIDState.wrappedValue
                             }
                             guard followsLatest || target != nil else { return nil }
-                            return ChatScrollSnapshot(
+                            let snapshot = ChatScrollSnapshot(
                                 anchorMessageID: followsLatest ? nil : target?.semanticID,
                                 followsLatest: followsLatest,
                                 anchorMetadata: followsLatest ? nil : target?.restorationMetadata,
                                 anchorSourceMessageID: followsLatest ? nil : target?.id
+                            )
+                            return ChatRenderedViewportSnapshot(
+                                sessionKey: sessionKey,
+                                snapshot: snapshot
                             )
                         }
                     )

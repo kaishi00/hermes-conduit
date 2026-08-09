@@ -140,6 +140,26 @@ final class ChatResumeStoreTests: XCTestCase {
         XCTAssertEqual(store.snapshot(for: canonical), canonicalSnapshot)
     }
 
+    func testSessionIdentityMigrationMovesLastSessionAndPreservesNewerCanonicalSnapshot() {
+        let (defaults, suite) = defaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = ChatResumeStore(defaults: defaults)
+        let runtime = ChatScrollSessionKey(profile: "default", sessionID: "runtime-a")
+        let canonical = ChatScrollSessionKey(profile: "default", sessionID: "stored-a")
+        let runtimeSnapshot = ChatScrollSnapshot(anchorMessageID: "runtime-anchor", followsLatest: false)
+        let canonicalSnapshot = ChatScrollSnapshot(anchorMessageID: "canonical-anchor", followsLatest: false)
+        store.setLastSessionID(runtime.sessionID, for: runtime.profile)
+        store.save(runtimeSnapshot, for: runtime, at: Date(timeIntervalSince1970: 100))
+        store.save(canonicalSnapshot, for: canonical, at: Date(timeIntervalSince1970: 200))
+
+        store.migrateSessionIdentity(from: runtime, to: canonical)
+
+        let restored = ChatResumeStore(defaults: defaults)
+        XCTAssertEqual(restored.lastSessionID(for: canonical.profile), canonical.sessionID)
+        XCTAssertNil(restored.snapshot(for: runtime))
+        XCTAssertEqual(restored.snapshot(for: canonical), canonicalSnapshot)
+    }
+
     func testEqualTimestampPruningUsesDeterministicKeyOrder() throws {
         let (defaults, suite) = defaults()
         defer { defaults.removePersistentDomain(forName: suite) }
