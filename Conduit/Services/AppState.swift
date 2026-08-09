@@ -1390,21 +1390,39 @@ final class AppState: ObservableObject {
               trimmedTitle != session.title,
               sessionMutationID == nil,
               sessionBelongsToProfile(session, profile: activeProfile),
-              let client else { return false }
+              let dashboardTicketBridge else { return false }
 
         let profile = activeProfile
         let knownIDs = [session.id] + session.alternateIds
-        let requestID = activeSessionId.flatMap { knownIDs.contains($0) ? $0 : nil } ?? session.id
+        let runtimeID = activeSessionId.flatMap { knownIDs.contains($0) ? $0 : nil }
         sessionMutationID = session.id
         defer { sessionMutationID = nil }
 
         do {
-            try await client.setSessionTitle(requestID, title: trimmedTitle)
-            guard profile == activeProfile, self.client === client else { return false }
+            var renamedViaRPC = false
+            if let runtimeID, let client {
+                do {
+                    try await client.setSessionTitle(runtimeID, title: trimmedTitle)
+                    guard profile == activeProfile, self.client === client else { return false }
+                    renamedViaRPC = true
+                } catch {
+                    guard profile == activeProfile, self.client === client else { return false }
+                }
+            }
+
+            if !renamedViaRPC {
+                _ = try await dashboardTicketBridge.requestJSON(
+                    path: dashboardPath("/api/sessions/\(encodedSessionID(session.id))", profile: profile),
+                    method: "PATCH",
+                    body: ["title": trimmedTitle]
+                )
+            }
+
+            guard profile == activeProfile else { return false }
             applyRecoveredSessionTitle(trimmedTitle, sessionIDs: knownIDs)
             return true
         } catch {
-            guard profile == activeProfile, self.client === client else { return false }
+            guard profile == activeProfile else { return false }
             errorMessage = "Could not rename this conversation: \(error.localizedDescription)"
             return false
         }
