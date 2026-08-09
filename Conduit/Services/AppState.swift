@@ -234,6 +234,8 @@ final class AppState: ObservableObject {
     /// profile's database. Keep a small, one-per-session recovery task for a
     /// secondary profile, then stand down as soon as Hermes has written one.
     private var secondaryProfileTitleRecoveryTasks: [String: Task<Void, Never>] = [:]
+    private var secondaryProfileTitleRecoveryTokens: [String: UUID] = [:]
+    private var secondaryProfileTitleRecoverySuppressedKeys = Set<String>()
     private var reconnectAttempts = 0
     private var connectedAt: Date?
     private var profileSessionCache: [String: [SessionSummary]] = [:]
@@ -1395,8 +1397,16 @@ final class AppState: ObservableObject {
         let profile = activeProfile
         let knownIDs = [session.id] + session.alternateIds
         let runtimeID = activeSessionId.flatMap { knownIDs.contains($0) ? $0 : nil }
+        let titleRecoveryTaskKeys = Set(knownIDs.filter { !$0.isEmpty }.map { "\(profile)|\($0)" })
+        secondaryProfileTitleRecoverySuppressedKeys.formUnion(titleRecoveryTaskKeys)
         sessionMutationID = session.id
-        defer { sessionMutationID = nil }
+        defer {
+            sessionMutationID = nil
+            secondaryProfileTitleRecoverySuppressedKeys.subtract(titleRecoveryTaskKeys)
+        }
+
+        await cancelSecondaryProfileTitleRecovery(profile: profile, sessionIDs: knownIDs)
+        guard profile == activeProfile else { return false }
 
         do {
             var renamedViaRPC = false
@@ -3302,6 +3312,20 @@ final class AppState: ObservableObject {
     private func cancelSecondaryProfileTitleRecovery() {
         secondaryProfileTitleRecoveryTasks.values.forEach { $0.cancel() }
         secondaryProfileTitleRecoveryTasks.removeAll()
+        secondaryProfileTitleRecoveryTokens.removeAll()
+    }
+
+    private func cancelSecondaryProfileTitleRecovery(
+        profile: String,
+        sessionIDs: [String]
+    ) async {
+        let taskKeys = Set(sessionIDs.filter { !$0.isEmpty }.map { "\(profile)|\($0)" })
+        let tasks = taskKeys.compactMap { taskKey -> Task<Void, Never>? in
+            secondaryProfileTitleRecoveryTokens.removeValue(forKey: taskKey)
+            return secondaryProfileTitleRecoveryTasks.removeValue(forKey: taskKey)
+        }
+        tasks.forEach { $0.cancel() }
+        for task in tasks { await task.value }
     }
 
     private func titleGenerationSettings(for profile: String) async -> TitleGenerationSettings? {
@@ -3369,9 +3393,17 @@ final class AppState: ObservableObject {
               !assistantMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
 
         let taskKey = "\(profile)|\(sessionId)"
-        guard secondaryProfileTitleRecoveryTasks[taskKey] == nil else { return }
+        guard !secondaryProfileTitleRecoverySuppressedKeys.contains(taskKey),
+              secondaryProfileTitleRecoveryTasks[taskKey] == nil else { return }
+        let token = UUID()
+        secondaryProfileTitleRecoveryTokens[taskKey] = token
         secondaryProfileTitleRecoveryTasks[taskKey] = Task { [weak self, weak client] in
-            defer { self?.secondaryProfileTitleRecoveryTasks.removeValue(forKey: taskKey) }
+            defer {
+                if self?.secondaryProfileTitleRecoveryTokens[taskKey] == token {
+                    self?.secondaryProfileTitleRecoveryTasks.removeValue(forKey: taskKey)
+                    self?.secondaryProfileTitleRecoveryTokens.removeValue(forKey: taskKey)
+                }
+            }
             do {
                 try await Task.sleep(nanoseconds: 2_500_000_000)
             } catch {
@@ -3380,12 +3412,17 @@ final class AppState: ObservableObject {
             guard let self,
                   let client,
                   !Task.isCancelled,
+                  self.secondaryProfileTitleRecoveryTokens[taskKey] == token,
                   self.activeProfile == profile,
                   self.client === client else { return }
 
             do {
                 // Give Hermes' built-in asynchronous title task precedence.
                 if let existingTitle = try await client.sessionTitle(sessionId) {
+                    guard !Task.isCancelled,
+                          self.secondaryProfileTitleRecoveryTokens[taskKey] == token,
+                          self.activeProfile == profile,
+                          self.client === client else { return }
                     self.applyRecoveredSessionTitle(existingTitle, sessionIDs: [sessionId])
                     titleGenerationLog.notice(
                         "Used Hermes title for \(sessionId, privacy: .public) in \(profile, privacy: .public)"
@@ -3395,6 +3432,7 @@ final class AppState: ObservableObject {
                 guard let settings = await self.titleGenerationSettings(for: profile),
                       settings.enabled,
                       !Task.isCancelled,
+                      self.secondaryProfileTitleRecoveryTokens[taskKey] == token,
                       self.activeProfile == profile,
                       self.client === client else { return }
                 guard let generated = try await client.generateSessionTitle(
@@ -3402,10 +3440,17 @@ final class AppState: ObservableObject {
                     userMessage: userMessage,
                     assistantMessage: assistantMessage,
                     language: settings.language
-                ), let title = Self.normalizedGeneratedSessionTitle(generated), !Task.isCancelled,
-                      self.activeProfile == profile, self.client === client else { return }
+                ), let title = Self.normalizedGeneratedSessionTitle(generated),
+                      !Task.isCancelled,
+                      self.secondaryProfileTitleRecoveryTokens[taskKey] == token,
+                      self.activeProfile == profile,
+                      self.client === client else { return }
 
                 try await client.setSessionTitle(sessionId, title: title)
+                guard !Task.isCancelled,
+                      self.secondaryProfileTitleRecoveryTokens[taskKey] == token,
+                      self.activeProfile == profile,
+                      self.client === client else { return }
                 self.applyRecoveredSessionTitle(title, sessionIDs: [sessionId])
                 titleGenerationLog.notice(
                     "Generated title for \(sessionId, privacy: .public) in \(profile, privacy: .public)"
