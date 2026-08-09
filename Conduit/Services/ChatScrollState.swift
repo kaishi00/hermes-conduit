@@ -602,6 +602,17 @@ struct ChatScrollSnapshot: Codable, Equatable {
     static let latest = ChatScrollSnapshot(anchorMessageID: nil, followsLatest: true)
 }
 
+struct ChatRenderedViewportSnapshot: Equatable {
+    let sessionKey: ChatScrollSessionKey
+    let snapshot: ChatScrollSnapshot
+
+    init?(sessionKey: ChatScrollSessionKey, snapshot: ChatScrollSnapshot) {
+        guard sessionKey.isValid else { return nil }
+        self.sessionKey = sessionKey
+        self.snapshot = snapshot
+    }
+}
+
 private struct DeterministicChatFingerprint {
     private var first: UInt64 = 14_695_981_039_346_656_037
     private var second: UInt64 = 7_809_847_782_465_536_322

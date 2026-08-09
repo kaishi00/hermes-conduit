@@ -324,6 +324,7 @@ final class AppStateChatResumeTests: XCTestCase {
         )
         let sessionA = session("stored-a")
         let sessionB = session("stored-b")
+        let keyA = ChatScrollSessionKey(profile: "default", sessionID: sessionA.id)
         let keyB = ChatScrollSessionKey(profile: "default", sessionID: sessionB.id)
         harness.appState.client = HermesClient(
             connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
@@ -332,7 +333,10 @@ final class AppStateChatResumeTests: XCTestCase {
         harness.appState.sessions = [sessionA, sessionB]
         harness.appState.activeSessionId = sessionA.id
         harness.appState.installChatViewportSnapshotProvider(id: UUID()) {
-            ChatScrollSnapshot(anchorMessageID: "old-anchor", followsLatest: false)
+            ChatRenderedViewportSnapshot(
+                sessionKey: keyA,
+                snapshot: ChatScrollSnapshot(anchorMessageID: "old-anchor", followsLatest: false)
+            )
         }
 
         let openedEmptySession = await harness.appState.openSession(sessionB.id)
@@ -389,7 +393,9 @@ final class AppStateChatResumeTests: XCTestCase {
         harness.appState.sessions = [active]
         harness.appState.activeSessionId = active.id
         harness.appState.messages = oldMessages
-        harness.appState.installChatViewportSnapshotProvider(id: UUID()) { captured }
+        harness.appState.installChatViewportSnapshotProvider(id: UUID()) {
+            ChatRenderedViewportSnapshot(sessionKey: key, snapshot: captured)
+        }
 
         await harness.appState.refreshActiveSession()
         let generation = harness.appState.chatViewportTransitionGeneration
@@ -571,7 +577,7 @@ final class AppStateChatResumeTests: XCTestCase {
         await second.value
     }
 
-    func testCancelledAutomaticReconnectIgnoresLateSignInFailureAndRestoresConnectionState() async {
+    func testViewportCancellationLetsReconnectFinishWithAuthoritativeSignInFailure() async {
         let gate = ControlledSuspension()
         let harness = makeHarness(
             lifecycleOperations: ChatResumeLifecycleOperations(
@@ -595,16 +601,99 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(harness.appState.turnState, .reconnecting)
 
         harness.appState.cancelChatResumeRestoration()
-        XCTAssertFalse(harness.appState.isConnecting)
-        XCTAssertEqual(harness.appState.turnState, .idle)
+        XCTAssertTrue(harness.appState.isConnecting)
+        XCTAssertEqual(harness.appState.turnState, .reconnecting)
         gate.resume()
         await reconnect.value
 
-        XCTAssertFalse(harness.appState.showLogin)
-        XCTAssertEqual(harness.appState.connection?.ticket, "saved-ticket")
-        XCTAssertTrue(harness.appState.client === originalClient)
+        XCTAssertTrue(harness.appState.showLogin)
+        XCTAssertNil(harness.appState.connection)
+        XCTAssertNil(harness.appState.client)
+        XCTAssertFalse(harness.appState.isConnecting)
         XCTAssertEqual(harness.appState.turnState, .idle)
         XCTAssertTrue(harness.appState.composerIsEnabled)
+    }
+
+    func testViewportCancellationDuringInitialConnectHandsOffToOnePreserveCurrentRetry() async {
+        let connectGate = ControlledSuspension()
+        let scheduler = ControlledReconnectScheduler()
+        let reconnectSpy = ReconnectExecutionSpy()
+        let harness = makeHarness(
+            reconnectScheduler: scheduler.schedule(after:operation:),
+            reconnectExecutor: { purpose in
+                reconnectSpy.purposes.append(purpose)
+            },
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                connectClient: { _ in
+                    await connectGate.suspend()
+                    throw ControlledLifecycleError.failed
+                }
+            )
+        )
+        let connection = HermesConnection(
+            baseUrl: "https://one.example",
+            ticket: "initial-ticket"
+        )
+
+        let connect = Task { @MainActor in
+            await harness.appState.connect(with: connection)
+        }
+        await connectGate.waitUntilSuspended()
+        XCTAssertTrue(harness.appState.isConnecting)
+
+        harness.appState.cancelChatResumeRestoration()
+        XCTAssertTrue(harness.appState.isConnecting)
+
+        connectGate.resume()
+        await connect.value
+        XCTAssertFalse(harness.appState.isConnecting)
+        XCTAssertEqual(harness.appState.turnState, .reconnecting)
+
+        await scheduler.runAll()
+        XCTAssertEqual(scheduler.cancelledCount, 0)
+        XCTAssertEqual(reconnectSpy.purposes, [.preserveCurrent])
+    }
+
+    func testBehaviorChangeDuringReconnectHandsOffToOnePreserveCurrentRetry() async {
+        let connectGate = ControlledSuspension()
+        let scheduler = ControlledReconnectScheduler()
+        let reconnectSpy = ReconnectExecutionSpy()
+        let harness = makeHarness(
+            reconnectScheduler: scheduler.schedule(after:operation:),
+            reconnectExecutor: { purpose in
+                reconnectSpy.purposes.append(purpose)
+            },
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                connectClient: { _ in
+                    await connectGate.suspend()
+                    throw ControlledLifecycleError.failed
+                },
+                mintTicket: { _ in "refreshed-ticket" }
+            )
+        )
+        harness.appState.connection = HermesConnection(
+            baseUrl: "https://one.example",
+            ticket: "saved-ticket"
+        )
+
+        let reconnect = Task { @MainActor in
+            await harness.appState.reconnectForRetry(purpose: .automaticReturn)
+        }
+        await connectGate.waitUntilSuspended()
+        XCTAssertTrue(harness.appState.isConnecting)
+        XCTAssertEqual(harness.appState.turnState, .reconnecting)
+
+        harness.appState.setChatResumeBehavior(.latestActivity)
+        XCTAssertTrue(harness.appState.isConnecting)
+
+        connectGate.resume()
+        await reconnect.value
+        XCTAssertFalse(harness.appState.isConnecting)
+        XCTAssertEqual(harness.appState.turnState, .reconnecting)
+
+        await scheduler.runAll()
+        XCTAssertEqual(scheduler.cancelledCount, 0)
+        XCTAssertEqual(reconnectSpy.purposes, [.preserveCurrent])
     }
 
     func testUnchangedRefreshReleasesViewportTransitionForLaterWrites() async {
@@ -634,7 +723,13 @@ final class AppStateChatResumeTests: XCTestCase {
         harness.appState.activeSessionId = active.id
         harness.appState.messages = messages
         harness.appState.installChatViewportSnapshotProvider(id: UUID()) {
-            ChatScrollSnapshot(anchorMessageID: "anchor-before-refresh", followsLatest: false)
+            ChatRenderedViewportSnapshot(
+                sessionKey: key,
+                snapshot: ChatScrollSnapshot(
+                    anchorMessageID: "anchor-before-refresh",
+                    followsLatest: false
+                )
+            )
         }
 
         await harness.appState.refreshActiveSession()
@@ -674,7 +769,9 @@ final class AppStateChatResumeTests: XCTestCase {
         harness.appState.sessions = [active]
         harness.appState.activeSessionId = active.id
         harness.appState.messages = oldMessages
-        harness.appState.installChatViewportSnapshotProvider(id: UUID()) { captured }
+        harness.appState.installChatViewportSnapshotProvider(id: UUID()) {
+            ChatRenderedViewportSnapshot(sessionKey: key, snapshot: captured)
+        }
 
         await harness.appState.refreshActiveSession()
         let generation = harness.appState.chatViewportTransitionGeneration
@@ -734,7 +831,9 @@ final class AppStateChatResumeTests: XCTestCase {
         harness.appState.messages = [
             ChatMessage(id: "old", role: .assistant, content: "Old", timestamp: "1")
         ]
-        harness.appState.installChatViewportSnapshotProvider(id: UUID()) { captured }
+        harness.appState.installChatViewportSnapshotProvider(id: UUID()) {
+            ChatRenderedViewportSnapshot(sessionKey: keyA, snapshot: captured)
+        }
 
         let opening = Task { @MainActor in
             await harness.appState.openSession(sessionB.id)
@@ -751,6 +850,7 @@ final class AppStateChatResumeTests: XCTestCase {
         harness.appState.flushChatResumeViewport()
 
         XCTAssertEqual(harness.store.snapshot(for: keyA), captured)
+        XCTAssertNil(harness.store.snapshot(for: keyB))
         gate.resume()
         let opened = await opening.value
         XCTAssertTrue(opened)
@@ -780,7 +880,13 @@ final class AppStateChatResumeTests: XCTestCase {
             ChatMessage(id: "assistant", role: .assistant, content: "Answer", timestamp: "2")
         ]
         harness.appState.installChatViewportSnapshotProvider(id: UUID()) {
-            ChatScrollSnapshot(anchorMessageID: "anchor-before-branch", followsLatest: false)
+            ChatRenderedViewportSnapshot(
+                sessionKey: key,
+                snapshot: ChatScrollSnapshot(
+                    anchorMessageID: "anchor-before-branch",
+                    followsLatest: false
+                )
+            )
         }
 
         await harness.appState.branchFromAssistantMessage("assistant")
@@ -826,7 +932,13 @@ final class AppStateChatResumeTests: XCTestCase {
         harness.appState.activeSessionId = parent.id
         harness.appState.messages = parentMessages
         harness.appState.installChatViewportSnapshotProvider(id: UUID()) {
-            ChatScrollSnapshot(anchorMessageID: "anchor-before-branch", followsLatest: false)
+            ChatRenderedViewportSnapshot(
+                sessionKey: key,
+                snapshot: ChatScrollSnapshot(
+                    anchorMessageID: "anchor-before-branch",
+                    followsLatest: false
+                )
+            )
         }
 
         let branch = Task { @MainActor in
@@ -941,7 +1053,9 @@ final class AppStateChatResumeTests: XCTestCase {
         )
         harness.appState.sessions = [sessionA, sessionB]
         harness.appState.activeSessionId = sessionA.id
-        harness.appState.installChatViewportSnapshotProvider(id: UUID()) { exactAnchor }
+        harness.appState.installChatViewportSnapshotProvider(id: UUID()) {
+            ChatRenderedViewportSnapshot(sessionKey: keyA, snapshot: exactAnchor)
+        }
 
         harness.appState.beginExplicitChatViewportTransition()
         harness.appState.activeSessionId = sessionB.id
@@ -950,6 +1064,30 @@ final class AppStateChatResumeTests: XCTestCase {
         harness.appState.flushChatResumeViewport()
 
         XCTAssertEqual(harness.store.snapshot(for: keyA), exactAnchor)
+    }
+
+    func testPreTransitionCaptureUsesRenderedKeyDuringModelOverlap() {
+        let harness = makeHarness()
+        let sessionA = session("stored-a")
+        let sessionB = session("stored-b")
+        let keyA = ChatScrollSessionKey(profile: "default", sessionID: sessionA.id)
+        let keyB = ChatScrollSessionKey(profile: "default", sessionID: sessionB.id)
+        let renderedSnapshot = ChatScrollSnapshot(
+            anchorMessageID: "rendered-a-anchor",
+            followsLatest: false
+        )
+        harness.appState.sessions = [sessionA, sessionB]
+        harness.appState.activeSessionId = sessionA.id
+        harness.appState.installChatViewportSnapshotProvider(id: UUID()) {
+            ChatRenderedViewportSnapshot(sessionKey: keyA, snapshot: renderedSnapshot)
+        }
+
+        harness.appState.activeSessionId = sessionB.id
+        harness.appState.beginExplicitChatViewportTransition()
+        harness.appState.flushChatResumeViewport()
+
+        XCTAssertEqual(harness.store.snapshot(for: keyA), renderedSnapshot)
+        XCTAssertNil(harness.store.snapshot(for: keyB))
     }
 
     func testStaleReconciliationCannotPublishNewerAutomaticRestoration() {
@@ -1095,7 +1233,7 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertTrue(reconnectSpy.purposes.isEmpty)
     }
 
-    func testExplicitCancellationCancelsQueuedReconnectExecution() async {
+    func testViewportCancellationPreservesQueuedReconnectAsPreserveCurrent() async {
         let scheduler = ControlledReconnectScheduler()
         let reconnectSpy = ReconnectExecutionSpy()
         let harness = makeHarness(
@@ -1113,8 +1251,8 @@ final class AppStateChatResumeTests: XCTestCase {
         harness.appState.cancelChatResumeRestoration()
         await scheduler.runAll()
 
-        XCTAssertEqual(scheduler.cancelledCount, 1)
-        XCTAssertTrue(reconnectSpy.purposes.isEmpty)
+        XCTAssertEqual(scheduler.cancelledCount, 0)
+        XCTAssertEqual(reconnectSpy.purposes, [.preserveCurrent])
     }
 
     func testPublicReconnectOverridesPendingAutomaticIntent() async {
@@ -1329,6 +1467,61 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(recreated.activeSessionId, "default-session")
     }
 
+    func testCanonicalIdentityRefreshMigratesRuntimePersistenceBeforeColdRestore() {
+        let harness = makeHarness()
+        let runtimeKey = ChatScrollSessionKey(profile: "default", sessionID: "runtime-a")
+        let canonicalKey = ChatScrollSessionKey(profile: "default", sessionID: "stored-a")
+        let snapshot = ChatScrollSnapshot(
+            anchorMessageID: "runtime-anchor",
+            followsLatest: false,
+            anchorMetadata: .init(fingerprint: "runtime-fingerprint", duplicateCount: 2),
+            anchorSourceMessageID: "runtime-source"
+        )
+        harness.store.setLastSessionID(runtimeKey.sessionID, for: runtimeKey.profile)
+        harness.store.save(snapshot, for: runtimeKey, at: Date(timeIntervalSince1970: 100))
+        harness.store.flush()
+
+        let migrationStore = ChatResumeStore(defaults: harness.defaults)
+        let migrationState = AppState(
+            defaults: harness.defaults,
+            chatResumeCoordinator: ChatResumeCoordinator(store: migrationStore),
+            loadSavedConnection: false,
+            clearSessionPresentationCache: {}
+        )
+        XCTAssertEqual(migrationState.activeSessionId, runtimeKey.sessionID)
+
+        let canonicalSession = session(
+            canonicalKey.sessionID,
+            alternateIDs: [runtimeKey.sessionID]
+        )
+        migrationState.sessions = [canonicalSession]
+
+        let restoredStore = ChatResumeStore(defaults: harness.defaults)
+        let restoredCoordinator = ChatResumeCoordinator(store: restoredStore)
+        let restoredState = AppState(
+            defaults: harness.defaults,
+            chatResumeCoordinator: restoredCoordinator,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: {}
+        )
+        XCTAssertEqual(restoredState.activeSessionId, canonicalKey.sessionID)
+        XCTAssertNil(restoredStore.snapshot(for: runtimeKey))
+        XCTAssertEqual(restoredStore.snapshot(for: canonicalKey), snapshot)
+
+        restoredState.sessions = [canonicalSession]
+        let token = restoredState.beginReconciliation()
+        let selected = restoredState.selectChatResumeTarget(
+            in: [canonicalSession],
+            profile: canonicalKey.profile,
+            purpose: .automaticReturn,
+            currentSessionID: restoredState.activeSessionId
+        )
+        XCTAssertEqual(selected?.id, canonicalKey.sessionID)
+        XCTAssertTrue(restoredState.settleReconciliationAndPublish(token))
+        XCTAssertEqual(restoredState.chatResumeRestorationRequest?.sessionKey, canonicalKey)
+        XCTAssertEqual(restoredState.chatResumeRestorationRequest?.destination, .snapshot(snapshot))
+    }
+
     func testAcceptedBranchCancelsPendingRestoration() {
         let harness = makeHarness()
         let request = publishRestoration(in: harness)
@@ -1358,6 +1551,167 @@ final class AppStateChatResumeTests: XCTestCase {
 
         assertRestorationCancelled(request, in: harness)
         XCTAssertNil(harness.appState.activeSessionId)
+    }
+
+    func testAcceptedSendInvalidatesRestorationBeforePromptRPCResumes() async {
+        let rpcGate = ControlledSuspension()
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                sendPrompt: { _, _, _ in await rpcGate.suspend() }
+            )
+        )
+        let request = publishRestoration(in: harness)
+        installComposerClient(in: harness)
+
+        let submission = Task { @MainActor in
+            await harness.appState.submitComposer(text: "Hello")
+        }
+        await rpcGate.waitUntilSuspended()
+
+        assertRestorationCancelled(request, in: harness)
+        rpcGate.resume()
+        let submitted = await submission.value
+        XCTAssertTrue(submitted)
+    }
+
+    func testAcceptedSteerInvalidatesRestorationBeforeSteerRPCResumes() async {
+        let rpcGate = ControlledSuspension()
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                steer: { _, _, _ in await rpcGate.suspend() }
+            )
+        )
+        let active = session("stored-a")
+        let request = publishRestoration(in: harness, session: active)
+        installComposerClient(in: harness)
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: true))
+
+        let submission = Task { @MainActor in
+            await harness.appState.submitComposer(text: "Adjust course")
+        }
+        await rpcGate.waitUntilSuspended()
+
+        assertRestorationCancelled(request, in: harness)
+        rpcGate.resume()
+        let submitted = await submission.value
+        XCTAssertTrue(submitted)
+    }
+
+    func testAcceptedRedirectOutcomesInvalidateRestorationBeforeRedirectRPCResumes() async {
+        for outcome in [SessionRedirectOutcome.redirected, .queued] {
+            let rpcGate = ControlledSuspension()
+            let harness = makeHarness(
+                lifecycleOperations: ChatResumeLifecycleOperations(
+                    redirect: { _, _, _ in
+                        await rpcGate.suspend()
+                        return outcome
+                    },
+                    setBusyInputMode: { _, _ in }
+                )
+            )
+            let active = session("stored-a")
+            installComposerClient(in: harness)
+            let changedMode = await harness.appState.setBusyInputMode(.interrupt)
+            XCTAssertTrue(changedMode)
+            let request = publishRestoration(in: harness, session: active)
+            harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: true))
+
+            let submission = Task { @MainActor in
+                await harness.appState.submitComposer(text: "Replace this")
+            }
+            await rpcGate.waitUntilSuspended()
+
+            assertRestorationCancelled(request, in: harness)
+            rpcGate.resume()
+            let submitted = await submission.value
+            XCTAssertTrue(submitted)
+        }
+    }
+
+    func testAcceptedSlashCommandInvalidatesRestorationBeforeSlashRPCResumes() async {
+        let rpcGate = ControlledSuspension()
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                executeSlash: { _, _, _ in
+                    await rpcGate.suspend()
+                    return .object(["type": .string("exec")])
+                }
+            )
+        )
+        let request = publishRestoration(in: harness)
+        installComposerClient(in: harness)
+
+        let submission = Task { @MainActor in
+            await harness.appState.submitComposer(text: "/status")
+        }
+        await rpcGate.waitUntilSuspended()
+
+        assertRestorationCancelled(request, in: harness)
+        rpcGate.resume()
+        let submitted = await submission.value
+        XCTAssertTrue(submitted)
+    }
+
+    func testLegacyInterruptAndSendKeepsRestorationInvalidAcrossBothRPCs() async {
+        let interruptGate = ControlledSuspension()
+        let sendGate = ControlledSuspension()
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                sendPrompt: { _, _, _ in await sendGate.suspend() },
+                redirect: { _, _, _ in
+                    throw RpcError(
+                        code: 4010,
+                        message: "Gateway does not support active-turn redirect"
+                    )
+                },
+                interrupt: { _, _ in await interruptGate.suspend() },
+                setBusyInputMode: { _, _ in }
+            )
+        )
+        let active = session("stored-a")
+        installComposerClient(in: harness)
+        let changedMode = await harness.appState.setBusyInputMode(.interrupt)
+        XCTAssertTrue(changedMode)
+        let request = publishRestoration(in: harness, session: active)
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: true))
+
+        let submission = Task { @MainActor in
+            await harness.appState.submitComposer(text: "Use the legacy path")
+        }
+        await interruptGate.waitUntilSuspended()
+        assertRestorationCancelled(request, in: harness)
+
+        interruptGate.resume()
+        await sendGate.waitUntilSuspended()
+        assertRestorationCancelled(request, in: harness)
+
+        sendGate.resume()
+        let submitted = await submission.value
+        XCTAssertTrue(submitted)
+    }
+
+    func testRejectedBusyAttachmentPreservesPendingRestoration() async {
+        let harness = makeHarness()
+        let active = session("stored-a")
+        let request = publishRestoration(in: harness, session: active)
+        installComposerClient(in: harness)
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: true))
+        let attachment = Attachment(
+            id: "notes",
+            name: "notes.txt",
+            uri: "file:///tmp/notes.txt",
+            mimeType: "text/plain",
+            kind: .document
+        )
+
+        let submitted = await harness.appState.submitComposer(
+            text: "Not accepted yet",
+            attachments: [attachment]
+        )
+
+        XCTAssertFalse(submitted)
+        XCTAssertEqual(harness.appState.chatResumeRestorationRequest, request)
+        XCTAssertTrue(harness.coordinator.isCurrent(generation: request.generation))
     }
 
     private func makeHarness(
@@ -1425,6 +1779,25 @@ final class AppStateChatResumeTests: XCTestCase {
         return harness.appState.chatResumeRestorationRequest!
     }
 
+    private func installComposerClient(
+        in harness: (
+            appState: AppState,
+            coordinator: ChatResumeCoordinator,
+            store: ChatResumeStore,
+            recoverySequence: ChatResumeRecoverySequence,
+            cacheClearSpy: CacheClearSpy,
+            defaults: UserDefaults,
+            suite: String
+        )
+    ) {
+        let connection = HermesConnection(
+            baseUrl: "https://one.example",
+            ticket: "ticket"
+        )
+        harness.appState.connection = connection
+        harness.appState.client = HermesClient(connection: connection, profile: "default")
+    }
+
     private func assertRestorationCancelled(
         _ request: ChatResumeRestorationRequest,
         in harness: (
@@ -1447,10 +1820,10 @@ final class AppStateChatResumeTests: XCTestCase {
         )
     }
 
-    private func session(_ id: String) -> SessionSummary {
+    private func session(_ id: String, alternateIDs: [String] = []) -> SessionSummary {
         SessionSummary(
             id: id,
-            alternateIds: [],
+            alternateIds: alternateIDs,
             title: id,
             model: "Hermes",
             updatedLabel: "now",

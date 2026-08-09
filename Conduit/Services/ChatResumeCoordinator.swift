@@ -46,7 +46,7 @@ final class ChatResumeCoordinator {
     }
 
     func setBehavior(_ behavior: ChatResumeBehavior) {
-        cancelRestoration()
+        cancelViewportRestoration()
         store.setBehavior(behavior)
     }
 
@@ -110,6 +110,10 @@ final class ChatResumeCoordinator {
         store.migrateSnapshot(from: oldKey, to: newKey)
     }
 
+    func migrateSessionIdentity(from oldKey: ChatScrollSessionKey, to newKey: ChatScrollSessionKey) {
+        store.migrateSessionIdentity(from: oldKey, to: newKey)
+    }
+
     func freezeViewport() {
         viewportIsFrozen = true
         pendingFlushTask?.cancel()
@@ -160,7 +164,7 @@ final class ChatResumeCoordinator {
         return request
     }
 
-    func cancelRestoration(
+    func cancelViewportRestoration(
         invalidateAutomaticWork: Bool = true,
         keepViewportFrozen: Bool = false
     ) {
@@ -190,7 +194,7 @@ final class ChatResumeCoordinator {
     }
 
     func clearResumeState() {
-        cancelRestoration()
+        cancelViewportRestoration()
         store.clearResumeState()
     }
 
