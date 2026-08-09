@@ -711,7 +711,8 @@ private struct ChatSettingsDetail: View {
             save: save,
             showsNavigationTitle: false,
             optionOverrides: ["display.personality": ["", "helpful", "concise", "technical", "creative", "teacher", "kawaii", "catgirl", "pirate", "shakespeare", "surfer", "noir", "uwu", "philosopher", "hype"] + options.personalities],
-            leadingSection: AnyView(ResponseBehaviorSettings(initialMode: busyInputMode, save: persistBusyInputMode))
+            leadingSection: AnyView(ResponseBehaviorSettings(initialMode: busyInputMode, save: persistBusyInputMode)),
+            trailingSection: AnyView(DeviceHapticsSettings())
         )
         .navigationTitle("Chat")
         .task { options = await loadOptions() }
@@ -723,10 +724,28 @@ private struct ChatSettingsDetail: View {
         .init(key: "display.show_reasoning", label: "Show thinking", help: "Show collapsible thinking blocks when provided.", control: .toggle(defaultValue: true)),
         .init(key: "display.tool_progress", label: "Tool cards", help: "Show tool calls and expandable details in conversations.", control: .textToggle(onValue: "all", offValue: "off", defaultValue: true)),
         .init(key: "display.expand_tools", label: "Keep tool cards expanded", help: "Keep completed tool details open by default.", control: .toggle(defaultValue: false)),
-        .init(key: "conduit.haptics", label: "Haptic feedback", help: "Vibration feedback on button taps and key actions.", control: .toggle(defaultValue: true)),
         .init(key: "display.memory_notifications", label: "Self-improvement updates", help: "Choose whether Conduit follows Hermes, always shows, or never shows maintenance updates.", control: .labeledOptions([(value: "default", label: "Use Hermes default"), (value: "on", label: "Always show"), (value: "off", label: "Never show")], defaultValue: "default")),
         .init(key: "agent.image_input_mode", label: "Image attachments", help: "How Hermes supplies images to a model.", control: .options(["auto", "native", "text"], defaultValue: "auto")),
     ]
+}
+
+private struct DeviceHapticsSettings: View {
+    @AppStorage(Haptics.preferenceKey) private var enabled = true
+
+    var body: some View {
+        ConduitSettingsSection(
+            title: "Haptic feedback",
+            symbol: "waveform",
+            tint: .conduitAura
+        ) {
+            Text("Conduit-generated vibration feedback for app actions. iOS system controls can still provide their own feedback.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Toggle("Haptic feedback", isOn: $enabled)
+                .labelsHidden()
+                .tint(.conduitAccent)
+        }
+    }
 }
 
 private struct ResponseBehaviorSettings: View {

@@ -8,58 +8,83 @@
 
 import SwiftUI
 
+@MainActor
 enum Haptics {
+    static let preferenceKey = "conduit.haptics"
+
+    enum Event: Equatable {
+        case light
+        case medium
+        case rigid
+        case success
+        case error
+        case warning
+        case selection
+    }
+
     private static let lightGenerator = UIImpactFeedbackGenerator(style: .light)
     private static let mediumGenerator = UIImpactFeedbackGenerator(style: .medium)
     private static let rigidGenerator = UIImpactFeedbackGenerator(style: .rigid)
     private static let notificationGenerator = UINotificationFeedbackGenerator()
     private static let selectionGenerator = UISelectionFeedbackGenerator()
 
+#if DEBUG
+    static var testEmissionHandler: ((Event) -> Void)?
+    static var testSuppressesHardware = false
+#endif
+
     static var enabled: Bool {
-        get { UserDefaults.standard.object(forKey: "conduit.haptics") as? Bool ?? true }
-        set { UserDefaults.standard.set(newValue, forKey: "conduit.haptics") }
+        get { UserDefaults.standard.object(forKey: preferenceKey) as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: preferenceKey) }
     }
 
     static func light() {
-        guard enabled else { return }
-        lightGenerator.impactOccurred()
-        lightGenerator.prepare()
+        emit(.light) {
+            lightGenerator.impactOccurred()
+            lightGenerator.prepare()
+        }
     }
 
     static func medium() {
-        guard enabled else { return }
-        mediumGenerator.impactOccurred()
-        mediumGenerator.prepare()
+        emit(.medium) {
+            mediumGenerator.impactOccurred()
+            mediumGenerator.prepare()
+        }
     }
 
     static func rigid() {
-        guard enabled else { return }
-        rigidGenerator.impactOccurred()
-        rigidGenerator.prepare()
+        emit(.rigid) {
+            rigidGenerator.impactOccurred()
+            rigidGenerator.prepare()
+        }
     }
 
     static func success() {
-        guard enabled else { return }
-        notificationGenerator.notificationOccurred(.success)
-        notificationGenerator.prepare()
+        emit(.success) {
+            notificationGenerator.notificationOccurred(.success)
+            notificationGenerator.prepare()
+        }
     }
 
     static func error() {
-        guard enabled else { return }
-        notificationGenerator.notificationOccurred(.error)
-        notificationGenerator.prepare()
+        emit(.error) {
+            notificationGenerator.notificationOccurred(.error)
+            notificationGenerator.prepare()
+        }
     }
 
     static func warning() {
-        guard enabled else { return }
-        notificationGenerator.notificationOccurred(.warning)
-        notificationGenerator.prepare()
+        emit(.warning) {
+            notificationGenerator.notificationOccurred(.warning)
+            notificationGenerator.prepare()
+        }
     }
 
     static func selection() {
-        guard enabled else { return }
-        selectionGenerator.selectionChanged()
-        selectionGenerator.prepare()
+        emit(.selection) {
+            selectionGenerator.selectionChanged()
+            selectionGenerator.prepare()
+        }
     }
 
     static func prepare() {
@@ -68,5 +93,14 @@ enum Haptics {
         rigidGenerator.prepare()
         notificationGenerator.prepare()
         selectionGenerator.prepare()
+    }
+
+    private static func emit(_ event: Event, action: () -> Void) {
+        guard enabled else { return }
+#if DEBUG
+        testEmissionHandler?(event)
+        guard !testSuppressesHardware else { return }
+#endif
+        action()
     }
 }
