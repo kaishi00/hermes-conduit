@@ -166,6 +166,29 @@ final class ChatResumeCoordinatorTests: XCTestCase {
         XCTAssertNil(harness.coordinator.reconciliationSettled(sessionKey: key))
     }
 
+    func testRecoverySyncPreservesCurrentWhileAutomaticReturnUsesPreference() {
+        let harness = makeHarness()
+        harness.coordinator.setBehavior(.latestActivity)
+        let catalog = [session("stored-b"), session("stored-a")]
+
+        let automatic = harness.coordinator.selectTarget(
+            in: catalog,
+            profile: "default",
+            purpose: .automaticReturn,
+            currentSessionID: "stored-a"
+        )
+        harness.coordinator.cancelRestoration()
+        let recovery = harness.coordinator.selectTarget(
+            in: catalog,
+            profile: "default",
+            purpose: .preserveCurrent,
+            currentSessionID: "stored-a"
+        )
+
+        XCTAssertEqual(automatic?.id, "stored-b")
+        XCTAssertEqual(recovery?.id, "stored-a")
+    }
+
     func testChangingBehaviorCancelsCurrentRequestBeforeSavingPreference() {
         let harness = makeHarness()
         let key = ChatScrollSessionKey(profile: "default", sessionID: "stored-a")

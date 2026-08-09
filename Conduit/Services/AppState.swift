@@ -58,6 +58,8 @@ final class AppState: ObservableObject {
     @Published var messages: [ChatMessage] = []
     @Published private(set) var activeSessionTitle = "New conversation"
     @Published private(set) var isChatRefreshing = false
+    @Published private(set) var chatResumeBehavior: ChatResumeBehavior = .continueWhereLeftOff
+    @Published private(set) var chatResumeRestorationRequest: ChatResumeRestorationRequest?
     /// Keeps the current transcript visible while a notification destination is
     /// being prepared, so the chat never appears to jump to an empty canvas.
     @Published private(set) var isOpeningNotificationSession = false
@@ -338,9 +340,6 @@ final class AppState: ObservableObject {
     // MARK: - Persistence
 
     private let defaults = UserDefaults.standard
-    private let activeSessionKey = "conduit.activeSessionId"
-    private let activeSessionTitleKey = "conduit.activeSessionTitle"
-    private let activeSessionIDsByProfileKey = "conduit.activeSessionIdsByProfile.v1"
     private let activeSessionTitlesByProfileKey = "conduit.activeSessionTitlesByProfile.v1"
     private let pinnedSessionIDsByProfileKey = "conduit.pinnedSessionIdsByProfile.v1"
     private let activeProfileKey = "conduit.activeProfile"
@@ -351,9 +350,9 @@ final class AppState: ObservableObject {
     private let sessionFilterOrderKey = "conduit.sessionFilterOrder.v1"
     private let reviewSummaryCacheKey = "conduit.reviewSummaryCache.v1"
     private let knownProfilesKey = "conduit.knownProfiles.v1"
-    private var activeSessionIDsByProfile: [String: String] = [:]
     private var activeSessionTitlesByProfile: [String: String] = [:]
     private var pinnedSessionIDsByProfile: [String: [String]] = [:]
+    private let chatResumeCoordinator = ChatResumeCoordinator(store: ChatResumeStore())
 
     private func mergeCachedReviews(into history: [ChatMessage], sessionId: String) -> [ChatMessage] {
         let records = cachedReviews().filter { $0.profile == activeProfile && $0.sessionId == sessionId }
@@ -394,6 +393,7 @@ final class AppState: ObservableObject {
     }
 
     init() {
+        chatResumeBehavior = chatResumeCoordinator.behavior
         defaultProfileName = ProfileAppearanceStore.loadDefaultName()
         profileAvatarURLs = ProfileAppearanceStore.loadAvatarURLs()
         appIconChoice = UIApplication.shared.alternateIconName == AppIconChoice.light.alternateIconName ? .light : .dark
@@ -410,32 +410,18 @@ final class AppState: ObservableObject {
         activeProfile = defaults.string(forKey: activeProfileKey)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? "default"
         if activeProfile.isEmpty { activeProfile = "default" }
-        activeSessionIDsByProfile = defaults.dictionary(forKey: activeSessionIDsByProfileKey) as? [String: String] ?? [:]
         activeSessionTitlesByProfile = defaults.dictionary(forKey: activeSessionTitlesByProfileKey) as? [String: String] ?? [:]
         if let data = defaults.data(forKey: pinnedSessionIDsByProfileKey),
            let stored = try? JSONDecoder().decode([String: [String]].self, from: data) {
             pinnedSessionIDsByProfile = stored
         }
-        migrateLegacyActiveSessionStateIfNeeded()
         restoreActiveSessionState(for: activeProfile)
         restorePinnedSessions(for: activeProfile)
         loadSavedConnection()
     }
 
-    /// Session IDs are only meaningful within their Hermes profile. The first
-    /// release stored one global "last session", which could make a profile
-    /// switch try to restore a conversation owned by another profile.
-    private func migrateLegacyActiveSessionStateIfNeeded() {
-        guard activeSessionIDsByProfile[activeProfile] == nil,
-              let legacySessionID = defaults.string(forKey: activeSessionKey),
-              !legacySessionID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        activeSessionIDsByProfile[activeProfile] = legacySessionID
-        activeSessionTitlesByProfile[activeProfile] = defaults.string(forKey: activeSessionTitleKey) ?? "New conversation"
-        persistActiveSessionState()
-    }
-
     private func restoreActiveSessionState(for profile: String) {
-        activeSessionId = activeSessionIDsByProfile[profile]
+        activeSessionId = chatResumeCoordinator.lastSessionID(for: profile)
         activeSessionTitle = activeSessionTitlesByProfile[profile] ?? "New conversation"
     }
 
@@ -488,26 +474,52 @@ final class AppState: ObservableObject {
             identity: activeChatScrollSessionIdentity,
             catalog: sessions + cronSessions
         ) {
-            activeSessionIDsByProfile[activeProfile] = persistedID
+            chatResumeCoordinator.rememberSessionID(persistedID, for: activeProfile)
         } else {
-            activeSessionIDsByProfile.removeValue(forKey: activeProfile)
+            chatResumeCoordinator.rememberSessionID(nil, for: activeProfile)
         }
         if let title {
             activeSessionTitle = title
             activeSessionTitlesByProfile[activeProfile] = title
         }
-        persistActiveSessionState()
+        persistActiveSessionTitles()
     }
 
     private func setActiveSessionTitle(_ title: String) {
         activeSessionTitle = title
         activeSessionTitlesByProfile[activeProfile] = title
-        persistActiveSessionState()
+        persistActiveSessionTitles()
     }
 
-    private func persistActiveSessionState() {
-        defaults.set(activeSessionIDsByProfile, forKey: activeSessionIDsByProfileKey)
+    private func persistActiveSessionTitles() {
         defaults.set(activeSessionTitlesByProfile, forKey: activeSessionTitlesByProfileKey)
+    }
+
+    func setChatResumeBehavior(_ behavior: ChatResumeBehavior) {
+        chatResumeCoordinator.setBehavior(behavior)
+        chatResumeBehavior = chatResumeCoordinator.behavior
+        chatResumeRestorationRequest = nil
+    }
+
+    func recordChatViewport(_ snapshot: ChatScrollSnapshot, for key: ChatScrollSessionKey) {
+        chatResumeCoordinator.recordViewport(snapshot, for: key)
+    }
+
+    func flushChatResumeViewport() {
+        chatResumeCoordinator.flush()
+    }
+
+    func completeChatResumeRestoration(generation: UInt64) {
+        chatResumeCoordinator.completeRestoration(generation: generation)
+        if chatResumeRestorationRequest?.generation == generation,
+           !chatResumeCoordinator.isCurrent(generation: generation) {
+            chatResumeRestorationRequest = nil
+        }
+    }
+
+    func cancelChatResumeRestoration() {
+        chatResumeCoordinator.cancelRestoration()
+        chatResumeRestorationRequest = nil
     }
 
     private func refreshActiveChatScrollSessionIdentity(
@@ -668,6 +680,23 @@ final class AppState: ObservableObject {
     }
 
     func connect(with conn: HermesConnection, profile: String = "default") async {
+        await connect(
+            with: conn,
+            profile: profile,
+            syncPurpose: .automaticReturn,
+            cancelsResumeRestoration: true
+        )
+    }
+
+    private func connect(
+        with conn: HermesConnection,
+        profile: String,
+        syncPurpose: ChatResumeSyncPurpose,
+        cancelsResumeRestoration: Bool
+    ) async {
+        if cancelsResumeRestoration {
+            cancelChatResumeRestoration()
+        }
         guard (try? ConnectionURLPolicy.normalizedBaseURL(conn.baseUrl)) != nil else {
             isConnecting = false
             isConnected = false
@@ -709,7 +738,7 @@ final class AppState: ObservableObject {
             KeychainHelper.saveConnection(conn)
 
             await loadProfiles()
-            await syncSession()
+            await syncSession(purpose: syncPurpose, using: nil)
             await loadBusyInputMode(using: client)
             await loadProfileDisplayPreferences()
             Task { await loadSlashCommands() }
@@ -723,11 +752,13 @@ final class AppState: ObservableObject {
             // sign-in screen. A transient gateway or WebKit startup failure
             // must retain the saved dashboard session and retry.
             showLogin = false
-            scheduleReconnect()
+            scheduleReconnect(purpose: syncPurpose)
         }
     }
 
     func disconnect() {
+        chatResumeCoordinator.clearResumeState()
+        chatResumeRestorationRequest = nil
         invalidateReconciliation()
         reconnectTask?.cancel()
         reconnectTask = nil
@@ -756,12 +787,8 @@ final class AppState: ObservableObject {
         setActiveSessionState(id: nil, title: "New conversation")
         clearStreamingText()
         turnState = .idle
-        defaults.removeObject(forKey: activeSessionKey)
-        defaults.removeObject(forKey: activeSessionTitleKey)
-        defaults.removeObject(forKey: activeSessionIDsByProfileKey)
         defaults.removeObject(forKey: activeSessionTitlesByProfileKey)
         defaults.removeObject(forKey: pinnedSessionIDsByProfileKey)
-        activeSessionIDsByProfile = [:]
         activeSessionTitlesByProfile = [:]
         pinnedSessionIDsByProfile = [:]
         defaults.removeObject(forKey: activeProfileKey)
@@ -830,6 +857,7 @@ final class AppState: ObservableObject {
     }
 
     private func requireSignIn(message: String) {
+        cancelChatResumeRestoration()
         invalidateReconciliation()
         cancelSecondaryProfileTitleRecovery()
         reconnectTask?.cancel()
@@ -855,10 +883,13 @@ final class AppState: ObservableObject {
     /// The only entry point for cold start, foreground refresh, reconnect, and
     /// manual refresh. It never derives liveness from transcript shape.
     func syncSession() async {
-        await syncSession(using: nil)
+        await syncSession(purpose: .preserveCurrent, using: nil)
     }
 
-    private func syncSession(using existingReconciliationToken: UUID?) async {
+    private func syncSession(
+        purpose: ChatResumeSyncPurpose,
+        using existingReconciliationToken: UUID?
+    ) async {
         guard let client else {
             if let existingReconciliationToken {
                 settleReconciliation(existingReconciliationToken)
@@ -869,6 +900,7 @@ final class AppState: ObservableObject {
         // the previously active/newest session. Check both before and after
         // the catalog fetch because a notification tap can arrive mid-launch.
         guard PushNotificationService.shared.pendingTarget == nil else {
+            cancelChatResumeRestoration()
             if let existingReconciliationToken {
                 settleReconciliation(existingReconciliationToken)
             }
@@ -896,20 +928,20 @@ final class AppState: ObservableObject {
                 return
             }
             guard PushNotificationService.shared.pendingTarget == nil else {
+                cancelChatResumeRestoration()
                 settleReconciliation(token)
                 return
             }
             sessions = allSessions.filter { $0.source != .cron }
             cronSessions = allSessions.filter { $0.source == .cron }
 
-            // Keep scheduled-job runs eligible for restoration. They are
-            // intentionally excluded from the ordinary Sessions tab, but a
-            // notification may have just opened one and it must not be
-            // replaced by the newest normal conversation on the next recovery.
-            let savedSession = activeSessionId.flatMap { savedId in
-                allSessions.first { $0.id == savedId || $0.alternateIds.contains(savedId) }
-            }
-            if let target = savedSession ?? sessions.first(where: { $0.source == .chat }) ?? sessions.first {
+            let target = chatResumeCoordinator.selectTarget(
+                in: allSessions,
+                profile: profile,
+                purpose: purpose,
+                currentSessionID: activeSessionId
+            )
+            if let target {
                 await reconcile(
                     sessionId: target.id,
                     using: client,
@@ -917,7 +949,12 @@ final class AppState: ObservableObject {
                     acceptedSessionIDs: Set([target.id] + target.alternateIds)
                 )
             } else {
-                await createAndReconcileSession(using: client, profile: profile, token: token)
+                await createAndReconcileSession(
+                    using: client,
+                    profile: profile,
+                    token: token,
+                    resumePurpose: purpose
+                )
             }
         } catch {
             guard token == reconciliationToken,
@@ -965,6 +1002,14 @@ final class AppState: ObservableObject {
             isReconciling: false,
             advanceSettledRevision: wasReconciling
         )
+    }
+
+    private func publishChatResumeRestorationIfReady() {
+        guard let sessionKey = activeChatScrollSessionIdentity.canonicalSessionKey,
+              let request = chatResumeCoordinator.reconciliationSettled(sessionKey: sessionKey) else {
+            return
+        }
+        chatResumeRestorationRequest = request
     }
 
     @discardableResult
@@ -1061,6 +1106,7 @@ final class AppState: ObservableObject {
                 : []
             bufferedEvents.forEach(applyStreamEvent)
             settleReconciliation(token)
+            publishChatResumeRestorationIfReady()
             return true
 
         } catch {
@@ -1082,6 +1128,7 @@ final class AppState: ObservableObject {
         using client: HermesClient,
         profile: String,
         token: UUID,
+        resumePurpose: ChatResumeSyncPurpose = .preserveCurrent,
         cwd: String? = nil
     ) async {
         do {
@@ -1146,6 +1193,14 @@ final class AppState: ObservableObject {
                 updated.isActive = false
                 return updated
             }
+            if resumePurpose == .automaticReturn {
+                _ = chatResumeCoordinator.selectTarget(
+                    in: [summary],
+                    profile: profile,
+                    purpose: resumePurpose,
+                    currentSessionID: runtimeSessionID
+                )
+            }
             Task { [weak self] in
                 guard let self,
                       self.activeProfile == profile,
@@ -1154,6 +1209,7 @@ final class AppState: ObservableObject {
                 await self.loadSessions()
             }
             settleReconciliation(token)
+            publishChatResumeRestorationIfReady()
         } catch {
             guard token == reconciliationToken,
                   profile == activeProfile,
@@ -1304,7 +1360,10 @@ final class AppState: ObservableObject {
         scheduleReconnect(immediately: wasRunning)
     }
 
-    private func scheduleReconnect(immediately: Bool = false) {
+    private func scheduleReconnect(
+        immediately: Bool = false,
+        purpose: ChatResumeSyncPurpose = .preserveCurrent
+    ) {
         guard reconnectTask == nil, connection != nil else { return }
         let delay = immediately ? 0.1 : min(5.0, pow(2.0, Double(reconnectAttempts)))
         if !immediately { reconnectAttempts += 1 }
@@ -1313,11 +1372,13 @@ final class AppState: ObservableObject {
             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
             guard !Task.isCancelled, let self else { return }
             self.reconnectTask = nil
-            await self.reconnect()
+            await self.reconnect(purpose: purpose)
         }
     }
 
-    func reconnect() async {
+    func reconnect(
+        purpose: ChatResumeSyncPurpose = .preserveCurrent
+    ) async {
         guard let savedConnection = connection else { return }
         isConnecting = true
         turnState = .reconnecting
@@ -1344,7 +1405,9 @@ final class AppState: ObservableObject {
                         dashboardTicketBridge?.reload()
                         await connect(
                             with: HermesConnection(baseUrl: credentials.baseURL, ticket: ticket),
-                            profile: activeProfile
+                            profile: activeProfile,
+                            syncPurpose: purpose,
+                            cancelsResumeRestoration: false
                         )
                         return
                     } catch {
@@ -1358,7 +1421,7 @@ final class AppState: ObservableObject {
                 isConnecting = false
                 turnState = .reconnecting
                 errorMessage = "Failed to refresh the dashboard session: \(error.localizedDescription)"
-                scheduleReconnect()
+                scheduleReconnect(purpose: purpose)
             }
             return
         }
@@ -1375,7 +1438,7 @@ final class AppState: ObservableObject {
             isConnecting = false
             reconnectAttempts = 0
             connectedAt = Date()
-            await syncSession()
+            await syncSession(purpose: purpose, using: nil)
             await loadBusyInputMode(using: client)
             await loadProfiles()
             await loadProfileDisplayPreferences()
@@ -1385,7 +1448,7 @@ final class AppState: ObservableObject {
             isConnected = false
             isConnecting = false
             turnState = .reconnecting
-            scheduleReconnect()
+            scheduleReconnect(purpose: purpose)
         }
     }
 
@@ -1404,13 +1467,13 @@ final class AppState: ObservableObject {
                 if let client = self.client, client.isConnected {
                     do {
                         try await client.healthCheck()
-                        await self.syncSession(using: token)
+                        await self.syncSession(purpose: .automaticReturn, using: token)
                     } catch {
-                        await self.reconnect()
+                        await self.reconnect(purpose: .automaticReturn)
                         self.settleReconciliation(token)
                     }
                 } else {
-                    await self.reconnect()
+                    await self.reconnect(purpose: .automaticReturn)
                     self.settleReconciliation(token)
                 }
             }
@@ -1427,6 +1490,7 @@ final class AppState: ObservableObject {
             scenePhaseTask?.cancel()
 
         case .inactive:
+            chatResumeCoordinator.freezeViewport()
             voiceConversationController.setForegroundActive(false)
             break
 
@@ -1622,6 +1686,7 @@ final class AppState: ObservableObject {
 
     @discardableResult
     func openSession(_ sessionId: String) async -> Bool {
+        cancelChatResumeRestoration()
         guard let client else { return false }
         if let session = (sessions + cronSessions).first(where: {
             $0.id == sessionId || $0.alternateIds.contains(sessionId)
@@ -1653,6 +1718,7 @@ final class AppState: ObservableObject {
     /// Routes a notification to its originating profile/session without
     /// allowing the ordinary cold-start session restoration to win first.
     func openNotificationTarget(_ target: ConduitNotificationTarget) async -> Bool {
+        cancelChatResumeRestoration()
         guard connection != nil else { return false }
         isOpeningNotificationSession = true
         defer { isOpeningNotificationSession = false }
@@ -1692,6 +1758,7 @@ final class AppState: ObservableObject {
     }
 
     func createNewSession(cwd: String? = nil) async {
+        cancelChatResumeRestoration()
         guard !isProfileSwitching, isConnected, !isConnecting, let client else {
             if isProfileSwitching || isConnecting {
                 errorMessage = "Wait for the workspace switch to finish before starting a conversation."
@@ -2640,6 +2707,7 @@ final class AppState: ObservableObject {
         let target = profile.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !target.isEmpty, target != activeProfile, let savedConnection = connection else { return }
         guard !isProfileSwitching else { return }
+        cancelChatResumeRestoration()
         cacheMessagePresentation()
         cancelSecondaryProfileTitleRecovery()
 
