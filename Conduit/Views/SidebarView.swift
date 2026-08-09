@@ -336,16 +336,18 @@ struct SessionList: View {
         )) {
             TextField("Conversation title", text: $sessionRenameTitle)
             Button("Rename") {
-                guard let session = sessionPendingRename else { return }
-                let title = sessionRenameTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !title.isEmpty, title != session.title else { return }
+                guard let session = sessionPendingRename,
+                      let title = SessionRenameOperation.normalizedTitle(
+                          sessionRenameTitle,
+                          currentTitle: session.title
+                      ) else { return }
                 sessionPendingRename = nil
                 Task { await appState.renameSession(session, to: title) }
             }
-            .disabled(
-                sessionRenameTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                    || sessionRenameTitle.trimmingCharacters(in: .whitespacesAndNewlines) == (sessionPendingRename?.title ?? "")
-            )
+            .disabled(SessionRenameOperation.normalizedTitle(
+                sessionRenameTitle,
+                currentTitle: sessionPendingRename?.title ?? ""
+            ) == nil)
             Button("Cancel", role: .cancel) { sessionPendingRename = nil }
         }
 

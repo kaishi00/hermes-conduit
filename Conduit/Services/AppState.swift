@@ -233,9 +233,7 @@ final class AppState: ObservableObject {
     /// Hermes currently starts its automatic title task against the launch
     /// profile's database. Keep a small, one-per-session recovery task for a
     /// secondary profile, then stand down as soon as Hermes has written one.
-    private var secondaryProfileTitleRecoveryTasks: [String: Task<Void, Never>] = [:]
-    private var secondaryProfileTitleRecoveryTokens: [String: UUID] = [:]
-    private var secondaryProfileTitleRecoverySuppressedKeys = Set<String>()
+    private let sessionTitleRecoveryTracker = SessionTitleRecoveryTracker()
     private var reconnectAttempts = 0
     private var connectedAt: Date?
     private var profileSessionCache: [String: [SessionSummary]] = [:]
@@ -1387,53 +1385,71 @@ final class AppState: ObservableObject {
     }
     @discardableResult
     func renameSession(_ session: SessionSummary, to title: String) async -> Bool {
-        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedTitle.isEmpty,
-              trimmedTitle != session.title,
+        guard let trimmedTitle = SessionRenameOperation.normalizedTitle(
+            title,
+            currentTitle: session.title
+        ),
               sessionMutationID == nil,
               sessionBelongsToProfile(session, profile: activeProfile),
               let dashboardTicketBridge else { return false }
 
         let profile = activeProfile
         let knownIDs = [session.id] + session.alternateIds
-        let runtimeID = activeSessionId.flatMap { knownIDs.contains($0) ? $0 : nil }
         let titleRecoveryTaskKeys = Set(knownIDs.filter { !$0.isEmpty }.map { "\(profile)|\($0)" })
-        secondaryProfileTitleRecoverySuppressedKeys.formUnion(titleRecoveryTaskKeys)
+        sessionTitleRecoveryTracker.suppress(titleRecoveryTaskKeys)
         sessionMutationID = session.id
         defer {
             sessionMutationID = nil
-            secondaryProfileTitleRecoverySuppressedKeys.subtract(titleRecoveryTaskKeys)
+            sessionTitleRecoveryTracker.unsuppress(titleRecoveryTaskKeys)
         }
 
-        await cancelSecondaryProfileTitleRecovery(profile: profile, sessionIDs: knownIDs)
+        await sessionTitleRecoveryTracker.cancel(titleRecoveryTaskKeys)
         guard profile == activeProfile else { return false }
 
-        do {
-            var renamedViaRPC = false
-            if let runtimeID, let client {
-                do {
-                    try await client.setSessionTitle(runtimeID, title: trimmedTitle)
-                    guard profile == activeProfile, self.client === client else { return false }
-                    renamedViaRPC = true
-                } catch {
-                    guard profile == activeProfile, self.client === client else { return false }
+        let activeClient = client
+        let runtimeRenameExpected = activeClient != nil
+            && activeSessionId.map { knownIDs.contains($0) } == true
+        let operations = SessionRenameOperation.Operations(
+            renameRuntime: activeClient.map { client in
+                { [weak self, weak client] sessionID, title in
+                    guard let self, let client else { throw CancellationError() }
+                    try await client.setSessionTitle(sessionID, title: title)
+                    guard profile == self.activeProfile, self.client === client else {
+                        throw CancellationError()
+                    }
                 }
-            }
-
-            if !renamedViaRPC {
+            },
+            renameStored: { [weak self, weak dashboardTicketBridge] sessionID, title in
+                guard let self, let dashboardTicketBridge,
+                      profile == self.activeProfile,
+                      !runtimeRenameExpected || self.client === activeClient else {
+                    throw CancellationError()
+                }
                 _ = try await dashboardTicketBridge.requestJSON(
-                    path: dashboardPath("/api/sessions/\(encodedSessionID(session.id))", profile: profile),
+                    path: self.dashboardPath(
+                        "/api/sessions/\(self.encodedSessionID(sessionID))",
+                        profile: profile
+                    ),
                     method: "PATCH",
-                    body: ["title": trimmedTitle]
+                    body: ["title": title]
                 )
             }
+        )
 
-            guard profile == activeProfile else { return false }
-            applyRecoveredSessionTitle(trimmedTitle, sessionIDs: knownIDs)
+        do {
+            guard let result = try await SessionRenameOperation.perform(
+                session: session,
+                activeSessionID: activeSessionId,
+                title: trimmedTitle,
+                operations: operations
+            ), profile == activeProfile else { return false }
+            applyRecoveredSessionTitle(result.title, sessionIDs: result.sessionIDs)
             return true
+        } catch is CancellationError {
+            return false
         } catch {
             guard profile == activeProfile else { return false }
-            errorMessage = "Could not rename this conversation: \(error.localizedDescription)"
+            errorMessage = SessionRenameOperation.failureMessage(error)
             return false
         }
     }
@@ -3310,9 +3326,7 @@ final class AppState: ObservableObject {
     // MARK: - Secondary profile title recovery
 
     private func cancelSecondaryProfileTitleRecovery() {
-        secondaryProfileTitleRecoveryTasks.values.forEach { $0.cancel() }
-        secondaryProfileTitleRecoveryTasks.removeAll()
-        secondaryProfileTitleRecoveryTokens.removeAll()
+        sessionTitleRecoveryTracker.cancelAll()
     }
 
     private func cancelSecondaryProfileTitleRecovery(
@@ -3320,12 +3334,7 @@ final class AppState: ObservableObject {
         sessionIDs: [String]
     ) async {
         let taskKeys = Set(sessionIDs.filter { !$0.isEmpty }.map { "\(profile)|\($0)" })
-        let tasks = taskKeys.compactMap { taskKey -> Task<Void, Never>? in
-            secondaryProfileTitleRecoveryTokens.removeValue(forKey: taskKey)
-            return secondaryProfileTitleRecoveryTasks.removeValue(forKey: taskKey)
-        }
-        tasks.forEach { $0.cancel() }
-        for task in tasks { await task.value }
+        await sessionTitleRecoveryTracker.cancel(taskKeys)
     }
 
     private func titleGenerationSettings(for profile: String) async -> TitleGenerationSettings? {
@@ -3393,16 +3402,12 @@ final class AppState: ObservableObject {
               !assistantMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
 
         let taskKey = "\(profile)|\(sessionId)"
-        guard !secondaryProfileTitleRecoverySuppressedKeys.contains(taskKey),
-              secondaryProfileTitleRecoveryTasks[taskKey] == nil else { return }
+        guard !sessionTitleRecoveryTracker.isSuppressed(taskKey),
+              !sessionTitleRecoveryTracker.hasTask(for: taskKey) else { return }
         let token = UUID()
-        secondaryProfileTitleRecoveryTokens[taskKey] = token
-        secondaryProfileTitleRecoveryTasks[taskKey] = Task { [weak self, weak client] in
+        let task = Task { [weak self, weak client] in
             defer {
-                if self?.secondaryProfileTitleRecoveryTokens[taskKey] == token {
-                    self?.secondaryProfileTitleRecoveryTasks.removeValue(forKey: taskKey)
-                    self?.secondaryProfileTitleRecoveryTokens.removeValue(forKey: taskKey)
-                }
+                self?.sessionTitleRecoveryTracker.finish(token, for: taskKey)
             }
             do {
                 try await Task.sleep(nanoseconds: 2_500_000_000)
@@ -3412,7 +3417,7 @@ final class AppState: ObservableObject {
             guard let self,
                   let client,
                   !Task.isCancelled,
-                  self.secondaryProfileTitleRecoveryTokens[taskKey] == token,
+                  self.sessionTitleRecoveryTracker.isCurrent(token, for: taskKey),
                   self.activeProfile == profile,
                   self.client === client else { return }
 
@@ -3420,7 +3425,7 @@ final class AppState: ObservableObject {
                 // Give Hermes' built-in asynchronous title task precedence.
                 if let existingTitle = try await client.sessionTitle(sessionId) {
                     guard !Task.isCancelled,
-                          self.secondaryProfileTitleRecoveryTokens[taskKey] == token,
+                          self.sessionTitleRecoveryTracker.isCurrent(token, for: taskKey),
                           self.activeProfile == profile,
                           self.client === client else { return }
                     self.applyRecoveredSessionTitle(existingTitle, sessionIDs: [sessionId])
@@ -3432,7 +3437,7 @@ final class AppState: ObservableObject {
                 guard let settings = await self.titleGenerationSettings(for: profile),
                       settings.enabled,
                       !Task.isCancelled,
-                      self.secondaryProfileTitleRecoveryTokens[taskKey] == token,
+                      self.sessionTitleRecoveryTracker.isCurrent(token, for: taskKey),
                       self.activeProfile == profile,
                       self.client === client else { return }
                 guard let generated = try await client.generateSessionTitle(
@@ -3442,13 +3447,13 @@ final class AppState: ObservableObject {
                     language: settings.language
                 ), let title = Self.normalizedGeneratedSessionTitle(generated),
                       !Task.isCancelled,
-                      self.secondaryProfileTitleRecoveryTokens[taskKey] == token,
+                      self.sessionTitleRecoveryTracker.isCurrent(token, for: taskKey),
                       self.activeProfile == profile,
                       self.client === client else { return }
 
                 try await client.setSessionTitle(sessionId, title: title)
                 guard !Task.isCancelled,
-                      self.secondaryProfileTitleRecoveryTokens[taskKey] == token,
+                      self.sessionTitleRecoveryTracker.isCurrent(token, for: taskKey),
                       self.activeProfile == profile,
                       self.client === client else { return }
                 self.applyRecoveredSessionTitle(title, sessionIDs: [sessionId])
@@ -3463,6 +3468,7 @@ final class AppState: ObservableObject {
                 )
             }
         }
+        sessionTitleRecoveryTracker.register(task, token: token, for: taskKey)
     }
 
     static func normalizedGeneratedSessionTitle(_ value: String) -> String? {
@@ -3488,18 +3494,18 @@ final class AppState: ObservableObject {
     }
 
     private func applyRecoveredSessionTitle(_ title: String, sessionIDs: [String]) {
+        let result = SessionRenameOperation.Result(title: title, sessionIDs: sessionIDs)
         let titleSessionIDs = Set(sessionIDs.filter { !$0.isEmpty })
         guard !titleSessionIDs.isEmpty else { return }
         var matchesActiveSession = activeSessionId.map { titleSessionIDs.contains($0) } ?? false
         func updated(_ session: SessionSummary) -> SessionSummary {
-            let summaryIDs = Set([session.id] + session.alternateIds)
-            guard !summaryIDs.isDisjoint(with: titleSessionIDs) else { return session }
-            if let activeSessionId, summaryIDs.contains(activeSessionId) {
+            let updated = result.updating(session)
+            guard updated != session else { return session }
+            if let activeSessionId,
+               Set([session.id] + session.alternateIds).contains(activeSessionId) {
                 matchesActiveSession = true
             }
-            var copy = session
-            copy.title = title
-            return copy
+            return updated
         }
         sessions = sessions.map(updated)
         cronSessions = cronSessions.map(updated)
@@ -3512,7 +3518,7 @@ final class AppState: ObservableObject {
     private func handleStreamEvent(_ event: StreamEvent) {
         if case .sessionTitle(let runtimeSessionId, let storedSessionId, let title) = event {
             let taskKey = "\(activeProfile)|\(runtimeSessionId)"
-            secondaryProfileTitleRecoveryTasks[taskKey]?.cancel()
+            sessionTitleRecoveryTracker.cancel(taskKey)
             applyRecoveredSessionTitle(
                 title,
                 sessionIDs: [runtimeSessionId, storedSessionId]
