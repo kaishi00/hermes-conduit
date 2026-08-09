@@ -89,19 +89,16 @@ final class ChatScrollStateTests: XCTestCase {
         let compactedTargets = ChatMessageScrollTargets.make(for: [
             ChatMessage(id: "stored-second", role: .assistant, content: "Repeated", timestamp: "stored")
         ])
-        let key = ChatScrollSessionKey(profile: "default", sessionID: "session")
         let snapshot = ChatScrollSnapshot(
             anchorMessageID: originalTargets[0].semanticID,
             followsLatest: false,
             anchorMetadata: originalTargets[0].restorationMetadata
         )
-        var store = ChatScrollStateStore()
-        store.save(snapshot, for: key)
 
         XCTAssertEqual(originalTargets[0].semanticID, compactedTargets[0].semanticID)
         XCTAssertEqual(
-            store.restoration(
-                for: key,
+            ChatResumeViewportResolver.destination(
+                for: snapshot,
                 availableTargets: ChatScrollTargetAvailability(targets: compactedTargets)
             ),
             .latest
@@ -117,21 +114,18 @@ final class ChatScrollStateTests: XCTestCase {
             ChatMessage(id: "stored-first", role: .assistant, content: "Repeated", timestamp: "stored"),
             ChatMessage(id: "stored-second", role: .assistant, content: "Repeated", timestamp: "stored later")
         ])
-        let key = ChatScrollSessionKey(profile: "default", sessionID: "session")
         let snapshot = ChatScrollSnapshot(
             anchorMessageID: liveTargets[0].semanticID,
             followsLatest: false,
             anchorMetadata: liveTargets[0].restorationMetadata
         )
-        var store = ChatScrollStateStore()
-        store.save(snapshot, for: key)
 
         XCTAssertEqual(
-            store.restoration(
-                for: key,
+            ChatResumeViewportResolver.destination(
+                for: snapshot,
                 availableTargets: ChatScrollTargetAvailability(targets: storedTargets)
             ),
-            snapshot
+            .anchor(storedTargets[0].semanticID)
         )
     }
 
@@ -139,18 +133,15 @@ final class ChatScrollStateTests: XCTestCase {
         let target = ChatMessageScrollTargets.make(for: [
             ChatMessage(id: "live", role: .assistant, content: "Repeated", timestamp: "now")
         ])[0]
-        let key = ChatScrollSessionKey(profile: "default", sessionID: "session")
         let snapshot = ChatScrollSnapshot(
             anchorMessageID: target.semanticID,
             followsLatest: false,
             anchorMetadata: target.restorationMetadata
         )
-        var store = ChatScrollStateStore()
-        store.save(snapshot, for: key)
 
         XCTAssertEqual(
-            store.restoration(
-                for: key,
+            ChatResumeViewportResolver.destination(
+                for: snapshot,
                 availableTargets: ChatScrollTargetAvailability(targets: [])
             ),
             .latest
@@ -454,16 +445,16 @@ final class ChatScrollStateTests: XCTestCase {
         XCTAssertTrue(ChatMessageScrollUpdatePolicy.shouldReassertLatest(
             after: update,
             followsLatest: true,
-            hasPendingNonLatestRestoration: false,
+            hasPendingRestoration: false,
             hasNotificationHandoff: false
         ))
     }
 
-    func testLatestReassertionYieldsToPendingNonLatestRestoration() {
+    func testLatestReassertionYieldsToPendingRestoration() {
         XCTAssertFalse(ChatMessageScrollUpdatePolicy.shouldReassertLatest(
             after: .semanticsChanged,
             followsLatest: true,
-            hasPendingNonLatestRestoration: true,
+            hasPendingRestoration: true,
             hasNotificationHandoff: false
         ))
     }
@@ -472,7 +463,7 @@ final class ChatScrollStateTests: XCTestCase {
         XCTAssertFalse(ChatMessageScrollUpdatePolicy.shouldReassertLatest(
             after: .semanticsChanged,
             followsLatest: true,
-            hasPendingNonLatestRestoration: false,
+            hasPendingRestoration: false,
             hasNotificationHandoff: true
         ))
     }
@@ -694,248 +685,31 @@ final class ChatScrollStateTests: XCTestCase {
         XCTAssertEqual(resettled.settledRevision, 1)
     }
 
-    func testNonLatestRestorationWaitsForReconciliationToSettleAtNewRevision() {
-        let activeIdentity = ChatScrollSessionIdentity(
-            profile: "default",
-            canonicalSessionID: "catalog-id",
-            equivalentSessionIDs: ["runtime-id"],
-            isReconciling: true,
-            settledRevision: 7
-        )
-        let gate = ChatScrollRestorationGate(observing: activeIdentity)
-
-        XCTAssertFalse(gate.allowsNonLatestRestoration(using: activeIdentity))
-        XCTAssertFalse(gate.allowsNonLatestRestoration(using: ChatScrollSessionIdentity(
-            profile: "default",
-            canonicalSessionID: "catalog-id",
-            equivalentSessionIDs: ["runtime-id"],
-            isReconciling: false,
-            settledRevision: 7
-        )))
-        XCTAssertTrue(gate.allowsNonLatestRestoration(using: ChatScrollSessionIdentity(
-            profile: "default",
-            canonicalSessionID: "catalog-id",
-            equivalentSessionIDs: ["runtime-id"],
-            isReconciling: false,
-            settledRevision: 8
-        )))
-    }
-
-    func testNonLatestRestorationCanUseCurrentRevisionWhenNoReconciliationIsExpected() {
-        let settledIdentity = ChatScrollSessionIdentity(
-            profile: "default",
-            canonicalSessionID: "catalog-id",
-            equivalentSessionIDs: [],
-            isReconciling: false,
-            settledRevision: 3
-        )
-        let gate = ChatScrollRestorationGate(observing: settledIdentity)
-
-        XCTAssertTrue(gate.allowsNonLatestRestoration(using: settledIdentity))
-    }
-
-    func testSnapshotsAreIsolatedBySession() {
-        var store = ChatScrollStateStore()
-        let sessionA = ChatScrollSessionKey(profile: "default", sessionID: "session-a")
-        let sessionB = ChatScrollSessionKey(profile: "default", sessionID: "session-b")
-        store.save(
-            ChatScrollSnapshot(anchorMessageID: "a-3", followsLatest: false),
-            for: sessionA
-        )
-        store.save(
-            ChatScrollSnapshot(anchorMessageID: "b-1", followsLatest: false),
-            for: sessionB
-        )
-
-        XCTAssertEqual(store.snapshot(for: sessionA)?.anchorMessageID, "a-3")
-        XCTAssertEqual(store.snapshot(for: sessionB)?.anchorMessageID, "b-1")
-    }
-
-    func testSnapshotsWithEqualRawSessionIDsAreIsolatedByProfile() {
-        var store = ChatScrollStateStore()
-        let alpha = ChatScrollSessionKey(profile: "alpha", sessionID: "shared-session")
-        let beta = ChatScrollSessionKey(profile: "beta", sessionID: "shared-session")
-        store.save(
-            ChatScrollSnapshot(anchorMessageID: "alpha-anchor", followsLatest: false),
-            for: alpha
-        )
-        store.save(
-            ChatScrollSnapshot(anchorMessageID: "beta-anchor", followsLatest: false),
-            for: beta
-        )
-
-        XCTAssertEqual(store.snapshot(for: alpha)?.anchorMessageID, "alpha-anchor")
-        XCTAssertEqual(store.snapshot(for: beta)?.anchorMessageID, "beta-anchor")
-    }
-
-    func testRestorationKeepsAnchorWhenMessageStillExists() {
-        var store = ChatScrollStateStore()
-        let key = ChatScrollSessionKey(profile: "default", sessionID: "session")
-        let expected = ChatScrollSnapshot(anchorMessageID: "message-4", followsLatest: false)
-        store.save(expected, for: key)
-
-        XCTAssertEqual(
-            store.restoration(
-                for: key,
-                availableMessageIDs: ["message-3", "message-4", "message-5"]
-            ),
-            expected
-        )
-    }
-
-    func testRestorationFallsBackToLatestWhenAnchorDisappears() {
-        var store = ChatScrollStateStore()
-        let key = ChatScrollSessionKey(profile: "default", sessionID: "session")
-        store.save(
-            ChatScrollSnapshot(anchorMessageID: "deleted", followsLatest: false),
-            for: key
-        )
-
-        XCTAssertEqual(
-            store.restoration(for: key, availableMessageIDs: ["message-1"]),
-            .latest
-        )
-    }
-
-    func testSettledPendingRestorationFallsBackToLatestForEmptyTranscript() {
-        var store = ChatScrollStateStore()
-        let key = ChatScrollSessionKey(profile: "default", sessionID: "session")
-        let reconcilingIdentity = ChatScrollSessionIdentity(
-            profile: "default",
-            canonicalSessionID: "session",
-            equivalentSessionIDs: [],
-            isReconciling: true,
-            settledRevision: 3
-        )
-        let settledIdentity = ChatScrollSessionIdentity(
-            profile: "default",
-            canonicalSessionID: "session",
-            equivalentSessionIDs: [],
-            isReconciling: false,
-            settledRevision: 4
-        )
-        let snapshot = ChatScrollSnapshot(anchorMessageID: "deleted", followsLatest: false)
-        store.save(snapshot, for: key)
-        let pending = ChatScrollPendingRestoration(
-            sessionKey: key,
-            snapshot: snapshot,
-            gate: ChatScrollRestorationGate(observing: reconcilingIdentity)
-        )
-
-        XCTAssertEqual(
-            ChatScrollRestorationResolver.decision(
-                for: pending,
-                identity: settledIdentity,
-                activeSessionKey: key,
-                store: store,
-                availableMessageIDs: []
-            ),
-            .latest
-        )
-    }
-
-    func testPendingRestorationCancelsAcrossProfilesWithEqualSessionIDs() {
-        var store = ChatScrollStateStore()
-        let alphaKey = ChatScrollSessionKey(profile: "alpha", sessionID: "shared-session")
-        let betaKey = ChatScrollSessionKey(profile: "beta", sessionID: "shared-session")
-        let alphaIdentity = ChatScrollSessionIdentity(
-            profile: "alpha",
-            canonicalSessionID: "shared-session",
-            equivalentSessionIDs: [],
-            isReconciling: false,
-            settledRevision: 1
-        )
-        let betaIdentity = ChatScrollSessionIdentity(
-            profile: "beta",
-            canonicalSessionID: "shared-session",
-            equivalentSessionIDs: [],
-            isReconciling: false,
-            settledRevision: 1
-        )
-        let snapshot = ChatScrollSnapshot(anchorMessageID: "alpha-anchor", followsLatest: false)
-        store.save(snapshot, for: alphaKey)
-        let pending = ChatScrollPendingRestoration(
-            sessionKey: alphaKey,
-            snapshot: snapshot,
-            gate: ChatScrollRestorationGate(observing: alphaIdentity)
-        )
-
-        XCTAssertEqual(
-            ChatScrollRestorationResolver.decision(
-                for: pending,
-                identity: betaIdentity,
-                activeSessionKey: betaKey,
-                store: store,
-                availableMessageIDs: ["alpha-anchor"]
-            ),
-            .cancel
-        )
-    }
-
     func testLatestSnapshotRemainsLatestRegardlessOfAvailableMessages() {
-        var store = ChatScrollStateStore()
-        let key = ChatScrollSessionKey(profile: "default", sessionID: "session")
-        store.save(ChatScrollSnapshot.latest, for: key)
-
         XCTAssertEqual(
-            store.restoration(for: key, availableMessageIDs: []),
+            ChatResumeViewportResolver.destination(
+                for: .latest,
+                availableTargets: .init(targets: [])
+            ),
             .latest
         )
     }
 
-    func testSessionKeysAreTrimmedForSaveAndLookup() {
-        var store = ChatScrollStateStore()
-        let expected = ChatScrollSnapshot(anchorMessageID: "message-1", followsLatest: false)
-        store.save(
-            expected,
-            for: ChatScrollSessionKey(profile: "  Alpha  ", sessionID: "  session  ")
-        )
-
+    func testSessionKeysAreNormalized() {
         XCTAssertEqual(
-            store.snapshot(for: ChatScrollSessionKey(profile: "alpha", sessionID: "session")),
-            expected
+            ChatScrollSessionKey(profile: "  Alpha  ", sessionID: "  session  "),
+            ChatScrollSessionKey(profile: "alpha", sessionID: "session")
         )
         XCTAssertEqual(
-            store.snapshot(for: ChatScrollSessionKey(profile: "ALPHA", sessionID: "\n session \t")),
-            expected
+            ChatScrollSessionKey(profile: "ALPHA", sessionID: "\n session \t"),
+            ChatScrollSessionKey(profile: "alpha", sessionID: "session")
         )
     }
 
-    func testWhitespaceOnlySessionKeysAreIgnored() {
-        var store = ChatScrollStateStore()
+    func testWhitespaceOnlySessionKeysAreInvalid() {
         let key = ChatScrollSessionKey(profile: "default", sessionID: " \n\t ")
-        store.save(ChatScrollSnapshot.latest, for: key)
 
-        XCTAssertNil(store.snapshot(for: key))
-    }
-
-    func testSessionSwitchPreservesSavedBrowsePositionInsteadOfForcingLatest() {
-        let oldKey = ChatScrollSessionKey(profile: "default", sessionID: "old")
-        let newKey = ChatScrollSessionKey(profile: "default", sessionID: "new")
-        let snapshot = ChatScrollSnapshot(anchorMessageID: "message-12", followsLatest: false)
-
-        XCTAssertEqual(
-            ChatScrollSessionTransitionPolicy.action(
-                from: oldKey,
-                to: newKey,
-                snapshot: snapshot
-            ),
-            .restore
-        )
-    }
-
-    func testSessionSwitchWithoutSavedBrowsePositionStillUsesLatest() {
-        let oldKey = ChatScrollSessionKey(profile: "default", sessionID: "old")
-        let newKey = ChatScrollSessionKey(profile: "default", sessionID: "new")
-
-        XCTAssertEqual(
-            ChatScrollSessionTransitionPolicy.action(
-                from: oldKey,
-                to: newKey,
-                snapshot: nil
-            ),
-            .latest
-        )
+        XCTAssertFalse(key.isValid)
     }
 
     func testRestorationReanchorsBySourceMessageWhenContentProjectionChanges() {
@@ -953,25 +727,19 @@ final class ChatScrollStateTests: XCTestCase {
         )
         let originalTarget = ChatMessageScrollTargets.make(for: [original])[0]
         let refreshedTarget = ChatMessageScrollTargets.make(for: [refreshed])[0]
-        let key = ChatScrollSessionKey(profile: "default", sessionID: "session")
-        var store = ChatScrollStateStore()
-        store.save(
-            ChatScrollSnapshot(
-                anchorMessageID: originalTarget.semanticID,
-                followsLatest: false,
-                anchorMetadata: originalTarget.restorationMetadata,
-                anchorSourceMessageID: originalTarget.id
-            ),
-            for: key
+        let snapshot = ChatScrollSnapshot(
+            anchorMessageID: originalTarget.semanticID,
+            followsLatest: false,
+            anchorMetadata: originalTarget.restorationMetadata,
+            anchorSourceMessageID: originalTarget.id
         )
 
-        let restored = store.restoration(
-            for: key,
+        let destination = ChatResumeViewportResolver.destination(
+            for: snapshot,
             availableTargets: ChatScrollTargetAvailability(targets: [refreshedTarget])
         )
 
-        XCTAssertEqual(restored?.anchorMessageID, refreshedTarget.semanticID)
-        XCTAssertEqual(restored?.anchorSourceMessageID, "stable-source-id")
+        XCTAssertEqual(destination, .anchor(refreshedTarget.semanticID))
     }
 
     func testRuntimeSessionIDPersistsAsCatalogCanonicalID() {
@@ -1007,15 +775,4 @@ final class ChatScrollStateTests: XCTestCase {
         )
     }
 
-    func testSessionSnapshotMigratesWhenRuntimeIDBecomesCanonicalID() {
-        let runtimeKey = ChatScrollSessionKey(profile: "default", sessionID: "runtime-session")
-        let canonicalKey = ChatScrollSessionKey(profile: "default", sessionID: "catalog-session")
-        let snapshot = ChatScrollSnapshot(anchorMessageID: "message-12", followsLatest: false)
-        var store = ChatScrollStateStore()
-
-        store.save(snapshot, for: runtimeKey)
-        store.migrateSnapshot(from: runtimeKey, to: canonicalKey)
-
-        XCTAssertEqual(store.snapshot(for: canonicalKey), snapshot)
-    }
 }

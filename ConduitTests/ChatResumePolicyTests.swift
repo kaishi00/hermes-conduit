@@ -103,4 +103,38 @@ final class ChatResumePolicyTests: XCTestCase {
         )
         XCTAssertEqual(selected?.id, "cron-a")
     }
+
+    func testPersistedAnchorSurvivesWhenTargetExists() {
+        let message = ChatMessage(
+            id: "source-12",
+            role: .assistant,
+            content: "Stable",
+            timestamp: "now"
+        )
+        let target = ChatMessageScrollTargets.make(for: [message])[0]
+        let snapshot = ChatScrollSnapshot(
+            anchorMessageID: target.semanticID,
+            followsLatest: false,
+            anchorMetadata: target.restorationMetadata,
+            anchorSourceMessageID: target.id
+        )
+
+        XCTAssertEqual(
+            ChatResumeViewportResolver.destination(
+                for: snapshot,
+                availableTargets: .init(targets: [target])
+            ),
+            .anchor(target.semanticID)
+        )
+    }
+
+    func testMissingAnchorFallsBackToLatestWithinSelectedConversation() {
+        XCTAssertEqual(
+            ChatResumeViewportResolver.destination(
+                for: .init(anchorMessageID: "deleted", followsLatest: false),
+                availableTargets: .init(targets: [])
+            ),
+            .latest
+        )
+    }
 }
