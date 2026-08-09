@@ -10,11 +10,137 @@ import CoreHaptics
 import SwiftUI
 import UIKit
 
+struct ResponseHapticState {
+    enum Effect: Equatable {
+        case responseStarted
+        case toolStarted
+        case responseConcluded
+        case error
+        case cancelPattern
+    }
+
+    struct Conclusion: Equatable {
+        let token: UUID
+        let sessionID: String?
+    }
+
+    private(set) var pendingConclusion: Conclusion?
+    private(set) var isActive = false
+    private(set) var startPlayed = false
+    private(set) var foregroundActive = true
+    private var lastToolDate: Date?
+    private var suppressesFeedbackUntilReset = false
+
+    mutating func setForegroundActive(_ active: Bool) -> Effect? {
+        foregroundActive = active
+        guard active else {
+            pendingConclusion = nil
+            isActive = false
+            startPlayed = false
+            lastToolDate = nil
+            suppressesFeedbackUntilReset = true
+            return .cancelPattern
+        }
+        return nil
+    }
+
+    mutating func registerActivity(playsStart: Bool) -> [Effect] {
+        guard foregroundActive, !suppressesFeedbackUntilReset else { return [] }
+        pendingConclusion = nil
+        isActive = true
+        guard playsStart, !startPlayed else { return [] }
+        startPlayed = true
+        return [.responseStarted]
+    }
+
+    mutating func registerTool(at date: Date) -> [Effect] {
+        var effects = registerActivity(playsStart: false)
+        guard foregroundActive,
+              lastToolDate.map({ date.timeIntervalSince($0) >= 0.25 }) ?? true else {
+            return effects
+        }
+        lastToolDate = date
+        effects.append(.toolStarted)
+        return effects
+    }
+
+    mutating func scheduleConclusion(sessionID: String?) -> Conclusion? {
+        guard isActive else { return nil }
+        let conclusion = Conclusion(token: UUID(), sessionID: sessionID)
+        pendingConclusion = conclusion
+        return conclusion
+    }
+
+    mutating func finishConclusion(_ conclusion: Conclusion) -> Effect? {
+        guard pendingConclusion == conclusion else { return nil }
+        pendingConclusion = nil
+        isActive = false
+        startPlayed = false
+        lastToolDate = nil
+        return foregroundActive ? .responseConcluded : nil
+    }
+
+    mutating func fail() -> [Effect] {
+        let shouldNotify = isActive && foregroundActive
+        var effects = reset()
+        if shouldNotify { effects.append(.error) }
+        return effects
+    }
+
+    mutating func reset() -> [Effect] {
+        pendingConclusion = nil
+        isActive = false
+        startPlayed = false
+        lastToolDate = nil
+        suppressesFeedbackUntilReset = false
+        return [.cancelPattern]
+    }
+
+    mutating func invalidateConclusion() {
+        pendingConclusion = nil
+    }
+}
+
+enum ResponseHapticPolicy {
+    enum Signal: Equatable {
+        case activity(playsStart: Bool)
+        case tool
+        case failure
+        case reset
+    }
+
+    static func signal(for event: StreamEvent) -> Signal? {
+        switch event {
+        case .messageStart, .reasoningDelta, .clarify, .approval:
+            return .activity(playsStart: false)
+        case .messageDelta:
+            return .activity(playsStart: true)
+        case .toolStart(_, let name, _):
+            return name.lowercased() == "clarify" ? nil : .tool
+        case .delegateAgent(_, let activity):
+            return activity.stream.contains { $0.kind == .tool } ? .tool : nil
+        case .messageError:
+            return .failure
+        case .messageInterrupted:
+            return .reset
+        default:
+            return nil
+        }
+    }
+
+    static func shouldScheduleIdleConclusion(
+        isBusy: Bool,
+        hasPendingConclusion: Bool,
+        awaitsUserInput: Bool
+    ) -> Bool {
+        !isBusy && !hasPendingConclusion && !awaitsUserInput
+    }
+}
+
 @MainActor
 enum Haptics {
-    static let preferenceKey = "conduit.haptics"
-
     enum Event: Equatable {
+        case soft
         case light
         case medium
         case rigid
@@ -22,7 +148,18 @@ enum Haptics {
         case error
         case warning
         case selection
+        case toolStarted
+        case responseStarted
+        case responseConcluded
     }
+
+#if DEBUG
+    static var testEmissionHandler: ((Event) -> Void)?
+    static var testSuppressesHardware = false
+#endif
+
+    static let preferenceKey = "conduit.haptics"
+
 
     private static let softGenerator = UIImpactFeedbackGenerator(style: .soft)
     private static let lightGenerator = UIImpactFeedbackGenerator(style: .light)
@@ -36,78 +173,73 @@ enum Haptics {
     private static var lifecyclePatternToken: UUID?
     private static var lifecyclePatternEndsAt = Date.distantPast
 
-#if DEBUG
-    static var testEmissionHandler: ((Event) -> Void)?
-    static var testSuppressesHardware = false
-#endif
 
     static var enabled: Bool {
         get { UserDefaults.standard.object(forKey: preferenceKey) as? Bool ?? true }
-        set { UserDefaults.standard.set(newValue, forKey: preferenceKey) }
+        set {
+            UserDefaults.standard.set(newValue, forKey: preferenceKey)
+            if !newValue {
+                cancelLifecyclePattern()
+            }
+        }
     }
 
     static func soft() {
-        guard enabled else { return }
+        guard emit(.soft) else { return }
         softGenerator.impactOccurred()
         softGenerator.prepare()
     }
 
     static func light() {
-        emit(.light) {
-            lightGenerator.impactOccurred()
-            lightGenerator.prepare()
-        }
+        guard emit(.light) else { return }
+        lightGenerator.impactOccurred()
+        lightGenerator.prepare()
     }
 
     static func medium() {
-        emit(.medium) {
-            mediumGenerator.impactOccurred()
-            mediumGenerator.prepare()
-        }
+        guard emit(.medium) else { return }
+        mediumGenerator.impactOccurred()
+        mediumGenerator.prepare()
     }
 
     static func rigid() {
-        emit(.rigid) {
-            rigidGenerator.impactOccurred()
-            rigidGenerator.prepare()
-        }
+        guard emit(.rigid) else { return }
+        rigidGenerator.impactOccurred()
+        rigidGenerator.prepare()
     }
 
     static func success() {
-        emit(.success) {
-            notificationGenerator.notificationOccurred(.success)
-            notificationGenerator.prepare()
-        }
+        guard emit(.success) else { return }
+        notificationGenerator.notificationOccurred(.success)
+        notificationGenerator.prepare()
     }
 
     static func error() {
-        emit(.error) {
-            notificationGenerator.notificationOccurred(.error)
-            notificationGenerator.prepare()
-        }
+        guard emit(.error) else { return }
+        notificationGenerator.notificationOccurred(.error)
+        notificationGenerator.prepare()
     }
 
     static func warning() {
-        emit(.warning) {
-            notificationGenerator.notificationOccurred(.warning)
-            notificationGenerator.prepare()
-        }
+        guard emit(.warning) else { return }
+        notificationGenerator.notificationOccurred(.warning)
+        notificationGenerator.prepare()
     }
 
     static func selection() {
-        emit(.selection) {
-            selectionGenerator.selectionChanged()
-            selectionGenerator.prepare()
-        }
+        guard emit(.selection) else { return }
+        selectionGenerator.selectionChanged()
+        selectionGenerator.prepare()
     }
+
     static func toolStarted() {
-        guard enabled, Date() >= lifecyclePatternEndsAt else { return }
+        guard Date() >= lifecyclePatternEndsAt, emit(.toolStarted) else { return }
         softGenerator.impactOccurred(intensity: 0.65)
         softGenerator.prepare()
     }
 
     static func responseStarted() {
-        guard enabled else { return }
+        guard emit(.responseStarted) else { return }
         let token = beginLifecyclePattern(duration: 0.18)
         do {
             let engine: CHHapticEngine
@@ -149,7 +281,7 @@ enum Haptics {
     }
 
     static func responseConcluded() {
-        guard enabled else { return }
+        guard emit(.responseConcluded) else { return }
         let token = beginLifecyclePattern(duration: 0.20)
         lightGenerator.impactOccurred(intensity: 0.79)
         lightGenerator.prepare()
@@ -184,13 +316,13 @@ enum Haptics {
         selectionGenerator.prepare()
     }
 
-    private static func emit(_ event: Event, action: () -> Void) {
-        guard enabled else { return }
+    private static func emit(_ event: Event) -> Bool {
+        guard enabled else { return false }
 #if DEBUG
         testEmissionHandler?(event)
-        guard !testSuppressesHardware else { return }
+        guard !testSuppressesHardware else { return false }
 #endif
-        action()
+        return true
     }
 
     private static func transientParameters(intensity: Float) -> [CHHapticEventParameter] {

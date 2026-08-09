@@ -752,12 +752,17 @@ private struct DeviceHapticsSettings: View {
             symbol: "waveform",
             tint: .conduitAura
         ) {
-            Text("Conduit-generated vibration feedback for app actions. iOS system controls can still provide their own feedback.")
+            Text("Conduit-generated vibration feedback for actions and response progress. iOS system controls can still provide their own feedback.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
             Toggle("Haptic feedback", isOn: $enabled)
                 .labelsHidden()
                 .tint(.conduitAccent)
+                .onChange(of: enabled) { _, enabled in
+                    if !enabled {
+                        Haptics.cancelLifecyclePattern()
+                    }
+                }
         }
     }
 }
