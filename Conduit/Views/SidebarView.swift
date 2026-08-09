@@ -149,6 +149,8 @@ struct SessionList: View {
     @State private var showArchivedSessions = false
     @State private var showProjectCreator = false
     @State private var sessionPendingDeletion: SessionSummary?
+    @State private var sessionPendingRename: SessionSummary?
+    @State private var sessionRenameTitle = ""
     @State private var selectedProject: ProjectSummary?
     @AppStorage("conduit.sessionSourceFilter") private var selectedSourceRaw: String = "all"
     @AppStorage("conduit.sessionPresentation") private var sessionPresentationRaw = "sessions"
@@ -328,6 +330,25 @@ struct SessionList: View {
         } message: {
             Text("This permanently deletes the conversation and cannot be undone.")
         }
+        .alert("Rename conversation", isPresented: Binding(
+            get: { sessionPendingRename != nil },
+            set: { if !$0 { sessionPendingRename = nil } }
+        )) {
+            TextField("Conversation title", text: $sessionRenameTitle)
+            Button("Rename") {
+                guard let session = sessionPendingRename else { return }
+                let title = sessionRenameTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !title.isEmpty, title != session.title else { return }
+                sessionPendingRename = nil
+                Task { await appState.renameSession(session, to: title) }
+            }
+            .disabled(
+                sessionRenameTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    || sessionRenameTitle.trimmingCharacters(in: .whitespacesAndNewlines) == (sessionPendingRename?.title ?? "")
+            )
+            Button("Cancel", role: .cancel) { sessionPendingRename = nil }
+        }
+
     }
 
     private var allSessions: [SessionSummary] {
@@ -444,6 +465,15 @@ struct SessionList: View {
         .buttonStyle(.plain)
         .accessibilityHint("Swipe or touch and hold for conversation actions.")
         .contextMenu {
+            Button {
+                Haptics.selection()
+                sessionRenameTitle = session.title
+                sessionPendingRename = session
+            } label: {
+                Label("Rename…", systemImage: "pencil")
+            }
+            .disabled(appState.isSessionMutationInFlight(session))
+
             Button {
                 Haptics.selection()
                 appState.toggleSessionPinned(session)

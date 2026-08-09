@@ -1383,6 +1383,32 @@ final class AppState: ObservableObject {
             return false
         }
     }
+    @discardableResult
+    func renameSession(_ session: SessionSummary, to title: String) async -> Bool {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty,
+              trimmedTitle != session.title,
+              sessionMutationID == nil,
+              sessionBelongsToProfile(session, profile: activeProfile),
+              let client else { return false }
+
+        let profile = activeProfile
+        let knownIDs = [session.id] + session.alternateIds
+        let requestID = activeSessionId.flatMap { knownIDs.contains($0) ? $0 : nil } ?? session.id
+        sessionMutationID = session.id
+        defer { sessionMutationID = nil }
+
+        do {
+            try await client.setSessionTitle(requestID, title: trimmedTitle)
+            guard profile == activeProfile, self.client === client else { return false }
+            applyRecoveredSessionTitle(trimmedTitle, sessionIDs: knownIDs)
+            return true
+        } catch {
+            guard profile == activeProfile, self.client === client else { return false }
+            errorMessage = "Could not rename this conversation: \(error.localizedDescription)"
+            return false
+        }
+    }
 
     func deleteSession(_ session: SessionSummary) async -> Bool {
         guard sessionMutationID == nil,
