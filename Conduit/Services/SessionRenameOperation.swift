@@ -17,6 +17,11 @@ enum SessionRenameOperation {
             return !knownIDs.isDisjoint(with: candidateIDs)
         }
 
+        func matches(sessionID: String?) -> Bool {
+            guard let sessionID else { return false }
+            return sessionIDs.contains(sessionID)
+        }
+
         func updating(_ session: SessionSummary) -> SessionSummary {
             guard matches(session) else { return session }
             var updated = session

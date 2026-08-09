@@ -3497,7 +3497,7 @@ final class AppState: ObservableObject {
         let result = SessionRenameOperation.Result(title: title, sessionIDs: sessionIDs)
         let titleSessionIDs = Set(sessionIDs.filter { !$0.isEmpty })
         guard !titleSessionIDs.isEmpty else { return }
-        var matchesActiveSession = activeSessionId.map { titleSessionIDs.contains($0) } ?? false
+        var matchesActiveSession = result.matches(sessionID: activeSessionId)
         func updated(_ session: SessionSummary) -> SessionSummary {
             let updated = result.updating(session)
             guard updated != session else { return session }

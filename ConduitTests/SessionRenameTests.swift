@@ -89,16 +89,19 @@ final class SessionRenameTests: XCTestCase {
         XCTAssertEqual(result?.title, "Renamed")
     }
 
-    func testSuccessfulRenameUpdatesStoredRuntimeAndActiveCatalogEntries() async throws {
+    func testSuccessfulRenameUpdatesEveryProjectionAndPersistsThroughRefresh() async throws {
         let session = makeSession()
-        var serverTitle = session.title
+        var persistedTitle = session.title
         let operationResult = try await SessionRenameOperation.perform(
             session: session,
             activeSessionID: "runtime-id",
             title: "Renamed",
             operations: .init(
-                renameRuntime: { _, title in serverTitle = title },
-                renameStored: { _, title in serverTitle = title }
+                renameRuntime: { sessionID, title in
+                    XCTAssertEqual(sessionID, "runtime-id")
+                    persistedTitle = title
+                },
+                renameStored: { _, title in persistedTitle = title }
             )
         )
         let result = try XCTUnwrap(operationResult)
@@ -109,20 +112,30 @@ final class SessionRenameTests: XCTestCase {
             alternateIDs: ["stored-id"],
             title: "Old runtime title"
         ))
+        let archivedEntry = result.updating(makeSession(
+            id: "archived-id",
+            alternateIDs: ["runtime-id"],
+            title: "Old archived title"
+        ))
         let unrelatedEntry = result.updating(makeSession(id: "unrelated", alternateIDs: []))
+        let refreshedEntry = makeSession(title: persistedTitle)
 
         XCTAssertEqual(storedEntry.title, "Renamed")
         XCTAssertEqual(runtimeEntry.title, "Renamed")
-        XCTAssertTrue(result.matches(runtimeEntry), "The active runtime alias must receive the title")
+        XCTAssertEqual(archivedEntry.title, "Renamed")
+        XCTAssertTrue(result.matches(sessionID: "runtime-id"), "The active title must receive the rename")
         XCTAssertEqual(unrelatedEntry.title, "Original")
-        XCTAssertEqual(serverTitle, "Renamed", "The authoritative title used by a subsequent refresh must be renamed")
+        XCTAssertEqual(refreshedEntry.title, "Renamed", "The authoritative refreshed catalog must retain the rename")
     }
 
-    func testTerminalFailureLeavesExistingCatalogTitleUnchanged() async {
+    func testTerminalFailurePreservesCatalogAndSurfacesExistingError() async {
         let session = makeSession()
+        var catalog = [session]
+        var activeTitle = session.title
+        var errorMessage: String?
 
         do {
-            _ = try await SessionRenameOperation.perform(
+            if let result = try await SessionRenameOperation.perform(
                 session: session,
                 activeSessionID: nil,
                 title: "Renamed",
@@ -130,15 +143,20 @@ final class SessionRenameTests: XCTestCase {
                     renameRuntime: nil,
                     renameStored: { _, _ in throw TestError.rejected }
                 )
-            )
+            ) {
+                catalog = catalog.map(result.updating)
+                if result.matches(sessionID: "runtime-id") {
+                    activeTitle = result.title
+                }
+            }
             XCTFail("Expected the stored rename to fail")
         } catch {
-            XCTAssertEqual(session.title, "Original")
-            XCTAssertEqual(
-                SessionRenameOperation.failureMessage(error),
-                "Could not rename this conversation: Gateway rejected rename"
-            )
+            errorMessage = SessionRenameOperation.failureMessage(error)
         }
+
+        XCTAssertEqual(catalog.map(\.title), ["Original"])
+        XCTAssertEqual(activeTitle, "Original")
+        XCTAssertEqual(errorMessage, "Could not rename this conversation: Gateway rejected rename")
     }
 
     func testManualRenameCancelsAndInvalidatesPendingTitleRecovery() async {
@@ -173,6 +191,28 @@ final class SessionRenameTests: XCTestCase {
 
         tracker.unsuppress(keys)
         XCTAssertFalse(tracker.isSuppressed(key))
+    }
+
+    func testStaleRecoveryCompletionCannotRemoveReplacementTask() async {
+        let tracker = SessionTitleRecoveryTracker()
+        let key = "research|stored-id"
+        let staleToken = UUID()
+        let currentToken = UUID()
+        let staleTask = Task<Void, Never> {}
+
+        tracker.register(staleTask, token: staleToken, for: key)
+        tracker.cancel(key)
+
+        let currentTask = Task<Void, Never> {
+            try? await Task.sleep(nanoseconds: 10_000_000_000)
+        }
+        tracker.register(currentTask, token: currentToken, for: key)
+        tracker.finish(staleToken, for: key)
+
+        XCTAssertTrue(tracker.hasTask(for: key))
+        XCTAssertTrue(tracker.isCurrent(currentToken, for: key))
+
+        await tracker.cancel([key])
     }
 
     private func makeSession(
