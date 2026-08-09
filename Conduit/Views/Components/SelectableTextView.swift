@@ -42,7 +42,7 @@ struct SelectableTextView: UIViewRepresentable {
         linkColor: UIColor = .link
     ) {
         self.init(
-            attributedText: NSAttributedString(attributedText),
+            attributedText: Self.bridge(attributedText, defaultFont: font, defaultColor: textColor, linkColor: linkColor),
             font: font,
             textColor: textColor,
             lineSpacing: lineSpacing,
@@ -120,7 +120,7 @@ struct SelectableTextView: UIViewRepresentable {
         }
 
         guard let width = proposal.width, width > 0 else { return nil }
-        let measured = uiView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
+        let measured = uiView.sizeThatFits(CGSize(width: width, height: CGFloat.greatestFiniteMagnitude))
         return CGSize(width: width, height: ceil(measured.height))
     }
 
@@ -128,6 +128,9 @@ struct SelectableTextView: UIViewRepresentable {
         textView.font = font
         textView.textColor = textColor
         textView.textContainer.widthTracksTextView = wrapsLines
+        textView.textContainer.size = wrapsLines
+            ? CGSize(width: max(textView.bounds.width, 1), height: CGFloat.greatestFiniteMagnitude)
+            : CGSize(width: 100_000, height: CGFloat.greatestFiniteMagnitude)
         textView.textContainer.maximumNumberOfLines = maximumNumberOfLines
         textView.textContainer.lineBreakMode = maximumNumberOfLines > 0
             ? .byTruncatingTail
@@ -162,10 +165,67 @@ struct SelectableTextView: UIViewRepresentable {
             }
         }
 
+        let selectedRange = textView.selectedRange
         if !textView.attributedText.isEqual(to: styledText) {
             textView.attributedText = styledText
+            let selectedLocation = min(selectedRange.location, styledText.length)
+            let selectedEnd = min(NSMaxRange(selectedRange), styledText.length)
+            textView.selectedRange = NSRange(
+                location: selectedLocation,
+                length: max(0, selectedEnd - selectedLocation)
+            )
         }
         textView.invalidateIntrinsicContentSize()
+    }
+
+    private static func bridge(
+        _ value: AttributedString,
+        defaultFont: UIFont,
+        defaultColor: UIColor,
+        linkColor: UIColor
+    ) -> NSAttributedString {
+        let bridged = NSMutableAttributedString(
+            string: String(value.characters),
+            attributes: [
+                .font: defaultFont,
+                .foregroundColor: defaultColor
+            ]
+        )
+
+        for run in value.runs {
+            let range = NSRange(run.range, in: value)
+            guard range.length > 0 else { continue }
+
+            if let intent = run.inlinePresentationIntent {
+                var runFont = defaultFont
+                if intent.contains(.stronglyEmphasized) {
+                    runFont = runFont.withTraits(.traitBold)
+                }
+                if intent.contains(.emphasized) {
+                    runFont = runFont.withTraits(.traitItalic)
+                }
+                if intent.contains(.code) {
+                    runFont = .monospacedSystemFont(ofSize: defaultFont.pointSize, weight: .regular)
+                }
+                bridged.addAttribute(.font, value: runFont, range: range)
+                if intent.contains(.strikethrough) {
+                    bridged.addAttribute(
+                        .strikethroughStyle,
+                        value: NSUnderlineStyle.single.rawValue,
+                        range: range
+                    )
+                }
+            }
+
+            if let runColor = run.foregroundColor {
+                bridged.addAttribute(.foregroundColor, value: UIColor(runColor), range: range)
+            }
+            if let link = run.link {
+                bridged.addAttribute(.link, value: link, range: range)
+                bridged.addAttribute(.foregroundColor, value: linkColor, range: range)
+            }
+        }
+        return bridged
     }
 
     final class Coordinator: NSObject, UITextViewDelegate {
