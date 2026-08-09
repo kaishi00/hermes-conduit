@@ -597,35 +597,39 @@ private struct ReviewSummaryCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Button {
-                guard !details.isEmpty else { return }
-                withAnimation(ConduitMotion.response) { expanded.toggle() }
-            } label: {
-                HStack(alignment: .center, spacing: 10) {
-                    Image(systemName: "internaldrive.fill")
-                        .foregroundStyle(.conduitAura)
+            HStack(alignment: .center, spacing: 10) {
+                Image(systemName: "internaldrive.fill")
+                    .foregroundStyle(.conduitAura)
+                    .frame(width: 28, height: 28)
+                    .background(Color.conduitAura.opacity(0.14), in: Circle())
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("SELF-IMPROVEMENT REVIEW")
+                        .font(.caption2.weight(.bold))
+                        .tracking(0.6)
+                        .foregroundStyle(.secondary)
+                    SelectableTextView(
+                        text: activity.summary,
+                        font: .preferredFont(forTextStyle: .subheadline).withTraits(.traitBold),
+                        textColor: .label
+                    )
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                Spacer(minLength: 8)
+                MessageTimestampLabel(timestamp: timestamp, tone: .supporting)
+                if !details.isEmpty {
+                    Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
                         .frame(width: 28, height: 28)
-                        .background(Color.conduitAura.opacity(0.14), in: Circle())
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("SELF-IMPROVEMENT REVIEW")
-                            .font(.caption2.weight(.bold))
-                            .tracking(0.6)
-                            .foregroundStyle(.secondary)
-                        Text(activity.summary)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.primary)
-                    }
-                    Spacer(minLength: 8)
-                    MessageTimestampLabel(timestamp: timestamp, tone: .supporting)
-                    if !details.isEmpty {
-                        Image(systemName: expanded ? "chevron.up" : "chevron.down")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                    }
                 }
             }
-            .buttonStyle(.plain)
-            .disabled(details.isEmpty)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                guard !details.isEmpty else { return }
+                withAnimation(ConduitMotion.response) { expanded.toggle() }
+            }
+            .accessibilityAddTraits(details.isEmpty ? [] : .isButton)
+            .accessibilityLabel(details.isEmpty ? activity.summary : (expanded ? "Collapse review details" : "Expand review details"))
 
             if expanded, !details.isEmpty {
                 VStack(alignment: .leading, spacing: 12) {
@@ -679,9 +683,12 @@ private struct ModelChangeSummaryCard: View {
                     .font(.caption2.weight(.bold))
                     .tracking(0.6)
                     .foregroundStyle(.secondary)
-                Text("Model has been changed to \(provider)/\(model)")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.primary)
+                SelectableTextView(
+                    text: "Model has been changed to \(provider)/\(model)",
+                    font: .preferredFont(forTextStyle: .subheadline).withTraits(.traitBold),
+                    textColor: .label
+                )
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             Spacer(minLength: 8)
@@ -829,16 +836,21 @@ struct ToolCard: View {
                                     .foregroundStyle(.tertiary)
                             }
                         }
-                        if !expanded, let preview = collapsedPreview(for: tool) {
-                            Text(preview)
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundStyle(Color.primary.opacity(0.74))
-                                .lineLimit(1)
-                                .truncationMode(.tail)
-                        }
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
+                }
+
+                if !expanded, let preview = collapsedPreview(for: tool) {
+                    SelectableTextView(
+                        text: preview,
+                        font: .monospacedSystemFont(ofSize: 11, weight: .regular),
+                        textColor: UIColor(Color.primary.opacity(0.74)),
+                        maximumNumberOfLines: 1
+                    )
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 8)
                 }
 
                 if expanded {
@@ -912,8 +924,12 @@ struct ClarifyCard: View {
                             .font(.caption2.weight(.bold))
                             .tracking(0.5)
                             .foregroundStyle(statusColor(for: clarify.status))
-                        Text(clarify.question)
-                            .font(.subheadline.bold())
+                        SelectableTextView(
+                            text: clarify.question,
+                            font: .preferredFont(forTextStyle: .subheadline).withTraits(.traitBold),
+                            textColor: .label
+                        )
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     Spacer(minLength: 8)
                     if clarify.status == .submitting {
@@ -1045,8 +1061,12 @@ struct ApprovalCard: View {
                             .font(.caption2.weight(.bold))
                             .tracking(0.5)
                             .foregroundStyle(statusColor(for: approval.status))
-                        Text(approval.description)
-                            .font(.subheadline.bold())
+                        SelectableTextView(
+                            text: approval.description,
+                            font: .preferredFont(forTextStyle: .subheadline).withTraits(.traitBold),
+                            textColor: .label
+                        )
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     Spacer(minLength: 8)
                     if approval.status == .submitting {
