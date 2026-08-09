@@ -104,6 +104,24 @@ final class ChatResumeCoordinatorTests: XCTestCase {
         XCTAssertEqual(harness.store.snapshot(for: key), .latest)
     }
 
+    func testAbandoningCurrentRequestAllowsViewportWritesAgain() {
+        let harness = makeHarness()
+        let key = ChatScrollSessionKey(profile: "default", sessionID: "stored-a")
+        _ = harness.coordinator.selectTarget(
+            in: [session("stored-a")],
+            profile: "default",
+            purpose: .automaticReturn,
+            currentSessionID: "stored-a"
+        )
+        let request = harness.coordinator.reconciliationSettled(sessionKey: key)!
+
+        harness.coordinator.abandonRestoration(generation: request.generation)
+        harness.coordinator.recordViewport(.latest, for: key)
+        harness.coordinator.flush()
+
+        XCTAssertEqual(harness.store.snapshot(for: key), .latest)
+    }
+
     func testMissingContinueTargetSelectsNewestChat() {
         let harness = makeHarness()
         harness.store.setLastSessionID("deleted-a", for: "default")
