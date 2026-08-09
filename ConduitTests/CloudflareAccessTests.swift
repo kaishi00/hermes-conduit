@@ -59,7 +59,7 @@ final class CloudflareAccessTests: XCTestCase {
 
     func testFetchInjectionContainsBothHeaders() throws {
         let credentials = CloudflareAccessCredentials(clientID: "test-id", clientSecret: "test-secret")
-        let script = credentials.fetchInjectionUserScript
+        let script = credentials.fetchInjectionUserScript(expectedBaseURL: "https://dashboard.example/hermes")
         XCTAssertTrue(script.contains("CF-Access-Client-Id"))
         XCTAssertTrue(script.contains("CF-Access-Client-Secret"))
         XCTAssertTrue(script.contains("test-id"))
@@ -68,12 +68,12 @@ final class CloudflareAccessTests: XCTestCase {
 
     func testFetchInjectionIsEmptyWhenUnconfigured() {
         let credentials = CloudflareAccessCredentials(clientID: "", clientSecret: "")
-        XCTAssertTrue(credentials.fetchInjectionUserScript.isEmpty)
+        XCTAssertTrue(credentials.fetchInjectionUserScript(expectedBaseURL: "https://dashboard.example/hermes").isEmpty)
     }
 
     func testFetchInjectionEscapesSingleQuotes() throws {
         let credentials = CloudflareAccessCredentials(clientID: "id'with'quotes", clientSecret: "secret'val")
-        let script = credentials.fetchInjectionUserScript
+        let script = credentials.fetchInjectionUserScript(expectedBaseURL: "https://dashboard.example/hermes")
         XCTAssertTrue(script.contains("var cfId = \"id'with'quotes\";"))
         XCTAssertTrue(script.contains("var cfSecret = \"secret'val\";"))
     }
@@ -84,10 +84,24 @@ final class CloudflareAccessTests: XCTestCase {
             clientSecret: "secret\\value\"quote\r\n"
         )
 
-        let script = credentials.fetchInjectionUserScript
+        let script = credentials.fetchInjectionUserScript(expectedBaseURL: "https://dashboard.example/hermes")
 
         XCTAssertTrue(script.contains(#"id\\with\"quote\n\t"#))
         XCTAssertTrue(script.contains(#"secret\\value\"quote\r\n"#))
+    }
+
+    func testFetchInjectionContainsOriginGuards() {
+        let credentials = CloudflareAccessCredentials(clientID: "test-id", clientSecret: "test-secret")
+        let script = credentials.fetchInjectionUserScript(expectedBaseURL: "https://dashboard.example/hermes")
+
+        XCTAssertTrue(script.contains(#"var cfOrigin = new URL("https:\/\/dashboard.example\/hermes").origin;"#))
+        XCTAssertTrue(script.contains("window.location.origin === cfOrigin"))
+        XCTAssertTrue(script.contains("resolved.origin === cfOrigin"))
+    }
+
+    func testFetchInjectionFailsClosedForInvalidDashboardURL() {
+        let credentials = CloudflareAccessCredentials(clientID: "test-id", clientSecret: "test-secret")
+        XCTAssertTrue(credentials.fetchInjectionUserScript(expectedBaseURL: "not a URL").isEmpty)
     }
 
     // MARK: - Origin Binding
