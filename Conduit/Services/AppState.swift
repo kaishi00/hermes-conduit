@@ -16,6 +16,7 @@ private let sessionCatalogLog = Logger(subsystem: "com.milim.conduit", category:
 private let titleGenerationLog = Logger(subsystem: "com.milim.conduit", category: "TitleGeneration")
 
 typealias ChatResumeReconnectCancellation = @MainActor () -> Void
+typealias ChatResumeReconnectExecutor = @MainActor (ChatResumeSyncPurpose) async -> Void
 typealias ChatResumeReconnectScheduler = @MainActor (
     _ delay: TimeInterval,
     _ operation: @escaping @MainActor () async -> Void
@@ -338,7 +339,7 @@ final class AppState: ObservableObject {
     private var scenePhaseTask: Task<Void, Never>?
     private var reconnectTask: ChatResumeReconnectCancellation?
     private let reconnectScheduler: ChatResumeReconnectScheduler
-    private let scheduledReconnectExecutor: (@MainActor (ChatResumeSyncPurpose) async -> Void)?
+    private let reconnectExecutor: ChatResumeReconnectExecutor?
     /// Coalesces presentation-cache flushes during streaming so we
     /// don't serialize and write UserDefaults on every WebSocket frame.
     private var presentationCacheFlushTask: Task<Void, Never>?
@@ -493,7 +494,7 @@ final class AppState: ObservableObject {
         sessionRenameOperations: SessionRenameOperation.Operations? = nil,
         sessionCatalogLoader: ((Bool) async throws -> [SessionSummary])? = nil,
         reconnectScheduler: ChatResumeReconnectScheduler? = nil,
-        scheduledReconnectExecutor: (@MainActor (ChatResumeSyncPurpose) async -> Void)? = nil
+        reconnectExecutor: ChatResumeReconnectExecutor? = nil
     ) {
         self.defaults = defaults
         self.chatResumeCoordinator = chatResumeCoordinator
@@ -503,7 +504,7 @@ final class AppState: ObservableObject {
         sessionRenameOperationsOverride = sessionRenameOperations
         sessionCatalogLoaderOverride = sessionCatalogLoader
         self.reconnectScheduler = reconnectScheduler ?? scheduleChatResumeReconnectTask
-        self.scheduledReconnectExecutor = scheduledReconnectExecutor
+        self.reconnectExecutor = reconnectExecutor
         self.initialChatResumeServerIdentity = defaults
             .string(forKey: "conduit.chatResumeServerIdentity.v1")
             .flatMap(Self.normalizedChatResumeServerIdentity)
@@ -1637,17 +1638,21 @@ final class AppState: ObservableObject {
             self.reconnectTask = nil
             let purpose = self.recoverySequence.takeQueuedReconnectPurpose()
                 ?? .preserveCurrent
-            if let scheduledReconnectExecutor = self.scheduledReconnectExecutor {
-                await scheduledReconnectExecutor(purpose)
-            } else {
-                await self.reconnectForRetry(purpose: purpose)
-            }
+            await self.executeReconnect(purpose: purpose)
         }
     }
 
     func reconnect() async {
         cancelChatResumeRestoration()
-        await reconnectForRetry(purpose: .preserveCurrent)
+        await executeReconnect(purpose: .preserveCurrent)
+    }
+
+    private func executeReconnect(purpose: ChatResumeSyncPurpose) async {
+        if let reconnectExecutor {
+            await reconnectExecutor(purpose)
+        } else {
+            await reconnectForRetry(purpose: purpose)
+        }
     }
 
     private func reconnectForRetry(purpose requestedPurpose: ChatResumeSyncPurpose) async {

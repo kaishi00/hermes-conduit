@@ -128,7 +128,7 @@ final class AppStateChatResumeTests: XCTestCase {
         let reconnectSpy = ReconnectExecutionSpy()
         let harness = makeHarness(
             reconnectScheduler: scheduler.schedule(after:operation:),
-            scheduledReconnectExecutor: { purpose in
+            reconnectExecutor: { purpose in
                 reconnectSpy.purposes.append(purpose)
             }
         )
@@ -151,7 +151,7 @@ final class AppStateChatResumeTests: XCTestCase {
         let reconnectSpy = ReconnectExecutionSpy()
         let harness = makeHarness(
             reconnectScheduler: scheduler.schedule(after:operation:),
-            scheduledReconnectExecutor: { purpose in
+            reconnectExecutor: { purpose in
                 reconnectSpy.purposes.append(purpose)
             }
         )
@@ -169,19 +169,18 @@ final class AppStateChatResumeTests: XCTestCase {
     }
 
     func testPublicReconnectOverridesPendingAutomaticIntent() async {
-        let harness = makeHarness(behavior: .latestActivity)
+        let reconnectSpy = ReconnectExecutionSpy()
+        let harness = makeHarness(
+            behavior: .latestActivity,
+            reconnectExecutor: { purpose in
+                reconnectSpy.purposes.append(purpose)
+            }
+        )
         _ = harness.appState.beginChatResumeRecovery(purpose: .automaticReturn)
 
         await harness.appState.reconnect()
 
-        let selected = harness.appState.selectChatResumeTarget(
-            in: [session("stored-b"), session("stored-a")],
-            profile: "default",
-            purpose: harness.recoverySequence.currentPurpose,
-            currentSessionID: "stored-a"
-        )
-        XCTAssertEqual(harness.recoverySequence.currentPurpose, .preserveCurrent)
-        XCTAssertEqual(selected?.id, "stored-a")
+        XCTAssertEqual(reconnectSpy.purposes, [.preserveCurrent])
     }
 
     func testCreatedFallbackRemainsFrozenAndPublishesAfterSettlement() {
@@ -239,14 +238,67 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(harness.cacheClearSpy.count, 1)
     }
 
-    func testEquivalentNormalizedServerKeepsResumeState() {
-        let harness = makeHarness()
-        XCTAssertFalse(harness.appState.prepareChatResumeForConnection(to: "https://one.example"))
-        harness.coordinator.rememberSessionID("stored-a", for: "default")
+    func testLegacySameServerLoginOrderingPreservesServerScopedState() throws {
+        let reviewData = try JSONEncoder().encode([serverScopedReviewSentinel()])
+        let knownProfiles = ["default", "sentinel-profile"]
+        let harness = makeHarness(
+            behavior: .latestActivity,
+            configureDefaults: { defaults in
+                defaults.set("HTTPS://One.Example:443/", forKey: "conduit.dashboardURL")
+                defaults.set(reviewData, forKey: "conduit.reviewSummaryCache.v1")
+                defaults.set(knownProfiles, forKey: "conduit.knownProfiles.v1")
+            }
+        )
+        let key = ChatScrollSessionKey(profile: "default", sessionID: "sentinel-session")
+        let snapshot = ChatScrollSnapshot(
+            anchorMessageID: "sentinel-anchor",
+            followsLatest: false
+        )
+        harness.coordinator.rememberSessionID("sentinel-session", for: "default")
+        harness.coordinator.recordViewport(snapshot, for: key)
+        harness.coordinator.flush()
 
-        XCTAssertFalse(harness.appState.prepareChatResumeForConnection(to: "https://one.example/"))
-        XCTAssertEqual(harness.store.lastSessionID(for: "default"), "stored-a")
+        harness.appState.rememberDashboardURL("https://one.example")
+
+        XCTAssertFalse(harness.appState.prepareChatResumeForConnection(to: "https://one.example"))
+        XCTAssertEqual(harness.store.lastSessionID(for: "default"), "sentinel-session")
+        XCTAssertEqual(harness.store.snapshot(for: key), snapshot)
+        XCTAssertEqual(harness.defaults.data(forKey: "conduit.reviewSummaryCache.v1"), reviewData)
+        XCTAssertEqual(harness.defaults.stringArray(forKey: "conduit.knownProfiles.v1"), knownProfiles)
         XCTAssertEqual(harness.cacheClearSpy.count, 0)
+        XCTAssertEqual(harness.appState.chatResumeBehavior, .latestActivity)
+    }
+
+    func testFirstConnectionWithoutPersistedIdentityPreservesServerScopedState() throws {
+        let reviewData = try JSONEncoder().encode([serverScopedReviewSentinel()])
+        let knownProfiles = ["default", "sentinel-profile"]
+        let harness = makeHarness(
+            behavior: .latestActivity,
+            configureDefaults: { defaults in
+                defaults.set(reviewData, forKey: "conduit.reviewSummaryCache.v1")
+                defaults.set(knownProfiles, forKey: "conduit.knownProfiles.v1")
+            }
+        )
+        let key = ChatScrollSessionKey(profile: "default", sessionID: "sentinel-session")
+        let snapshot = ChatScrollSnapshot(
+            anchorMessageID: "sentinel-anchor",
+            followsLatest: false
+        )
+        XCTAssertNil(harness.defaults.string(forKey: "conduit.chatResumeServerIdentity.v1"))
+        XCTAssertNil(harness.defaults.string(forKey: "conduit.dashboardURL"))
+        harness.coordinator.rememberSessionID("sentinel-session", for: "default")
+        harness.coordinator.recordViewport(snapshot, for: key)
+        harness.coordinator.flush()
+
+        harness.appState.rememberDashboardURL("https://first.example")
+
+        XCTAssertFalse(harness.appState.prepareChatResumeForConnection(to: "https://first.example"))
+        XCTAssertEqual(harness.store.lastSessionID(for: "default"), "sentinel-session")
+        XCTAssertEqual(harness.store.snapshot(for: key), snapshot)
+        XCTAssertEqual(harness.defaults.data(forKey: "conduit.reviewSummaryCache.v1"), reviewData)
+        XCTAssertEqual(harness.defaults.stringArray(forKey: "conduit.knownProfiles.v1"), knownProfiles)
+        XCTAssertEqual(harness.cacheClearSpy.count, 0)
+        XCTAssertEqual(harness.appState.chatResumeBehavior, .latestActivity)
     }
 
     func testLegacyDashboardIdentityCapturedBeforeLoginOverwritesURL() {
@@ -363,7 +415,7 @@ final class AppStateChatResumeTests: XCTestCase {
         behavior: ChatResumeBehavior = .continueWhereLeftOff,
         configureDefaults: (UserDefaults) -> Void = { _ in },
         reconnectScheduler: ChatResumeReconnectScheduler? = nil,
-        scheduledReconnectExecutor: (@MainActor (ChatResumeSyncPurpose) async -> Void)? = nil
+        reconnectExecutor: ChatResumeReconnectExecutor? = nil
     ) -> (
         appState: AppState,
         coordinator: ChatResumeCoordinator,
@@ -391,7 +443,7 @@ final class AppStateChatResumeTests: XCTestCase {
             loadSavedConnection: false,
             clearSessionPresentationCache: { cacheClearSpy.count += 1 },
             reconnectScheduler: reconnectScheduler,
-            scheduledReconnectExecutor: scheduledReconnectExecutor
+            reconnectExecutor: reconnectExecutor
         )
         return (appState, coordinator, store, recoverySequence, cacheClearSpy, defaults, suite)
     }
@@ -456,6 +508,20 @@ final class AppStateChatResumeTests: XCTestCase {
             isActive: false,
             isArchived: false,
             lineageRootId: nil
+        )
+    }
+
+    private func serverScopedReviewSentinel() -> ReviewSummaryRecord {
+        ReviewSummaryRecord(
+            id: "sentinel-review",
+            profile: "default",
+            sessionId: "sentinel-session",
+            timestamp: "2026-08-09T12:00:00Z",
+            activity: ReviewActivity(
+                summary: "Sentinel review",
+                details: ["Sentinel detail"],
+                fullSessionId: "sentinel-child"
+            )
         )
     }
 }
