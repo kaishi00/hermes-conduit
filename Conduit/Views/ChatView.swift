@@ -19,6 +19,7 @@ struct ChatView: View {
     @State private var chatMessageScrollTargetCache = ChatMessageScrollTargetCache()
     @State private var pendingScrollRestoration: ChatScrollPendingRestoration?
     @State private var renderedScrollSessionKey: ChatScrollSessionKey?
+    @State private var scheduledLatestScrollGeneration = 0
     @State private var notificationHandoffPending = false
     @State private var notificationHandoffSessionKey: ChatScrollSessionKey?
     @State private var notificationHandoffHasMeasuredLayout = false
@@ -184,6 +185,7 @@ struct ChatView: View {
                     // is still rendered. A session switch clears messages in
                     // the same main-actor turn, so waiting until the switch
                     // callback would leave us with no anchor to save.
+                    guard pendingScrollRestoration == nil else { return }
                     saveChatScrollPosition(for: renderedScrollSessionKey)
                 }
                 .onChange(of: appState.chatScrollRequest) { _, _ in
@@ -202,8 +204,15 @@ struct ChatView: View {
                     let identity = appState.activeChatScrollSessionIdentity
                     let oldKey = renderedScrollSessionKey ?? identity.key(for: oldSessionID)
                     let newKey = activeScrollSessionKey
+                    saveChatScrollPosition(for: oldKey)
+                    let keysAreEquivalent = identity.areEquivalent(oldKey, newKey)
+                    if keysAreEquivalent,
+                       let oldKey,
+                       let newKey {
+                        chatScrollState.migrateSnapshot(from: oldKey, to: newKey)
+                    }
                     renderedScrollSessionKey = newKey
-                    guard !identity.areEquivalent(oldKey, newKey) else { return }
+                    guard !keysAreEquivalent else { return }
 
                     let action = ChatScrollSessionTransitionPolicy.action(
                         from: oldKey,
@@ -225,6 +234,7 @@ struct ChatView: View {
                     }
                 }
                 .onChange(of: appState.activeProfile) { _, _ in
+                    saveChatScrollPosition(for: renderedScrollSessionKey)
                     topVisibleChatID = nil
                     chatMessageScrollTargetCache = ChatMessageScrollTargetCache()
                     chatMessageScrollTargetCache.update(for: appState.messages)
@@ -264,6 +274,12 @@ struct ChatView: View {
                            renderedScrollSessionKey,
                            activeScrollSessionKey
                        ) {
+                        if let renderedScrollSessionKey {
+                            chatScrollState.migrateSnapshot(
+                                from: renderedScrollSessionKey,
+                                to: activeScrollSessionKey
+                            )
+                        }
                         renderedScrollSessionKey = activeScrollSessionKey
                     }
                     // Reconciliation publishes after replacing the transcript.
@@ -376,6 +392,7 @@ struct ChatView: View {
     }
 
     private func beginChatScrollRestoration() {
+        scheduledLatestScrollGeneration &+= 1
         let identity = appState.activeChatScrollSessionIdentity
         guard let sessionKey = activeScrollSessionKey,
               let snapshot = chatScrollState.snapshot(for: sessionKey) else {
@@ -399,6 +416,7 @@ struct ChatView: View {
 
     private func cancelPendingChatScrollRestoration() {
         pendingScrollRestoration = nil
+        scheduledLatestScrollGeneration &+= 1
     }
 
     private func finishChatScrollRestorationIfReady(using proxy: ScrollViewProxy) {
@@ -434,15 +452,22 @@ struct ChatView: View {
     }
 
     private func scrollToLatest(using proxy: ScrollViewProxy) {
+        guard pendingScrollRestoration == nil else { return }
+        scheduledLatestScrollGeneration &+= 1
+        let generation = scheduledLatestScrollGeneration
         withAnimation(ConduitMotion.response) {
             proxy.scrollTo(bottomAnchor, anchor: .bottom)
         }
         DispatchQueue.main.async {
+            guard self.scheduledLatestScrollGeneration == generation,
+                  self.pendingScrollRestoration == nil else { return }
             withAnimation(ConduitMotion.response) {
                 proxy.scrollTo(bottomAnchor, anchor: .bottom)
             }
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+            guard self.scheduledLatestScrollGeneration == generation,
+                  self.pendingScrollRestoration == nil else { return }
             withAnimation(ConduitMotion.response) {
                 proxy.scrollTo(bottomAnchor, anchor: .bottom)
             }
