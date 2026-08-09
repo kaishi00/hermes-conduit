@@ -488,7 +488,6 @@ struct AssistantBubble: View {
                         await appState.gatewayMediaDataURL(for: path, profile: appState.activeProfile)
                     }
                 )
-                    .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
@@ -631,10 +630,11 @@ private struct ReviewSummaryCard: View {
             if expanded, !details.isEmpty {
                 VStack(alignment: .leading, spacing: 12) {
                     ForEach(Array(details.enumerated()), id: \.offset) { _, detail in
-                        Text(detail)
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
+                        SelectableTextView(
+                            text: detail,
+                            font: .preferredFont(forTextStyle: .callout),
+                            textColor: .secondaryLabel
+                        )
                     }
                 }
                 .padding(.top, 2)
@@ -711,10 +711,11 @@ struct ThinkingCard: View {
                 )
 
                 DisclosureGroup(isExpanded: $expanded) {
-                    Text(message.content)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
+                    SelectableTextView(
+                        text: message.content,
+                        font: .preferredFont(forTextStyle: .callout),
+                        textColor: .secondaryLabel
+                    )
                         .padding(.top, 4)
                 } label: {
                     HStack(spacing: 6) {
@@ -847,9 +848,11 @@ struct ToolCard: View {
                                 Text("Input")
                                     .font(.caption2.bold())
                                     .foregroundStyle(.tertiary)
-                                Text(input)
-                                    .font(.system(.caption, design: .monospaced))
-                                    .foregroundStyle(.secondary)
+                                SelectableTextView(
+                                    text: input,
+                                    font: .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1).pointSize, weight: .regular),
+                                    textColor: .secondaryLabel
+                                )
                                     .frame(maxWidth: .infinity, alignment: .leading)
                             }
                         }
@@ -858,10 +861,12 @@ struct ToolCard: View {
                                 Text("Output")
                                     .font(.caption2.bold())
                                     .foregroundStyle(.tertiary)
-                                Text(output)
-                                    .font(.system(.caption, design: .monospaced))
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(expanded ? nil : 3)
+                                SelectableTextView(
+                                    text: output,
+                                    font: .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1).pointSize, weight: .regular),
+                                    textColor: .secondaryLabel,
+                                    maximumNumberOfLines: expanded ? 0 : 3
+                                )
                                     .frame(maxWidth: .infinity, alignment: .leading)
                             }
                         }
@@ -926,8 +931,11 @@ struct ClarifyCard: View {
                             .font(.caption2.weight(.bold))
                             .tracking(0.5)
                             .foregroundStyle(.green)
-                        Text(answer)
-                            .font(.subheadline)
+                        SelectableTextView(
+                            text: answer,
+                            font: .preferredFont(forTextStyle: .subheadline),
+                            textColor: .label
+                        )
                     }
                     .padding(12)
                     .background(Color.green.opacity(0.10), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -1051,10 +1059,12 @@ struct ApprovalCard: View {
                 }
 
                 if !approval.command.isEmpty {
-                    Text(approval.command)
-                        .font(.system(.caption, design: .monospaced))
-                        .textSelection(.enabled)
-                        .lineLimit(5)
+                    SelectableTextView(
+                        text: approval.command,
+                        font: .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1).pointSize, weight: .regular),
+                        textColor: .label,
+                        maximumNumberOfLines: 5
+                    )
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(12)
                         .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -1209,7 +1219,6 @@ struct StreamingBubble: View {
                     await appState.gatewayMediaDataURL(for: path, profile: appState.activeProfile)
                 }
             )
-            .textSelection(.disabled)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
