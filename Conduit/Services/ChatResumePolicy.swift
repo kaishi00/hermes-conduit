@@ -29,3 +29,32 @@ enum ChatResumeSessionResolver {
         return catalog.first(where: { $0.source == .chat })
     }
 }
+
+enum ChatResumeViewportDestination: Equatable {
+    case latest
+    case anchor(String)
+}
+
+enum ChatResumeViewportResolver {
+    static func destination(
+        for snapshot: ChatScrollSnapshot,
+        availableTargets: ChatScrollTargetAvailability
+    ) -> ChatResumeViewportDestination {
+        guard !snapshot.followsLatest else { return .latest }
+        if let anchor = snapshot.anchorMessageID,
+           availableTargets.contains(anchor),
+           snapshot.anchorMetadata == nil
+            || availableTargets.metadata(for: anchor) == snapshot.anchorMetadata {
+            return .anchor(anchor)
+        }
+
+        guard let sourceMessageID = snapshot.anchorSourceMessageID,
+              let refreshedAnchor = availableTargets.semanticID(
+                forSourceMessageID: sourceMessageID
+              ),
+              availableTargets.metadata(for: refreshedAnchor) != nil else {
+            return .latest
+        }
+        return .anchor(refreshedAnchor)
+    }
+}
