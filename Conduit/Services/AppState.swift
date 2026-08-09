@@ -36,8 +36,12 @@ final class AppState: ObservableObject {
 
     // MARK: - Session
 
-    @Published var sessions: [SessionSummary] = []
-    @Published var cronSessions: [SessionSummary] = []
+    @Published var sessions: [SessionSummary] = [] {
+        didSet { refreshActiveChatScrollSessionIdentity() }
+    }
+    @Published var cronSessions: [SessionSummary] = [] {
+        didSet { refreshActiveChatScrollSessionIdentity() }
+    }
     @Published private(set) var projects: [ProjectSummary] = []
     @Published private(set) var supportsProjects = false
     @Published private(set) var projectsLoading = false
@@ -45,7 +49,10 @@ final class AppState: ObservableObject {
     @Published private(set) var pinnedSessionIDs: [String] = []
     @Published private(set) var sessionMutationID: String?
     @Published private(set) var isRefreshingSessionCatalog = false
-    @Published var activeSessionId: String?
+    @Published var activeSessionId: String? {
+        didSet { refreshActiveChatScrollSessionIdentity() }
+    }
+    @Published private(set) var activeChatScrollSessionIdentity = ChatScrollSessionIdentity.none
     @Published var messages: [ChatMessage] = []
     @Published private(set) var activeSessionTitle = "New conversation"
     @Published private(set) var isChatRefreshing = false
@@ -204,6 +211,7 @@ final class AppState: ObservableObject {
 
     private var reconciliationToken = UUID()
     private var reconciliation: Reconciliation?
+    private var chatScrollIdentityProfile = "default"
     private var activeClientEpoch = UUID()
     private var activeAssistantMessageId: String?
     private var activeReasoningMessageId: String?
@@ -475,6 +483,93 @@ final class AppState: ObservableObject {
     private func persistActiveSessionState() {
         defaults.set(activeSessionIDsByProfile, forKey: activeSessionIDsByProfileKey)
         defaults.set(activeSessionTitlesByProfile, forKey: activeSessionTitlesByProfileKey)
+    }
+
+    private func refreshActiveChatScrollSessionIdentity(
+        isReconciling: Bool? = nil,
+        advanceSettledRevision: Bool = false
+    ) {
+        let current = activeChatScrollSessionIdentity
+        let previous = chatScrollIdentityProfile == activeProfile
+            ? current
+            : ChatScrollSessionIdentity(
+                canonicalSessionID: nil,
+                equivalentSessionIDs: [],
+                isReconciling: current.isReconciling,
+                settledRevision: current.settledRevision
+            )
+        let catalog = sessions + cronSessions
+        func identifiers(for session: SessionSummary) -> Set<String> {
+            Set(([session.id] + session.alternateIds).compactMap(Self.normalizedSessionIdentityID))
+        }
+        func matchingSession(for ids: Set<String>) -> SessionSummary? {
+            guard !ids.isEmpty else { return nil }
+            return catalog.first { !identifiers(for: $0).isDisjoint(with: ids) }
+        }
+
+        let activeID = Self.normalizedSessionIdentityID(activeSessionId)
+        let reconciliationIDs = Set([
+            reconciliation?.requestedSessionId,
+            reconciliation?.resolvedSessionId
+        ].compactMap(Self.normalizedSessionIdentityID))
+        let reconciliationSession = matchingSession(for: reconciliationIDs)
+        let reconciliationCatalogIDs = reconciliationSession.map(identifiers) ?? []
+        let reconciliationContinuesPrevious = reconciliationIDs.isEmpty
+            || reconciliationIDs.contains(where: previous.contains)
+            || !reconciliationCatalogIDs.isDisjoint(with: previous.equivalentSessionIDs)
+            || activeID.map(reconciliationCatalogIDs.contains) == true
+
+        var candidates = reconciliationIDs
+        if reconciliationIDs.isEmpty || reconciliationContinuesPrevious,
+           let activeID {
+            candidates.insert(activeID)
+        }
+        let matchedSession = reconciliationSession ?? matchingSession(for: candidates)
+        let continuesPreviousIdentity = candidates.contains(where: previous.contains)
+
+        let canonicalSessionID: String?
+        if let matchedSession {
+            canonicalSessionID = matchedSession.id
+        } else if continuesPreviousIdentity {
+            canonicalSessionID = previous.canonicalSessionID
+        } else if !reconciliationIDs.isEmpty {
+            canonicalSessionID = Self.normalizedSessionIdentityID(reconciliation?.requestedSessionId)
+                ?? Self.normalizedSessionIdentityID(reconciliation?.resolvedSessionId)
+                ?? activeID
+        } else {
+            canonicalSessionID = activeID
+        }
+
+        var equivalentSessionIDs = candidates
+        if let matchedSession {
+            equivalentSessionIDs.formUnion(
+                ([matchedSession.id] + matchedSession.alternateIds)
+                    .compactMap(Self.normalizedSessionIdentityID)
+            )
+        }
+        if continuesPreviousIdentity {
+            equivalentSessionIDs.formUnion(previous.equivalentSessionIDs)
+        }
+
+        let revision = advanceSettledRevision
+            ? current.settledRevision &+ 1
+            : current.settledRevision
+        let updated = ChatScrollSessionIdentity(
+            canonicalSessionID: canonicalSessionID,
+            equivalentSessionIDs: equivalentSessionIDs,
+            isReconciling: isReconciling ?? current.isReconciling,
+            settledRevision: revision
+        )
+        chatScrollIdentityProfile = activeProfile
+        if updated != current {
+            activeChatScrollSessionIdentity = updated
+        }
+    }
+
+    private static func normalizedSessionIdentityID(_ sessionID: String?) -> String? {
+        guard let value = sessionID?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty else { return nil }
+        return value
     }
 
     func makeSettingsSnapshot() -> SettingsSnapshot {
@@ -795,12 +890,26 @@ final class AppState: ObservableObject {
     /// The only entry point for cold start, foreground refresh, reconnect, and
     /// manual refresh. It never derives liveness from transcript shape.
     func syncSession() async {
-        guard let client else { return }
+        await syncSession(using: nil)
+    }
+
+    private func syncSession(using existingReconciliationToken: UUID?) async {
+        guard let client else {
+            if let existingReconciliationToken {
+                settleReconciliation(existingReconciliationToken)
+            }
+            return
+        }
         // A notification destination always wins over automatic restoration of
         // the previously active/newest session. Check both before and after
         // the catalog fetch because a notification tap can arrive mid-launch.
-        guard PushNotificationService.shared.pendingTarget == nil else { return }
-        let token = beginReconciliation()
+        guard PushNotificationService.shared.pendingTarget == nil else {
+            if let existingReconciliationToken {
+                settleReconciliation(existingReconciliationToken)
+            }
+            return
+        }
+        let token = existingReconciliationToken ?? beginReconciliation()
         let profile = activeProfile
         let retainedActiveTurn = activeTurnCatalogSession()
         turnState = .synchronizing
@@ -817,8 +926,14 @@ final class AppState: ObservableObject {
             guard token == reconciliationToken,
                   profile == activeProfile,
                   let activeClient = self.client,
-                  activeClient === client else { return }
-            guard PushNotificationService.shared.pendingTarget == nil else { return }
+                  activeClient === client else {
+                settleReconciliation(token)
+                return
+            }
+            guard PushNotificationService.shared.pendingTarget == nil else {
+                settleReconciliation(token)
+                return
+            }
             sessions = allSessions.filter { $0.source != .cron }
             cronSessions = allSessions.filter { $0.source == .cron }
 
@@ -838,9 +953,13 @@ final class AppState: ObservableObject {
             guard token == reconciliationToken,
                   profile == activeProfile,
                   let activeClient = self.client,
-                  activeClient === client else { return }
+                  activeClient === client else {
+                settleReconciliation(token)
+                return
+            }
             turnState = .reconnecting
             errorMessage = "Failed to load gateway sessions: \(error.localizedDescription)"
+            settleReconciliation(token)
         }
     }
 
@@ -848,17 +967,34 @@ final class AppState: ObservableObject {
         let token = UUID()
         reconciliationToken = token
         reconciliation = nil
+        refreshActiveChatScrollSessionIdentity(isReconciling: true)
         return token
     }
 
     private func invalidateReconciliation() {
+        let wasReconciling = activeChatScrollSessionIdentity.isReconciling
         reconciliationToken = UUID()
         reconciliation = nil
+        refreshActiveChatScrollSessionIdentity(
+            isReconciling: false,
+            advanceSettledRevision: wasReconciling
+        )
+    }
+
+    private func settleReconciliation(_ token: UUID) {
+        guard token == reconciliationToken else { return }
+        let wasReconciling = activeChatScrollSessionIdentity.isReconciling
+        reconciliation = nil
+        refreshActiveChatScrollSessionIdentity(
+            isReconciling: false,
+            advanceSettledRevision: wasReconciling
+        )
     }
 
     @discardableResult
     private func reconcile(sessionId: String, using client: HermesClient, token: UUID) async -> Bool {
         reconciliation = Reconciliation(token: token, requestedSessionId: sessionId)
+        refreshActiveChatScrollSessionIdentity(isReconciling: true)
         turnState = .synchronizing
         let profile = activeProfile
 
@@ -880,11 +1016,15 @@ final class AppState: ObservableObject {
             guard token == reconciliationToken,
                   profile == activeProfile,
                   let activeClient = self.client,
-                  activeClient === client else { return false }
+                  activeClient === client else {
+                settleReconciliation(token)
+                return false
+            }
 
             var context = reconciliation
             context?.resolvedSessionId = result.sessionId
             reconciliation = context
+            refreshActiveChatScrollSessionIdentity(isReconciling: true)
 
             // Do not replace a live/in-flight projection with a database read
             // that may be a few events behind. Once the turn is settled, the
@@ -925,18 +1065,21 @@ final class AppState: ObservableObject {
             await refreshContextUsage(sessionId: result.sessionId, using: client)
 
             let bufferedEvents = reconciliation?.token == token ? reconciliation?.bufferedEvents ?? [] : []
-            reconciliation = nil
             bufferedEvents.forEach(applyStreamEvent)
+            settleReconciliation(token)
             return true
 
         } catch {
             guard token == reconciliationToken,
                   profile == activeProfile,
                   let activeClient = self.client,
-                  activeClient === client else { return false }
-            reconciliation = nil
+                  activeClient === client else {
+                settleReconciliation(token)
+                return false
+            }
             turnState = .reconnecting
             errorMessage = "Failed to restore this conversation: \(error.localizedDescription)"
+            settleReconciliation(token)
             return false
         }
     }
@@ -956,11 +1099,15 @@ final class AppState: ObservableObject {
             guard token == reconciliationToken,
                   profile == activeProfile,
                   let activeClient = self.client,
-                  activeClient === client else { return }
+                  activeClient === client else {
+                settleReconciliation(token)
+                return
+            }
             if let returnedProfile = created.profile,
                !profilesMatch(returnedProfile, profile) {
                 turnState = .idle
                 errorMessage = "Hermes created this conversation in \(profileDisplayName(returnedProfile)), not \(profileDisplayName(profile)). It was not opened."
+                settleReconciliation(token)
                 await loadSessions(forceRefresh: true)
                 return
             }
@@ -968,6 +1115,7 @@ final class AppState: ObservableObject {
             guard !runtimeSessionID.isEmpty else {
                 turnState = .idle
                 errorMessage = "Hermes created a conversation without a session ID."
+                settleReconciliation(token)
                 return
             }
 
@@ -1011,13 +1159,18 @@ final class AppState: ObservableObject {
                 await self.loadSlashCommands()
                 await self.loadSessions()
             }
+            settleReconciliation(token)
         } catch {
             guard token == reconciliationToken,
                   profile == activeProfile,
                   let activeClient = self.client,
-                  activeClient === client else { return }
+                  activeClient === client else {
+                settleReconciliation(token)
+                return
+            }
             turnState = .idle
             errorMessage = "Failed to create session: \(error.localizedDescription)"
+            settleReconciliation(token)
         }
     }
 
@@ -1248,17 +1401,23 @@ final class AppState: ObservableObject {
             voiceConversationController.setForegroundActive(true)
             guard connection != nil else { return }
             scenePhaseTask?.cancel()
+            // Publish the foreground reconciliation boundary synchronously.
+            // ChatView may receive the same scene transition before the health
+            // check task runs, so geometry alone must not restore stale rows.
+            let token = beginReconciliation()
             scenePhaseTask = Task { @MainActor [weak self] in
                 guard let self else { return }
                 if let client = self.client, client.isConnected {
                     do {
                         try await client.healthCheck()
-                        await self.syncSession()
+                        await self.syncSession(using: token)
                     } catch {
                         await self.reconnect()
+                        self.settleReconciliation(token)
                     }
                 } else {
                     await self.reconnect()
+                    self.settleReconciliation(token)
                 }
             }
 
@@ -1472,13 +1631,13 @@ final class AppState: ObservableObject {
         // through `eventBelongsToActiveSession` and repopulating the
         // cleared message array while reconciliation is in flight.
         flushPendingPresentationCache()
+        let token = beginReconciliation()
         setActiveSessionState(id: sessionId)
         messages = []
         clearStreamingText()
         activeAssistantMessageId = nil
         activeReasoningMessageId = nil
         updateActiveSessionTitle(for: sessionId)
-        let token = beginReconciliation()
         return await reconcile(sessionId: sessionId, using: client, token: token)
     }
 
