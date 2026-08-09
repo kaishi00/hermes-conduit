@@ -3,6 +3,216 @@ import XCTest
 
 @MainActor
 final class AppStateChatResumeTests: XCTestCase {
+    func testSupersededBranchWaitingForTitleCannotMutateNewerSession() async {
+        let titleGate = ControlledSuspension()
+        let newerMessages = [
+            ChatMessage(id: "newer", role: .assistant, content: "Newer session", timestamp: "3")
+        ]
+        let staleCatalog = session("stale-catalog")
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in [staleCatalog] },
+                openSession: { _, sessionID in
+                    SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: newerMessages,
+                        snapshot: SessionRuntimeSnapshot(object: [:])
+                    )
+                },
+                branchSession: { _, _, _, _, _ in
+                    (sessionId: "branch-runtime", storedSessionId: "branch-stored", profile: "default")
+                },
+                setSessionTitle: { _, _, _ in
+                    await titleGate.suspend()
+                },
+                refreshContext: { _, _ in }
+            )
+        )
+        let parent = session("stored-a")
+        let newer = session("stored-c")
+        let newerKey = ChatScrollSessionKey(profile: "default", sessionID: newer.id)
+        harness.appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+        harness.appState.sessions = [parent, newer]
+        harness.appState.activeSessionId = parent.id
+        harness.appState.messages = [
+            ChatMessage(id: "user", role: .user, content: "Question", timestamp: "1"),
+            ChatMessage(id: "assistant", role: .assistant, content: "Answer", timestamp: "2")
+        ]
+
+        let branch = Task { @MainActor in
+            await harness.appState.branchFromAssistantMessage("assistant")
+        }
+        await titleGate.waitUntilSuspended()
+
+        let openedNewer = await harness.appState.openSession(newer.id)
+        XCTAssertTrue(openedNewer)
+        harness.appState.chatViewportLayoutDidSettle(
+            sessionKey: newerKey,
+            transitionGeneration: harness.appState.chatViewportTransitionGeneration,
+            transcriptRevision: harness.appState.chatTranscriptRevision,
+            renderRevision: 1,
+            receivedScopedPreference: true
+        )
+
+        titleGate.resume()
+        await branch.value
+
+        XCTAssertEqual(harness.appState.activeSessionId, newer.id)
+        XCTAssertEqual(harness.appState.activeSessionTitle, newer.title)
+        XCTAssertEqual(harness.appState.messages, newerMessages)
+        XCTAssertEqual(harness.appState.sessions.map(\.id), [parent.id, newer.id])
+        XCTAssertFalse(harness.appState.activeChatScrollSessionIdentity.isReconciling)
+
+        harness.appState.recordChatViewport(.latest, for: newerKey)
+        harness.appState.flushChatResumeViewport()
+        XCTAssertEqual(harness.store.snapshot(for: newerKey), .latest)
+    }
+
+    func testOlderNotificationCleanupCannotClearNewerNotificationBusyState() async {
+        let firstCatalogGate = ControlledSuspension()
+        let secondCatalogGate = ControlledSuspension()
+        var catalogLoadCount = 0
+        let firstMessages = [
+            ChatMessage(id: "b", role: .assistant, content: "First", timestamp: "1")
+        ]
+        let secondMessages = [
+            ChatMessage(id: "c", role: .assistant, content: "Second", timestamp: "2")
+        ]
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in
+                    catalogLoadCount += 1
+                    if catalogLoadCount == 1 {
+                        await firstCatalogGate.suspend()
+                        return [self.session("stored-b")]
+                    }
+                    await secondCatalogGate.suspend()
+                    return [self.session("stored-c")]
+                },
+                openSession: { _, sessionID in
+                    SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: sessionID == "stored-c" ? secondMessages : firstMessages,
+                        snapshot: SessionRuntimeSnapshot(object: [:])
+                    )
+                },
+                refreshContext: { _, _ in }
+            )
+        )
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        harness.appState.connection = connection
+        harness.appState.client = HermesClient(connection: connection, profile: "default")
+        harness.appState.sessions = [session("stored-a")]
+        harness.appState.activeSessionId = "stored-a"
+
+        let firstNotification = Task { @MainActor in
+            await harness.appState.openNotificationTarget(
+                ConduitNotificationTarget(profile: nil, sessionId: "stored-b", type: nil)
+            )
+        }
+        await firstCatalogGate.waitUntilSuspended()
+
+        let secondNotification = Task { @MainActor in
+            await harness.appState.openNotificationTarget(
+                ConduitNotificationTarget(profile: nil, sessionId: "stored-c", type: nil)
+            )
+        }
+        await secondCatalogGate.waitUntilSuspended()
+        XCTAssertTrue(harness.appState.isOpeningNotificationSession)
+
+        firstCatalogGate.resume()
+        let openedFirstNotification = await firstNotification.value
+        XCTAssertFalse(openedFirstNotification)
+        XCTAssertTrue(harness.appState.isOpeningNotificationSession)
+
+        secondCatalogGate.resume()
+        let openedSecondNotification = await secondNotification.value
+        XCTAssertTrue(openedSecondNotification)
+        XCTAssertFalse(harness.appState.isOpeningNotificationSession)
+        XCTAssertEqual(harness.appState.activeSessionId, "stored-c")
+        XCTAssertEqual(harness.appState.messages, secondMessages)
+    }
+
+    func testStaleSameTokenSyncCannotSettleNewerOpeningReconciliation() async {
+        let staleCatalogGate = ControlledSuspension()
+        let newerOpenGate = ControlledSuspension()
+        var catalogLoadCount = 0
+        let currentMessages = [
+            ChatMessage(id: "current", role: .assistant, content: "Current", timestamp: "2")
+        ]
+        let harness = makeHarness(
+            behavior: .latestActivity,
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in
+                    catalogLoadCount += 1
+                    if catalogLoadCount == 1 {
+                        await staleCatalogGate.suspend()
+                        return [self.session("stored-stale")]
+                    }
+                    return [self.session("stored-current")]
+                },
+                openSession: { _, sessionID in
+                    if sessionID == "stored-current" {
+                        await newerOpenGate.suspend()
+                    }
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: currentMessages,
+                        snapshot: SessionRuntimeSnapshot(object: [:])
+                    )
+                },
+                refreshContext: { _, _ in }
+            )
+        )
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        harness.appState.client = HermesClient(connection: connection, profile: "default")
+        harness.appState.sessions = [session("stored-a")]
+        harness.appState.activeSessionId = "stored-a"
+        let automaticWork = harness.appState.beginAutomaticChatResumeWork()
+        let reconciliation = harness.appState.beginReconciliation()
+
+        let staleSync = Task { @MainActor in
+            await harness.appState.syncSession(
+                purpose: .automaticReturn,
+                using: reconciliation,
+                automaticWorkToken: automaticWork
+            )
+        }
+        await staleCatalogGate.waitUntilSuspended()
+
+        let newerSync = Task { @MainActor in
+            await harness.appState.syncSession(
+                purpose: .automaticReturn,
+                using: reconciliation,
+                automaticWorkToken: automaticWork
+            )
+        }
+        await newerOpenGate.waitUntilSuspended()
+        XCTAssertTrue(harness.appState.activeChatScrollSessionIdentity.isReconciling)
+        harness.appState.handleStreamEvent(
+            .contextUpdate(sessionId: "stored-current", percent: 42, used: 42, max: 100)
+        )
+        XCTAssertNotEqual(harness.appState.runtime.contextUsed, 42)
+
+        staleCatalogGate.resume()
+        await staleSync.value
+
+        XCTAssertTrue(harness.appState.activeChatScrollSessionIdentity.isReconciling)
+        XCTAssertEqual(harness.appState.activeSessionId, "stored-a")
+        XCTAssertNotEqual(harness.appState.runtime.contextUsed, 42)
+
+        newerOpenGate.resume()
+        await newerSync.value
+
+        XCTAssertFalse(harness.appState.activeChatScrollSessionIdentity.isReconciling)
+        XCTAssertEqual(harness.appState.activeSessionId, "stored-current")
+        XCTAssertEqual(harness.appState.messages, currentMessages)
+        XCTAssertEqual(harness.appState.runtime.contextUsed, 42)
+    }
+
     func testCancellingSceneReconnectTaskWhileMintingIgnoresLateSignInFailure() async {
         let mintGate = ControlledSuspension()
         let harness = makeHarness(
