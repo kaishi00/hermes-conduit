@@ -19,13 +19,20 @@ enum StreamEventParser {
             return .messageDelta(sessionId: sessionId, text: text)
 
         case "reasoning.delta", "message.reasoning", "message.reasoning.delta":
-            let text = payload?["reasoning"]?.stringValue
-                ?? payload?["reasoning_content"]?.stringValue
-                ?? payload?["text"]?.stringValue
-                ?? payload?["content"]?.stringValue
-                ?? obj["reasoning"]?.stringValue
-                ?? obj["text"]?.stringValue
-                ?? ""
+            let text: String
+            if let reasoning = payload?["reasoning"]?.stringValue {
+                text = reasoning
+            } else if let reasoningContent = payload?["reasoning_content"]?.stringValue {
+                text = reasoningContent
+            } else if let payloadText = payload?["text"]?.stringValue {
+                text = payloadText
+            } else if let content = payload?["content"]?.stringValue {
+                text = content
+            } else if let reasoning = obj["reasoning"]?.stringValue {
+                text = reasoning
+            } else {
+                text = obj["text"]?.stringValue ?? ""
+            }
             if text.isEmpty { return nil }
             return .reasoningDelta(sessionId: sessionId, text: text)
 
