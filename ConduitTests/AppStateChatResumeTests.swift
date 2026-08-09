@@ -696,6 +696,155 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(reconnectSpy.purposes, [.preserveCurrent])
     }
 
+    func testViewportCancellationDuringInitialConnectHandsOffToPreserveCurrentSynchronization() async {
+        let catalogGate = ControlledSuspension()
+        let scheduler = ControlledReconnectScheduler()
+        let active = session("stored-a")
+        let restoredMessages = [
+            ChatMessage(id: "restored", role: .assistant, content: "Restored", timestamp: "1")
+        ]
+        var catalogLoadCount = 0
+        var openedSessionIDs: [String] = []
+        let harness = makeHarness(
+            reconnectScheduler: scheduler.schedule(after:operation:),
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                connectClient: { _ in },
+                loadCatalog: { _, _ in
+                    catalogLoadCount += 1
+                    if catalogLoadCount == 1 {
+                        await catalogGate.suspend()
+                    }
+                    return [active]
+                },
+                openSession: { _, sessionID in
+                    openedSessionIDs.append(sessionID)
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: restoredMessages,
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                refreshContext: { _, _ in },
+                loadProfiles: {},
+                loadBusyInputMode: { _ in },
+                loadProfileDisplayPreferences: {},
+                loadSlashCommands: {}
+            )
+        )
+        harness.coordinator.rememberSessionID(active.id, for: "default")
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        let connection = HermesConnection(
+            baseUrl: "https://one.example",
+            ticket: "initial-ticket"
+        )
+
+        let connecting = Task { @MainActor in
+            await harness.appState.connect(with: connection)
+        }
+        await catalogGate.waitUntilSuspended()
+        XCTAssertTrue(harness.appState.isConnected)
+        XCTAssertEqual(harness.appState.turnState, .synchronizing)
+
+        harness.appState.cancelChatResumeRestoration()
+        XCTAssertTrue(harness.appState.isConnected)
+        XCTAssertFalse(harness.appState.isConnecting)
+        XCTAssertEqual(harness.appState.turnState, .synchronizing)
+        catalogGate.resume()
+        await connecting.value
+
+        XCTAssertEqual(catalogLoadCount, 2)
+        XCTAssertEqual(openedSessionIDs, [active.id])
+        XCTAssertEqual(harness.appState.activeSessionId, active.id)
+        XCTAssertEqual(harness.appState.messages, restoredMessages)
+        XCTAssertTrue(harness.appState.isConnected)
+        XCTAssertFalse(harness.appState.isConnecting)
+        XCTAssertEqual(harness.appState.turnState, .idle)
+        XCTAssertTrue(harness.appState.composerIsEnabled)
+        XCTAssertNil(harness.appState.chatResumeRestorationRequest)
+        XCTAssertEqual(scheduler.scheduledCount, 0)
+    }
+
+    func testBehaviorChangeDuringReconnectHandsOffToPreserveCurrentSynchronization() async {
+        let openGate = ControlledSuspension()
+        let scheduler = ControlledReconnectScheduler()
+        let active = session("stored-a")
+        let restoredMessages = [
+            ChatMessage(id: "restored", role: .assistant, content: "Restored", timestamp: "1")
+        ]
+        var catalogLoadCount = 0
+        var openCount = 0
+        let harness = makeHarness(
+            reconnectScheduler: scheduler.schedule(after:operation:),
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                connectClient: { _ in },
+                loadCatalog: { _, _ in
+                    catalogLoadCount += 1
+                    return [active]
+                },
+                mintTicket: { _ in "refreshed-ticket" },
+                openSession: { _, sessionID in
+                    openCount += 1
+                    if openCount == 1 {
+                        await openGate.suspend()
+                    }
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: restoredMessages,
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                refreshContext: { _, _ in },
+                loadProfiles: {},
+                loadBusyInputMode: { _ in },
+                loadProfileDisplayPreferences: {},
+                loadSlashCommands: {}
+            )
+        )
+        let savedConnection = HermesConnection(
+            baseUrl: "https://one.example",
+            ticket: "saved-ticket"
+        )
+        harness.appState.connection = savedConnection
+        harness.appState.client = HermesClient(connection: savedConnection, profile: "default")
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+
+        let reconnecting = Task { @MainActor in
+            await harness.appState.reconnectForRetry(purpose: .automaticReturn)
+        }
+        await openGate.waitUntilSuspended()
+        XCTAssertTrue(harness.appState.isConnected)
+        XCTAssertEqual(harness.appState.turnState, .synchronizing)
+
+        harness.appState.setChatResumeBehavior(.latestActivity)
+        XCTAssertTrue(harness.appState.isConnected)
+        XCTAssertFalse(harness.appState.isConnecting)
+        XCTAssertEqual(harness.appState.turnState, .reconnecting)
+        openGate.resume()
+        await reconnecting.value
+
+        XCTAssertEqual(catalogLoadCount, 2)
+        XCTAssertEqual(openCount, 2)
+        XCTAssertEqual(harness.appState.connection?.ticket, "refreshed-ticket")
+        XCTAssertEqual(harness.appState.activeSessionId, active.id)
+        XCTAssertEqual(harness.appState.messages, restoredMessages)
+        XCTAssertTrue(harness.appState.isConnected)
+        XCTAssertFalse(harness.appState.isConnecting)
+        XCTAssertEqual(harness.appState.turnState, .idle)
+        XCTAssertTrue(harness.appState.composerIsEnabled)
+        XCTAssertNil(harness.appState.chatResumeRestorationRequest)
+        XCTAssertEqual(scheduler.scheduledCount, 0)
+    }
+
+    func testProfileSwitchRejectsSuccessfulStaleAutomaticReconnectMint() async {
+        await assertProfileSwitchCancelsStaleReconnectMint(outcome: .success)
+    }
+
+    func testProfileSwitchRejectsStaleAutomaticReconnectSignInFailure() async {
+        await assertProfileSwitchCancelsStaleReconnectMint(outcome: .signInRequired)
+    }
+
     func testUnchangedRefreshReleasesViewportTransitionForLaterWrites() async {
         let messages = [
             ChatMessage(id: "message-a", role: .assistant, content: "Stable", timestamp: "now")
@@ -1714,6 +1863,165 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertTrue(harness.coordinator.isCurrent(generation: request.generation))
     }
 
+    private func assertProfileSwitchCancelsStaleReconnectMint(
+        outcome: StaleReconnectMintOutcome,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async {
+        let staleMintGate = ControlledSuspension()
+        let scheduler = ControlledReconnectScheduler()
+        let defaultSession = session("default-session")
+        let workSession = session("work-session", profile: "work")
+        let defaultKey = ChatScrollSessionKey(
+            profile: "default",
+            sessionID: defaultSession.id
+        )
+        let workKey = ChatScrollSessionKey(profile: "work", sessionID: workSession.id)
+        let capturedDefaultViewport = ChatScrollSnapshot(
+            anchorMessageID: "default-anchor",
+            followsLatest: false
+        )
+        let workMessages = [
+            ChatMessage(id: "work-message", role: .assistant, content: "Work", timestamp: "2")
+        ]
+        var mintCount = 0
+        var connectedProfiles: [String] = []
+        var catalogProfiles: [String] = []
+        var openedProfiles: [String] = []
+        let harness = makeHarness(
+            reconnectScheduler: scheduler.schedule(after:operation:),
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                connectClient: { client in
+                    connectedProfiles.append(client.profile ?? "default")
+                },
+                loadCatalog: { client, _ in
+                    let profile = client.profile ?? "default"
+                    catalogProfiles.append(profile)
+                    return profile == "work" ? [workSession] : [defaultSession]
+                },
+                mintTicket: { _ in
+                    mintCount += 1
+                    if mintCount == 1 {
+                        await staleMintGate.suspend()
+                        switch outcome {
+                        case .success:
+                            return "stale-ticket"
+                        case .signInRequired:
+                            throw DashboardTicketBridgeError.signInRequired
+                        }
+                    }
+                    return "profile-ticket"
+                },
+                openSession: { client, sessionID in
+                    let profile = client.profile ?? "default"
+                    openedProfiles.append(profile)
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: profile == "work" ? workMessages : [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                refreshContext: { _, _ in },
+                loadProfiles: {},
+                loadBusyInputMode: { _ in },
+                loadProfileDisplayPreferences: {},
+                loadSlashCommands: {}
+            )
+        )
+        let savedConnection = HermesConnection(
+            baseUrl: "https://127.0.0.1:1",
+            ticket: "saved-ticket"
+        )
+        let originalClient = HermesClient(connection: savedConnection, profile: "default")
+        harness.coordinator.rememberSessionID(defaultSession.id, for: "default")
+        harness.coordinator.rememberSessionID(workSession.id, for: "work")
+        harness.appState.connection = savedConnection
+        harness.appState.client = originalClient
+        harness.appState.isConnected = true
+        harness.appState.showLogin = false
+        harness.appState.errorMessage = nil
+        harness.appState.sessions = [defaultSession]
+        harness.appState.activeSessionId = defaultSession.id
+        harness.appState.messages = [
+            ChatMessage(
+                id: "default-message",
+                role: .assistant,
+                content: "Default",
+                timestamp: "1"
+            )
+        ]
+        harness.appState.installChatViewportSnapshotProvider(id: UUID()) {
+            ChatRenderedViewportSnapshot(
+                sessionKey: defaultKey,
+                snapshot: capturedDefaultViewport
+            )
+        }
+
+        let staleReconnect = Task { @MainActor in
+            await harness.appState.reconnectForRetry(purpose: .automaticReturn)
+        }
+        await staleMintGate.waitUntilSuspended()
+        XCTAssertTrue(harness.appState.isConnecting, file: file, line: line)
+        XCTAssertEqual(harness.appState.turnState, .reconnecting, file: file, line: line)
+
+        await harness.appState.switchProfile(to: "work")
+
+        let transitionGeneration = harness.appState.chatViewportTransitionGeneration
+        let switchedConnection = harness.appState.connection
+        let switchedClient = harness.appState.client
+        XCTAssertEqual(harness.appState.activeProfile, "work", file: file, line: line)
+        XCTAssertEqual(switchedConnection?.ticket, "profile-ticket", file: file, line: line)
+        XCTAssertEqual(switchedClient?.profile, "work", file: file, line: line)
+        XCTAssertEqual(harness.appState.activeSessionId, workSession.id, file: file, line: line)
+        XCTAssertEqual(harness.appState.messages, workMessages, file: file, line: line)
+        XCTAssertTrue(harness.appState.isConnected, file: file, line: line)
+        XCTAssertFalse(harness.appState.isConnecting, file: file, line: line)
+        XCTAssertEqual(harness.appState.turnState, .idle, file: file, line: line)
+        XCTAssertTrue(harness.appState.composerIsEnabled, file: file, line: line)
+        XCTAssertFalse(harness.appState.showLogin, file: file, line: line)
+        XCTAssertNil(harness.appState.errorMessage, file: file, line: line)
+        XCTAssertEqual(harness.store.snapshot(for: defaultKey), capturedDefaultViewport, file: file, line: line)
+
+        harness.appState.recordChatViewport(.latest, for: workKey)
+        harness.appState.flushChatResumeViewport()
+        XCTAssertNil(harness.store.snapshot(for: workKey), file: file, line: line)
+
+        staleMintGate.resume()
+        await staleReconnect.value
+
+        XCTAssertEqual(mintCount, 2, file: file, line: line)
+        XCTAssertEqual(connectedProfiles, ["work"], file: file, line: line)
+        XCTAssertEqual(catalogProfiles, ["work"], file: file, line: line)
+        XCTAssertEqual(openedProfiles, ["work"], file: file, line: line)
+        XCTAssertEqual(harness.appState.activeProfile, "work", file: file, line: line)
+        XCTAssertEqual(harness.appState.connection, switchedConnection, file: file, line: line)
+        XCTAssertTrue(harness.appState.client === switchedClient, file: file, line: line)
+        XCTAssertEqual(harness.appState.activeSessionId, workSession.id, file: file, line: line)
+        XCTAssertEqual(harness.appState.messages, workMessages, file: file, line: line)
+        XCTAssertTrue(harness.appState.isConnected, file: file, line: line)
+        XCTAssertFalse(harness.appState.isConnecting, file: file, line: line)
+        XCTAssertEqual(harness.appState.turnState, .idle, file: file, line: line)
+        XCTAssertTrue(harness.appState.composerIsEnabled, file: file, line: line)
+        XCTAssertFalse(harness.appState.showLogin, file: file, line: line)
+        XCTAssertNil(harness.appState.errorMessage, file: file, line: line)
+        XCTAssertNil(harness.appState.chatResumeRestorationRequest, file: file, line: line)
+        XCTAssertEqual(harness.appState.chatViewportTransitionGeneration, transitionGeneration, file: file, line: line)
+        XCTAssertEqual(harness.store.snapshot(for: defaultKey), capturedDefaultViewport, file: file, line: line)
+        XCTAssertNil(harness.store.snapshot(for: workKey), file: file, line: line)
+        XCTAssertEqual(scheduler.scheduledCount, 0, file: file, line: line)
+
+        harness.appState.chatViewportLayoutDidSettle(
+            sessionKey: workKey,
+            transitionGeneration: transitionGeneration,
+            transcriptRevision: harness.appState.chatTranscriptRevision,
+            renderRevision: 1,
+            receivedScopedPreference: true
+        )
+        harness.appState.recordChatViewport(.latest, for: workKey)
+        harness.appState.flushChatResumeViewport()
+        XCTAssertEqual(harness.store.snapshot(for: workKey), .latest, file: file, line: line)
+    }
+
     private func makeHarness(
         behavior: ChatResumeBehavior = .continueWhereLeftOff,
         configureDefaults: (UserDefaults) -> Void = { _ in },
@@ -1820,14 +2128,18 @@ final class AppStateChatResumeTests: XCTestCase {
         )
     }
 
-    private func session(_ id: String, alternateIDs: [String] = []) -> SessionSummary {
+    private func session(
+        _ id: String,
+        alternateIDs: [String] = [],
+        profile: String = "default"
+    ) -> SessionSummary {
         SessionSummary(
             id: id,
             alternateIds: alternateIDs,
             title: id,
             model: "Hermes",
             updatedLabel: "now",
-            profile: "default",
+            profile: profile,
             source: .chat,
             isActive: false,
             isArchived: false,
@@ -1852,6 +2164,11 @@ final class AppStateChatResumeTests: XCTestCase {
 
 private enum ControlledLifecycleError: Error {
     case failed
+}
+
+private enum StaleReconnectMintOutcome {
+    case success
+    case signInRequired
 }
 
 @MainActor
@@ -1879,6 +2196,10 @@ private final class ControlledReconnectScheduler {
 
     var cancelledCount: Int {
         work.filter(\.isCancelled).count
+    }
+
+    var scheduledCount: Int {
+        work.count
     }
 
     func schedule(
