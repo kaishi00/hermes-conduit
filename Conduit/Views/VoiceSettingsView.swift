@@ -221,8 +221,19 @@ struct VoiceSettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            if case .permissionRequired = appleSpeechAvailability {
-                Text("iOS will ask for Speech Recognition permission when you run the test or start listening.")
+            switch appleSpeechAvailability {
+            case .ready:
+                EmptyView()
+            case .permissionRequired:
+                Text("Tap \"Record ASR\" below to grant Speech Recognition permission, or enable it in Settings > Conduit > Speech Recognition.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            case .permissionDenied:
+                Text("Speech Recognition permission was denied. Please enable it in Settings > Conduit > Speech Recognition.")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            case .unsupported:
+                Text("On-device speech recognition is not available for your current language locale.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -427,7 +438,11 @@ struct VoiceSettingsView: View {
             if kind == .stt, provider == Self.appleProviderID {
                 let selected = await setTranscriptionMode(.appleOnDevice)
                 appleSpeechAvailability = AppleOnDeviceSpeechTranscriber.currentAvailability()
-                if selected { transcriptionMode = .appleOnDevice }
+                if selected {
+                    transcriptionMode = .appleOnDevice
+                } else if case .permissionRequired = appleSpeechAvailability {
+                    testStatus = "iOS will prompt for Speech Recognition permission when you start a voice conversation or tap \"Record ASR\"."
+                }
             } else {
                 let providerSaved: Bool
                 if provider == selectedProvider(kind) {
