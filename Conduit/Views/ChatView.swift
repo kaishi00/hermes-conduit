@@ -21,7 +21,12 @@ struct ChatView: View {
     @State private var notificationHandoffSessionID: String?
     @State private var notificationHandoffHasMeasuredLayout = false
 
-    private var bottomAnchor: String { "chat-latest-\(appState.activeSessionId ?? "new")" }
+    private var activeScrollSessionID: String? {
+        appState.activeChatScrollSessionIdentity.canonicalSessionID
+            ?? appState.activeSessionId
+    }
+
+    private var bottomAnchor: String { "chat-latest-\(activeScrollSessionID ?? "new")" }
 
     private var isNearBottom: Bool {
         guard let bottomMarkerMaxY, let scrollViewportMaxY else { return true }
@@ -30,7 +35,10 @@ struct ChatView: View {
 
     private var hasPendingNonLatestRestoration: Bool {
         guard let pendingScrollRestoration,
-              pendingScrollRestoration.sessionID == appState.activeSessionId else {
+              appState.activeChatScrollSessionIdentity.areEquivalent(
+                pendingScrollRestoration.sessionID,
+                activeScrollSessionID
+              ) else {
             return false
         }
         return !pendingScrollRestoration.snapshot.followsLatest
@@ -46,8 +54,8 @@ struct ChatView: View {
                             EmptyChatState().padding(.top, 60)
                         }
 
-                        ForEach(appState.messages) { message in
-                            MessageBubble(message: message).id(message.id)
+                        ForEach(ChatMessageScrollTargets.make(for: appState.messages)) { target in
+                            MessageBubble(message: target.message).id(target.semanticID)
                         }
 
                         if !appState.streamingText.isEmpty {
@@ -135,16 +143,29 @@ struct ChatView: View {
                     followsLatest = true
                     scrollToLatest(using: proxy)
                 }
-                .onChange(of: appState.activeSessionId) { _, _ in
-                    cancelPendingChatScrollRestoration()
+                .onChange(of: appState.activeSessionId) { oldSessionID, newSessionID in
                     guard !appState.isOpeningNotificationSession else {
+                        cancelPendingChatScrollRestoration()
                         notificationHandoffPending = true
-                        notificationHandoffSessionID = appState.activeSessionId
+                        notificationHandoffSessionID = activeScrollSessionID
                         notificationHandoffHasMeasuredLayout = false
                         return
                     }
+                    guard !appState.activeChatScrollSessionIdentity.areEquivalent(
+                        oldSessionID,
+                        newSessionID
+                    ) else { return }
+                    cancelPendingChatScrollRestoration()
                     followsLatest = true
                     scrollToLatest(using: proxy)
+                }
+                .onChange(of: appState.activeChatScrollSessionIdentity) { _, _ in
+                    guard !appState.isOpeningNotificationSession else { return }
+                    // Reconciliation publishes after replacing the transcript.
+                    // Let SwiftUI install the new semantic targets, then retry.
+                    DispatchQueue.main.async {
+                        finishChatScrollRestorationIfReady(using: proxy)
+                    }
                 }
                 .onChange(of: appState.isOpeningNotificationSession) { _, isOpening in
                     if isOpening {
@@ -155,7 +176,7 @@ struct ChatView: View {
                         followsLatest = false
                     } else {
                         if notificationHandoffPending, notificationHandoffSessionID == nil {
-                            notificationHandoffSessionID = appState.activeSessionId
+                            notificationHandoffSessionID = activeScrollSessionID
                             notificationHandoffHasMeasuredLayout = bottomMarkerMaxY != nil && scrollViewportMaxY != nil
                         }
                         finishNotificationHandoffIfReady(using: proxy)
@@ -177,6 +198,9 @@ struct ChatView: View {
                         saveChatScrollPosition()
                     case .active:
                         beginChatScrollRestoration()
+                        DispatchQueue.main.async {
+                            finishChatScrollRestorationIfReady(using: proxy)
+                        }
                     default:
                         break
                     }
@@ -187,6 +211,7 @@ struct ChatView: View {
                             // Only a deliberate user drag opts out of the
                             // stream-following behavior. Content growth alone
                             // must not make a live conversation appear stale.
+                            cancelPendingChatScrollRestoration()
                             followsLatest = false
                         }
                 )
@@ -229,8 +254,10 @@ struct ChatView: View {
     }
 
     private func saveChatScrollPosition() {
-        guard let sessionID = appState.activeSessionId else { return }
-        let messageIDs = Set(appState.messages.map(\.id))
+        guard let sessionID = activeScrollSessionID else { return }
+        let messageIDs = Set(
+            ChatMessageScrollTargets.make(for: appState.messages).map(\.semanticID)
+        )
         let anchor = messageIDs.contains(topVisibleChatID ?? "")
             ? topVisibleChatID
             : nil
@@ -244,7 +271,8 @@ struct ChatView: View {
     }
 
     private func beginChatScrollRestoration() {
-        guard let sessionID = appState.activeSessionId,
+        let identity = appState.activeChatScrollSessionIdentity
+        guard let sessionID = activeScrollSessionID,
               let snapshot = chatScrollState.snapshot(for: sessionID) else {
             pendingScrollRestoration = nil
             return
@@ -252,7 +280,14 @@ struct ChatView: View {
 
         pendingScrollRestoration = PendingChatScrollRestoration(
             sessionID: sessionID,
-            snapshot: snapshot
+            snapshot: snapshot,
+            gate: ChatScrollRestorationGate(
+                observing: identity,
+                // A configured foreground scene always asks AppState to
+                // reconcile. This also closes any SwiftUI callback-order gap
+                // before AppState publishes its synchronous in-progress state.
+                reconciliationExpected: appState.connection != nil
+            )
         )
         followsLatest = snapshot.followsLatest
     }
@@ -263,7 +298,8 @@ struct ChatView: View {
 
     private func finishChatScrollRestorationIfReady(using proxy: ScrollViewProxy) {
         guard let pending = pendingScrollRestoration else { return }
-        guard pending.sessionID == appState.activeSessionId else {
+        let identity = appState.activeChatScrollSessionIdentity
+        guard identity.areEquivalent(pending.sessionID, activeScrollSessionID) else {
             cancelPendingChatScrollRestoration()
             return
         }
@@ -275,7 +311,11 @@ struct ChatView: View {
             return
         }
 
-        let availableIDs = Set(appState.messages.map(\.id))
+        guard pending.gate.allowsNonLatestRestoration(using: identity) else { return }
+
+        let availableIDs = Set(
+            ChatMessageScrollTargets.make(for: appState.messages).map(\.semanticID)
+        )
         guard !availableIDs.isEmpty else { return }
         guard let resolved = chatScrollState.restoration(
             for: pending.sessionID,
@@ -319,7 +359,10 @@ struct ChatView: View {
     /// so a long lazy transcript cannot inherit the old conversation's offset.
     private func recordNotificationHandoffLayout() {
         guard notificationHandoffPending,
-              notificationHandoffSessionID == appState.activeSessionId,
+              appState.activeChatScrollSessionIdentity.areEquivalent(
+                notificationHandoffSessionID,
+                activeScrollSessionID
+              ),
               bottomMarkerMaxY != nil,
               scrollViewportMaxY != nil else { return }
         notificationHandoffHasMeasuredLayout = true
@@ -328,7 +371,10 @@ struct ChatView: View {
     private func finishNotificationHandoffIfReady(using proxy: ScrollViewProxy) {
         guard notificationHandoffPending,
               !appState.isOpeningNotificationSession,
-              notificationHandoffSessionID == appState.activeSessionId,
+              appState.activeChatScrollSessionIdentity.areEquivalent(
+                notificationHandoffSessionID,
+                activeScrollSessionID
+              ),
               notificationHandoffHasMeasuredLayout else { return }
         notificationHandoffPending = false
         notificationHandoffSessionID = nil
@@ -355,6 +401,7 @@ struct ChatView: View {
 private struct PendingChatScrollRestoration: Equatable {
     let sessionID: String
     let snapshot: ChatScrollSnapshot
+    let gate: ChatScrollRestorationGate
 }
 
 private struct ChatBottomMarkerPreferenceKey: PreferenceKey {

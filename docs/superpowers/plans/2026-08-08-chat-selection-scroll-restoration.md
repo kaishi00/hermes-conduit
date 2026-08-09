@@ -527,3 +527,53 @@ git log -4 --oneline
 ```
 
 Expected result: the working tree contains only the intentional source and test changes; the generated Xcode project remains ignored. Do not add a version bump, archive, TestFlight upload, or merge action to this branch until the user requests the next submission after reviewing the simulator behavior.
+
+---
+
+### Task 6: Harden restoration across reconciliation and transcript identity changes
+
+**Reason:** Final review found that geometry readiness alone can race foreground reconciliation, `session.resume` can rotate a runtime ID for the same logical conversation, and `ChatMessage.id` is not stable across local/live/persisted transcript projections. Fix these without changing gateway/network semantics or the existing user-facing latest/notification behavior.
+
+**Files:**
+- Modify: `Conduit/Services/ChatScrollState.swift`
+- Modify: `ConduitTests/ChatScrollStateTests.swift`
+- Modify: `Conduit/Services/AppState.swift`
+- Modify: `Conduit/Views/ChatView.swift`
+
+**Interfaces and invariants:**
+
+- Add a Foundation-only deterministic semantic anchor helper for `ChatMessage` rows. Its generated IDs must exclude `ChatMessage.id`, timestamp, author, and other source-specific volatile identifiers; include role/content and the stable activity fields needed to distinguish tool, clarify, approval, review, and attachment rows; and add an occurrence ordinal for duplicate fingerprints. The helper must produce equal anchors for the same logical message represented with different source IDs.
+- Add a Foundation-only `ChatScrollSessionIdentity` value type containing a canonical session ID, equivalent runtime/catalog IDs, reconciliation state, and a settled revision. It must answer whether two IDs are equivalent without depending on SwiftUI.
+- Expose the active identity from `AppState` as read-only published state. Populate equivalent IDs from the existing session catalog plus reconciliation requested/resolved IDs. Preserve the canonical ID while `session.resume` rotates a runtime ID for the same logical session. Increment the settled revision when existing reconciliation work settles; do not alter RPC payloads, network reconciliation decisions, or persistence formats.
+- In `ChatView`, use semantic anchor IDs as scroll targets and use the canonical session ID for scroll-state keys and the latest-message anchor. Keep `ForEach` rendering identity and existing controls intact.
+- Do not finish a non-latest restoration until the active identity is no longer reconciling and its settled revision has advanced past the revision observed when foreground restoration was requested. Re-check from identity/revision changes as well as geometry callbacks. If the scene becomes active without a reconciliation, the current revision may be used immediately.
+- Treat a raw `activeSessionId` change as a user session switch only when the old and new IDs are not equivalent under the published identity. Runtime-ID rotation must not cancel a pending restoration or force latest. Deliberate user drag, explicit scroll-to-latest, notification handoff, and a genuinely different session must still cancel/override restoration.
+- Keep iOS 17 APIs, iPhone/iPad orientation behavior, version/build metadata, whole-response/code copy buttons, latest-following behavior, and interactive non-text controls unchanged.
+
+- [ ] **Step 1: Add failing pure tests**
+
+Extend `ChatScrollStateTests` with coverage for:
+
+- semantically identical user/assistant rows with different raw IDs producing equal anchors;
+- duplicate semantic rows receiving distinct occurrence-qualified anchors;
+- stable activity/attachment fields participating in the fingerprint;
+- equivalent session IDs sharing one canonical identity while unrelated IDs do not;
+- a pending restoration remaining blocked while reconciliation is active and becoming eligible only after the settled revision advances (using a pure helper if needed).
+
+Run the focused test command before adding production implementations and record the expected compile/test failure.
+
+- [ ] **Step 2: Implement the pure identity and anchor helpers**
+
+Keep the helpers deterministic, bounded, and independent of SwiftUI. Preserve the existing `ChatScrollSnapshot` and `ChatScrollStateStore` behavior, changing only the anchor/session-key types needed to make restoration source-stable.
+
+- [ ] **Step 3: Expose AppState reconciliation/session identity**
+
+Connect the new value type to the already-existing `reconciliation`, `reconciliationToken`, active session catalog, and `session.resume` result flow. Ensure successful, failed, invalidated, and user-selected session paths cannot leave the published state claiming that reconciliation is active forever.
+
+- [ ] **Step 4: Integrate the hardening into ChatView**
+
+Replace raw message IDs in semantic scroll targets and snapshot availability checks; gate restoration on the published reconciliation identity; preserve notification/manual-latest/session-switch priority; and cancel pending restoration on deliberate user drag.
+
+- [ ] **Step 5: Run targeted and full verification**
+
+Run the two new/updated focused test classes, then the complete simulator suite. Record any unavailable XcodeGen/manual-authenticated UI limitation truthfully. Do not bump the version, archive, upload, or merge.
