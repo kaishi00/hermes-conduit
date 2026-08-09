@@ -42,4 +42,22 @@ final class ChatTextSelectionTests: XCTestCase {
         XCTAssertEqual(codeFont.fontDescriptor.postscriptName, UIFont.monospacedSystemFont(ofSize: codeFont.pointSize, weight: .regular).fontDescriptor.postscriptName)
         XCTAssertEqual(link.absoluteString, "https://example.com")
     }
+
+    func testMarkdownSelectionSpansParagraphBlocks() throws {
+        let content = try XCTUnwrap(
+            MarkdownText.selectableAttributedText(for: "First paragraph.\n\nSecond paragraph.")
+        )
+        XCTAssertEqual(content.string, "First paragraph.\n\nSecond paragraph.")
+
+        let textView = SelectableTextView.makeTextView()
+        textView.attributedText = content
+        let start: Int = (content.string as NSString).range(of: "paragraph.").location
+        let end: Int = NSMaxRange((content.string as NSString).range(of: "Second paragraph."))
+        textView.selectedRange = NSRange(location: start, length: end - start)
+
+        guard let selectedRange = textView.selectedTextRange else {
+            return XCTFail("The unified Markdown surface did not expose its selected range")
+        }
+        XCTAssertEqual(textView.text(in: selectedRange), "paragraph.\n\nSecond paragraph.")
+    }
 }
