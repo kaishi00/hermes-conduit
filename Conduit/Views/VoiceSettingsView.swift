@@ -440,8 +440,13 @@ struct VoiceSettingsView: View {
                 appleSpeechAvailability = AppleOnDeviceSpeechTranscriber.currentAvailability()
                 if selected {
                     transcriptionMode = .appleOnDevice
+                    testStatus = nil
                 } else if case .permissionRequired = appleSpeechAvailability {
                     testStatus = "iOS will prompt for Speech Recognition permission when you start a voice conversation or tap \"Record ASR\"."
+                } else if case .permissionDenied = appleSpeechAvailability {
+                    testStatus = "Speech Recognition permission was denied. Please enable it in Settings > Conduit > Speech Recognition."
+                } else if case .unsupported = appleSpeechAvailability {
+                    testStatus = "On-device speech recognition is not available for your current language locale."
                 }
             } else {
                 let providerSaved: Bool

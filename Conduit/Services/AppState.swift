@@ -4111,8 +4111,9 @@ final class AppState: ObservableObject {
             switch appleSpeechAvailability {
             case .permissionDenied:
                 errorMessage = "Speech Recognition permission was denied. Please enable it in Settings > Conduit > Speech Recognition."
-            case .unsupported:
-                errorMessage = "On-device speech recognition is not available for \(Locale.current.localizedString(forIdentifier: Locale.current.identifier) ?? "your locale")."
+            case .unsupported(let localeIdentifier):
+                let localeName = Locale.current.localizedString(forIdentifier: localeIdentifier) ?? localeIdentifier
+                errorMessage = "On-device speech recognition is not available for \(localeName)."
             default:
                 errorMessage = "On-device speech recognition is unavailable."
             }
