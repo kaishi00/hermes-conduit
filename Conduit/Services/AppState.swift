@@ -1412,10 +1412,10 @@ final class AppState: ObservableObject {
         let operations = SessionRenameOperation.Operations(
             renameRuntime: activeClient.map { client in
                 { [weak self, weak client] sessionID, title in
-                    guard let self, let client else { throw CancellationError() }
+                    guard let self, let client else { throw SessionRenameOperation.ContextChanged() }
                     try await client.setSessionTitle(sessionID, title: title)
                     guard profile == self.activeProfile, self.client === client else {
-                        throw CancellationError()
+                        throw SessionRenameOperation.ContextChanged()
                     }
                 }
             },
@@ -1423,7 +1423,7 @@ final class AppState: ObservableObject {
                 guard let self, let dashboardTicketBridge,
                       profile == self.activeProfile,
                       !runtimeRenameExpected || self.client === activeClient else {
-                    throw CancellationError()
+                    throw SessionRenameOperation.ContextChanged()
                 }
                 _ = try await dashboardTicketBridge.requestJSON(
                     path: self.dashboardPath(
@@ -1445,7 +1445,7 @@ final class AppState: ObservableObject {
             ), profile == activeProfile else { return false }
             applyRecoveredSessionTitle(result.title, sessionIDs: result.sessionIDs)
             return true
-        } catch is CancellationError {
+        } catch is SessionRenameOperation.ContextChanged {
             return false
         } catch {
             guard profile == activeProfile else { return false }

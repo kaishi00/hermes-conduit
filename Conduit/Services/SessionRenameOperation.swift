@@ -7,6 +7,8 @@ enum SessionRenameOperation {
         var renameStored: (String, String) async throws -> Void
     }
 
+    struct ContextChanged: Error {}
+
     struct Result: Equatable {
         let title: String
         let sessionIDs: [String]

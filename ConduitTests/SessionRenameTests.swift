@@ -159,6 +159,26 @@ final class SessionRenameTests: XCTestCase {
         XCTAssertEqual(errorMessage, "Could not rename this conversation: Gateway rejected rename")
     }
 
+    func testTransportCancellationRemainsAUserVisibleFailure() async {
+        do {
+            _ = try await SessionRenameOperation.perform(
+                session: makeSession(),
+                activeSessionID: nil,
+                title: "Renamed",
+                operations: .init(
+                    renameRuntime: nil,
+                    renameStored: { _, _ in throw CancellationError() }
+                )
+            )
+            XCTFail("Expected transport cancellation to propagate")
+        } catch {
+            XCTAssertTrue(error is CancellationError)
+            XCTAssertTrue(SessionRenameOperation.failureMessage(error).hasPrefix(
+                "Could not rename this conversation:"
+            ))
+        }
+    }
+
     func testManualRenameCancelsAndInvalidatesPendingTitleRecovery() async {
         let tracker = SessionTitleRecoveryTracker()
         let key = "research|stored-id"
