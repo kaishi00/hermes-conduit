@@ -26,19 +26,54 @@ struct MarkdownText: View {
     /// while already-read text remains fully stable.
     var newestCharacterOpacities: [Double] = []
 
+    static func selectableAttributedText(
+        for source: String,
+        recognizesGatewayMedia: Bool = false,
+        foregroundStyle: Color = .primary,
+        usesAccentSurface: Bool = false,
+        newestCharacterOpacities: [Double] = []
+    ) -> NSAttributedString? {
+        MarkdownSelectionFormatter.attributedText(
+            for: MarkdownParser.parse(source, recognizesGatewayMedia: recognizesGatewayMedia),
+            foregroundStyle: foregroundStyle,
+            usesAccentSurface: usesAccentSurface,
+            newestCharacterOpacities: newestCharacterOpacities
+        )
+    }
+
     var body: some View {
         let blocks = MarkdownParser.parse(source, recognizesGatewayMedia: gatewayMediaDataURL != nil)
-        VStack(alignment: .leading, spacing: 10) {
-            ForEach(Array(blocks.enumerated()), id: \.offset) { index, block in
-                MarkdownBlockView(
-                    block: block,
-                    foregroundStyle: foregroundStyle,
-                    usesAccentSurface: usesAccentSurface,
-                    gatewayMediaDataURL: gatewayMediaDataURL,
-                    newestCharacterOpacities: index == blocks.count - 1
-                        ? newestCharacterOpacities
-                        : []
+        let selectableText = MarkdownSelectionFormatter.attributedText(
+            for: blocks,
+            foregroundStyle: foregroundStyle,
+            usesAccentSurface: usesAccentSurface,
+            newestCharacterOpacities: newestCharacterOpacities
+        )
+
+        Group {
+            if let selectableText {
+                SelectableTextView(
+                    attributedText: selectableText,
+                    font: .preferredFont(forTextStyle: .body),
+                    textColor: usesAccentSurface ? .white : UIColor(foregroundStyle),
+                    lineSpacing: 4,
+                    linkColor: usesAccentSurface ? .white : .link
                 )
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(Array(blocks.enumerated()), id: \.offset) { index, block in
+                        MarkdownBlockView(
+                            block: block,
+                            foregroundStyle: foregroundStyle,
+                            usesAccentSurface: usesAccentSurface,
+                            gatewayMediaDataURL: gatewayMediaDataURL,
+                            newestCharacterOpacities: index == blocks.count - 1
+                                ? newestCharacterOpacities
+                                : []
+                        )
+                    }
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -63,6 +98,213 @@ private enum MarkdownBlock {
 private struct MarkdownQuoteLine {
     let depth: Int
     let text: String
+}
+
+private enum MarkdownSelectionFormatter {
+    static func attributedText(
+        for blocks: [MarkdownBlock],
+        foregroundStyle: Color,
+        usesAccentSurface: Bool,
+        newestCharacterOpacities: [Double]
+    ) -> NSAttributedString? {
+        guard !blocks.isEmpty, blocks.allSatisfy(\.isSelectableFlowBlock) else { return nil }
+
+        let bodyFont = UIFont.preferredFont(forTextStyle: .body)
+        let textColor = usesAccentSurface ? UIColor.white : UIColor(foregroundStyle)
+        let linkColor = usesAccentSurface ? UIColor.white : UIColor.link
+        let result = NSMutableAttributedString()
+
+        for (index, block) in blocks.enumerated() {
+            guard let segment = segment(
+                for: block,
+                bodyFont: bodyFont,
+                textColor: textColor,
+                linkColor: linkColor,
+                usesAccentSurface: usesAccentSurface,
+                foregroundStyle: foregroundStyle
+            ) else {
+                return nil
+            }
+
+            if index > 0 {
+                result.append(NSAttributedString(
+                    string: "\n\n",
+                    attributes: [
+                        .font: bodyFont,
+                        .foregroundColor: textColor
+                    ]
+                ))
+            }
+            result.append(segment)
+        }
+
+        applyTrailingCharacterOpacities(newestCharacterOpacities, to: result, baseColor: textColor)
+        return result
+    }
+
+    private static func segment(
+        for block: MarkdownBlock,
+        bodyFont: UIFont,
+        textColor: UIColor,
+        linkColor: UIColor,
+        usesAccentSurface: Bool,
+        foregroundStyle: Color
+    ) -> NSAttributedString? {
+        switch block {
+        case .heading(let level, let text):
+            return inline(
+                text,
+                font: headingFont(level),
+                textColor: textColor,
+                linkColor: linkColor
+            )
+
+        case .paragraph(let text):
+            return inline(text, font: bodyFont, textColor: textColor, linkColor: linkColor)
+
+        case .unorderedList(let items):
+            return list(
+                items,
+                ordered: false,
+                bodyFont: bodyFont,
+                textColor: textColor,
+                linkColor: linkColor,
+                markerColor: usesAccentSurface ? .white : UIColor(Color.conduitAccent)
+            )
+
+        case .orderedList(let items):
+            return list(
+                items,
+                ordered: true,
+                bodyFont: bodyFont,
+                textColor: textColor,
+                linkColor: linkColor,
+                markerColor: usesAccentSurface ? .white : UIColor(Color.conduitAccent)
+            )
+
+        case .quote(let lines):
+            let result = NSMutableAttributedString()
+            let quoteColor = usesAccentSurface
+                ? UIColor.white.withAlphaComponent(0.90)
+                : UIColor(foregroundStyle).withAlphaComponent(0.90)
+            let quoteFont = bodyFont.withTraits(.traitItalic)
+
+            for (index, line) in lines.enumerated() {
+                if index > 0 {
+                    result.append(NSAttributedString(string: "\n"))
+                }
+                let marker = String(repeating: "│ ", count: max(line.depth, 1))
+                result.append(NSAttributedString(
+                    string: marker,
+                    attributes: [
+                        .font: bodyFont,
+                        .foregroundColor: quoteColor
+                    ]
+                ))
+                result.append(inline(line.text, font: quoteFont, textColor: quoteColor, linkColor: linkColor))
+            }
+            return result
+
+        default:
+            return nil
+        }
+    }
+
+    private static func list(
+        _ items: [String],
+        ordered: Bool,
+        bodyFont: UIFont,
+        textColor: UIColor,
+        linkColor: UIColor,
+        markerColor: UIColor
+    ) -> NSAttributedString {
+        let result = NSMutableAttributedString()
+        let markerFont = bodyFont.withTraits(.traitBold)
+
+        for (index, item) in items.enumerated() {
+            if index > 0 {
+                result.append(NSAttributedString(string: "\n"))
+            }
+
+            let task = MarkdownParser.taskItem(item)
+            let marker: String
+            if let task {
+                marker = task.complete ? "☑ " : "☐ "
+            } else {
+                marker = ordered ? "\(index + 1). " : "• "
+            }
+            result.append(NSAttributedString(
+                string: marker,
+                attributes: [
+                    .font: markerFont,
+                    .foregroundColor: markerColor
+                ]
+            ))
+            result.append(inline(
+                task?.text ?? item,
+                font: bodyFont,
+                textColor: textColor,
+                linkColor: linkColor
+            ))
+        }
+        return result
+    }
+
+    private static func inline(
+        _ source: String,
+        font: UIFont,
+        textColor: UIColor,
+        linkColor: UIColor
+    ) -> NSAttributedString {
+        let attributed = (try? AttributedString(
+            markdown: source,
+            options: .init(interpretedSyntax: .full)
+        )) ?? AttributedString(source)
+        return SelectableTextView(
+            attributedText: attributed,
+            font: font,
+            textColor: textColor,
+            linkColor: linkColor
+        ).attributedText
+    }
+
+    private static func headingFont(_ level: Int) -> UIFont {
+        switch level {
+        case 1: UIFont.preferredFont(forTextStyle: .title2).withTraits(.traitBold)
+        case 2: UIFont.preferredFont(forTextStyle: .title3).withTraits(.traitBold)
+        case 3: UIFont.preferredFont(forTextStyle: .headline).withTraits(.traitBold)
+        default: UIFont.preferredFont(forTextStyle: .subheadline).withTraits(.traitBold)
+        }
+    }
+
+    private static func applyTrailingCharacterOpacities(
+        _ opacities: [Double],
+        to text: NSMutableAttributedString,
+        baseColor: UIColor
+    ) {
+        guard !opacities.isEmpty, text.length > 0 else { return }
+        var location = text.length
+        for opacity in opacities.reversed() {
+            guard location > 0 else { break }
+            location -= 1
+            text.addAttribute(
+                .foregroundColor,
+                value: baseColor.withAlphaComponent(CGFloat(opacity)),
+                range: NSRange(location: location, length: 1)
+            )
+        }
+    }
+}
+
+private extension MarkdownBlock {
+    var isSelectableFlowBlock: Bool {
+        switch self {
+        case .heading, .paragraph, .quote, .unorderedList, .orderedList:
+            true
+        default:
+            false
+        }
+    }
 }
 
 private enum MarkdownTableAlignment {
