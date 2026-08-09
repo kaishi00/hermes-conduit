@@ -131,10 +131,12 @@ struct ChatView: View {
                     }
                 }
                 .onChange(of: appState.chatScrollRequest) { _, _ in
+                    cancelPendingChatScrollRestoration()
                     followsLatest = true
                     scrollToLatest(using: proxy)
                 }
                 .onChange(of: appState.activeSessionId) { _, _ in
+                    cancelPendingChatScrollRestoration()
                     guard !appState.isOpeningNotificationSession else {
                         notificationHandoffPending = true
                         notificationHandoffSessionID = appState.activeSessionId
@@ -146,6 +148,7 @@ struct ChatView: View {
                 }
                 .onChange(of: appState.isOpeningNotificationSession) { _, isOpening in
                     if isOpening {
+                        cancelPendingChatScrollRestoration()
                         notificationHandoffPending = true
                         notificationHandoffSessionID = nil
                         notificationHandoffHasMeasuredLayout = false
@@ -190,6 +193,7 @@ struct ChatView: View {
                 .overlay(alignment: .bottomTrailing) {
                     if !followsLatest && !isNearBottom {
                         Button {
+                            cancelPendingChatScrollRestoration()
                             followsLatest = true
                             scrollToLatest(using: proxy)
                         } label: {
@@ -253,9 +257,16 @@ struct ChatView: View {
         followsLatest = snapshot.followsLatest
     }
 
+    private func cancelPendingChatScrollRestoration() {
+        pendingScrollRestoration = nil
+    }
+
     private func finishChatScrollRestorationIfReady(using proxy: ScrollViewProxy) {
-        guard let pending = pendingScrollRestoration,
-              pending.sessionID == appState.activeSessionId else { return }
+        guard let pending = pendingScrollRestoration else { return }
+        guard pending.sessionID == appState.activeSessionId else {
+            cancelPendingChatScrollRestoration()
+            return
+        }
 
         if pending.snapshot.followsLatest {
             pendingScrollRestoration = nil
@@ -321,6 +332,7 @@ struct ChatView: View {
               notificationHandoffHasMeasuredLayout else { return }
         notificationHandoffPending = false
         notificationHandoffSessionID = nil
+        cancelPendingChatScrollRestoration()
         followsLatest = true
         var transaction = Transaction()
         transaction.animation = nil
