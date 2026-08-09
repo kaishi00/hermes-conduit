@@ -71,6 +71,130 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(harness.store.snapshot(for: newerKey), .latest)
     }
 
+    func testRapidExplicitSessionSwitchingSettlesTheLatestSession() async {
+        let sessionIDs = (1...8).map { "stored-\($0)" }
+        let gates = SessionOpenGates(sessionIDs: sessionIDs)
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                openSession: { _, sessionID in
+                    await gates.suspend(sessionID)
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [ChatMessage(
+                            id: "message-\(sessionID)",
+                            role: .assistant,
+                            content: sessionID,
+                            timestamp: sessionID
+                        )],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                refreshContext: { _, _ in }
+            )
+        )
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        harness.appState.connection = connection
+        harness.appState.client = HermesClient(connection: connection, profile: "default")
+        harness.appState.sessions = sessionIDs.map { session($0) }
+        harness.appState.activeSessionId = sessionIDs[0]
+
+        let tasks = sessionIDs.dropFirst().map { sessionID in
+            Task { @MainActor in
+                await harness.appState.openSession(sessionID)
+            }
+        }
+        for sessionID in sessionIDs.dropFirst() {
+            await gates.waitUntilSuspended(sessionID)
+        }
+
+        for sessionID in sessionIDs.dropFirst().reversed() {
+            gates.resume(sessionID)
+        }
+        for task in tasks {
+            _ = await task.value
+        }
+
+        XCTAssertEqual(harness.appState.activeSessionId, sessionIDs.last)
+        XCTAssertEqual(harness.appState.messages.map(\.content), [sessionIDs.last!])
+        XCTAssertEqual(harness.appState.turnState, .idle)
+        XCTAssertFalse(harness.appState.activeChatScrollSessionIdentity.isReconciling)
+    }
+
+    func testCancelledExplicitSessionSwitchDoesNotLeaveSynchronizationStuck() async {
+        let openGate = ControlledSuspension()
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                openSession: { _, sessionID in
+                    await openGate.suspend()
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                refreshContext: { _, _ in }
+            )
+        )
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        harness.appState.connection = connection
+        harness.appState.client = HermesClient(connection: connection, profile: "default")
+        harness.appState.sessions = [session("stored-a"), session("stored-b")]
+        harness.appState.activeSessionId = "stored-a"
+
+        let task = Task { @MainActor in
+            await harness.appState.openSession("stored-b")
+        }
+        await openGate.waitUntilSuspended()
+        task.cancel()
+        openGate.resume()
+        _ = await task.value
+
+        XCTAssertEqual(harness.appState.turnState, .idle)
+        XCTAssertFalse(harness.appState.activeChatScrollSessionIdentity.isReconciling)
+    }
+
+    func testRequestingAnotherSessionCancelsThePreviousOpen() async {
+        let firstGate = ControlledSuspension()
+        let secondGate = ControlledSuspension()
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                openSession: { _, sessionID in
+                    if sessionID == "stored-b" {
+                        await firstGate.suspend()
+                    } else {
+                        await secondGate.suspend()
+                    }
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                refreshContext: { _, _ in }
+            )
+        )
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        harness.appState.connection = connection
+        harness.appState.client = HermesClient(connection: connection, profile: "default")
+        harness.appState.sessions = [session("stored-a"), session("stored-b"), session("stored-c")]
+        harness.appState.activeSessionId = "stored-a"
+
+        let firstTask = harness.appState.requestOpenSession("stored-b")
+        await firstGate.waitUntilSuspended()
+        let secondTask = harness.appState.requestOpenSession("stored-c")
+        await secondGate.waitUntilSuspended()
+
+        XCTAssertTrue(firstTask.isCancelled)
+        firstGate.resume()
+        secondGate.resume()
+        _ = await firstTask.value
+        let secondOpened = await secondTask.value
+        XCTAssertTrue(secondOpened)
+
+        XCTAssertEqual(harness.appState.activeSessionId, "stored-c")
+        XCTAssertEqual(harness.appState.turnState, .idle)
+    }
+
     func testOlderNotificationCleanupCannotClearNewerNotificationBusyState() async {
         let firstCatalogGate = ControlledSuspension()
         let secondCatalogGate = ControlledSuspension()
@@ -2248,5 +2372,26 @@ private final class ControlledSuspension {
     func resume() {
         suspension?.resume()
         suspension = nil
+    }
+}
+
+@MainActor
+private final class SessionOpenGates {
+    private var gates: [String: ControlledSuspension]
+
+    init(sessionIDs: [String]) {
+        gates = Dictionary(uniqueKeysWithValues: sessionIDs.map { ($0, ControlledSuspension()) })
+    }
+
+    func suspend(_ sessionID: String) async {
+        await gates[sessionID]?.suspend()
+    }
+
+    func waitUntilSuspended(_ sessionID: String) async {
+        await gates[sessionID]?.waitUntilSuspended()
+    }
+
+    func resume(_ sessionID: String) {
+        gates[sessionID]?.resume()
     }
 }

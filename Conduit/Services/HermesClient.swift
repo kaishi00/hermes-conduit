@@ -532,9 +532,9 @@ final class HermesClient: ObservableObject {
         let body = try JSONEncoder().encode(request)
         logger.notice("Sending RPC id \(id) method \(method, privacy: .public)")
 
-        return try await withTaskCancellationHandler {
+        return try await withTaskCancellationHandler(operation: {
             try await withCheckedThrowingContinuation { continuation in
-                if Task.isCancelled {
+                guard !Task.isCancelled else {
                     continuation.resume(throwing: CancellationError())
                     return
                 }
@@ -553,8 +553,6 @@ final class HermesClient: ObservableObject {
                 // Hermes' established React Native client uses WebSocket text
                 // frames (`socket.send(JSON.stringify(...))`). The gateway accepts
                 // the connection but does not dispatch binary JSON-RPC frames.
-                // JSONEncoder output is valid UTF-8; keep this transport conversion nonfailable.
-                // swiftlint:disable:next optional_data_string_conversion
                 let text = String(decoding: body, as: UTF8.self)
                 socket.send(.string(text)) { [weak self] error in
                     if let error {
@@ -568,13 +566,17 @@ final class HermesClient: ObservableObject {
                     }
                 }
             }
-        } onCancel: { [weak self] in
+        }, onCancel: {
             Task { @MainActor [weak self] in
-                guard let pending = self?.pending.removeValue(forKey: id) else { return }
-                pending.timer?.invalidate()
-                pending.continuation.resume(throwing: CancellationError())
+                self?.cancelPendingRequest(id: id)
             }
-        }
+        })
+    }
+
+    private func cancelPendingRequest(id: Int) {
+        guard let pending = pending.removeValue(forKey: id) else { return }
+        pending.timer?.invalidate()
+        pending.continuation.resume(throwing: CancellationError())
     }
 
     private func incrementRequestId() -> Int {

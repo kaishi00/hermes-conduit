@@ -455,7 +455,7 @@ struct SessionList: View {
         Button {
             Haptics.light()
             appState.showSidebar = false
-            Task { await appState.openSession(session.id) }
+            appState.requestOpenSession(session.id)
         } label: {
             SessionRow(
                 session: session,
@@ -789,7 +789,7 @@ private struct ProjectSessionsSheet: View {
                                     Button {
                                         appState.showSidebar = false
                                         dismiss()
-                                        Task { await appState.openSession(session.id) }
+                                        appState.requestOpenSession(session.id)
                                     } label: {
                                         SessionRow(session: session, isSelected: session.id == appState.activeSessionId)
                                             .contentShape(Rectangle())
@@ -1071,7 +1071,7 @@ struct CronList: View {
                     ForEach(appState.activeProfileCronSessions.prefix(20)) { session in
                     Button {
                         appState.showSidebar = false
-                        Task { await appState.openSession(session.id) }
+                        appState.requestOpenSession(session.id)
                     } label: {
                         SessionRow(session: session, isSelected: session.id == appState.activeSessionId).contentShape(Rectangle())
                     }
@@ -1162,7 +1162,7 @@ private struct CronJobDetailSheet: View {
                         ConduitSettingsSection(title: "Run history", symbol: "clock.arrow.circlepath", tint: .conduitAura) {
                             if appState.cronRuns.isEmpty { Text("This job has not run yet.").font(.footnote).foregroundStyle(.secondary) }
                             ForEach(appState.cronRuns) { run in
-                                Button { appState.showSidebar = false; dismiss(); Task { await appState.openSession(run.id) } } label: {
+                                Button { appState.showSidebar = false; dismiss(); appState.requestOpenSession(run.id) } label: {
                                     HStack { VStack(alignment: .leading) { Text(run.title ?? run.preview ?? run.id).lineLimit(1); Text(run.model ?? "Hermes").font(.caption).foregroundStyle(.secondary) }; Spacer(); Text(run.lastActive.map(String.init) ?? "").font(.caption2).foregroundStyle(.tertiary) }
                                 }
                                 .buttonStyle(.plain)
