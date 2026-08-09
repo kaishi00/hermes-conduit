@@ -86,6 +86,14 @@ enum Haptics {
             selectionGenerator.prepare()
         }
     }
+    static func selectionChanged(_ changed: Bool) {
+        guard changed else { return }
+        selection()
+    }
+
+    static func mutationCompleted(_ succeeded: Bool) {
+        succeeded ? success() : error()
+    }
 
     static func prepare() {
         lightGenerator.prepare()

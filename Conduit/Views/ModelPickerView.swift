@@ -144,6 +144,7 @@ struct ModelPickerView: View {
 
     private func modelRow(_ model: ModelInfo, providerName: String) -> some View {
         Button {
+            Haptics.selectionChanged(selectedModel != model.id || selectedProvider != providerName)
             selectedModel = model.id
             selectedProvider = providerName
         } label: {

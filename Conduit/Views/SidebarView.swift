@@ -477,15 +477,16 @@ struct SessionList: View {
             .disabled(appState.isSessionMutationInFlight(session))
 
             Button {
-                Haptics.selection()
+                Haptics.light()
                 appState.toggleSessionPinned(session)
             } label: {
                 Label(appState.isSessionPinned(session) ? "Unpin" : "Pin", systemImage: appState.isSessionPinned(session) ? "pin.slash" : "pin")
             }
 
             Button {
-                Haptics.selection()
-                Task { await appState.archiveSession(session) }
+                Task {
+                    Haptics.mutationCompleted(await appState.archiveSession(session))
+                }
             } label: {
                 Label("Archive", systemImage: "archivebox")
             }
@@ -501,7 +502,7 @@ struct SessionList: View {
         }
         .swipeActions(edge: .leading, allowsFullSwipe: false) {
             Button {
-                Haptics.selection()
+                Haptics.light()
                 appState.toggleSessionPinned(session)
             } label: {
                 Label(appState.isSessionPinned(session) ? "Unpin" : "Pin", systemImage: appState.isSessionPinned(session) ? "pin.slash" : "pin")
@@ -510,8 +511,9 @@ struct SessionList: View {
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             Button {
-                Haptics.selection()
-                Task { await appState.archiveSession(session) }
+                Task {
+                    Haptics.mutationCompleted(await appState.archiveSession(session))
+                }
             } label: {
                 Label("Archive", systemImage: "archivebox")
             }
@@ -596,8 +598,9 @@ private struct ArchivedSessionsSheet: View {
 
                                 VStack(spacing: 6) {
                                     Button {
-                                        Haptics.selection()
-                                        Task { await appState.restoreArchivedSession(session) }
+                                        Task {
+                                            Haptics.mutationCompleted(await appState.restoreArchivedSession(session))
+                                        }
                                     } label: {
                                         Image(systemName: "arrow.uturn.backward")
                                             .font(.caption.weight(.bold))
