@@ -577,3 +577,29 @@ Replace raw message IDs in semantic scroll targets and snapshot availability che
 - [ ] **Step 5: Run targeted and full verification**
 
 Run the two new/updated focused test classes, then the complete simulator suite. Record any unavailable XcodeGen/manual-authenticated UI limitation truthfully. Do not bump the version, archive, upload, or merge.
+
+---
+
+### Task 7: Close restoration correctness and streaming-cost gaps from final review
+
+**Reason:** Final review identified an empty-authoritative-transcript deadlock, profile collisions in the in-memory scroll store, projection-dependent tool anchors, repeated full-transcript fingerprinting during streaming, and insufficient direct coverage of the identity resolver.
+
+**Files:**
+- Modify: `Conduit/Services/ChatScrollState.swift`
+- Modify: `ConduitTests/ChatScrollStateTests.swift`
+- Modify: `Conduit/Views/ChatView.swift`
+- Modify: `Conduit/Services/AppState.swift`
+
+**Requirements:**
+
+- Once reconciliation has settled, allow a non-latest snapshot to resolve against an empty authoritative transcript. The existing store fallback must produce `.latest`, clear the pending restore, and let streaming/typing follow latest normally. Add a pure regression test.
+- Make scroll-state keys and session identity profile-qualified. Equal IDs in different Hermes profiles must not be equivalent, overwrite snapshots, or preserve pending restoration/following state across `activeProfile` changes. Explicitly cancel/reset pending restoration on profile changes and add a pure test.
+- Make tool-row semantic anchors independent of full/absent/truncated projection previews. Use only source-stable tool identity fields and occurrence ordering; add a test where the same tool has full input in one projection and missing or truncated input in another.
+- Cache `ChatMessageScrollTargets` in `ChatView`/a small pure cache and refresh it only when message semantics change, not on every `streamingText` render. Keep rendering identity and scroll identity behavior unchanged. The cache must be initialized when the view appears and refreshed when `AppState.messages` changes; a bounded pure cache/update test is preferred.
+- Route AppState’s catalog/requested/resolved canonical-ID calculation through a pure Foundation-only resolver, or add an equally direct pure seam, and test catalog aliases, runtime-ID rotation, unrelated sessions, profile separation, and reconciliation state/revision transitions. Do not alter RPC payloads or network semantics.
+- Preserve all earlier constraints: iOS 17 APIs, latest-following, manual latest, notification priority, controls/copy actions, iPhone/iPad orientations, version/build `0.1.2 (120)`, and no archive/upload/merge.
+
+- [ ] **Step 1: Add failing pure tests for all five findings**
+- [ ] **Step 2: Implement the pure fixes and resolver/cache seams**
+- [ ] **Step 3: Integrate profile-scoped identity and cached targets into AppState/ChatView**
+- [ ] **Step 4: Run focused tests and full simulator verification**

@@ -26,7 +26,9 @@ final class AppState: ObservableObject {
     @Published var isConnecting = false
     @Published var profiles: [String] = []
     @Published private(set) var sessionFilterOrder: [SessionSource] = [.chat, .discord, .telegram, .api, .webhook, .other]
-    @Published private(set) var activeProfile: String = "default"
+    @Published private(set) var activeProfile: String = "default" {
+        didSet { refreshActiveChatScrollSessionIdentity() }
+    }
     @Published private(set) var defaultProfileName: String
     @Published private(set) var profileAvatarURLs: [String: URL]
     @Published private(set) var isProfileSwitching = false
@@ -211,7 +213,6 @@ final class AppState: ObservableObject {
 
     private var reconciliationToken = UUID()
     private var reconciliation: Reconciliation?
-    private var chatScrollIdentityProfile = "default"
     private var activeClientEpoch = UUID()
     private var activeAssistantMessageId: String?
     private var activeReasoningMessageId: String?
@@ -490,86 +491,26 @@ final class AppState: ObservableObject {
         advanceSettledRevision: Bool = false
     ) {
         let current = activeChatScrollSessionIdentity
-        let previous = chatScrollIdentityProfile == activeProfile
-            ? current
-            : ChatScrollSessionIdentity(
-                canonicalSessionID: nil,
-                equivalentSessionIDs: [],
-                isReconciling: current.isReconciling,
-                settledRevision: current.settledRevision
-            )
-        let catalog = sessions + cronSessions
-        func identifiers(for session: SessionSummary) -> Set<String> {
-            Set(([session.id] + session.alternateIds).compactMap(Self.normalizedSessionIdentityID))
-        }
-        func matchingSession(for ids: Set<String>) -> SessionSummary? {
-            guard !ids.isEmpty else { return nil }
-            return catalog.first { !identifiers(for: $0).isDisjoint(with: ids) }
-        }
-
-        let activeID = Self.normalizedSessionIdentityID(activeSessionId)
-        let reconciliationIDs = Set([
-            reconciliation?.requestedSessionId,
-            reconciliation?.resolvedSessionId
-        ].compactMap(Self.normalizedSessionIdentityID))
-        let reconciliationSession = matchingSession(for: reconciliationIDs)
-        let reconciliationCatalogIDs = reconciliationSession.map(identifiers) ?? []
-        let reconciliationContinuesPrevious = reconciliationIDs.isEmpty
-            || reconciliationIDs.contains(where: previous.contains)
-            || !reconciliationCatalogIDs.isDisjoint(with: previous.equivalentSessionIDs)
-            || activeID.map(reconciliationCatalogIDs.contains) == true
-
-        var candidates = reconciliationIDs
-        if reconciliationIDs.isEmpty || reconciliationContinuesPrevious,
-           let activeID {
-            candidates.insert(activeID)
-        }
-        let matchedSession = reconciliationSession ?? matchingSession(for: candidates)
-        let continuesPreviousIdentity = candidates.contains(where: previous.contains)
-
-        let canonicalSessionID: String?
-        if let matchedSession {
-            canonicalSessionID = matchedSession.id
-        } else if continuesPreviousIdentity {
-            canonicalSessionID = previous.canonicalSessionID
-        } else if !reconciliationIDs.isEmpty {
-            canonicalSessionID = Self.normalizedSessionIdentityID(reconciliation?.requestedSessionId)
-                ?? Self.normalizedSessionIdentityID(reconciliation?.resolvedSessionId)
-                ?? activeID
-        } else {
-            canonicalSessionID = activeID
-        }
-
-        var equivalentSessionIDs = candidates
-        if let matchedSession {
-            equivalentSessionIDs.formUnion(
-                ([matchedSession.id] + matchedSession.alternateIds)
-                    .compactMap(Self.normalizedSessionIdentityID)
+        let catalog = (sessions + cronSessions).map { session in
+            ChatScrollSessionCatalogIdentity(
+                profile: session.profile ?? activeProfile,
+                canonicalSessionID: session.id,
+                alternateSessionIDs: Set(session.alternateIds)
             )
         }
-        if continuesPreviousIdentity {
-            equivalentSessionIDs.formUnion(previous.equivalentSessionIDs)
-        }
-
-        let revision = advanceSettledRevision
-            ? current.settledRevision &+ 1
-            : current.settledRevision
-        let updated = ChatScrollSessionIdentity(
-            canonicalSessionID: canonicalSessionID,
-            equivalentSessionIDs: equivalentSessionIDs,
+        let updated = ChatScrollSessionIdentityResolver.resolve(
+            profile: activeProfile,
+            activeSessionID: activeSessionId,
+            catalog: catalog,
+            requestedSessionID: reconciliation?.requestedSessionId,
+            resolvedSessionID: reconciliation?.resolvedSessionId,
+            previousIdentity: current,
             isReconciling: isReconciling ?? current.isReconciling,
-            settledRevision: revision
+            advanceSettledRevision: advanceSettledRevision
         )
-        chatScrollIdentityProfile = activeProfile
         if updated != current {
             activeChatScrollSessionIdentity = updated
         }
-    }
-
-    private static func normalizedSessionIdentityID(_ sessionID: String?) -> String? {
-        guard let value = sessionID?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !value.isEmpty else { return nil }
-        return value
     }
 
     func makeSettingsSnapshot() -> SettingsSnapshot {
