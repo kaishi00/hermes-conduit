@@ -1,8 +1,14 @@
 import Foundation
 
+struct ChatScrollAnchorMetadata: Equatable {
+    let fingerprint: String
+    let duplicateCount: Int
+}
+
 struct ChatMessageScrollTarget: Identifiable, Equatable {
     let message: ChatMessage
     let semanticID: String
+    let restorationMetadata: ChatScrollAnchorMetadata
 
     /// SwiftUI keeps the existing source-row identity for rendering and
     /// controls. Only scroll targeting uses the source-independent ID.
@@ -15,6 +21,20 @@ enum ChatMessageScrollTargetCacheUpdate: Equatable {
     case semanticsChanged
 }
 
+enum ChatMessageScrollUpdatePolicy {
+    static func shouldReassertLatest(
+        after update: ChatMessageScrollTargetCacheUpdate,
+        followsLatest: Bool,
+        hasPendingNonLatestRestoration: Bool,
+        hasNotificationHandoff: Bool
+    ) -> Bool {
+        update != .unchanged
+            && followsLatest
+            && !hasPendingNonLatestRestoration
+            && !hasNotificationHandoff
+    }
+}
+
 struct ChatMessageScrollTargetCache: Equatable {
     private(set) var targets: [ChatMessageScrollTarget] = []
     private var fingerprints: [String] = []
@@ -25,7 +45,11 @@ struct ChatMessageScrollTargetCache: Equatable {
         if updatedFingerprints == fingerprints, targets.count == messages.count {
             guard targets.map(\.message) != messages else { return .unchanged }
             targets = zip(messages, targets).map { message, target in
-                ChatMessageScrollTarget(message: message, semanticID: target.semanticID)
+                ChatMessageScrollTarget(
+                    message: message,
+                    semanticID: target.semanticID,
+                    restorationMetadata: target.restorationMetadata
+                )
             }
             return .renderingChanged
         }
@@ -52,13 +76,20 @@ enum ChatMessageScrollTargets {
         for messages: [ChatMessage],
         fingerprints: [String]
     ) -> [ChatMessageScrollTarget] {
+        let duplicateCounts = fingerprints.reduce(into: [String: Int]()) { counts, fingerprint in
+            counts[fingerprint, default: 0] += 1
+        }
         var occurrences: [String: Int] = [:]
         return zip(messages, fingerprints).map { message, fingerprint in
             let occurrence = occurrences[fingerprint, default: 0]
             occurrences[fingerprint] = occurrence + 1
             return ChatMessageScrollTarget(
                 message: message,
-                semanticID: "chat-message-\(fingerprint)-\(occurrence)"
+                semanticID: "chat-message-\(fingerprint)-\(occurrence)",
+                restorationMetadata: ChatScrollAnchorMetadata(
+                    fingerprint: fingerprint,
+                    duplicateCount: duplicateCounts[fingerprint, default: 0]
+                )
             )
         }
     }
@@ -343,9 +374,46 @@ struct ChatScrollRestorationGate: Equatable {
     }
 }
 
+struct ChatScrollTargetAvailability: Equatable {
+    private let messageIDs: Set<String>
+    private let metadataByMessageID: [String: ChatScrollAnchorMetadata]
+
+    init(targets: [ChatMessageScrollTarget]) {
+        messageIDs = Set(targets.map(\.semanticID))
+        metadataByMessageID = Dictionary(
+            targets.map { ($0.semanticID, $0.restorationMetadata) },
+            uniquingKeysWith: { existing, _ in existing }
+        )
+    }
+
+    init(messageIDs: Set<String>) {
+        self.messageIDs = messageIDs
+        metadataByMessageID = [:]
+    }
+
+    fileprivate func contains(_ messageID: String) -> Bool {
+        messageIDs.contains(messageID)
+    }
+
+    fileprivate func metadata(for messageID: String) -> ChatScrollAnchorMetadata? {
+        metadataByMessageID[messageID]
+    }
+}
+
 struct ChatScrollSnapshot: Equatable {
     let anchorMessageID: String?
     let followsLatest: Bool
+    let anchorMetadata: ChatScrollAnchorMetadata?
+
+    init(
+        anchorMessageID: String?,
+        followsLatest: Bool,
+        anchorMetadata: ChatScrollAnchorMetadata? = nil
+    ) {
+        self.anchorMessageID = anchorMessageID
+        self.followsLatest = followsLatest
+        self.anchorMetadata = anchorMetadata
+    }
 
     static let latest = ChatScrollSnapshot(anchorMessageID: nil, followsLatest: true)
 }
@@ -371,6 +439,22 @@ enum ChatScrollRestorationResolver {
         store: ChatScrollStateStore,
         availableMessageIDs: Set<String>
     ) -> ChatScrollRestorationDecision {
+        decision(
+            for: pending,
+            identity: identity,
+            activeSessionKey: activeSessionKey,
+            store: store,
+            availableTargets: ChatScrollTargetAvailability(messageIDs: availableMessageIDs)
+        )
+    }
+
+    static func decision(
+        for pending: ChatScrollPendingRestoration,
+        identity: ChatScrollSessionIdentity,
+        activeSessionKey: ChatScrollSessionKey?,
+        store: ChatScrollStateStore,
+        availableTargets: ChatScrollTargetAvailability
+    ) -> ChatScrollRestorationDecision {
         guard identity.areEquivalent(pending.sessionKey, activeSessionKey) else {
             return .cancel
         }
@@ -380,7 +464,7 @@ enum ChatScrollRestorationResolver {
         }
         guard let resolved = store.restoration(
             for: pending.sessionKey,
-            availableMessageIDs: availableMessageIDs
+            availableTargets: availableTargets
         ) else {
             return .cancel
         }
@@ -454,10 +538,24 @@ struct ChatScrollStateStore {
         for key: ChatScrollSessionKey,
         availableMessageIDs: Set<String>
     ) -> ChatScrollSnapshot? {
+        restoration(
+            for: key,
+            availableTargets: ChatScrollTargetAvailability(messageIDs: availableMessageIDs)
+        )
+    }
+
+    func restoration(
+        for key: ChatScrollSessionKey,
+        availableTargets: ChatScrollTargetAvailability
+    ) -> ChatScrollSnapshot? {
         guard let snapshot = snapshot(for: key) else { return nil }
         guard !snapshot.followsLatest else { return .latest }
         guard let anchor = snapshot.anchorMessageID,
-              availableMessageIDs.contains(anchor) else {
+              availableTargets.contains(anchor) else {
+            return .latest
+        }
+        if let expectedMetadata = snapshot.anchorMetadata,
+           availableTargets.metadata(for: anchor) != expectedMetadata {
             return .latest
         }
         return snapshot
