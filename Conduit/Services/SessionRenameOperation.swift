@@ -55,6 +55,8 @@ enum SessionRenameOperation {
             do {
                 try await renameRuntime(runtimeID, normalized)
                 return Result(title: normalized, sessionIDs: sessionIDs)
+            } catch let error as ContextChanged {
+                throw error
             } catch {
                 // A stored-session PATCH is the supported fallback when the
                 // active runtime no longer accepts the title RPC.

@@ -89,19 +89,17 @@ final class SessionRenameTests: XCTestCase {
         XCTAssertEqual(result?.title, "Renamed")
     }
 
-    func testSuccessfulRenameUpdatesEveryProjectionAndPersistsThroughRefresh() async throws {
+    func testSuccessfulRenameUpdatesEveryIdentityProjection() async throws {
         let session = makeSession()
-        var persistedTitle = session.title
         let operationResult = try await SessionRenameOperation.perform(
             session: session,
             activeSessionID: "runtime-id",
             title: "Renamed",
             operations: .init(
-                renameRuntime: { sessionID, title in
+                renameRuntime: { sessionID, _ in
                     XCTAssertEqual(sessionID, "runtime-id")
-                    persistedTitle = title
                 },
-                renameStored: { _, title in persistedTitle = title }
+                renameStored: { _, _ in XCTFail("Active rename must use the runtime RPC") }
             )
         )
         let result = try XCTUnwrap(operationResult)
@@ -118,14 +116,78 @@ final class SessionRenameTests: XCTestCase {
             title: "Old archived title"
         ))
         let unrelatedEntry = result.updating(makeSession(id: "unrelated", alternateIDs: []))
-        let refreshedEntry = makeSession(title: persistedTitle)
 
         XCTAssertEqual(storedEntry.title, "Renamed")
         XCTAssertEqual(runtimeEntry.title, "Renamed")
         XCTAssertEqual(archivedEntry.title, "Renamed")
         XCTAssertTrue(result.matches(sessionID: "runtime-id"), "The active title must receive the rename")
         XCTAssertEqual(unrelatedEntry.title, "Original")
-        XCTAssertEqual(refreshedEntry.title, "Renamed", "The authoritative refreshed catalog must retain the rename")
+    }
+
+    func testContextChangeDoesNotFallBackToStoredSession() async {
+        var storedRequestCount = 0
+
+        do {
+            _ = try await SessionRenameOperation.perform(
+                session: makeSession(),
+                activeSessionID: "runtime-id",
+                title: "Renamed",
+                operations: .init(
+                    renameRuntime: { _, _ in throw SessionRenameOperation.ContextChanged() },
+                    renameStored: { _, _ in storedRequestCount += 1 }
+                )
+            )
+            XCTFail("Expected the context change to terminate the rename")
+        } catch is SessionRenameOperation.ContextChanged {
+            // Expected: a stale client or profile must not mutate stored state.
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+
+        XCTAssertEqual(storedRequestCount, 0)
+    }
+
+    func testInactiveRenameSurvivesAppStateCatalogRefresh() async {
+        var remoteCatalog: [SessionSummary] = []
+        var forcedRefresh = false
+        let appState = AppState(
+            sessionRenameOperations: .init(
+                renameRuntime: { _, _ in XCTFail("Inactive rename must not use the runtime RPC") },
+                renameStored: { sessionID, title in
+                    remoteCatalog = remoteCatalog.map { session in
+                        guard session.id == sessionID else { return session }
+                        var updated = session
+                        updated.title = title
+                        return updated
+                    }
+                }
+            ),
+            sessionCatalogLoader: { forceRefresh in
+                forcedRefresh = forceRefresh
+                return remoteCatalog
+            },
+            restoreSavedConnection: false
+        )
+        let target = makeSession(profile: appState.activeProfile)
+        let active = makeSession(
+            id: "active-id",
+            alternateIDs: [],
+            title: "Active",
+            profile: appState.activeProfile
+        )
+        remoteCatalog = [target, active]
+        appState.sessions = remoteCatalog
+        appState.activeSessionId = active.id
+
+        let didRename = await appState.renameSession(target, to: "Renamed")
+        XCTAssertTrue(didRename)
+        XCTAssertEqual(appState.sessions.first { $0.id == target.id }?.title, "Renamed")
+
+        await appState.refreshSessionCatalog()
+
+        XCTAssertTrue(forcedRefresh)
+        XCTAssertEqual(appState.sessions.first { $0.id == target.id }?.title, "Renamed")
+        XCTAssertEqual(appState.sessions.first { $0.id == active.id }?.title, "Active")
     }
 
     func testTerminalFailurePreservesCatalogAndSurfacesExistingError() async {
@@ -238,7 +300,8 @@ final class SessionRenameTests: XCTestCase {
     private func makeSession(
         id: String = "stored-id",
         alternateIDs: [String] = ["runtime-id"],
-        title: String = "Original"
+        title: String = "Original",
+        profile: String? = "default"
     ) -> SessionSummary {
         SessionSummary(
             id: id,
@@ -246,7 +309,7 @@ final class SessionRenameTests: XCTestCase {
             title: title,
             model: "test-model",
             updatedLabel: "now",
-            profile: "default",
+            profile: profile,
             source: .chat,
             isActive: false,
             isArchived: false
