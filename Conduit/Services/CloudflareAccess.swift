@@ -92,26 +92,32 @@ struct CloudflareAccessCredentials: Equatable, CustomStringConvertible {
                 window.fetch = function(input, init) {
                     if (shouldAttach(input)) {
                         init = init || {};
-                        if (init.headers instanceof Headers) {
-                            init.headers.set('CF-Access-Client-Id', cfId);
-                            init.headers.set('CF-Access-Client-Secret', cfSecret);
-                        } else {
-                            init.headers = Object.assign({}, init.headers || {});
-                            init.headers['CF-Access-Client-Id'] = cfId;
-                            init.headers['CF-Access-Client-Secret'] = cfSecret;
+                        var sourceHeaders = init.headers;
+                        if (sourceHeaders === undefined
+                            && input
+                            && typeof input === 'object'
+                            && input.headers) {
+                            sourceHeaders = input.headers;
                         }
+                        var headers = new Headers(sourceHeaders || undefined);
+                        headers.set('CF-Access-Client-Id', cfId);
+                        headers.set('CF-Access-Client-Secret', cfSecret);
+                        init.headers = headers;
                     }
                     return origFetch.call(this, input, init);
                 };
             }
             var origOpen = XMLHttpRequest.prototype.open;
             var origSend = XMLHttpRequest.prototype.send;
+            var eligibleXhrs = new WeakMap();
+            var setXhrEligibility = eligibleXhrs.set.bind(eligibleXhrs);
+            var getXhrEligibility = eligibleXhrs.get.bind(eligibleXhrs);
             XMLHttpRequest.prototype.open = function(method, url) {
-                this._cfHeadersEligible = shouldAttach(url);
+                setXhrEligibility(this, shouldAttach(url));
                 return origOpen.apply(this, arguments);
             };
             XMLHttpRequest.prototype.send = function(body) {
-                if (this._cfHeadersEligible) {
+                if (getXhrEligibility(this) === true) {
                     this.setRequestHeader('CF-Access-Client-Id', cfId);
                     this.setRequestHeader('CF-Access-Client-Secret', cfSecret);
                 }

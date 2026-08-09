@@ -1,4 +1,5 @@
 import Foundation
+import JavaScriptCore
 import XCTest
 @testable import Conduit
 
@@ -99,9 +100,177 @@ final class CloudflareAccessTests: XCTestCase {
         XCTAssertTrue(script.contains("resolved.origin === cfOrigin"))
     }
 
+    func testFetchInjectionPreservesRequestHeadersWhenInitHeadersAreAbsent() throws {
+        let credentials = CloudflareAccessCredentials(clientID: "test-id", clientSecret: "test-secret")
+        let context = try makeJavaScriptContext(documentOrigin: "https://dashboard.example")
+        _ = try evaluateJavaScript(
+            credentials.fetchInjectionUserScript(expectedBaseURL: "https://dashboard.example/hermes"),
+            in: context
+        )
+
+        let result = try evaluateJavaScript(
+            """
+            var request = new Request('https://dashboard.example/api', {
+                headers: { 'X-Application-Header': 'present' }
+            });
+            window.fetch(request);
+            var passedHeaders = new Headers(__lastFetch.init.headers);
+            passedHeaders.get('X-Application-Header') === 'present'
+                && passedHeaders.get('CF-Access-Client-Id') === 'test-id'
+                && passedHeaders.get('CF-Access-Client-Secret') === 'test-secret';
+            """,
+            in: context
+        )
+
+        XCTAssertTrue(result.toBool())
+    }
+
+    func testFetchInjectionPreservesExplicitInitHeaders() throws {
+        let credentials = CloudflareAccessCredentials(clientID: "test-id", clientSecret: "test-secret")
+        let context = try makeJavaScriptContext(documentOrigin: "https://dashboard.example")
+        _ = try evaluateJavaScript(
+            credentials.fetchInjectionUserScript(expectedBaseURL: "https://dashboard.example/hermes"),
+            in: context
+        )
+
+        let result = try evaluateJavaScript(
+            """
+            var request = new Request('https://dashboard.example/api', {
+                headers: { 'X-Application-Header': 'from-request' }
+            });
+            window.fetch(request, {
+                headers: { 'X-Application-Header': 'from-init' }
+            });
+            var passedHeaders = new Headers(__lastFetch.init.headers);
+            passedHeaders.get('X-Application-Header') === 'from-init'
+                && passedHeaders.get('CF-Access-Client-Id') === 'test-id'
+                && passedHeaders.get('CF-Access-Client-Secret') === 'test-secret';
+            """,
+            in: context
+        )
+
+        XCTAssertTrue(result.toBool())
+    }
+
+    func testFetchInjectionCannotForgeXHREligibilityFromPageJavaScript() throws {
+        let credentials = CloudflareAccessCredentials(clientID: "test-id", clientSecret: "test-secret")
+        let context = try makeJavaScriptContext(documentOrigin: "https://oauth.example")
+        _ = try evaluateJavaScript(
+            credentials.fetchInjectionUserScript(expectedBaseURL: "https://dashboard.example/hermes"),
+            in: context
+        )
+
+        let result = try evaluateJavaScript(
+            """
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', 'https://dashboard.example/api');
+            xhr._cfHeadersEligible = true;
+            xhr.send();
+            typeof __lastXHRHeaders['CF-Access-Client-Secret'] === 'undefined';
+            """,
+            in: context
+        )
+
+        XCTAssertTrue(result.toBool())
+    }
+
     func testFetchInjectionFailsClosedForInvalidDashboardURL() {
         let credentials = CloudflareAccessCredentials(clientID: "test-id", clientSecret: "test-secret")
         XCTAssertTrue(credentials.fetchInjectionUserScript(expectedBaseURL: "not a URL").isEmpty)
+    }
+
+    private func makeJavaScriptContext(documentOrigin: String) throws -> JSContext {
+        let context = try XCTUnwrap(JSContext())
+        context.setObject(documentOrigin, forKeyedSubscript: "__documentOrigin" as NSString)
+        _ = context.evaluateScript(
+            #"""
+            var window = {
+                location: {
+                    origin: __documentOrigin,
+                    href: __documentOrigin + '/login'
+                }
+            };
+
+            function originOf(value) {
+                var match = String(value).match(/^[a-z][a-z0-9+.-]*:\/\/[^\/]+/i);
+                if (!match) { throw new TypeError('Unsupported URL'); }
+                return match[0];
+            }
+
+            function URL(value, base) {
+                var text = String(value);
+                if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(text)) {
+                    text = text.charAt(0) === '/'
+                        ? originOf(base) + text
+                        : String(base).replace(/\/[^\/]*$/, '/') + text;
+                }
+                this.href = text;
+                this.origin = originOf(text);
+            }
+
+            function Headers(init) {
+                this.values = {};
+                if (init instanceof Headers) {
+                    for (var key in init.values) { this.values[key] = init.values[key]; }
+                } else if (init && init.values) {
+                    for (var valueKey in init.values) { this.values[valueKey] = init.values[valueKey]; }
+                } else if (init) {
+                    for (var name in init) {
+                        this.values[String(name).toLowerCase()] = String(init[name]);
+                    }
+                }
+            }
+            Headers.prototype.set = function(name, value) {
+                this.values[String(name).toLowerCase()] = String(value);
+            };
+            Headers.prototype.get = function(name) {
+                return this.values[String(name).toLowerCase()] || null;
+            };
+
+            function Request(url, init) {
+                this.url = new URL(url, window.location.href).href;
+                this.headers = new Headers(init && init.headers);
+            }
+
+            var __lastFetch = null;
+            window.fetch = function(input, init) {
+                __lastFetch = { input: input, init: init };
+                return null;
+            };
+
+            function XMLHttpRequest() {
+                this.headers = {};
+            }
+            XMLHttpRequest.prototype.open = function(method, url) {
+                this.method = method;
+                this.url = url;
+            };
+            XMLHttpRequest.prototype.setRequestHeader = function(name, value) {
+                this.headers[name] = value;
+            };
+            XMLHttpRequest.prototype.send = function(body) {
+                __lastXHRHeaders = this.headers;
+            };
+            window.XMLHttpRequest = XMLHttpRequest;
+            var __lastXHRHeaders = {};
+            """#
+        )
+        return context
+    }
+
+    private func evaluateJavaScript(_ source: String, in context: JSContext) throws -> JSValue {
+        var exception: JSValue?
+        context.exceptionHandler = { _, value in exception = value }
+        let result = context.evaluateScript(source)
+        context.exceptionHandler = nil
+        if let exception {
+            throw NSError(
+                domain: "CloudflareAccessTests",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: exception.toString() ?? "JavaScript evaluation failed"]
+            )
+        }
+        return try XCTUnwrap(result)
     }
 
     // MARK: - Origin Binding
