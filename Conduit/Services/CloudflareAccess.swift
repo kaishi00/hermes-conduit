@@ -46,6 +46,14 @@ struct CloudflareAccessCredentials: Equatable, CustomStringConvertible {
         return request
     }
 
+    private func javaScriptStringLiteral(_ value: String) -> String? {
+        guard let data = try? JSONSerialization.data(withJSONObject: value, options: [.fragmentsAllowed]),
+              let literal = String(data: data, encoding: .utf8),
+              literal.first == "\"",
+              literal.last == "\"" else { return nil }
+        return literal
+    }
+
     /// JavaScript injected at document start so that every `fetch()` and
     /// `XMLHttpRequest` originating inside the WKWebView includes the
     /// Cloudflare Access service-token headers. Without this, only the
@@ -54,12 +62,12 @@ struct CloudflareAccessCredentials: Equatable, CustomStringConvertible {
     /// evaluated scripts would be rejected by Cloudflare Service Auth.
     var fetchInjectionUserScript: String {
         guard isConfigured else { return "" }
-        let idEscaped = clientID.replacingOccurrences(of: "'", with: "\\'")
-        let secretEscaped = clientSecret.replacingOccurrences(of: "'", with: "\\'")
+        guard let idLiteral = javaScriptStringLiteral(clientID),
+              let secretLiteral = javaScriptStringLiteral(clientSecret) else { return "" }
         return """
         (function() {
-            var cfId = '\(idEscaped)';
-            var cfSecret = '\(secretEscaped)';
+            var cfId = \(idLiteral);
+            var cfSecret = \(secretLiteral);
             var origFetch = window.fetch;
             if (origFetch) {
                 window.fetch = function(input, init) {

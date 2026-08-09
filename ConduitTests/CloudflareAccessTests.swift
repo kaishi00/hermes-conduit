@@ -74,9 +74,20 @@ final class CloudflareAccessTests: XCTestCase {
     func testFetchInjectionEscapesSingleQuotes() throws {
         let credentials = CloudflareAccessCredentials(clientID: "id'with'quotes", clientSecret: "secret'val")
         let script = credentials.fetchInjectionUserScript
-        // Escaped quotes should be present, raw unescaped values should not
-        XCTAssertTrue(script.contains(#"id\'with\'quotes"#))
-        XCTAssertTrue(script.contains(#"secret\'val"#))
+        XCTAssertTrue(script.contains("var cfId = \"id'with'quotes\";"))
+        XCTAssertTrue(script.contains("var cfSecret = \"secret'val\";"))
+    }
+
+    func testFetchInjectionEscapesBackslashesAndControlCharacters() {
+        let credentials = CloudflareAccessCredentials(
+            clientID: "id\\with\"quote\n\t",
+            clientSecret: "secret\\value\"quote\r\n"
+        )
+
+        let script = credentials.fetchInjectionUserScript
+
+        XCTAssertTrue(script.contains(#"id\\with\"quote\n\t"#))
+        XCTAssertTrue(script.contains(#"secret\\value\"quote\r\n"#))
     }
 
     // MARK: - Origin Binding
