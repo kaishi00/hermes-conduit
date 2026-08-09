@@ -16,8 +16,8 @@ settings:
     ENABLE_BITCODE: NO
     DEVELOPMENT_TEAM: U2TH557QA8
     CODE_SIGN_STYLE: Manual
-    MARKETING_VERSION: "0.1.2"
-    CURRENT_PROJECT_VERSION: "120"
+    MARKETING_VERSION: "0.1.3"
+    CURRENT_PROJECT_VERSION: "124"
 targets:
   Conduit:
     type: application

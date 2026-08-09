@@ -462,6 +462,8 @@ final class AppState: ObservableObject {
     private var lastStreamingPublishDate: Date?
     private var scenePhaseTask: Task<Void, Never>?
     private var scenePhaseAttemptID: UUID?
+    private var explicitSessionOpenTask: Task<Bool, Never>?
+    private var explicitSessionOpenRequestID: UUID?
     private var activeAutomaticChatResumeWork: ChatResumeAutomaticWorkToken?
     private var chatViewportSnapshotProvider: (
         id: UUID,
@@ -1046,6 +1048,7 @@ final class AppState: ObservableObject {
     }
 
     private func cancelChatResumeTransportRecovery() {
+        cancelExplicitSessionOpen()
         cancelScheduledReconnect()
         chatResumeCoordinator.cancelViewportRestoration(
             keepViewportFrozen: chatViewportTransition != nil
@@ -1554,6 +1557,7 @@ final class AppState: ObservableObject {
     }
 
     func disconnect() {
+        cancelExplicitSessionOpen()
         chatResumeCoordinator.clearResumeState()
         cancelOwnedAutomaticOperations()
         activeAutomaticChatResumeWork = nil
@@ -3045,11 +3049,35 @@ final class AppState: ObservableObject {
         await openSession(sessionId, reusing: nil)
     }
 
+    @discardableResult
+    func requestOpenSession(_ sessionId: String) -> Task<Bool, Never> {
+        cancelExplicitSessionOpen()
+        let requestID = UUID()
+        explicitSessionOpenRequestID = requestID
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return false }
+            let opened = await self.openSession(sessionId)
+            guard self.explicitSessionOpenRequestID == requestID else { return opened }
+            self.explicitSessionOpenRequestID = nil
+            self.explicitSessionOpenTask = nil
+            return opened
+        }
+        explicitSessionOpenTask = task
+        return task
+    }
+
+    private func cancelExplicitSessionOpen() {
+        explicitSessionOpenRequestID = nil
+        explicitSessionOpenTask?.cancel()
+        explicitSessionOpenTask = nil
+    }
+
     private func openSession(
         _ sessionId: String,
         reusing viewportTransitionGeneration: UInt64?
     ) async -> Bool {
         guard let client else { return false }
+        let previousTurnState = turnState
         if let session = (sessions + cronSessions).first(where: {
             $0.id == sessionId || $0.alternateIds.contains(sessionId)
         }), !sessionBelongsToProfile(session, profile: activeProfile) {
@@ -3094,6 +3122,9 @@ final class AppState: ObservableObject {
         }
         if !reconciled {
             finishChatViewportTransition(generation: transitionGeneration)
+            if Task.isCancelled, turnState == .synchronizing {
+                turnState = previousTurnState
+            }
         }
         return reconciled
     }
