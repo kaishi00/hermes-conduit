@@ -1,6 +1,6 @@
 import Foundation
 
-struct ChatScrollAnchorMetadata: Equatable {
+struct ChatScrollAnchorMetadata: Codable, Equatable {
     let fingerprint: String
     let duplicateCount: Int
 }
@@ -148,7 +148,7 @@ private enum ChatScrollIdentityNormalization {
     }
 }
 
-struct ChatScrollSessionKey: Hashable {
+struct ChatScrollSessionKey: Codable, Hashable {
     let profile: String
     let sessionID: String
 
@@ -434,7 +434,7 @@ struct ChatScrollTargetAvailability: Equatable {
     }
 }
 
-struct ChatScrollSnapshot: Equatable {
+struct ChatScrollSnapshot: Codable, Equatable {
     let anchorMessageID: String?
     let followsLatest: Bool
     let anchorMetadata: ChatScrollAnchorMetadata?
