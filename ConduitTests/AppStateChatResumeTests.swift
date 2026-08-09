@@ -3,6 +3,114 @@ import XCTest
 
 @MainActor
 final class AppStateChatResumeTests: XCTestCase {
+    func testExplicitCancellationWhileAutomaticSyncWaitsBeforeSelectionPreventsRevival() async {
+        let harness = makeHarness(behavior: .latestActivity)
+        let gate = ControlledSuspension()
+        let catalog = [session("stored-b"), session("stored-a")]
+        harness.appState.sessions = catalog
+        harness.appState.activeSessionId = "stored-a"
+        let automaticWork = harness.appState.beginAutomaticChatResumeWork()
+
+        let selection = Task { @MainActor in
+            await gate.suspend()
+            return harness.appState.selectChatResumeTarget(
+                in: catalog,
+                profile: "default",
+                purpose: .automaticReturn,
+                currentSessionID: "stored-a",
+                automaticWorkToken: automaticWork
+            )
+        }
+        await gate.waitUntilSuspended()
+
+        harness.appState.cancelChatResumeRestoration()
+        gate.resume()
+        let selected = await selection.value
+
+        XCTAssertNil(selected)
+        XCTAssertEqual(harness.appState.activeSessionId, "stored-a")
+        XCTAssertNil(harness.appState.chatResumeRestorationRequest)
+    }
+
+    func testExplicitCancellationDuringAutomaticReconciliationPreventsTranscriptReplacementAndPublication() async {
+        let harness = makeHarness(behavior: .latestActivity)
+        let gate = ControlledSuspension()
+        let catalog = [session("stored-b"), session("stored-a")]
+        let originalMessages = [
+            ChatMessage(id: "a-message", role: .assistant, content: "Session A", timestamp: "now")
+        ]
+        harness.appState.sessions = catalog
+        harness.appState.activeSessionId = "stored-a"
+        harness.appState.messages = originalMessages
+        let automaticWork = harness.appState.beginAutomaticChatResumeWork()
+        let reconciliation = harness.appState.beginReconciliation()
+        XCTAssertEqual(
+            harness.appState.selectChatResumeTarget(
+                in: catalog,
+                profile: "default",
+                purpose: .automaticReturn,
+                currentSessionID: "stored-a",
+                automaticWorkToken: automaticWork
+            )?.id,
+            "stored-b"
+        )
+        let replacement = SessionResumeResult(
+            sessionId: "stored-b",
+            messages: [
+                ChatMessage(id: "b-message", role: .assistant, content: "Session B", timestamp: "later")
+            ],
+            snapshot: SessionRuntimeSnapshot(object: [:])
+        )
+
+        let result = Task { @MainActor in
+            await gate.suspend()
+            let replaced = harness.appState.applyChatResume(
+                replacement,
+                automaticWorkToken: automaticWork
+            )
+            let published = harness.appState.settleReconciliationAndPublish(
+                reconciliation,
+                automaticWorkToken: automaticWork
+            )
+            return (replaced, published)
+        }
+        await gate.waitUntilSuspended()
+
+        harness.appState.cancelChatResumeRestoration()
+        gate.resume()
+        let outcome = await result.value
+
+        XCTAssertFalse(outcome.0)
+        XCTAssertFalse(outcome.1)
+        XCTAssertEqual(harness.appState.activeSessionId, "stored-a")
+        XCTAssertEqual(harness.appState.messages, originalMessages)
+        XCTAssertNil(harness.appState.chatResumeRestorationRequest)
+    }
+
+    func testPreTransitionCapturePreservesOldAnchorAgainstLateTeardownGeometry() {
+        let harness = makeHarness()
+        let sessionA = session("stored-a")
+        let sessionB = session("stored-b")
+        let keyA = ChatScrollSessionKey(profile: "default", sessionID: sessionA.id)
+        let exactAnchor = ChatScrollSnapshot(
+            anchorMessageID: "chat-message-exact-anchor-0",
+            followsLatest: false,
+            anchorMetadata: ChatScrollAnchorMetadata(fingerprint: "exact-anchor", duplicateCount: 1),
+            anchorSourceMessageID: "source-a"
+        )
+        harness.appState.sessions = [sessionA, sessionB]
+        harness.appState.activeSessionId = sessionA.id
+        harness.appState.installChatViewportSnapshotProvider(id: UUID()) { exactAnchor }
+
+        harness.appState.beginExplicitChatViewportTransition()
+        harness.appState.activeSessionId = sessionB.id
+        harness.appState.messages = []
+        harness.appState.recordChatViewport(.latest, for: keyA)
+        harness.appState.flushChatResumeViewport()
+
+        XCTAssertEqual(harness.store.snapshot(for: keyA), exactAnchor)
+    }
+
     func testStaleReconciliationCannotPublishNewerAutomaticRestoration() {
         let harness = makeHarness(behavior: .latestActivity)
         let catalog = [session("stored-b"), session("stored-a")]
@@ -569,4 +677,30 @@ private final class ControlledReconnectScheduler {
 @MainActor
 private final class ReconnectExecutionSpy {
     var purposes: [ChatResumeSyncPurpose] = []
+}
+
+@MainActor
+private final class ControlledSuspension {
+    private var suspension: CheckedContinuation<Void, Never>?
+    private var observer: CheckedContinuation<Void, Never>?
+
+    func suspend() async {
+        await withCheckedContinuation { continuation in
+            suspension = continuation
+            observer?.resume()
+            observer = nil
+        }
+    }
+
+    func waitUntilSuspended() async {
+        guard suspension == nil else { return }
+        await withCheckedContinuation { continuation in
+            observer = continuation
+        }
+    }
+
+    func resume() {
+        suspension?.resume()
+        suspension = nil
+    }
 }

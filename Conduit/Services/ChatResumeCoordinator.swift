@@ -13,6 +13,10 @@ struct ChatResumeRestorationRequest: Identifiable, Equatable {
     var id: UInt64 { generation }
 }
 
+struct ChatResumeAutomaticWorkToken: Equatable {
+    fileprivate let cancellationEpoch: UInt64
+}
+
 @MainActor
 final class ChatResumeCoordinator {
     private let store: ChatResumeStore
@@ -21,6 +25,7 @@ final class ChatResumeCoordinator {
     private var pendingFlushTask: Task<Void, Never>?
     private var viewportIsFrozen = false
     private var nextGeneration: UInt64 = 0
+    private var automaticCancellationEpoch: UInt64 = 0
 
     private(set) var pendingRestoration: ChatResumeRestorationRequest?
 
@@ -30,6 +35,14 @@ final class ChatResumeCoordinator {
 
     init(store: ChatResumeStore) {
         self.store = store
+    }
+
+    func beginAutomaticWork() -> ChatResumeAutomaticWorkToken {
+        ChatResumeAutomaticWorkToken(cancellationEpoch: automaticCancellationEpoch)
+    }
+
+    func isCurrent(_ token: ChatResumeAutomaticWorkToken) -> Bool {
+        token.cancellationEpoch == automaticCancellationEpoch
     }
 
     func setBehavior(_ behavior: ChatResumeBehavior) {
@@ -104,6 +117,23 @@ final class ChatResumeCoordinator {
         store.flush()
     }
 
+    func captureViewportAndFreeze(
+        _ snapshot: ChatScrollSnapshot?,
+        for key: ChatScrollSessionKey?
+    ) {
+        pendingFlushTask?.cancel()
+        pendingFlushTask = nil
+        if let snapshot, let key, key.isValid {
+            store.stageSnapshot(snapshot, for: key, at: Date())
+        }
+        viewportIsFrozen = true
+        store.flush()
+    }
+
+    func unfreezeViewport() {
+        viewportIsFrozen = false
+    }
+
     func reconciliationSettled(sessionKey: ChatScrollSessionKey) -> ChatResumeRestorationRequest? {
         guard pendingSessionKey == sessionKey, pendingRestoration == nil else { return nil }
 
@@ -130,14 +160,26 @@ final class ChatResumeCoordinator {
         return request
     }
 
-    func cancelRestoration() {
+    func cancelRestoration(
+        invalidateAutomaticWork: Bool = true,
+        keepViewportFrozen: Bool = false
+    ) {
+        if invalidateAutomaticWork {
+            automaticCancellationEpoch &+= 1
+        }
         pendingFallbackSelection = false
         pendingSessionKey = nil
+        pendingRestoration = nil
+        viewportIsFrozen = keepViewportFrozen
+    }
+
+    func completeRestoration(generation: UInt64) {
+        guard pendingRestoration?.generation == generation else { return }
         pendingRestoration = nil
         viewportIsFrozen = false
     }
 
-    func completeRestoration(generation: UInt64) {
+    func abandonRestoration(generation: UInt64) {
         guard pendingRestoration?.generation == generation else { return }
         pendingRestoration = nil
         viewportIsFrozen = false

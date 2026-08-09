@@ -2,6 +2,192 @@ import XCTest
 @testable import Conduit
 
 final class ChatScrollStateTests: XCTestCase {
+    func testRestorationWaitsForMatchingRenderedTargetAndGeometryConfirmation() {
+        let sessionA = ChatScrollSessionKey(profile: "default", sessionID: "session-a")
+        let sessionB = ChatScrollSessionKey(profile: "default", sessionID: "session-b")
+        let anchor = "chat-message-anchor-0"
+        var restoration = ChatResumeRenderRestorationState(
+            generation: 41,
+            sessionKey: sessionA,
+            destination: .anchor(anchor),
+            maximumChecks: 8,
+            retryInterval: 2
+        )
+        let staleContent = ChatRenderedScrollContent(
+            sessionKey: sessionB,
+            cacheRevision: 7,
+            semanticTargetIDs: [anchor],
+            bottomAnchorID: "chat-latest-default-session-b",
+            restorationGeneration: 41
+        )
+
+        XCTAssertEqual(
+            restoration.nextAction(
+                renderedContent: staleContent,
+                cacheRevision: 7,
+                topVisibleID: nil,
+                isNearBottom: false
+            ),
+            .wait
+        )
+        XCTAssertEqual(
+            restoration.nextAction(
+                renderedContent: staleContent,
+                cacheRevision: 7,
+                topVisibleID: nil,
+                isNearBottom: false
+            ),
+            .wait,
+            "A delayed row must not be treated as installed after one task yield"
+        )
+
+        let staleGeneration = ChatRenderedScrollContent(
+            sessionKey: sessionA,
+            cacheRevision: 8,
+            semanticTargetIDs: [anchor],
+            bottomAnchorID: "chat-latest-default-session-a",
+            restorationGeneration: 40
+        )
+        XCTAssertEqual(
+            restoration.nextAction(
+                renderedContent: staleGeneration,
+                cacheRevision: 8,
+                topVisibleID: anchor,
+                isNearBottom: false
+            ),
+            .wait
+        )
+
+        let matchingContentWithoutAnchor = ChatRenderedScrollContent(
+            sessionKey: sessionA,
+            cacheRevision: 8,
+            semanticTargetIDs: ["different-anchor"],
+            bottomAnchorID: "chat-latest-default-session-a",
+            restorationGeneration: 41
+        )
+        XCTAssertEqual(
+            restoration.nextAction(
+                renderedContent: matchingContentWithoutAnchor,
+                cacheRevision: 8,
+                topVisibleID: nil,
+                isNearBottom: false
+            ),
+            .wait
+        )
+
+        let installedContent = ChatRenderedScrollContent(
+            sessionKey: sessionA,
+            cacheRevision: 8,
+            semanticTargetIDs: [anchor],
+            bottomAnchorID: "chat-latest-default-session-a",
+            restorationGeneration: 41
+        )
+        XCTAssertEqual(
+            restoration.nextAction(
+                renderedContent: installedContent,
+                cacheRevision: 8,
+                topVisibleID: nil,
+                isNearBottom: false
+            ),
+            .scroll(.anchor(anchor))
+        )
+        XCTAssertEqual(
+            restoration.nextAction(
+                renderedContent: installedContent,
+                cacheRevision: 8,
+                topVisibleID: nil,
+                isNearBottom: false
+            ),
+            .wait,
+            "A scroll request that did not move geometry must not complete restoration"
+        )
+        XCTAssertEqual(
+            restoration.nextAction(
+                renderedContent: installedContent,
+                cacheRevision: 8,
+                topVisibleID: anchor,
+                isNearBottom: false
+            ),
+            .complete
+        )
+    }
+
+    func testCancellingRenderRestorationStopsWithoutScrollingOrCompleting() {
+        let session = ChatScrollSessionKey(profile: "default", sessionID: "session-a")
+        let anchor = "chat-message-anchor-0"
+        var restoration = ChatResumeRenderRestorationState(
+            generation: 42,
+            sessionKey: session,
+            destination: .anchor(anchor),
+            maximumChecks: 8,
+            retryInterval: 2
+        )
+        restoration.cancel()
+
+        let installedContent = ChatRenderedScrollContent(
+            sessionKey: session,
+            cacheRevision: 3,
+            semanticTargetIDs: [anchor],
+            bottomAnchorID: "chat-latest-default-session-a",
+            restorationGeneration: 42
+        )
+        XCTAssertEqual(
+            restoration.nextAction(
+                renderedContent: installedContent,
+                cacheRevision: 3,
+                topVisibleID: anchor,
+                isNearBottom: false
+            ),
+            .cancelled
+        )
+    }
+
+    func testLatestRestorationRequiresMatchingBottomLayoutAndNearBottomConfirmation() {
+        let session = ChatScrollSessionKey(profile: "default", sessionID: "session-a")
+        var restoration = ChatResumeRenderRestorationState(
+            generation: 43,
+            sessionKey: session,
+            destination: .latest,
+            maximumChecks: 8,
+            retryInterval: 2
+        )
+        let installedContent = ChatRenderedScrollContent(
+            sessionKey: session,
+            cacheRevision: 4,
+            semanticTargetIDs: [],
+            bottomAnchorID: "chat-latest-default-session-a",
+            restorationGeneration: 43
+        )
+
+        XCTAssertEqual(
+            restoration.nextAction(
+                renderedContent: installedContent,
+                cacheRevision: 4,
+                topVisibleID: nil,
+                isNearBottom: false
+            ),
+            .scroll(.latest)
+        )
+        XCTAssertEqual(
+            restoration.nextAction(
+                renderedContent: installedContent,
+                cacheRevision: 4,
+                topVisibleID: nil,
+                isNearBottom: false
+            ),
+            .wait
+        )
+        XCTAssertEqual(
+            restoration.nextAction(
+                renderedContent: installedContent,
+                cacheRevision: 4,
+                topVisibleID: nil,
+                isNearBottom: true
+            ),
+            .complete
+        )
+    }
+
     func testSemanticAnchorsIgnoreSourceSpecificMessageIdentity() {
         let localMessages = [
             ChatMessage(
