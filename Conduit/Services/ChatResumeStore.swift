@@ -104,7 +104,12 @@ final class ChatResumeStore {
               let source = payload.snapshots.first(where: { $0.key == oldKey }) else {
             return
         }
-        save(source.snapshot, for: newKey, at: source.updatedAt)
+        payload.snapshots.removeAll { $0.key == oldKey }
+        payload.snapshots.append(
+            StoredSnapshot(key: newKey, snapshot: source.snapshot, updatedAt: source.updatedAt)
+        )
+        payload.snapshots = Self.pruned(payload.snapshots)
+        persist()
     }
 
     func clearResumeState() {
@@ -137,10 +142,17 @@ final class ChatResumeStore {
     }
 
     private static func normalizedLastSessionIDs(_ values: [String: String]) -> [String: String] {
-        values.reduce(into: [:]) { result, entry in
+        let normalized = values.compactMap { entry -> ChatScrollSessionKey? in
             let key = ChatScrollSessionKey(profile: entry.key, sessionID: entry.value)
-            guard key.isValid else { return }
-            result[key.profile] = key.sessionID
+            return key.isValid ? key : nil
+        }.sorted { lhs, rhs in
+            if lhs.profile != rhs.profile { return lhs.profile < rhs.profile }
+            return lhs.sessionID < rhs.sessionID
+        }
+        return normalized.reduce(into: [:]) { result, key in
+            if result[key.profile] == nil {
+                result[key.profile] = key.sessionID
+            }
         }
     }
 
@@ -162,10 +174,51 @@ final class ChatResumeStore {
                 )
             }
             .filter { $0.key.isValid }
-            .sorted { $0.updatedAt > $1.updatedAt }
+            .sorted(by: isOrderedBefore)
 
         var seenKeys = Set<ChatScrollSessionKey>()
         return ordered.filter { seenKeys.insert($0.key).inserted }.prefix(maximumSnapshots).map { $0 }
+    }
+
+    private static func isOrderedBefore(_ lhs: StoredSnapshot, _ rhs: StoredSnapshot) -> Bool {
+        if lhs.updatedAt != rhs.updatedAt { return lhs.updatedAt > rhs.updatedAt }
+        if lhs.key.profile != rhs.key.profile { return lhs.key.profile < rhs.key.profile }
+        if lhs.key.sessionID != rhs.key.sessionID { return lhs.key.sessionID < rhs.key.sessionID }
+        return isOrderedBefore(lhs.snapshot, rhs.snapshot)
+    }
+
+    private static func isOrderedBefore(_ lhs: ChatScrollSnapshot, _ rhs: ChatScrollSnapshot) -> Bool {
+        if let result = optionalIsOrderedBefore(lhs.anchorMessageID, rhs.anchorMessageID) {
+            return result
+        }
+        if lhs.followsLatest != rhs.followsLatest { return !lhs.followsLatest }
+        if let result = optionalIsOrderedBefore(
+            lhs.anchorMetadata?.fingerprint,
+            rhs.anchorMetadata?.fingerprint
+        ) {
+            return result
+        }
+        if let result = optionalIsOrderedBefore(
+            lhs.anchorMetadata?.duplicateCount,
+            rhs.anchorMetadata?.duplicateCount
+        ) {
+            return result
+        }
+        return optionalIsOrderedBefore(lhs.anchorSourceMessageID, rhs.anchorSourceMessageID) ?? false
+    }
+
+    private static func optionalIsOrderedBefore<T: Comparable>(_ lhs: T?, _ rhs: T?) -> Bool? {
+        switch (lhs, rhs) {
+        case (nil, nil):
+            return nil
+        case (nil, .some):
+            return true
+        case (.some, nil):
+            return false
+        case let (.some(lhs), .some(rhs)):
+            guard lhs != rhs else { return nil }
+            return lhs < rhs
+        }
     }
 
     private func persist() {
