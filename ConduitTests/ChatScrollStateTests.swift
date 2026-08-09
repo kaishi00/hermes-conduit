@@ -81,6 +81,82 @@ final class ChatScrollStateTests: XCTestCase {
         XCTAssertEqual(firstIDs, secondIDs)
     }
 
+    func testRestorationFallsBackWhenDuplicateMultiplicityChanges() {
+        let originalTargets = ChatMessageScrollTargets.make(for: [
+            ChatMessage(id: "live-first", role: .assistant, content: "Repeated", timestamp: "now"),
+            ChatMessage(id: "live-second", role: .assistant, content: "Repeated", timestamp: "later")
+        ])
+        let compactedTargets = ChatMessageScrollTargets.make(for: [
+            ChatMessage(id: "stored-second", role: .assistant, content: "Repeated", timestamp: "stored")
+        ])
+        let key = ChatScrollSessionKey(profile: "default", sessionID: "session")
+        let snapshot = ChatScrollSnapshot(
+            anchorMessageID: originalTargets[0].semanticID,
+            followsLatest: false,
+            anchorMetadata: originalTargets[0].restorationMetadata
+        )
+        var store = ChatScrollStateStore()
+        store.save(snapshot, for: key)
+
+        XCTAssertEqual(originalTargets[0].semanticID, compactedTargets[0].semanticID)
+        XCTAssertEqual(
+            store.restoration(
+                for: key,
+                availableTargets: ChatScrollTargetAvailability(targets: compactedTargets)
+            ),
+            .latest
+        )
+    }
+
+    func testRestorationKeepsQualifiedAnchorWhenDuplicateMultiplicityIsUnchanged() {
+        let liveTargets = ChatMessageScrollTargets.make(for: [
+            ChatMessage(id: "live-first", role: .assistant, content: "Repeated", timestamp: "now"),
+            ChatMessage(id: "live-second", role: .assistant, content: "Repeated", timestamp: "later")
+        ])
+        let storedTargets = ChatMessageScrollTargets.make(for: [
+            ChatMessage(id: "stored-first", role: .assistant, content: "Repeated", timestamp: "stored"),
+            ChatMessage(id: "stored-second", role: .assistant, content: "Repeated", timestamp: "stored later")
+        ])
+        let key = ChatScrollSessionKey(profile: "default", sessionID: "session")
+        let snapshot = ChatScrollSnapshot(
+            anchorMessageID: liveTargets[0].semanticID,
+            followsLatest: false,
+            anchorMetadata: liveTargets[0].restorationMetadata
+        )
+        var store = ChatScrollStateStore()
+        store.save(snapshot, for: key)
+
+        XCTAssertEqual(
+            store.restoration(
+                for: key,
+                availableTargets: ChatScrollTargetAvailability(targets: storedTargets)
+            ),
+            snapshot
+        )
+    }
+
+    func testQualifiedRestorationFallsBackForEmptyTranscript() {
+        let target = ChatMessageScrollTargets.make(for: [
+            ChatMessage(id: "live", role: .assistant, content: "Repeated", timestamp: "now")
+        ])[0]
+        let key = ChatScrollSessionKey(profile: "default", sessionID: "session")
+        let snapshot = ChatScrollSnapshot(
+            anchorMessageID: target.semanticID,
+            followsLatest: false,
+            anchorMetadata: target.restorationMetadata
+        )
+        var store = ChatScrollStateStore()
+        store.save(snapshot, for: key)
+
+        XCTAssertEqual(
+            store.restoration(
+                for: key,
+                availableTargets: ChatScrollTargetAvailability(targets: [])
+            ),
+            .latest
+        )
+    }
+
     func testStableActivityAndAttachmentFieldsParticipateInSemanticFingerprint() {
         func semanticID(for message: ChatMessage) -> String {
             ChatMessageScrollTargets.make(for: [message])[0].semanticID
@@ -362,6 +438,43 @@ final class ChatScrollStateTests: XCTestCase {
 
         XCTAssertEqual(cache.update(for: edited), .semanticsChanged)
         XCTAssertNotEqual(cache.targets[0].semanticID, originalScrollID)
+    }
+
+    func testEqualCountProjectionReplacementReassertsLatestAfterCacheUpdate() {
+        var cache = ChatMessageScrollTargetCache()
+        cache.update(for: [
+            ChatMessage(id: "live", role: .assistant, content: "Stable", timestamp: "now")
+        ])
+
+        let update = cache.update(for: [
+            ChatMessage(id: "stored", role: .assistant, content: "Stable", timestamp: "stored")
+        ])
+
+        XCTAssertEqual(update, .renderingChanged)
+        XCTAssertTrue(ChatMessageScrollUpdatePolicy.shouldReassertLatest(
+            after: update,
+            followsLatest: true,
+            hasPendingNonLatestRestoration: false,
+            hasNotificationHandoff: false
+        ))
+    }
+
+    func testLatestReassertionYieldsToPendingNonLatestRestoration() {
+        XCTAssertFalse(ChatMessageScrollUpdatePolicy.shouldReassertLatest(
+            after: .semanticsChanged,
+            followsLatest: true,
+            hasPendingNonLatestRestoration: true,
+            hasNotificationHandoff: false
+        ))
+    }
+
+    func testLatestReassertionYieldsToNotificationHandoff() {
+        XCTAssertFalse(ChatMessageScrollUpdatePolicy.shouldReassertLatest(
+            after: .semanticsChanged,
+            followsLatest: true,
+            hasPendingNonLatestRestoration: false,
+            hasNotificationHandoff: true
+        ))
     }
 
     func testEquivalentSessionIDsShareCanonicalIdentity() {

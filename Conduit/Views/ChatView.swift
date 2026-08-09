@@ -93,9 +93,9 @@ struct ChatView: View {
                             .padding(.bottom, 126)
                             .id(bottomAnchor)
                     }
+                    .scrollTargetLayout()
                     .padding(.horizontal, 18)
                     .padding(.top, 18)
-                    .scrollTargetLayout()
                     .background {
                         // Measure the lazy stack itself, not its final child.
                         // SwiftUI can unload that child after the user scrolls
@@ -146,20 +146,34 @@ struct ChatView: View {
                         finishChatScrollRestorationIfReady(using: proxy)
                     }
                 }
-                .onChange(of: appState.messages) { oldMessages, newMessages in
-                    chatMessageScrollTargetCache.update(for: newMessages)
+                .onChange(of: appState.messages) { _, newMessages in
+                    let cacheUpdate = chatMessageScrollTargetCache.update(for: newMessages)
+                    let hasNotificationHandoff = appState.isOpeningNotificationSession
+                        || notificationHandoffPending
                     if pendingScrollRestoration != nil,
-                       !appState.isOpeningNotificationSession {
+                       !hasNotificationHandoff {
                         DispatchQueue.main.async {
                             finishChatScrollRestorationIfReady(using: proxy)
                         }
                     }
-                    guard oldMessages.count != newMessages.count else { return }
                     guard !appState.isOpeningNotificationSession else {
                         notificationHandoffPending = true
                         return
                     }
-                    if followsLatest {
+                    guard ChatMessageScrollUpdatePolicy.shouldReassertLatest(
+                        after: cacheUpdate,
+                        followsLatest: followsLatest,
+                        hasPendingNonLatestRestoration: hasPendingNonLatestRestoration,
+                        hasNotificationHandoff: notificationHandoffPending
+                    ) else { return }
+                    DispatchQueue.main.async {
+                        guard ChatMessageScrollUpdatePolicy.shouldReassertLatest(
+                            after: cacheUpdate,
+                            followsLatest: followsLatest,
+                            hasPendingNonLatestRestoration: hasPendingNonLatestRestoration,
+                            hasNotificationHandoff: appState.isOpeningNotificationSession
+                                || notificationHandoffPending
+                        ) else { return }
                         scrollToLatest(using: proxy)
                     }
                 }
@@ -296,14 +310,14 @@ struct ChatView: View {
 
     private func saveChatScrollPosition() {
         guard let sessionKey = activeScrollSessionKey else { return }
-        let messageIDs = Set(chatMessageScrollTargetCache.targets.map(\.semanticID))
-        let anchor = messageIDs.contains(topVisibleChatID ?? "")
-            ? topVisibleChatID
-            : nil
+        let anchorTarget = chatMessageScrollTargetCache.targets.first {
+            $0.semanticID == topVisibleChatID
+        }
         chatScrollState.save(
             ChatScrollSnapshot(
-                anchorMessageID: followsLatest ? nil : anchor,
-                followsLatest: followsLatest
+                anchorMessageID: followsLatest ? nil : anchorTarget?.semanticID,
+                followsLatest: followsLatest,
+                anchorMetadata: followsLatest ? nil : anchorTarget?.restorationMetadata
             ),
             for: sessionKey
         )
@@ -343,7 +357,9 @@ struct ChatView: View {
             identity: identity,
             activeSessionKey: activeScrollSessionKey,
             store: chatScrollState,
-            availableMessageIDs: Set(chatMessageScrollTargetCache.targets.map(\.semanticID))
+            availableTargets: ChatScrollTargetAvailability(
+                targets: chatMessageScrollTargetCache.targets
+            )
         )
 
         switch decision {
