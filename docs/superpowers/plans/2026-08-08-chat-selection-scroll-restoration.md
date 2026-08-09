@@ -603,3 +603,26 @@ Run the two new/updated focused test classes, then the complete simulator suite.
 - [ ] **Step 2: Implement the pure fixes and resolver/cache seams**
 - [ ] **Step 3: Integrate profile-scoped identity and cached targets into AppState/ChatView**
 - [ ] **Step 4: Run focused tests and full simulator verification**
+
+---
+
+### Task 8: Fix scroll-target registration and duplicate/latest edge cases
+
+**Reason:** Final review found that `.scrollTargetLayout()` is attached after the padded `LazyVStack`, equal-count transcript replacement does not reassert latest-following, and occurrence-only duplicate anchors can be reused by a different row after compaction.
+
+**Files:**
+- Modify: `Conduit/Views/ChatView.swift`
+- Modify: `Conduit/Services/ChatScrollState.swift`
+- Modify: `ConduitTests/ChatScrollStateTests.swift`
+
+**Requirements:**
+
+- Attach `.scrollTargetLayout()` directly to the `LazyVStack` before its padding/background modifiers so semantic child IDs are registered as scroll targets. Preserve the existing layout/padding and `ScrollViewReader` behavior.
+- When `AppState.messages` changes but the count stays equal, reassert `scrollToLatest` when `followsLatest` is true after the new target cache is installed. Never override a pending non-latest restore or notification handoff.
+- Make duplicate-anchor restoration conservative: save enough fingerprint/duplicate-count metadata to detect when duplicate multiplicity changes, and fall back to `.latest` rather than treating a shifted occurrence ordinal as the same message. Preserve backward-compatible snapshot initialization for existing tests/callers.
+- Add pure tests for empty/changed duplicate multiplicity and latest-following replacement logic where practical. If a full SwiftUI hosting test is not practical in this target, document the exact limitation; the production modifier placement must still match the iOS 17 API contract.
+- Preserve all previous constraints and do not add version, orientation, gateway, persistence, archive, upload, or merge changes.
+
+- [ ] **Step 1: Add failing pure tests**
+- [ ] **Step 2: Implement modifier/order and lifecycle fixes**
+- [ ] **Step 3: Run focused and full simulator verification**
