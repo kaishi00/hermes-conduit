@@ -123,6 +123,67 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(harness.recoverySequence.queuedReconnectPurpose, .automaticReturn)
     }
 
+    func testSuccessfulSettlementCancelsQueuedReconnectExecution() async {
+        let scheduler = ControlledReconnectScheduler()
+        let reconnectSpy = ReconnectExecutionSpy()
+        let harness = makeHarness(
+            reconnectScheduler: scheduler.schedule(after:operation:),
+            scheduledReconnectExecutor: { purpose in
+                reconnectSpy.purposes.append(purpose)
+            }
+        )
+        harness.appState.connection = HermesConnection(
+            baseUrl: "https://one.example",
+            ticket: "ticket"
+        )
+        harness.appState.scheduleReconnect(purpose: .automaticReturn)
+        let token = harness.appState.beginReconciliation()
+
+        XCTAssertTrue(harness.appState.settleReconciliationAndPublish(token))
+        await scheduler.runAll()
+
+        XCTAssertEqual(scheduler.cancelledCount, 1)
+        XCTAssertTrue(reconnectSpy.purposes.isEmpty)
+    }
+
+    func testExplicitCancellationCancelsQueuedReconnectExecution() async {
+        let scheduler = ControlledReconnectScheduler()
+        let reconnectSpy = ReconnectExecutionSpy()
+        let harness = makeHarness(
+            reconnectScheduler: scheduler.schedule(after:operation:),
+            scheduledReconnectExecutor: { purpose in
+                reconnectSpy.purposes.append(purpose)
+            }
+        )
+        harness.appState.connection = HermesConnection(
+            baseUrl: "https://one.example",
+            ticket: "ticket"
+        )
+        harness.appState.scheduleReconnect(purpose: .automaticReturn)
+
+        harness.appState.cancelChatResumeRestoration()
+        await scheduler.runAll()
+
+        XCTAssertEqual(scheduler.cancelledCount, 1)
+        XCTAssertTrue(reconnectSpy.purposes.isEmpty)
+    }
+
+    func testPublicReconnectOverridesPendingAutomaticIntent() async {
+        let harness = makeHarness(behavior: .latestActivity)
+        _ = harness.appState.beginChatResumeRecovery(purpose: .automaticReturn)
+
+        await harness.appState.reconnect()
+
+        let selected = harness.appState.selectChatResumeTarget(
+            in: [session("stored-b"), session("stored-a")],
+            profile: "default",
+            purpose: harness.recoverySequence.currentPurpose,
+            currentSessionID: "stored-a"
+        )
+        XCTAssertEqual(harness.recoverySequence.currentPurpose, .preserveCurrent)
+        XCTAssertEqual(selected?.id, "stored-a")
+    }
+
     func testCreatedFallbackRemainsFrozenAndPublishesAfterSettlement() {
         let harness = makeHarness()
         let oldKey = ChatScrollSessionKey(profile: "default", sessionID: "stored-a")
@@ -188,17 +249,57 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(harness.cacheClearSpy.count, 0)
     }
 
-    func testLegacyDashboardIdentityGuardsFirstServerChange() {
-        let harness = makeHarness()
+    func testLegacyDashboardIdentityCapturedBeforeLoginOverwritesURL() {
+        let harness = makeHarness(
+            behavior: .latestActivity,
+            configureDefaults: { defaults in
+                defaults.set("https://one.example", forKey: "conduit.dashboardURL")
+            }
+        )
         let key = ChatScrollSessionKey(profile: "default", sessionID: "same-session")
-        harness.defaults.set("https://one.example", forKey: "conduit.dashboardURL")
         harness.coordinator.rememberSessionID("same-session", for: "default")
         harness.coordinator.recordViewport(.latest, for: key)
         harness.coordinator.flush()
+        harness.appState.rememberDashboardURL("https://two.example")
 
         XCTAssertTrue(harness.appState.prepareChatResumeForConnection(to: "https://two.example"))
         XCTAssertNil(harness.store.lastSessionID(for: "default"))
         XCTAssertNil(harness.store.snapshot(for: key))
+        XCTAssertEqual(harness.appState.chatResumeBehavior, .latestActivity)
+    }
+
+    func testServerChangeClearsReviewAndKnownProfileCachesButPreservesBehavior() throws {
+        let review = ReviewSummaryRecord(
+            id: "old-review",
+            profile: "default",
+            sessionId: "same-session",
+            timestamp: "2026-08-09T12:00:00Z",
+            activity: ReviewActivity(
+                summary: "Old server review",
+                details: ["Old server detail"],
+                fullSessionId: "same-child"
+            )
+        )
+        let harness = makeHarness(
+            behavior: .latestActivity,
+            configureDefaults: { defaults in
+                defaults.set("https://one.example", forKey: "conduit.chatResumeServerIdentity.v1")
+                defaults.set(
+                    try! JSONEncoder().encode([review]),
+                    forKey: "conduit.reviewSummaryCache.v1"
+                )
+                defaults.set(
+                    ["default", "old-profile"],
+                    forKey: "conduit.knownProfiles.v1"
+                )
+            }
+        )
+        harness.appState.rememberDashboardURL("https://two.example")
+
+        XCTAssertTrue(harness.appState.prepareChatResumeForConnection(to: "https://two.example"))
+        XCTAssertNil(harness.defaults.data(forKey: "conduit.reviewSummaryCache.v1"))
+        XCTAssertNil(harness.defaults.stringArray(forKey: "conduit.knownProfiles.v1"))
+        XCTAssertEqual(harness.appState.chatResumeBehavior, .latestActivity)
     }
 
     func testManualRecoveryOverridesPendingAutomaticPurpose() async {
@@ -259,7 +360,10 @@ final class AppStateChatResumeTests: XCTestCase {
     }
 
     private func makeHarness(
-        behavior: ChatResumeBehavior = .continueWhereLeftOff
+        behavior: ChatResumeBehavior = .continueWhereLeftOff,
+        configureDefaults: (UserDefaults) -> Void = { _ in },
+        reconnectScheduler: ChatResumeReconnectScheduler? = nil,
+        scheduledReconnectExecutor: (@MainActor (ChatResumeSyncPurpose) async -> Void)? = nil
     ) -> (
         appState: AppState,
         coordinator: ChatResumeCoordinator,
@@ -274,6 +378,7 @@ final class AppStateChatResumeTests: XCTestCase {
         addTeardownBlock {
             defaults.removePersistentDomain(forName: suite)
         }
+        configureDefaults(defaults)
         let store = ChatResumeStore(defaults: defaults)
         store.setBehavior(behavior)
         let coordinator = ChatResumeCoordinator(store: store)
@@ -284,7 +389,9 @@ final class AppStateChatResumeTests: XCTestCase {
             chatResumeCoordinator: coordinator,
             recoverySequence: recoverySequence,
             loadSavedConnection: false,
-            clearSessionPresentationCache: { cacheClearSpy.count += 1 }
+            clearSessionPresentationCache: { cacheClearSpy.count += 1 },
+            reconnectScheduler: reconnectScheduler,
+            scheduledReconnectExecutor: scheduledReconnectExecutor
         )
         return (appState, coordinator, store, recoverySequence, cacheClearSpy, defaults, suite)
     }
@@ -356,4 +463,44 @@ final class AppStateChatResumeTests: XCTestCase {
 @MainActor
 private final class CacheClearSpy {
     var count = 0
+}
+
+@MainActor
+private final class ControlledReconnectScheduler {
+    private final class Work {
+        let operation: @MainActor () async -> Void
+        var isCancelled = false
+
+        init(operation: @escaping @MainActor () async -> Void) {
+            self.operation = operation
+        }
+    }
+
+    private var work: [Work] = []
+
+    var cancelledCount: Int {
+        work.filter(\.isCancelled).count
+    }
+
+    func schedule(
+        after delay: TimeInterval,
+        operation: @escaping @MainActor () async -> Void
+    ) -> ChatResumeReconnectCancellation {
+        let item = Work(operation: operation)
+        work.append(item)
+        return {
+            item.isCancelled = true
+        }
+    }
+
+    func runAll() async {
+        for item in work where !item.isCancelled {
+            await item.operation()
+        }
+    }
+}
+
+@MainActor
+private final class ReconnectExecutionSpy {
+    var purposes: [ChatResumeSyncPurpose] = []
 }
