@@ -158,12 +158,14 @@ final class ChatResumeCoordinator {
 
     func reconciliationSettled(sessionKey: ChatScrollSessionKey) -> ChatResumeRestorationRequest? {
         guard pendingSessionKey == sessionKey, pendingRestoration == nil else {
-            // Mismatch: the settled session doesn't match what we were waiting
-            // for. Clear pending state and unfreeze so the viewport can resume
-            // recording. Otherwise the freeze persists forever.
+            // Mismatch: clear the stale pending key but leave the freeze
+            // intact. The freeze will be cleared by abandonPendingAutomaticSync()
+            // on actual failure paths, or by completeRestoration/abandonRestoration
+            // when a published request resolves. Unfreezing here would let
+            // `.latest` snapshots overwrite old readings during normal ID
+            // remapping flows (runtime → stored key canonicalization).
             pendingSessionKey = nil
             pendingFallbackSelection = false
-            viewportIsFrozen = false
             return nil
         }
 
