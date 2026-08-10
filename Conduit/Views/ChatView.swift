@@ -597,38 +597,40 @@ private struct ReviewSummaryCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .center, spacing: 10) {
-                Image(systemName: "internaldrive.fill")
-                    .foregroundStyle(.conduitAura)
-                    .frame(width: 28, height: 28)
-                    .background(Color.conduitAura.opacity(0.14), in: Circle())
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("SELF-IMPROVEMENT REVIEW")
-                        .font(.caption2.weight(.bold))
-                        .tracking(0.6)
-                        .foregroundStyle(.secondary)
-                    SelectableTextView(
-                        text: activity.summary,
-                        font: .preferredFont(forTextStyle: .subheadline).withTraits(.traitBold),
-                        textColor: .label
-                    )
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                Spacer(minLength: 8)
-                MessageTimestampLabel(timestamp: timestamp, tone: .supporting)
-                if !details.isEmpty {
-                    Image(systemName: expanded ? "chevron.up" : "chevron.down")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 28, height: 28)
-                }
-            }
-            .contentShape(Rectangle())
-            .onTapGesture {
+            Button {
                 guard !details.isEmpty else { return }
                 withAnimation(ConduitMotion.response) { expanded.toggle() }
+            } label: {
+                HStack(alignment: .center, spacing: 10) {
+                    Image(systemName: "internaldrive.fill")
+                        .foregroundStyle(.conduitAura)
+                        .frame(width: 28, height: 28)
+                        .background(Color.conduitAura.opacity(0.14), in: Circle())
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("SELF-IMPROVEMENT REVIEW")
+                            .font(.caption2.weight(.bold))
+                            .tracking(0.6)
+                            .foregroundStyle(.secondary)
+                        SelectableTextView(
+                            text: activity.summary,
+                            font: .preferredFont(forTextStyle: .subheadline).withTraits(.traitBold),
+                            textColor: .label
+                        )
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    Spacer(minLength: 8)
+                    MessageTimestampLabel(timestamp: timestamp, tone: .supporting)
+                    if !details.isEmpty {
+                        Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 28, height: 28)
+                    }
+                }
+                .contentShape(Rectangle())
             }
-            .accessibilityAddTraits(details.isEmpty ? [] : .isButton)
+            .buttonStyle(.plain)
+            .disabled(details.isEmpty)
             .accessibilityLabel(details.isEmpty ? activity.summary : (expanded ? "Collapse review details" : "Expand review details"))
 
             if expanded, !details.isEmpty {
@@ -844,7 +846,7 @@ struct ToolCard: View {
                 if !expanded, let preview = collapsedPreview(for: tool) {
                     SelectableTextView(
                         text: preview,
-                        font: .monospacedSystemFont(ofSize: 11, weight: .regular),
+                        font: .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption2).pointSize, weight: .regular),
                         textColor: UIColor(Color.primary.opacity(0.74)),
                         maximumNumberOfLines: 1
                     )
@@ -861,9 +863,10 @@ struct ToolCard: View {
                                     .font(.caption2.bold())
                                     .foregroundStyle(.tertiary)
                                 SelectableTextView(
-                                    text: input,
+                                    text: Self.truncateForDisplay(input, maxLines: 500),
                                     font: .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1).pointSize, weight: .regular),
-                                    textColor: .secondaryLabel
+                                    textColor: .secondaryLabel,
+                                    maximumNumberOfLines: 0
                                 )
                                     .frame(maxWidth: .infinity, alignment: .leading)
                             }
@@ -874,10 +877,10 @@ struct ToolCard: View {
                                     .font(.caption2.bold())
                                     .foregroundStyle(.tertiary)
                                 SelectableTextView(
-                                    text: output,
+                                    text: Self.truncateForDisplay(output, maxLines: 500),
                                     font: .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1).pointSize, weight: .regular),
                                     textColor: .secondaryLabel,
-                                    maximumNumberOfLines: expanded ? 0 : 3
+                                    maximumNumberOfLines: 0
                                 )
                                     .frame(maxWidth: .infinity, alignment: .leading)
                             }
@@ -903,6 +906,16 @@ struct ToolCard: View {
             .replacingOccurrences(of: "\n", with: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return preview.isEmpty ? nil : preview
+    }
+
+    /// Limits tool output rendered in the non-scrolling SelectableTextView to
+    /// avoid a single massive layout pass when expanding large command logs or
+    /// file reads. Returns the original string if under the cap; otherwise
+    /// truncates to the first `maxLines` lines with an ellipsis indicator.
+    static func truncateForDisplay(_ text: String, maxLines: Int) -> String {
+        let lines = text.components(separatedBy: "\n")
+        guard lines.count > maxLines else { return text }
+        return lines.prefix(maxLines).joined(separator: "\n") + "\n… (\(lines.count - maxLines) more lines)"
     }
 }
 

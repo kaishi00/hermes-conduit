@@ -108,14 +108,17 @@ struct SelectableTextView: UIViewRepresentable {
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
         if !wrapsLines {
-            let measured = uiView.attributedText.boundingRect(
+            // Measure the stored attributedText directly instead of force-
+            // unwrapping the UITextView's implicitly unwrapped optional,
+            // which traps if the view hasn't been configured yet.
+            let measured = attributedText.boundingRect(
                 with: CGSize(width: 100_000, height: CGFloat.greatestFiniteMagnitude),
                 options: [.usesLineFragmentOrigin, .usesFontLeading],
                 context: nil
             )
             return CGSize(
                 width: max(1, ceil(measured.width)),
-                height: max(uiView.font?.lineHeight ?? 1, ceil(measured.height))
+                height: max(font.lineHeight, ceil(measured.height))
             )
         }
 
@@ -143,25 +146,25 @@ struct SelectableTextView: UIViewRepresentable {
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.lineSpacing = lineSpacing
 
+        // Single-pass styling: preserve per-run font and foregroundColor from
+        // attributedText, fill only missing attributes with the configured
+        // defaults, then apply paragraph style globally. This replaces the
+        // previous double-pass that applied globals then overwrote with runs.
         let styledText = NSMutableAttributedString(attributedString: attributedText)
-        let range = NSRange(location: 0, length: styledText.length)
-        if range.length > 0 {
-            styledText.addAttribute(.font, value: font, range: range)
-            styledText.addAttribute(.foregroundColor, value: textColor, range: range)
-            styledText.addAttribute(.paragraphStyle, value: paragraphStyle, range: range)
-        }
+        let fullRange = NSRange(location: 0, length: styledText.length)
 
-        // Markdown's emphasis is represented by AttributedString runs. Keep
-        // the UIKit surface visually close to the existing SwiftUI renderer
-        // while still using a single selectable text layout.
-        attributedText.enumerateAttribute(.font, in: range, options: []) { value, subrange, _ in
-            if let runFont = value as? UIFont {
-                styledText.addAttribute(.font, value: runFont, range: subrange)
+        if fullRange.length > 0 {
+            styledText.addAttribute(.paragraphStyle, value: paragraphStyle, range: fullRange)
+
+            styledText.enumerateAttribute(.font, in: fullRange, options: []) { value, subrange, _ in
+                if value == nil {
+                    styledText.addAttribute(.font, value: font, range: subrange)
+                }
             }
-        }
-        attributedText.enumerateAttribute(.foregroundColor, in: range, options: []) { value, subrange, _ in
-            if let runColor = value as? UIColor {
-                styledText.addAttribute(.foregroundColor, value: runColor, range: subrange)
+            styledText.enumerateAttribute(.foregroundColor, in: fullRange, options: []) { value, subrange, _ in
+                if value == nil {
+                    styledText.addAttribute(.foregroundColor, value: textColor, range: subrange)
+                }
             }
         }
 
@@ -178,7 +181,10 @@ struct SelectableTextView: UIViewRepresentable {
         textView.invalidateIntrinsicContentSize()
     }
 
-    private static func bridge(
+    /// Converts an AttributedString (from Markdown parsing) into an
+    /// NSAttributedString with UIKit-compatible font traits. Exposed as
+    /// internal so callers can convert without instantiating the full view.
+    static func bridge(
         _ value: AttributedString,
         defaultFont: UIFont,
         defaultColor: UIColor,
@@ -235,21 +241,32 @@ struct SelectableTextView: UIViewRepresentable {
             self.linkColor = linkColor
         }
 
+        // shouldInteractWith is formally deprecated in iOS 17, but it remains
+        // the only UITextViewDelegate API for intercepting URL taps. The
+        // replacement (UITextInteraction edit-menu API) does not provide a
+        // link-activation callback. This annotation silences the deprecation
+        // warning while keeping the working behavior.
+        @available(iOS, deprecated: 17.0)
         func textView(
             _ textView: UITextView,
-            shouldInteractWith URL: URL,
+            shouldInteractWith url: URL,
             in characterRange: NSRange,
             interaction: UITextItemInteraction
         ) -> Bool {
-            UIApplication.shared.open(URL)
+            UIApplication.shared.open(url)
             return false
         }
     }
 }
 
 extension UIFont {
+    /// Returns a font with the requested symbolic traits merged into the
+    /// existing set, so chained calls (e.g. bold then italic) accumulate
+    /// rather than replacing the entire trait collection.
     func withTraits(_ traits: UIFontDescriptor.SymbolicTraits) -> UIFont {
-        guard let descriptor = fontDescriptor.withSymbolicTraits(traits) else { return self }
+        guard let descriptor = fontDescriptor.withSymbolicTraits(
+            fontDescriptor.symbolicTraits.union(traits)
+        ) else { return self }
         return UIFont(descriptor: descriptor, size: pointSize)
     }
 }

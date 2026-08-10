@@ -26,6 +26,8 @@ struct MarkdownText: View {
     /// while already-read text remains fully stable.
     var newestCharacterOpacities: [Double] = []
 
+    @State private var cachedBlocks: [MarkdownBlock]?
+
     static func selectableAttributedText(
         for source: String,
         recognizesGatewayMedia: Bool = false,
@@ -42,7 +44,7 @@ struct MarkdownText: View {
     }
 
     var body: some View {
-        let blocks = MarkdownParser.parse(source, recognizesGatewayMedia: gatewayMediaDataURL != nil)
+        let blocks = cachedBlocks ?? MarkdownParser.parse(source, recognizesGatewayMedia: gatewayMediaDataURL != nil)
         let selectableText = MarkdownSelectionFormatter.attributedText(
             for: blocks,
             foregroundStyle: foregroundStyle,
@@ -77,6 +79,11 @@ struct MarkdownText: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .onAppear {
+            if cachedBlocks == nil {
+                cachedBlocks = MarkdownParser.parse(source, recognizesGatewayMedia: gatewayMediaDataURL != nil)
+            }
+        }
     }
 }
 
@@ -260,21 +267,11 @@ private enum MarkdownSelectionFormatter {
             markdown: source,
             options: .init(interpretedSyntax: .full)
         )) ?? AttributedString(source)
-        return SelectableTextView(
-            attributedText: attributed,
-            font: font,
-            textColor: textColor,
-            linkColor: linkColor
-        ).attributedText
+        return SelectableTextView.bridge(attributed, defaultFont: font, defaultColor: textColor, linkColor: linkColor)
     }
 
     private static func headingFont(_ level: Int) -> UIFont {
-        switch level {
-        case 1: UIFont.preferredFont(forTextStyle: .title2).withTraits(.traitBold)
-        case 2: UIFont.preferredFont(forTextStyle: .title3).withTraits(.traitBold)
-        case 3: UIFont.preferredFont(forTextStyle: .headline).withTraits(.traitBold)
-        default: UIFont.preferredFont(forTextStyle: .subheadline).withTraits(.traitBold)
-        }
+        MarkdownHeading.font(for: level)
     }
 
     private static func applyTrailingCharacterOpacities(
@@ -315,6 +312,19 @@ private enum MarkdownTableAlignment {
         case .leading: .leading
         case .center: .center
         case .trailing: .trailing
+        }
+    }
+}
+
+/// Shared heading font logic used by both MarkdownSelectionFormatter
+/// and MarkdownBlockView to prevent divergence.
+enum MarkdownHeading {
+    static func font(for level: Int) -> UIFont {
+        switch level {
+        case 1: UIFont.preferredFont(forTextStyle: .title2).withTraits(.traitBold)
+        case 2: UIFont.preferredFont(forTextStyle: .title3).withTraits(.traitBold)
+        case 3: UIFont.preferredFont(forTextStyle: .headline).withTraits(.traitBold)
+        default: UIFont.preferredFont(forTextStyle: .subheadline).withTraits(.traitBold)
         }
     }
 }
@@ -421,12 +431,7 @@ private struct MarkdownBlockView: View {
     }
 
     private func headingFont(_ level: Int) -> UIFont {
-        switch level {
-        case 1: UIFont.preferredFont(forTextStyle: .title2).withTraits(.traitBold)
-        case 2: UIFont.preferredFont(forTextStyle: .title3).withTraits(.traitBold)
-        case 3: UIFont.preferredFont(forTextStyle: .headline).withTraits(.traitBold)
-        default: UIFont.preferredFont(forTextStyle: .subheadline).withTraits(.traitBold)
-        }
+        MarkdownHeading.font(for: level)
     }
 }
 
@@ -457,7 +462,7 @@ private struct InlineMarkdown: View {
 
     var body: some View {
         SelectableTextView(
-            attributedText: NSAttributedString(attributed),
+            attributedText: attributed,
             font: font,
             textColor: usesAccentSurface ? .white : UIColor(foregroundStyle),
             lineSpacing: lineSpacing,
@@ -902,6 +907,7 @@ struct ChatCodeBlock: View {
                             text: source,
                             font: .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .footnote).pointSize, weight: .regular),
                             textColor: UIColor.white.withAlphaComponent(0.96),
+                            lineSpacing: 3,
                             wrapsLines: false
                         )
                     } else {
@@ -909,11 +915,11 @@ struct ChatCodeBlock: View {
                             attributedText: SyntaxHighlighter.highlight(source, language: normalizedLanguage),
                             font: .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .footnote).pointSize, weight: .regular),
                             textColor: .label,
+                            lineSpacing: 3,
                             wrapsLines: false
                         )
                     }
                 }
-                .lineSpacing(3)
                 .padding(12)
             }
         }
