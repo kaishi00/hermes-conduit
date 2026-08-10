@@ -272,18 +272,20 @@ struct AuthWebView: UIViewRepresentable {
     let onError: (String) -> Void
 
     func makeUIView(context: Context) -> WKWebView {
+        let normalized = try? ConnectionURLPolicy.normalizedBaseURL(url)
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .default()
         config.userContentController.add(context.coordinator, name: "ticket")
-        if let script = cloudflareAccess?.fetchInjectionUserScript, !script.isEmpty {
+        if let normalized,
+           let script = cloudflareAccess?.fetchInjectionUserScript(expectedBaseURL: normalized),
+           !script.isEmpty {
             config.userContentController.addUserScript(
-                WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: false)
+                WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true)
             )
         }
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
-        guard let normalized = try? ConnectionURLPolicy.normalizedBaseURL(url),
-              let dashboardURL = URL(string: normalized) else {
+        guard let normalized, let dashboardURL = URL(string: normalized) else {
             onError(ConnectionURLPolicyError.invalidURL.localizedDescription)
             return webView
         }

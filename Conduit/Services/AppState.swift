@@ -4107,7 +4107,18 @@ final class AppState: ObservableObject {
     @discardableResult
     func setVoiceTranscriptionMode(_ mode: VoiceTranscriptionMode) async -> Bool {
         appleSpeechAvailability = AppleOnDeviceSpeechTranscriber.currentAvailability()
-        if mode == .appleOnDevice, !appleSpeechAvailability.canAttemptRecognition { return false }
+        if mode == .appleOnDevice, !appleSpeechAvailability.canAttemptRecognition {
+            switch appleSpeechAvailability {
+            case .permissionDenied:
+                errorMessage = "Speech Recognition permission was denied. Please enable it in Settings > Conduit > Speech Recognition."
+            case .unsupported(let localeIdentifier):
+                let localeName = Locale.current.localizedString(forIdentifier: localeIdentifier) ?? localeIdentifier
+                errorMessage = "On-device speech recognition is not available for \(localeName)."
+            default:
+                errorMessage = "On-device speech recognition is unavailable."
+            }
+            return false
+        }
         if mode == .appleOnDevice {
             let permissionResult = await voiceConversationController.requestOnDeviceTranscriptionPermissions()
             appleSpeechAvailability = AppleOnDeviceSpeechTranscriber.currentAvailability()

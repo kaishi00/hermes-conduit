@@ -46,46 +46,80 @@ struct CloudflareAccessCredentials: Equatable, CustomStringConvertible {
         return request
     }
 
-    /// JavaScript injected at document start so that every `fetch()` and
-    /// `XMLHttpRequest` originating inside the WKWebView includes the
-    /// Cloudflare Access service-token headers. Without this, only the
-    /// initial navigation request carries the headers; subsequent API/ticket
-    /// fetches issued by the dashboard page or by DashboardTicketBridge's
-    /// evaluated scripts would be rejected by Cloudflare Service Auth.
-    var fetchInjectionUserScript: String {
-        guard isConfigured else { return "" }
-        let idEscaped = clientID.replacingOccurrences(of: "'", with: "\\'")
-        let secretEscaped = clientSecret.replacingOccurrences(of: "'", with: "\\'")
+    private func javaScriptStringLiteral(_ value: String) -> String? {
+        guard let data = try? JSONSerialization.data(withJSONObject: value, options: [.fragmentsAllowed]),
+              let literal = String(data: data, encoding: .utf8),
+              literal.first == "\"",
+              literal.last == "\"" else { return nil }
+        return literal
+    }
+
+    /// JavaScript injected at document start so that same-origin dashboard
+    /// `fetch()` and `XMLHttpRequest` calls inside the WKWebView include the
+    /// Cloudflare Access service-token headers. The script is intentionally
+    /// scoped to the configured dashboard origin; native requests still apply
+    /// the headers directly to the initial dashboard request.
+    func fetchInjectionUserScript(expectedBaseURL: String) -> String {
+        guard isConfigured,
+              let normalizedBaseURL = try? ConnectionURLPolicy.normalizedBaseURL(expectedBaseURL),
+              let baseURLLiteral = javaScriptStringLiteral(normalizedBaseURL),
+              let idLiteral = javaScriptStringLiteral(clientID),
+              let secretLiteral = javaScriptStringLiteral(clientSecret) else { return "" }
         return """
         (function() {
-            var cfId = '\(idEscaped)';
-            var cfSecret = '\(secretEscaped)';
+            var cfId = \(idLiteral);
+            var cfSecret = \(secretLiteral);
+            var cfOrigin = new URL(\(baseURLLiteral)).origin;
+            function resolvedURL(input) {
+                try {
+                    var value = input;
+                    if (value && typeof value === 'object' && typeof value.url === 'string') {
+                        value = value.url;
+                    }
+                    return new URL(value, window.location.href);
+                } catch (_) {
+                    return null;
+                }
+            }
+            function shouldAttach(input) {
+                var resolved = resolvedURL(input);
+                return window.location.origin === cfOrigin
+                    && resolved !== null
+                    && resolved.origin === cfOrigin;
+            }
             var origFetch = window.fetch;
             if (origFetch) {
                 window.fetch = function(input, init) {
-                    init = init || {};
-                    if (init.headers instanceof Headers) {
-                        init.headers.set('CF-Access-Client-Id', cfId);
-                        init.headers.set('CF-Access-Client-Secret', cfSecret);
-                    } else {
-                        init.headers = Object.assign({}, init.headers || {});
-                        init.headers['CF-Access-Client-Id'] = cfId;
-                        init.headers['CF-Access-Client-Secret'] = cfSecret;
+                    if (shouldAttach(input)) {
+                        init = init || {};
+                        var sourceHeaders = init.headers;
+                        if (sourceHeaders === undefined
+                            && input
+                            && typeof input === 'object'
+                            && input.headers) {
+                            sourceHeaders = input.headers;
+                        }
+                        var headers = new Headers(sourceHeaders || undefined);
+                        headers.set('CF-Access-Client-Id', cfId);
+                        headers.set('CF-Access-Client-Secret', cfSecret);
+                        init.headers = headers;
                     }
                     return origFetch.call(this, input, init);
                 };
             }
             var origOpen = XMLHttpRequest.prototype.open;
             var origSend = XMLHttpRequest.prototype.send;
+            var eligibleXhrs = new WeakMap();
+            var setXhrEligibility = eligibleXhrs.set.bind(eligibleXhrs);
+            var getXhrEligibility = eligibleXhrs.get.bind(eligibleXhrs);
             XMLHttpRequest.prototype.open = function(method, url) {
-                this._cfHeadersApplied = false;
+                setXhrEligibility(this, shouldAttach(url));
                 return origOpen.apply(this, arguments);
             };
             XMLHttpRequest.prototype.send = function(body) {
-                if (!this._cfHeadersApplied) {
+                if (getXhrEligibility(this) === true) {
                     this.setRequestHeader('CF-Access-Client-Id', cfId);
                     this.setRequestHeader('CF-Access-Client-Secret', cfSecret);
-                    this._cfHeadersApplied = true;
                 }
                 return origSend.apply(this, arguments);
             };

@@ -221,8 +221,19 @@ struct VoiceSettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            if case .permissionRequired = appleSpeechAvailability {
-                Text("iOS will ask for Speech Recognition permission when you run the test or start listening.")
+            switch appleSpeechAvailability {
+            case .ready:
+                EmptyView()
+            case .permissionRequired:
+                Text("Enable Speech Recognition in Settings > Conduit > Speech Recognition, then retry selecting \"On this iPhone\".")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            case .permissionDenied:
+                Text("Speech Recognition permission was denied. Please enable it in Settings > Conduit > Speech Recognition.")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            case .unsupported:
+                Text("On-device speech recognition is not available for your current language locale.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -427,7 +438,16 @@ struct VoiceSettingsView: View {
             if kind == .stt, provider == Self.appleProviderID {
                 let selected = await setTranscriptionMode(.appleOnDevice)
                 appleSpeechAvailability = AppleOnDeviceSpeechTranscriber.currentAvailability()
-                if selected { transcriptionMode = .appleOnDevice }
+                if selected {
+                    transcriptionMode = .appleOnDevice
+                    testStatus = nil
+                } else if case .permissionRequired = appleSpeechAvailability {
+                    testStatus = "Enable Speech Recognition in Settings > Conduit > Speech Recognition, then retry selecting \"On this iPhone\"."
+                } else if case .permissionDenied = appleSpeechAvailability {
+                    testStatus = "Speech Recognition permission was denied. Please enable it in Settings > Conduit > Speech Recognition."
+                } else if case .unsupported = appleSpeechAvailability {
+                    testStatus = "On-device speech recognition is not available for your current language locale."
+                }
             } else {
                 let providerSaved: Bool
                 if provider == selectedProvider(kind) {

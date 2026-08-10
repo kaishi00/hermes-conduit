@@ -115,13 +115,14 @@ final class DashboardTicketBridge: NSObject {
     private var pendingRequests: [Int: CheckedContinuation<[String: Any], Error>] = [:]
 
     init(baseURL: String, cloudflareAccess: CloudflareAccessCredentials? = nil) {
-        self.baseURL = (try? ConnectionURLPolicy.normalizedBaseURL(baseURL)) ?? ""
+        let normalizedBaseURL = (try? ConnectionURLPolicy.normalizedBaseURL(baseURL)) ?? ""
+        self.baseURL = normalizedBaseURL
         self.cloudflareAccess = cloudflareAccess
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .default()
-        if let script = cloudflareAccess?.fetchInjectionUserScript, !script.isEmpty {
+        if let script = cloudflareAccess?.fetchInjectionUserScript(expectedBaseURL: normalizedBaseURL), !script.isEmpty {
             configuration.userContentController.addUserScript(
-                WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: false)
+                WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true)
             )
         }
         self.webView = WKWebView(frame: .zero, configuration: configuration)
