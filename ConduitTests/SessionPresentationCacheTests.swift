@@ -364,4 +364,87 @@ final class SessionPresentationCacheTests: XCTestCase {
 
         cache.clear(profile: profile)
     }
+
+    // MARK: - Merge: pending approval restoration
+
+    func testMergeRestoresPendingApprovalWhenRequested() {
+        let cache = SessionPresentationCache.shared
+        let sessionId = "test-merge-approval-\(UUID().uuidString)"
+        let profile = "test"
+
+        let approval = ApprovalActivity(
+            sessionId: sessionId,
+            command: "rm -rf /tmp",
+            description: "Delete temp files",
+            choices: ["once", "session", "always", "deny"],
+            allowPermanent: true,
+            smartDenied: false,
+            status: .pending
+        )
+        let savedMessages = [
+            ChatMessage(
+                id: "approval-\(sessionId)",
+                role: .approval,
+                content: "Delete temp files",
+                timestamp: "2024-01-01T10:00:00Z",
+                approval: approval
+            ),
+        ]
+        cache.save(savedMessages, profile: profile, sessionIDs: [sessionId])
+
+        // Gateway resume omits the approval card
+        let gatewayMessages: [ChatMessage] = []
+        let merged = cache.merge(
+            gatewayMessages,
+            profile: profile,
+            sessionIDs: [sessionId],
+            includePendingApprovals: true
+        )
+
+        let restoredApproval = merged.first { $0.role == .approval }
+        XCTAssertNotNil(restoredApproval, "Pending approval should be restored from cache")
+        XCTAssertEqual(restoredApproval?.approval?.sessionId, sessionId)
+        XCTAssertEqual(restoredApproval?.approval?.status, .pending)
+
+        cache.clear(profile: profile)
+    }
+
+    func testMergeDoesNotRestoreApprovalWhenNotRequested() {
+        let cache = SessionPresentationCache.shared
+        let sessionId = "test-merge-approval-off-\(UUID().uuidString)"
+        let profile = "test"
+
+        let approval = ApprovalActivity(
+            sessionId: sessionId,
+            command: "ls",
+            description: "List files",
+            choices: nil,
+            allowPermanent: false,
+            smartDenied: false,
+            status: .pending
+        )
+        let savedMessages = [
+            ChatMessage(
+                id: "approval-\(sessionId)",
+                role: .approval,
+                content: "List files",
+                timestamp: "2024-01-01",
+                approval: approval
+            ),
+        ]
+        cache.save(savedMessages, profile: profile, sessionIDs: [sessionId])
+
+        let gatewayMessages: [ChatMessage] = []
+        let merged = cache.merge(
+            gatewayMessages,
+            profile: profile,
+            sessionIDs: [sessionId],
+            includePendingApprovals: false
+        )
+
+        XCTAssertFalse(merged.contains { $0.role == .approval },
+                       "Approval should not be restored when includePendingApprovals is false")
+
+        cache.clear(profile: profile)
+    }
 }
