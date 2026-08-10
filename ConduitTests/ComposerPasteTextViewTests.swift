@@ -6,7 +6,7 @@ import XCTest
 
 @MainActor
 final class ComposerPasteTextViewTests: XCTestCase {
-    func testPasteItemProvidersDeliversImageData() {
+    func testPasteItemProvidersDeliversImageData() async {
         let view = ImagePasteTextView()
         let expectedData = Data([0x89, 0x50, 0x4E, 0x47])
         let provider = NSItemProvider()
@@ -26,7 +26,7 @@ final class ComposerPasteTextViewTests: XCTestCase {
 
         view.paste(itemProviders: [provider])
 
-        wait(for: [callback], timeout: 1.0)
+        await fulfillment(of: [callback], timeout: 1.0)
     }
 
     func testCanPasteAcceptsImageItemProvider() {
@@ -47,7 +47,7 @@ final class ComposerPasteTextViewTests: XCTestCase {
         XCTAssertTrue(view.canPaste([provider]))
     }
 
-    func testPasteItemProvidersReportsImageLoadFailure() {
+    func testPasteItemProvidersReportsImageLoadFailure() async {
         let view = ImagePasteTextView()
         let expectedError = NSError(
             domain: "ComposerPasteTextViewTests",
@@ -71,10 +71,10 @@ final class ComposerPasteTextViewTests: XCTestCase {
 
         view.paste(itemProviders: [provider])
 
-        wait(for: [callback], timeout: 1.0)
+        await fulfillment(of: [callback], timeout: 1.0)
     }
 
-    func testPasteItemProvidersFallsBackToTextViewForText() {
+    func testPasteItemProvidersFallsBackToTextViewForText() async {
         let view = ImagePasteTextView()
         view.frame = CGRect(x: 0, y: 0, width: 320, height: 44)
         view.isEditable = true
@@ -94,6 +94,6 @@ final class ComposerPasteTextViewTests: XCTestCase {
         }
         checkText()
 
-        wait(for: [textInserted], timeout: 1.0)
+        await fulfillment(of: [textInserted], timeout: 1.0)
     }
 }
