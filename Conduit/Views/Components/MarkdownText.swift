@@ -65,7 +65,7 @@ struct MarkdownText: View {
     }
 }
 
-private enum MarkdownBlock {
+enum MarkdownBlock {
     case heading(level: Int, text: String)
     case paragraph(String)
     case quote([MarkdownQuoteLine])
@@ -85,7 +85,7 @@ private struct MarkdownQuoteLine {
     let text: String
 }
 
-private enum MarkdownSelectionFormatter {
+enum MarkdownSelectionFormatter {
     static func attributedText(
         for blocks: [MarkdownBlock],
         foregroundStyle: Color,
@@ -1085,7 +1085,7 @@ enum MarkupHTML {
     }
 }
 
-private enum MarkdownParser {
+enum MarkdownParser {
     static func parse(_ source: String, recognizesGatewayMedia: Bool = false) -> [MarkdownBlock] {
         let lines = source.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
         var blocks: [MarkdownBlock] = []

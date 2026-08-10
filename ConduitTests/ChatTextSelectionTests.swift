@@ -57,8 +57,14 @@ final class ChatTextSelectionTests: XCTestCase {
     }
 
     func testMarkdownSelectionSpansParagraphBlocks() throws {
+        let blocks = MarkdownParser.parse("First paragraph.\n\nSecond paragraph.", recognizesGatewayMedia: false)
         let content = try XCTUnwrap(
-            MarkdownText.selectableAttributedText(for: "First paragraph.\n\nSecond paragraph.")
+            MarkdownSelectionFormatter.attributedText(
+                for: blocks,
+                foregroundStyle: .primary,
+                usesAccentSurface: false,
+                newestCharacterOpacities: []
+            )
         )
         XCTAssertEqual(content.string, "First paragraph.\n\nSecond paragraph.")
 
