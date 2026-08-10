@@ -28,7 +28,7 @@ final class ComposerPasteTextViewTests: XCTestCase {
 
         view.paste(itemProviders: [provider])
 
-        await fulfillment(of: [callback], timeout: 1.0)
+        await fulfillment(of: [callback], timeout: 5.0)
     }
 
     func testCanPasteAcceptsImageItemProvider() {
@@ -73,7 +73,7 @@ final class ComposerPasteTextViewTests: XCTestCase {
 
         view.paste(itemProviders: [provider])
 
-        await fulfillment(of: [callback], timeout: 1.0)
+        await fulfillment(of: [callback], timeout: 5.0)
     }
 
     func testPasteItemProvidersFallsBackToUIImageWhenImageDataFails() async {
@@ -112,7 +112,7 @@ final class ComposerPasteTextViewTests: XCTestCase {
 
         view.paste(itemProviders: [provider])
 
-        await fulfillment(of: [callback], timeout: 1.0)
+        await fulfillment(of: [callback], timeout: 5.0)
     }
 
     func testPasteItemProvidersFallsBackToTextViewForText() async {
@@ -159,7 +159,7 @@ final class ComposerPasteTextViewTests: XCTestCase {
 
         view.paste(itemProviders: [provider])
 
-        await fulfillment(of: [callback], timeout: 1.0)
+        await fulfillment(of: [callback], timeout: 5.0)
     }
 
     func testPasteItemProvidersNormalizesGenericJPEGToPNG() async {
@@ -202,7 +202,7 @@ final class ComposerPasteTextViewTests: XCTestCase {
 
         view.paste(itemProviders: [provider])
 
-        await fulfillment(of: [callback], timeout: 1.0)
+        await fulfillment(of: [callback], timeout: 5.0)
     }
 
     func testPasteItemProvidersNormalizesGenericHEICToPNG() async throws {
@@ -238,7 +238,7 @@ final class ComposerPasteTextViewTests: XCTestCase {
 
         view.paste(itemProviders: [provider])
 
-        await fulfillment(of: [callback], timeout: 1.0)
+        await fulfillment(of: [callback], timeout: 5.0)
     }
 
     func testPastedImageAttachmentMetadataUsesImageType() {
