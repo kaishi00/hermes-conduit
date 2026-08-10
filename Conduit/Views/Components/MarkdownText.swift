@@ -80,7 +80,7 @@ enum MarkdownBlock {
     case divider
 }
 
-private struct MarkdownQuoteLine {
+struct MarkdownQuoteLine {
     let depth: Int
     let text: String
 }
@@ -282,7 +282,7 @@ private extension MarkdownBlock {
     }
 }
 
-private enum MarkdownTableAlignment {
+enum MarkdownTableAlignment {
     case leading, center, trailing
 
     var swiftUI: Alignment {
