@@ -42,7 +42,7 @@ final class ComposerPasteTextViewTests: XCTestCase {
 
         XCTAssertEqual(
             view.pasteConfiguration?.acceptableTypeIdentifiers,
-            [UTType.text.identifier, UTType.image.identifier]
+            [UTType.text.identifier, UTType.image.identifier, UTType.item.identifier]
         )
         XCTAssertTrue(view.canPaste([provider]))
     }
@@ -67,6 +67,44 @@ final class ComposerPasteTextViewTests: XCTestCase {
         view.onPastedImageError = { message in
             XCTAssertFalse(message.isEmpty)
             callback.fulfill()
+        }
+
+        view.paste(itemProviders: [provider])
+
+        await fulfillment(of: [callback], timeout: 1.0)
+    }
+
+    func testPasteItemProvidersFallsBackToUIImageWhenImageDataFails() async {
+        let view = ImagePasteTextView()
+        let expectedImage = UIGraphicsImageRenderer(size: CGSize(width: 1, height: 1)).image { rendererContext in
+            UIColor.systemOrange.setFill()
+            rendererContext.fill(CGRect(x: 0, y: 0, width: 1, height: 1))
+        }
+        let expectedError = NSError(
+            domain: "ComposerPasteTextViewTests",
+            code: 2,
+            userInfo: [NSLocalizedDescriptionKey: "The raw image representation failed."]
+        )
+        let provider = NSItemProvider()
+        provider.registerDataRepresentation(
+            forTypeIdentifier: UTType.png.identifier,
+            visibility: .all
+        ) { completion in
+            completion(nil, expectedError)
+            return nil
+        }
+        provider.registerObject(ofClass: UIImage.self, visibility: .all) { completion in
+            completion(expectedImage, nil)
+            return nil
+        }
+
+        let callback = expectation(description: "fallback image callback")
+        view.onPastedImage = { data in
+            XCTAssertFalse(data.isEmpty)
+            callback.fulfill()
+        }
+        view.onPastedImageError = { message in
+            XCTFail("Image object fallback should succeed, got: \(message)")
         }
 
         view.paste(itemProviders: [provider])

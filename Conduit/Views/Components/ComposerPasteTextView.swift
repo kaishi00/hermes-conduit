@@ -103,18 +103,39 @@ final class ImagePasteTextView: UITextView {
 
     private func configurePasteSupport() {
         pasteConfiguration = UIPasteConfiguration(
-            acceptableTypeIdentifiers: [UTType.text.identifier, UTType.image.identifier]
+            acceptableTypeIdentifiers: [
+                UTType.text.identifier,
+                UTType.image.identifier,
+                UTType.item.identifier
+            ]
         )
     }
 
     private func imageTypeIdentifier(for provider: NSItemProvider) -> String? {
-        provider.registeredTypeIdentifiers.first { identifier in
+        if let registeredImageType = provider.registeredTypeIdentifiers.first(where: { identifier in
             UTType(identifier)?.conforms(to: .image) == true
+        }) {
+            return registeredImageType
         }
+
+        // Some system providers expose an image representation through their
+        // conformance query without listing a concrete image UTI that we can
+        // resolve locally. Ask the provider for the abstract image type so
+        // loadDataRepresentation can perform the necessary coercion.
+        if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
+            return UTType.image.identifier
+        }
+
+        return nil
+    }
+
+    private func canLoadImageProvider(_ provider: NSItemProvider) -> Bool {
+        imageTypeIdentifier(for: provider) != nil
+            || provider.canLoadObject(ofClass: UIImage.self)
     }
 
     override func canPaste(_ itemProviders: [NSItemProvider]) -> Bool {
-        if itemProviders.contains(where: { imageTypeIdentifier(for: $0) != nil }) {
+        if itemProviders.contains(where: { canLoadImageProvider($0) }) {
             return true
         }
         return super.canPaste(itemProviders)
@@ -134,23 +155,49 @@ final class ImagePasteTextView: UITextView {
     }
 
     override func paste(itemProviders: [NSItemProvider]) {
-        guard let provider = itemProviders.first(where: { imageTypeIdentifier(for: $0) != nil }),
-              let imageType = imageTypeIdentifier(for: provider) else {
+        guard let provider = itemProviders.first(where: { canLoadImageProvider($0) }) else {
             super.paste(itemProviders: itemProviders)
             return
         }
 
-        provider.loadDataRepresentation(forTypeIdentifier: imageType) { [weak self] data, error in
-            guard let data, !data.isEmpty else {
-                let message = error?.localizedDescription ?? "The image provider returned no data."
-                DispatchQueue.main.async {
-                    self?.onPastedImageError?(message)
+        if let imageType = imageTypeIdentifier(for: provider) {
+            provider.loadDataRepresentation(forTypeIdentifier: imageType) { [weak self] data, error in
+                guard let data, !data.isEmpty else {
+                    if provider.canLoadObject(ofClass: UIImage.self) {
+                        self?.loadImageObject(from: provider, fallbackError: error)
+                    } else {
+                        self?.reportImageLoadFailure(error)
+                    }
+                    return
                 }
+                self?.deliverImageData(data)
+            }
+            return
+        }
+
+        loadImageObject(from: provider)
+    }
+
+    private func loadImageObject(from provider: NSItemProvider, fallbackError: Error? = nil) {
+        provider.loadObject(ofClass: UIImage.self) { [weak self] image, error in
+            guard let image, let data = image.pngData(), !data.isEmpty else {
+                self?.reportImageLoadFailure(error ?? fallbackError)
                 return
             }
-            DispatchQueue.main.async {
-                self?.onPastedImage?(data)
-            }
+            self?.deliverImageData(data)
+        }
+    }
+
+    private func deliverImageData(_ data: Data) {
+        DispatchQueue.main.async { [weak self] in
+            self?.onPastedImage?(data)
+        }
+    }
+
+    private func reportImageLoadFailure(_ error: Error?) {
+        let message = error?.localizedDescription ?? "The image provider returned no data."
+        DispatchQueue.main.async { [weak self] in
+            self?.onPastedImageError?(message)
         }
     }
 
@@ -179,6 +226,13 @@ final class ImagePasteTextView: UITextView {
         // Raw image data without .image property
         if let data = pb.data(forPasteboardType: "public.image"), !data.isEmpty {
             onPastedImage?(data)
+            return
+        }
+
+        // Some system paste actions expose the image only through an item
+        // provider, even though they still invoke the legacy paste selector.
+        if let provider = pb.itemProviders.first(where: { canLoadImageProvider($0) }) {
+            paste(itemProviders: [provider])
             return
         }
 
