@@ -52,6 +52,7 @@ final class HapticsTests: XCTestCase {
         Haptics.testSuppressesHardware = true
         Haptics.enabled = false
 
+        Haptics.soft()
         Haptics.light()
         Haptics.medium()
         Haptics.rigid()
@@ -83,6 +84,7 @@ final class HapticsTests: XCTestCase {
         Haptics.testSuppressesHardware = true
         Haptics.enabled = true
 
+        Haptics.soft()
         Haptics.light()
         Haptics.medium()
         Haptics.rigid()
@@ -91,6 +93,6 @@ final class HapticsTests: XCTestCase {
         Haptics.warning()
         Haptics.selection()
 
-        XCTAssertEqual(events, [.light, .medium, .rigid, .success, .error, .warning, .selection])
+        XCTAssertEqual(events, [.soft, .light, .medium, .rigid, .success, .error, .warning, .selection])
     }
 }

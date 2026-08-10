@@ -114,6 +114,10 @@ final class ResponseHapticPolicyTests: XCTestCase {
             summary: nil,
             stream: [DelegateAgentActivity.StreamLine(kind: .tool, text: "tool", isError: false)]
         )
+        var delegateProgress = delegateTool
+        delegateProgress.stream = [
+            DelegateAgentActivity.StreamLine(kind: .progress, text: "working", isError: false)
+        ]
 
         XCTAssertEqual(ResponseHapticPolicy.signal(for: .messageStart(sessionId: sessionID)), .activity(playsStart: false))
         XCTAssertEqual(ResponseHapticPolicy.signal(for: .reasoningDelta(sessionId: sessionID, text: "thinking")), .activity(playsStart: false))
@@ -122,12 +126,19 @@ final class ResponseHapticPolicyTests: XCTestCase {
         XCTAssertEqual(ResponseHapticPolicy.signal(for: .approval(sessionId: sessionID, activity: approval)), .activity(playsStart: false))
         XCTAssertEqual(ResponseHapticPolicy.signal(for: .toolStart(sessionId: sessionID, toolName: "shell", toolInput: nil)), .tool)
         XCTAssertEqual(ResponseHapticPolicy.signal(for: .delegateAgent(sessionId: sessionID, activity: delegateTool)), .tool)
+        XCTAssertNil(ResponseHapticPolicy.signal(for: .delegateAgent(sessionId: sessionID, activity: delegateProgress)))
         XCTAssertEqual(ResponseHapticPolicy.signal(for: .messageError(sessionId: sessionID, message: "failed")), .failure)
         XCTAssertEqual(ResponseHapticPolicy.signal(for: .messageInterrupted(sessionId: sessionID)), .reset)
         XCTAssertNil(ResponseHapticPolicy.signal(for: .toolStart(sessionId: sessionID, toolName: "clarify", toolInput: nil)))
         XCTAssertNil(ResponseHapticPolicy.signal(for: .messageComplete(sessionId: sessionID, messageId: nil, content: nil, reasoning: nil)))
         XCTAssertNil(ResponseHapticPolicy.signal(for: .toolComplete(sessionId: sessionID, toolName: "shell", toolOutput: nil)))
         XCTAssertNil(ResponseHapticPolicy.signal(for: .sessionBusy(sessionId: sessionID, busy: false)))
+    }
+
+    func testScenePhasePolicySuppressesOnlyBackgroundFeedback() {
+        XCTAssertTrue(ResponseHapticPolicy.treatsAsForegroundActive(.active))
+        XCTAssertTrue(ResponseHapticPolicy.treatsAsForegroundActive(.inactive))
+        XCTAssertFalse(ResponseHapticPolicy.treatsAsForegroundActive(.background))
     }
 
     func testIdleConclusionRequiresAnIdleNonInteractiveTurn() {
@@ -143,12 +154,14 @@ final class HapticsEmissionTests: XCTestCase {
     func testDevicePreferenceSuppressesEveryConduitEmission() {
         let defaults = UserDefaults.standard
         let previousValue = defaults.object(forKey: Haptics.preferenceKey)
+        let previousHandler = Haptics.testEmissionHandler
+        let previousSuppressesHardware = Haptics.testSuppressesHardware
         var emissions: [Haptics.Event] = []
         Haptics.testSuppressesHardware = true
         Haptics.testEmissionHandler = { emissions.append($0) }
         defer {
-            Haptics.testEmissionHandler = nil
-            Haptics.testSuppressesHardware = false
+            Haptics.testEmissionHandler = previousHandler
+            Haptics.testSuppressesHardware = previousSuppressesHardware
             if let previousValue {
                 defaults.set(previousValue, forKey: Haptics.preferenceKey)
             } else {

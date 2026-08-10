@@ -127,6 +127,10 @@ enum ResponseHapticPolicy {
             return nil
         }
     }
+    static func treatsAsForegroundActive(_ phase: ScenePhase) -> Bool {
+        phase != .background
+    }
+
 
     static func shouldScheduleIdleConclusion(
         isBusy: Bool,
@@ -246,8 +250,7 @@ enum Haptics {
             if let coreHapticsEngine {
                 engine = coreHapticsEngine
             } else {
-                engine = try CHHapticEngine()
-                engine.isAutoShutdownEnabled = true
+                engine = try makeCoreHapticsEngine()
                 coreHapticsEngine = engine
             }
             try engine.start()
@@ -331,6 +334,33 @@ enum Haptics {
             CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.7)
         ]
     }
+    private static func makeCoreHapticsEngine() throws -> CHHapticEngine {
+        let engine = try CHHapticEngine()
+        engine.isAutoShutdownEnabled = true
+        engine.resetHandler = { [weak engine] in
+            Task { @MainActor in
+                guard let engine, coreHapticsEngine === engine else { return }
+                clearLifecyclePatternState()
+                coreHapticsEngine = nil
+            }
+        }
+        engine.stoppedHandler = { [weak engine] _ in
+            Task { @MainActor in
+                guard let engine, coreHapticsEngine === engine else { return }
+                clearLifecyclePatternState()
+            }
+        }
+        return engine
+    }
+
+    private static func clearLifecyclePatternState() {
+        lifecyclePatternTask?.cancel()
+        lifecyclePatternTask = nil
+        lifecyclePatternPlayer = nil
+        lifecyclePatternToken = nil
+        lifecyclePatternEndsAt = .distantPast
+    }
+
 
     private static func playResponseStartFallback(token: UUID) {
         mediumGenerator.impactOccurred(intensity: 1)

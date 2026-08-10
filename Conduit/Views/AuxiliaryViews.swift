@@ -759,9 +759,7 @@ private struct DeviceHapticsSettings: View {
                 .labelsHidden()
                 .tint(.conduitAccent)
                 .onChange(of: enabled) { _, enabled in
-                    if !enabled {
-                        Haptics.cancelLifecyclePattern()
-                    }
+                    Haptics.enabled = enabled
                 }
         }
     }

@@ -2972,7 +2972,9 @@ final class AppState: ObservableObject {
             responseHapticConclusionTask?.cancel()
             responseHapticConclusionTask = nil
         }
-        if let effect = responseHaptics.setForegroundActive(phase == .active) {
+        if let effect = responseHaptics.setForegroundActive(
+            ResponseHapticPolicy.treatsAsForegroundActive(phase)
+        ) {
             performResponseHapticEffects([effect])
         }
         switch phase {
@@ -6588,12 +6590,17 @@ final class AppState: ObservableObject {
             guard !Task.isCancelled,
                   let self,
                   self.activeSessionId == sessionId else { return }
-            self.finalizePendingStreamingCompletion()
+            self.finalizePendingStreamingCompletion(cancelResponseHapticConclusion: false)
         }
     }
 
-    private func finalizePendingStreamingCompletion() {
+    private func finalizePendingStreamingCompletion(
+        cancelResponseHapticConclusion: Bool = true
+    ) {
         guard let pendingStreamingCompletion else { return }
+        if cancelResponseHapticConclusion {
+            cancelPendingResponseHapticConclusion()
+        }
         streamingCompletionTask?.cancel()
         streamingCompletionTask = nil
         self.pendingStreamingCompletion = nil
