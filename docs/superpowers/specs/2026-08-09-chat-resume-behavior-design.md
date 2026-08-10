@@ -51,8 +51,8 @@ The coordinator is composed from small value-oriented pieces:
 - `ChatResumeBehavior`: a codable enum for continue or latest behavior.
 - `ChatResumeSessionResolver`: a pure policy that chooses a catalog session from the behavior, saved identity, refreshed catalog, and any higher-priority destination.
 - `ChatResumeStore`: a versioned device-local store for the preference, last active session per profile, and viewport snapshots.
-- `ChatResumeSnapshot`: the canonical session key, semantic anchor, source message ID, duplicate/fingerprint metadata, whether the viewport follows latest, and the update timestamp.
-- `ChatResumeRestorationIntent`: a generation-scoped instruction to wait, restore an anchor, follow latest, or cancel.
+- `ChatScrollSnapshot`: the canonical session key, semantic anchor, source message ID, duplicate/fingerprint metadata, whether the viewport follows latest, and the update timestamp.
+- `ChatResumeRestorationRequest`: a generation-scoped instruction to wait, restore an anchor, follow latest, or cancel.
 
 `AppState` remains authoritative for connection, catalog loading, and transcript reconciliation. It asks the coordinator which session should be automatically reconciled after loading the catalog and reports reconciliation completion. `ChatView` remains responsible for performing `ScrollViewProxy` operations and reporting stable viewport state, but it no longer observes scene phase or owns automatic-resume policy.
 

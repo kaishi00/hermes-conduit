@@ -27,17 +27,24 @@ enum ChatResumeSessionResolver {
         behavior: ChatResumeBehavior,
         purpose: ChatResumeSyncPurpose,
         savedSessionID: String?,
-        currentSessionID: String?
+        currentSessionID: String?,
+        activeProfile: String? = nil
     ) -> SessionSummary? {
+        // Filter to the active profile when available so sessions from
+        // other profiles don't interfere with ID matching or fallback.
+        let scoped = activeProfile.map { profile in
+            catalog.filter { $0.profile == nil || $0.profile == profile }
+        } ?? catalog
+
         let requestedID = purpose == .preserveCurrent ? currentSessionID : savedSessionID
         if purpose == .preserveCurrent || behavior == .continueWhereLeftOff,
            let requestedID,
-           let matched = catalog.first(where: {
-               $0.id == requestedID || $0.alternateIds.contains(requestedID)
+           let matched = scoped.first(where: {
+                $0.id == requestedID || $0.alternateIds.contains(requestedID)
            }) {
             return matched
         }
-        return catalog.first(where: { $0.source == .chat })
+        return scoped.first(where: { $0.source == .chat })
     }
 }
 

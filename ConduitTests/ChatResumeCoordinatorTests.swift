@@ -35,7 +35,7 @@ final class ChatResumeCoordinatorTests: XCTestCase {
         XCTAssertEqual(request?.destination, .snapshot(reading))
     }
 
-    func testExplicitActionCancelsAnOlderGeneration() {
+    func testExplicitActionCancelsAnOlderGeneration() throws {
         let harness = makeHarness()
         let key = ChatScrollSessionKey(profile: "default", sessionID: "stored-a")
         _ = harness.coordinator.selectTarget(
@@ -44,7 +44,7 @@ final class ChatResumeCoordinatorTests: XCTestCase {
             purpose: .automaticReturn,
             currentSessionID: "stored-a"
         )
-        let request = harness.coordinator.reconciliationSettled(sessionKey: key)!
+        let request = try XCTUnwrap(harness.coordinator.reconciliationSettled(sessionKey: key))
 
         harness.coordinator.cancelViewportRestoration()
 
@@ -87,7 +87,7 @@ final class ChatResumeCoordinatorTests: XCTestCase {
         XCTAssertEqual(recreated.reconciliationSettled(sessionKey: key)?.destination, .snapshot(snapshot))
     }
 
-    func testCompletingCurrentRequestAllowsViewportWritesAgain() {
+    func testCompletingCurrentRequestAllowsViewportWritesAgain() throws {
         let harness = makeHarness()
         let key = ChatScrollSessionKey(profile: "default", sessionID: "stored-a")
         _ = harness.coordinator.selectTarget(
@@ -96,7 +96,7 @@ final class ChatResumeCoordinatorTests: XCTestCase {
             purpose: .automaticReturn,
             currentSessionID: "stored-a"
         )
-        let request = harness.coordinator.reconciliationSettled(sessionKey: key)!
+        let request = try XCTUnwrap(harness.coordinator.reconciliationSettled(sessionKey: key))
         harness.coordinator.completeRestoration(generation: request.generation)
         harness.coordinator.recordViewport(.latest, for: key)
         harness.coordinator.flush()
@@ -104,7 +104,7 @@ final class ChatResumeCoordinatorTests: XCTestCase {
         XCTAssertEqual(harness.store.snapshot(for: key), .latest)
     }
 
-    func testAbandoningCurrentRequestAllowsViewportWritesAgain() {
+    func testAbandoningCurrentRequestAllowsViewportWritesAgain() throws {
         let harness = makeHarness()
         let key = ChatScrollSessionKey(profile: "default", sessionID: "stored-a")
         _ = harness.coordinator.selectTarget(
@@ -113,7 +113,7 @@ final class ChatResumeCoordinatorTests: XCTestCase {
             purpose: .automaticReturn,
             currentSessionID: "stored-a"
         )
-        let request = harness.coordinator.reconciliationSettled(sessionKey: key)!
+        let request = try XCTUnwrap(harness.coordinator.reconciliationSettled(sessionKey: key))
 
         harness.coordinator.abandonRestoration(generation: request.generation)
         harness.coordinator.recordViewport(.latest, for: key)
@@ -238,7 +238,7 @@ final class ChatResumeCoordinatorTests: XCTestCase {
         XCTAssertEqual(recovery?.id, "stored-a")
     }
 
-    func testChangingBehaviorCancelsCurrentRequestBeforeSavingPreference() {
+    func testChangingBehaviorCancelsCurrentRequestBeforeSavingPreference() throws {
         let harness = makeHarness()
         let key = ChatScrollSessionKey(profile: "default", sessionID: "stored-a")
         _ = harness.coordinator.selectTarget(
@@ -247,7 +247,7 @@ final class ChatResumeCoordinatorTests: XCTestCase {
             purpose: .automaticReturn,
             currentSessionID: "stored-a"
         )
-        let request = harness.coordinator.reconciliationSettled(sessionKey: key)!
+        let request = try XCTUnwrap(harness.coordinator.reconciliationSettled(sessionKey: key))
 
         harness.coordinator.setBehavior(.latestActivity)
 
@@ -255,7 +255,7 @@ final class ChatResumeCoordinatorTests: XCTestCase {
         XCTAssertEqual(harness.store.behavior, .latestActivity)
     }
 
-    func testClearResumeStateCancelsRequestAndPreservesBehavior() {
+    func testClearResumeStateCancelsRequestAndPreservesBehavior() throws {
         let harness = makeHarness()
         let key = ChatScrollSessionKey(profile: "default", sessionID: "stored-a")
         harness.coordinator.setBehavior(.latestActivity)
@@ -267,7 +267,7 @@ final class ChatResumeCoordinatorTests: XCTestCase {
             purpose: .automaticReturn,
             currentSessionID: "stored-a"
         )
-        let request = harness.coordinator.reconciliationSettled(sessionKey: key)!
+        let request = try XCTUnwrap(harness.coordinator.reconciliationSettled(sessionKey: key))
 
         harness.coordinator.clearResumeState()
 

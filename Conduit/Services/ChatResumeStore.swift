@@ -134,7 +134,6 @@ final class ChatResumeStore {
 
     func flush() {
         persist()
-        defaults.synchronize()
     }
 
     private static var emptyPayload: Payload {

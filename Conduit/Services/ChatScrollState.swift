@@ -103,12 +103,18 @@ struct ChatRenderedScrollTargets: Equatable {
         value: inout ChatRenderedScrollTargets,
         nextValue: ChatRenderedScrollTargets
     ) {
+        // Merge new rows and bottoms into the accumulator.
         for (scope, rows) in nextValue.rowsByScope {
             value.rowsByScope[scope, default: []].formUnion(rows)
         }
         for (scope, bottoms) in nextValue.bottomsByScope {
             value.bottomsByScope[scope, default: []].formUnion(bottoms)
         }
+        // Prune: keep only scopes from the latest preference value plus
+        // a small overlap window. Each message update creates a new scope
+        // (different revision numbers), so without pruning the dictionaries
+        // grow one entry per update for the view's lifetime.
+        value.retainLatestScopes(from: nextValue)
     }
 
     func contains(row semanticID: String, in scope: ChatRenderedScrollScope) -> Bool {
@@ -117,6 +123,17 @@ struct ChatRenderedScrollTargets: Equatable {
 
     func contains(bottom anchorID: String, in scope: ChatRenderedScrollScope) -> Bool {
         bottomsByScope[scope]?.contains(anchorID) == true
+    }
+
+    /// Remove scopes that are no longer in the latest preference value.
+    /// This prevents unbounded accumulation across message updates without
+    /// relying on ordering — we simply keep only scopes present in the
+    /// current frame.
+    mutating func retainLatestScopes(from latest: ChatRenderedScrollTargets) {
+        let activeScopes = Set(latest.rowsByScope.keys).union(latest.bottomsByScope.keys)
+        guard !activeScopes.isEmpty else { return }
+        rowsByScope = rowsByScope.filter { activeScopes.contains($0.key) }
+        bottomsByScope = bottomsByScope.filter { activeScopes.contains($0.key) }
     }
 }
 

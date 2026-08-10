@@ -70,7 +70,8 @@ final class ChatResumeCoordinator {
             behavior: store.behavior,
             purpose: purpose,
             savedSessionID: savedSessionID,
-            currentSessionID: currentSessionID
+            currentSessionID: currentSessionID,
+            activeProfile: profile
         )
 
         guard purpose == .automaticReturn else { return selected }
@@ -86,7 +87,10 @@ final class ChatResumeCoordinator {
             ChatScrollSessionKey(profile: profile, sessionID: $0.id)
         }.flatMap { $0.isValid ? $0 : nil }
         pendingFallbackSelection = pendingFallbackSelection && pendingSessionKey != nil
-        viewportIsFrozen = true
+        // Only freeze when we have a valid pending session to restore into.
+        // If the target is nil, no restoration request will ever be published,
+        // so freezing would permanently disable scroll persistence.
+        viewportIsFrozen = pendingSessionKey != nil
         return selected
     }
 
@@ -154,6 +158,7 @@ final class ChatResumeCoordinator {
         }
 
         nextGeneration &+= 1
+        if nextGeneration == 0 { nextGeneration = 1 }
         let request = ChatResumeRestorationRequest(
             generation: nextGeneration,
             sessionKey: sessionKey,

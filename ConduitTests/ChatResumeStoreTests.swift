@@ -2,20 +2,21 @@ import XCTest
 @testable import Conduit
 
 final class ChatResumeStoreTests: XCTestCase {
-    private func defaults() -> (UserDefaults, String) {
+    private func defaults() throws -> (UserDefaults, String) {
         let suite = "ChatResumeStoreTests.\(UUID().uuidString)"
-        return (UserDefaults(suiteName: suite)!, suite)
+        let ud = try XCTUnwrap(UserDefaults(suiteName: suite), "Failed to create test UserDefaults suite")
+        return (ud, suite)
     }
 
-    func testUnsavedBehaviorDefaultsToContinueWhereLeftOff() {
-        let (defaults, suite) = defaults()
+    func testUnsavedBehaviorDefaultsToContinueWhereLeftOff() throws {
+        let (defaults, suite) = try defaults()
         defer { defaults.removePersistentDomain(forName: suite) }
 
         XCTAssertEqual(ChatResumeStore(defaults: defaults).behavior, .continueWhereLeftOff)
     }
 
-    func testPreferenceSessionAndAnchorSurviveStoreRecreation() {
-        let (defaults, suite) = defaults()
+    func testPreferenceSessionAndAnchorSurviveStoreRecreation() throws {
+        let (defaults, suite) = try defaults()
         defer { defaults.removePersistentDomain(forName: suite) }
         let key = ChatScrollSessionKey(profile: "default", sessionID: "stored-a")
         let snapshot = ChatScrollSnapshot(
@@ -37,8 +38,8 @@ final class ChatResumeStoreTests: XCTestCase {
         XCTAssertEqual(restored.snapshot(for: key), snapshot)
     }
 
-    func testCorruptPayloadFallsBackWithoutThrowing() {
-        let (defaults, suite) = defaults()
+    func testCorruptPayloadFallsBackWithoutThrowing() throws {
+        let (defaults, suite) = try defaults()
         defer { defaults.removePersistentDomain(forName: suite) }
         defaults.set(Data("not-json".utf8), forKey: ChatResumeStore.defaultStorageKey)
 
@@ -48,8 +49,8 @@ final class ChatResumeStoreTests: XCTestCase {
         XCTAssertNil(store.lastSessionID(for: "default"))
     }
 
-    func testLegacySessionMapImportsOnlyOnce() {
-        let (defaults, suite) = defaults()
+    func testLegacySessionMapImportsOnlyOnce() throws {
+        let (defaults, suite) = try defaults()
         defer { defaults.removePersistentDomain(forName: suite) }
         defaults.set(["default": "stored-a"], forKey: "legacy")
         _ = ChatResumeStore(defaults: defaults, legacyActiveSessionsKey: "legacy")
@@ -62,7 +63,7 @@ final class ChatResumeStoreTests: XCTestCase {
     }
 
     func testUnknownVersionResetsToDefault() throws {
-        let (defaults, suite) = defaults()
+        let (defaults, suite) = try defaults()
         defer { defaults.removePersistentDomain(forName: suite) }
         let data = try JSONSerialization.data(withJSONObject: [
             "version": 999,
@@ -75,8 +76,8 @@ final class ChatResumeStoreTests: XCTestCase {
         XCTAssertEqual(ChatResumeStore(defaults: defaults).behavior, .continueWhereLeftOff)
     }
 
-    func testPruningKeepsNewestHundredSnapshots() {
-        let (defaults, suite) = defaults()
+    func testPruningKeepsNewestHundredSnapshots() throws {
+        let (defaults, suite) = try defaults()
         defer { defaults.removePersistentDomain(forName: suite) }
         let store = ChatResumeStore(defaults: defaults)
         for index in 0...100 {
@@ -90,8 +91,8 @@ final class ChatResumeStoreTests: XCTestCase {
         XCTAssertNotNil(store.snapshot(for: .init(profile: "default", sessionID: "session-100")))
     }
 
-    func testClearResumeStatePreservesBehavior() {
-        let (defaults, suite) = defaults()
+    func testClearResumeStatePreservesBehavior() throws {
+        let (defaults, suite) = try defaults()
         defer { defaults.removePersistentDomain(forName: suite) }
         let store = ChatResumeStore(defaults: defaults)
         store.setBehavior(.latestActivity)
@@ -104,8 +105,8 @@ final class ChatResumeStoreTests: XCTestCase {
         XCTAssertNil(store.snapshot(for: .init(profile: "default", sessionID: "stored-a")))
     }
 
-    func testSnapshotMigratesFromRuntimeToCanonicalKey() {
-        let (defaults, suite) = defaults()
+    func testSnapshotMigratesFromRuntimeToCanonicalKey() throws {
+        let (defaults, suite) = try defaults()
         defer { defaults.removePersistentDomain(forName: suite) }
         let store = ChatResumeStore(defaults: defaults)
         let runtime = ChatScrollSessionKey(profile: "default", sessionID: "runtime-a")
@@ -123,8 +124,8 @@ final class ChatResumeStoreTests: XCTestCase {
         XCTAssertEqual(store.snapshot(for: canonical), snapshot)
     }
 
-    func testMigrationRemovesRuntimeSnapshotAndPreservesNewerCanonicalSnapshot() {
-        let (defaults, suite) = defaults()
+    func testMigrationRemovesRuntimeSnapshotAndPreservesNewerCanonicalSnapshot() throws {
+        let (defaults, suite) = try defaults()
         defer { defaults.removePersistentDomain(forName: suite) }
         let store = ChatResumeStore(defaults: defaults)
         let runtime = ChatScrollSessionKey(profile: "default", sessionID: "runtime-a")
@@ -140,8 +141,8 @@ final class ChatResumeStoreTests: XCTestCase {
         XCTAssertEqual(store.snapshot(for: canonical), canonicalSnapshot)
     }
 
-    func testSessionIdentityMigrationMovesLastSessionAndPreservesNewerCanonicalSnapshot() {
-        let (defaults, suite) = defaults()
+    func testSessionIdentityMigrationMovesLastSessionAndPreservesNewerCanonicalSnapshot() throws {
+        let (defaults, suite) = try defaults()
         defer { defaults.removePersistentDomain(forName: suite) }
         let store = ChatResumeStore(defaults: defaults)
         let runtime = ChatScrollSessionKey(profile: "default", sessionID: "runtime-a")
@@ -161,7 +162,7 @@ final class ChatResumeStoreTests: XCTestCase {
     }
 
     func testEqualTimestampPruningUsesDeterministicKeyOrder() throws {
-        let (defaults, suite) = defaults()
+        let (defaults, suite) = try defaults()
         defer { defaults.removePersistentDomain(forName: suite) }
         let snapshots = (0...100).reversed().map { index in
             storedSnapshot(
@@ -179,7 +180,7 @@ final class ChatResumeStoreTests: XCTestCase {
     }
 
     func testEqualTimestampDuplicateSnapshotsUseDeterministicAnchorOrder() throws {
-        let (defaults, suite) = defaults()
+        let (defaults, suite) = try defaults()
         defer { defaults.removePersistentDomain(forName: suite) }
         defaults.set(try payloadData(snapshots: [
             storedSnapshot(sessionID: "session", anchorMessageID: "anchor-z", updatedAt: 0),
@@ -192,8 +193,8 @@ final class ChatResumeStoreTests: XCTestCase {
         )
     }
 
-    func testNormalizationCollisionUsesLexicographicallyFirstSessionID() {
-        let (defaults, suite) = defaults()
+    func testNormalizationCollisionUsesLexicographicallyFirstSessionID() throws {
+        let (defaults, suite) = try defaults()
         defer { defaults.removePersistentDomain(forName: suite) }
         defaults.set([
             "Default": "stored-z",
