@@ -151,6 +151,7 @@ final class SessionRenameTests: XCTestCase {
         var remoteCatalog: [SessionSummary] = []
         var forcedRefresh = false
         let appState = AppState(
+            loadSavedConnection: false,
             sessionRenameOperations: .init(
                 renameRuntime: { _, _ in XCTFail("Inactive rename must not use the runtime RPC") },
                 renameStored: { sessionID, title in
@@ -165,8 +166,7 @@ final class SessionRenameTests: XCTestCase {
             sessionCatalogLoader: { forceRefresh in
                 forcedRefresh = forceRefresh
                 return remoteCatalog
-            },
-            loadSavedConnection: false
+            }
         )
         let target = makeSession(profile: appState.activeProfile)
         let active = makeSession(
@@ -192,11 +192,11 @@ final class SessionRenameTests: XCTestCase {
 
     func testTerminalFailurePreservesAppStateAndSurfacesExistingError() async {
         let appState = AppState(
+            loadSavedConnection: false,
             sessionRenameOperations: .init(
                 renameRuntime: { _, _ in throw TestError.rejected },
                 renameStored: { _, _ in throw TestError.rejected }
-            ),
-            loadSavedConnection: false
+            )
         )
         let session = makeSession(profile: appState.activeProfile)
         appState.sessions = [session]
