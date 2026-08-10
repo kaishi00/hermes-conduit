@@ -145,8 +145,27 @@ final class ChatResumeCoordinator {
         viewportIsFrozen = false
     }
 
+    /// Called when an automatic sync attempt ends without publishing a
+    /// restoration request (reconcile failure, stale guard, exception).
+    /// Clears pending state and unfreezes the viewport so scroll recording
+    /// resumes. Does NOT cancel the automatic-work epoch so the reconnect
+    /// retry can still proceed.
+    func abandonPendingAutomaticSync() {
+        pendingSessionKey = nil
+        pendingFallbackSelection = false
+        viewportIsFrozen = false
+    }
+
     func reconciliationSettled(sessionKey: ChatScrollSessionKey) -> ChatResumeRestorationRequest? {
-        guard pendingSessionKey == sessionKey, pendingRestoration == nil else { return nil }
+        guard pendingSessionKey == sessionKey, pendingRestoration == nil else {
+            // Mismatch: the settled session doesn't match what we were waiting
+            // for. Clear pending state and unfreeze so the viewport can resume
+            // recording. Otherwise the freeze persists forever.
+            pendingSessionKey = nil
+            pendingFallbackSelection = false
+            viewportIsFrozen = false
+            return nil
+        }
 
         pendingSessionKey = nil
         let isFallbackSelection = pendingFallbackSelection
@@ -178,6 +197,7 @@ final class ChatResumeCoordinator {
     ) {
         if invalidateAutomaticWork {
             automaticCancellationEpoch &+= 1
+            if automaticCancellationEpoch == 0 { automaticCancellationEpoch = 1 }
         }
         pendingFallbackSelection = false
         pendingSessionKey = nil

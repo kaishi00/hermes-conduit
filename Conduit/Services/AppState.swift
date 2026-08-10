@@ -2118,6 +2118,7 @@ final class AppState: ObservableObject {
                   let activeClient = self.client,
                   activeClient === client else {
                 settleReconciliation(token, automaticSyncOperationID: automaticSyncOperationID)
+                chatResumeCoordinator.abandonPendingAutomaticSync()
                 return false
             }
 
@@ -2213,6 +2214,7 @@ final class AppState: ObservableObject {
             turnState = .reconnecting
             errorMessage = "Failed to restore this conversation: \(error.localizedDescription)"
             settleReconciliation(token, automaticSyncOperationID: automaticSyncOperationID)
+            chatResumeCoordinator.abandonPendingAutomaticSync()
             return false
         }
     }
@@ -2359,6 +2361,7 @@ final class AppState: ObservableObject {
             turnState = .idle
             errorMessage = "Failed to create session: \(error.localizedDescription)"
             settleReconciliation(token, automaticSyncOperationID: automaticSyncOperationID)
+            chatResumeCoordinator.abandonPendingAutomaticSync()
             if resumePurpose == .automaticReturn {
                 scheduleReconnect(purpose: resumePurpose)
             }

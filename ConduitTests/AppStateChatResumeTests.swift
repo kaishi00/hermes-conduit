@@ -1697,7 +1697,7 @@ final class AppStateChatResumeTests: XCTestCase {
             configureDefaults: { defaults in
                 defaults.set("https://one.example", forKey: "conduit.chatResumeServerIdentity.v1")
                 defaults.set(
-                    try! JSONEncoder().encode([review]),  // test fixture, safe to force-try
+                    (try? JSONEncoder().encode([review])) ?? Data(),
                     forKey: "conduit.reviewSummaryCache.v1"
                 )
                 defaults.set(

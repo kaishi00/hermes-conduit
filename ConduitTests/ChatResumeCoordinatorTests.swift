@@ -51,7 +51,7 @@ final class ChatResumeCoordinatorTests: XCTestCase {
         XCTAssertFalse(harness.coordinator.isCurrent(generation: request.generation))
     }
 
-    func testLatestModeSelectsNewestAndEmitsLatest() {
+    func testLatestModeSelectsNewestAndEmitsLatest() throws {
         let harness = makeHarness()
         harness.coordinator.setBehavior(.latestActivity)
         let selected = harness.coordinator.selectTarget(
@@ -60,8 +60,9 @@ final class ChatResumeCoordinatorTests: XCTestCase {
             purpose: .automaticReturn,
             currentSessionID: "stored-a"
         )
+        let selectedID = try XCTUnwrap(selected).id
         let request = harness.coordinator.reconciliationSettled(
-            sessionKey: .init(profile: "default", sessionID: selected!.id)
+            sessionKey: .init(profile: "default", sessionID: selectedID)
         )
 
         XCTAssertEqual(selected?.id, "stored-b")
@@ -288,6 +289,53 @@ final class ChatResumeCoordinatorTests: XCTestCase {
 
         XCTAssertNil(harness.store.snapshot(for: oldKey))
         XCTAssertEqual(harness.store.snapshot(for: newKey), snapshot)
+    }
+
+    func testAbandonPendingAutomaticSyncUnfreezesViewport() {
+        let harness = makeHarness()
+        let pendingKey = ChatScrollSessionKey(profile: "default", sessionID: "stored-a")
+        let otherKey = ChatScrollSessionKey(profile: "default", sessionID: "other")
+
+        // Simulate selectTarget with a valid target → viewport frozen.
+        _ = harness.coordinator.selectTarget(
+            in: [session("stored-a")],
+            profile: "default",
+            purpose: .automaticReturn,
+            currentSessionID: "stored-a"
+        )
+        // recordViewport should be a no-op (frozen).
+        harness.coordinator.recordViewport(.latest, for: otherKey)
+        XCTAssertNil(harness.store.snapshot(for: otherKey))
+
+        // Abandon: unfreeze without canceling automatic work epoch.
+        harness.coordinator.abandonPendingAutomaticSync()
+
+        // Now recordViewport should work again.
+        harness.coordinator.recordViewport(.latest, for: otherKey)
+        XCTAssertEqual(harness.store.snapshot(for: otherKey), .latest)
+    }
+
+    func testReconciliationSettledWithMismatchedKeyUnfreezes() {
+        let harness = makeHarness()
+        let pendingKey = ChatScrollSessionKey(profile: "default", sessionID: "stored-a")
+        let wrongKey = ChatScrollSessionKey(profile: "default", sessionID: "stored-b")
+
+        _ = harness.coordinator.selectTarget(
+            in: [session("stored-a")],
+            profile: "default",
+            purpose: .automaticReturn,
+            currentSessionID: "stored-a"
+        )
+        // recordViewport is a no-op while frozen.
+        harness.coordinator.recordViewport(.latest, for: wrongKey)
+        XCTAssertNil(harness.store.snapshot(for: wrongKey))
+
+        // Settle with the wrong key → nil + unfreeze.
+        XCTAssertNil(harness.coordinator.reconciliationSettled(sessionKey: wrongKey))
+
+        // Now recordViewport should work again.
+        harness.coordinator.recordViewport(.latest, for: wrongKey)
+        XCTAssertEqual(harness.store.snapshot(for: wrongKey), .latest)
     }
 
     private func makeHarness() -> (
