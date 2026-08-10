@@ -2872,9 +2872,7 @@ final class AppState: ObservableObject {
             if sessionCatalogLoaderOverride == nil {
                 guard let activeClient, self.client === activeClient else { return false }
             }
-            guard requiredViewportTransitionGeneration.map {
-                chatViewportTransitionIsCurrent(generation: $0)
-            } ?? true else { return false }
+            guard requiredViewportTransitionGeneration.map({ chatViewportTransitionIsCurrent(generation: $0) }) ?? true else { return false }
             let allSessions = uniqueSessions(
                 [retainedActiveTurn].compactMap { $0 } + loadedSessions
             )
@@ -2892,9 +2890,7 @@ final class AppState: ObservableObject {
             if sessionCatalogLoaderOverride == nil {
                 guard let activeClient, self.client === activeClient else { return false }
             }
-            guard requiredViewportTransitionGeneration.map {
-                chatViewportTransitionIsCurrent(generation: $0)
-            } ?? true else { return false }
+            guard requiredViewportTransitionGeneration.map({ chatViewportTransitionIsCurrent(generation: $0) }) ?? true else { return false }
             errorMessage = "Failed to load sessions: \(error.localizedDescription)"
             return false
         }
