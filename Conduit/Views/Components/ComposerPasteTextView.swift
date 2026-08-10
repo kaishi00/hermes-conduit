@@ -20,6 +20,7 @@ struct ComposerPasteTextView: UIViewRepresentable {
     @Binding var measuredHeight: CGFloat
     let enabled: Bool
     let onPastedImage: (Data) -> Void
+    let onPastedImageError: (String) -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -44,6 +45,7 @@ struct ComposerPasteTextView: UIViewRepresentable {
             context.coordinator.updateMeasuredHeight(height)
         }
         view.onPastedImage = onPastedImage
+        view.onPastedImageError = onPastedImageError
         return view
     }
 
@@ -55,6 +57,7 @@ struct ComposerPasteTextView: UIViewRepresentable {
             context.coordinator.updateMeasuredHeight(height)
         }
         uiView.onPastedImage = onPastedImage
+        uiView.onPastedImageError = onPastedImageError
         uiView.setNeedsLayout()
         if isFocused, !uiView.isFirstResponder { uiView.becomeFirstResponder() }
         if !isFocused, uiView.isFirstResponder { uiView.resignFirstResponder() }
@@ -82,10 +85,40 @@ struct ComposerPasteTextView: UIViewRepresentable {
 
 final class ImagePasteTextView: UITextView {
     var onPastedImage: ((Data) -> Void)?
+    var onPastedImageError: ((String) -> Void)?
     var onContentHeightChange: ((CGFloat) -> Void)?
     var minimumReportedHeight: CGFloat = 44
     var maximumReportedHeight: CGFloat = 160
     private var lastReportedHeight: CGFloat = 0
+
+    override init(frame: CGRect, textContainer: NSTextContainer?) {
+        super.init(frame: frame, textContainer: textContainer)
+        configurePasteSupport()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        configurePasteSupport()
+    }
+
+    private func configurePasteSupport() {
+        pasteConfiguration = UIPasteConfiguration(
+            acceptableTypeIdentifiers: [UTType.text.identifier, UTType.image.identifier]
+        )
+    }
+
+    private func imageTypeIdentifier(for provider: NSItemProvider) -> String? {
+        provider.registeredTypeIdentifiers.first { identifier in
+            UTType(identifier)?.conforms(to: .image) == true
+        }
+    }
+
+    override func canPaste(_ itemProviders: [NSItemProvider]) -> Bool {
+        if itemProviders.contains(where: { imageTypeIdentifier(for: $0) != nil }) {
+            return true
+        }
+        return super.canPaste(itemProviders)
+    }
 
     override func layoutSubviews() {
         super.layoutSubviews()
@@ -101,20 +134,20 @@ final class ImagePasteTextView: UITextView {
     }
 
     override func paste(itemProviders: [NSItemProvider]) {
-        guard let provider = itemProviders.first(where: { provider in
-            provider.registeredTypeIdentifiers.contains { identifier in
-                UTType(identifier)?.conforms(to: .image) == true
-            }
-        }),
-        let imageType = provider.registeredTypeIdentifiers.first(where: { identifier in
-            UTType(identifier)?.conforms(to: .image) == true
-        }) else {
+        guard let provider = itemProviders.first(where: { imageTypeIdentifier(for: $0) != nil }),
+              let imageType = imageTypeIdentifier(for: provider) else {
             super.paste(itemProviders: itemProviders)
             return
         }
 
-        provider.loadDataRepresentation(forTypeIdentifier: imageType) { [weak self] data, _ in
-            guard let data, !data.isEmpty else { return }
+        provider.loadDataRepresentation(forTypeIdentifier: imageType) { [weak self] data, error in
+            guard let data, !data.isEmpty else {
+                let message = error?.localizedDescription ?? "The image provider returned no data."
+                DispatchQueue.main.async {
+                    self?.onPastedImageError?(message)
+                }
+                return
+            }
             DispatchQueue.main.async {
                 self?.onPastedImage?(data)
             }

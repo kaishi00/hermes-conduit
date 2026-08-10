@@ -4,6 +4,7 @@ import UIKit
 import XCTest
 @testable import Conduit
 
+@MainActor
 final class ComposerPasteTextViewTests: XCTestCase {
     func testPasteItemProvidersDeliversImageData() {
         let view = ImagePasteTextView()
@@ -20,6 +21,51 @@ final class ComposerPasteTextViewTests: XCTestCase {
         let callback = expectation(description: "pasted image callback")
         view.onPastedImage = { data in
             XCTAssertEqual(data, expectedData)
+            callback.fulfill()
+        }
+
+        view.paste(itemProviders: [provider])
+
+        wait(for: [callback], timeout: 1.0)
+    }
+
+    func testCanPasteAcceptsImageItemProvider() {
+        let view = ImagePasteTextView()
+        let provider = NSItemProvider()
+        provider.registerDataRepresentation(
+            forTypeIdentifier: UTType.png.identifier,
+            visibility: .all
+        ) { completion in
+            completion(Data([0x89, 0x50, 0x4E, 0x47]), nil)
+            return nil
+        }
+
+        XCTAssertEqual(
+            view.pasteConfiguration?.acceptableTypeIdentifiers,
+            [UTType.text.identifier, UTType.image.identifier]
+        )
+        XCTAssertTrue(view.canPaste([provider]))
+    }
+
+    func testPasteItemProvidersReportsImageLoadFailure() {
+        let view = ImagePasteTextView()
+        let expectedError = NSError(
+            domain: "ComposerPasteTextViewTests",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "The image provider failed."]
+        )
+        let provider = NSItemProvider()
+        provider.registerDataRepresentation(
+            forTypeIdentifier: UTType.png.identifier,
+            visibility: .all
+        ) { completion in
+            completion(nil, expectedError)
+            return nil
+        }
+
+        let callback = expectation(description: "pasted image error callback")
+        view.onPastedImageError = { message in
+            XCTAssertFalse(message.isEmpty)
             callback.fulfill()
         }
 

@@ -35,7 +35,7 @@
 
 - [ ] **Step 1: Create the test file with a real image provider**
 
-~~~
+~~~swift
 import Foundation
 import UniformTypeIdentifiers
 import UIKit
@@ -72,7 +72,7 @@ final class ComposerPasteTextViewTests: XCTestCase {
 
 Run:
 
-~~~
+~~~shell
 xcodegen generate
 xcodebuild test \
   -project Conduit.xcodeproj \
@@ -103,7 +103,7 @@ If the named simulator is unavailable, substitute an available iOS simulator UDI
 
 Add:
 
-~~~
+~~~swift
 import UniformTypeIdentifiers
 ~~~
 
@@ -111,7 +111,7 @@ import UniformTypeIdentifiers
 
 Use the provider's registered image-conforming type so PNG, JPEG, HEIC, and other image representations are accepted:
 
-~~~
+~~~swift
 override func paste(itemProviders: [NSItemProvider]) {
     guard let provider = itemProviders.first(where: { provider in
         provider.registeredTypeIdentifiers.contains { identifier in
@@ -144,7 +144,7 @@ Expected: testPasteItemProvidersDeliversImageData passes and the callback receiv
 
 - [ ] **Step 4: Commit the focused implementation**
 
-~~~
+~~~shell
 git add Conduit/Views/Components/ComposerPasteTextView.swift ConduitTests/ComposerPasteTextViewTests.swift
 git commit -m "Fix image paste from item providers"
 ~~~
@@ -162,7 +162,7 @@ git commit -m "Fix image paste from item providers"
 
 Add this test to the test class:
 
-~~~
+~~~swift
 func testPasteItemProvidersFallsBackToTextViewForText() {
     let view = ImagePasteTextView()
     view.frame = CGRect(x: 0, y: 0, width: 320, height: 44)
@@ -191,7 +191,7 @@ func testPasteItemProvidersFallsBackToTextViewForText() {
 
 Run:
 
-~~~
+~~~shell
 xcodebuild test \
   -project Conduit.xcodeproj \
   -scheme Conduit \
@@ -210,7 +210,7 @@ Expected: both composer tests pass with zero failures.
 
 Generate the project, select an available iPhone simulator dynamically, and run:
 
-~~~
+~~~shell
 set -euo pipefail
 SIMULATOR=$(xcrun simctl list devices available -j | python3 -c '
 import json, sys
@@ -243,7 +243,7 @@ Expected: the complete ConduitTests suite passes with zero failures and the comm
 
 Run:
 
-~~~
+~~~shell
 git diff origin/main...HEAD --check
 git status -sb
 git diff origin/main...HEAD --stat
@@ -290,7 +290,7 @@ Paste text into the same composer and confirm it appears as editable composer te
 
 - [ ] **Step 1: Confirm GitHub CLI access and branch scope**
 
-~~~
+~~~shell
 gh --version
 gh auth status
 git status -sb
@@ -301,7 +301,7 @@ Expected: authenticated gh, only the design and image-paste commits ahead of ori
 
 - [ ] **Step 2: Push the feature branch**
 
-~~~
+~~~shell
 git push -u origin agent/fix-issue-26-image-paste
 ~~~
 
@@ -309,7 +309,7 @@ git push -u origin agent/fix-issue-26-image-paste
 
 Use the GitHub connector when available; otherwise use:
 
-~~~
+~~~shell
 gh pr create --draft \
   --base main \
   --head agent/fix-issue-26-image-paste \

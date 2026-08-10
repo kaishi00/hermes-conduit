@@ -194,6 +194,10 @@ struct ComposerBar: View {
                         enabled: appState.composerIsEnabled,
                         onPastedImage: { data in
                             addAttachment(data: data, name: "pasted-image.png", mimeType: "image/png", kind: .image)
+                        },
+                        onPastedImageError: { message in
+                            appState.errorMessage = "Could not paste image: \(message)"
+                            Haptics.error()
                         }
                     )
                     .padding(.horizontal, 5)
