@@ -200,8 +200,30 @@ final class ImagePasteTextView: UITextView {
     }
 
     private func deliverImageData(_ data: Data, typeIdentifier: String) {
+        let pastedImage: PastedImage
+        if typeIdentifier == UTType.image.identifier {
+            guard let image = UIImage(data: data),
+                  let normalizedData = image.pngData(),
+                  !normalizedData.isEmpty else {
+                reportImageNormalizationFailure()
+                return
+            }
+            pastedImage = PastedImage(
+                data: normalizedData,
+                typeIdentifier: UTType.png.identifier
+            )
+        } else {
+            pastedImage = PastedImage(data: data, typeIdentifier: typeIdentifier)
+        }
+
         DispatchQueue.main.async { [weak self] in
-            self?.onPastedImage?(PastedImage(data: data, typeIdentifier: typeIdentifier))
+            self?.onPastedImage?(pastedImage)
+        }
+    }
+
+    private func reportImageNormalizationFailure() {
+        DispatchQueue.main.async { [weak self] in
+            self?.onPastedImageError?("The image provider returned invalid image data.")
         }
     }
 
@@ -229,9 +251,7 @@ final class ImagePasteTextView: UITextView {
                 URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
                     guard let data = data else { return }
                     let typeIdentifier = UTType(filenameExtension: ext)?.identifier ?? UTType.image.identifier
-                    DispatchQueue.main.async {
-                        self?.onPastedImage?(PastedImage(data: data, typeIdentifier: typeIdentifier))
-                    }
+                    self?.deliverImageData(data, typeIdentifier: typeIdentifier)
                 }.resume()
                 return
             }
@@ -239,7 +259,7 @@ final class ImagePasteTextView: UITextView {
 
         // Raw image data without .image property
         if let data = pb.data(forPasteboardType: "public.image"), !data.isEmpty {
-            onPastedImage?(PastedImage(data: data, typeIdentifier: UTType.image.identifier))
+            deliverImageData(data, typeIdentifier: UTType.image.identifier)
             return
         }
 

@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 import UniformTypeIdentifiers
 import UIKit
 import XCTest
@@ -161,6 +162,85 @@ final class ComposerPasteTextViewTests: XCTestCase {
         await fulfillment(of: [callback], timeout: 1.0)
     }
 
+    func testPasteItemProvidersNormalizesGenericJPEGToPNG() async {
+        let view = ImagePasteTextView()
+        let sourceImage = UIGraphicsImageRenderer(size: CGSize(width: 2, height: 2)).image { rendererContext in
+            UIColor.systemOrange.setFill()
+            rendererContext.fill(CGRect(x: 0, y: 0, width: 2, height: 2))
+        }
+        guard let expectedJPEGData = sourceImage.jpegData(compressionQuality: 1) else {
+            XCTFail("Could not create JPEG fixture")
+            return
+        }
+
+        let provider = NSItemProvider()
+        provider.registerDataRepresentation(
+            forTypeIdentifier: UTType.image.identifier,
+            visibility: .all
+        ) { completion in
+            completion(expectedJPEGData, nil)
+            return nil
+        }
+
+        let callback = expectation(description: "normalized generic image callback")
+        view.onPastedImage = { pastedImage in
+            XCTAssertNotEqual(pastedImage.data, expectedJPEGData)
+            XCTAssertEqual(pastedImage.typeIdentifier, UTType.png.identifier)
+            XCTAssertTrue(pastedImage.data.starts(with: Data([0x89, 0x50, 0x4E, 0x47])))
+            XCTAssertNotNil(UIImage(data: pastedImage.data))
+
+            let metadata = ComposerBar.pastedImageAttachmentMetadata(
+                for: pastedImage.typeIdentifier
+            )
+            XCTAssertEqual(metadata.name, "pasted-image.png")
+            XCTAssertEqual(metadata.mimeType, "image/png")
+            callback.fulfill()
+        }
+        view.onPastedImageError = { message in
+            XCTFail("Generic JPEG should normalize successfully, got: \(message)")
+        }
+
+        view.paste(itemProviders: [provider])
+
+        await fulfillment(of: [callback], timeout: 1.0)
+    }
+
+    func testPasteItemProvidersNormalizesGenericHEICToPNG() async throws {
+        let sourceImage = UIGraphicsImageRenderer(size: CGSize(width: 2, height: 2)).image { rendererContext in
+            UIColor.systemOrange.setFill()
+            rendererContext.fill(CGRect(x: 0, y: 0, width: 2, height: 2))
+        }
+        guard let expectedHEICData = encodedImageData(sourceImage, type: .heic) else {
+            throw XCTSkip("HEIC encoding is unavailable in this test runtime")
+        }
+
+        let view = ImagePasteTextView()
+        let provider = NSItemProvider()
+        provider.registerDataRepresentation(
+            forTypeIdentifier: UTType.image.identifier,
+            visibility: .all
+        ) { completion in
+            completion(expectedHEICData, nil)
+            return nil
+        }
+
+        let callback = expectation(description: "normalized generic HEIC callback")
+        view.onPastedImage = { pastedImage in
+            XCTAssertNotEqual(pastedImage.data, expectedHEICData)
+            XCTAssertEqual(pastedImage.typeIdentifier, UTType.png.identifier)
+            XCTAssertTrue(pastedImage.data.starts(with: Data([0x89, 0x50, 0x4E, 0x47])))
+            XCTAssertNotNil(UIImage(data: pastedImage.data))
+            callback.fulfill()
+        }
+        view.onPastedImageError = { message in
+            XCTFail("Generic HEIC should normalize successfully, got: \(message)")
+        }
+
+        view.paste(itemProviders: [provider])
+
+        await fulfillment(of: [callback], timeout: 1.0)
+    }
+
     func testPastedImageAttachmentMetadataUsesImageType() {
         let metadata = ComposerBar.pastedImageAttachmentMetadata(for: UTType.jpeg.identifier)
 
@@ -173,5 +253,21 @@ final class ComposerPasteTextViewTests: XCTestCase {
             ComposerBar.pastedImageErrorMessage("The image provider failed."),
             "Could not paste image: The image provider failed."
         )
+    }
+
+    private func encodedImageData(_ image: UIImage, type: UTType) -> Data? {
+        guard let cgImage = image.cgImage else { return nil }
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(
+            data,
+            type.identifier as CFString,
+            1,
+            nil
+        ) else {
+            return nil
+        }
+        CGImageDestinationAddImage(destination, cgImage, nil)
+        guard CGImageDestinationFinalize(destination) else { return nil }
+        return data as Data
     }
 }
