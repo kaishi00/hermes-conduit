@@ -166,7 +166,7 @@ final class SessionRenameTests: XCTestCase {
                 forcedRefresh = forceRefresh
                 return remoteCatalog
             },
-            restoreSavedConnection: false
+            loadSavedConnection: false
         )
         let target = makeSession(profile: appState.activeProfile)
         let active = makeSession(
@@ -196,7 +196,7 @@ final class SessionRenameTests: XCTestCase {
                 renameRuntime: { _, _ in throw TestError.rejected },
                 renameStored: { _, _ in throw TestError.rejected }
             ),
-            restoreSavedConnection: false
+            loadSavedConnection: false
         )
         let session = makeSession(profile: appState.activeProfile)
         appState.sessions = [session]
