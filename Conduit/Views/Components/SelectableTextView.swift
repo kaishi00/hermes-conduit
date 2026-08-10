@@ -260,11 +260,13 @@ struct SelectableTextView: UIViewRepresentable {
             self.linkColor = linkColor
         }
 
-        // shouldInteractWith is formally deprecated in iOS 17, but it remains
-        // the only UITextViewDelegate API for intercepting URL taps. The
-        // replacement (UITextInteraction edit-menu API) does not provide a
-        // link-activation callback. This annotation silences the deprecation
-        // warning while keeping the working behavior.
+        // shouldInteractWith is formally deprecated in iOS 17 in favor of
+        // textView(_:primaryActionFor:defaultAction:) and
+        // textView(_:menuConfigurationFor:defaultMenu:), but those are only
+        // available on iOS 17+. We still support iOS 16, so we keep this
+        // delegate method and gate behavior on the interaction type:
+        //   .invokeDefaultAction → open the URL ourselves
+        //   .preview / .presentActions → let UIKit show its context menu/preview
         @available(iOS, deprecated: 17.0)
         func textView(
             _ textView: UITextView,
@@ -272,8 +274,15 @@ struct SelectableTextView: UIViewRepresentable {
             in characterRange: NSRange,
             interaction: UITextItemInteraction
         ) -> Bool {
-            UIApplication.shared.open(url)
-            return false
+            switch interaction {
+            case .invokeDefaultAction:
+                UIApplication.shared.open(url)
+                return false
+            case .preview, .presentActions:
+                return true
+            @unknown default:
+                return true
+            }
         }
     }
 }
