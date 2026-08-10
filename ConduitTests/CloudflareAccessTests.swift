@@ -152,6 +152,68 @@ final class CloudflareAccessTests: XCTestCase {
         XCTAssertTrue(result.toBool())
     }
 
+    func testFetchInjectionAddsHeadersOnlyForSameOriginRequests() throws {
+        let credentials = CloudflareAccessCredentials(clientID: "test-id", clientSecret: "test-secret")
+        let context = try makeJavaScriptContext(documentOrigin: "https://dashboard.example")
+        _ = try evaluateJavaScript(
+            credentials.fetchInjectionUserScript(expectedBaseURL: "https://dashboard.example/hermes"),
+            in: context
+        )
+
+        let result = try evaluateJavaScript(
+            """
+            function hasAccessHeaders() {
+                var passedHeaders = new Headers(__lastFetch.init && __lastFetch.init.headers);
+                return passedHeaders.get('CF-Access-Client-Id') === 'test-id'
+                    && passedHeaders.get('CF-Access-Client-Secret') === 'test-secret';
+            }
+            window.fetch('/api');
+            var sameOrigin = hasAccessHeaders();
+            window.fetch('//attacker.example/api');
+            var networkPathCrossOrigin = !hasAccessHeaders();
+            window.fetch('https://attacker.example/api');
+            var absoluteCrossOrigin = !hasAccessHeaders();
+            sameOrigin && networkPathCrossOrigin && absoluteCrossOrigin;
+            """,
+            in: context
+        )
+
+        XCTAssertTrue(result.toBool())
+    }
+
+    func testXHRInjectionAddsHeadersOnlyForSameOriginRequests() throws {
+        let credentials = CloudflareAccessCredentials(clientID: "test-id", clientSecret: "test-secret")
+        let context = try makeJavaScriptContext(documentOrigin: "https://dashboard.example")
+        _ = try evaluateJavaScript(
+            credentials.fetchInjectionUserScript(expectedBaseURL: "https://dashboard.example/hermes"),
+            in: context
+        )
+
+        let result = try evaluateJavaScript(
+            """
+            var sameOriginXHR = new XMLHttpRequest();
+            sameOriginXHR.open('GET', '/api');
+            sameOriginXHR.send();
+            var sameOrigin = __lastXHRHeaders['CF-Access-Client-Secret'] === 'test-secret';
+
+            var networkPathCrossOriginXHR = new XMLHttpRequest();
+            networkPathCrossOriginXHR.open('GET', '//attacker.example/api');
+            networkPathCrossOriginXHR.send();
+            var networkPathCrossOrigin = typeof __lastXHRHeaders['CF-Access-Client-Secret'] === 'undefined';
+
+            var absoluteCrossOriginXHR = new XMLHttpRequest();
+            absoluteCrossOriginXHR.open('GET', 'https://attacker.example/api');
+            absoluteCrossOriginXHR.send();
+            var absoluteCrossOrigin = typeof __lastXHRHeaders['CF-Access-Client-Secret'] === 'undefined';
+
+            sameOrigin && networkPathCrossOrigin && absoluteCrossOrigin;
+            """,
+            in: context
+        )
+
+        XCTAssertTrue(result.toBool())
+    }
+
     func testFetchInjectionCannotForgeXHREligibilityFromPageJavaScript() throws {
         let credentials = CloudflareAccessCredentials(clientID: "test-id", clientSecret: "test-secret")
         let context = try makeJavaScriptContext(documentOrigin: "https://oauth.example")
@@ -200,9 +262,15 @@ final class CloudflareAccessTests: XCTestCase {
             function URL(value, base) {
                 var text = String(value);
                 if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(text)) {
-                    text = text.charAt(0) === '/'
-                        ? originOf(base) + text
-                        : String(base).replace(/\/[^\/]*$/, '/') + text;
+                    if (text.indexOf('//') === 0) {
+                        var schemeMatch = String(base).match(/^[a-z][a-z0-9+.-]*:/i);
+                        if (!schemeMatch) { throw new TypeError('Unsupported URL'); }
+                        text = schemeMatch[0] + text;
+                    } else {
+                        text = text.charAt(0) === '/'
+                            ? originOf(base) + text
+                            : String(base).replace(/\/[^\/]*$/, '/') + text;
+                    }
                 }
                 this.href = text;
                 this.origin = originOf(text);
