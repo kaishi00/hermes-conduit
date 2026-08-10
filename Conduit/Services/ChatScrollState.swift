@@ -355,14 +355,25 @@ enum ChatSessionPersistenceIdentity {
     static func canonicalID(
         for sessionID: String?,
         identity: ChatScrollSessionIdentity,
-        catalog: [SessionSummary]
+        catalog: [SessionSummary],
+        activeProfile: String? = nil
     ) -> String? {
         guard let sessionID,
               !sessionID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return nil
         }
 
-        if let catalogSession = catalog.first(where: {
+        // Scope the catalog lookup to the active profile when available,
+        // matching ChatResumeSessionResolver.target's profile filter.
+        let scoped = activeProfile.map { profile in
+            catalog.filter { entry in
+                guard let entryProfile = entry.profile else { return true }
+                return entryProfile.trimmingCharacters(in: .whitespacesAndNewlines)
+                    .caseInsensitiveCompare(profile.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame
+            }
+        } ?? catalog
+
+        if let catalogSession = scoped.first(where: {
             $0.id == sessionID || $0.alternateIds.contains(sessionID)
         }) {
             return catalogSession.id

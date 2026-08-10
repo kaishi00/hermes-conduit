@@ -748,7 +748,8 @@ final class AppState: ObservableObject {
         if let persistedID = ChatSessionPersistenceIdentity.canonicalID(
             for: id,
             identity: activeChatScrollSessionIdentity,
-            catalog: sessions + cronSessions
+            catalog: sessions + cronSessions,
+            activeProfile: activeProfile
         ) {
             chatResumeCoordinator.rememberSessionID(persistedID, for: activeProfile)
         } else {
@@ -2270,6 +2271,7 @@ final class AppState: ObservableObject {
                   let activeClient = self.client,
                   activeClient === client else {
                 settleReconciliation(token, automaticSyncOperationID: automaticSyncOperationID)
+                chatResumeCoordinator.abandonPendingAutomaticSync()
                 return
             }
             if let returnedProfile = created.profile,
@@ -2277,6 +2279,7 @@ final class AppState: ObservableObject {
                 turnState = .idle
                 errorMessage = "Hermes created this conversation in \(profileDisplayName(returnedProfile)), not \(profileDisplayName(profile)). It was not opened."
                 settleReconciliation(token, automaticSyncOperationID: automaticSyncOperationID)
+                chatResumeCoordinator.abandonPendingAutomaticSync()
                 await loadSessions(forceRefresh: true)
                 return
             }
@@ -2285,6 +2288,7 @@ final class AppState: ObservableObject {
                 turnState = .idle
                 errorMessage = "Hermes created a conversation without a session ID."
                 settleReconciliation(token, automaticSyncOperationID: automaticSyncOperationID)
+                chatResumeCoordinator.abandonPendingAutomaticSync()
                 return
             }
 

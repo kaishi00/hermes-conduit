@@ -115,7 +115,7 @@ final class AppStateChatResumeTests: XCTestCase {
         }
 
         XCTAssertEqual(harness.appState.activeSessionId, sessionIDs.last)
-        XCTAssertEqual(harness.appState.messages.map(\.content), [sessionIDs.last!])
+        XCTAssertEqual(harness.appState.messages.map(\.content), [sessionIDs.last ?? ""])
         XCTAssertEqual(harness.appState.turnState, .idle)
         XCTAssertFalse(harness.appState.activeChatScrollSessionIdentity.isReconciling)
     }
@@ -576,12 +576,13 @@ final class AppStateChatResumeTests: XCTestCase {
         let sessionA = session("stored-a")
         let sessionC = session("stored-c")
         let keyC = ChatScrollSessionKey(profile: "default", sessionID: sessionC.id)
-        harness.appState.connection = HermesConnection(
+        let connection = HermesConnection(
             baseUrl: "https://one.example",
             ticket: "ticket"
         )
+        harness.appState.connection = connection
         harness.appState.client = HermesClient(
-            connection: harness.appState.connection!,
+            connection: connection,
             profile: "default"
         )
         harness.appState.sessions = [sessionA, sessionC]

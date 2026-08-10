@@ -79,7 +79,7 @@ struct ChatView: View {
 
                         ForEach(chatMessageScrollTargetCache.targets) { target in
                             MessageBubble(message: target.message)
-                                .id(target.semanticID)
+                                .id(target.id)
                                 .background {
                                     GeometryReader { _ in
                                         Color.clear.preference(
@@ -452,7 +452,14 @@ struct ChatView: View {
         _ request: ChatResumeRestorationRequest,
         using proxy: ScrollViewProxy
     ) async {
-        guard restorationRequestIsCurrent(request) else { return }
+        guard restorationRequestIsCurrent(request) else {
+            // If the generation is still current but identity drifted,
+            // abandon so pendingRestoration doesn't get stuck forever.
+            if appState.chatResumeRestorationRequest?.generation == request.generation {
+                appState.abandonChatResumeRestoration(generation: request.generation)
+            }
+            return
+        }
         if chatMessageScrollTargetCache.targets.map(\.message) != appState.messages {
             chatMessageScrollTargetCache.update(for: appState.messages)
             renderedTranscriptRevision = appState.chatTranscriptRevision
@@ -503,7 +510,12 @@ struct ChatView: View {
                         proxy.scrollTo(bottomAnchor, anchor: .bottom)
                     case .anchor(let anchor):
                         followsLatest = false
-                        proxy.scrollTo(anchor, anchor: .top)
+                        // Resolve semantic anchor ID to the stable source
+                        // message ID used for row identity (.id(target.id)).
+                        let scrollAnchor = chatMessageScrollTargetCache.targets.first {
+                            $0.semanticID == anchor
+                        }?.id ?? anchor
+                        proxy.scrollTo(scrollAnchor, anchor: .top)
                     }
                 }
             case .complete:
@@ -560,6 +572,17 @@ struct ChatView: View {
         guard !hasPendingRestoration else { return }
         withAnimation(ConduitMotion.response) {
             proxy.scrollTo(bottomAnchor, anchor: .bottom)
+        }
+        // Retry after a short delay: proxy.scrollTo is a silent no-op if the
+        // bottom anchor row isn't materialized yet (LazyVStack on a long
+        // transcript). A single delayed retry covers the common case where
+        // messages arrive on the same main-actor turn.
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(150))
+            guard !Task.isCancelled, !hasPendingRestoration else { return }
+            withAnimation(ConduitMotion.response) {
+                proxy.scrollTo(bottomAnchor, anchor: .bottom)
+            }
         }
     }
 

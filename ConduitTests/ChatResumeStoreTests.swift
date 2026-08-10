@@ -1,6 +1,7 @@
 import XCTest
 @testable import Conduit
 
+@MainActor
 final class ChatResumeStoreTests: XCTestCase {
     private func defaults() throws -> (UserDefaults, String) {
         let suite = "ChatResumeStoreTests.\(UUID().uuidString)"

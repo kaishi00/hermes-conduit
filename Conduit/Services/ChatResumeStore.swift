@@ -1,5 +1,6 @@
 import Foundation
 
+@MainActor
 final class ChatResumeStore {
     static let defaultStorageKey = "conduit.chatResume.v1"
     static let schemaVersion = 1
