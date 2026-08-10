@@ -151,7 +151,7 @@ final class ChatTextSelectionTests: XCTestCase {
         XCTAssertTrue(truncated.contains("90 more lines"),
                       "Truncated output must indicate remaining line count")
         let truncatedLines = truncated.components(separatedBy: "\n")
-        XCTAssertEqual(truncatedLines.count, 12, // 10 lines + separator + indicator
+        XCTAssertEqual(truncatedLines.count, 11, // 10 content lines + 1 indicator line
                        "Truncated output must be exactly maxLines + 1 indicator line")
     }
 }
