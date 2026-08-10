@@ -327,4 +327,41 @@ final class SessionPresentationCacheTests: XCTestCase {
 
         cache.clear(profile: profile)
     }
+
+    func testMergeRestoresClarificationWhenRunningIsNil() {
+        let cache = SessionPresentationCache.shared
+        let sessionId = "test-merge-clarify-nil-\(UUID().uuidString)"
+        let profile = "test"
+
+        let clarify = ClarifyActivity(
+            requestId: "req-nil",
+            question: "Pick?",
+            choices: [ClarifyChoice(label: "X", value: "x")],
+            status: .pending
+        )
+        let savedMessages = [
+            ChatMessage(
+                id: "clarify-req-nil",
+                role: .clarify,
+                content: "Pick?",
+                timestamp: "2024-01-01",
+                clarify: clarify
+            ),
+        ]
+        cache.save(savedMessages, profile: profile, sessionIDs: [sessionId])
+
+        // running == nil (omitted by gateway) should still restore
+        let gatewayMessages: [ChatMessage] = []
+        let merged = cache.merge(
+            gatewayMessages,
+            profile: profile,
+            sessionIDs: [sessionId],
+            includePendingClarifications: true
+        )
+
+        XCTAssertTrue(merged.contains { $0.role == .clarify },
+                      "Clarification should be restored when running state is omitted")
+
+        cache.clear(profile: profile)
+    }
 }

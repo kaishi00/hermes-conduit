@@ -2400,12 +2400,13 @@ final class AppState: ObservableObject {
         // omit `running: true` (returning nil) even while a turn is active,
         // which previously caused user-visible clarify/approval cards to be
         // silently dropped on foreground recovery.
+        let restorePendingCards = result.snapshot.running != false
         let restored = sessionPresentationCache.merge(
             result.messages,
             profile: activeProfile,
             sessionIDs: [result.sessionId, reconciliation?.requestedSessionId].compactMap { $0 },
-            includePendingClarifications: true,
-            includePendingApprovals: true
+            includePendingClarifications: restorePendingCards,
+            includePendingApprovals: restorePendingCards
         )
         messages = mergeCachedReviews(into: restored, sessionId: result.sessionId)
         noteChatViewportTranscriptReplacement()
