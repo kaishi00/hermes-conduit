@@ -236,6 +236,7 @@ final class SessionPresentationCacheTests: XCTestCase {
             ),
         ]
         cache.save(savedMessages, profile: profile, sessionIDs: [sessionId])
+        defer { cache.clear(profile: profile) }
 
         // Gateway resume omits the clarify card (compact history)
         let gatewayMessages: [ChatMessage] = []
@@ -251,8 +252,6 @@ final class SessionPresentationCacheTests: XCTestCase {
         XCTAssertEqual(restoredClarify?.clarify?.requestId, "req-123")
         XCTAssertEqual(restoredClarify?.clarify?.status, .pending)
         XCTAssertEqual(restoredClarify?.clarify?.choices.count, 2)
-
-        cache.clear(profile: profile)
     }
 
     func testMergeDoesNotRestoreClarificationWhenNotRequested() {
@@ -276,6 +275,7 @@ final class SessionPresentationCacheTests: XCTestCase {
             ),
         ]
         cache.save(savedMessages, profile: profile, sessionIDs: [sessionId])
+        defer { cache.clear(profile: profile) }
 
         let gatewayMessages: [ChatMessage] = []
         let merged = cache.merge(
@@ -287,8 +287,6 @@ final class SessionPresentationCacheTests: XCTestCase {
 
         XCTAssertFalse(merged.contains { $0.role == .clarify },
                        "Clarification should not be restored when includePendingClarifications is false")
-
-        cache.clear(profile: profile)
     }
 
     func testMergeDoesNotRestoreAnsweredClarification() {
@@ -313,6 +311,7 @@ final class SessionPresentationCacheTests: XCTestCase {
             ),
         ]
         cache.save(savedMessages, profile: profile, sessionIDs: [sessionId])
+        defer { cache.clear(profile: profile) }
 
         let gatewayMessages: [ChatMessage] = []
         let merged = cache.merge(
@@ -324,8 +323,6 @@ final class SessionPresentationCacheTests: XCTestCase {
 
         XCTAssertFalse(merged.contains { $0.role == .clarify },
                        "Answered clarification should not be restored as pending")
-
-        cache.clear(profile: profile)
     }
 
     func testMergeRestoresClarificationWhenRunningIsNil() {
@@ -349,6 +346,7 @@ final class SessionPresentationCacheTests: XCTestCase {
             ),
         ]
         cache.save(savedMessages, profile: profile, sessionIDs: [sessionId])
+        defer { cache.clear(profile: profile) }
 
         // running == nil (omitted by gateway) should still restore
         let gatewayMessages: [ChatMessage] = []
@@ -361,8 +359,6 @@ final class SessionPresentationCacheTests: XCTestCase {
 
         XCTAssertTrue(merged.contains { $0.role == .clarify },
                       "Clarification should be restored when running state is omitted")
-
-        cache.clear(profile: profile)
     }
 
     // MARK: - Merge: pending approval restoration
@@ -391,6 +387,7 @@ final class SessionPresentationCacheTests: XCTestCase {
             ),
         ]
         cache.save(savedMessages, profile: profile, sessionIDs: [sessionId])
+        defer { cache.clear(profile: profile) }
 
         // Gateway resume omits the approval card
         let gatewayMessages: [ChatMessage] = []
@@ -405,8 +402,6 @@ final class SessionPresentationCacheTests: XCTestCase {
         XCTAssertNotNil(restoredApproval, "Pending approval should be restored from cache")
         XCTAssertEqual(restoredApproval?.approval?.sessionId, sessionId)
         XCTAssertEqual(restoredApproval?.approval?.status, .pending)
-
-        cache.clear(profile: profile)
     }
 
     func testMergeDoesNotRestoreApprovalWhenNotRequested() {
@@ -433,6 +428,7 @@ final class SessionPresentationCacheTests: XCTestCase {
             ),
         ]
         cache.save(savedMessages, profile: profile, sessionIDs: [sessionId])
+        defer { cache.clear(profile: profile) }
 
         let gatewayMessages: [ChatMessage] = []
         let merged = cache.merge(
@@ -444,7 +440,5 @@ final class SessionPresentationCacheTests: XCTestCase {
 
         XCTAssertFalse(merged.contains { $0.role == .approval },
                        "Approval should not be restored when includePendingApprovals is false")
-
-        cache.clear(profile: profile)
     }
 }

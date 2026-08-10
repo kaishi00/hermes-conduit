@@ -2410,7 +2410,13 @@ final class AppState: ObservableObject {
         )
         messages = mergeCachedReviews(into: restored, sessionId: result.sessionId)
         noteChatViewportTranscriptReplacement()
-        cacheMessagePresentation(for: [result.sessionId])
+        // Only re-save to cache when the gateway confirms the turn is still
+        // active.  When `running` is `nil` or `false`, restored pending cards
+        // may be stale (e.g. the turn completed while backgrounded). Skipping
+        // the save avoids perpetuating stale cards across launches.
+        if result.snapshot.running == true {
+            cacheMessagePresentation(for: [result.sessionId])
+        }
         scheduleSecondaryProfileTitleRecovery(
             sessionId: result.sessionId,
             messages: messages
