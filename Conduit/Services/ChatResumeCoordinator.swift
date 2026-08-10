@@ -87,10 +87,13 @@ final class ChatResumeCoordinator {
             ChatScrollSessionKey(profile: profile, sessionID: $0.id)
         }.flatMap { $0.isValid ? $0 : nil }
         pendingFallbackSelection = pendingFallbackSelection && pendingSessionKey != nil
-        // Only freeze when we have a valid pending session to restore into.
-        // If the target is nil, no restoration request will ever be published,
-        // so freezing would permanently disable scroll persistence.
-        viewportIsFrozen = pendingSessionKey != nil
+        // Freeze the viewport whenever we have a valid pending session.
+        // If target is nil, preserve any existing freeze (e.g. set by
+        // freezeViewport before the catalog loaded) rather than unfreezing,
+        // which would let stale snapshots overwrite the pre-freeze state.
+        if pendingSessionKey != nil {
+            viewportIsFrozen = true
+        }
         return selected
     }
 

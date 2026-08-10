@@ -1393,7 +1393,7 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(harness.appState.chatResumeRestorationRequest?.sessionKey.sessionID, "stored-b")
     }
 
-    func testSecondAutomaticReturnImmediatelySupersedesPublishedGeneration() {
+    func testSecondAutomaticReturnImmediatelySupersedesPublishedGeneration() throws {
         let harness = makeHarness(behavior: .latestActivity)
         let catalog = [session("stored-b"), session("stored-a")]
         harness.appState.sessions = catalog
@@ -1408,7 +1408,7 @@ final class AppStateChatResumeTests: XCTestCase {
         )
         harness.appState.activeSessionId = firstTarget?.id
         XCTAssertTrue(harness.appState.settleReconciliationAndPublish(firstToken))
-        let firstRequest = harness.appState.chatResumeRestorationRequest!
+        let firstRequest = try XCTUnwrap(harness.appState.chatResumeRestorationRequest)
 
         let secondToken = harness.appState.beginReconciliation()
         _ = harness.appState.selectChatResumeTarget(
@@ -1423,7 +1423,7 @@ final class AppStateChatResumeTests: XCTestCase {
 
         XCTAssertTrue(harness.appState.settleReconciliationAndPublish(secondToken))
         XCTAssertGreaterThan(
-            harness.appState.chatResumeRestorationRequest!.generation,
+            try XCTUnwrap(harness.appState.chatResumeRestorationRequest).generation,
             firstRequest.generation
         )
     }
@@ -1697,7 +1697,7 @@ final class AppStateChatResumeTests: XCTestCase {
             configureDefaults: { defaults in
                 defaults.set("https://one.example", forKey: "conduit.chatResumeServerIdentity.v1")
                 defaults.set(
-                    try! JSONEncoder().encode([review]),
+                    try! JSONEncoder().encode([review]),  // test fixture, safe to force-try
                     forKey: "conduit.reviewSummaryCache.v1"
                 )
                 defaults.set(
@@ -2162,7 +2162,9 @@ final class AppStateChatResumeTests: XCTestCase {
         suite: String
     ) {
         let suite = "AppStateChatResumeTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        guard let defaults = UserDefaults(suiteName: suite) else {
+            fatalError("Failed to create test UserDefaults suite")
+        }
         addTeardownBlock {
             defaults.removePersistentDomain(forName: suite)
         }
@@ -2208,7 +2210,11 @@ final class AppStateChatResumeTests: XCTestCase {
             currentSessionID: active.id
         )
         XCTAssertTrue(harness.appState.settleReconciliationAndPublish(token))
-        return harness.appState.chatResumeRestorationRequest!
+        guard let request = harness.appState.chatResumeRestorationRequest else {
+            XCTFail("Expected restoration request to be published")
+            return ChatResumeRestorationRequest(generation: 0, sessionKey: .init(profile: "", sessionID: ""), destination: .latest)
+        }
+        return request
     }
 
     private func installComposerClient(

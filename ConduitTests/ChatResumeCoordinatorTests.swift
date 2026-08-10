@@ -297,7 +297,9 @@ final class ChatResumeCoordinatorTests: XCTestCase {
         suite: String
     ) {
         let suite = "ChatResumeCoordinatorTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        guard let defaults = UserDefaults(suiteName: suite) else {
+            fatalError("Failed to create test UserDefaults suite")
+        }
         addTeardownBlock {
             defaults.removePersistentDomain(forName: suite)
         }

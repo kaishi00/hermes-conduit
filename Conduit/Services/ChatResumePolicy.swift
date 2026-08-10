@@ -32,8 +32,13 @@ enum ChatResumeSessionResolver {
     ) -> SessionSummary? {
         // Filter to the active profile when available so sessions from
         // other profiles don't interfere with ID matching or fallback.
+        // Use case-insensitive comparison to match AppState.profilesMatch.
         let scoped = activeProfile.map { profile in
-            catalog.filter { $0.profile == nil || $0.profile == profile }
+            catalog.filter { entry in
+                guard let entryProfile = entry.profile else { return true }
+                return entryProfile.trimmingCharacters(in: .whitespacesAndNewlines)
+                    .caseInsensitiveCompare(profile.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame
+            }
         } ?? catalog
 
         let requestedID = purpose == .preserveCurrent ? currentSessionID : savedSessionID
