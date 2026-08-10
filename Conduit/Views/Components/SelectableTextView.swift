@@ -107,13 +107,25 @@ struct SelectableTextView: UIViewRepresentable {
     }
 
     /// Extracted measurement logic so sizeThatFits and tests share one path.
-    /// Uses boundingRect on the stored attributedText instead of force-
-    /// unwrapping uiView.attributedText.
-    static func measureNonWrapping(
-        attributedText: NSAttributedString,
-        font: UIFont
-    ) -> CGSize {
-        let measured = attributedText.boundingRect(
+    /// Applies the same default-font and paragraph-style fill that
+    /// configure(_:) uses, so the measurement matches the rendered output.
+    func measureNonWrapping() -> CGSize {
+        let styledText = NSMutableAttributedString(attributedString: attributedText)
+        let fullRange = NSRange(location: 0, length: styledText.length)
+
+        if fullRange.length > 0 {
+            let paragraphStyle = NSMutableParagraphStyle()
+            paragraphStyle.lineSpacing = lineSpacing
+            styledText.addAttribute(.paragraphStyle, value: paragraphStyle, range: fullRange)
+
+            styledText.enumerateAttribute(.font, in: fullRange, options: []) { value, subrange, _ in
+                if value == nil {
+                    styledText.addAttribute(.font, value: font, range: subrange)
+                }
+            }
+        }
+
+        let measured = styledText.boundingRect(
             with: CGSize(width: 100_000, height: CGFloat.greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin, .usesFontLeading],
             context: nil
@@ -126,7 +138,7 @@ struct SelectableTextView: UIViewRepresentable {
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
         if !wrapsLines {
-            return Self.measureNonWrapping(attributedText: attributedText, font: font)
+            return measureNonWrapping()
         }
 
         guard let width = proposal.width, width > 0 else { return nil }

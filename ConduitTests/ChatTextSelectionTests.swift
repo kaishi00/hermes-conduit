@@ -89,23 +89,43 @@ final class ChatTextSelectionTests: XCTestCase {
     }
 
     /// Regression: sizeThatFits with wrapsLines=false must not force-unwrap
-    /// uiView.attributedText. Exercises the shared measurement helper that
+    /// uiView.attributedText. Exercises the measurement helper that
     /// sizeThatFits delegates to, so a regression in either the helper or
     /// the delegation would be caught.
     func testSizeThatFitsNonWrappingMeasuresStoredText() {
         let font = UIFont.monospacedSystemFont(ofSize: 13, weight: .regular)
-        let nsText = NSAttributedString(
+
+        // Case 1: attributed text already carries a .font attribute
+        let withFont = NSAttributedString(
             string: "line of code that should not wrap",
             attributes: [.font: font]
         )
-        let size = SelectableTextView.measureNonWrapping(
-            attributedText: nsText,
-            font: font
+        let view1 = SelectableTextView(
+            attributedText: withFont,
+            font: font,
+            lineSpacing: 3,
+            wrapsLines: false
         )
-        XCTAssertGreaterThan(size.width, 0,
+        let size1 = view1.measureNonWrapping()
+        XCTAssertGreaterThan(size1.width, 0,
                              "measureNonWrapping must produce a valid width")
-        XCTAssertGreaterThan(size.height, 0,
+        XCTAssertGreaterThan(size1.height, 0,
                              "measureNonWrapping must produce a valid height")
+
+        // Case 2: attributed text has NO .font attribute — measureNonWrapping
+        // must fill the default font so boundingRect doesn't measure with a
+        // system fallback that's smaller than what configure() renders.
+        let withoutFont = NSAttributedString(string: "no font attribute here")
+        let view2 = SelectableTextView(
+            attributedText: withoutFont,
+            font: font,
+            lineSpacing: 3,
+            wrapsLines: false
+        )
+        let size2 = view2.measureNonWrapping()
+        XCTAssertGreaterThan(size2.width, 0,
+                             "measureNonWrapping must fill default font for unstyled runs")
+        XCTAssertGreaterThan(size2.height, 0)
     }
 
     /// Regression: lineSpacing must be stored on the SelectableTextView struct

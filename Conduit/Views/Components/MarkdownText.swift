@@ -26,25 +26,8 @@ struct MarkdownText: View {
     /// while already-read text remains fully stable.
     var newestCharacterOpacities: [Double] = []
 
-    @State private var cachedBlocks: [MarkdownBlock]?
-
-    static func selectableAttributedText(
-        for source: String,
-        recognizesGatewayMedia: Bool = false,
-        foregroundStyle: Color = .primary,
-        usesAccentSurface: Bool = false,
-        newestCharacterOpacities: [Double] = []
-    ) -> NSAttributedString? {
-        MarkdownSelectionFormatter.attributedText(
-            for: MarkdownParser.parse(source, recognizesGatewayMedia: recognizesGatewayMedia),
-            foregroundStyle: foregroundStyle,
-            usesAccentSurface: usesAccentSurface,
-            newestCharacterOpacities: newestCharacterOpacities
-        )
-    }
-
     var body: some View {
-        let blocks = cachedBlocks ?? MarkdownParser.parse(source, recognizesGatewayMedia: gatewayMediaDataURL != nil)
+        let blocks = MarkdownParser.parse(source, recognizesGatewayMedia: gatewayMediaDataURL != nil)
         let selectableText = MarkdownSelectionFormatter.attributedText(
             for: blocks,
             foregroundStyle: foregroundStyle,
@@ -79,11 +62,6 @@ struct MarkdownText: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .onAppear {
-            if cachedBlocks == nil {
-                cachedBlocks = MarkdownParser.parse(source, recognizesGatewayMedia: gatewayMediaDataURL != nil)
-            }
-        }
     }
 }
 
