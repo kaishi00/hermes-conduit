@@ -2395,12 +2395,17 @@ final class AppState: ObservableObject {
             for: result.sessionId,
             fallbackSessionId: reconciliation?.requestedSessionId
         )
+        // Always restore pending clarifications and approvals from the
+        // presentation cache.  The gateway's `session.resume` response may
+        // omit `running: true` (returning nil) even while a turn is active,
+        // which previously caused user-visible clarify/approval cards to be
+        // silently dropped on foreground recovery.
         let restored = sessionPresentationCache.merge(
             result.messages,
             profile: activeProfile,
             sessionIDs: [result.sessionId, reconciliation?.requestedSessionId].compactMap { $0 },
-            includePendingClarifications: result.snapshot.running == true,
-            includePendingApprovals: result.snapshot.running == true
+            includePendingClarifications: true,
+            includePendingApprovals: true
         )
         messages = mergeCachedReviews(into: restored, sessionId: result.sessionId)
         noteChatViewportTranscriptReplacement()

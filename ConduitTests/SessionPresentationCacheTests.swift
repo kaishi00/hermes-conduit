@@ -209,4 +209,122 @@ final class SessionPresentationCacheTests: XCTestCase {
 
         cache.clear(profile: profile)
     }
+
+    // MARK: - Merge: pending clarification restoration
+
+    func testMergeRestoresPendingClarificationWhenRequested() {
+        let cache = SessionPresentationCache.shared
+        let sessionId = "test-merge-clarify-\(UUID().uuidString)"
+        let profile = "test"
+
+        let clarify = ClarifyActivity(
+            requestId: "req-123",
+            question: "Which color?",
+            choices: [
+                ClarifyChoice(label: "Red", value: "red"),
+                ClarifyChoice(label: "Blue", value: "blue"),
+            ],
+            status: .pending
+        )
+        let savedMessages = [
+            ChatMessage(
+                id: "clarify-req-123",
+                role: .clarify,
+                content: "Which color?",
+                timestamp: "2024-01-01T10:00:00Z",
+                clarify: clarify
+            ),
+        ]
+        cache.save(savedMessages, profile: profile, sessionIDs: [sessionId])
+
+        // Gateway resume omits the clarify card (compact history)
+        let gatewayMessages: [ChatMessage] = []
+        let merged = cache.merge(
+            gatewayMessages,
+            profile: profile,
+            sessionIDs: [sessionId],
+            includePendingClarifications: true
+        )
+
+        let restoredClarify = merged.first { $0.role == .clarify }
+        XCTAssertNotNil(restoredClarify, "Pending clarification should be restored from cache")
+        XCTAssertEqual(restoredClarify?.clarify?.requestId, "req-123")
+        XCTAssertEqual(restoredClarify?.clarify?.status, .pending)
+        XCTAssertEqual(restoredClarify?.clarify?.choices.count, 2)
+
+        cache.clear(profile: profile)
+    }
+
+    func testMergeDoesNotRestoreClarificationWhenNotRequested() {
+        let cache = SessionPresentationCache.shared
+        let sessionId = "test-merge-clarify-off-\(UUID().uuidString)"
+        let profile = "test"
+
+        let clarify = ClarifyActivity(
+            requestId: "req-456",
+            question: "Pick one",
+            choices: [ClarifyChoice(label: "A", value: "a")],
+            status: .pending
+        )
+        let savedMessages = [
+            ChatMessage(
+                id: "clarify-req-456",
+                role: .clarify,
+                content: "Pick one",
+                timestamp: "2024-01-01",
+                clarify: clarify
+            ),
+        ]
+        cache.save(savedMessages, profile: profile, sessionIDs: [sessionId])
+
+        let gatewayMessages: [ChatMessage] = []
+        let merged = cache.merge(
+            gatewayMessages,
+            profile: profile,
+            sessionIDs: [sessionId],
+            includePendingClarifications: false
+        )
+
+        XCTAssertFalse(merged.contains { $0.role == .clarify },
+                       "Clarification should not be restored when includePendingClarifications is false")
+
+        cache.clear(profile: profile)
+    }
+
+    func testMergeDoesNotRestoreAnsweredClarification() {
+        let cache = SessionPresentationCache.shared
+        let sessionId = "test-merge-clarify-answered-\(UUID().uuidString)"
+        let profile = "test"
+
+        let clarify = ClarifyActivity(
+            requestId: "req-789",
+            question: "Done?",
+            choices: [ClarifyChoice(label: "Yes", value: "yes")],
+            status: .answered,
+            answer: "yes"
+        )
+        let savedMessages = [
+            ChatMessage(
+                id: "clarify-req-789",
+                role: .clarify,
+                content: "Done?",
+                timestamp: "2024-01-01",
+                clarify: clarify
+            ),
+        ]
+        cache.save(savedMessages, profile: profile, sessionIDs: [sessionId])
+
+        let gatewayMessages: [ChatMessage] = []
+        let merged = cache.merge(
+            gatewayMessages,
+            profile: profile,
+            sessionIDs: [sessionId],
+            includePendingClarifications: true
+        )
+
+        XCTAssertFalse(merged.contains { $0.role == .clarify },
+                       "Answered clarification should not be restored as pending")
+
+        cache.clear(profile: profile)
+    }
 }
