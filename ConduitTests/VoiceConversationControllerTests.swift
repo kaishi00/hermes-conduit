@@ -117,6 +117,52 @@ final class VoiceConversationControllerTests: XCTestCase {
         XCTAssertEqual(result.message, "Speech Recognition permission is required for on-device transcription.")
     }
 
+    func testOnDevicePermissionPreparationReportsMicrophoneDenial() async {
+        let controller = VoiceConversationController(
+            capture: MockCapture(permissionGranted: false),
+            playback: MockPlayback(),
+            deviceTranscriber: MockDeviceTranscriber(transcript: "", permissionGranted: true),
+            gateway: MockGateway(),
+            submit: { _ in true },
+            interrupt: {}
+        )
+
+        let result = await controller.requestOnDeviceTranscriptionPermissions()
+
+        XCTAssertFalse(result.passed)
+        XCTAssertEqual(result.message, "Microphone access is required for voice conversations.")
+    }
+
+    func testOnDevicePermissionPreparationSucceedsWhenBothGranted() async {
+        let controller = VoiceConversationController(
+            capture: MockCapture(permissionGranted: true),
+            playback: MockPlayback(),
+            deviceTranscriber: MockDeviceTranscriber(transcript: "", permissionGranted: true),
+            gateway: MockGateway(),
+            submit: { _ in true },
+            interrupt: {}
+        )
+
+        let result = await controller.requestOnDeviceTranscriptionPermissions()
+
+        XCTAssertTrue(result.passed)
+        XCTAssertEqual(result.message, "On-device speech recognition is ready.")
+    }
+
+    func testAppleSpeechAvailabilityCanAttemptRecognition() {
+        let ready = AppleSpeechRecognitionAvailability.ready(localeIdentifier: "en_US")
+        XCTAssertTrue(ready.canAttemptRecognition)
+
+        let permissionRequired = AppleSpeechRecognitionAvailability.permissionRequired(localeIdentifier: "en_US")
+        XCTAssertTrue(permissionRequired.canAttemptRecognition)
+
+        let permissionDenied = AppleSpeechRecognitionAvailability.permissionDenied
+        XCTAssertFalse(permissionDenied.canAttemptRecognition)
+
+        let unsupported = AppleSpeechRecognitionAvailability.unsupported(localeIdentifier: "en_US")
+        XCTAssertFalse(unsupported.canAttemptRecognition)
+    }
+
     func testTrailingSilenceTranscribesThenSubmitsThroughAuthoritativeSeam() async {
         let capture = MockCapture(permissionGranted: true)
         let gateway = MockGateway(transcript: "Hello Hermes")
