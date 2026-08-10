@@ -11,6 +11,11 @@ import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
+struct PastedImage: Equatable {
+    let data: Data
+    let typeIdentifier: String
+}
+
 struct ComposerPasteTextView: UIViewRepresentable {
     static let minimumHeight: CGFloat = 44
     static let maximumHeight: CGFloat = 160
@@ -19,7 +24,7 @@ struct ComposerPasteTextView: UIViewRepresentable {
     @Binding var isFocused: Bool
     @Binding var measuredHeight: CGFloat
     let enabled: Bool
-    let onPastedImage: (Data) -> Void
+    let onPastedImage: (PastedImage) -> Void
     let onPastedImageError: (String) -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -84,7 +89,7 @@ struct ComposerPasteTextView: UIViewRepresentable {
 }
 
 final class ImagePasteTextView: UITextView {
-    var onPastedImage: ((Data) -> Void)?
+    var onPastedImage: ((PastedImage) -> Void)?
     var onPastedImageError: ((String) -> Void)?
     var onContentHeightChange: ((CGFloat) -> Void)?
     var minimumReportedHeight: CGFloat = 44
@@ -170,7 +175,7 @@ final class ImagePasteTextView: UITextView {
                     }
                     return
                 }
-                self?.deliverImageData(data)
+                self?.deliverImageData(data, typeIdentifier: imageType)
             }
             return
         }
@@ -179,18 +184,24 @@ final class ImagePasteTextView: UITextView {
     }
 
     private func loadImageObject(from provider: NSItemProvider, fallbackError: Error? = nil) {
-        provider.loadObject(ofClass: UIImage.self) { [weak self] image, error in
-            guard let image, let data = image.pngData(), !data.isEmpty else {
+        // Spell out the protocol existential so Swift selects the
+        // NSItemProviderReading overload. The inferred generic overload on
+        // newer SDKs expects UIImage to be _ObjectiveCBridgeable and fails
+        // during compilation even though UIImage supports this API.
+        provider.loadObject(ofClass: UIImage.self) { [weak self] (object: NSItemProviderReading?, error: Error?) in
+            guard let image = object as? UIImage,
+                  let data = image.pngData(),
+                  !data.isEmpty else {
                 self?.reportImageLoadFailure(error ?? fallbackError)
                 return
             }
-            self?.deliverImageData(data)
+            self?.deliverImageData(data, typeIdentifier: UTType.png.identifier)
         }
     }
 
-    private func deliverImageData(_ data: Data) {
+    private func deliverImageData(_ data: Data, typeIdentifier: String) {
         DispatchQueue.main.async { [weak self] in
-            self?.onPastedImage?(data)
+            self?.onPastedImage?(PastedImage(data: data, typeIdentifier: typeIdentifier))
         }
     }
 
@@ -206,7 +217,7 @@ final class ImagePasteTextView: UITextView {
 
         // Direct image in pasteboard
         if let image = pb.image, let data = image.pngData() {
-            onPastedImage?(data)
+            onPastedImage?(PastedImage(data: data, typeIdentifier: UTType.png.identifier))
             return
         }
 
@@ -217,7 +228,10 @@ final class ImagePasteTextView: UITextView {
             if imageExts.contains(ext) || pb.types.contains("public.image") {
                 URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
                     guard let data = data else { return }
-                    DispatchQueue.main.async { self?.onPastedImage?(data) }
+                    let typeIdentifier = UTType(filenameExtension: ext)?.identifier ?? UTType.image.identifier
+                    DispatchQueue.main.async {
+                        self?.onPastedImage?(PastedImage(data: data, typeIdentifier: typeIdentifier))
+                    }
                 }.resume()
                 return
             }
@@ -225,7 +239,7 @@ final class ImagePasteTextView: UITextView {
 
         // Raw image data without .image property
         if let data = pb.data(forPasteboardType: "public.image"), !data.isEmpty {
-            onPastedImage?(data)
+            onPastedImage?(PastedImage(data: data, typeIdentifier: UTType.image.identifier))
             return
         }
 

@@ -23,7 +23,23 @@ struct ComposerBar: View {
     @State private var showDocumentPicker = false
     @State private var isFocused = false
     @State private var isShowingSlashSuggestions = false
+    @State private var composerErrorMessage: String?
     @Namespace private var glassNamespace
+
+    static func pastedImageAttachmentMetadata(for typeIdentifier: String) -> (name: String, mimeType: String) {
+        guard let type = UTType(typeIdentifier),
+              type.conforms(to: .image),
+              let mimeType = type.preferredMIMEType,
+              let filenameExtension = type.preferredFilenameExtension,
+              !mimeType.contains("/*") else {
+            return ("pasted-image.png", "image/png")
+        }
+        return ("pasted-image.\(filenameExtension)", mimeType)
+    }
+
+    static func pastedImageErrorMessage(_ message: String) -> String {
+        "Could not paste image: \(message)"
+    }
 
     private var hasText: Bool {
         !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -118,6 +134,7 @@ struct ComposerBar: View {
         .padding(.top, 8)
         .padding(.bottom, 10)
         .onChange(of: text) { _, newValue in
+            composerErrorMessage = nil
             if newValue.isEmpty {
                 composerTextHeight = ComposerPasteTextView.minimumHeight
             }
@@ -157,6 +174,10 @@ struct ComposerBar: View {
                 stateNotice
             }
 
+            if let composerErrorMessage, !composerErrorMessage.isEmpty {
+                pasteErrorNotice(composerErrorMessage)
+            }
+
             if !attachments.isEmpty {
                 attachmentStrip
             }
@@ -192,11 +213,20 @@ struct ComposerBar: View {
                         isFocused: $isFocused,
                         measuredHeight: $composerTextHeight,
                         enabled: appState.composerIsEnabled,
-                        onPastedImage: { data in
-                            addAttachment(data: data, name: "pasted-image.png", mimeType: "image/png", kind: .image)
+                        onPastedImage: { pastedImage in
+                            composerErrorMessage = nil
+                            let metadata = Self.pastedImageAttachmentMetadata(
+                                for: pastedImage.typeIdentifier
+                            )
+                            addAttachment(
+                                data: pastedImage.data,
+                                name: metadata.name,
+                                mimeType: metadata.mimeType,
+                                kind: .image
+                            )
                         },
                         onPastedImageError: { message in
-                            appState.errorMessage = "Could not paste image: \(message)"
+                            composerErrorMessage = Self.pastedImageErrorMessage(message)
                             Haptics.error()
                         }
                     )
@@ -253,6 +283,21 @@ struct ComposerBar: View {
         }
         .padding(.horizontal, 14)
         .padding(.top, 10)
+        .padding(.bottom, 2)
+    }
+
+    private func pasteErrorNotice(_ message: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.red)
+            Text(message)
+                .font(.caption)
+                .foregroundStyle(.red)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 8)
         .padding(.bottom, 2)
     }
 

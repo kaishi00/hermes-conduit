@@ -19,8 +19,9 @@ final class ComposerPasteTextViewTests: XCTestCase {
         }
 
         let callback = expectation(description: "pasted image callback")
-        view.onPastedImage = { data in
-            XCTAssertEqual(data, expectedData)
+        view.onPastedImage = { pastedImage in
+            XCTAssertEqual(pastedImage.data, expectedData)
+            XCTAssertEqual(pastedImage.typeIdentifier, UTType.png.identifier)
             callback.fulfill()
         }
 
@@ -99,8 +100,9 @@ final class ComposerPasteTextViewTests: XCTestCase {
         }
 
         let callback = expectation(description: "fallback image callback")
-        view.onPastedImage = { data in
-            XCTAssertFalse(data.isEmpty)
+        view.onPastedImage = { pastedImage in
+            XCTAssertFalse(pastedImage.data.isEmpty)
+            XCTAssertEqual(pastedImage.typeIdentifier, UTType.png.identifier)
             callback.fulfill()
         }
         view.onPastedImageError = { message in
@@ -133,5 +135,43 @@ final class ComposerPasteTextViewTests: XCTestCase {
         checkText()
 
         await fulfillment(of: [textInserted], timeout: 1.0)
+    }
+
+    func testPasteItemProvidersPreservesJPEGTypeIdentifier() async {
+        let view = ImagePasteTextView()
+        let expectedData = Data([0xFF, 0xD8, 0xFF, 0xD9])
+        let provider = NSItemProvider()
+        provider.registerDataRepresentation(
+            forTypeIdentifier: UTType.jpeg.identifier,
+            visibility: .all
+        ) { completion in
+            completion(expectedData, nil)
+            return nil
+        }
+
+        let callback = expectation(description: "pasted JPEG callback")
+        view.onPastedImage = { pastedImage in
+            XCTAssertEqual(pastedImage.data, expectedData)
+            XCTAssertEqual(pastedImage.typeIdentifier, UTType.jpeg.identifier)
+            callback.fulfill()
+        }
+
+        view.paste(itemProviders: [provider])
+
+        await fulfillment(of: [callback], timeout: 1.0)
+    }
+
+    func testPastedImageAttachmentMetadataUsesImageType() {
+        let metadata = ComposerBar.pastedImageAttachmentMetadata(for: UTType.jpeg.identifier)
+
+        XCTAssertEqual(metadata.name, "pasted-image.jpeg")
+        XCTAssertEqual(metadata.mimeType, "image/jpeg")
+    }
+
+    func testPastedImageErrorMessageIsVisibleComposerCopy() {
+        XCTAssertEqual(
+            ComposerBar.pastedImageErrorMessage("The image provider failed."),
+            "Could not paste image: The image provider failed."
+        )
     }
 }
