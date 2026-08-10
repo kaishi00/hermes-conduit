@@ -225,7 +225,7 @@ struct VoiceSettingsView: View {
             case .ready:
                 EmptyView()
             case .permissionRequired:
-                Text("Tap \"Record ASR\" below to grant Speech Recognition permission, or enable it in Settings > Conduit > Speech Recognition.")
+                Text("Enable Speech Recognition in Settings > Conduit > Speech Recognition, then retry selecting \"On this iPhone\".")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             case .permissionDenied:
@@ -442,7 +442,7 @@ struct VoiceSettingsView: View {
                     transcriptionMode = .appleOnDevice
                     testStatus = nil
                 } else if case .permissionRequired = appleSpeechAvailability {
-                    testStatus = "iOS will prompt for Speech Recognition permission when you start a voice conversation or tap \"Record ASR\"."
+                    testStatus = "Enable Speech Recognition in Settings > Conduit > Speech Recognition, then retry selecting \"On this iPhone\"."
                 } else if case .permissionDenied = appleSpeechAvailability {
                     testStatus = "Speech Recognition permission was denied. Please enable it in Settings > Conduit > Speech Recognition."
                 } else if case .unsupported = appleSpeechAvailability {
