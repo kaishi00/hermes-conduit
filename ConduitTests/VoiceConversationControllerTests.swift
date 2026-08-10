@@ -118,10 +118,11 @@ final class VoiceConversationControllerTests: XCTestCase {
     }
 
     func testOnDevicePermissionPreparationReportsMicrophoneDenial() async {
+        let deviceTranscriber = MockDeviceTranscriber(transcript: "", permissionGranted: true)
         let controller = VoiceConversationController(
             capture: MockCapture(permissionGranted: false),
             playback: MockPlayback(),
-            deviceTranscriber: MockDeviceTranscriber(transcript: "", permissionGranted: true),
+            deviceTranscriber: deviceTranscriber,
             gateway: MockGateway(),
             submit: { _ in true },
             interrupt: {}
@@ -131,13 +132,15 @@ final class VoiceConversationControllerTests: XCTestCase {
 
         XCTAssertFalse(result.passed)
         XCTAssertEqual(result.message, "Microphone access is required for voice conversations.")
+        XCTAssertEqual(deviceTranscriber.permissionRequestCount, 0, "Speech permission should not be requested after microphone denial")
     }
 
     func testOnDevicePermissionPreparationSucceedsWhenBothGranted() async {
+        let deviceTranscriber = MockDeviceTranscriber(transcript: "", permissionGranted: true)
         let controller = VoiceConversationController(
             capture: MockCapture(permissionGranted: true),
             playback: MockPlayback(),
-            deviceTranscriber: MockDeviceTranscriber(transcript: "", permissionGranted: true),
+            deviceTranscriber: deviceTranscriber,
             gateway: MockGateway(),
             submit: { _ in true },
             interrupt: {}
@@ -147,6 +150,7 @@ final class VoiceConversationControllerTests: XCTestCase {
 
         XCTAssertTrue(result.passed)
         XCTAssertEqual(result.message, "On-device speech recognition is ready.")
+        XCTAssertEqual(deviceTranscriber.permissionRequestCount, 1, "Speech permission should be requested exactly once")
     }
 
     func testAppleSpeechAvailabilityCanAttemptRecognition() {
@@ -626,11 +630,12 @@ private final class MockDeviceTranscriber: DeviceSpeechTranscriptionService {
     let transcript: String
     let permissionGranted: Bool
     private(set) var transcriptionCount = 0
+    private(set) var permissionRequestCount = 0
     init(transcript: String, permissionGranted: Bool = true) {
         self.transcript = transcript
         self.permissionGranted = permissionGranted
     }
-    func requestPermission() async -> Bool { permissionGranted }
+    func requestPermission() async -> Bool { permissionRequestCount += 1; return permissionGranted }
     func transcribe(_ audio: VoiceCapturedAudio) async throws -> String {
         transcriptionCount += 1
         return transcript
