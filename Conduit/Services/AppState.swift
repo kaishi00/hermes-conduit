@@ -2410,13 +2410,14 @@ final class AppState: ObservableObject {
         )
         messages = mergeCachedReviews(into: restored, sessionId: result.sessionId)
         noteChatViewportTranscriptReplacement()
-        // Only re-save to cache when the gateway confirms the turn is still
-        // active.  When `running` is `nil` or `false`, restored pending cards
-        // may be stale (e.g. the turn completed while backgrounded). Skipping
-        // the save avoids perpetuating stale cards across launches.
-        if result.snapshot.running == true {
-            cacheMessagePresentation(for: [result.sessionId])
-        }
+        // Save only the gateway-provided messages to the cache, not restored
+        // cards.  This preserves timestamps and tool previews for server
+        // messages without re-persisting potentially stale pending cards.
+        sessionPresentationCache.save(
+            result.messages,
+            profile: activeProfile,
+            sessionIDs: [result.sessionId, reconciliation?.requestedSessionId].compactMap { $0 }
+        )
         scheduleSecondaryProfileTitleRecovery(
             sessionId: result.sessionId,
             messages: messages
@@ -2435,13 +2436,23 @@ final class AppState: ObservableObject {
         receivedReasoningForCurrentTurn = false
         applyRuntime(result.snapshot)
 
-        if TurnState.fromGatewayRunning(result.snapshot.running) == .unsupportedGateway {
+        // When `running` is `nil`, derive the turn state from the live
+        // projection or restored pending cards rather than declaring the
+        // gateway unsupported.  A nil value can mean the gateway omits the
+        // field while still being turn-state-capable.
+        let hasRestoredPendingCards = messages.contains {
+            ($0.clarify?.status == .pending || $0.clarify?.status == .submitting)
+                || ($0.approval?.status == .pending || $0.approval?.status == .submitting)
+        }
+        if result.snapshot.running == nil && (result.snapshot.hasLiveProjection || hasRestoredPendingCards) {
+            turnState = .running
+        } else if TurnState.fromGatewayRunning(result.snapshot.running) == .unsupportedGateway {
             turnState = .unsupportedGateway
             errorMessage = "This Hermes gateway must support session turn state. Update Hermes to enable message, stop, and steer controls."
             return true
+        } else {
+            turnState = TurnState.fromGatewayRunning(result.snapshot.running)
         }
-
-        turnState = TurnState.fromGatewayRunning(result.snapshot.running)
         return true
     }
 
