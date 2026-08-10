@@ -759,6 +759,7 @@ private struct DeviceHapticsSettings: View {
                 .labelsHidden()
                 .tint(.conduitAccent)
         }
+    }
 }
 
 private struct ChatReturnBehaviorSettings: View {
