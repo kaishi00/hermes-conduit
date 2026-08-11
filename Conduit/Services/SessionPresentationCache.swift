@@ -14,6 +14,53 @@ import Foundation
 final class SessionPresentationCache {
     static let shared = SessionPresentationCache()
 
+    /// Returns whether a clarification or approval presentation still needs a
+    /// user decision. Keep this rule shared by resume pruning and cache saves.
+    static func isPendingDecision(_ status: ClarifyActivity.Status) -> Bool {
+        status == .pending || status == .submitting
+    }
+
+    static func isPendingDecision(_ status: ApprovalActivity.Status) -> Bool {
+        status == .pending || status == .submitting
+    }
+
+    /// Stable identity for a pending decision card, used to distinguish a
+    /// gateway-authoritative card from one restored only from local cache.
+    static func pendingDecisionKey(for message: ChatMessage) -> String? {
+        if let clarify = message.clarify, isPendingDecision(clarify.status) {
+            return "clarify:\(clarify.requestId)"
+        }
+        if let approval = message.approval, isPendingDecision(approval.status) {
+            return "approval:\(approval.sessionId)"
+        }
+        return nil
+    }
+
+    static func pendingDecisionKeys(in messages: [ChatMessage]) -> Set<String> {
+        Set(messages.compactMap(pendingDecisionKey(for:)))
+    }
+
+    /// Removes only the pending decision presentations selected by `keys`.
+    /// Passing nil removes every pending decision while preserving the rest of
+    /// the transcript and any completed decision metadata.
+    static func removingPendingDecisionPresentation(
+        from messages: [ChatMessage],
+        matching keys: Set<String>? = nil
+    ) -> [ChatMessage] {
+        messages.compactMap { original in
+            guard let key = pendingDecisionKey(for: original),
+                  keys.map({ $0.contains(key) }) ?? true else {
+                return original
+            }
+            var message = original
+            if message.clarify != nil { message.clarify = nil }
+            if message.approval != nil { message.approval = nil }
+            if message.role == .clarify, message.clarify == nil { return nil }
+            if message.role == .approval, message.approval == nil { return nil }
+            return message
+        }
+    }
+
     private struct CachedMessage: Codable, Equatable {
         var id: String
         var role: MessageRole
@@ -56,12 +103,14 @@ final class SessionPresentationCache {
         var messages: [CachedMessage]
     }
 
-    private let defaults = UserDefaults.standard
+    private let defaults: UserDefaults
     private let storageKey = "conduit.sessionPresentation.v1"
     private let maxSessions = 32
     private let maxMessagesPerSession = 320
 
-    private init() {}
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
 
     /// Restores only fields Hermes did not send in its persisted history.
     /// The transcript, message ordering, and any nonempty server value always
@@ -129,7 +178,7 @@ final class SessionPresentationCache {
 
         if includePendingClarifications {
             let pendingClarifications = cached.compactMap(\.clarify).filter {
-                $0.status == .pending || $0.status == .submitting
+                Self.isPendingDecision($0.status)
             }
 
             // A gateway resume can retain the running clarify tool call but omit
@@ -157,7 +206,7 @@ final class SessionPresentationCache {
 
         if includePendingApprovals {
             let pendingApprovals = cached.compactMap(\.approval).filter {
-                $0.status == .pending || $0.status == .submitting
+                Self.isPendingDecision($0.status)
             }
             for approval in pendingApprovals where !merged.contains(where: {
                 $0.approval?.sessionId == approval.sessionId
@@ -225,11 +274,11 @@ final class SessionPresentationCache {
         messages.compactMap { original in
             var message = original
             if let clarify = message.clarify,
-               clarify.status == .pending || clarify.status == .submitting {
+               Self.isPendingDecision(clarify.status) {
                 message.clarify = nil
             }
             if let approval = message.approval,
-               approval.status == .pending || approval.status == .submitting {
+               Self.isPendingDecision(approval.status) {
                 message.approval = nil
             }
             if message.role == .clarify, message.clarify == nil { return nil }

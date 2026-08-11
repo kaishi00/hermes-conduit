@@ -569,9 +569,19 @@ final class SessionPresentationCacheTests: XCTestCase {
     // MARK: - AppState resume integration
 
     func testApplyChatResumeRestoresPendingClarificationWhenRunningIsNil() {
-        let cache = SessionPresentationCache.shared
+        let suiteName = "conduit.tests.session-presentation-clarify-\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Could not create isolated UserDefaults suite")
+            return
+        }
+        let cache = SessionPresentationCache(defaults: defaults)
         let sessionId = "test-apply-resume-clarify-\(UUID().uuidString)"
-        let appState = AppState(loadSavedConnection: false)
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: { cache.clear() },
+            sessionPresentationCache: cache
+        )
         let profile = appState.activeProfile
         let clarify = ClarifyActivity(
             requestId: "req-apply-resume",
@@ -588,7 +598,10 @@ final class SessionPresentationCacheTests: XCTestCase {
                 clarify: clarify
             )
         ], profile: profile, sessionIDs: [sessionId])
-        defer { cache.clear(profile: profile) }
+        defer {
+            cache.clear()
+            defaults.removePersistentDomain(forName: suiteName)
+        }
 
         appState.applyChatResume(SessionResumeResult(
             sessionId: sessionId,
@@ -612,9 +625,19 @@ final class SessionPresentationCacheTests: XCTestCase {
     }
 
     func testApplyChatResumeRestoresPendingApprovalWhenRunningIsNil() {
-        let cache = SessionPresentationCache.shared
+        let suiteName = "conduit.tests.session-presentation-approval-\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Could not create isolated UserDefaults suite")
+            return
+        }
+        let cache = SessionPresentationCache(defaults: defaults)
         let sessionId = "test-apply-resume-approval-\(UUID().uuidString)"
-        let appState = AppState(loadSavedConnection: false)
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: { cache.clear() },
+            sessionPresentationCache: cache
+        )
         let profile = appState.activeProfile
         let approval = ApprovalActivity(
             sessionId: sessionId,
@@ -634,7 +657,10 @@ final class SessionPresentationCacheTests: XCTestCase {
                 approval: approval
             )
         ], profile: profile, sessionIDs: [sessionId])
-        defer { cache.clear(profile: profile) }
+        defer {
+            cache.clear()
+            defaults.removePersistentDomain(forName: suiteName)
+        }
 
         appState.applyChatResume(SessionResumeResult(
             sessionId: sessionId,
@@ -657,10 +683,72 @@ final class SessionPresentationCacheTests: XCTestCase {
         )
     }
 
+    func testApplyChatResumePreservesGatewayPendingDecisionWhenRunningIsNil() {
+        let suiteName = "conduit.tests.session-presentation-gateway-pending-\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Could not create isolated UserDefaults suite")
+            return
+        }
+        let cache = SessionPresentationCache(defaults: defaults)
+        let sessionId = "test-apply-resume-gateway-pending-\(UUID().uuidString)"
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: { cache.clear() },
+            sessionPresentationCache: cache
+        )
+        let profile = appState.activeProfile
+        let clarify = ClarifyActivity(
+            requestId: "req-gateway-pending",
+            question: "Which color?",
+            choices: [ClarifyChoice(label: "Red", value: "red")],
+            status: .pending
+        )
+        let gatewayMessage = ChatMessage(
+            id: "clarify-gateway-pending",
+            role: .clarify,
+            content: clarify.question,
+            timestamp: "2024-01-01",
+            clarify: clarify
+        )
+        defer {
+            cache.clear()
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        appState.applyChatResume(SessionResumeResult(
+            sessionId: sessionId,
+            messages: [gatewayMessage],
+            snapshot: SessionRuntimeSnapshot(object: [:])
+        ))
+
+        let persisted = cache.merge(
+            [],
+            profile: profile,
+            sessionIDs: [sessionId],
+            includePendingClarifications: true
+        )
+        XCTAssertTrue(
+            persisted.contains { $0.clarify?.requestId == clarify.requestId },
+            "A pending decision sent by the gateway is authoritative and must remain cached"
+        )
+        XCTAssertEqual(appState.turnState, TurnState.running)
+    }
+
     func testApplyChatResumePersistsGatewayMessagesWithoutRecachingRestoredCardsWhenRunningIsNil() {
-        let cache = SessionPresentationCache.shared
+        let suiteName = "conduit.tests.session-presentation-cache-\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Could not create isolated UserDefaults suite")
+            return
+        }
+        let cache = SessionPresentationCache(defaults: defaults)
         let sessionId = "test-apply-resume-cache-\(UUID().uuidString)"
-        let appState = AppState(loadSavedConnection: false)
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: { cache.clear() },
+            sessionPresentationCache: cache
+        )
         let profile = appState.activeProfile
         let approval = ApprovalActivity(
             sessionId: sessionId,
@@ -680,7 +768,10 @@ final class SessionPresentationCacheTests: XCTestCase {
                 approval: approval
             )
         ], profile: profile, sessionIDs: [sessionId])
-        defer { cache.clear(profile: profile) }
+        defer {
+            cache.clear()
+            defaults.removePersistentDomain(forName: suiteName)
+        }
 
         let gatewayMessage = ChatMessage(
             id: "gateway-user",

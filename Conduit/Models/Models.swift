@@ -11,7 +11,7 @@ import SwiftUI
 
 // MARK: - Core Types
 
-enum MessageRole: String, Codable {
+enum MessageRole: String, Codable, Equatable {
     case user
     case assistant
     case reasoning
