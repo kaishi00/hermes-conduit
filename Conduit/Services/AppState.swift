@@ -573,7 +573,8 @@ final class AppState: ObservableObject {
             cacheableMessages,
             profile: activeProfile,
             sessionIDs: ids,
-            preservePendingDecisionCards: preservePendingDecisionCards
+            preservePendingDecisionCards: preservePendingDecisionCards,
+            unconfirmedPendingDecisionKeys: restorationKeys ?? []
         )
     }
 
@@ -2505,11 +2506,17 @@ final class AppState: ObservableObject {
         // the turn or the user interacts with it.
         let gatewayConfirmsActiveTurn = result.snapshot.running == true
             || (result.snapshot.running != false && gatewaySentPendingDecision)
+        let unconfirmedPendingDecisionKeys = result.snapshot.running != true
+            ? restoredPendingDecisionKeys
+            : []
+        let shouldPersistMergedPresentation = gatewayConfirmsActiveTurn
+            || !unconfirmedPendingDecisionKeys.isEmpty
         sessionPresentationCache.save(
-            result.snapshot.running == true ? messages : result.messages,
+            shouldPersistMergedPresentation ? messages : result.messages,
             profile: activeProfile,
             sessionIDs: sessionIDs,
-            preservePendingDecisionCards: gatewayConfirmsActiveTurn
+            preservePendingDecisionCards: gatewayConfirmsActiveTurn || !unconfirmedPendingDecisionKeys.isEmpty,
+            unconfirmedPendingDecisionKeys: unconfirmedPendingDecisionKeys
         )
         scheduleSecondaryProfileTitleRecovery(
             sessionId: result.sessionId,

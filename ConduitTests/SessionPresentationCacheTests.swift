@@ -613,14 +613,14 @@ final class SessionPresentationCacheTests: XCTestCase {
         XCTAssertEqual(appState.messages.first?.clarify?.status, .pending)
         XCTAssertEqual(appState.turnState, TurnState.running,
                        "A restored pending clarification must keep the composer answerable")
-        XCTAssertFalse(
+        XCTAssertTrue(
             cache.merge(
                 [],
                 profile: profile,
                 sessionIDs: [sessionId],
                 includePendingClarifications: true
             ).contains { $0.clarify?.requestId == clarify.requestId },
-            "An unconfirmed clarification card must not be written back to the presentation cache"
+            "An unconfirmed clarification card should survive a cold launch during its grace period"
         )
         appState.applyChatResume(SessionResumeResult(
             sessionId: sessionId,
@@ -682,14 +682,14 @@ final class SessionPresentationCacheTests: XCTestCase {
         XCTAssertEqual(appState.messages.first?.approval?.status, .pending)
         XCTAssertEqual(appState.turnState, TurnState.running,
                        "A restored pending approval must keep the composer answerable")
-        XCTAssertFalse(
+        XCTAssertTrue(
             cache.merge(
                 [],
                 profile: profile,
                 sessionIDs: [sessionId],
                 includePendingApprovals: true
             ).contains { $0.approval?.sessionId == sessionId },
-            "An unconfirmed approval card must not be written back to the presentation cache"
+            "An unconfirmed approval card should survive a cold launch during its grace period"
         )
         appState.applyChatResume(SessionResumeResult(
             sessionId: sessionId,
@@ -812,8 +812,8 @@ final class SessionPresentationCacheTests: XCTestCase {
             includePendingClarifications: true,
             includePendingApprovals: true
         )
-        XCTAssertFalse(persisted.contains { $0.approval?.sessionId == sessionId },
-                       "An unconfirmed restored card must not be written back to the presentation cache")
+        XCTAssertTrue(persisted.contains { $0.approval?.sessionId == sessionId },
+                      "An unconfirmed restored card should survive a cold launch during its grace period")
         XCTAssertTrue(
             appState.messages.contains { $0.approval?.sessionId == sessionId },
             "The active AppState should retain the restored card while the gateway is inconclusive"
@@ -821,6 +821,62 @@ final class SessionPresentationCacheTests: XCTestCase {
         XCTAssertEqual(
             cache.merge([gatewayMessage], profile: profile, sessionIDs: [sessionId]).first?.content,
             gatewayMessage.content
+        )
+    }
+
+    func testUnconfirmedPendingDecisionExpiresFromPresentationCache() {
+        let suiteName = "conduit.tests.session-presentation-expiry-\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Could not create isolated UserDefaults suite")
+            return
+        }
+        var currentDate = Date(timeIntervalSince1970: 1_000_000)
+        let cache = SessionPresentationCache(defaults: defaults, now: { currentDate })
+        let sessionId = "test-presentation-expiry-\(UUID().uuidString)"
+        let profile = "default"
+        let clarify = ClarifyActivity(
+            requestId: "req-expiring",
+            question: "Which color?",
+            choices: [ClarifyChoice(label: "Red", value: "red")],
+            status: .pending
+        )
+        let message = ChatMessage(
+            id: "clarify-expiring",
+            role: .clarify,
+            content: clarify.question,
+            timestamp: "2024-01-01",
+            clarify: clarify
+        )
+        defer {
+            cache.clear()
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        cache.save(
+            [message],
+            profile: profile,
+            sessionIDs: [sessionId],
+            preservePendingDecisionCards: true,
+            unconfirmedPendingDecisionKeys: ["clarify:\(clarify.requestId)"]
+        )
+        XCTAssertTrue(
+            cache.merge(
+                [],
+                profile: profile,
+                sessionIDs: [sessionId],
+                includePendingClarifications: true
+            ).contains { $0.clarify?.requestId == clarify.requestId }
+        )
+
+        currentDate.addTimeInterval(24 * 60 * 60 + 1)
+        XCTAssertFalse(
+            cache.merge(
+                [],
+                profile: profile,
+                sessionIDs: [sessionId],
+                includePendingClarifications: true
+            ).contains { $0.clarify?.requestId == clarify.requestId },
+            "An unconfirmed card must not remain answerable forever without gateway confirmation"
         )
     }
 

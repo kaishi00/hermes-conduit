@@ -115,15 +115,22 @@ final class SessionPresentationCache {
     private struct CachedSession: Codable {
         var updatedAt: Date
         var messages: [CachedMessage]
+        var unconfirmedPendingDecisionAt: Date?
     }
 
+    /// An omitted running state is inherently ambiguous. Keep an unconfirmed
+    /// decision across a cold launch for a bounded grace period, then prefer a
+    /// stale-card miss over making an old request answerable forever.
+    private let maxUnconfirmedPendingDecisionAge: TimeInterval = 24 * 60 * 60
     private let defaults: UserDefaults
+    private let now: () -> Date
     private let storageKey = "conduit.sessionPresentation.v1"
     private let maxSessions = 32
     private let maxMessagesPerSession = 320
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, now: @escaping () -> Date = { Date() }) {
         self.defaults = defaults
+        self.now = now
     }
 
     /// Restores only fields Hermes did not send in its persisted history.
@@ -136,9 +143,17 @@ final class SessionPresentationCache {
         includePendingClarifications: Bool = false,
         includePendingApprovals: Bool = false
     ) -> [ChatMessage] {
+        let stored = load()
         let cached = sessionIDs
-            .compactMap { load()[key(profile: profile, sessionID: $0)]?.messages }
-            .flatMap { $0 }
+            .compactMap { stored[key(profile: profile, sessionID: $0)] }
+            .flatMap { session in
+                let unconfirmedExpired = session.unconfirmedPendingDecisionAt.map {
+                    now().timeIntervalSince($0) > maxUnconfirmedPendingDecisionAge
+                } ?? false
+                return unconfirmedExpired
+                    ? removingPendingDecisionPresentation(from: session.messages)
+                    : session.messages
+            }
         guard !cached.isEmpty else { return messages }
 
         var remaining = Set(cached.indices)
@@ -246,7 +261,8 @@ final class SessionPresentationCache {
         _ messages: [ChatMessage],
         profile: String,
         sessionIDs: [String],
-        preservePendingDecisionCards: Bool = true
+        preservePendingDecisionCards: Bool = true,
+        unconfirmedPendingDecisionKeys: Set<String> = []
     ) {
         let ids = Set(sessionIDs.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })
         guard !ids.isEmpty else { return }
@@ -254,14 +270,23 @@ final class SessionPresentationCache {
         var store = load()
         let freshRecords = messages.suffix(maxMessagesPerSession).map { CachedMessage($0) }
         guard !freshRecords.isEmpty else {
-            guard !preservePendingDecisionCards else { return }
+            guard !preservePendingDecisionCards || !unconfirmedPendingDecisionKeys.isEmpty else { return }
             var changed = false
             for id in ids {
                 let cacheKey = key(profile: profile, sessionID: id)
                 guard var session = store[cacheKey] else { continue }
-                let pruned = removingPendingDecisionPresentation(from: session.messages)
-                guard pruned != session.messages else { continue }
+                let pruned = removingPendingDecisionPresentation(
+                    from: session.messages,
+                    preserving: unconfirmedPendingDecisionKeys
+                )
+                let unconfirmedAt = unconfirmedPendingDecisionKeys.isEmpty
+                    ? nil
+                    : (session.unconfirmedPendingDecisionAt ?? now())
+                guard pruned != session.messages || unconfirmedAt != session.unconfirmedPendingDecisionAt else {
+                    continue
+                }
                 session.messages = pruned
+                session.unconfirmedPendingDecisionAt = unconfirmedAt
                 store[cacheKey] = session
                 changed = true
             }
@@ -276,10 +301,28 @@ final class SessionPresentationCache {
             from: existingRecords,
             preservePendingDecisionCards: preservePendingDecisionCards
         )
+        appendUnconfirmedPendingDecisionRecords(
+            to: &records,
+            from: existingRecords,
+            matching: unconfirmedPendingDecisionKeys
+        )
         if !preservePendingDecisionCards {
-            records = removingPendingDecisionPresentation(from: records)
+            records = removingPendingDecisionPresentation(
+                from: records,
+                preserving: unconfirmedPendingDecisionKeys
+            )
         }
-        let session = CachedSession(updatedAt: Date(), messages: records)
+        let existingUnconfirmedAt = ids.lazy
+            .compactMap { store[self.key(profile: profile, sessionID: $0)]?.unconfirmedPendingDecisionAt }
+            .first
+        let unconfirmedAt = unconfirmedPendingDecisionKeys.isEmpty
+            ? nil
+            : (existingUnconfirmedAt ?? now())
+        let session = CachedSession(
+            updatedAt: now(),
+            messages: records,
+            unconfirmedPendingDecisionAt: unconfirmedAt
+        )
         for id in ids {
             store[key(profile: profile, sessionID: id)] = session
         }
@@ -291,20 +334,64 @@ final class SessionPresentationCache {
     /// locally restored decision card, but that card is not authoritative
     /// enough to keep writing to disk. Strip only pending/submitting decision
     /// presentation while preserving normal transcript metadata.
-    private func removingPendingDecisionPresentation(from messages: [CachedMessage]) -> [CachedMessage] {
+    private func removingPendingDecisionPresentation(
+        from messages: [CachedMessage],
+        preserving keys: Set<String> = []
+    ) -> [CachedMessage] {
         messages.compactMap { original in
             var message = original
             if let clarify = message.clarify,
-               Self.isPendingDecision(clarify.status) {
+               Self.isPendingDecision(clarify.status),
+               !keys.contains("clarify:\(clarify.requestId)") {
                 message.clarify = nil
             }
             if let approval = message.approval,
-               Self.isPendingDecision(approval.status) {
+               Self.isPendingDecision(approval.status),
+               !keys.contains("approval:\(approval.sessionId)") {
                 message.approval = nil
             }
             if message.role == .clarify, message.clarify == nil { return nil }
             if message.role == .approval, message.approval == nil { return nil }
             return message
+        }
+    }
+
+    private func decisionKey(for message: CachedMessage) -> String? {
+        if let clarify = message.clarify {
+            return "clarify:\(clarify.requestId)"
+        }
+        if let approval = message.approval {
+            return "approval:\(approval.sessionId)"
+        }
+        return nil
+    }
+
+    private func pendingDecisionKey(for message: CachedMessage) -> String? {
+        if let clarify = message.clarify, Self.isPendingDecision(clarify.status) {
+            return "clarify:\(clarify.requestId)"
+        }
+        if let approval = message.approval, Self.isPendingDecision(approval.status) {
+            return "approval:\(approval.sessionId)"
+        }
+        return nil
+    }
+
+    private func appendUnconfirmedPendingDecisionRecords(
+        to records: inout [CachedMessage],
+        from existing: [CachedMessage],
+        matching keys: Set<String>
+    ) {
+        guard !keys.isEmpty else { return }
+        var existingRecordKeys = Set(records.compactMap(decisionKey(for:)))
+        for record in existing {
+            guard let pendingKey = pendingDecisionKey(for: record),
+                  keys.contains(pendingKey),
+                  let recordKey = decisionKey(for: record),
+                  !existingRecordKeys.contains(recordKey) else {
+                continue
+            }
+            records.append(record)
+            existingRecordKeys.insert(recordKey)
         }
     }
 
