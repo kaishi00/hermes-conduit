@@ -11,6 +11,7 @@ import SwiftUI
 import Combine
 import OSLog
 import UIKit
+import WebKit
 
 private let sessionCatalogLog = Logger(subsystem: "com.milim.conduit", category: "SessionCatalog")
 private let titleGenerationLog = Logger(subsystem: "com.milim.conduit", category: "TitleGeneration")
@@ -1642,6 +1643,13 @@ final class AppState: ObservableObject {
         KeychainHelper.clearConnection()
         KeychainHelper.clearCredentials()
         KeychainHelper.clearCloudflareAccess()
+        // The Keychain mirror of the dashboard cookies is cleared above, but
+        // the live session cookies live on in WebKit's persistent default data
+        // store and the shared Foundation cookie store. Without removing them,
+        // Disconnect is not equivalent to logging out: a still-valid server
+        // session could be silently resumed on the next authentication flow.
+        // Capture the origin before nulling `connection` and purge both stores.
+        let dashboardBaseURL = connection?.baseUrl
         connection = nil
         client = nil
         dashboardTicketBridge = nil
@@ -1664,6 +1672,24 @@ final class AppState: ObservableObject {
         activeSessionTitlesByProfile = [:]
         pinnedSessionIDsByProfile = [:]
         defaults.removeObject(forKey: activeProfileKey)
+        clearDashboardWebSession(for: dashboardBaseURL)
+    }
+
+    /// Removes the dashboard origin's cookies from the WebKit default data
+    /// store and the shared Foundation cookie store. The WebKit store can only
+    /// be mutated asynchronously, so this is dispatched as a background task;
+    /// the synchronous tear-down in `disconnect()` completes immediately.
+    private func clearDashboardWebSession(for dashboardBaseURL: String?) {
+        guard let dashboardBaseURL else { return }
+        Task { @MainActor in
+            if let url = URL(string: dashboardBaseURL) {
+                await DashboardCookiePersistence.clear(
+                    from: WKWebsiteDataStore.default().httpCookieStore,
+                    for: url
+                )
+            }
+            DashboardCookiePersistence.clearNativeCookies(for: dashboardBaseURL)
+        }
     }
 
     private func makeClient(connection: HermesConnection, profile: String) -> HermesClient {
