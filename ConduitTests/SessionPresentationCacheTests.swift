@@ -797,7 +797,7 @@ final class SessionPresentationCacheTests: XCTestCase {
             id: "gateway-user",
             role: .user,
             content: "Fresh transcript row",
-            timestamp: ""
+            timestamp: "2024-02-02"
         )
         appState.applyChatResume(SessionResumeResult(
             sessionId: sessionId,
@@ -818,9 +818,20 @@ final class SessionPresentationCacheTests: XCTestCase {
             appState.messages.contains { $0.approval?.sessionId == sessionId },
             "The active AppState should retain the restored card while the gateway is inconclusive"
         )
+        let compactGatewayMessage = ChatMessage(
+            id: gatewayMessage.id,
+            role: gatewayMessage.role,
+            content: gatewayMessage.content,
+            timestamp: ""
+        )
         XCTAssertEqual(
-            cache.merge([gatewayMessage], profile: profile, sessionIDs: [sessionId]).first?.content,
-            gatewayMessage.content
+            cache.merge(
+                [compactGatewayMessage],
+                profile: profile,
+                sessionIDs: [sessionId]
+            ).first?.timestamp,
+            gatewayMessage.timestamp,
+            "Fresh gateway transcript presentation must be persisted on resume"
         )
     }
 
@@ -868,7 +879,7 @@ final class SessionPresentationCacheTests: XCTestCase {
             ).contains { $0.clarify?.requestId == clarify.requestId }
         )
 
-        currentDate.addTimeInterval(24 * 60 * 60 + 1)
+        currentDate.addTimeInterval(SessionPresentationCache.maxUnconfirmedPendingDecisionAge + 1)
         XCTAssertFalse(
             cache.merge(
                 [],
@@ -877,6 +888,62 @@ final class SessionPresentationCacheTests: XCTestCase {
                 includePendingClarifications: true
             ).contains { $0.clarify?.requestId == clarify.requestId },
             "An unconfirmed card must not remain answerable forever without gateway confirmation"
+        )
+    }
+
+    func testApplyChatResumeExpiresWarmRestoredPendingDecision() {
+        let suiteName = "conduit.tests.session-presentation-warm-expiry-\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Could not create isolated UserDefaults suite")
+            return
+        }
+        var currentDate = Date(timeIntervalSince1970: 2_000_000)
+        let cache = SessionPresentationCache(defaults: defaults, now: { currentDate })
+        let sessionId = "test-warm-presentation-expiry-\(UUID().uuidString)"
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: { cache.clear() },
+            sessionPresentationCache: cache
+        )
+        let profile = appState.activeProfile
+        let clarify = ClarifyActivity(
+            requestId: "req-warm-expiring",
+            question: "Which color?",
+            choices: [ClarifyChoice(label: "Red", value: "red")],
+            status: .pending
+        )
+        cache.save([
+            ChatMessage(
+                id: "clarify-warm-expiring",
+                role: .clarify,
+                content: clarify.question,
+                timestamp: "2024-01-01",
+                clarify: clarify
+            )
+        ], profile: profile, sessionIDs: [sessionId])
+        defer {
+            cache.clear()
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        appState.applyChatResume(SessionResumeResult(
+            sessionId: sessionId,
+            messages: [],
+            snapshot: SessionRuntimeSnapshot(object: [:])
+        ))
+        XCTAssertTrue(appState.messages.contains { $0.clarify?.requestId == clarify.requestId })
+
+        currentDate.addTimeInterval(SessionPresentationCache.maxUnconfirmedPendingDecisionAge + 1)
+        appState.applyChatResume(SessionResumeResult(
+            sessionId: sessionId,
+            messages: [],
+            snapshot: SessionRuntimeSnapshot(object: [:])
+        ))
+
+        XCTAssertFalse(
+            appState.messages.contains { $0.clarify?.requestId == clarify.requestId },
+            "Warm resumes must stop retaining an unconfirmed card after its grace period"
         )
     }
 
@@ -1076,6 +1143,15 @@ final class SessionPresentationCacheTests: XCTestCase {
         )
         XCTAssertEqual(appState.messages.first?.clarify?.status, ClarifyActivity.Status.answered)
         XCTAssertFalse(AppState.hasPendingDecision(in: appState.messages))
+        XCTAssertFalse(
+            cache.merge(
+                [],
+                profile: profile,
+                sessionIDs: [sessionId],
+                includePendingClarifications: true
+            ).contains { $0.clarify?.requestId == pendingClarify.requestId && $0.clarify?.status == .pending },
+            "A resolved gateway clarification must suppress the cached pending card"
+        )
     }
 
     func testApplyChatResumeMakesRestoredSubmittingApprovalRetryable() {
@@ -1222,6 +1298,10 @@ final class SessionPresentationCacheTests: XCTestCase {
         ))
 
         XCTAssertEqual(appState.turnState, TurnState.idle)
+        XCTAssertFalse(
+            AppState.hasPendingDecision(in: appState.messages),
+            "An explicitly settled resume must not leave an answerable gateway card in memory"
+        )
         XCTAssertFalse(
             cache.merge(
                 [],

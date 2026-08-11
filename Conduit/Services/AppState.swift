@@ -507,6 +507,7 @@ final class AppState: ObservableObject {
         let profile: String
         let sessionID: String
         let pendingDecisionKeys: Set<String>
+        let restoredAt: Date
         let messages: [ChatMessage]
     }
 
@@ -785,6 +786,12 @@ final class AppState: ObservableObject {
         guard let restorationGuard = restoredPendingDecisionCardsAwaitingConfirmation,
               restorationGuard.profile == activeProfile,
               restorationGuard.sessionID == sessionID else {
+            return []
+        }
+        guard !sessionPresentationCache.isUnconfirmedPendingDecisionExpired(
+            since: restorationGuard.restoredAt
+        ) else {
+            clearPendingDecisionRestorationGuard()
             return []
         }
         return restorationGuard.messages
@@ -2474,36 +2481,37 @@ final class AppState: ObservableObject {
         messages = mergeCachedReviews(into: restored, sessionId: result.sessionId)
         noteChatViewportTranscriptReplacement()
         let gatewayPendingDecisionKeys = SessionPresentationCache.pendingDecisionKeys(in: result.messages)
+        if result.snapshot.running == false && !gatewayPendingDecisionKeys.isEmpty {
+            messages = SessionPresentationCache.removingPendingDecisionPresentation(
+                from: messages,
+                matching: gatewayPendingDecisionKeys
+            )
+        }
         let restoredPendingDecisionKeys = SessionPresentationCache
             .pendingDecisionKeys(in: messages)
             .subtracting(gatewayPendingDecisionKeys)
         let gatewaySentPendingDecision = !gatewayPendingDecisionKeys.isEmpty
+        var restoredMessagesAwaitingConfirmation: [ChatMessage] = []
         if result.snapshot.running != true && !restoredPendingDecisionKeys.isEmpty {
             Self.resetSubmittingRestoredDecisions(
                 in: &messages,
                 matching: restoredPendingDecisionKeys
             )
-            let restoredMessages = messages.filter {
+            restoredMessagesAwaitingConfirmation = messages.filter {
                 guard let key = SessionPresentationCache.decisionKey(for: $0),
                       restoredPendingDecisionKeys.contains(key) else {
                     return false
                 }
                 return SessionPresentationCache.pendingDecisionKey(for: $0) != nil
             }
-            restoredPendingDecisionCardsAwaitingConfirmation = PendingDecisionRestorationGuard(
-                profile: activeProfile,
-                sessionID: result.sessionId,
-                pendingDecisionKeys: restoredPendingDecisionKeys,
-                messages: restoredMessages
-            )
         } else {
             clearPendingDecisionRestorationGuard()
         }
         let hasPendingDecision = Self.hasPendingDecision(in: messages)
         // Persist the gateway transcript on every resume so fresh rows are not
         // lost. A locally restored card remains in the active AppState for the
-        // next foreground cycle, but is not written back until Hermes confirms
-        // the turn or the user interacts with it.
+        // next foreground cycle and is persisted with a bounded unconfirmed
+        // marker until Hermes confirms the turn or the user interacts with it.
         let gatewayConfirmsActiveTurn = result.snapshot.running == true
             || (result.snapshot.running != false && gatewaySentPendingDecision)
         let unconfirmedPendingDecisionKeys = result.snapshot.running != true
@@ -2518,6 +2526,19 @@ final class AppState: ObservableObject {
             preservePendingDecisionCards: gatewayConfirmsActiveTurn || !unconfirmedPendingDecisionKeys.isEmpty,
             unconfirmedPendingDecisionKeys: unconfirmedPendingDecisionKeys
         )
+        if result.snapshot.running != true && !restoredPendingDecisionKeys.isEmpty {
+            let restoredAt = sessionPresentationCache.unconfirmedPendingDecisionDate(
+                profile: activeProfile,
+                sessionIDs: sessionIDs
+            ) ?? Date()
+            restoredPendingDecisionCardsAwaitingConfirmation = PendingDecisionRestorationGuard(
+                profile: activeProfile,
+                sessionID: result.sessionId,
+                pendingDecisionKeys: restoredPendingDecisionKeys,
+                restoredAt: restoredAt,
+                messages: restoredMessagesAwaitingConfirmation
+            )
+        }
         scheduleSecondaryProfileTitleRecovery(
             sessionId: result.sessionId,
             messages: messages

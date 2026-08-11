@@ -13,6 +13,7 @@ import Foundation
 
 final class SessionPresentationCache {
     static let shared = SessionPresentationCache()
+    static let maxUnconfirmedPendingDecisionAge: TimeInterval = 24 * 60 * 60
 
     /// Returns whether a clarification or approval presentation still needs a
     /// user decision. Keep this rule shared by resume pruning and cache saves.
@@ -121,7 +122,6 @@ final class SessionPresentationCache {
     /// An omitted running state is inherently ambiguous. Keep an unconfirmed
     /// decision across a cold launch for a bounded grace period, then prefer a
     /// stale-card miss over making an old request answerable forever.
-    private let maxUnconfirmedPendingDecisionAge: TimeInterval = 24 * 60 * 60
     private let defaults: UserDefaults
     private let now: () -> Date
     private let storageKey = "conduit.sessionPresentation.v1"
@@ -131,6 +131,21 @@ final class SessionPresentationCache {
     init(defaults: UserDefaults = .standard, now: @escaping () -> Date = { Date() }) {
         self.defaults = defaults
         self.now = now
+    }
+
+    func unconfirmedPendingDecisionDate(
+        profile: String,
+        sessionIDs: [String]
+    ) -> Date? {
+        let stored = load()
+        return sessionIDs
+            .compactMap { stored[key(profile: profile, sessionID: $0)]?.unconfirmedPendingDecisionAt }
+            .min()
+    }
+
+    func isUnconfirmedPendingDecisionExpired(since date: Date?) -> Bool {
+        guard let date else { return false }
+        return now().timeIntervalSince(date) > Self.maxUnconfirmedPendingDecisionAge
     }
 
     /// Restores only fields Hermes did not send in its persisted history.
@@ -147,9 +162,9 @@ final class SessionPresentationCache {
         let cached = sessionIDs
             .compactMap { stored[key(profile: profile, sessionID: $0)] }
             .flatMap { session in
-                let unconfirmedExpired = session.unconfirmedPendingDecisionAt.map {
-                    now().timeIntervalSince($0) > maxUnconfirmedPendingDecisionAge
-                } ?? false
+                let unconfirmedExpired = isUnconfirmedPendingDecisionExpired(
+                    since: session.unconfirmedPendingDecisionAt
+                )
                 return unconfirmedExpired
                     ? removingPendingDecisionPresentation(from: session.messages)
                     : session.messages
