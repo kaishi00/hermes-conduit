@@ -4,7 +4,7 @@
 
 **Goal:** Make Conduit fall through to its existing WebView authentication flow when Hermes provider discovery returns a redirect, including the Cloudflare Access `302` reported in issue #37.
 
-**Architecture:** Keep `LoginView` unchanged and reuse its existing empty-provider fallback. Add a small injectable `URLSession` seam to `NativeAuthClient` so tests can exercise real response classification, then classify `3xx` provider responses as an empty provider list while retaining errors for `4xx`/`5xx` responses. No Cloudflare-only mode or Hermes Desktop changes.
+**Architecture:** Keep `LoginView` unchanged and reuse its existing empty-provider fallback. Add a small injectable `URLSessionConfiguration` seam to `NativeAuthClient` so tests can exercise real response classification with the production redirect delegate, then classify `3xx` provider responses as an empty provider list while retaining errors for `4xx`/`5xx` responses. No Cloudflare-only mode or Hermes Desktop changes.
 
 **Tech Stack:** Swift 5.9, Foundation `URLSession`, XCTest, XcodeGen, Xcodebuild.
 
@@ -24,12 +24,12 @@
 - Create: `ConduitTests/NativeAuthClientTests.swift`
 
 **Interfaces:**
-- Consumes: `NativeAuthClient.authProviders()` and its injectable `URLSession` initializer parameter, which will be added in Task 2.
+- Consumes: `NativeAuthClient.authProviders()` and its injectable `URLSessionConfiguration` initializer parameter, which will be added in Task 2.
 - Produces: A regression test proving that a `302` response from `/api/auth/providers` must resolve as an empty provider list rather than throw `AuthClientError.providerDiscoveryFailed`.
 
 - [ ] **Step 1: Create the test fixture and failing test**
 
-Create a `URLProtocol` test double that returns a `302` response with a Cloudflare Access login `Location` header for the `redirect.example` host. Register the protocol for the test, construct `NativeAuthClient` with the existing production initializer, and assert that `try await client.authProviders()` returns `[]`. Register and unregister the protocol in the test class lifecycle so the first red run exercises the current production session without requiring a production-only test seam.
+Create a `URLProtocol` test double that returns a `302` response with a Cloudflare Access login `Location` header for the `redirect.example` host. Construct `NativeAuthClient` with a test `URLSessionConfiguration` containing that protocol and assert that `try await client.authProviders()` returns `[]`. The test configuration must still use `SecureRedirectDelegate` through the production initializer so the regression covers the actual redirect policy.
 
 The test must include `@testable import Conduit`, use XCTest async assertions, and keep the response body empty because the behavior depends on the HTTP status and redirect location, not JSON parsing.
 
@@ -57,7 +57,7 @@ Expected result before production changes: the test fails because `authProviders
 
 **Interfaces:**
 - Consumes: The failing test's registered protocol and the existing production session construction.
-- Produces: `NativeAuthClient.init(baseURL:cloudflareAccess:session:)` with a default `nil` session for production, and `authProviders()` returning `[]` for `300...399` responses.
+- Produces: `NativeAuthClient.init(baseURL:cloudflareAccess:sessionConfiguration:)` with a default `nil` configuration for production, and `authProviders()` returning `[]` for `300...399` responses.
 
 - [ ] **Step 1: Add the optional session injection without changing production defaults**
 
@@ -67,11 +67,11 @@ Change the initializer signature to:
 init(
     baseURL: String,
     cloudflareAccess: CloudflareAccessCredentials? = nil,
-    session: URLSession? = nil
+    sessionConfiguration: URLSessionConfiguration? = nil
 )
 ```
 
-Use the supplied session when non-`nil`; otherwise construct the existing cookie-enabled session with `SecureRedirectDelegate`. Update the final test to use the injected session so tests no longer rely on global protocol registration. Do not alter the default production configuration.
+Use the supplied configuration when non-`nil`, apply the existing cookie settings, and construct the session with `SecureRedirectDelegate`. Update the tests to use the injected configuration so they do not rely on global protocol registration. Do not alter the default production configuration.
 
 - [ ] **Step 2: Classify provider redirects as the existing empty-provider signal**
 
