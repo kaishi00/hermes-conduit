@@ -9,6 +9,26 @@ struct ConduitNotificationTarget: Equatable, Identifiable {
     var id: String { "\(profile ?? "default"):\(sessionId):\(type ?? "")" }
 }
 
+enum NotificationSessionResolver {
+    /// Hermes notifications identify a live runtime session, while
+    /// `session.resume` is keyed by the durable stored session. Catalog rows
+    /// retain both identities so a notification can be routed without asking
+    /// the gateway to resume a runtime-only key.
+    static func resumableSessionID(
+        for notificationSessionID: String,
+        in sessions: [SessionSummary]
+    ) -> String {
+        let normalizedID = notificationSessionID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedID.isEmpty else { return notificationSessionID }
+        guard let session = sessions.first(where: { session in
+            session.id == normalizedID || session.alternateIds.contains(normalizedID)
+        }) else {
+            return notificationSessionID
+        }
+        return session.storedSessionId ?? session.id
+    }
+}
+
 struct ConduitNotificationPreferences: Codable, Equatable {
     var enabled = true
     var approvalNeeded = true
@@ -55,7 +75,6 @@ final class PushNotificationService: ObservableObject {
     private var registration: StoredRegistration?
     private var deviceToken: String?
     private var tokenContinuation: CheckedContinuation<String, Error>?
-    private var navigationRetryTask: Task<Void, Never>?
 
     var isEnabled: Bool { registration != nil && preferences.enabled }
     var statusText: String {
@@ -167,26 +186,17 @@ final class PushNotificationService: ObservableObject {
 
     func receiveNotificationPayload(_ userInfo: [AnyHashable: Any]) {
         guard let target = notificationTarget(from: userInfo) else { return }
-        navigationRetryTask?.cancel()
         pendingTarget = target
         navigationAttempt += 1
     }
 
     func clearPendingTarget(_ target: ConduitNotificationTarget) {
         guard pendingTarget == target else { return }
-        navigationRetryTask?.cancel()
-        navigationRetryTask = nil
         pendingTarget = nil
     }
 
-    func retryPendingTarget() {
-        guard pendingTarget != nil else { return }
-        navigationRetryTask?.cancel()
-        navigationRetryTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(1.5))
-            guard !Task.isCancelled else { return }
-            self?.navigationAttempt += 1
-        }
+    func discardPendingTarget(_ target: ConduitNotificationTarget) {
+        clearPendingTarget(target)
     }
 
     private func notificationTarget(from userInfo: [AnyHashable: Any]) -> ConduitNotificationTarget? {

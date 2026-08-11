@@ -274,6 +274,9 @@ struct DelegateAgentActivity: Identifiable, Equatable {
 
 struct SessionSummary: Identifiable, Equatable {
     let id: String
+    /// The durable database identity used by `session.resume`. Hermes stream
+    /// events and notifications may carry the live runtime identity instead.
+    var storedSessionId: String? = nil
     var alternateIds: [String]
     var title: String
     var model: String

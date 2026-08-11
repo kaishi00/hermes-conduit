@@ -3511,11 +3511,12 @@ final class AppState: ObservableObject {
             return false
         }
         let requestedID = target.sessionId
-        let matchingSession = (sessions + cronSessions).first { session in
-            session.id == requestedID || session.alternateIds.contains(requestedID)
-        }
+        let resumableID = NotificationSessionResolver.resumableSessionID(
+            for: requestedID,
+            in: sessions + cronSessions
+        )
         let opened = await openSession(
-            matchingSession?.id ?? requestedID,
+            resumableID,
             reusing: transitionGeneration
         )
         guard notificationOpenAttemptIsCurrent(

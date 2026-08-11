@@ -1156,6 +1156,9 @@ enum MessageNormalizer {
         return records.enumerated().map { index, item in
             let obj = item.objectValue ?? [:]
             let id = obj["session_id"]?.stringValue ?? obj["id"]?.stringValue ?? String(index)
+            let storedSessionId = ["stored_session_id", "storedSessionId", "id"]
+                .compactMap { obj[$0]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .first { !$0.isEmpty }
 
             // Collect alternate IDs
             let altKeys = ["session_id", "id", "stored_session_id", "runtime_session_id", "session_key"]
@@ -1178,6 +1181,7 @@ enum MessageNormalizer {
 
             return SessionSummary(
                 id: id,
+                storedSessionId: storedSessionId,
                 alternateIds: Array(altIds),
                 title: obj["title"]?.stringValue ?? obj["preview"]?.stringValue ?? "Untitled conversation",
                 model: obj["model"]?.stringValue ?? "Hermes",
