@@ -613,14 +613,24 @@ final class SessionPresentationCacheTests: XCTestCase {
         XCTAssertEqual(appState.messages.first?.clarify?.status, .pending)
         XCTAssertEqual(appState.turnState, TurnState.running,
                        "A restored pending clarification must keep the composer answerable")
-        XCTAssertTrue(
+        XCTAssertFalse(
             cache.merge(
                 [],
                 profile: profile,
                 sessionIDs: [sessionId],
                 includePendingClarifications: true
             ).contains { $0.clarify?.requestId == clarify.requestId },
-            "An omitted running state must retain an unconfirmed clarification card for the next foreground cycle"
+            "An unconfirmed clarification card must not be written back to the presentation cache"
+        )
+        appState.applyChatResume(SessionResumeResult(
+            sessionId: sessionId,
+            messages: [],
+            snapshot: SessionRuntimeSnapshot(object: [:])
+        ))
+        XCTAssertEqual(
+            appState.messages.first?.clarify?.requestId,
+            clarify.requestId,
+            "The active AppState should retain the card for a subsequent foreground resume"
         )
     }
 
@@ -672,14 +682,24 @@ final class SessionPresentationCacheTests: XCTestCase {
         XCTAssertEqual(appState.messages.first?.approval?.status, .pending)
         XCTAssertEqual(appState.turnState, TurnState.running,
                        "A restored pending approval must keep the composer answerable")
-        XCTAssertTrue(
+        XCTAssertFalse(
             cache.merge(
                 [],
                 profile: profile,
                 sessionIDs: [sessionId],
                 includePendingApprovals: true
             ).contains { $0.approval?.sessionId == sessionId },
-            "An omitted running state must retain an unconfirmed approval card for the next foreground cycle"
+            "An unconfirmed approval card must not be written back to the presentation cache"
+        )
+        appState.applyChatResume(SessionResumeResult(
+            sessionId: sessionId,
+            messages: [],
+            snapshot: SessionRuntimeSnapshot(object: [:])
+        ))
+        XCTAssertEqual(
+            appState.messages.first?.approval?.sessionId,
+            sessionId,
+            "The active AppState should retain the card for a subsequent foreground resume"
         )
     }
 
@@ -792,8 +812,12 @@ final class SessionPresentationCacheTests: XCTestCase {
             includePendingClarifications: true,
             includePendingApprovals: true
         )
-        XCTAssertTrue(persisted.contains { $0.approval?.sessionId == sessionId },
-                      "An omitted running state must retain a restored pending card")
+        XCTAssertFalse(persisted.contains { $0.approval?.sessionId == sessionId },
+                       "An unconfirmed restored card must not be written back to the presentation cache")
+        XCTAssertTrue(
+            appState.messages.contains { $0.approval?.sessionId == sessionId },
+            "The active AppState should retain the restored card while the gateway is inconclusive"
+        )
         XCTAssertEqual(
             cache.merge([gatewayMessage], profile: profile, sessionIDs: [sessionId]).first?.content,
             gatewayMessage.content
@@ -932,6 +956,224 @@ final class SessionPresentationCacheTests: XCTestCase {
                 sessionIDs: [sessionId],
                 includePendingApprovals: true
             ).contains { $0.approval?.status == .pending }
+        )
+    }
+
+    func testApplyChatResumeSuppressesCachedPendingClarificationWhenGatewayResolvedIt() {
+        let suiteName = "conduit.tests.session-presentation-resolved-clarify-\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Could not create isolated UserDefaults suite")
+            return
+        }
+        let cache = SessionPresentationCache(defaults: defaults)
+        let sessionId = "test-apply-resume-resolved-clarify-\(UUID().uuidString)"
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: { cache.clear() },
+            sessionPresentationCache: cache
+        )
+        let profile = appState.activeProfile
+        let pendingClarify = ClarifyActivity(
+            requestId: "req-resolved-clarify",
+            question: "Which color?",
+            choices: [ClarifyChoice(label: "Red", value: "red")],
+            status: .pending
+        )
+        cache.save([
+            ChatMessage(
+                id: "clarify-\(pendingClarify.requestId)",
+                role: .clarify,
+                content: pendingClarify.question,
+                timestamp: "2024-01-01",
+                clarify: pendingClarify
+            )
+        ], profile: profile, sessionIDs: [sessionId])
+        let resolvedClarify = ClarifyActivity(
+            requestId: pendingClarify.requestId,
+            question: pendingClarify.question,
+            choices: pendingClarify.choices,
+            status: .answered,
+            answer: "red"
+        )
+        let gatewayMessage = ChatMessage(
+            id: "clarify-\(pendingClarify.requestId)",
+            role: .clarify,
+            content: resolvedClarify.question,
+            timestamp: "2024-01-02",
+            clarify: resolvedClarify
+        )
+        defer {
+            cache.clear()
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        appState.applyChatResume(SessionResumeResult(
+            sessionId: sessionId,
+            messages: [gatewayMessage],
+            snapshot: SessionRuntimeSnapshot(object: [:])
+        ))
+
+        XCTAssertEqual(
+            appState.messages.filter { $0.clarify?.requestId == pendingClarify.requestId }.count,
+            1
+        )
+        XCTAssertEqual(appState.messages.first?.clarify?.status, ClarifyActivity.Status.answered)
+        XCTAssertFalse(AppState.hasPendingDecision(in: appState.messages))
+    }
+
+    func testApplyChatResumeMakesRestoredSubmittingApprovalRetryable() {
+        let suiteName = "conduit.tests.session-presentation-submitting-\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Could not create isolated UserDefaults suite")
+            return
+        }
+        let cache = SessionPresentationCache(defaults: defaults)
+        let sessionId = "test-apply-resume-submitting-\(UUID().uuidString)"
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: { cache.clear() },
+            sessionPresentationCache: cache
+        )
+        let profile = appState.activeProfile
+        let approval = ApprovalActivity(
+            sessionId: sessionId,
+            command: "ls",
+            description: "List files",
+            choices: ["once", "deny"],
+            allowPermanent: false,
+            smartDenied: false,
+            status: .submitting,
+            choice: "once"
+        )
+        cache.save([
+            ChatMessage(
+                id: "approval-\(sessionId)",
+                role: .approval,
+                content: approval.description,
+                timestamp: "2024-01-01",
+                approval: approval
+            )
+        ], profile: profile, sessionIDs: [sessionId])
+        defer {
+            cache.clear()
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        appState.applyChatResume(SessionResumeResult(
+            sessionId: sessionId,
+            messages: [],
+            snapshot: SessionRuntimeSnapshot(object: [:])
+        ))
+
+        XCTAssertEqual(
+            appState.messages.first?.approval?.status,
+            ApprovalActivity.Status.pending,
+            "A restored in-flight decision must be retryable after the app resumes"
+        )
+        XCTAssertNil(appState.messages.first?.approval?.choice)
+    }
+
+    func testApplyChatResumePersistsRestoredCardWhenRunningIsTrue() {
+        let suiteName = "conduit.tests.session-presentation-running-\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Could not create isolated UserDefaults suite")
+            return
+        }
+        let cache = SessionPresentationCache(defaults: defaults)
+        let sessionId = "test-apply-resume-running-\(UUID().uuidString)"
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: { cache.clear() },
+            sessionPresentationCache: cache
+        )
+        let profile = appState.activeProfile
+        let clarify = ClarifyActivity(
+            requestId: "req-running",
+            question: "Which color?",
+            choices: [ClarifyChoice(label: "Red", value: "red")],
+            status: .pending
+        )
+        cache.save([
+            ChatMessage(
+                id: "clarify-running",
+                role: .clarify,
+                content: clarify.question,
+                timestamp: "2024-01-01",
+                clarify: clarify
+            )
+        ], profile: profile, sessionIDs: [sessionId])
+        defer {
+            cache.clear()
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        appState.applyChatResume(SessionResumeResult(
+            sessionId: sessionId,
+            messages: [],
+            snapshot: SessionRuntimeSnapshot(object: ["running": .bool(true)])
+        ))
+
+        XCTAssertTrue(
+            cache.merge(
+                [],
+                profile: profile,
+                sessionIDs: [sessionId],
+                includePendingClarifications: true
+            ).contains { $0.clarify?.requestId == clarify.requestId }
+        )
+    }
+
+    func testApplyChatResumePrunesGatewayPendingCardWhenRunningIsFalse() {
+        let suiteName = "conduit.tests.session-presentation-gateway-settled-\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Could not create isolated UserDefaults suite")
+            return
+        }
+        let cache = SessionPresentationCache(defaults: defaults)
+        let sessionId = "test-apply-resume-gateway-settled-\(UUID().uuidString)"
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: { cache.clear() },
+            sessionPresentationCache: cache
+        )
+        let profile = appState.activeProfile
+        let clarify = ClarifyActivity(
+            requestId: "req-gateway-settled",
+            question: "Which color?",
+            choices: [ClarifyChoice(label: "Red", value: "red")],
+            status: .pending
+        )
+        let gatewayMessage = ChatMessage(
+            id: "clarify-gateway-settled",
+            role: .clarify,
+            content: clarify.question,
+            timestamp: "2024-01-01",
+            clarify: clarify
+        )
+        defer {
+            cache.clear()
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        appState.applyChatResume(SessionResumeResult(
+            sessionId: sessionId,
+            messages: [gatewayMessage],
+            snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+        ))
+
+        XCTAssertEqual(appState.turnState, TurnState.idle)
+        XCTAssertFalse(
+            cache.merge(
+                [],
+                profile: profile,
+                sessionIDs: [sessionId],
+                includePendingClarifications: true
+            ).contains { $0.clarify?.requestId == clarify.requestId },
+            "An explicit settled signal must prune even an inconsistent pending gateway row"
         )
     }
 }

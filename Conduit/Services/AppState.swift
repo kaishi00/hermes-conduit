@@ -499,12 +499,15 @@ final class AppState: ObservableObject {
     /// don't serialize and write UserDefaults on every WebSocket frame.
     private var presentationCacheFlushTask: Task<Void, Never>?
     /// A nil resume can restore a decision card from local presentation data.
-    /// Keep the guard scoped to the session/profile that produced the restored
-    /// card so a session switch cannot affect another session's presentation.
+    /// Keep the card in memory for this AppState so another foreground resume
+    /// can still show it, but strip it from cache writes until Hermes confirms
+    /// the turn. Scope the guard to the session/profile that produced it so a
+    /// session switch cannot affect another session's presentation.
     private struct PendingDecisionRestorationGuard {
         let profile: String
         let sessionID: String
         let pendingDecisionKeys: Set<String>
+        let messages: [ChatMessage]
     }
 
     private var restoredPendingDecisionCardsAwaitingConfirmation: PendingDecisionRestorationGuard?
@@ -558,11 +561,16 @@ final class AppState: ObservableObject {
             }
             return restorationGuard.pendingDecisionKeys
         }()
-        let pendingDecisionKeys = SessionPresentationCache.pendingDecisionKeys(in: messages)
-        let hasScopedRestorationGuard = restorationKeys?.isEmpty == false
-        let preservePendingDecisionCards = !hasScopedRestorationGuard || !pendingDecisionKeys.isEmpty
+        let cacheableMessages = restorationKeys.map {
+            SessionPresentationCache.removingPendingDecisionPresentation(
+                from: messages,
+                matching: $0
+            )
+        } ?? messages
+        let preservePendingDecisionCards = restorationKeys == nil
+            || !SessionPresentationCache.pendingDecisionKeys(in: cacheableMessages).isEmpty
         sessionPresentationCache.save(
-            messages,
+            cacheableMessages,
             profile: activeProfile,
             sessionIDs: ids,
             preservePendingDecisionCards: preservePendingDecisionCards
@@ -770,6 +778,15 @@ final class AppState: ObservableObject {
         pinnedSessionIDs.removeAll { ids.contains($0) }
         pinnedSessionIDsByProfile[activeProfile] = pinnedSessionIDs
         persistPinnedSessions()
+    }
+
+    private func pendingDecisionRestorationMessages(for sessionID: String) -> [ChatMessage] {
+        guard let restorationGuard = restoredPendingDecisionCardsAwaitingConfirmation,
+              restorationGuard.profile == activeProfile,
+              restorationGuard.sessionID == sessionID else {
+            return []
+        }
+        return restorationGuard.messages
     }
 
     private func clearPendingDecisionRestorationGuard() {
@@ -2426,6 +2443,7 @@ final class AppState: ObservableObject {
             automaticWorkToken,
             syncOperationID: automaticSyncOperationID
         ) else { return false }
+        let retainedRestoredMessages = pendingDecisionRestorationMessages(for: result.sessionId)
         markChatViewportReplacement()
         setActiveSessionState(id: result.sessionId, title: "New conversation")
         updateActiveSessionTitle(
@@ -2438,8 +2456,15 @@ final class AppState: ObservableObject {
         // pending decision cards.
         let restorePendingCards = Self.shouldRestorePendingCards(running: result.snapshot.running)
         let sessionIDs = [result.sessionId, reconciliation?.requestedSessionId].compactMap { $0 }
+        let gatewayDecisionKeys = Set(result.messages.compactMap(SessionPresentationCache.decisionKey(for:)))
+        let retainedMessages = restorePendingCards
+            ? retainedRestoredMessages.filter {
+                guard let key = SessionPresentationCache.decisionKey(for: $0) else { return false }
+                return !gatewayDecisionKeys.contains(key)
+            }
+            : []
         let restored = sessionPresentationCache.merge(
-            result.messages,
+            result.messages + retainedMessages,
             profile: activeProfile,
             sessionIDs: sessionIDs,
             includePendingClarifications: restorePendingCards,
@@ -2447,33 +2472,44 @@ final class AppState: ObservableObject {
         )
         messages = mergeCachedReviews(into: restored, sessionId: result.sessionId)
         noteChatViewportTranscriptReplacement()
-        let hasPendingDecision = Self.hasPendingDecision(in: messages)
         let gatewayPendingDecisionKeys = SessionPresentationCache.pendingDecisionKeys(in: result.messages)
         let restoredPendingDecisionKeys = SessionPresentationCache
             .pendingDecisionKeys(in: messages)
             .subtracting(gatewayPendingDecisionKeys)
         let gatewaySentPendingDecision = !gatewayPendingDecisionKeys.isEmpty
         if result.snapshot.running != true && !restoredPendingDecisionKeys.isEmpty {
+            Self.resetSubmittingRestoredDecisions(
+                in: &messages,
+                matching: restoredPendingDecisionKeys
+            )
+            let restoredMessages = messages.filter {
+                guard let key = SessionPresentationCache.decisionKey(for: $0),
+                      restoredPendingDecisionKeys.contains(key) else {
+                    return false
+                }
+                return SessionPresentationCache.pendingDecisionKey(for: $0) != nil
+            }
             restoredPendingDecisionCardsAwaitingConfirmation = PendingDecisionRestorationGuard(
                 profile: activeProfile,
                 sessionID: result.sessionId,
-                pendingDecisionKeys: restoredPendingDecisionKeys
+                pendingDecisionKeys: restoredPendingDecisionKeys,
+                messages: restoredMessages
             )
         } else {
             clearPendingDecisionRestorationGuard()
         }
+        let hasPendingDecision = Self.hasPendingDecision(in: messages)
         // Persist the gateway transcript on every resume so fresh rows are not
-        // lost. When liveness is nil, retain a locally restored pending card
-        // until Hermes provides an explicit settled signal; otherwise the
-        // first foreground cycle would consume the cache entry and the next
-        // foreground would lose the answerable card again.
-        let gatewayConfirmsActiveTurn = result.snapshot.running == true || gatewaySentPendingDecision
-        let shouldPersistMergedPresentation = gatewayConfirmsActiveTurn || !restoredPendingDecisionKeys.isEmpty
+        // lost. A locally restored card remains in the active AppState for the
+        // next foreground cycle, but is not written back until Hermes confirms
+        // the turn or the user interacts with it.
+        let gatewayConfirmsActiveTurn = result.snapshot.running == true
+            || (result.snapshot.running != false && gatewaySentPendingDecision)
         sessionPresentationCache.save(
-            shouldPersistMergedPresentation ? messages : result.messages,
+            result.snapshot.running == true ? messages : result.messages,
             profile: activeProfile,
             sessionIDs: sessionIDs,
-            preservePendingDecisionCards: gatewayConfirmsActiveTurn || !restoredPendingDecisionKeys.isEmpty
+            preservePendingDecisionCards: gatewayConfirmsActiveTurn
         )
         scheduleSecondaryProfileTitleRecovery(
             sessionId: result.sessionId,
@@ -2522,6 +2558,30 @@ final class AppState: ObservableObject {
             let clarifyPending = message.clarify?.status == .pending || message.clarify?.status == .submitting
             let approvalPending = message.approval?.status == .pending || message.approval?.status == .submitting
             return clarifyPending || approvalPending
+        }
+    }
+
+    private static func resetSubmittingRestoredDecisions(
+        in messages: inout [ChatMessage],
+        matching keys: Set<String>
+    ) {
+        for index in messages.indices {
+            if var clarify = messages[index].clarify,
+               clarify.status == .submitting,
+               keys.contains("clarify:\(clarify.requestId)") {
+                clarify.status = .pending
+                clarify.answer = nil
+                clarify.error = nil
+                messages[index].clarify = clarify
+            }
+            if var approval = messages[index].approval,
+               approval.status == .submitting,
+               keys.contains("approval:\(approval.sessionId)") {
+                approval.status = .pending
+                approval.choice = nil
+                approval.error = nil
+                messages[index].approval = approval
+            }
         }
     }
 

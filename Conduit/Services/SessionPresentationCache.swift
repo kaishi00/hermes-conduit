@@ -24,8 +24,19 @@ final class SessionPresentationCache {
         status == .pending || status == .submitting
     }
 
-    /// Stable identity for a pending decision card, used to distinguish a
-    /// gateway-authoritative card from one restored only from local cache.
+    /// Stable identity for a decision card, regardless of whether it is still
+    /// pending. This lets resume reconciliation recognize a resolved gateway
+    /// row and suppress a matching locally cached card.
+    static func decisionKey(for message: ChatMessage) -> String? {
+        if let clarify = message.clarify {
+            return "clarify:\(clarify.requestId)"
+        }
+        if let approval = message.approval {
+            return "approval:\(approval.sessionId)"
+        }
+        return nil
+    }
+
     static func pendingDecisionKey(for message: ChatMessage) -> String? {
         if let clarify = message.clarify, isPendingDecision(clarify.status) {
             return "clarify:\(clarify.requestId)"
@@ -38,6 +49,30 @@ final class SessionPresentationCache {
 
     static func pendingDecisionKeys(in messages: [ChatMessage]) -> Set<String> {
         Set(messages.compactMap(pendingDecisionKey(for:)))
+    }
+
+    /// Removes only the selected pending decision presentations. Completed
+    /// decision metadata and unrelated pending cards remain untouched.
+    static func removingPendingDecisionPresentation(
+        from messages: [ChatMessage],
+        matching keys: Set<String>
+    ) -> [ChatMessage] {
+        messages.compactMap { original in
+            var message = original
+            if let clarify = message.clarify,
+               isPendingDecision(clarify.status),
+               keys.contains("clarify:\(clarify.requestId)") {
+                message.clarify = nil
+            }
+            if let approval = message.approval,
+               isPendingDecision(approval.status),
+               keys.contains("approval:\(approval.sessionId)") {
+                message.approval = nil
+            }
+            if message.role == .clarify, message.clarify == nil { return nil }
+            if message.role == .approval, message.approval == nil { return nil }
+            return message
+        }
     }
 
     private struct CachedMessage: Codable, Equatable {
