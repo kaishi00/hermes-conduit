@@ -535,6 +535,13 @@ struct ChatView: View {
                 return
             }
         }
+
+        // Loop exited because restorationRequestIsCurrent returned false.
+        // If the generation is still current but identity drifted mid-loop,
+        // abandon so pendingRestoration doesn't get stuck forever.
+        if appState.chatResumeRestorationRequest?.generation == request.generation {
+            appState.abandonChatResumeRestoration(generation: request.generation)
+        }
     }
 
     private func restorationDestination(

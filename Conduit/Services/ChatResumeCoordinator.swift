@@ -169,13 +169,11 @@ final class ChatResumeCoordinator {
 
     func reconciliationSettled(sessionKey: ChatScrollSessionKey) -> ChatResumeRestorationRequest? {
         guard pendingSessionKey == sessionKey, pendingRestoration == nil else {
-            // Mismatch: clear the stale pending key but leave the freeze
-            // intact. The freeze will be cleared by abandonPendingAutomaticSync()
-            // on actual failure paths, or by completeRestoration/abandonRestoration
-            // when a published request resolves. Unfreezing here would let
-            // `.latest` snapshots overwrite old readings during normal ID
-            // remapping flows (runtime → stored key canonicalization).
-            pendingSessionKey = nil
+            // Mismatch: leave pendingSessionKey intact so the caller
+            // (publishChatResumeRestorationIfReady) can detect it via
+            // abandonPendingAutomaticSyncIfPending() and unfreeze.
+            // If we clear it here, the caller can't distinguish "mismatch
+            // that needs cleanup" from "no pending work at all".
             pendingFallbackSelection = false
             return nil
         }

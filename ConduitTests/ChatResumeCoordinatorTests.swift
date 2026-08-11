@@ -315,7 +315,7 @@ final class ChatResumeCoordinatorTests: XCTestCase {
         XCTAssertEqual(harness.store.snapshot(for: otherKey), .latest)
     }
 
-    func testReconciliationSettledWithMismatchedKeyClearsPendingButDoesNotUnfreeze() {
+    func testReconciliationSettledWithMismatchedKeyClearsPendingViaCaller() {
         let harness = makeHarness()
         let wrongKey = ChatScrollSessionKey(profile: "default", sessionID: "stored-b")
 
@@ -329,17 +329,14 @@ final class ChatResumeCoordinatorTests: XCTestCase {
         harness.coordinator.recordViewport(.latest, for: wrongKey)
         XCTAssertNil(harness.store.snapshot(for: wrongKey))
 
-        // Settle with the wrong key → nil. Pending is cleared but freeze
-        // stays intact (avoids `.latest` overwriting old readings during
-        // ID remapping). Use abandonPendingAutomaticSync to unfreeze.
+        // Settle with the wrong key → nil. pendingSessionKey stays set
+        // so the caller can detect the mismatch and clean up.
         XCTAssertNil(harness.coordinator.reconciliationSettled(sessionKey: wrongKey))
 
-        // Still frozen — recordViewport is still a no-op.
-        harness.coordinator.recordViewport(.latest, for: wrongKey)
-        XCTAssertNil(harness.store.snapshot(for: wrongKey))
+        // Caller detects pending key and unfreezes.
+        harness.coordinator.abandonPendingAutomaticSyncIfPending()
 
-        // Abandon to unfreeze.
-        harness.coordinator.abandonPendingAutomaticSync()
+        // Now recordViewport should work again.
         harness.coordinator.recordViewport(.latest, for: wrongKey)
         XCTAssertEqual(harness.store.snapshot(for: wrongKey), .latest)
     }
