@@ -40,27 +40,6 @@ final class SessionPresentationCache {
         Set(messages.compactMap(pendingDecisionKey(for:)))
     }
 
-    /// Removes only the pending decision presentations selected by `keys`.
-    /// Passing nil removes every pending decision while preserving the rest of
-    /// the transcript and any completed decision metadata.
-    static func removingPendingDecisionPresentation(
-        from messages: [ChatMessage],
-        matching keys: Set<String>? = nil
-    ) -> [ChatMessage] {
-        messages.compactMap { original in
-            guard let key = pendingDecisionKey(for: original),
-                  keys.map({ $0.contains(key) }) ?? true else {
-                return original
-            }
-            var message = original
-            if message.clarify != nil { message.clarify = nil }
-            if message.approval != nil { message.approval = nil }
-            if message.role == .clarify, message.clarify == nil { return nil }
-            if message.role == .approval, message.approval == nil { return nil }
-            return message
-        }
-    }
-
     private struct CachedMessage: Codable, Equatable {
         var id: String
         var role: MessageRole
@@ -165,11 +144,15 @@ final class SessionPresentationCache {
                 message.attachments = cachedAttachments
             }
 
-            if message.clarify == nil, let cachedClarify = presentation.clarify {
+            if message.clarify == nil,
+               let cachedClarify = presentation.clarify,
+               !Self.isPendingDecision(cachedClarify.status) || includePendingClarifications {
                 message.clarify = cachedClarify
             }
 
-            if message.approval == nil, let cachedApproval = presentation.approval {
+            if message.approval == nil,
+               let cachedApproval = presentation.approval,
+               !Self.isPendingDecision(cachedApproval.status) || includePendingApprovals {
                 message.approval = cachedApproval
             }
 
@@ -210,7 +193,6 @@ final class SessionPresentationCache {
             }
             for approval in pendingApprovals where !merged.contains(where: {
                 $0.approval?.sessionId == approval.sessionId
-                    && ($0.approval?.status == .pending || $0.approval?.status == .submitting)
             }) {
                 let cachedMessage = cached.last { $0.approval?.sessionId == approval.sessionId }
                 merged.append(ChatMessage(
@@ -254,7 +236,11 @@ final class SessionPresentationCache {
         let existingRecords = ids.lazy
             .compactMap { store[self.key(profile: profile, sessionID: $0)]?.messages }
             .first ?? []
-        var records = preservingPresentation(in: freshRecords, from: existingRecords)
+        var records = preservingPresentation(
+            in: freshRecords,
+            from: existingRecords,
+            preservePendingDecisionCards: preservePendingDecisionCards
+        )
         if !preservePendingDecisionCards {
             records = removingPendingDecisionPresentation(from: records)
         }
@@ -371,7 +357,8 @@ final class SessionPresentationCache {
     /// used when Hermes has re-rendered the response text.
     private func preservingPresentation(
         in fresh: [CachedMessage],
-        from existing: [CachedMessage]
+        from existing: [CachedMessage],
+        preservePendingDecisionCards: Bool
     ) -> [CachedMessage] {
         fresh.enumerated().map { position, record in
             var merged = record
@@ -398,10 +385,14 @@ final class SessionPresentationCache {
             if merged.attachments?.isEmpty != false {
                 merged.attachments = prior.attachments
             }
-            if merged.clarify == nil {
+            if merged.clarify == nil,
+               let priorClarify = prior.clarify,
+               !Self.isPendingDecision(priorClarify.status) || preservePendingDecisionCards {
                 merged.clarify = prior.clarify
             }
-            if merged.approval == nil {
+            if merged.approval == nil,
+               let priorApproval = prior.approval,
+               !Self.isPendingDecision(priorApproval.status) || preservePendingDecisionCards {
                 merged.approval = prior.approval
             }
             return merged

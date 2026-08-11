@@ -498,13 +498,10 @@ final class AppState: ObservableObject {
     /// Coalesces presentation-cache flushes during streaming so we
     /// don't serialize and write UserDefaults on every WebSocket frame.
     private var presentationCacheFlushTask: Task<Void, Never>?
-    /// A nil resume can restore a decision card from local presentation data,
-    /// but that card is not authoritative until Hermes confirms the active
-    /// turn or the user interacts with it. Do not re-persist it on a scene
-    /// background in the meantime. Scope the guard to the session/profile that
-    /// produced the restored card so a session switch cannot prune another
-    /// session's pending presentation.
-    private struct PendingDecisionRestorationGuard: Equatable {
+    /// A nil resume can restore a decision card from local presentation data.
+    /// Keep the guard scoped to the session/profile that produced the restored
+    /// card so a session switch cannot affect another session's presentation.
+    private struct PendingDecisionRestorationGuard {
         let profile: String
         let sessionID: String
         let pendingDecisionKeys: Set<String>
@@ -553,7 +550,7 @@ final class AppState: ObservableObject {
             reconciliation?.requestedSessionId,
             reconciliation?.resolvedSessionId
         ].compactMap { $0 }
-        let unconfirmedKeys: Set<String>? = {
+        let restorationKeys: Set<String>? = {
             guard let restorationGuard = restoredPendingDecisionCardsAwaitingConfirmation,
                   restorationGuard.profile == activeProfile,
                   activeSessionId == restorationGuard.sessionID else {
@@ -561,16 +558,11 @@ final class AppState: ObservableObject {
             }
             return restorationGuard.pendingDecisionKeys
         }()
-        let cacheableMessages = unconfirmedKeys.map {
-            SessionPresentationCache.removingPendingDecisionPresentation(
-                from: messages,
-                matching: $0
-            )
-        } ?? messages
-        let preservePendingDecisionCards = unconfirmedKeys == nil
-            || !SessionPresentationCache.pendingDecisionKeys(in: cacheableMessages).isEmpty
+        let pendingDecisionKeys = SessionPresentationCache.pendingDecisionKeys(in: messages)
+        let hasScopedRestorationGuard = restorationKeys?.isEmpty == false
+        let preservePendingDecisionCards = !hasScopedRestorationGuard || !pendingDecisionKeys.isEmpty
         sessionPresentationCache.save(
-            cacheableMessages,
+            messages,
             profile: activeProfile,
             sessionIDs: ids,
             preservePendingDecisionCards: preservePendingDecisionCards
@@ -2470,18 +2462,18 @@ final class AppState: ObservableObject {
         } else {
             clearPendingDecisionRestorationGuard()
         }
-        // Persist the gateway transcript on every resume so fresh rows are
-        // not lost. When liveness is nil, do not write the locally restored
-        // decision cards back into the cache: the gateway has not confirmed
-        // that those cached cards are still pending. An explicitly running
-        // snapshot is the one case where persisting the merged presentation
-        // is safe and necessary for another foreground/background cycle.
+        // Persist the gateway transcript on every resume so fresh rows are not
+        // lost. When liveness is nil, retain a locally restored pending card
+        // until Hermes provides an explicit settled signal; otherwise the
+        // first foreground cycle would consume the cache entry and the next
+        // foreground would lose the answerable card again.
         let gatewayConfirmsActiveTurn = result.snapshot.running == true || gatewaySentPendingDecision
+        let shouldPersistMergedPresentation = gatewayConfirmsActiveTurn || !restoredPendingDecisionKeys.isEmpty
         sessionPresentationCache.save(
-            result.snapshot.running == true ? messages : result.messages,
+            shouldPersistMergedPresentation ? messages : result.messages,
             profile: activeProfile,
             sessionIDs: sessionIDs,
-            preservePendingDecisionCards: gatewayConfirmsActiveTurn
+            preservePendingDecisionCards: gatewayConfirmsActiveTurn || !restoredPendingDecisionKeys.isEmpty
         )
         scheduleSecondaryProfileTitleRecovery(
             sessionId: result.sessionId,

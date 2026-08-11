@@ -613,14 +613,14 @@ final class SessionPresentationCacheTests: XCTestCase {
         XCTAssertEqual(appState.messages.first?.clarify?.status, .pending)
         XCTAssertEqual(appState.turnState, TurnState.running,
                        "A restored pending clarification must keep the composer answerable")
-        XCTAssertFalse(
+        XCTAssertTrue(
             cache.merge(
                 [],
                 profile: profile,
                 sessionIDs: [sessionId],
                 includePendingClarifications: true
             ).contains { $0.clarify?.requestId == clarify.requestId },
-            "The nil resume must not re-persist an unconfirmed clarification card"
+            "An omitted running state must retain an unconfirmed clarification card for the next foreground cycle"
         )
     }
 
@@ -672,14 +672,14 @@ final class SessionPresentationCacheTests: XCTestCase {
         XCTAssertEqual(appState.messages.first?.approval?.status, .pending)
         XCTAssertEqual(appState.turnState, TurnState.running,
                        "A restored pending approval must keep the composer answerable")
-        XCTAssertFalse(
+        XCTAssertTrue(
             cache.merge(
                 [],
                 profile: profile,
                 sessionIDs: [sessionId],
                 includePendingApprovals: true
             ).contains { $0.approval?.sessionId == sessionId },
-            "The nil resume must not re-persist an unconfirmed approval card"
+            "An omitted running state must retain an unconfirmed approval card for the next foreground cycle"
         )
     }
 
@@ -735,7 +735,7 @@ final class SessionPresentationCacheTests: XCTestCase {
         XCTAssertEqual(appState.turnState, TurnState.running)
     }
 
-    func testApplyChatResumePersistsGatewayMessagesWithoutRecachingRestoredCardsWhenRunningIsNil() {
+    func testApplyChatResumePersistsGatewayMessagesAndRetainsRestoredCardsWhenRunningIsNil() {
         let suiteName = "conduit.tests.session-presentation-cache-\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suiteName) else {
             XCTFail("Could not create isolated UserDefaults suite")
@@ -792,11 +792,146 @@ final class SessionPresentationCacheTests: XCTestCase {
             includePendingClarifications: true,
             includePendingApprovals: true
         )
-        XCTAssertFalse(persisted.contains { $0.approval?.sessionId == sessionId },
-                       "A nil running snapshot must not re-persist a restored pending card")
+        XCTAssertTrue(persisted.contains { $0.approval?.sessionId == sessionId },
+                      "An omitted running state must retain a restored pending card")
         XCTAssertEqual(
             cache.merge([gatewayMessage], profile: profile, sessionIDs: [sessionId]).first?.content,
             gatewayMessage.content
+        )
+    }
+
+    func testApplyChatResumeDoesNotRestorePendingCardsWhenRunningIsFalse() {
+        let suiteName = "conduit.tests.session-presentation-settled-\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Could not create isolated UserDefaults suite")
+            return
+        }
+        let cache = SessionPresentationCache(defaults: defaults)
+        let sessionId = "test-apply-resume-settled-\(UUID().uuidString)"
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: { cache.clear() },
+            sessionPresentationCache: cache
+        )
+        let profile = appState.activeProfile
+        let clarify = ClarifyActivity(
+            requestId: "req-settled",
+            question: "Which color?",
+            choices: [ClarifyChoice(label: "Red", value: "red")],
+            status: .pending
+        )
+        cache.save([
+            ChatMessage(
+                id: "clarify-settled",
+                role: .clarify,
+                content: clarify.question,
+                timestamp: "2024-01-01",
+                clarify: clarify
+            )
+        ], profile: profile, sessionIDs: [sessionId])
+        defer {
+            cache.clear()
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        appState.applyChatResume(SessionResumeResult(
+            sessionId: sessionId,
+            messages: [],
+            snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+        ))
+
+        XCTAssertFalse(appState.messages.contains { $0.clarify?.requestId == clarify.requestId })
+        XCTAssertEqual(appState.turnState, TurnState.idle)
+        XCTAssertFalse(
+            cache.merge(
+                [],
+                profile: profile,
+                sessionIDs: [sessionId],
+                includePendingClarifications: true
+            ).contains { $0.clarify?.requestId == clarify.requestId },
+            "An explicitly settled resume must remove the cached pending card"
+        )
+    }
+
+    func testApplyChatResumeSuppressesCachedPendingApprovalWhenGatewayResolvedIt() {
+        let suiteName = "conduit.tests.session-presentation-resolved-\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Could not create isolated UserDefaults suite")
+            return
+        }
+        let cache = SessionPresentationCache(defaults: defaults)
+        let sessionId = "test-apply-resume-resolved-\(UUID().uuidString)"
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: { cache.clear() },
+            sessionPresentationCache: cache
+        )
+        let profile = appState.activeProfile
+        let pendingApproval = ApprovalActivity(
+            sessionId: sessionId,
+            command: "ls",
+            description: "List files",
+            choices: ["once", "deny"],
+            allowPermanent: false,
+            smartDenied: false,
+            status: .pending
+        )
+        cache.save([
+            ChatMessage(
+                id: "approval-\(sessionId)",
+                role: .approval,
+                content: pendingApproval.description,
+                timestamp: "2024-01-01",
+                approval: pendingApproval
+            )
+        ], profile: profile, sessionIDs: [sessionId])
+        let resolvedApproval = ApprovalActivity(
+            sessionId: sessionId,
+            command: pendingApproval.command,
+            description: pendingApproval.description,
+            choices: pendingApproval.choices,
+            allowPermanent: pendingApproval.allowPermanent,
+            smartDenied: pendingApproval.smartDenied,
+            status: .approved,
+            choice: "once"
+        )
+        let gatewayMessage = ChatMessage(
+            id: "approval-\(sessionId)",
+            role: .approval,
+            content: resolvedApproval.description,
+            timestamp: "2024-01-02",
+            approval: resolvedApproval
+        )
+        defer {
+            cache.clear()
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        appState.applyChatResume(SessionResumeResult(
+            sessionId: sessionId,
+            messages: [gatewayMessage],
+            snapshot: SessionRuntimeSnapshot(object: [:])
+        ))
+
+        XCTAssertEqual(
+            appState.messages.filter { $0.approval?.sessionId == sessionId }.count,
+            1,
+            "A resolved gateway approval must replace, not coexist with, the cached pending card"
+        )
+        XCTAssertEqual(
+            appState.messages.first?.approval?.status,
+            ApprovalActivity.Status.approved
+        )
+        XCTAssertFalse(AppState.hasPendingDecision(in: appState.messages))
+        XCTAssertFalse(
+            cache.merge(
+                [],
+                profile: profile,
+                sessionIDs: [sessionId],
+                includePendingApprovals: true
+            ).contains { $0.approval?.status == .pending }
         )
     }
 }
