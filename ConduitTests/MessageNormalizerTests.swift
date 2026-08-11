@@ -107,6 +107,19 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertTrue(sessions.first?.alternateIds.contains("stored-123") == true)
     }
 
+    func testSessionNormalizationDoesNotTreatLoneIDAsVerifiedStoredID() {
+        let sessions = MessageNormalizer.normalizeSessions(
+            .object([
+                "sessions": .array([
+                    .object(["id": .string("ambiguous-123")])
+                ])
+            ]),
+            profile: "default"
+        )
+
+        XCTAssertNil(sessions.first?.storedSessionId)
+    }
+
     func testNotificationRuntimeIDResolvesToStoredSessionID() {
         let session = SessionSummary(
             id: "runtime-123",
@@ -157,8 +170,8 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertNil(service.pendingTarget)
     }
 
-    func testNotificationRetryIsBoundedPerPendingTarget() {
-        let service = PushNotificationService.shared
+    func testFailedNotificationRouteRetriesOnceThenClearsTarget() async {
+        let service = PushNotificationService(retryDelay: .zero)
         service.receiveNotificationPayload([
             "conduit": [
                 "session_id": "runtime-123",
@@ -168,10 +181,18 @@ final class MessageNormalizerTests: XCTestCase {
         guard let target = service.pendingTarget else {
             return XCTFail("Expected the notification target to be pending")
         }
-        defer { service.clearPendingTarget(target) }
 
-        XCTAssertTrue(service.retryPendingTarget(target))
-        XCTAssertFalse(service.retryPendingTarget(target))
+        let initialAttempt = service.navigationAttempt
+        XCTAssertTrue(service.handleFailedNotificationRoute(target))
+        try? await Task.sleep(for: .milliseconds(10))
+        XCTAssertEqual(service.navigationAttempt, initialAttempt + 1)
+        XCTAssertEqual(service.pendingTarget, target)
+
+        XCTAssertFalse(service.handleFailedNotificationRoute(target))
+        XCTAssertNil(service.pendingTarget)
+        let terminalAttempt = service.navigationAttempt
+        try? await Task.sleep(for: .milliseconds(10))
+        XCTAssertEqual(service.navigationAttempt, terminalAttempt)
     }
 
     func testSessionNormalizationDoesNotInventOwnershipWithoutFallback() {

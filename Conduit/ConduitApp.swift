@@ -74,8 +74,8 @@ struct ConduitApp: App {
                     guard appState.isConnected, let target = notifications.pendingTarget else { return }
                     if await appState.openNotificationTarget(target) {
                         notifications.clearPendingTarget(target)
-                    } else if !notifications.retryPendingTarget(target) {
-                        notifications.clearPendingTarget(target)
+                    } else {
+                        notifications.handleFailedNotificationRoute(target)
                     }
                 }
                 .task(id: voiceIntentRouteKey) {

@@ -78,6 +78,7 @@ final class PushNotificationService: ObservableObject {
     private var navigationRetryTask: Task<Void, Never>?
     private var pendingRetryCount = 0
     private let maxNotificationRetriesPerTarget = 1
+    private let retryDelay: Duration
 
     var isEnabled: Bool { registration != nil && preferences.enabled }
     var statusText: String {
@@ -87,7 +88,8 @@ final class PushNotificationService: ObservableObject {
         return "Off"
     }
 
-    private init() {
+    init(retryDelay: Duration = .seconds(1.5)) {
+        self.retryDelay = retryDelay
         if let data = KeychainHelper.loadPushRegistration(),
            let saved = try? JSONDecoder().decode(StoredRegistration.self, from: data) {
             registration = saved
@@ -190,6 +192,7 @@ final class PushNotificationService: ObservableObject {
     func receiveNotificationPayload(_ userInfo: [AnyHashable: Any]) {
         guard let target = notificationTarget(from: userInfo) else { return }
         navigationRetryTask?.cancel()
+        navigationRetryTask = nil
         pendingTarget = target
         pendingRetryCount = 0
         navigationAttempt += 1
@@ -204,15 +207,21 @@ final class PushNotificationService: ObservableObject {
     }
 
     @discardableResult
-    func retryPendingTarget(_ target: ConduitNotificationTarget) -> Bool {
+    func handleFailedNotificationRoute(_ target: ConduitNotificationTarget) -> Bool {
         guard pendingTarget == target,
-              pendingRetryCount < maxNotificationRetriesPerTarget else { return false }
+              pendingRetryCount < maxNotificationRetriesPerTarget else {
+            clearPendingTarget(target)
+            return false
+        }
         pendingRetryCount += 1
         navigationRetryTask?.cancel()
+        let retryDelay = self.retryDelay
         navigationRetryTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(1.5))
+            try? await Task.sleep(for: retryDelay)
             guard !Task.isCancelled else { return }
-            self?.navigationAttempt += 1
+            guard let self else { return }
+            self.navigationRetryTask = nil
+            self.navigationAttempt += 1
         }
         return true
     }
