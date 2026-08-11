@@ -86,7 +86,7 @@ struct ChatView: View {
                                             key: ChatRenderedScrollTargetsPreferenceKey.self,
                                             value: renderedScrollScope.map {
                                                 ChatRenderedScrollTargets.row(
-                                                    semanticID: target.semanticID,
+                                                    semanticID: target.id,
                                                     scope: $0
                                                 )
                                             } ?? ChatRenderedScrollTargets()
@@ -185,7 +185,7 @@ struct ChatView: View {
                             }
                             let followsLatest = followsLatestState.wrappedValue
                             let target = targetCacheState.wrappedValue.targets.first {
-                                $0.semanticID == topVisibleChatIDState.wrappedValue
+                                $0.id == topVisibleChatIDState.wrappedValue
                             }
                             guard followsLatest || target != nil else { return nil }
                             let snapshot = ChatScrollSnapshot(
@@ -432,7 +432,7 @@ struct ChatView: View {
 
     private func currentChatViewportSnapshot() -> ChatScrollSnapshot? {
         let anchorTarget = chatMessageScrollTargetCache.targets.first {
-            $0.semanticID == topVisibleChatID
+            $0.id == topVisibleChatID
         }
         guard followsLatest || anchorTarget != nil else { return nil }
         return ChatScrollSnapshot(
@@ -510,12 +510,7 @@ struct ChatView: View {
                         proxy.scrollTo(bottomAnchor, anchor: .bottom)
                     case .anchor(let anchor):
                         followsLatest = false
-                        // Resolve semantic anchor ID to the stable source
-                        // message ID used for row identity (.id(target.id)).
-                        let scrollAnchor = chatMessageScrollTargetCache.targets.first {
-                            $0.semanticID == anchor
-                        }?.id ?? anchor
-                        proxy.scrollTo(scrollAnchor, anchor: .top)
+                        proxy.scrollTo(anchor, anchor: .top)
                     }
                 }
             case .complete:
@@ -550,10 +545,21 @@ struct ChatView: View {
         case .latest:
             return .latest
         case .snapshot(let snapshot):
-            return ChatResumeViewportResolver.destination(
+            // The resolver returns semantic anchor IDs, but rows are now
+            // keyed by message.id (.id(target.id)). Resolve the semantic
+            // anchor to its source message.id so the entire restoration
+            // state machine operates in one identity space.
+            let resolved = ChatResumeViewportResolver.destination(
                 for: snapshot,
                 availableTargets: ChatScrollTargetAvailability(targets: targets)
             )
+            switch resolved {
+            case .latest:
+                return .latest
+            case .anchor(let semanticAnchor):
+                let sourceAnchor = targets.first { $0.semanticID == semanticAnchor }?.id ?? semanticAnchor
+                return .anchor(sourceAnchor)
+            }
         }
     }
 

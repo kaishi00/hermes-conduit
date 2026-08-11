@@ -2020,6 +2020,10 @@ final class AppState: ObservableObject {
         ) else { return }
         guard let sessionKey = activeChatScrollSessionIdentity.canonicalSessionKey,
               let request = chatResumeCoordinator.reconciliationSettled(sessionKey: sessionKey) else {
+            // Reconciliation settled but no request was published (key mismatch
+            // or already-pending restoration). Clear the freeze so viewport
+            // recording resumes — otherwise recordViewport stays a no-op.
+            chatResumeCoordinator.abandonPendingAutomaticSync()
             return
         }
         chatResumeRestorationRequest = request
