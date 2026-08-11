@@ -127,8 +127,20 @@ final class MessageNormalizerTests: XCTestCase {
         )
     }
 
-    func testFailedNotificationRouteDiscardsPendingTarget() {
+    func testNotificationResolverTrimsUnknownRuntimeID() {
+        XCTAssertEqual(
+            NotificationSessionResolver.resumableSessionID(for: "  runtime-123  ", in: []),
+            "runtime-123"
+        )
+    }
+
+    func testFailedNotificationRouteClearsPendingTarget() {
         let service = PushNotificationService.shared
+        defer {
+            if let pendingTarget = service.pendingTarget {
+                service.clearPendingTarget(pendingTarget)
+            }
+        }
         service.receiveNotificationPayload([
             "conduit": [
                 "session_id": "runtime-123",
@@ -140,9 +152,26 @@ final class MessageNormalizerTests: XCTestCase {
             return XCTFail("Expected the notification target to be pending")
         }
 
-        service.discardPendingTarget(target)
+        service.clearPendingTarget(target)
 
         XCTAssertNil(service.pendingTarget)
+    }
+
+    func testNotificationRetryIsBoundedPerPendingTarget() {
+        let service = PushNotificationService.shared
+        service.receiveNotificationPayload([
+            "conduit": [
+                "session_id": "runtime-123",
+                "type": "response_ready"
+            ] as [String: Any]
+        ])
+        guard let target = service.pendingTarget else {
+            return XCTFail("Expected the notification target to be pending")
+        }
+        defer { service.clearPendingTarget(target) }
+
+        XCTAssertTrue(service.retryPendingTarget(target))
+        XCTAssertFalse(service.retryPendingTarget(target))
     }
 
     func testSessionNormalizationDoesNotInventOwnershipWithoutFallback() {

@@ -19,11 +19,11 @@ enum NotificationSessionResolver {
         in sessions: [SessionSummary]
     ) -> String {
         let normalizedID = notificationSessionID.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalizedID.isEmpty else { return notificationSessionID }
+        guard !normalizedID.isEmpty else { return normalizedID }
         guard let session = sessions.first(where: { session in
             session.id == normalizedID || session.alternateIds.contains(normalizedID)
         }) else {
-            return notificationSessionID
+            return normalizedID
         }
         return session.storedSessionId ?? session.id
     }
@@ -75,6 +75,9 @@ final class PushNotificationService: ObservableObject {
     private var registration: StoredRegistration?
     private var deviceToken: String?
     private var tokenContinuation: CheckedContinuation<String, Error>?
+    private var navigationRetryTask: Task<Void, Never>?
+    private var pendingRetryCount = 0
+    private let maxNotificationRetriesPerTarget = 1
 
     var isEnabled: Bool { registration != nil && preferences.enabled }
     var statusText: String {
@@ -186,17 +189,32 @@ final class PushNotificationService: ObservableObject {
 
     func receiveNotificationPayload(_ userInfo: [AnyHashable: Any]) {
         guard let target = notificationTarget(from: userInfo) else { return }
+        navigationRetryTask?.cancel()
         pendingTarget = target
+        pendingRetryCount = 0
         navigationAttempt += 1
     }
 
     func clearPendingTarget(_ target: ConduitNotificationTarget) {
         guard pendingTarget == target else { return }
+        navigationRetryTask?.cancel()
+        navigationRetryTask = nil
         pendingTarget = nil
+        pendingRetryCount = 0
     }
 
-    func discardPendingTarget(_ target: ConduitNotificationTarget) {
-        clearPendingTarget(target)
+    @discardableResult
+    func retryPendingTarget(_ target: ConduitNotificationTarget) -> Bool {
+        guard pendingTarget == target,
+              pendingRetryCount < maxNotificationRetriesPerTarget else { return false }
+        pendingRetryCount += 1
+        navigationRetryTask?.cancel()
+        navigationRetryTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(1.5))
+            guard !Task.isCancelled else { return }
+            self?.navigationAttempt += 1
+        }
+        return true
     }
 
     private func notificationTarget(from userInfo: [AnyHashable: Any]) -> ConduitNotificationTarget? {

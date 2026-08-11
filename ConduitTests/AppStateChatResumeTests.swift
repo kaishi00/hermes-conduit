@@ -260,6 +260,24 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(harness.appState.messages, secondMessages)
     }
 
+    func testFailedNotificationOpenReleasesNotificationBusyState() async {
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in throw ControlledLifecycleError.failed }
+            )
+        )
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        harness.appState.connection = connection
+        harness.appState.client = HermesClient(connection: connection, profile: "default")
+
+        let opened = await harness.appState.openNotificationTarget(
+            ConduitNotificationTarget(profile: nil, sessionId: "stored-a", type: "response_ready")
+        )
+
+        XCTAssertFalse(opened)
+        XCTAssertFalse(harness.appState.isOpeningNotificationSession)
+    }
+
     func testStaleSameTokenSyncCannotSettleNewerOpeningReconciliation() async {
         let staleCatalogGate = ControlledSuspension()
         let newerOpenGate = ControlledSuspension()
