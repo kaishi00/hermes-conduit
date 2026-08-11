@@ -306,6 +306,12 @@ final class SessionPresentationCache {
             if merged.attachments?.isEmpty != false {
                 merged.attachments = prior.attachments
             }
+            if merged.clarify == nil {
+                merged.clarify = prior.clarify
+            }
+            if merged.approval == nil {
+                merged.approval = prior.approval
+            }
             return merged
         }
     }

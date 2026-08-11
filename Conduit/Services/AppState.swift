@@ -2395,29 +2395,35 @@ final class AppState: ObservableObject {
             for: result.sessionId,
             fallbackSessionId: reconciliation?.requestedSessionId
         )
-        // Always restore pending clarifications and approvals from the
-        // presentation cache.  The gateway's `session.resume` response may
-        // omit `running: true` (returning nil) even while a turn is active,
-        // which previously caused user-visible clarify/approval cards to be
-        // silently dropped on foreground recovery.
-        let restorePendingCards = result.snapshot.running != false
+        // Only restore pending clarifications and approvals when the gateway
+        // explicitly confirms the turn is still active (`running == true`).
+        // When `running` is `nil` (omitted) the turn may have already
+        // completed while the app was backgrounded; restoring cached cards
+        // in that case risks displaying stale, answerable UI for an
+        // already-resolved request.
+        let restorePendingCards = result.snapshot.running == true
+        let sessionIDs = [result.sessionId, reconciliation?.requestedSessionId].compactMap { $0 }
         let restored = sessionPresentationCache.merge(
             result.messages,
             profile: activeProfile,
-            sessionIDs: [result.sessionId, reconciliation?.requestedSessionId].compactMap { $0 },
+            sessionIDs: sessionIDs,
             includePendingClarifications: restorePendingCards,
             includePendingApprovals: restorePendingCards
         )
         messages = mergeCachedReviews(into: restored, sessionId: result.sessionId)
         noteChatViewportTranscriptReplacement()
-        // Save only the gateway-provided messages to the cache, not restored
-        // cards.  This preserves timestamps and tool previews for server
-        // messages without re-persisting potentially stale pending cards.
-        sessionPresentationCache.save(
-            result.messages,
-            profile: activeProfile,
-            sessionIDs: [result.sessionId, reconciliation?.requestedSessionId].compactMap { $0 }
-        )
+        // When `running == true`, save the merged messages (including any
+        // restored pending cards) so they survive in the cache if the user
+        // backgrounds again before the next flush.  When `running` is `nil`
+        // or `false`, skip the save to avoid dropping restored cards or
+        // overwriting the cache with a compact history that omits them.
+        if result.snapshot.running == true {
+            sessionPresentationCache.save(
+                messages,
+                profile: activeProfile,
+                sessionIDs: sessionIDs
+            )
+        }
         scheduleSecondaryProfileTitleRecovery(
             sessionId: result.sessionId,
             messages: messages
@@ -2437,14 +2443,10 @@ final class AppState: ObservableObject {
         applyRuntime(result.snapshot)
 
         // When `running` is `nil`, derive the turn state from the live
-        // projection or restored pending cards rather than declaring the
-        // gateway unsupported.  A nil value can mean the gateway omits the
-        // field while still being turn-state-capable.
-        let hasRestoredPendingCards = messages.contains {
-            ($0.clarify?.status == .pending || $0.clarify?.status == .submitting)
-                || ($0.approval?.status == .pending || $0.approval?.status == .submitting)
-        }
-        if result.snapshot.running == nil && (result.snapshot.hasLiveProjection || hasRestoredPendingCards) {
+        // projection alone.  A live projection is authoritative evidence
+        // that the gateway is actively streaming; mere cached card presence
+        // is not, because the turn may have completed while backgrounded.
+        if result.snapshot.running == nil && result.snapshot.hasLiveProjection {
             turnState = .running
         } else if TurnState.fromGatewayRunning(result.snapshot.running) == .unsupportedGateway {
             turnState = .unsupportedGateway
@@ -2454,6 +2456,15 @@ final class AppState: ObservableObject {
             turnState = TurnState.fromGatewayRunning(result.snapshot.running)
         }
         return true
+    }
+
+    /// Testable helper: derives whether pending clarify/approval cards should
+    /// be restored from the presentation cache on resume.  Only `true` when
+    /// the gateway explicitly confirms the turn is still active; `nil`
+    /// (omitted) is treated as "don't restore" to avoid displaying stale
+    /// cards for a turn that may have completed while backgrounded.
+    static func shouldRestorePendingCards(running: Bool?) -> Bool {
+        running == true
     }
 
     /// `session.resume.inflight` is a cumulative projection on some gateways.

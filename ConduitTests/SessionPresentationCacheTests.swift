@@ -325,7 +325,7 @@ final class SessionPresentationCacheTests: XCTestCase {
                        "Answered clarification should not be restored as pending")
     }
 
-    func testMergeRestoresClarificationWhenRunningIsNil() {
+    func testMergeDoesNotRestoreClarificationWhenRunningIsNil() {
         let cache = SessionPresentationCache.shared
         let sessionId = "test-merge-clarify-nil-\(UUID().uuidString)"
         let profile = "test"
@@ -348,17 +348,20 @@ final class SessionPresentationCacheTests: XCTestCase {
         cache.save(savedMessages, profile: profile, sessionIDs: [sessionId])
         defer { cache.clear(profile: profile) }
 
-        // running == nil (omitted by gateway) should still restore
+        // running == nil (omitted by gateway) should NOT restore because the
+        // turn may have completed while backgrounded — restoring would risk
+        // displaying a stale, answerable card for an already-resolved request.
+        let shouldRestore = AppState.shouldRestorePendingCards(running: nil)
         let gatewayMessages: [ChatMessage] = []
         let merged = cache.merge(
             gatewayMessages,
             profile: profile,
             sessionIDs: [sessionId],
-            includePendingClarifications: true
+            includePendingClarifications: shouldRestore
         )
 
-        XCTAssertTrue(merged.contains { $0.role == .clarify },
-                      "Clarification should be restored when running state is omitted")
+        XCTAssertFalse(merged.contains { $0.role == .clarify },
+                       "Clarification should not be restored when running state is omitted (nil)")
     }
 
     // MARK: - Merge: pending approval restoration
@@ -440,5 +443,127 @@ final class SessionPresentationCacheTests: XCTestCase {
 
         XCTAssertFalse(merged.contains { $0.role == .approval },
                        "Approval should not be restored when includePendingApprovals is false")
+    }
+
+    // MARK: - restorePendingCards derivation
+
+    func testShouldRestorePendingCardsWhenRunningIsTrue() {
+        XCTAssertTrue(AppState.shouldRestorePendingCards(running: true),
+                      "Must restore pending cards when gateway confirms turn is active")
+    }
+
+    func testShouldNotRestorePendingCardsWhenRunningIsFalse() {
+        XCTAssertFalse(AppState.shouldRestorePendingCards(running: false),
+                       "Must not restore pending cards when gateway reports turn is inactive")
+    }
+
+    func testShouldNotRestorePendingCardsWhenRunningIsNil() {
+        // The gateway may omit `running` (nil) even while a turn is active,
+        // but the turn may also have completed while the app was backgrounded.
+        // Restoring cached cards in the nil case risks displaying stale,
+        // answerable UI for an already-resolved request.
+        XCTAssertFalse(AppState.shouldRestorePendingCards(running: nil),
+                       "Must not restore pending cards when gateway omits running state")
+    }
+
+    // MARK: - Save preserves restored pending cards
+
+    func testSavePreservesRestoredClarificationCard() {
+        let cache = SessionPresentationCache.shared
+        let sessionId = "test-save-clarify-\(UUID().uuidString)"
+        let profile = "test"
+
+        let clarify = ClarifyActivity(
+            requestId: "req-save",
+            question: "Which?",
+            choices: [ClarifyChoice(label: "A", value: "a")],
+            status: .pending
+        )
+        let savedMessages = [
+            ChatMessage(
+                id: "clarify-req-save",
+                role: .clarify,
+                content: "Which?",
+                timestamp: "2024-01-01T10:00:00Z",
+                clarify: clarify
+            ),
+        ]
+        cache.save(savedMessages, profile: profile, sessionIDs: [sessionId])
+        defer { cache.clear(profile: profile) }
+
+        // Merge restores the pending card
+        let gatewayMessages: [ChatMessage] = []
+        let merged = cache.merge(
+            gatewayMessages,
+            profile: profile,
+            sessionIDs: [sessionId],
+            includePendingClarifications: true
+        )
+        XCTAssertTrue(merged.contains { $0.role == .clarify },
+                      "Card should be restored from cache")
+
+        // Save the merged result (as applyResume does when running == true)
+        cache.save(merged, profile: profile, sessionIDs: [sessionId])
+
+        // Re-merge: the card should survive because save persisted it
+        let remerged = cache.merge(
+            gatewayMessages,
+            profile: profile,
+            sessionIDs: [sessionId],
+            includePendingClarifications: true
+        )
+        XCTAssertTrue(remerged.contains { $0.role == .clarify },
+                      "Restored clarification card must survive a save-then-merge cycle")
+    }
+
+    func testSavePreservesRestoredApprovalCard() {
+        let cache = SessionPresentationCache.shared
+        let sessionId = "test-save-approval-\(UUID().uuidString)"
+        let profile = "test"
+
+        let approval = ApprovalActivity(
+            sessionId: sessionId,
+            command: "ls",
+            description: "List files",
+            choices: ["once", "session", "always", "deny"],
+            allowPermanent: true,
+            smartDenied: false,
+            status: .pending
+        )
+        let savedMessages = [
+            ChatMessage(
+                id: "approval-save",
+                role: .approval,
+                content: "List files",
+                timestamp: "2024-01-01T10:00:00Z",
+                approval: approval
+            ),
+        ]
+        cache.save(savedMessages, profile: profile, sessionIDs: [sessionId])
+        defer { cache.clear(profile: profile) }
+
+        // Merge restores the pending card
+        let gatewayMessages: [ChatMessage] = []
+        let merged = cache.merge(
+            gatewayMessages,
+            profile: profile,
+            sessionIDs: [sessionId],
+            includePendingApprovals: true
+        )
+        XCTAssertTrue(merged.contains { $0.role == .approval },
+                      "Card should be restored from cache")
+
+        // Save the merged result (as applyResume does when running == true)
+        cache.save(merged, profile: profile, sessionIDs: [sessionId])
+
+        // Re-merge: the card should survive
+        let remerged = cache.merge(
+            gatewayMessages,
+            profile: profile,
+            sessionIDs: [sessionId],
+            includePendingApprovals: true
+        )
+        XCTAssertTrue(remerged.contains { $0.role == .approval },
+                      "Restored approval card must survive a save-then-merge cycle")
     }
 }
