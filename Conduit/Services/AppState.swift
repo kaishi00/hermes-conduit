@@ -1676,11 +1676,13 @@ final class AppState: ObservableObject {
     }
 
     /// Removes the dashboard origin's cookies from the WebKit default data
-    /// store and the shared Foundation cookie store. The WebKit store can only
-    /// be mutated asynchronously, so this is dispatched as a background task;
-    /// the synchronous tear-down in `disconnect()` completes immediately.
+    /// store and the shared Foundation cookie store. The Foundation store is
+    /// cleared synchronously first so no rapid reconnect can reuse the native
+    /// session cookie; the WebKit store can only be mutated asynchronously, so
+    /// it is dispatched as a background task.
     private func clearDashboardWebSession(for dashboardBaseURL: String?) {
         guard let dashboardBaseURL else { return }
+        DashboardCookiePersistence.clearNativeCookies(for: dashboardBaseURL)
         Task { @MainActor in
             if let url = URL(string: dashboardBaseURL) {
                 await DashboardCookiePersistence.clear(
@@ -1688,7 +1690,6 @@ final class AppState: ObservableObject {
                     for: url
                 )
             }
-            DashboardCookiePersistence.clearNativeCookies(for: dashboardBaseURL)
         }
     }
 

@@ -23,8 +23,8 @@ final class DashboardCookieClearingTests: XCTestCase {
         let dashboardHost = "conduit-clear-dashboard.example"
         let otherHost = "conduit-clear-other.example"
 
-        let dashboardCookie = cookie(name: "session", value: "dash", domain: dashboardHost)!
-        let otherCookie = cookie(name: "session", value: "other", domain: otherHost)!
+        let dashboardCookie = try XCTUnwrap(cookie(name: "session", value: "dash", domain: dashboardHost))
+        let otherCookie = try XCTUnwrap(cookie(name: "session", value: "other", domain: otherHost))
         storage.setCookie(dashboardCookie)
         storage.setCookie(otherCookie)
         defer {
@@ -36,11 +36,11 @@ final class DashboardCookieClearingTests: XCTestCase {
 
         let remaining = storage.cookies ?? []
         XCTAssertFalse(
-            remaining.contains { $0.domain?.lowercased().contains(dashboardHost) ?? false },
+            remaining.contains { $0.domain.lowercased().contains(dashboardHost) },
             "Dashboard-origin cookie should have been removed by clearNativeCookies."
         )
         XCTAssertTrue(
-            remaining.contains { $0.domain?.lowercased().contains(otherHost) ?? false },
+            remaining.contains { $0.domain.lowercased().contains(otherHost) },
             "Unrelated origin's cookie must survive an origin-scoped clear."
         )
     }
@@ -54,8 +54,8 @@ final class DashboardCookieClearingTests: XCTestCase {
         let dashboardHost = "conduit-subdomain.example"
         let siblingHost = "evil-\(dashboardHost)" // shares suffix, not a subdomain
 
-        let dashboardCookie = cookie(name: "session", value: "dash", domain: dashboardHost)!
-        let siblingCookie = cookie(name: "session", value: "sibling", domain: siblingHost)!
+        let dashboardCookie = try XCTUnwrap(cookie(name: "session", value: "dash", domain: dashboardHost))
+        let siblingCookie = try XCTUnwrap(cookie(name: "session", value: "sibling", domain: siblingHost))
         storage.setCookie(dashboardCookie)
         storage.setCookie(siblingCookie)
         defer {
@@ -67,7 +67,7 @@ final class DashboardCookieClearingTests: XCTestCase {
 
         let remaining = storage.cookies ?? []
         XCTAssertTrue(
-            remaining.contains { $0.domain?.lowercased() == siblingHost },
+            remaining.contains { $0.domain.lowercased() == siblingHost },
             "A sibling host that shares only a textual suffix must survive clearing."
         )
     }
@@ -75,14 +75,14 @@ final class DashboardCookieClearingTests: XCTestCase {
     func testClearNativeCookiesNoopsForUnknownOrigin() throws {
         let storage = HTTPCookieStorage.shared
         let host = "conduit-noop.example"
-        let retained = cookie(name: "session", value: "keep", domain: host)!
+        let retained = try XCTUnwrap(cookie(name: "session", value: "keep", domain: host))
         storage.setCookie(retained)
         defer { storage.deleteCookie(retained) }
 
         DashboardCookiePersistence.clearNativeCookies(for: "https://unrelated-host.example")
 
         XCTAssertTrue(
-            (storage.cookies ?? []).contains { $0.domain?.lowercased() == host },
+            (storage.cookies ?? []).contains { $0.domain.lowercased() == host },
             "Clearing an unrelated origin must leave all other cookies intact."
         )
     }
