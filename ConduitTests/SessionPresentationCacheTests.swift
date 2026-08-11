@@ -568,10 +568,10 @@ final class SessionPresentationCacheTests: XCTestCase {
 
     // MARK: - AppState resume integration
 
-    func testApplyResumeRestoresPendingClarificationWhenRunningIsNil() {
+    func testApplyChatResumeRestoresPendingClarificationWhenRunningIsNil() {
         let cache = SessionPresentationCache.shared
         let sessionId = "test-apply-resume-clarify-\(UUID().uuidString)"
-        let appState = AppState(restoreSavedConnection: false)
+        let appState = AppState(loadSavedConnection: false)
         let profile = appState.activeProfile
         let clarify = ClarifyActivity(
             requestId: "req-apply-resume",
@@ -590,7 +590,7 @@ final class SessionPresentationCacheTests: XCTestCase {
         ], profile: profile, sessionIDs: [sessionId])
         defer { cache.clear(profile: profile) }
 
-        appState.applyResume(SessionResumeResult(
+        appState.applyChatResume(SessionResumeResult(
             sessionId: sessionId,
             messages: [],
             snapshot: SessionRuntimeSnapshot(object: [:])
@@ -598,7 +598,7 @@ final class SessionPresentationCacheTests: XCTestCase {
 
         XCTAssertEqual(appState.messages.first?.clarify?.requestId, clarify.requestId)
         XCTAssertEqual(appState.messages.first?.clarify?.status, .pending)
-        XCTAssertEqual(appState.turnState, .running,
+        XCTAssertEqual(appState.turnState, TurnState.running,
                        "A restored pending clarification must keep the composer answerable")
         XCTAssertFalse(
             cache.merge(
@@ -611,10 +611,10 @@ final class SessionPresentationCacheTests: XCTestCase {
         )
     }
 
-    func testApplyResumeRestoresPendingApprovalWhenRunningIsNil() {
+    func testApplyChatResumeRestoresPendingApprovalWhenRunningIsNil() {
         let cache = SessionPresentationCache.shared
         let sessionId = "test-apply-resume-approval-\(UUID().uuidString)"
-        let appState = AppState(restoreSavedConnection: false)
+        let appState = AppState(loadSavedConnection: false)
         let profile = appState.activeProfile
         let approval = ApprovalActivity(
             sessionId: sessionId,
@@ -636,7 +636,7 @@ final class SessionPresentationCacheTests: XCTestCase {
         ], profile: profile, sessionIDs: [sessionId])
         defer { cache.clear(profile: profile) }
 
-        appState.applyResume(SessionResumeResult(
+        appState.applyChatResume(SessionResumeResult(
             sessionId: sessionId,
             messages: [],
             snapshot: SessionRuntimeSnapshot(object: [:])
@@ -644,7 +644,7 @@ final class SessionPresentationCacheTests: XCTestCase {
 
         XCTAssertEqual(appState.messages.first?.approval?.sessionId, sessionId)
         XCTAssertEqual(appState.messages.first?.approval?.status, .pending)
-        XCTAssertEqual(appState.turnState, .running,
+        XCTAssertEqual(appState.turnState, TurnState.running,
                        "A restored pending approval must keep the composer answerable")
         XCTAssertFalse(
             cache.merge(
@@ -657,10 +657,10 @@ final class SessionPresentationCacheTests: XCTestCase {
         )
     }
 
-    func testApplyResumePersistsGatewayMessagesWithoutRecachingRestoredCardsWhenRunningIsNil() {
+    func testApplyChatResumePersistsGatewayMessagesWithoutRecachingRestoredCardsWhenRunningIsNil() {
         let cache = SessionPresentationCache.shared
         let sessionId = "test-apply-resume-cache-\(UUID().uuidString)"
-        let appState = AppState(restoreSavedConnection: false)
+        let appState = AppState(loadSavedConnection: false)
         let profile = appState.activeProfile
         let approval = ApprovalActivity(
             sessionId: sessionId,
@@ -688,7 +688,7 @@ final class SessionPresentationCacheTests: XCTestCase {
             content: "Fresh transcript row",
             timestamp: ""
         )
-        appState.applyResume(SessionResumeResult(
+        appState.applyChatResume(SessionResumeResult(
             sessionId: sessionId,
             messages: [gatewayMessage],
             snapshot: SessionRuntimeSnapshot(object: [:])
