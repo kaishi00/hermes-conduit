@@ -58,9 +58,16 @@ If testing finds a bug:
    git cherry-pick -x <merged-fix-commit>
    ```
 
-   If the fix PR was squash-merged, use the resulting squash commit SHA.
+   If the fix PR was squash-merged, use the resulting squash commit SHA. Before cherry-picking, check whether an equivalent fix is already present on the release branch; if it is, skip the cherry-pick to avoid duplicate commits or an unnecessary conflict.
 
-4. Increment `CURRENT_PROJECT_VERSION` for the next TestFlight upload, regenerate if needed, and push the release branch.
+4. Increment `CURRENT_PROJECT_VERSION` for the next TestFlight upload, regenerate if needed, then commit and push the release metadata:
+
+   ```bash
+   git add project.yml
+   git commit -m "Bump build number to <build-number> for TestFlight"
+   git push origin release/<marketing-version>
+   ```
+
 5. Run the full test suite and repeat TestFlight testing.
 
 The fix is merged into `main` first so ongoing development receives it even if the release candidate is later abandoned. If the cherry-pick conflicts, resolve the equivalent change on the release branch, run the full tests, and record the relationship in the release PR.
@@ -70,17 +77,18 @@ The fix is merged into `main` first so ongoing development receives it even if t
 When the release candidate passes final QA:
 
 1. Stop adding unrelated changes to the release branch.
-2. Record the exact candidate commit:
+2. Pin and record the exact candidate commit:
 
    ```bash
-   git rev-parse HEAD
+   RELEASE_SHA=$(git rev-parse HEAD)
+   echo "$RELEASE_SHA"
    ```
 
 3. Create an immutable tag containing both the App Store version and build number:
 
    ```bash
    git tag -a ios/v<marketing-version>-build-<build-number> \
-     -m "iOS <marketing-version> build <build-number>" HEAD
+     -m "iOS <marketing-version> build <build-number>" "$RELEASE_SHA"
    git push origin ios/v<marketing-version>-build-<build-number>
    ```
 

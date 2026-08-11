@@ -72,12 +72,14 @@ open Conduit.xcodeproj
 
 Select your team in Signing & Capabilities, then build and run on your device.
 
-For the TestFlight and App Store release process, see [the iOS release workflow](docs/RELEASE_WORKFLOW.md).
-
 **Requirements:**
 - Xcode 16 or later
 - iOS 17 SDK
 - [xcodegen](https://github.com/yonaskolb/XcodeGen)
+
+## Releasing
+
+See [the iOS release workflow](docs/RELEASE_WORKFLOW.md) for the TestFlight and App Store release process.
 
 ## Architecture
 
