@@ -4,7 +4,7 @@
 
 **Goal:** Make Conduit fall through to its existing WebView authentication flow when Hermes provider discovery returns a redirect, including the Cloudflare Access `302` reported in issue #37.
 
-**Architecture:** Keep `LoginView` unchanged and reuse its existing empty-provider fallback. Add a small injectable `URLSessionConfiguration` seam to `NativeAuthClient` so tests can exercise real response classification with the production redirect delegate, then classify `3xx` provider responses as an empty provider list while retaining errors for `4xx`/`5xx` responses. No Cloudflare-only mode or Hermes Desktop changes.
+**Architecture:** Keep `LoginView` unchanged and reuse its existing empty-provider fallback. Add a small injectable `URLSessionConfiguration` seam to `NativeAuthClient` so tests can exercise real response classification with the production redirect delegate, then classify actual HTTP redirect responses (`301`, `302`, `303`, `307`, and `308`) as an empty provider list while retaining errors for other non-2xx responses. No Cloudflare-only mode or Hermes Desktop changes.
 
 **Tech Stack:** Swift 5.9, Foundation `URLSession`, XCTest, XcodeGen, Xcodebuild.
 
@@ -57,7 +57,7 @@ Expected result before production changes: the test fails because `authProviders
 
 **Interfaces:**
 - Consumes: The failing test's registered protocol and the existing production session construction.
-- Produces: `NativeAuthClient.init(baseURL:cloudflareAccess:sessionConfiguration:)` with a default `nil` configuration for production, and `authProviders()` returning `[]` for `300...399` responses.
+- Produces: `NativeAuthClient.init(baseURL:cloudflareAccess:sessionConfiguration:)` with a default `nil` configuration for production, and `authProviders()` returning `[]` for known HTTP redirect responses.
 
 - [ ] **Step 1: Add the optional session injection without changing production defaults**
 
@@ -78,8 +78,11 @@ Use the supplied configuration when non-`nil`, apply the existing cookie setting
 Immediately after the `HTTPURLResponse` guard in `authProviders()`, add:
 
 ```swift
-if (300...399).contains(http.statusCode) {
+switch http.statusCode {
+case 301, 302, 303, 307, 308:
     return []
+default:
+    break
 }
 ```
 

@@ -65,8 +65,11 @@ struct NativeAuthClient {
         guard let http = response as? HTTPURLResponse else {
             throw AuthClientError.providerDiscoveryFailed("No response")
         }
-        if (300...399).contains(http.statusCode) {
+        switch http.statusCode {
+        case 301, 302, 303, 307, 308:
             return []
+        default:
+            break
         }
         guard (200...299).contains(http.statusCode) else {
             throw AuthClientError.providerDiscoveryFailed(parseError(data) ?? "HTTP \(http.statusCode)")

@@ -10,7 +10,7 @@ This change covers only the provider-discovery redirect fallback and regression 
 
 ## Current behavior
 
-`LoginView.connect()` calls `NativeAuthClient.authProviders()` before deciding whether to use native password login or the WebView. `NativeAuthClient` rejects every response outside `200...299`, so a Cloudflare Access `3xx` response becomes `providerDiscoveryFailed` and prevents the WebView fallback from opening.
+`LoginView.connect()` calls `NativeAuthClient.authProviders()` before deciding whether to use native password login or the WebView. `NativeAuthClient` rejects every response outside `200...299`, so a Cloudflare Access redirect such as `302` becomes `providerDiscoveryFailed` and prevents the WebView fallback from opening.
 
 ## Design
 
@@ -20,7 +20,7 @@ The redirect handling will be covered by focused tests for provider discovery, a
 
 ## Acceptance criteria
 
-1. A `3xx` response from `/api/auth/providers` does not produce `Could not check dashboard sign-in options: HTTP 302`.
+1. A Cloudflare Access `302` from `/api/auth/providers` does not produce `Could not check dashboard sign-in options: HTTP 302`.
 2. The caller receives the existing empty-provider signal and opens the WebView path.
 3. `4xx` and `5xx` provider responses still produce `providerDiscoveryFailed`.
 4. A successful provider response still exposes its providers, including password-capable providers.

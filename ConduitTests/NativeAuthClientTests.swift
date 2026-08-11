@@ -12,6 +12,30 @@ final class NativeAuthClientTests: XCTestCase {
         let providers = try await client.authProviders()
 
         XCTAssertTrue(providers.isEmpty)
+        XCTAssertEqual(NativeAuthURLProtocol.responseStatusCode(for: "redirect.example"), 302)
+        XCTAssertEqual(
+            NativeAuthURLProtocol.responseHeader(for: "redirect.example", name: "Location"),
+            "https://tenant.cloudflareaccess.com/cdn-cgi/access/login"
+        )
+        XCTAssertEqual(NativeAuthURLProtocol.requestCount(for: "redirect.example"), 1)
+        XCTAssertEqual(NativeAuthURLProtocol.requestCount(for: "tenant.cloudflareaccess.com"), 0)
+    }
+
+    func testProviderDiscoveryPreservesNonRedirect3xxResponses() async throws {
+        let client = NativeAuthClient(
+            baseURL: "https://multiple.example",
+            sessionConfiguration: makeSessionConfiguration()
+        )
+
+        do {
+            _ = try await client.authProviders()
+            XCTFail("Expected provider discovery to fail for a non-redirect 3xx response")
+        } catch let error as AuthClientError {
+            guard case .providerDiscoveryFailed(let detail) = error else {
+                return XCTFail("Expected provider discovery failure, got \(error)")
+            }
+            XCTAssertEqual(detail, "HTTP 300")
+        }
     }
 
     func testProviderDiscoveryParsesPasswordProvider() async throws {
@@ -69,8 +93,25 @@ final class NativeAuthClientTests: XCTestCase {
 }
 
 private final class NativeAuthURLProtocol: URLProtocol {
+    private struct ResponseRecord {
+        let host: String
+        let statusCode: Int?
+        let headers: [String: String]
+    }
+
+    private static let recordLock = NSLock()
+    private static var responseRecords: [ResponseRecord] = []
+
     override class func canInit(with request: URLRequest) -> Bool {
-        request.url?.host?.hasSuffix(".example") == true
+        guard let host = request.url?.host else { return false }
+        return [
+            "redirect.example",
+            "providers.example",
+            "server-error.example",
+            "headers.example",
+            "multiple.example",
+            "tenant.cloudflareaccess.com"
+        ].contains(host)
     }
 
     override class func canonicalRequest(for request: URLRequest) -> URLRequest {
@@ -78,8 +119,17 @@ private final class NativeAuthURLProtocol: URLProtocol {
     }
 
     override func startLoading() {
-        guard let url = request.url,
-              let fixture = fixture(for: request),
+        guard let url = request.url else {
+            client?.urlProtocol(self, didFailWithError: URLError(.badURL))
+            return
+        }
+        let fixture = fixture(for: request)
+        Self.record(
+            host: url.host ?? "",
+            statusCode: fixture?.statusCode,
+            headers: fixture?.headers ?? [:]
+        )
+        guard let fixture,
               let response = HTTPURLResponse(
                   url: url,
                   statusCode: fixture.statusCode,
@@ -96,6 +146,30 @@ private final class NativeAuthURLProtocol: URLProtocol {
     }
 
     override func stopLoading() {}
+
+    static func responseStatusCode(for host: String) -> Int? {
+        recordLock.lock()
+        defer { recordLock.unlock() }
+        return responseRecords.last(where: { $0.host == host })?.statusCode
+    }
+
+    static func responseHeader(for host: String, name: String) -> String? {
+        recordLock.lock()
+        defer { recordLock.unlock() }
+        return responseRecords.last(where: { $0.host == host })?.headers[name]
+    }
+
+    static func requestCount(for host: String) -> Int {
+        recordLock.lock()
+        defer { recordLock.unlock() }
+        return responseRecords.filter { $0.host == host }.count
+    }
+
+    private static func record(host: String, statusCode: Int?, headers: [String: String]) {
+        recordLock.lock()
+        responseRecords.append(ResponseRecord(host: host, statusCode: statusCode, headers: headers))
+        recordLock.unlock()
+    }
 
     private struct Fixture {
         let statusCode: Int
@@ -119,6 +193,8 @@ private final class NativeAuthURLProtocol: URLProtocol {
             return Fixture(statusCode: 200, headers: [:], body: providerBody())
         case "server-error.example":
             return Fixture(statusCode: 500, headers: [:], body: Data(#"{"error":"origin unavailable"}"#.utf8))
+        case "multiple.example":
+            return Fixture(statusCode: 300, headers: [:], body: Data())
         case "headers.example":
             let hasExpectedHeaders = request.value(forHTTPHeaderField: "CF-Access-Client-Id") == "test-client-id"
                 && request.value(forHTTPHeaderField: "CF-Access-Client-Secret") == "test-client-secret"
