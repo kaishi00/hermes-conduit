@@ -2018,12 +2018,15 @@ final class AppState: ObservableObject {
             automaticWorkToken,
             syncOperationID: automaticSyncOperationID
         ) else { return }
-        guard let sessionKey = activeChatScrollSessionIdentity.canonicalSessionKey,
-              let request = chatResumeCoordinator.reconciliationSettled(sessionKey: sessionKey) else {
-            // Reconciliation settled but no request was published (key mismatch
-            // or already-pending restoration). Clear the freeze so viewport
-            // recording resumes — otherwise recordViewport stays a no-op.
-            chatResumeCoordinator.abandonPendingAutomaticSync()
+        guard let sessionKey = activeChatScrollSessionIdentity.canonicalSessionKey else {
+            return
+        }
+        guard let request = chatResumeCoordinator.reconciliationSettled(sessionKey: sessionKey) else {
+            // reconciliationSettled returned nil. If there was a pending
+            // session key (mismatch path), clear the freeze so viewport
+            // recording resumes. If there was no pending key, there's
+            // nothing to clean up.
+            chatResumeCoordinator.abandonPendingAutomaticSyncIfPending()
             return
         }
         chatResumeRestorationRequest = request

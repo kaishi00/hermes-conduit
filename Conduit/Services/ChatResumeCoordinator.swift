@@ -156,6 +156,17 @@ final class ChatResumeCoordinator {
         viewportIsFrozen = false
     }
 
+    /// Like abandonPendingAutomaticSync but only acts if there was actually
+    /// a pending session key. Used on success paths where reconciliationSettled
+    /// returned nil — if there was no pending key, there's nothing to clean up
+    /// and we must not unfreeze an existing freeze from a different source.
+    func abandonPendingAutomaticSyncIfPending() {
+        guard pendingSessionKey != nil else { return }
+        pendingSessionKey = nil
+        pendingFallbackSelection = false
+        viewportIsFrozen = false
+    }
+
     func reconciliationSettled(sessionKey: ChatScrollSessionKey) -> ChatResumeRestorationRequest? {
         guard pendingSessionKey == sessionKey, pendingRestoration == nil else {
             // Mismatch: clear the stale pending key but leave the freeze
