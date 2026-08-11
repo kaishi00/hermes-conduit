@@ -27,18 +27,21 @@ struct MarkdownText: View {
     var newestCharacterOpacities: [Double] = []
 
     var body: some View {
-        let blocks = MarkdownParser.parse(source, recognizesGatewayMedia: gatewayMediaDataURL != nil)
-        let selectableText = MarkdownSelectionFormatter.attributedText(
-            for: blocks,
+        let rendering = MarkdownRenderCache.rendering(
+            source: source,
+            recognizesGatewayMedia: gatewayMediaDataURL != nil,
             foregroundStyle: foregroundStyle,
-            usesAccentSurface: usesAccentSurface,
-            newestCharacterOpacities: newestCharacterOpacities
+            usesAccentSurface: usesAccentSurface
         )
 
         Group {
-            if let selectableText {
+            if let baseText = rendering.selectableText {
                 SelectableTextView(
-                    attributedText: selectableText,
+                    attributedText: MarkdownSelectionFormatter.applyingTrailingCharacterOpacities(
+                        newestCharacterOpacities,
+                        to: baseText,
+                        baseColor: usesAccentSurface ? .white : UIColor(foregroundStyle)
+                    ),
                     font: .preferredFont(forTextStyle: .body),
                     textColor: usesAccentSurface ? .white : UIColor(foregroundStyle),
                     lineSpacing: 4,
@@ -47,13 +50,13 @@ struct MarkdownText: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 VStack(alignment: .leading, spacing: 10) {
-                    ForEach(Array(blocks.enumerated()), id: \.offset) { index, block in
+                    ForEach(Array(rendering.blocks.enumerated()), id: \.offset) { index, block in
                         MarkdownBlockView(
                             block: block,
                             foregroundStyle: foregroundStyle,
                             usesAccentSurface: usesAccentSurface,
                             gatewayMediaDataURL: gatewayMediaDataURL,
-                            newestCharacterOpacities: index == blocks.count - 1
+                            newestCharacterOpacities: index == rendering.blocks.count - 1
                                 ? newestCharacterOpacities
                                 : []
                         )
@@ -62,6 +65,64 @@ struct MarkdownText: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// One render's parsed blocks plus the prebuilt selectable string (nil when
+/// the blocks need the full block-view path). A class so NSCache can hold it.
+private final class MarkdownRendering {
+    let blocks: [MarkdownBlock]
+    let selectableText: NSAttributedString?
+
+    init(blocks: [MarkdownBlock], selectableText: NSAttributedString?) {
+        self.blocks = blocks
+        self.selectableText = selectableText
+    }
+}
+
+/// Every visible MarkdownText body re-evaluates ~30x/s while a reply streams
+/// (each delta publishes an AppState change), and each evaluation used to
+/// re-parse the source and rebuild the attributed string from scratch —
+/// O(visible transcript) main-thread work per frame. Memoize per source and
+/// style so settled messages render from cache and only genuinely new content
+/// pays for parsing. Streaming-tail fades stay per-frame but are applied to a
+/// copy of the cached base rather than triggering a rebuild.
+private enum MarkdownRenderCache {
+    private static let cache: NSCache<NSString, MarkdownRendering> = {
+        let cache = NSCache<NSString, MarkdownRendering>()
+        cache.countLimit = 256
+        return cache
+    }()
+
+    static func rendering(
+        source: String,
+        recognizesGatewayMedia: Bool,
+        foregroundStyle: Color,
+        usesAccentSurface: Bool
+    ) -> MarkdownRendering {
+        // Fonts resolve against the current Dynamic Type size, so a size
+        // change must miss the cache rather than serve stale metrics.
+        let key = [
+            recognizesGatewayMedia ? "1" : "0",
+            usesAccentSurface ? "1" : "0",
+            String(describing: foregroundStyle),
+            UIApplication.shared.preferredContentSizeCategory.rawValue,
+            source
+        ].joined(separator: "|") as NSString
+
+        if let cached = cache.object(forKey: key) { return cached }
+        let blocks = MarkdownParser.parse(source, recognizesGatewayMedia: recognizesGatewayMedia)
+        let rendering = MarkdownRendering(
+            blocks: blocks,
+            selectableText: MarkdownSelectionFormatter.attributedText(
+                for: blocks,
+                foregroundStyle: foregroundStyle,
+                usesAccentSurface: usesAccentSurface,
+                newestCharacterOpacities: []
+            )
+        )
+        cache.setObject(rendering, forKey: key)
+        return rendering
     }
 }
 
@@ -250,6 +311,19 @@ enum MarkdownSelectionFormatter {
 
     private static func headingFont(_ level: Int) -> UIFont {
         MarkdownHeading.font(for: level)
+    }
+
+    /// Applies the streaming-tail fade to a copy, leaving the shared cached
+    /// base untouched for reuse on the next frame.
+    static func applyingTrailingCharacterOpacities(
+        _ opacities: [Double],
+        to base: NSAttributedString,
+        baseColor: UIColor
+    ) -> NSAttributedString {
+        guard !opacities.isEmpty, base.length > 0 else { return base }
+        let copy = NSMutableAttributedString(attributedString: base)
+        applyTrailingCharacterOpacities(opacities, to: copy, baseColor: baseColor)
+        return copy
     }
 
     private static func applyTrailingCharacterOpacities(
@@ -1276,8 +1350,31 @@ private enum MarkdownLanguage {
     }
 }
 
+/// Box for NSCache, which stores class instances only.
+private final class HighlightedCode {
+    let value: AttributedString
+    init(_ value: AttributedString) { self.value = value }
+}
+
 private enum SyntaxHighlighter {
+    /// Settled code blocks across the transcript re-render at streaming frame
+    /// rate; tokenizing is linear but allocation-heavy, so memoize by content.
+    /// Only the still-growing streaming block misses per frame.
+    private static let cache: NSCache<NSString, HighlightedCode> = {
+        let cache = NSCache<NSString, HighlightedCode>()
+        cache.countLimit = 128
+        return cache
+    }()
+
     static func highlight(_ source: String, language: String) -> AttributedString {
+        let key = "\(language)|\(source)" as NSString
+        if let cached = cache.object(forKey: key) { return cached.value }
+        let highlighted = tokenize(source, language: language)
+        cache.setObject(HighlightedCode(highlighted), forKey: key)
+        return highlighted
+    }
+
+    private static func tokenize(_ source: String, language: String) -> AttributedString {
         let keywords: Set<String> = ["as", "async", "await", "break", "case", "catch", "class", "const", "continue", "def", "else", "enum", "false", "final", "for", "func", "guard", "if", "import", "in", "init", "let", "nil", "null", "private", "public", "return", "self", "static", "struct", "switch", "throw", "true", "try", "var", "while"]
         // String-literal alternatives must be disjoint (`\\.` vs `[^"\\]`):
         // if both branches can match a backslash, an unterminated literal with

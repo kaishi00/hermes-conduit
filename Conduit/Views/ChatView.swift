@@ -777,9 +777,22 @@ private struct UserImageAttachmentPreview: View {
     @State private var gatewayImage: UIImage?
     @State private var gatewayLoadFailed = false
 
+    /// Body re-evaluates at streaming frame rate, and re-reading the file
+    /// from disk each time hitches scrolling. Decoded previews are shared
+    /// across rows; NSCache evicts them under memory pressure.
+    private static let localImageCache: NSCache<NSString, UIImage> = {
+        let cache = NSCache<NSString, UIImage>()
+        cache.countLimit = 64
+        return cache
+    }()
+
     private var localImage: UIImage? {
         guard let url = localFileURL else { return nil }
-        return UIImage(contentsOfFile: url.path)
+        let key = url.path as NSString
+        if let cached = Self.localImageCache.object(forKey: key) { return cached }
+        guard let image = UIImage(contentsOfFile: url.path) else { return nil }
+        Self.localImageCache.setObject(image, forKey: key)
+        return image
     }
 
     private var localFileURL: URL? {
