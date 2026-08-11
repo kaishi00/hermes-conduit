@@ -14,7 +14,7 @@ import Foundation
 final class SessionPresentationCache {
     static let shared = SessionPresentationCache()
 
-    private struct CachedMessage: Codable {
+    private struct CachedMessage: Codable, Equatable {
         var id: String
         var role: MessageRole
         var signature: String
@@ -176,23 +176,66 @@ final class SessionPresentationCache {
         return merged
     }
 
-    func save(_ messages: [ChatMessage], profile: String, sessionIDs: [String]) {
+    func save(
+        _ messages: [ChatMessage],
+        profile: String,
+        sessionIDs: [String],
+        preservePendingDecisionCards: Bool = true
+    ) {
         let ids = Set(sessionIDs.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })
         guard !ids.isEmpty else { return }
 
         var store = load()
         let freshRecords = messages.suffix(maxMessagesPerSession).map { CachedMessage($0) }
-        guard !freshRecords.isEmpty else { return }
+        guard !freshRecords.isEmpty else {
+            guard !preservePendingDecisionCards else { return }
+            var changed = false
+            for id in ids {
+                let cacheKey = key(profile: profile, sessionID: id)
+                guard var session = store[cacheKey] else { continue }
+                let pruned = removingPendingDecisionPresentation(from: session.messages)
+                guard pruned != session.messages else { continue }
+                session.messages = pruned
+                store[cacheKey] = session
+                changed = true
+            }
+            if changed { persist(store) }
+            return
+        }
         let existingRecords = ids.lazy
             .compactMap { store[self.key(profile: profile, sessionID: $0)]?.messages }
             .first ?? []
-        let records = preservingPresentation(in: freshRecords, from: existingRecords)
+        var records = preservingPresentation(in: freshRecords, from: existingRecords)
+        if !preservePendingDecisionCards {
+            records = removingPendingDecisionPresentation(from: records)
+        }
         let session = CachedSession(updatedAt: Date(), messages: records)
         for id in ids {
             store[key(profile: profile, sessionID: id)] = session
         }
         trim(&store)
         persist(store)
+    }
+
+    /// A resume without an explicit active-turn signal may temporarily show a
+    /// locally restored decision card, but that card is not authoritative
+    /// enough to keep writing to disk. Strip only pending/submitting decision
+    /// presentation while preserving normal transcript metadata.
+    private func removingPendingDecisionPresentation(from messages: [CachedMessage]) -> [CachedMessage] {
+        messages.compactMap { original in
+            var message = original
+            if let clarify = message.clarify,
+               clarify.status == .pending || clarify.status == .submitting {
+                message.clarify = nil
+            }
+            if let approval = message.approval,
+               approval.status == .pending || approval.status == .submitting {
+                message.approval = nil
+            }
+            if message.role == .clarify, message.clarify == nil { return nil }
+            if message.role == .approval, message.approval == nil { return nil }
+            return message
+        }
     }
 
     func clear(profile: String? = nil) {

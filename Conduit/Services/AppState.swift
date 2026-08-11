@@ -498,6 +498,11 @@ final class AppState: ObservableObject {
     /// Coalesces presentation-cache flushes during streaming so we
     /// don't serialize and write UserDefaults on every WebSocket frame.
     private var presentationCacheFlushTask: Task<Void, Never>?
+    /// A nil resume can restore a decision card from local presentation data,
+    /// but that card is not authoritative until Hermes confirms the active
+    /// turn or the user interacts with it. Do not re-persist it on a scene
+    /// background in the meantime.
+    private var restoredPendingDecisionCardsAwaitingConfirmation = false
     /// Timestamp of the last successful coalesced cache flush; used to
     /// enforce a maximum 5-second interval even during continuous streaming.
     private var lastPresentationCacheFlushDate: Date?
@@ -540,7 +545,31 @@ final class AppState: ObservableObject {
             reconciliation?.requestedSessionId,
             reconciliation?.resolvedSessionId
         ].compactMap { $0 }
-        sessionPresentationCache.save(messages, profile: activeProfile, sessionIDs: ids)
+        let cacheableMessages: [ChatMessage]
+        if restoredPendingDecisionCardsAwaitingConfirmation {
+            cacheableMessages = messages.compactMap { original in
+                var message = original
+                if let clarify = message.clarify,
+                   clarify.status == .pending || clarify.status == .submitting {
+                    message.clarify = nil
+                }
+                if let approval = message.approval,
+                   approval.status == .pending || approval.status == .submitting {
+                    message.approval = nil
+                }
+                if message.role == .clarify, message.clarify == nil { return nil }
+                if message.role == .approval, message.approval == nil { return nil }
+                return message
+            }
+        } else {
+            cacheableMessages = messages
+        }
+        sessionPresentationCache.save(
+            cacheableMessages,
+            profile: activeProfile,
+            sessionIDs: ids,
+            preservePendingDecisionCards: !restoredPendingDecisionCardsAwaitingConfirmation
+        )
     }
 
     /// Coalesces presentation-cache writes during streaming. Instead of
@@ -2395,13 +2424,11 @@ final class AppState: ObservableObject {
             for: result.sessionId,
             fallbackSessionId: reconciliation?.requestedSessionId
         )
-        // Only restore pending clarifications and approvals when the gateway
-        // explicitly confirms the turn is still active (`running == true`).
-        // When `running` is `nil` (omitted) the turn may have already
-        // completed while the app was backgrounded; restoring cached cards
-        // in that case risks displaying stale, answerable UI for an
-        // already-resolved request.
-        let restorePendingCards = result.snapshot.running == true
+        // Hermes can omit `running` on versions that still support paused
+        // clarify/approval turns. Only an explicit false means the turn is
+        // settled, so nil remains eligible for restoring locally observed
+        // pending decision cards.
+        let restorePendingCards = Self.shouldRestorePendingCards(running: result.snapshot.running)
         let sessionIDs = [result.sessionId, reconciliation?.requestedSessionId].compactMap { $0 }
         let restored = sessionPresentationCache.merge(
             result.messages,
@@ -2412,18 +2439,21 @@ final class AppState: ObservableObject {
         )
         messages = mergeCachedReviews(into: restored, sessionId: result.sessionId)
         noteChatViewportTranscriptReplacement()
-        // When `running == true`, save the merged messages (including any
-        // restored pending cards) so they survive in the cache if the user
-        // backgrounds again before the next flush.  When `running` is `nil`
-        // or `false`, skip the save to avoid dropping restored cards or
-        // overwriting the cache with a compact history that omits them.
-        if result.snapshot.running == true {
-            sessionPresentationCache.save(
-                messages,
-                profile: activeProfile,
-                sessionIDs: sessionIDs
-            )
-        }
+        let hasPendingDecision = Self.hasPendingDecision(in: messages)
+        restoredPendingDecisionCardsAwaitingConfirmation = result.snapshot.running != true && hasPendingDecision
+        // Persist the gateway transcript on every resume so fresh rows are
+        // not lost. When liveness is nil, do not write the locally restored
+        // decision cards back into the cache: the gateway has not confirmed
+        // that those cached cards are still pending. An explicitly running
+        // snapshot is the one case where persisting the merged presentation
+        // is safe and necessary for another foreground/background cycle.
+        let gatewayConfirmsActiveTurn = result.snapshot.running == true
+        sessionPresentationCache.save(
+            gatewayConfirmsActiveTurn ? messages : result.messages,
+            profile: activeProfile,
+            sessionIDs: sessionIDs,
+            preservePendingDecisionCards: gatewayConfirmsActiveTurn
+        )
         scheduleSecondaryProfileTitleRecovery(
             sessionId: result.sessionId,
             messages: messages
@@ -2442,11 +2472,11 @@ final class AppState: ObservableObject {
         receivedReasoningForCurrentTurn = false
         applyRuntime(result.snapshot)
 
-        // When `running` is `nil`, derive the turn state from the live
-        // projection alone.  A live projection is authoritative evidence
-        // that the gateway is actively streaming; mere cached card presence
-        // is not, because the turn may have completed while backgrounded.
-        if result.snapshot.running == nil && result.snapshot.hasLiveProjection {
+        // A paused clarification or approval can have neither a live text
+        // projection nor an explicit `running` field. The restored card is
+        // actionable evidence for this UI, so keep the composer enabled for
+        // it instead of treating the gateway as unsupported.
+        if result.snapshot.running == nil && (result.snapshot.hasLiveProjection || hasPendingDecision) {
             turnState = .running
         } else if TurnState.fromGatewayRunning(result.snapshot.running) == .unsupportedGateway {
             turnState = .unsupportedGateway
@@ -2459,12 +2489,19 @@ final class AppState: ObservableObject {
     }
 
     /// Testable helper: derives whether pending clarify/approval cards should
-    /// be restored from the presentation cache on resume.  Only `true` when
-    /// the gateway explicitly confirms the turn is still active; `nil`
-    /// (omitted) is treated as "don't restore" to avoid displaying stale
-    /// cards for a turn that may have completed while backgrounded.
+    /// be restored from the presentation cache on resume. An explicit false
+    /// is the only settled-turn signal; nil is still eligible because older
+    /// Hermes gateways omit `running` for paused decision turns.
     static func shouldRestorePendingCards(running: Bool?) -> Bool {
-        running == true
+        running != false
+    }
+
+    static func hasPendingDecision(in messages: [ChatMessage]) -> Bool {
+        messages.contains { message in
+            let clarifyPending = message.clarify?.status == .pending || message.clarify?.status == .submitting
+            let approvalPending = message.approval?.status == .pending || message.approval?.status == .submitting
+            return clarifyPending || approvalPending
+        }
     }
 
     /// `session.resume.inflight` is a cumulative projection on some gateways.
@@ -5953,6 +5990,9 @@ final class AppState: ObservableObject {
 
     private func setRunning(_ running: Bool) {
         guard turnState != .unsupportedGateway else { return }
+        if running {
+            restoredPendingDecisionCardsAwaitingConfirmation = false
+        }
         turnState = running ? .running : .idle
     }
 

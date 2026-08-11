@@ -6,6 +6,7 @@ import XCTest
 /// presentation metadata (timestamps, tool previews, attachments) survives
 /// a reconnect or session reopen. Getting this wrong means messages lose
 /// their timestamps or tool calls lose their input text.
+@MainActor
 final class SessionPresentationCacheTests: XCTestCase {
 
     // MARK: - Merge: timestamp restoration
@@ -325,7 +326,7 @@ final class SessionPresentationCacheTests: XCTestCase {
                        "Answered clarification should not be restored as pending")
     }
 
-    func testMergeDoesNotRestoreClarificationWhenRunningIsNil() {
+    func testMergeRestoresClarificationWhenRunningIsNil() {
         let cache = SessionPresentationCache.shared
         let sessionId = "test-merge-clarify-nil-\(UUID().uuidString)"
         let profile = "test"
@@ -348,9 +349,9 @@ final class SessionPresentationCacheTests: XCTestCase {
         cache.save(savedMessages, profile: profile, sessionIDs: [sessionId])
         defer { cache.clear(profile: profile) }
 
-        // running == nil (omitted by gateway) should NOT restore because the
-        // turn may have completed while backgrounded — restoring would risk
-        // displaying a stale, answerable card for an already-resolved request.
+        // Hermes versions that omit `running` can still be paused on this
+        // clarification request. Nil must remain eligible for restoration;
+        // explicit false is the only resolved/idle signal.
         let shouldRestore = AppState.shouldRestorePendingCards(running: nil)
         let gatewayMessages: [ChatMessage] = []
         let merged = cache.merge(
@@ -360,8 +361,8 @@ final class SessionPresentationCacheTests: XCTestCase {
             includePendingClarifications: shouldRestore
         )
 
-        XCTAssertFalse(merged.contains { $0.role == .clarify },
-                       "Clarification should not be restored when running state is omitted (nil)")
+        XCTAssertTrue(merged.contains { $0.role == .clarify },
+                      "Clarification should be restored when running state is omitted (nil)")
     }
 
     // MARK: - Merge: pending approval restoration
@@ -457,13 +458,11 @@ final class SessionPresentationCacheTests: XCTestCase {
                        "Must not restore pending cards when gateway reports turn is inactive")
     }
 
-    func testShouldNotRestorePendingCardsWhenRunningIsNil() {
-        // The gateway may omit `running` (nil) even while a turn is active,
-        // but the turn may also have completed while the app was backgrounded.
-        // Restoring cached cards in the nil case risks displaying stale,
-        // answerable UI for an already-resolved request.
-        XCTAssertFalse(AppState.shouldRestorePendingCards(running: nil),
-                       "Must not restore pending cards when gateway omits running state")
+    func testShouldRestorePendingCardsWhenRunningIsNil() {
+        // Hermes can omit `running` while a turn is paused on a user decision.
+        // Only an explicit false is proof that the turn is no longer active.
+        XCTAssertTrue(AppState.shouldRestorePendingCards(running: nil),
+                      "Must restore pending cards when gateway omits running state")
     }
 
     // MARK: - Save preserves restored pending cards
@@ -565,5 +564,148 @@ final class SessionPresentationCacheTests: XCTestCase {
         )
         XCTAssertTrue(remerged.contains { $0.role == .approval },
                       "Restored approval card must survive a save-then-merge cycle")
+    }
+
+    // MARK: - AppState resume integration
+
+    func testApplyResumeRestoresPendingClarificationWhenRunningIsNil() {
+        let cache = SessionPresentationCache.shared
+        let sessionId = "test-apply-resume-clarify-\(UUID().uuidString)"
+        let appState = AppState(restoreSavedConnection: false)
+        let profile = appState.activeProfile
+        let clarify = ClarifyActivity(
+            requestId: "req-apply-resume",
+            question: "Which color?",
+            choices: [ClarifyChoice(label: "Red", value: "red")],
+            status: .pending
+        )
+        cache.save([
+            ChatMessage(
+                id: "clarify-req-apply-resume",
+                role: .clarify,
+                content: clarify.question,
+                timestamp: "2024-01-01",
+                clarify: clarify
+            )
+        ], profile: profile, sessionIDs: [sessionId])
+        defer { cache.clear(profile: profile) }
+
+        appState.applyResume(SessionResumeResult(
+            sessionId: sessionId,
+            messages: [],
+            snapshot: SessionRuntimeSnapshot(object: [:])
+        ))
+
+        XCTAssertEqual(appState.messages.first?.clarify?.requestId, clarify.requestId)
+        XCTAssertEqual(appState.messages.first?.clarify?.status, .pending)
+        XCTAssertEqual(appState.turnState, .running,
+                       "A restored pending clarification must keep the composer answerable")
+        XCTAssertFalse(
+            cache.merge(
+                [],
+                profile: profile,
+                sessionIDs: [sessionId],
+                includePendingClarifications: true
+            ).contains { $0.clarify?.requestId == clarify.requestId },
+            "The nil resume must not re-persist an unconfirmed clarification card"
+        )
+    }
+
+    func testApplyResumeRestoresPendingApprovalWhenRunningIsNil() {
+        let cache = SessionPresentationCache.shared
+        let sessionId = "test-apply-resume-approval-\(UUID().uuidString)"
+        let appState = AppState(restoreSavedConnection: false)
+        let profile = appState.activeProfile
+        let approval = ApprovalActivity(
+            sessionId: sessionId,
+            command: "ls",
+            description: "List files",
+            choices: ["once", "deny"],
+            allowPermanent: false,
+            smartDenied: false,
+            status: .pending
+        )
+        cache.save([
+            ChatMessage(
+                id: "approval-\(sessionId)",
+                role: .approval,
+                content: approval.description,
+                timestamp: "2024-01-01",
+                approval: approval
+            )
+        ], profile: profile, sessionIDs: [sessionId])
+        defer { cache.clear(profile: profile) }
+
+        appState.applyResume(SessionResumeResult(
+            sessionId: sessionId,
+            messages: [],
+            snapshot: SessionRuntimeSnapshot(object: [:])
+        ))
+
+        XCTAssertEqual(appState.messages.first?.approval?.sessionId, sessionId)
+        XCTAssertEqual(appState.messages.first?.approval?.status, .pending)
+        XCTAssertEqual(appState.turnState, .running,
+                       "A restored pending approval must keep the composer answerable")
+        XCTAssertFalse(
+            cache.merge(
+                [],
+                profile: profile,
+                sessionIDs: [sessionId],
+                includePendingApprovals: true
+            ).contains { $0.approval?.sessionId == sessionId },
+            "The nil resume must not re-persist an unconfirmed approval card"
+        )
+    }
+
+    func testApplyResumePersistsGatewayMessagesWithoutRecachingRestoredCardsWhenRunningIsNil() {
+        let cache = SessionPresentationCache.shared
+        let sessionId = "test-apply-resume-cache-\(UUID().uuidString)"
+        let appState = AppState(restoreSavedConnection: false)
+        let profile = appState.activeProfile
+        let approval = ApprovalActivity(
+            sessionId: sessionId,
+            command: "ls",
+            description: "List files",
+            choices: ["once", "deny"],
+            allowPermanent: false,
+            smartDenied: false,
+            status: .pending
+        )
+        cache.save([
+            ChatMessage(
+                id: "approval-\(sessionId)",
+                role: .approval,
+                content: approval.description,
+                timestamp: "2024-01-01",
+                approval: approval
+            )
+        ], profile: profile, sessionIDs: [sessionId])
+        defer { cache.clear(profile: profile) }
+
+        let gatewayMessage = ChatMessage(
+            id: "gateway-user",
+            role: .user,
+            content: "Fresh transcript row",
+            timestamp: ""
+        )
+        appState.applyResume(SessionResumeResult(
+            sessionId: sessionId,
+            messages: [gatewayMessage],
+            snapshot: SessionRuntimeSnapshot(object: [:])
+        ))
+
+        let persisted = cache.merge(
+            [],
+            profile: profile,
+            sessionIDs: [sessionId],
+            includePendingClarifications: true,
+            includePendingApprovals: true
+        )
+        XCTAssertFalse(persisted.contains { $0.approval?.sessionId == sessionId },
+                       "A nil running snapshot must not re-persist a restored pending card")
+        XCTAssertEqual(
+            cache.merge([gatewayMessage], profile: profile, sessionIDs: [sessionId]).first?.content,
+            gatewayMessage.content
+        )
     }
 }
