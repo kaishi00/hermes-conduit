@@ -7,6 +7,7 @@
 
 import SwiftUI
 import UIKit
+import ImageIO
 
 struct ChatView: View {
     @EnvironmentObject var appState: AppState
@@ -777,12 +778,15 @@ private struct UserImageAttachmentPreview: View {
     @State private var gatewayImage: UIImage?
     @State private var gatewayLoadFailed = false
 
-    /// Body re-evaluates at streaming frame rate, and re-reading the file
-    /// from disk each time hitches scrolling. Decoded previews are shared
-    /// across rows; NSCache evicts them under memory pressure.
+    /// Body re-evaluates at streaming frame rate, and re-reading + fully
+    /// decoding the file each time hitches scrolling. Previews are downsampled
+    /// to the display size and shared across rows; NSCache evicts them under
+    /// memory pressure. Cost-bounded so a handful of large photos can't
+    /// exhaust it before then.
     private static let localImageCache: NSCache<NSString, UIImage> = {
         let cache = NSCache<NSString, UIImage>()
         cache.countLimit = 64
+        cache.totalCostLimit = 64 * 1024 * 1024
         return cache
     }()
 
@@ -790,9 +794,29 @@ private struct UserImageAttachmentPreview: View {
         guard let url = localFileURL else { return nil }
         let key = url.path as NSString
         if let cached = Self.localImageCache.object(forKey: key) { return cached }
-        guard let image = UIImage(contentsOfFile: url.path) else { return nil }
-        Self.localImageCache.setObject(image, forKey: key)
+        // Decode at the preview's retina resolution instead of caching the
+        // full-resolution bitmap — a library photo can decode to tens of MB.
+        guard let image = Self.downsampledPreview(url: url) else { return nil }
+        let pixelWidth = image.cgImage?.width ?? Int(image.size.width * image.scale)
+        let pixelHeight = image.cgImage?.height ?? Int(image.size.height * image.scale)
+        Self.localImageCache.setObject(image, forKey: key, cost: pixelWidth * pixelHeight * 4)
         return image
+    }
+
+    /// Decodes `url` as a thumbnail sized for the 224pt attachment preview
+    /// (~3× retina on the long edge). ImageIO decodes straight to the smaller
+    /// bitmap, so the full-resolution pixels never need to be resident.
+    private static func downsampledPreview(url: URL) -> UIImage? {
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceShouldCache: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: CGFloat(800)
+        ]
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
+        else { return nil }
+        return UIImage(cgImage: thumbnail)
     }
 
     private var localFileURL: URL? {

@@ -39,7 +39,8 @@ struct StreamingText: View {
             MarkdownText(
                 source: String(visibleCharacters),
                 gatewayMediaDataURL: gatewayMediaDataURL,
-                newestCharacterOpacities: characterOpacities(at: timeline.date)
+                newestCharacterOpacities: characterOpacities(at: timeline.date),
+                isStreaming: true
             )
         }
         .onAppear {
