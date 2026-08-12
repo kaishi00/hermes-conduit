@@ -189,14 +189,17 @@ final class DashboardTicketBridge: NSObject {
     }
 
     deinit {
-        // The retain-cycle fix is what makes deallocation reachable at all, so
-        // `deinit` can now run while requests are still pending. Removing the
-        // message handler alone leaves their continuations awaiting a JS reply
-        // that can never arrive: the proxy's weak delegate is already nil and
-        // silently drops the posted message. Resume them now so callers see
-        // `.notReady` instead of hanging for a response that will never come.
-        // (The dictionary is torn down with the bridge, so only the resumptions
-        // matter here — nothing else can resume them once the bridge is gone.)
+        // Defensive teardown. The retain-cycle fix is what makes bridge
+        // deallocation reachable at all. In practice this loop is a no-op
+        // today: a non-empty `pendingRequests` implies a `requestJSON`
+        // coroutine is suspended awaiting its continuation, and that
+        // suspended task retains `self`, so the bridge cannot deallocate
+        // until every request resolves and the dictionary drains. It is kept
+        // as a guard — if a future refactor breaks that invariant (e.g. the
+        // request task is detached, or continuations are stored somewhere
+        // `self` no longer keeps alive), resuming here is what stops callers
+        // from hanging on a reply the now-nil proxy would silently drop.
+        // Nothing else can resume these once the bridge is gone.
         for continuation in pendingRequests.values {
             continuation.resume(throwing: DashboardTicketBridgeError.notReady)
         }
