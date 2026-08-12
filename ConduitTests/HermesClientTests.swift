@@ -184,7 +184,7 @@ private final class FakeSocket: HermesWebSocket {
         failReceive(URLError(.networkConnectionLost))
     }
 
-    func send(_ message: URLSessionWebSocketTask.Message, completionHandler: @escaping (Error?) -> Void) {
+    func send(_ message: URLSessionWebSocketTask.Message, completionHandler: @escaping @Sendable (Error?) -> Void) {
         completionHandler(nil)
     }
 
@@ -219,7 +219,7 @@ private final class FakeTransport: HermesWebSocketTransport {
     ) -> any HermesWebSocket {
         let socket = nextSocket?() ?? FakeSocket()
         socketsMade.append(socket)
-        openCallbacks.append { onOpen(socket) }
+        openCallbacks.append { _ in onOpen(socket) }
         return socket
     }
 

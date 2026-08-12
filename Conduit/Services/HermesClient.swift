@@ -311,7 +311,7 @@ protocol HermesWebSocket: AnyObject {
     func resume()
     func cancel(with closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?)
     func receive() async throws -> URLSessionWebSocketTask.Message
-    func send(_ message: URLSessionWebSocketTask.Message, completionHandler: @escaping (Error?) -> Void)
+    func send(_ message: URLSessionWebSocketTask.Message, completionHandler: @escaping @Sendable (Error?) -> Void)
 }
 
 extension URLSessionWebSocketTask: HermesWebSocket {}
