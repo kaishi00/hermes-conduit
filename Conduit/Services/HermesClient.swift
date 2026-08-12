@@ -358,6 +358,14 @@ final class HermesClient: ObservableObject {
     // MARK: - Connection
 
     func connect() async throws {
+        // If a previous receive loop is still alive, cancel it now so it can't
+        // outlive the socket it was reading from and later mutate this client's
+        // state. (AppState makes a fresh HermesClient per reconnect and
+        // disconnects the old one first, so this is defense-in-depth against
+        // an intra-instance reconnect — which no caller does today.)
+        receiveTask?.cancel()
+        receiveTask = nil
+
         closedIntentionally = false
         socketHasOpened = false
         let url: URL
@@ -452,11 +460,21 @@ final class HermesClient: ObservableObject {
             } catch {
                 // Socket closed or errored
                 logger.error("WebSocket receive failed: \(error.localizedDescription, privacy: .public)")
+                // Only tear down if this loop still owns the current socket.
+                // A reconnect replaces `self.socket` and spawns a new loop; an
+                // unguarded late catch from the superseded loop would mark the
+                // healthy new connection disconnected and fail its in-flight
+                // RPCs. didOpen/didClose/failSocketOpen guard the same way.
+                guard self.socket === socket else { break }
                 isConnected = false
                 // No response can ever arrive on a dead socket; failing the
                 // in-flight requests here keeps awaiting UI from hanging for
                 // the remainder of each request's timeout.
                 failAllPendingRequests(with: HermesError.connectionClosed)
+                // Drop the dead socket: its `closeCode` stays `.invalid` after
+                // a receive error, so leaving it installed would let `rpc`
+                // re-issue against it and hang until its own timeout.
+                self.socket = nil
                 if !closedIntentionally {
                     onDisconnected?()
                 }
@@ -527,7 +545,10 @@ final class HermesClient: ObservableObject {
     // MARK: - RPC
 
     private func rpc(_ method: String, params: [String: Any]? = nil, timeout: TimeInterval = requestTimeout) async throws -> AnyCodable {
-        guard let socket, socket.closeCode == .invalid else {
+        // Require both a live socket and a completed handshake. A receive
+        // error leaves the socket installed with `closeCode == .invalid`, so
+        // closeCode alone would let an RPC ride a dead socket to its timeout.
+        guard let socket, socket.closeCode == .invalid, isConnected else {
             throw HermesError.notConnected
         }
 
