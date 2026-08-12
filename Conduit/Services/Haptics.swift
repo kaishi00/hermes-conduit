@@ -21,6 +21,17 @@ struct HapticsEnginePolicy: Equatable {
     )
 }
 
+enum HapticsEngineStopPolicy {
+    static func shouldDiscardEngine(for reason: CHHapticEngine.StoppedReason) -> Bool {
+        switch reason {
+        case .audioSessionInterrupt, .systemError:
+            return true
+        default:
+            return false
+        }
+    }
+}
+
 struct ResponseHapticState {
     enum Effect: Equatable {
         case responseStarted
@@ -370,11 +381,13 @@ enum Haptics {
                 coreHapticsEngine = nil
             }
         }
-        engine.stoppedHandler = { [weak engine] _ in
+        engine.stoppedHandler = { [weak engine] reason in
             Task { @MainActor in
                 guard let engine, coreHapticsEngine === engine else { return }
                 clearLifecyclePatternState()
-                coreHapticsEngine = nil
+                if HapticsEngineStopPolicy.shouldDiscardEngine(for: reason) {
+                    coreHapticsEngine = nil
+                }
             }
         }
         return engine

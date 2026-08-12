@@ -1,3 +1,4 @@
+import CoreHaptics
 import XCTest
 @testable import Conduit
 
@@ -6,6 +7,12 @@ final class HapticsTests: XCTestCase {
     func testResponseEngineUsesSharedHapticsOnlyPolicy() {
         XCTAssertTrue(Haptics.enginePolicy.usesSharedAudioSession)
         XCTAssertTrue(Haptics.enginePolicy.playsHapticsOnly)
+    }
+
+    func testEngineStopPolicyDiscardsOnlyRecoveryCriticalStops() {
+        XCTAssertFalse(HapticsEngineStopPolicy.shouldDiscardEngine(for: .idleTimeout))
+        XCTAssertTrue(HapticsEngineStopPolicy.shouldDiscardEngine(for: .audioSessionInterrupt))
+        XCTAssertTrue(HapticsEngineStopPolicy.shouldDiscardEngine(for: .systemError))
     }
 
     func testEnabledUsesDevicePreference() {
