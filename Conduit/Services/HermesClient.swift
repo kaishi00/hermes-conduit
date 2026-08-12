@@ -427,21 +427,31 @@ final class HermesClient: ObservableObject {
     // MARK: - Connection
 
     func connect() async throws {
-        // Tear down any prior connection in full before installing a new one.
-        // Cancelling the receive task alone is not enough: URLSessionWebSocketTask
-        // .receive() does not honor cooperative cancellation, so a superseded
-        // loop stays alive until its socket actually errors. Cancelling the
-        // socket and invalidating the prior session forces that error, after
-        // which the loop's identity guard turns its late catch into a no-op.
-        // (AppState makes a fresh HermesClient per reconnect and disconnects the
-        // old one first, so this is defense-in-depth against an intra-instance
-        // reconnect — which no caller does today.)
+        // Tear down any prior connection in full before installing a new one —
+        // this mirrors disconnect()'s cleanup. Cancelling the receive task alone
+        // is not enough: URLSessionWebSocketTask.receive() does not honor
+        // cooperative cancellation, so a superseded loop stays alive until its
+        // socket actually errors; cancelling the socket + invalidating the
+        // session forces that error, after which the loop's identity guard
+        // no-ops its late catch. Resuming the open continuation and failing
+        // pending RPCs here also covers the case where the new connect() throws
+        // before its own waitForSocketOpen (e.g. invalid URL) — without it the
+        // prior connect() would hang forever and its RPCs would wait out their
+        // own timers. (AppState makes a fresh HermesClient per reconnect and
+        // disconnects the old one first, so this is defense-in-depth against an
+        // intra-instance reconnect — which no caller does today.)
         receiveTask?.cancel()
         receiveTask = nil
         socket?.cancel(with: .goingAway, reason: nil)
         socket = nil
         transport?.invalidate()
         transport = nil
+        openTimeoutTask?.cancel()
+        openTimeoutTask = nil
+        openContinuation?.resume(throwing: HermesError.connectionClosed)
+        openContinuation = nil
+        isConnected = false
+        failAllPendingRequests(with: HermesError.connectionClosed)
 
         closedIntentionally = false
         socketHasOpened = false
@@ -479,11 +489,9 @@ final class HermesClient: ObservableObject {
     }
 
     private func waitForSocketOpen(_ socket: any HermesWebSocket) async throws {
+        // The prior continuation (if any) is already resumed by connect()'s
+        // teardown before we reach here, so just install this one.
         try await withCheckedThrowingContinuation { continuation in
-            // A second connect() superseding an in-flight one would otherwise
-            // overwrite and leak the prior continuation (its connect() call would
-            // hang forever). Resume it first so the superseded connect() throws.
-            openContinuation?.resume(throwing: HermesError.connectionClosed)
             openContinuation = continuation
             openTimeoutTask?.cancel()
             openTimeoutTask = Task { [weak self] in
@@ -514,6 +522,9 @@ final class HermesClient: ObservableObject {
         openTimeoutTask = nil
         socket.cancel(with: .goingAway, reason: nil)
         self.socket = nil
+        transport?.invalidate()
+        transport = nil
+        isConnected = false
         openContinuation?.resume(throwing: error)
         openContinuation = nil
     }
@@ -524,6 +535,12 @@ final class HermesClient: ObservableObject {
         while !Task.isCancelled {
             do {
                 let message = try await socket.receive()
+                // A reconnect replaces `self.socket`; if this loop has been
+                // superseded, drop the frame rather than dispatch it —
+                // `handleMessage` has no identity check of its own and could
+                // otherwise fire `onEvent`/resolve pending RPCs for the new
+                // connection. Same guard the catch uses below.
+                guard self.socket === socket else { break }
                 switch message {
                 case .data(let data):
                     handleMessage(data: data)
