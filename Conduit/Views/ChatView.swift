@@ -778,7 +778,8 @@ private struct UserImageAttachmentPreview: View {
     @State private var gatewayImage: UIImage?
     @State private var gatewayLoadFailed = false
     @State private var localPreview: UIImage?
-    @State private var localPreviewFailed = false
+    @State private var localPreviewPath: String?
+    @State private var localPreviewFailedPath: String?
 
     /// Body re-evaluates at streaming frame rate, and re-reading + fully
     /// decoding the file each time hitches scrolling. Previews are downsampled
@@ -799,6 +800,21 @@ private struct UserImageAttachmentPreview: View {
         return Self.localImageCache.object(forKey: url.path as NSString)
     }
 
+    /// The decoded preview, gated on the path it was decoded for so a stale
+    /// value can't leak in if SwiftUI ever reuses this view identity for a
+    /// different `attachment.uri`. Today that can't happen — `Attachment` is
+    /// `Identifiable` so each id gets fresh `@State`, and uris are immutable —
+    /// but this makes the invariant non-load-bearing rather than relying on it.
+    private var currentLocalPreview: UIImage? {
+        guard localPreviewPath == localFileURL?.path else { return nil }
+        return localPreview
+    }
+
+    /// True only for a decode failure of the *current* path.
+    private var localPreviewFailed: Bool {
+        localPreviewFailedPath == localFileURL?.path
+    }
+
     /// Estimated decoded byte cost for NSCache. `bytesPerRow * height` accounts
     /// for the row-alignment padding that a naive `width * height * 4` misses.
     private static func bitmapCost(of image: UIImage) -> Int {
@@ -809,12 +825,16 @@ private struct UserImageAttachmentPreview: View {
     }
 
     /// Decodes `url` as a thumbnail sized for the 224pt attachment preview
-    /// (~3× retina on the long edge). Pure CoreGraphics, so it is safe to call
-    /// off the MainActor — which is how the `.task` below uses it, so a large
-    /// photo can't hitch scrolling on a cache miss. `ShouldCache` is false
-    /// because the resulting `UIImage` is already retained by our cache; the
-    /// default `true` would double-buffer the decoded bitmap inside ImageIO.
-    private static func downsampledPreview(url: URL) -> UIImage? {
+    /// (~3× retina on the long edge). `nonisolated` makes explicit that this is
+    /// pure CoreGraphics and safe to call off the MainActor — which is how the
+    /// `.task` below invokes it, so a large photo can't hitch scrolling on a
+    /// cache miss. `ShouldCache` is false because the resulting `UIImage` is
+    /// already retained by our cache; the default `true` would double-buffer
+    /// the decoded bitmap inside ImageIO. Note: the detached caller returns a
+    /// non-Sendable `UIImage` across the task boundary — fine under the
+    /// project's Swift 5 mode, but it would need a Sendable box if strict
+    /// concurrency is ever enabled.
+    private nonisolated static func downsampledPreview(url: URL) -> UIImage? {
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceShouldCache: false,
@@ -835,9 +855,9 @@ private struct UserImageAttachmentPreview: View {
 
     var body: some View {
         Group {
-            if let image = cachedLocalImage ?? localPreview ?? gatewayImage {
+            if let image = cachedLocalImage ?? currentLocalPreview ?? gatewayImage {
                 imagePreview(image)
-            } else if isGatewayImage && !gatewayLoadFailed {
+            } else if isGatewayImage && localFileURL == nil && !gatewayLoadFailed {
                 loadingPlaceholder
             } else if localFileURL != nil && !localPreviewFailed {
                 // Local file decoding off-main on a cache miss.
@@ -859,17 +879,18 @@ private struct UserImageAttachmentPreview: View {
             // frame via `cachedLocalImage`, so only misses reach here. Decode
             // off the MainActor so a large photo can't hitch scrolling.
             if let url = localFileURL {
-                guard localPreview == nil, cachedLocalImage == nil else { return }
+                guard currentLocalPreview == nil, cachedLocalImage == nil else { return }
                 let image = await Task.detached(priority: .userInitiated) { () -> UIImage? in
                     Self.downsampledPreview(url: url)
                 }.value
                 guard !Task.isCancelled else { return }
                 guard let image else {
-                    localPreviewFailed = true
+                    localPreviewFailedPath = url.path
                     return
                 }
                 Self.localImageCache.setObject(image, forKey: url.path as NSString, cost: Self.bitmapCost(of: image))
                 localPreview = image
+                localPreviewPath = url.path
                 // Gateway image, fetched through Hermes. The local-file branch
                 // returns above, so a local URI never reaches here — which also
                 // removes the old `localImage == nil` check that decoded local
