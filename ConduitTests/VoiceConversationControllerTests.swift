@@ -86,6 +86,27 @@ final class VoiceConversationControllerTests: XCTestCase {
         XCTAssertEqual(result.message, "Microphone access is required for voice conversations.")
     }
 
+    func testTranscriptionTestReportsCaptureStartFailureBeforeProviderCall() async {
+        let capture = MockCapture(
+            permissionGranted: true,
+            startError: VoiceAudioError.unavailable("Microphone capture could not start.")
+        )
+        let gateway = MockGateway()
+        let controller = VoiceConversationController(
+            capture: capture,
+            playback: MockPlayback(),
+            gateway: gateway,
+            submit: { _ in true },
+            interrupt: {}
+        )
+
+        let result = await controller.runTranscriptionTest(duration: 0)
+
+        XCTAssertFalse(result.passed)
+        XCTAssertEqual(result.message, "Microphone capture could not start.")
+        XCTAssertEqual(gateway.transcriptionCount, 0)
+    }
+
     func testTranscriptionTestReturnsCapturedTranscript() async {
         let controller = VoiceConversationController(
             capture: MockCapture(permissionGranted: true),
@@ -590,20 +611,26 @@ private final class MockCapture: AudioCaptureService {
     let events: AsyncStream<VoiceCaptureEvent>
     private var continuation: AsyncStream<VoiceCaptureEvent>.Continuation?
     let permissionGranted: Bool
+    let startError: Error?
     var didStart = false
     var startCount = 0
     var didBeginMonitoring = false
     var didPause = false
     var resumeCount = 0
 
-    init(permissionGranted: Bool) {
+    init(permissionGranted: Bool, startError: Error? = nil) {
         self.permissionGranted = permissionGranted
+        self.startError = startError
         var captured: AsyncStream<VoiceCaptureEvent>.Continuation?
         events = AsyncStream { captured = $0 }
         continuation = captured
     }
     func requestPermission() async -> Bool { permissionGranted }
-    func startListening(includePreRoll: Bool) throws { didStart = true; startCount += 1 }
+    func startListening(includePreRoll: Bool) throws {
+        didStart = true
+        startCount += 1
+        if let startError { throw startError }
+    }
     func beginBargeInMonitoring() throws { didBeginMonitoring = true }
     func pause() { didPause = true }
     func resume() throws { resumeCount += 1 }

@@ -10,7 +10,7 @@ struct VoiceAudioSessionConfiguration: Equatable {
     static let capture = Self(
         category: .playAndRecord,
         mode: .voiceChat,
-        options: [.allowBluetooth, .defaultToSpeaker],
+        options: [.allowBluetoothHFP, .defaultToSpeaker],
         outputSampleRate: 16_000,
         outputChannelCount: 1
     )

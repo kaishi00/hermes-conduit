@@ -5,6 +5,9 @@
 
 import AVFAudio
 import Foundation
+import OSLog
+
+private let voiceAudioLogger = Logger(subsystem: "com.milim.relay", category: "VoiceAudio")
 
 @MainActor
 final class AVAudioCaptureService: NSObject, AudioCaptureService {
@@ -12,7 +15,10 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
     private let session = AVAudioSession.sharedInstance()
     /// AVAudioEngine and AVAudioConverter use deinterleaved Float32 as their
     /// canonical PCM representation. Quantize to PCM16 only after resampling.
-    private let outputFormat = AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1)!
+    private let outputFormat = AVAudioFormat(
+        standardFormatWithSampleRate: VoiceAudioSessionConfiguration.capture.outputSampleRate,
+        channels: VoiceAudioSessionConfiguration.capture.outputChannelCount
+    )!
     private var converter: AVAudioConverter?
     private var capturedPCM = Data()
     private var preRollPCM = Data()
@@ -61,8 +67,12 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
     }
 
     func startListening(includePreRoll: Bool = false) throws {
-        try configureSession()
-        if !engine.isRunning { try startEngine() }
+        do {
+            try startCaptureIfNeeded()
+        } catch {
+            handleStartupFailure(error, stage: "startListening")
+            throw error
+        }
         capturedPCM = includePreRoll ? preRollPCM : Data()
         lastCaptureFailure = nil
         activelyRecording = true
@@ -71,8 +81,12 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
     }
 
     func beginBargeInMonitoring() throws {
-        try configureSession()
-        if !engine.isRunning { try startEngine() }
+        do {
+            try startCaptureIfNeeded()
+        } catch {
+            handleStartupFailure(error, stage: "beginBargeInMonitoring")
+            throw error
+        }
         activelyRecording = false
         paused = false
         shouldKeepEngineRunning = true
@@ -81,8 +95,12 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
     func pause() { paused = true }
 
     func resume() throws {
-        try configureSession()
-        if !engine.isRunning { try startEngine() }
+        do {
+            try startCaptureIfNeeded()
+        } catch {
+            handleStartupFailure(error, stage: "resume")
+            throw error
+        }
         paused = false
         shouldKeepEngineRunning = true
     }
@@ -116,14 +134,35 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
         try? session.setActive(false, options: .notifyOthersOnDeactivation)
     }
 
+    private func startCaptureIfNeeded() throws {
+        try configureSession()
+        if !engine.isRunning { try startEngine() }
+    }
+
     private func configureSession() throws {
+        let configuration = VoiceAudioSessionConfiguration.capture
         try session.setCategory(
-            .playAndRecord,
-            mode: .voiceChat,
-            options: [.allowBluetooth, .allowBluetoothA2DP, .defaultToSpeaker]
+            configuration.category,
+            mode: configuration.mode,
+            options: configuration.options
         )
-        try session.setPreferredSampleRate(16_000)
         try session.setActive(true)
+    }
+
+    private func handleStartupFailure(_ error: Error, stage: String) {
+        logStartupFailure(error, stage: stage)
+        stop()
+    }
+
+    private func logStartupFailure(_ error: Error, stage: String) {
+        let nsError = error as NSError
+        let inputFormat = engine.inputNode.inputFormat(forBus: 0)
+        let inputPorts = session.currentRoute.inputs
+            .map { $0.portType.rawValue }
+            .joined(separator: ",")
+        voiceAudioLogger.error(
+            "Capture startup failed stage=\(stage, privacy: .public) domain=\(nsError.domain, privacy: .public) code=\(nsError.code, privacy: .public) ports=\(inputPorts, privacy: .public) sessionRate=\(self.session.sampleRate, privacy: .public) sessionChannels=\(self.session.inputNumberOfChannels, privacy: .public) inputRate=\(inputFormat.sampleRate, privacy: .public) inputChannels=\(inputFormat.channelCount, privacy: .public)"
+        )
     }
 
     private func startEngine() throws {
@@ -229,8 +268,13 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
         // the converter lazily without churning an already-running engine.
         converter = nil
         if shouldKeepEngineRunning, !engine.isRunning {
-            do { try startEngine() }
-            catch { continuation?.yield(.interrupted) }
+            do {
+                try configureSession()
+                try startEngine()
+            } catch {
+                handleStartupFailure(error, stage: "routeChange")
+                continuation?.yield(.interrupted)
+            }
         }
         continuation?.yield(.routeChanged)
     }
