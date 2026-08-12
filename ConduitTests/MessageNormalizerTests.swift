@@ -184,14 +184,22 @@ final class MessageNormalizerTests: XCTestCase {
 
         let initialAttempt = service.navigationAttempt
         XCTAssertTrue(service.handleFailedNotificationRoute(target))
-        try? await Task.sleep(for: .milliseconds(10))
+        let retryDeadline = ContinuousClock.now.advanced(by: .seconds(1))
+        while service.navigationAttempt == initialAttempt,
+              ContinuousClock.now < retryDeadline {
+            await Task.yield()
+        }
         XCTAssertEqual(service.navigationAttempt, initialAttempt + 1)
         XCTAssertEqual(service.pendingTarget, target)
 
         XCTAssertFalse(service.handleFailedNotificationRoute(target))
         XCTAssertNil(service.pendingTarget)
         let terminalAttempt = service.navigationAttempt
-        try? await Task.sleep(for: .milliseconds(10))
+        let terminalDeadline = ContinuousClock.now.advanced(by: .milliseconds(100))
+        while service.navigationAttempt == terminalAttempt,
+              ContinuousClock.now < terminalDeadline {
+            await Task.yield()
+        }
         XCTAssertEqual(service.navigationAttempt, terminalAttempt)
     }
 
