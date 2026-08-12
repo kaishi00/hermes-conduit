@@ -3,6 +3,11 @@ import XCTest
 
 @MainActor
 final class HapticsTests: XCTestCase {
+    func testResponseEngineUsesSharedHapticsOnlyPolicy() {
+        XCTAssertTrue(Haptics.enginePolicy.usesSharedAudioSession)
+        XCTAssertTrue(Haptics.enginePolicy.playsHapticsOnly)
+    }
+
     func testEnabledUsesDevicePreference() {
         let defaults = UserDefaults.standard
         let previousValue = defaults.object(forKey: Haptics.preferenceKey)

@@ -6,9 +6,20 @@
 //  calibrated response lifecycle patterns and subordinate tool activity.
 //
 
+import AVFAudio
 import CoreHaptics
 import SwiftUI
 import UIKit
+
+struct HapticsEnginePolicy: Equatable {
+    let usesSharedAudioSession: Bool
+    let playsHapticsOnly: Bool
+
+    static let response = Self(
+        usesSharedAudioSession: true,
+        playsHapticsOnly: true
+    )
+}
 
 struct ResponseHapticState {
     enum Effect: Equatable {
@@ -163,6 +174,7 @@ enum Haptics {
 #endif
 
     static let preferenceKey = "conduit.haptics"
+    static let enginePolicy = HapticsEnginePolicy.response
 
 
     private static let softGenerator = UIImpactFeedbackGenerator(style: .soft)
@@ -343,7 +355,13 @@ enum Haptics {
         ]
     }
     private static func makeCoreHapticsEngine() throws -> CHHapticEngine {
-        let engine = try CHHapticEngine()
+        let engine: CHHapticEngine
+        if enginePolicy.usesSharedAudioSession {
+            engine = try CHHapticEngine(audioSession: AVAudioSession.sharedInstance())
+        } else {
+            engine = try CHHapticEngine()
+        }
+        engine.playsHapticsOnly = enginePolicy.playsHapticsOnly
         engine.isAutoShutdownEnabled = true
         engine.resetHandler = { [weak engine] in
             Task { @MainActor in
@@ -356,6 +374,7 @@ enum Haptics {
             Task { @MainActor in
                 guard let engine, coreHapticsEngine === engine else { return }
                 clearLifecyclePatternState()
+                coreHapticsEngine = nil
             }
         }
         return engine
