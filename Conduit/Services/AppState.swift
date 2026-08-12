@@ -407,6 +407,8 @@ final class AppState: ObservableObject {
         var resolvedSessionId: String?
         var acceptedSessionIDs: Set<String>
         let acceptsAnySession: Bool
+        let streamTextAtBoundary: String?
+        let streamSessionIDAtBoundary: String?
         var bufferedEvents: [StreamEvent] = []
 
         init(
@@ -415,6 +417,8 @@ final class AppState: ObservableObject {
             automaticSyncOperationID: UUID? = nil,
             acceptedSessionIDs: Set<String> = [],
             acceptsAnySession: Bool = false,
+            streamTextAtBoundary: String? = nil,
+            streamSessionIDAtBoundary: String? = nil,
             bufferedEvents: [StreamEvent] = []
         ) {
             self.token = token
@@ -422,6 +426,8 @@ final class AppState: ObservableObject {
             self.automaticSyncOperationID = automaticSyncOperationID
             self.acceptedSessionIDs = acceptedSessionIDs
             self.acceptsAnySession = acceptsAnySession
+            self.streamTextAtBoundary = streamTextAtBoundary
+            self.streamSessionIDAtBoundary = streamSessionIDAtBoundary
             self.bufferedEvents = bufferedEvents
         }
 
@@ -2010,11 +2016,22 @@ final class AppState: ObservableObject {
     func beginReconciliation() -> UUID {
         let token = UUID()
         let bufferedEvents = reconciliation?.bufferedEvents ?? []
+        let streamTextAtBoundary: String?
+        let streamSessionIDAtBoundary: String?
+        if let existingReconciliation = reconciliation {
+            streamTextAtBoundary = existingReconciliation.streamTextAtBoundary
+            streamSessionIDAtBoundary = existingReconciliation.streamSessionIDAtBoundary
+        } else {
+            streamTextAtBoundary = activeSessionId.map { _ in streamingBuffer }
+            streamSessionIDAtBoundary = activeSessionId
+        }
         reconciliationToken = token
         reconciliation = Reconciliation(
             token: token,
             requestedSessionId: activeSessionId ?? "",
             acceptsAnySession: true,
+            streamTextAtBoundary: streamTextAtBoundary,
+            streamSessionIDAtBoundary: streamSessionIDAtBoundary,
             bufferedEvents: bufferedEvents
         )
         refreshActiveChatScrollSessionIdentity(isReconciling: true)
@@ -2176,14 +2193,15 @@ final class AppState: ObservableObject {
         ), chatViewportTransitionIsCurrent(requiredViewportTransitionGeneration) else {
             return false
         }
-        let bufferedEvents = reconciliation?.token == token
-            ? reconciliation?.bufferedEvents ?? []
-            : []
+        let priorReconciliation = reconciliation?.token == token ? reconciliation : nil
+        let bufferedEvents = priorReconciliation?.bufferedEvents ?? []
         reconciliation = Reconciliation(
             token: token,
             requestedSessionId: sessionId,
             automaticSyncOperationID: automaticSyncOperationID,
             acceptedSessionIDs: acceptedSessionIDs.union([sessionId]),
+            streamTextAtBoundary: priorReconciliation?.streamTextAtBoundary,
+            streamSessionIDAtBoundary: priorReconciliation?.streamSessionIDAtBoundary,
             bufferedEvents: bufferedEvents
         )
         refreshActiveChatScrollSessionIdentity(isReconciling: true)
@@ -2286,11 +2304,73 @@ final class AppState: ObservableObject {
                 return false
             }
 
-            let bufferedEvents = reconciliation?.token == token
+            var bufferedEvents = reconciliation?.token == token
                 ? (reconciliation?.bufferedEvents ?? []).filter {
                     reconciliation?.accepts(sessionID(for: $0)) == true
                 }
                 : []
+            if result.snapshot.hasLiveProjection {
+                let resumedInflightText = streamingBuffer
+                let boundary = reconciliation?.token == token ? reconciliation : nil
+                let acceptedSessionIDs: Set<String>
+                if let boundary,
+                   let boundarySessionID = boundary.streamSessionIDAtBoundary {
+                    // Do not infer that a newly returned runtime ID belongs
+                    // to this boundary solely because the resume RPC returned
+                    // it. Keep only IDs already accepted for the boundary and
+                    // known as aliases of that catalog session; an empty
+                    // result intentionally disables deduplication rather than
+                    // risking text from a different session.
+                    acceptedSessionIDs = boundary.acceptedSessionIDs.intersection(
+                        knownSessionIDs(for: boundarySessionID)
+                    )
+                    if !acceptedSessionIDs.contains(result.sessionId) {
+                        sessionCatalogLog.debug(
+                            "Skipping buffered delta dedup because resumed session \(result.sessionId, privacy: .public) is not a catalog-confirmed alias of the reconciliation boundary"
+                        )
+                    }
+                } else {
+                    acceptedSessionIDs = [result.sessionId]
+                }
+                let knownPrefix: String?
+                let coveredText: String?
+                if let boundary {
+                    knownPrefix = Self.normalizedReconciliationBoundaryPrefix(
+                        boundaryText: boundary.streamTextAtBoundary,
+                        boundarySessionID: boundary.streamSessionIDAtBoundary,
+                        resumedSessionID: result.sessionId,
+                        acceptedSessionIDs: acceptedSessionIDs,
+                        after: messages
+                    )
+                    coveredText = Self.reconciliationBoundaryCoverageText(
+                        boundaryText: boundary.streamTextAtBoundary,
+                        boundarySessionID: boundary.streamSessionIDAtBoundary,
+                        resumedSessionID: result.sessionId,
+                        acceptedSessionIDs: acceptedSessionIDs,
+                        snapshotInflightText: result.snapshot.inflightAssistantText,
+                        after: messages
+                    )
+                } else {
+                    knownPrefix = nil
+                    coveredText = nil
+                }
+
+                // The live bubble was just seeded from the cumulative inflight
+                // projection, which already includes deltas emitted while this
+                // reconciliation was in flight. Replay only the portion beyond
+                // the normalized text captured at the same session boundary.
+                bufferedEvents = Self.deduplicatingBufferedEvents(
+                    bufferedEvents,
+                    againstInflight: resumedInflightText,
+                    knownPrefix: knownPrefix,
+                    sessionID: result.sessionId,
+                    acceptedSessionIDs: acceptedSessionIDs,
+                    coveredText: coveredText,
+                    hasBoundaryAnchor: boundary?.streamTextAtBoundary?
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                        .isEmpty == false
+                )
+            }
             bufferedEvents.forEach(applyStreamEvent)
             return settleReconciliationAndPublish(
                 token,
@@ -2643,11 +2723,287 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Deltas buffered while reconciliation ran are usually already contained
+    /// in the resume snapshot's cumulative `inflight` projection — replaying
+    /// them on top of the seeded live bubble repeats that text. When the exact
+    /// stream text at the matching session boundary is known, consume only the
+    /// corresponding span of the buffered deltas. Edge whitespace is ignored
+    /// consistently with resume seeding, and the raw covered count preserves
+    /// event order when deltas carry that whitespace. Interior whitespace is
+    /// not rewritten: a mismatch may be real content, so leave it intact.
+    /// Without a matching boundary or session, repeated text is ambiguous, so
+    /// leave events intact.
+    nonisolated static func normalizedReconciliationBoundaryPrefix(
+        boundaryText: String?,
+        boundarySessionID: String?,
+        resumedSessionID: String,
+        acceptedSessionIDs: Set<String>,
+        after messages: [ChatMessage]
+    ) -> String? {
+        guard let boundaryText,
+              let boundarySessionID,
+              !boundarySessionID.isEmpty,
+              acceptedSessionIDs.contains(boundarySessionID),
+              acceptedSessionIDs.contains(resumedSessionID) else {
+            return nil
+        }
+        return unpersistedInflightAssistantText(boundaryText, after: messages)
+    }
+
+    nonisolated static func reconciliationBoundaryCoverageText(
+        boundaryText: String?,
+        boundarySessionID: String?,
+        resumedSessionID: String,
+        acceptedSessionIDs: Set<String>,
+        snapshotInflightText: String,
+        after messages: [ChatMessage]
+    ) -> String? {
+        guard let boundaryText,
+              let boundarySessionID,
+              !boundarySessionID.isEmpty,
+              acceptedSessionIDs.contains(boundarySessionID),
+              acceptedSessionIDs.contains(resumedSessionID) else {
+            return nil
+        }
+
+        let normalizedBoundaryText = boundaryText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedSnapshotText = snapshotInflightText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if normalizedSnapshotText.hasPrefix(normalizedBoundaryText) {
+            return String(normalizedSnapshotText.dropFirst(normalizedBoundaryText.count))
+        }
+
+        let normalizedUnpersistedBoundary = unpersistedInflightAssistantText(
+            boundaryText,
+            after: messages
+        )
+        let normalizedUnpersistedSnapshot = unpersistedInflightAssistantText(
+            snapshotInflightText,
+            after: messages
+        )
+        guard normalizedUnpersistedSnapshot.hasPrefix(normalizedUnpersistedBoundary) else {
+            return nil
+        }
+        return String(
+            normalizedUnpersistedSnapshot.dropFirst(normalizedUnpersistedBoundary.count)
+        )
+    }
+
+    nonisolated static func deduplicatingBufferedEvents(
+        _ events: [StreamEvent],
+        againstInflight inflight: String,
+        knownPrefix: String?,
+        sessionID: String,
+        acceptedSessionIDs: Set<String> = [],
+        coveredText explicitCoveredText: String? = nil,
+        hasBoundaryAnchor: Bool = false
+    ) -> [StreamEvent] {
+        let coveredText: String
+        if let explicitCoveredText {
+            guard let knownPrefix else { return events }
+            let normalizedInflight = inflight.trimmingCharacters(in: .whitespacesAndNewlines)
+            let normalizedKnownPrefix = knownPrefix.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard normalizedInflight.hasPrefix(normalizedKnownPrefix) else {
+                return events
+            }
+            let expectedCoveredText = String(
+                normalizedInflight.dropFirst(normalizedKnownPrefix.count)
+            )
+            let normalizedExplicitCoveredText = explicitCoveredText
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let explicitCoverageOverlapsSeededText = Self.suffixPrefixOverlapLengths(
+                covered: normalizedExplicitCoveredText,
+                buffered: expectedCoveredText
+            )
+            guard !expectedCoveredText.isEmpty,
+                  explicitCoverageOverlapsSeededText.count == 1 else {
+                return events
+            }
+            coveredText = explicitCoveredText
+        } else {
+            guard let knownPrefix else { return events }
+            if inflight.hasPrefix(knownPrefix) {
+                coveredText = String(inflight.dropFirst(knownPrefix.count))
+            } else {
+                let normalizedInflight = inflight.trimmingCharacters(in: .whitespacesAndNewlines)
+                let normalizedKnownPrefix = knownPrefix.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard normalizedInflight.hasPrefix(normalizedKnownPrefix) else {
+                    return events
+                }
+                coveredText = String(
+                    normalizedInflight.dropFirst(normalizedKnownPrefix.count)
+                )
+            }
+        }
+        let normalizedCoveredText = coveredText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedCoveredText.isEmpty else { return events }
+
+        let bufferedDeltaTexts = events.compactMap { event in
+            if case .messageDelta(_, let text) = event {
+                return text
+            }
+            return nil
+        }
+        guard !bufferedDeltaTexts.isEmpty else { return events }
+
+        let deltaSessionIDs = Set(events.compactMap { event in
+            if case .messageDelta(let sessionId, _) = event {
+                return sessionId
+            }
+            return nil
+        })
+        let allowedSessionIDs = acceptedSessionIDs.isEmpty
+            ? Set([sessionID])
+            : acceptedSessionIDs
+        guard deltaSessionIDs.count == 1,
+              let deltaSessionID = deltaSessionIDs.first,
+              allowedSessionIDs.contains(deltaSessionID) else {
+            return events
+        }
+
+        if let newTurnIndex = events.firstIndex(where: { event in
+            guard case .messageStart(let startSessionID) = event else { return false }
+            return allowedSessionIDs.contains(startSessionID)
+        }) {
+            // A message start observed after the reconciliation boundary is
+            // an explicit new-turn marker. Deduplicate any older buffered
+            // events, but preserve the marker and everything after it because
+            // the same text can be fresh content from the new turn.
+            let eventsBeforeNewTurn = Array(events[..<newTurnIndex])
+            let eventsAfterNewTurn = Array(events[newTurnIndex...])
+            return deduplicatingBufferedEvents(
+                eventsBeforeNewTurn,
+                againstInflight: inflight,
+                knownPrefix: knownPrefix,
+                sessionID: sessionID,
+                acceptedSessionIDs: acceptedSessionIDs,
+                coveredText: explicitCoveredText,
+                hasBoundaryAnchor: hasBoundaryAnchor
+            ) + eventsAfterNewTurn
+        }
+
+        guard hasBoundaryAnchor else {
+            // Content equality cannot distinguish a fresh turn that happens
+            // to repeat the snapshot. Without a non-empty stream boundary (or
+            // the explicit message-start marker above), preserve the events
+            // rather than risking loss of genuinely new text.
+            return events
+        }
+
+        let bufferedDeltaText = bufferedDeltaTexts.joined()
+        let normalizedBufferedDeltaText = bufferedDeltaText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedBufferedDeltaText.isEmpty else { return events }
+
+        let coveredRawCharacters: Int
+        if normalizedBufferedDeltaText == normalizedCoveredText {
+            coveredRawCharacters = bufferedDeltaText.count
+        } else if normalizedBufferedDeltaText.hasPrefix(normalizedCoveredText) {
+            let leadingWhitespaceCount = bufferedDeltaText.prefix { $0.isWhitespace }.count
+            let coveredEnd = leadingWhitespaceCount + normalizedCoveredText.count
+            let coveredTrailingWhitespaceCount = coveredText.reversed().prefix { $0.isWhitespace }.count
+            let bufferedTrailingWhitespaceCount = bufferedDeltaText.dropFirst(coveredEnd)
+                .prefix { $0.isWhitespace }
+                .count
+            coveredRawCharacters = coveredEnd + min(
+                coveredTrailingWhitespaceCount,
+                bufferedTrailingWhitespaceCount
+            )
+        } else if normalizedCoveredText.hasPrefix(normalizedBufferedDeltaText) {
+            coveredRawCharacters = bufferedDeltaText.count
+        } else {
+            let overlaps = Self.suffixPrefixOverlapLengths(
+                covered: normalizedCoveredText,
+                buffered: normalizedBufferedDeltaText
+            )
+            guard overlaps.count == 1, let overlap = overlaps.first else {
+                // Repeated content can produce multiple valid alignments. A
+                // content-only guess could consume genuinely new text, so
+                // preserve the events when the offset is ambiguous.
+                return events
+            }
+            let leadingWhitespaceCount = bufferedDeltaText.prefix { $0.isWhitespace }.count
+            coveredRawCharacters = leadingWhitespaceCount + overlap
+        }
+
+        var remainingCoverage = coveredRawCharacters
+        var deduplicated: [StreamEvent] = []
+        deduplicated.reserveCapacity(events.count)
+        for event in events {
+            guard case .messageDelta(let sessionId, let text) = event else {
+                deduplicated.append(event)
+                continue
+            }
+            guard remainingCoverage > 0 else {
+                deduplicated.append(event)
+                continue
+            }
+
+            let consumed = min(remainingCoverage, text.count)
+            guard consumed > 0 else {
+                deduplicated.append(event)
+                continue
+            }
+            remainingCoverage -= consumed
+            let remainder = String(text.dropFirst(consumed))
+            if !remainder.isEmpty {
+                deduplicated.append(.messageDelta(sessionId: sessionId, text: remainder))
+            }
+        }
+        return deduplicated
+    }
+
+    /// Returns every non-empty prefix of `buffered` that is also a suffix of
+    /// `covered`. The prefix-function scan stays linear in the cumulative
+    /// projection size; callers can reject repeated-content ambiguity when
+    /// more than one alignment is possible.
+    nonisolated static func suffixPrefixOverlapLengths(
+        covered: String,
+        buffered: String
+    ) -> [Int] {
+        let pattern = Array(buffered)
+        guard !pattern.isEmpty, !covered.isEmpty else { return [] }
+
+        var prefixLengths = Array(repeating: 0, count: pattern.count)
+        var prefixLength = 0
+        for index in 1..<pattern.count {
+            while prefixLength > 0, pattern[index] != pattern[prefixLength] {
+                prefixLength = prefixLengths[prefixLength - 1]
+            }
+            if pattern[index] == pattern[prefixLength] {
+                prefixLength += 1
+            }
+            prefixLengths[index] = prefixLength
+        }
+
+        let text = Array(covered)
+        var matched = 0
+        var overlaps: [Int] = []
+        for (index, character) in text.enumerated() {
+            while matched > 0, pattern[matched] != character {
+                matched = prefixLengths[matched - 1]
+            }
+            if pattern[matched] == character {
+                matched += 1
+            }
+            if matched == pattern.count {
+                if index == text.count - 1 {
+                    overlaps.append(pattern.count)
+                }
+                matched = prefixLengths[matched - 1]
+            }
+        }
+
+        while matched > 0 {
+            overlaps.append(matched)
+            matched = prefixLengths[matched - 1]
+        }
+        return overlaps
+    }
+
     /// `session.resume.inflight` is a cumulative projection on some gateways.
     /// When its already-persisted prefix is also present in the recovered
     /// transcript, rendering it as the live bubble repeats the last reply.
     /// Keep only the unpersisted suffix so the next delta continues naturally.
-    static func unpersistedInflightAssistantText(
+    nonisolated static func unpersistedInflightAssistantText(
         _ inflight: String,
         after messages: [ChatMessage]
     ) -> String {
