@@ -7,6 +7,7 @@
 
 import SwiftUI
 import UIKit
+import ImageIO
 
 struct ChatView: View {
     @EnvironmentObject var appState: AppState
@@ -776,10 +777,74 @@ private struct UserImageAttachmentPreview: View {
     @EnvironmentObject private var appState: AppState
     @State private var gatewayImage: UIImage?
     @State private var gatewayLoadFailed = false
+    @State private var localPreview: UIImage?
+    @State private var localPreviewPath: String?
+    @State private var localPreviewFailedPath: String?
 
-    private var localImage: UIImage? {
+    /// Body re-evaluates at streaming frame rate, and re-reading + fully
+    /// decoding the file each time hitches scrolling. Previews are downsampled
+    /// to the display size and shared across rows; NSCache evicts them under
+    /// memory pressure. Cost-bounded so a handful of large photos can't
+    /// exhaust it before then.
+    private static let localImageCache: NSCache<NSString, UIImage> = {
+        let cache = NSCache<NSString, UIImage>()
+        cache.countLimit = 64
+        cache.totalCostLimit = 64 * 1024 * 1024
+        return cache
+    }()
+
+    /// Cache-only lookup (no decode) so a hit renders on the first frame.
+    /// Misses are filled asynchronously — see the `.task` in `body`.
+    private var cachedLocalImage: UIImage? {
         guard let url = localFileURL else { return nil }
-        return UIImage(contentsOfFile: url.path)
+        return Self.localImageCache.object(forKey: url.path as NSString)
+    }
+
+    /// The decoded preview, gated on the path it was decoded for so a stale
+    /// value can't leak in if SwiftUI ever reuses this view identity for a
+    /// different `attachment.uri`. Today that can't happen — `Attachment` is
+    /// `Identifiable` so each id gets fresh `@State`, and uris are immutable —
+    /// but this makes the invariant non-load-bearing rather than relying on it.
+    private var currentLocalPreview: UIImage? {
+        guard localPreviewPath == localFileURL?.path else { return nil }
+        return localPreview
+    }
+
+    /// True only for a decode failure of the *current* path.
+    private var localPreviewFailed: Bool {
+        localPreviewFailedPath == localFileURL?.path
+    }
+
+    /// Estimated decoded byte cost for NSCache. `bytesPerRow * height` accounts
+    /// for the row-alignment padding that a naive `width * height * 4` misses.
+    private static func bitmapCost(of image: UIImage) -> Int {
+        if let cg = image.cgImage {
+            return cg.bytesPerRow * cg.height
+        }
+        return Int(image.size.width * image.scale * image.size.height * image.scale) * 4
+    }
+
+    /// Decodes `url` as a thumbnail sized for the 224pt attachment preview
+    /// (~3× retina on the long edge). `nonisolated` makes explicit that this is
+    /// pure CoreGraphics and safe to call off the MainActor — which is how the
+    /// `.task` below invokes it, so a large photo can't hitch scrolling on a
+    /// cache miss. `ShouldCache` is false because the resulting `UIImage` is
+    /// already retained by our cache; the default `true` would double-buffer
+    /// the decoded bitmap inside ImageIO. Note: the detached caller returns a
+    /// non-Sendable `UIImage` across the task boundary — fine under the
+    /// project's Swift 5 mode, but it would need a Sendable box if strict
+    /// concurrency is ever enabled.
+    private nonisolated static func downsampledPreview(url: URL) -> UIImage? {
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceShouldCache: false,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: CGFloat(800)
+        ]
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
+        else { return nil }
+        return UIImage(cgImage: thumbnail)
     }
 
     private var localFileURL: URL? {
@@ -790,23 +855,17 @@ private struct UserImageAttachmentPreview: View {
 
     var body: some View {
         Group {
-            if let image = localImage ?? gatewayImage {
+            if let image = cachedLocalImage ?? currentLocalPreview ?? gatewayImage {
                 imagePreview(image)
-            } else if isGatewayImage && !gatewayLoadFailed {
-                HStack(spacing: 8) {
-                    ProgressView()
-                        .tint(.white)
-                    Text("Loading image...")
-                }
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.white)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 7)
-                .background(Color.white.opacity(0.13), in: Capsule())
+            } else if isGatewayImage && localFileURL == nil && !gatewayLoadFailed {
+                loadingPlaceholder
+            } else if localFileURL != nil && !localPreviewFailed {
+                // Local file decoding off-main on a cache miss.
+                loadingPlaceholder
             } else {
                 Label(
-                    gatewayLoadFailed ? "Image unavailable" : "Image attached",
-                    systemImage: gatewayLoadFailed ? "photo.badge.exclamationmark" : "photo"
+                    (gatewayLoadFailed || localPreviewFailed) ? "Image unavailable" : "Image attached",
+                    systemImage: (gatewayLoadFailed || localPreviewFailed) ? "photo.badge.exclamationmark" : "photo"
                 )
                 .font(.caption.weight(.medium))
                 .foregroundStyle(.white)
@@ -816,21 +875,55 @@ private struct UserImageAttachmentPreview: View {
             }
         }
         .task(id: "\(attachment.uri)|\(appState.activeProfile)") {
-            guard localImage == nil, isGatewayImage else { return }
-            gatewayImage = nil
-            gatewayLoadFailed = false
-            guard let dataURL = await appState.gatewayMediaDataURL(
-                for: attachment.uri,
-                profile: appState.activeProfile
-            ),
-            !Task.isCancelled,
-            let image = image(fromDataURL: dataURL) else {
+            // Local file: cache hits are already shown by `body` on the first
+            // frame via `cachedLocalImage`, so only misses reach here. Decode
+            // off the MainActor so a large photo can't hitch scrolling.
+            if let url = localFileURL {
+                guard currentLocalPreview == nil, cachedLocalImage == nil else { return }
+                let image = await Task.detached(priority: .userInitiated) { () -> UIImage? in
+                    Self.downsampledPreview(url: url)
+                }.value
                 guard !Task.isCancelled else { return }
-                gatewayLoadFailed = true
-                return
+                guard let image else {
+                    localPreviewFailedPath = url.path
+                    return
+                }
+                Self.localImageCache.setObject(image, forKey: url.path as NSString, cost: Self.bitmapCost(of: image))
+                localPreview = image
+                localPreviewPath = url.path
+                // Gateway image, fetched through Hermes. The local-file branch
+                // returns above, so a local URI never reaches here — which also
+                // removes the old `localImage == nil` check that decoded local
+                // files on the MainActor before short-circuiting.
+            } else if isGatewayImage {
+                gatewayImage = nil
+                gatewayLoadFailed = false
+                guard let dataURL = await appState.gatewayMediaDataURL(
+                    for: attachment.uri,
+                    profile: appState.activeProfile
+                ),
+                !Task.isCancelled,
+                let image = image(fromDataURL: dataURL) else {
+                    guard !Task.isCancelled else { return }
+                    gatewayLoadFailed = true
+                    return
+                }
+                gatewayImage = image
             }
-            gatewayImage = image
         }
+    }
+
+    private var loadingPlaceholder: some View {
+        HStack(spacing: 8) {
+            ProgressView()
+                .tint(.white)
+            Text("Loading image...")
+        }
+        .font(.caption.weight(.medium))
+        .foregroundStyle(.white)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(Color.white.opacity(0.13), in: Capsule())
     }
 
     private var isGatewayImage: Bool {
