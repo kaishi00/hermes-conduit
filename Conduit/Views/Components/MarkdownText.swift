@@ -98,9 +98,11 @@ private enum MarkdownRenderCache {
     private static let cache: NSCache<NSString, MarkdownRendering> = {
         let cache = NSCache<NSString, MarkdownRendering>()
         cache.countLimit = 256
+        cache.totalCostLimit = 32 * 1024 * 1024
         return cache
     }()
 
+    @MainActor
     static func rendering(
         source: String,
         recognizesGatewayMedia: Bool,
@@ -108,16 +110,22 @@ private enum MarkdownRenderCache {
         usesAccentSurface: Bool,
         isStreaming: Bool
     ) -> MarkdownRendering {
-        // Fonts resolve against the current Dynamic Type size, so a size
-        // change must miss the cache rather than serve stale metrics.
-        //
         // `foregroundStyle` is deliberately absent from the key: only two
         // values are ever passed (.primary / .white), each uniquely tied to
         // `usesAccentSurface` (false / true), so keying on that is stable —
         // whereas `String(describing:)` of a SwiftUI Color is not (its
-        // description is undocumented and can drift for adaptive colors).
-        // If a third foreground style is ever introduced, give it an explicit
-        // token here instead of re-adding `String(describing:)`.
+        // description is undocumented and can drift for adaptive colors). The
+        // assert fails loudly in debug if a third style is ever introduced;
+        // promote it to an explicit key token then.
+        assert(
+            usesAccentSurface ? foregroundStyle == .white : foregroundStyle == .primary,
+            "MarkdownRenderCache keys on usesAccentSurface, not foregroundStyle; a new style needs an explicit key token."
+        )
+
+        // Fonts resolve against the current Dynamic Type size, so a size change
+        // must miss the cache rather than serve stale metrics. Reading
+        // preferredContentSizeCategory touches UIApplication.shared, hence the
+        // @MainActor isolation on this function.
         let key = [
             recognizesGatewayMedia ? "1" : "0",
             usesAccentSurface ? "1" : "0",
@@ -142,7 +150,11 @@ private enum MarkdownRenderCache {
         // The message is cached on its first settled render via the
         // non-streaming call sites (isStreaming == false).
         if !isStreaming {
-            cache.setObject(rendering, forKey: key)
+            // Approximate byte cost: source bytes + attributed-string storage
+            // (each char carries attribute runs), so a few large messages can't
+            // crowd out many small ones within totalCostLimit.
+            let cost = source.utf8.count + (rendering.selectableText?.length ?? 0) * 4
+            cache.setObject(rendering, forKey: key, cost: cost)
         }
         return rendering
     }
@@ -1393,6 +1405,7 @@ private enum SyntaxHighlighter {
     private static let cache: NSCache<NSString, HighlightedCode> = {
         let cache = NSCache<NSString, HighlightedCode>()
         cache.countLimit = 128
+        cache.totalCostLimit = 16 * 1024 * 1024
         return cache
     }()
 
@@ -1400,7 +1413,7 @@ private enum SyntaxHighlighter {
         let key = "\(language)|\(source)" as NSString
         if let cached = cache.object(forKey: key) { return cached.value }
         let highlighted = tokenize(source, language: language)
-        cache.setObject(HighlightedCode(highlighted), forKey: key)
+        cache.setObject(HighlightedCode(highlighted), forKey: key, cost: source.utf8.count)
         return highlighted
     }
 
