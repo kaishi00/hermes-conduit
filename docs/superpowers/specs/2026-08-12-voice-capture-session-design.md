@@ -49,7 +49,7 @@ Introduce a small value-oriented `VoiceAudioSessionConfiguration` used by `AVAud
 
 - category: `.playAndRecord`;
 - mode: `.voiceChat`;
-- options: `.allowBluetooth` and `.defaultToSpeaker`;
+- options: `.allowBluetoothHFP` and `.defaultToSpeaker`;
 - no preferred hardware sample rate;
 - canonical conversion output: 16,000 Hz, one channel, PCM16.
 
