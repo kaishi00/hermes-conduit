@@ -119,9 +119,10 @@ final class SessionPresentationCache {
         var unconfirmedPendingDecisionAt: Date?
     }
 
-    /// An omitted running state is inherently ambiguous. Keep an unconfirmed
-    /// decision across a cold launch for a bounded grace period, then prefer a
-    /// stale-card miss over making an old request answerable forever.
+    /// A resume without explicit active-turn confirmation is inherently
+    /// ambiguous for pending decisions. Keep an unconfirmed decision across a
+    /// cold launch for a bounded grace period, then prefer a stale-card miss
+    /// over making an old request answerable forever.
     private let defaults: UserDefaults
     private let now: () -> Date
     private let storageKey = "conduit.sessionPresentation.v1"
