@@ -1,0 +1,165 @@
+# Design Spec: Persist Session YOLO Overrides
+
+**Date:** 2026-08-13
+**Branch:** `codex/session-yolo-persistence`
+**Status:** Implemented
+
+## Problem
+
+Conduit sends a session-scoped `config.set` request when the user changes YOLO
+mode and updates `runtime.yolo` in memory. A later resume or turn snapshot can
+omit the session-level `yolo` field while including the profile-level
+`approvalsMode`; `applyRuntime` then derives `runtime.yolo` from that global
+fallback and overwrites the user's session choice. The choice is also lost
+when the app is relaunched because no local session override is stored.
+
+## Goal
+
+Remember the user's explicit YOLO choice for the current conversation across
+turns, backgrounding, and app relaunch, while keeping the choice isolated to
+that conversation and profile. Switching to a different session must reload
+that session's own override or its current global fallback rather than leaking
+the previous session's value.
+
+## Non-goals
+
+- Do not change the Hermes `config.set` protocol or profile-wide approval
+  settings.
+- Do not persist a value when the gateway rejects the setting request.
+- Do not make one session's override affect another session, profile, or
+  gateway identity.
+- Do not add a migration for unrelated preference stores.
+
+## Design
+
+### Injectable session override store
+
+Add a small `SessionYoloStore` backed by injectable `UserDefaults`. It stores an
+optional override keyed by the normalized active profile and canonical session
+ID. The optional state is important: `true`, `false`, and no local override are
+three distinct states. The store should expose read and write operations that
+are straightforward to exercise with an isolated defaults suite.
+
+Canonicalization must use the existing session identity rules, including
+catalog alternate IDs, so a runtime/session ID and the persisted conversation
+ID address the same entry. Profile and session keys must remain independent.
+
+### Runtime precedence
+
+When deriving `runtime.yolo` for a session, use this precedence:
+
+1. An explicit session-level `snapshot.yolo` from Hermes.
+2. A locally persisted override for the active normalized profile/session when
+   the snapshot omits session YOLO.
+3. The profile-level `snapshot.approvalsMode` fallback.
+
+The local override preserves the user's explicit choice when a later snapshot
+omits session-level YOLO. A fresh resume snapshot is authoritative when Hermes
+explicitly reports session YOLO, and a conflicting local override is cleared so
+the visible runtime and the server can reconcile. A resume can, however, have
+started before a client-initiated `config.set` completes. AppState captures the
+per-session local-write revision when the resume starts and skips conflict
+clearing if a newer successful write exists when the response arrives. Live
+`session.info` pushes may also be older than a client-initiated `config.set`
+response, so an explicit conflicting value in a live push does not clear a
+local override. A later resume with no newer local write performs the
+server-authority reconciliation.
+
+### Buffered resume events
+
+While a fresh resume is in flight, buffered `session.info` events may describe
+the state that preceded the resume snapshot. If a buffered event conflicts with
+an authoritative fresh-resume YOLO value, replay it with that YOLO value
+anchored to the resume snapshot while preserving the event's other runtime
+fields, including running state, model, provider, and context usage. Do not
+drop the entire event merely because its YOLO field is stale. Compute the
+authority decision once for the reconciliation and use that same decision for
+both resume application and buffered-event replay. Events received after
+reconciliation remain normal live pushes.
+
+When the active session changes, recompute this value for the new canonical
+session. A session with no override must not retain the previous session's
+local value; it should use that session's snapshot/global fallback. Returning
+to an overridden session must reload its saved choice.
+
+### Model Picker draft state
+
+The Model Picker seeds its YOLO draft and comparison baseline only on the first
+appearance of a presentation. Repeated `onAppear` calls must not overwrite a
+toggle the user has already changed; asynchronous model loading uses the same
+nil-baseline guard.
+
+### Write and lifecycle behavior
+
+- `setYoloMode(_:)` calls the existing gateway method first. Only after success
+  does it write the explicit boolean to `SessionYoloStore` and update
+  `runtime.yolo`.
+- On failure, the persisted value and visible runtime value remain unchanged,
+  and the existing error reporting remains in place.
+- Resume, foreground synchronization, session selection, and app relaunch
+  paths must resolve the canonical active session and apply the store before or
+  alongside runtime snapshot reconciliation. Fresh resume snapshots may clear
+  a conflicting local override when no newer local write occurred after that
+  resume began; a stale resume response must not invalidate the newer write.
+  Live session-info pushes must also not invalidate a local write because their
+  ordering relative to config.set is not guaranteed.
+- A new conversation without a canonical session ID has no session override;
+  it must not reuse the last session's value.
+- When a runtime/session alias is resolved to a catalog session ID, migrate the
+  stored override to the canonical key and remove the raw alias.
+- On successful archive or delete, clear overrides for the session's canonical
+  and known alternate IDs so retired conversations do not retain stale state.
+- Invalid or unsupported persisted payloads are ignored and reported through
+  the session-store diagnostics logger.
+
+## Expected implementation surface
+
+- `Conduit/Services/SessionYoloStore.swift`: injectable profile/session-keyed
+  persistence with explicit optional override semantics, alias migration, and
+  diagnostics for unreadable payloads.
+- `Conduit/Services/AppState.swift`: inject/use the store, persist successful
+  changes, apply precedence, and refresh on session/profile transitions.
+- `Conduit/Services/ChatScrollState.swift` or the existing identity seam only
+  if a small reusable canonical-ID helper is needed; avoid duplicating
+  normalization rules.
+- `ConduitTests/SessionYoloStoreTests.swift` and/or
+  `ConduitTests/AppStateChatResumeTests.swift`: store round trips, true/false
+  distinction, profile/session isolation, runtime precedence, failure
+  behavior, and session switching.
+
+## Acceptance tests
+
+- `true` and `false` overrides round-trip through an isolated `UserDefaults`
+  suite, while an absent key returns no override.
+- Overrides for two sessions or two profiles do not collide.
+- A stored session override wins over a later snapshot containing only the
+  profile/global approval mode.
+- With no stored override, explicit `snapshot.yolo` still wins over
+  `approvalsMode`, and `approvalsMode` remains the fallback when session YOLO
+  is omitted.
+- An explicit `snapshot.yolo` replaces a conflicting local override and clears
+  the stale persisted value on a fresh resume.
+- A resume snapshot captured before a successful local YOLO write cannot clear
+  that newer override when the response arrives afterward.
+- A stale live `session.info` snapshot cannot clear a just-persisted local
+  override or revert the visible runtime value.
+- A contradictory buffered `session.info` event preserves its non-YOLO fields
+  while the fresh-resume YOLO authority remains visible after replay.
+- Switching from an overridden session to an unoverridden session clears the
+  previous local value from the visible runtime; switching back restores it.
+- A failed `config.set` does not write the override.
+- A runtime alias migration leaves the override under the canonical session ID
+  and removes the raw alias.
+- Archiving or deleting a session removes its canonical and alternate-ID
+  overrides after the server mutation succeeds.
+- Repeated Model Picker appearances do not reset an in-progress YOLO toggle or
+  its change baseline.
+- Corrupt or unsupported persisted data is ignored and produces a diagnostic.
+- The complete existing test suite remains green.
+
+## Verification
+
+Run the store and AppState-focused tests first, then run the complete `Conduit`
+XCTest suite in the iOS Simulator. Review the final diff to confirm that the
+store is scoped only to profile/session YOLO state and that no profile-wide
+setting is mutated.

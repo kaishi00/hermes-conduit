@@ -7,6 +7,26 @@
 
 import SwiftUI
 
+func sessionYoloSelectionChanged(from initial: Bool?, to selected: Bool) -> Bool {
+    guard let initial else { return false }
+    return initial != selected
+}
+
+struct ModelPickerYoloDraft: Equatable {
+    let initial: Bool
+    let selected: Bool
+
+    init(runtimeYolo: Bool) {
+        initial = runtimeYolo
+        selected = runtimeYolo
+    }
+
+    static func seededIfNeeded(initial: Bool?, runtimeYolo: Bool) -> ModelPickerYoloDraft? {
+        guard initial == nil else { return nil }
+        return ModelPickerYoloDraft(runtimeYolo: runtimeYolo)
+    }
+}
+
 struct ModelPickerView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.colorScheme) private var colorScheme
@@ -16,6 +36,7 @@ struct ModelPickerView: View {
     @State private var reasoningEffort = "medium"
     @State private var fastEnabled = false
     @State private var yoloEnabled = false
+    @State private var initialYoloEnabled: Bool?
     @State private var providers: [ProviderInfo] = []
     @State private var expandedProvider: String?
     @State private var editingVisibility = false
@@ -66,6 +87,15 @@ struct ModelPickerView: View {
             }
         }
         .preferredColorScheme(appState.themePreference.colorScheme)
+        .onAppear {
+            if let draft = ModelPickerYoloDraft.seededIfNeeded(
+                initial: initialYoloEnabled,
+                runtimeYolo: appState.runtime.yolo
+            ) {
+                yoloEnabled = draft.selected
+                initialYoloEnabled = draft.initial
+            }
+        }
         .task { await loadModels() }
     }
 
@@ -383,7 +413,11 @@ struct ModelPickerView: View {
                 reasoningEffort = appState.runtime.reasoningEffort
             }
             fastEnabled = appState.runtime.fast
-            yoloEnabled = appState.runtime.yolo
+            if initialYoloEnabled == nil {
+                let draft = ModelPickerYoloDraft(runtimeYolo: appState.runtime.yolo)
+                yoloEnabled = draft.selected
+                initialYoloEnabled = draft.initial
+            }
         } catch {
             // Model options are supplementary to the current session state.
         }
@@ -393,6 +427,13 @@ struct ModelPickerView: View {
         guard let client = appState.client, let sessionId = appState.activeSessionId else { return }
 
         do {
+            // Apply YOLO first. setYoloMode persists the session override only
+            // after the gateway accepts it, so a failure must bail before any of
+            // the other settings are mutated — otherwise the sheet hangs open
+            // showing a partially-applied configuration with no rollback.
+            if sessionYoloSelectionChanged(from: initialYoloEnabled, to: yoloEnabled) {
+                guard await appState.setYoloMode(yoloEnabled) else { return }
+            }
             if !selectedModel.isEmpty && !selectedProvider.isEmpty {
                 try await client.setModel(sessionId, model: selectedModel, provider: selectedProvider)
                 appState.runtime.model = selectedModel
@@ -402,7 +443,6 @@ struct ModelPickerView: View {
             appState.runtime.reasoningEffort = reasoningEnabled ? reasoningEffort : ""
             try await client.setFast(sessionId, enabled: fastEnabled)
             appState.runtime.fast = fastEnabled
-            guard await appState.setYoloMode(yoloEnabled) else { return }
             appState.showModelPicker = false
         } catch {
             appState.errorMessage = error.localizedDescription

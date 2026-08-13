@@ -55,6 +55,7 @@ struct ChatResumeLifecycleOperations {
         String
     ) async throws -> AnyCodable)?
     var setBusyInputMode: (@MainActor (HermesClient, BusyInputMode) async throws -> Void)?
+    var setSessionYolo: (@MainActor (HermesClient, String, Bool) async throws -> Void)?
     var loadProfiles: (@MainActor () async -> Void)?
     var loadBusyInputMode: (@MainActor (HermesClient) async -> Void)?
     var loadProfileDisplayPreferences: (@MainActor () async -> Void)?
@@ -90,6 +91,7 @@ struct ChatResumeLifecycleOperations {
             String
         ) async throws -> AnyCodable)? = nil,
         setBusyInputMode: (@MainActor (HermesClient, BusyInputMode) async throws -> Void)? = nil,
+        setSessionYolo: (@MainActor (HermesClient, String, Bool) async throws -> Void)? = nil,
         loadProfiles: (@MainActor () async -> Void)? = nil,
         loadBusyInputMode: (@MainActor (HermesClient) async -> Void)? = nil,
         loadProfileDisplayPreferences: (@MainActor () async -> Void)? = nil,
@@ -109,6 +111,7 @@ struct ChatResumeLifecycleOperations {
         self.executeSlash = executeSlash
         self.dispatchCommand = dispatchCommand
         self.setBusyInputMode = setBusyInputMode
+        self.setSessionYolo = setSessionYolo
         self.loadProfiles = loadProfiles
         self.loadBusyInputMode = loadBusyInputMode
         self.loadProfileDisplayPreferences = loadProfileDisplayPreferences
@@ -618,6 +621,10 @@ final class AppState: ObservableObject {
         let messages: [ChatMessage]
     }
 
+    private struct SessionYoloWriteBaseline {
+        let revisions: [ChatScrollSessionKey: UInt64]
+    }
+
     private var restoredPendingDecisionCardsAwaitingConfirmation: PendingDecisionRestorationGuard?
     /// Timestamp of the last successful coalesced cache flush; used to
     /// enforce a maximum 5-second interval even during continuous streaming.
@@ -633,6 +640,9 @@ final class AppState: ObservableObject {
     private var sessionCatalogCache = SessionCatalogCache()
     private var projectsRequestGeneration = 0
     private let sessionPresentationCache: SessionPresentationCache
+    private let sessionYoloStore: SessionYoloStore
+    private var sessionYoloWriteRevision: UInt64 = 0
+    private var sessionYoloWriteRevisions: [ChatScrollSessionKey: UInt64] = [:]
 
     /// The dashboard's persisted transcript is richer than `session.resume`:
     /// it retains database timestamps, complete tool-call inputs, and other
@@ -806,10 +816,12 @@ final class AppState: ObservableObject {
         reconnectScheduler: ChatResumeReconnectScheduler? = nil,
         reconnectExecutor: ChatResumeReconnectExecutor? = nil,
         chatResumeLifecycleOperations: ChatResumeLifecycleOperations = .live,
-        sessionPresentationCache: SessionPresentationCache = .shared
+        sessionPresentationCache: SessionPresentationCache = .shared,
+        sessionYoloStore: SessionYoloStore? = nil
     ) {
         self.defaults = defaults
         self.sessionPresentationCache = sessionPresentationCache
+        self.sessionYoloStore = sessionYoloStore ?? SessionYoloStore(defaults: defaults)
         self.chatResumeCoordinator = chatResumeCoordinator
             ?? ChatResumeCoordinator(store: ChatResumeStore(defaults: defaults))
         self.recoverySequence = recoverySequence
@@ -2325,6 +2337,10 @@ final class AppState: ObservableObject {
         refreshActiveChatScrollSessionIdentity(isReconciling: true)
         turnState = .synchronizing
         let profile = activeProfile
+        // The resume RPC can overlap a user-initiated config.set. Capture the
+        // local-write position before launching either request so a response
+        // from the older snapshot cannot clear the newer override.
+        let yoloWriteBaseline = sessionYoloWriteBaseline(for: sessionId)
 
         do {
             // Match Hermes Desktop: fetch the durable transcript and resume the
@@ -2399,10 +2415,19 @@ final class AppState: ObservableObject {
                 presentationResult = result
             }
 
+            let resumeSessionIDs = [result.sessionId, reconciliation?.requestedSessionId]
+                .compactMap { $0 }
+            let reconcileExplicitYolo = !hasNewerSessionYoloWrite(
+                since: yoloWriteBaseline,
+                sessionIDs: resumeSessionIDs
+            )
+
             guard applyChatResume(
                 presentationResult,
                 automaticWorkToken: automaticWorkToken,
-                automaticSyncOperationID: automaticSyncOperationID
+                automaticSyncOperationID: automaticSyncOperationID,
+                yoloWriteBaseline: yoloWriteBaseline,
+                reconcileExplicitYolo: reconcileExplicitYolo
             ) else {
                 settleReconciliation(token, automaticSyncOperationID: automaticSyncOperationID)
                 return false
@@ -2489,7 +2514,10 @@ final class AppState: ObservableObject {
                         .isEmpty == false
                 )
             }
-            bufferedEvents.forEach(applyStreamEvent)
+            let bufferedYoloAuthority = reconcileExplicitYolo ? result.snapshot.yolo : nil
+            bufferedEvents.forEach { event in
+                applyStreamEvent(event, authoritativeYolo: bufferedYoloAuthority)
+            }
             return settleReconciliationAndPublish(
                 token,
                 automaticWorkToken: automaticWorkToken,
@@ -2675,6 +2703,22 @@ final class AppState: ObservableObject {
         automaticWorkToken: ChatResumeAutomaticWorkToken? = nil,
         automaticSyncOperationID: UUID? = nil
     ) -> Bool {
+        applyChatResume(
+            result,
+            automaticWorkToken: automaticWorkToken,
+            automaticSyncOperationID: automaticSyncOperationID,
+            yoloWriteBaseline: nil
+        )
+    }
+
+    @discardableResult
+    private func applyChatResume(
+        _ result: SessionResumeResult,
+        automaticWorkToken: ChatResumeAutomaticWorkToken? = nil,
+        automaticSyncOperationID: UUID? = nil,
+        yoloWriteBaseline: SessionYoloWriteBaseline?,
+        reconcileExplicitYolo: Bool? = nil
+    ) -> Bool {
         guard automaticChatResumeWorkIsCurrent(
             automaticWorkToken,
             syncOperationID: automaticSyncOperationID
@@ -2784,7 +2828,16 @@ final class AppState: ObservableObject {
         activeAssistantMessageId = nil
         activeReasoningMessageId = nil
         receivedReasoningForCurrentTurn = false
-        applyRuntime(result.snapshot)
+        applyRuntime(
+            result.snapshot,
+            for: result.sessionId,
+            reconcileExplicitYolo: reconcileExplicitYolo ?? yoloWriteBaseline.map {
+                !hasNewerSessionYoloWrite(
+                    since: $0,
+                    sessionIDs: [result.sessionId, reconciliation?.requestedSessionId].compactMap { $0 }
+                )
+            } ?? true
+        )
 
         // An omitted running state is ambiguous while a decision or live
         // projection is present, but an explicit false is authoritative: the
@@ -3137,7 +3190,52 @@ final class AppState: ObservableObject {
         return recovered
     }
 
-    private func applyRuntime(_ snapshot: SessionRuntimeSnapshot) {
+    private func canonicalSessionID(for sessionID: String?) -> String? {
+        ChatSessionPersistenceIdentity.canonicalID(
+            for: sessionID,
+            identity: activeChatScrollSessionIdentity,
+            catalog: sessions + cronSessions,
+            activeProfile: activeProfile
+        )
+    }
+
+    private func sessionYoloKeys(for sessionIDs: [String]) -> Set<ChatScrollSessionKey> {
+        Set(sessionIDs.map { ChatScrollSessionKey(profile: activeProfile, sessionID: $0) })
+            .filter(\.isValid)
+    }
+
+    private func sessionYoloWriteBaseline(for sessionID: String) -> SessionYoloWriteBaseline {
+        let sessionIDs = [sessionID, canonicalSessionID(for: sessionID)].compactMap { $0 }
+        let keys = sessionYoloKeys(for: sessionIDs)
+        return SessionYoloWriteBaseline(
+            revisions: Dictionary(uniqueKeysWithValues: keys.map { key in
+                (key, sessionYoloWriteRevisions[key] ?? 0)
+            })
+        )
+    }
+
+    private func hasNewerSessionYoloWrite(
+        since baseline: SessionYoloWriteBaseline,
+        sessionIDs: [String]
+    ) -> Bool {
+        sessionYoloKeys(for: sessionIDs).contains { key in
+            sessionYoloWriteRevisions[key, default: 0] > baseline.revisions[key, default: 0]
+        }
+    }
+
+    private func recordSessionYoloWrite(for sessionIDs: [String]) {
+        sessionYoloWriteRevision &+= 1
+        for key in sessionYoloKeys(for: sessionIDs) {
+            sessionYoloWriteRevisions[key] = sessionYoloWriteRevision
+        }
+    }
+
+    private func applyRuntime(
+        _ snapshot: SessionRuntimeSnapshot,
+        for sessionID: String? = nil,
+        reconcileExplicitYolo: Bool = false,
+        authoritativeYolo: Bool? = nil
+    ) {
         if let model = snapshot.model { runtime.model = model }
         if let provider = snapshot.provider { runtime.provider = provider }
         if let cwd = snapshot.cwd { runtime.cwd = cwd }
@@ -3149,8 +3247,42 @@ final class AppState: ObservableObject {
             runtime.reasoningEffort = reasoningEffort.lowercased() == "none" ? "" : reasoningEffort
         }
         if let fast = snapshot.fast { runtime.fast = fast }
-        if let yolo = snapshot.yolo {
-            runtime.yolo = yolo
+        let requestedSessionID = sessionID ?? activeSessionId
+        let resolvedCanonicalSessionID = canonicalSessionID(for: requestedSessionID)
+        let sessionIDsForOverride = [resolvedCanonicalSessionID, requestedSessionID]
+            .compactMap { $0 }
+        if let resolvedCanonicalSessionID,
+           let requestedSessionID,
+           resolvedCanonicalSessionID != requestedSessionID {
+            sessionYoloStore.canonicalizeOverride(
+                for: activeProfile,
+                canonicalSessionID: resolvedCanonicalSessionID,
+                aliases: [requestedSessionID]
+            )
+        }
+        let storedOverride = sessionYoloStore.storedOverride(
+            for: activeProfile,
+            sessionIDs: sessionIDsForOverride
+        )
+        if let yolo = authoritativeYolo ?? snapshot.yolo {
+            if let storedOverride {
+                if reconcileExplicitYolo, storedOverride != yolo {
+                    sessionYoloStore.clearOverride(
+                        for: activeProfile,
+                        sessionIDs: sessionIDsForOverride
+                    )
+                    runtime.yolo = yolo
+                } else {
+                    // Live session.info pushes can be older than a client
+                    // initiated config.set RPC. Keep the local choice until a
+                    // fresh resume snapshot can reconcile server authority.
+                    runtime.yolo = storedOverride
+                }
+            } else {
+                runtime.yolo = yolo
+            }
+        } else if let storedOverride {
+            runtime.yolo = storedOverride
         } else if let approvalsMode = snapshot.approvalsMode {
             runtime.yolo = approvalsMode.lowercased() == "off"
         }
@@ -3658,6 +3790,10 @@ final class AppState: ObservableObject {
             var updated = session
             updated.isArchived = archived
             if archived {
+                sessionYoloStore.clearOverride(
+                    for: profile,
+                    sessionIDs: [updated.id] + updated.alternateIds
+                )
                 removeSessionFromLiveCatalog(updated)
                 archivedSessions = [updated] + archivedSessions.filter { !sessionMatches($0, updated) }
                 removePinnedState(for: updated)
@@ -3770,6 +3906,10 @@ final class AppState: ObservableObject {
                 method: "DELETE"
             )
             guard profile == activeProfile else { return false }
+            sessionYoloStore.clearOverride(
+                for: profile,
+                sessionIDs: [session.id] + session.alternateIds
+            )
             removeSessionFromLiveCatalog(session)
             archivedSessions.removeAll { sessionMatches($0, session) }
             removePinnedState(for: session)
@@ -4293,7 +4433,18 @@ final class AppState: ObservableObject {
     func setYoloMode(_ enabled: Bool) async -> Bool {
         guard let client, let sessionId = activeSessionId else { return false }
         do {
-            try await client.setSessionYolo(sessionId, enabled: enabled)
+            if let setSessionYolo = chatResumeLifecycleOperations.setSessionYolo {
+                try await setSessionYolo(client, sessionId, enabled)
+            } else {
+                try await client.setSessionYolo(sessionId, enabled: enabled)
+            }
+            let persistedSessionID = canonicalSessionID(for: sessionId) ?? sessionId
+            sessionYoloStore.setOverride(
+                enabled,
+                for: activeProfile,
+                sessionID: persistedSessionID
+            )
+            recordSessionYoloWrite(for: [sessionId, persistedSessionID])
             runtime.yolo = enabled
             return true
         } catch {
@@ -6288,7 +6439,7 @@ final class AppState: ObservableObject {
         return reconciliation.acceptedSessionIDs.contains(sessionId)
     }
 
-    private func applyStreamEvent(_ event: StreamEvent) {
+    private func applyStreamEvent(_ event: StreamEvent, authoritativeYolo: Bool? = nil) {
         let streamSessionId = sessionID(for: event)
         guard eventBelongsToActiveSession(streamSessionId) else { return }
         defer { schedulePresentationCacheFlush(for: streamSessionId) }
@@ -6349,8 +6500,8 @@ final class AppState: ObservableObject {
                 scheduleResponseHapticConclusion(after: 180)
             }
 
-        case .sessionInfo(_, let snapshot):
-            applyRuntime(snapshot)
+        case .sessionInfo(let sessionID, let snapshot):
+            applyRuntime(snapshot, for: sessionID, authoritativeYolo: authoritativeYolo)
             if let running = snapshot.running {
                 setRunning(running)
             }
