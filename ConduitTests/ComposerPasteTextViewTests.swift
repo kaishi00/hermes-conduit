@@ -1,5 +1,6 @@
 import Foundation
 import ImageIO
+import SwiftUI
 import UniformTypeIdentifiers
 import UIKit
 import XCTest
@@ -94,6 +95,53 @@ final class ComposerPasteTextViewTests: XCTestCase {
         view.paste(nil as Any?)
 
         await fulfillment(of: [callback], timeout: 5.0)
+    }
+
+    func testProgrammaticTextApplicationDoesNotPublishAsUserEditing() {
+        var value = "old"
+        let view = ComposerPasteTextView(
+            text: Binding(get: { value }, set: { value = $0 }),
+            isFocused: .constant(false),
+            measuredHeight: .constant(44),
+            enabled: true,
+            onPastedImage: { _ in },
+            onPastedImageError: { _ in },
+            editorIdentity: UUID()
+        )
+        let coordinator = ComposerPasteTextView.Coordinator(view)
+        coordinator.isApplyingProgrammaticState = true
+
+        let textView = ImagePasteTextView()
+        textView.text = "restored"
+
+        coordinator.textViewDidChange(textView)
+
+        XCTAssertEqual(value, "old")
+    }
+
+    func testInactiveCoordinatorDoesNotPublishFocusOrMeasuredHeightChanges() {
+        var isFocused = false
+        var measuredHeight: CGFloat = 44
+        let view = ComposerPasteTextView(
+            text: .constant(""),
+            isFocused: Binding(get: { isFocused }, set: { isFocused = $0 }),
+            measuredHeight: Binding(get: { measuredHeight }, set: { measuredHeight = $0 }),
+            enabled: true,
+            onPastedImage: { _ in },
+            onPastedImageError: { _ in },
+            editorIdentity: UUID()
+        )
+        let coordinator = ComposerPasteTextView.Coordinator(view)
+        coordinator.isActive = false
+
+        let textView = ImagePasteTextView()
+
+        coordinator.textViewDidBeginEditing(textView)
+        coordinator.updateMeasuredHeight(88)
+        coordinator.textViewDidEndEditing(textView)
+
+        XCTAssertFalse(isFocused)
+        XCTAssertEqual(measuredHeight, 44)
     }
 
     func testPasteItemProvidersDeliversImageData() async {

@@ -2253,6 +2253,282 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertTrue(submitted)
     }
 
+    func testStaleComposerSubmissionFailureDoesNotRecoverOrMutateNewSession() async {
+        let rpcGate = ControlledSuspension()
+        let origin = session("composer-origin")
+        let destination = session("composer-destination")
+        var loadCatalogCount = 0
+        var openSessionCount = 0
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in
+                    loadCatalogCount += 1
+                    return [destination]
+                },
+                openSession: { _, sessionID in
+                    openSessionCount += 1
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                refreshContext: { _, _ in },
+                sendPrompt: { _, _, _ in
+                    await rpcGate.suspend()
+                    throw ControlledLifecycleError.failed
+                }
+            )
+        )
+        installComposerClient(in: harness)
+        harness.appState.sessions = [origin, destination]
+        harness.appState.activeSessionId = origin.id
+        let originContext = harness.appState.composerSubmissionContext()
+
+        let submission = Task { @MainActor in
+            await harness.appState.submitComposer(
+                text: "origin message",
+                context: originContext
+            )
+        }
+        await rpcGate.waitUntilSuspended()
+
+        harness.appState.activeSessionId = destination.id
+        harness.appState.errorMessage = "destination state"
+
+        rpcGate.resume()
+        let submitted = await submission.value
+
+        XCTAssertFalse(submitted)
+        XCTAssertEqual(harness.appState.errorMessage, "destination state")
+        XCTAssertEqual(loadCatalogCount, 0)
+        XCTAssertEqual(openSessionCount, 0)
+    }
+
+    func testStaleComposerSteerFailureDoesNotRecoverOrMutateNewSession() async {
+        let rpcGate = ControlledSuspension()
+        let origin = session("composer-origin")
+        let destination = session("composer-destination")
+        var loadCatalogCount = 0
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in
+                    loadCatalogCount += 1
+                    return [destination]
+                },
+                refreshContext: { _, _ in },
+                steer: { _, _, _ in
+                    await rpcGate.suspend()
+                    throw ControlledLifecycleError.failed
+                }
+            )
+        )
+        installComposerClient(in: harness)
+        harness.appState.sessions = [origin, destination]
+        harness.appState.activeSessionId = origin.id
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: origin.id, busy: true))
+        let originContext = harness.appState.composerSubmissionContext()
+
+        let submission = Task { @MainActor in
+            await harness.appState.submitComposer(
+                text: "origin steer",
+                context: originContext
+            )
+        }
+        await rpcGate.waitUntilSuspended()
+
+        harness.appState.activeSessionId = destination.id
+        harness.appState.errorMessage = "destination state"
+
+        rpcGate.resume()
+        let submitted = await submission.value
+
+        XCTAssertFalse(submitted)
+        XCTAssertEqual(harness.appState.errorMessage, "destination state")
+        XCTAssertEqual(loadCatalogCount, 0)
+    }
+
+    func testStaleSlashOutputDoesNotAppendToNewSession() async {
+        let rpcGate = ControlledSuspension()
+        let origin = session("composer-origin")
+        let destination = session("composer-destination")
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                executeSlash: { _, _, _ in
+                    await rpcGate.suspend()
+                    return .object([
+                        "type": .string("exec"),
+                        "output": .string("origin output")
+                    ])
+                }
+            )
+        )
+        installComposerClient(in: harness)
+        harness.appState.sessions = [origin, destination]
+        harness.appState.activeSessionId = origin.id
+        let originContext = harness.appState.composerSubmissionContext()
+
+        let submission = Task { @MainActor in
+            await harness.appState.submitComposer(
+                text: "/status",
+                context: originContext
+            )
+        }
+        await rpcGate.waitUntilSuspended()
+
+        harness.appState.activeSessionId = destination.id
+        harness.appState.messages = []
+
+        rpcGate.resume()
+        let submitted = await submission.value
+
+        XCTAssertTrue(submitted)
+        XCTAssertTrue(harness.appState.messages.isEmpty)
+    }
+
+    func testAcceptedComposerSendRemainsSuccessfulAfterSessionHandoff() async {
+        let rpcGate = ControlledSuspension()
+        let origin = session("composer-origin")
+        let destination = session("composer-destination")
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                sendPrompt: { _, _, _ in
+                    await rpcGate.suspend()
+                }
+            )
+        )
+        installComposerClient(in: harness)
+        harness.appState.sessions = [origin, destination]
+        harness.appState.activeSessionId = origin.id
+        let originContext = harness.appState.composerSubmissionContext()
+
+        let submission = Task { @MainActor in
+            await harness.appState.submitComposer(
+                text: "accepted origin message",
+                context: originContext
+            )
+        }
+        await rpcGate.waitUntilSuspended()
+
+        harness.appState.activeSessionId = destination.id
+        harness.appState.messages = []
+        harness.appState.errorMessage = "destination state"
+
+        rpcGate.resume()
+        let submitted = await submission.value
+
+        XCTAssertTrue(submitted)
+        XCTAssertEqual(harness.appState.errorMessage, "destination state")
+        XCTAssertTrue(harness.appState.messages.isEmpty)
+    }
+
+    func testRedirectRecoveryRefreshesContextAfterRuntimeSessionRotation() async {
+        let origin = session("stored-origin", alternateIDs: ["runtime-origin"])
+        var redirectCalls = 0
+        var openedSessionIDs: [String] = []
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in [origin] },
+                openSession: { _, sessionID in
+                    openedSessionIDs.append(sessionID)
+                    return SessionResumeResult(
+                        sessionId: "runtime-recovered",
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(true)])
+                    )
+                },
+                refreshContext: { _, _ in },
+                redirect: { _, sessionID, _ in
+                    redirectCalls += 1
+                    if redirectCalls == 1 {
+                        throw RpcError(code: 404, message: "session not found")
+                    }
+                    XCTAssertEqual(sessionID, "runtime-recovered")
+                    return .redirected
+                },
+                setBusyInputMode: { _, _ in }
+            )
+        )
+        installComposerClient(in: harness)
+        let changedMode = await harness.appState.setBusyInputMode(.interrupt)
+        XCTAssertTrue(changedMode)
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = "runtime-origin"
+        harness.appState.handleStreamEvent(
+            .sessionBusy(sessionId: "runtime-origin", busy: true)
+        )
+        XCTAssertEqual(harness.appState.turnState, .running)
+
+        let submitted = await harness.appState.submitComposer(text: "Retry this")
+
+        XCTAssertTrue(submitted)
+        XCTAssertEqual(redirectCalls, 2)
+        XCTAssertEqual(openedSessionIDs, ["stored-origin"])
+        XCTAssertEqual(harness.appState.activeSessionId, "runtime-recovered")
+    }
+
+    func testRedirectResumesAfterRuntimeRotationCompletesWhileRPCIsSuspended() async {
+        let redirectGate = ControlledSuspension()
+        let contextGate = ControlledSuspension()
+        let origin = session("stored-origin", alternateIDs: ["runtime-origin"])
+        var redirectCalls = 0
+        var contextRefreshes = 0
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in [origin] },
+                openSession: { _, _ in
+                    SessionResumeResult(
+                        sessionId: "runtime-recovered",
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(true)])
+                    )
+                },
+                refreshContext: { _, _ in
+                    contextRefreshes += 1
+                    if contextRefreshes == 1 {
+                        await contextGate.suspend()
+                    }
+                },
+                redirect: { _, sessionID, _ in
+                    redirectCalls += 1
+                    if redirectCalls == 1 {
+                        await redirectGate.suspend()
+                        throw RpcError(code: 404, message: "session not found")
+                    }
+                    XCTAssertEqual(sessionID, "runtime-recovered")
+                    return .redirected
+                },
+                setBusyInputMode: { _, _ in }
+            )
+        )
+        installComposerClient(in: harness)
+        let changedMode = await harness.appState.setBusyInputMode(.interrupt)
+        XCTAssertTrue(changedMode)
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = "runtime-origin"
+        harness.appState.handleStreamEvent(
+            .sessionBusy(sessionId: "runtime-origin", busy: true)
+        )
+
+        let submission = Task { @MainActor in
+            await harness.appState.submitComposer(text: "Retry this")
+        }
+        await redirectGate.waitUntilSuspended()
+
+        let synchronization = Task { @MainActor in
+            await harness.appState.syncSession()
+        }
+        await contextGate.waitUntilSuspended()
+        XCTAssertEqual(harness.appState.activeSessionId, "runtime-recovered")
+        contextGate.resume()
+        await synchronization.value
+
+        redirectGate.resume()
+        let submitted = await submission.value
+        XCTAssertTrue(submitted)
+        XCTAssertEqual(redirectCalls, 2)
+    }
+
     func testAcceptedSteerInvalidatesRestorationBeforeSteerRPCResumes() async {
         let rpcGate = ControlledSuspension()
         let harness = makeHarness(
@@ -2367,6 +2643,74 @@ final class AppStateChatResumeTests: XCTestCase {
         sendGate.resume()
         let submitted = await submission.value
         XCTAssertTrue(submitted)
+    }
+
+    func testLegacyInterruptAndSendRefreshesRuntimeAliasDuringInterrupt() async {
+        let interruptGate = ControlledSuspension()
+        let contextGate = ControlledSuspension()
+        let origin = session("stored-origin", alternateIDs: ["runtime-origin"])
+        var interruptSessionIDs: [String] = []
+        var sendSessionIDs: [String] = []
+        var contextRefreshes = 0
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in [origin] },
+                openSession: { _, _ in
+                    SessionResumeResult(
+                        sessionId: "runtime-recovered",
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(true)])
+                    )
+                },
+                refreshContext: { _, _ in
+                    contextRefreshes += 1
+                    if contextRefreshes == 1 {
+                        await contextGate.suspend()
+                    }
+                },
+                sendPrompt: { _, sessionID, _ in
+                    sendSessionIDs.append(sessionID)
+                },
+                redirect: { _, _, _ in
+                    throw RpcError(
+                        code: 4010,
+                        message: "Gateway does not support active-turn redirect"
+                    )
+                },
+                interrupt: { _, sessionID in
+                    interruptSessionIDs.append(sessionID)
+                    await interruptGate.suspend()
+                },
+                setBusyInputMode: { _, _ in }
+            )
+        )
+        installComposerClient(in: harness)
+        let changedMode = await harness.appState.setBusyInputMode(.interrupt)
+        XCTAssertTrue(changedMode)
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = "runtime-origin"
+        harness.appState.handleStreamEvent(
+            .sessionBusy(sessionId: "runtime-origin", busy: true)
+        )
+
+        let submission = Task { @MainActor in
+            await harness.appState.submitComposer(text: "Use legacy retry")
+        }
+        await interruptGate.waitUntilSuspended()
+
+        let synchronization = Task { @MainActor in
+            await harness.appState.syncSession()
+        }
+        await contextGate.waitUntilSuspended()
+        XCTAssertEqual(harness.appState.activeSessionId, "runtime-recovered")
+        contextGate.resume()
+        await synchronization.value
+
+        interruptGate.resume()
+        let submitted = await submission.value
+        XCTAssertTrue(submitted)
+        XCTAssertEqual(interruptSessionIDs, ["runtime-origin"])
+        XCTAssertEqual(sendSessionIDs, ["runtime-recovered"])
     }
 
     func testRejectedBusyAttachmentPreservesPendingRestoration() async {

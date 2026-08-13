@@ -121,6 +121,14 @@ struct ChatResumeLifecycleOperations {
     static let live = ChatResumeLifecycleOperations()
 }
 
+struct ComposerSubmissionContext: Equatable {
+    let profile: String
+    let sessionID: String?
+    let clientIdentity: ObjectIdentifier?
+    let clientEpoch: UUID
+    let viewportTransitionGeneration: UInt64
+}
+
 /// Owns the profile-scoped session catalog cache and rejects writes from a
 /// load that started before a destructive cache mutation. AppState is
 /// main-actor isolated, but every dashboard request can re-enter the actor
@@ -376,6 +384,7 @@ final class AppState: ObservableObject {
     /// An explicit user-send request lets ChatView scroll after SwiftUI has
     /// inserted the outgoing bubble, even if the user previously browsed up.
     @Published private(set) var chatScrollRequest = 0
+    @Published private(set) var chatScrollToTopRequest = 0
 
     /// Profile changes and network refreshes are asynchronous. Keep a final
     /// ownership boundary at the published catalog so a stale row can never
@@ -4339,7 +4348,92 @@ final class AppState: ObservableObject {
 
     // MARK: - Composer actions
 
-    func submitComposer(text: String, attachments: [Attachment] = []) async -> Bool {
+    func composerSubmissionContext() -> ComposerSubmissionContext {
+        ComposerSubmissionContext(
+            profile: activeProfile,
+            sessionID: activeSessionId,
+            clientIdentity: client.map(ObjectIdentifier.init),
+            clientEpoch: activeClientEpoch,
+            viewportTransitionGeneration: chatViewportTransitionGeneration
+        )
+    }
+
+    private func isCurrentComposerSubmission(_ context: ComposerSubmissionContext) -> Bool {
+        context.profile == activeProfile
+            && context.sessionID == activeSessionId
+            && context.clientIdentity == client.map(ObjectIdentifier.init)
+            && context.clientEpoch == activeClientEpoch
+            && context.viewportTransitionGeneration == chatViewportTransitionGeneration
+    }
+
+    private func composerSubmissionOwnershipIsCurrent(
+        _ context: ComposerSubmissionContext
+    ) -> Bool {
+        context.profile == activeProfile
+            && context.clientIdentity == client.map(ObjectIdentifier.init)
+            && context.clientEpoch == activeClientEpoch
+            && context.viewportTransitionGeneration == chatViewportTransitionGeneration
+    }
+
+    private func composerSessionIDsAreEquivalent(
+        _ lhs: String?,
+        _ rhs: String?
+    ) -> Bool {
+        guard let lhs, let rhs, !lhs.isEmpty, !rhs.isEmpty else { return false }
+        if lhs == rhs || activeChatScrollSessionIdentity.areEquivalent(lhs, rhs) {
+            return true
+        }
+        guard let session = (sessions + cronSessions).first(where: { session in
+            let ids = Set([session.id] + session.alternateIds)
+            return ids.contains(lhs) || ids.contains(rhs)
+        }) else {
+            return false
+        }
+        let ids = Set([session.id] + session.alternateIds)
+        return ids.contains(lhs) && ids.contains(rhs)
+    }
+
+    private func isCurrentOrAliasedComposerSubmission(
+        _ context: ComposerSubmissionContext
+    ) -> Bool {
+        currentComposerSubmissionContextIfOwnedAndAliased(context) != nil
+    }
+
+    private func currentComposerSubmissionContextIfOwnedAndAliased(
+        _ context: ComposerSubmissionContext
+    ) -> ComposerSubmissionContext? {
+        guard composerSubmissionOwnershipIsCurrent(context),
+              let activeSessionId,
+              composerSessionIDsAreEquivalent(context.sessionID, activeSessionId) else {
+            return nil
+        }
+        return ComposerSubmissionContext(
+            profile: context.profile,
+            sessionID: activeSessionId,
+            clientIdentity: context.clientIdentity,
+            clientEpoch: context.clientEpoch,
+            viewportTransitionGeneration: context.viewportTransitionGeneration
+        )
+    }
+
+    private func recoverComposerSubmission(
+        using context: ComposerSubmissionContext
+    ) async -> ComposerSubmissionContext? {
+        // Keep recovery owned by the submission that produced the error. The
+        // active actor may have moved to another session while the RPC waited.
+        guard isCurrentOrAliasedComposerSubmission(context) else { return nil }
+        await syncSession()
+        return currentComposerSubmissionContextIfOwnedAndAliased(context)
+    }
+
+    func submitComposer(
+        text: String,
+        attachments: [Attachment] = [],
+        context: ComposerSubmissionContext? = nil
+    ) async -> Bool {
+        let submissionContext = context ?? composerSubmissionContext()
+        guard isCurrentComposerSubmission(submissionContext) else { return false }
+
         // The gateway is already idle while the final visual tail drains.
         // If the user acts first, commit that response synchronously so the
         // new outgoing message retains correct transcript order.
@@ -4348,7 +4442,7 @@ final class AppState: ObservableObject {
 
         // Slash command intercept — handle before normal message/steer logic
         if attachments.isEmpty && Self.parseSlashCommand(text) != nil {
-            await executeSlashCommand(text)
+            await executeSlashCommand(text, context: submissionContext)
             return true
         }
 
@@ -4360,16 +4454,26 @@ final class AppState: ObservableObject {
 
             switch busyInputMode {
             case .steer:
-                return await steer(text)
+                return await steer(text, context: submissionContext)
             case .interrupt:
-                return await redirectOrInterruptAndSend(text)
+                return await redirectOrInterruptAndSend(text, context: submissionContext)
             }
         }
 
-        return await sendMessage(text, attachments: attachments)
+        return await sendMessage(
+            text,
+            attachments: attachments,
+            context: submissionContext
+        )
     }
 
-    func sendMessage(_ text: String, attachments: [Attachment] = []) async -> Bool {
+    func sendMessage(
+        _ text: String,
+        attachments: [Attachment] = [],
+        context: ComposerSubmissionContext? = nil
+    ) async -> Bool {
+        let submissionContext = context ?? composerSubmissionContext()
+        guard isCurrentComposerSubmission(submissionContext) else { return false }
         guard let client, let sessionId = activeSessionId else { return false }
         cancelChatResumeRestoration()
         resetResponseHapticTurn()
@@ -4393,20 +4497,25 @@ final class AppState: ObservableObject {
             do {
                 if attachment.kind == .image {
                     let base64 = await AttachmentHelper.toBase64(attachment)
+                    guard isCurrentComposerSubmission(submissionContext) else { return false }
                     guard !base64.isEmpty else { throw AttachmentError.unreadableFile(attachment.name) }
                     _ = try await client.attachImage(sessionId, base64: base64, filename: attachment.name)
                 } else if attachment.name.lowercased().hasSuffix(".pdf") {
                     let base64 = await AttachmentHelper.toBase64(attachment)
+                    guard isCurrentComposerSubmission(submissionContext) else { return false }
                     guard !base64.isEmpty else { throw AttachmentError.unreadableFile(attachment.name) }
                     try await client.attachPdf(sessionId, base64: base64, filename: attachment.name)
                 } else {
                     let dataUrl = await AttachmentHelper.toDataUrl(attachment)
+                    guard isCurrentComposerSubmission(submissionContext) else { return false }
                     guard !dataUrl.isEmpty else { throw AttachmentError.unreadableFile(attachment.name) }
                     try await client.attachFile(sessionId, dataUrl: dataUrl, name: attachment.name)
                 }
+                guard isCurrentComposerSubmission(submissionContext) else { return false }
             } catch {
+                guard isCurrentComposerSubmission(submissionContext) else { return false }
                 errorMessage = "Attachment failed: \(error.localizedDescription)"
-                await syncSession()
+                await recoverComposerSubmission(using: submissionContext)
                 return false
             }
         }
@@ -4417,20 +4526,31 @@ final class AppState: ObservableObject {
             } else {
                 try await client.sendPrompt(sessionId, text: text)
             }
+            // The gateway accepted the prompt. A session handoff may have
+            // happened while the RPC was suspended, but that does not turn a
+            // remotely successful send into a local draft failure. There are
+            // no current-session mutations after this point.
             return true
         } catch {
+            guard isCurrentComposerSubmission(submissionContext) else { return false }
             errorMessage = "Failed to send: \(error.localizedDescription)"
-            await syncSession()
+            await recoverComposerSubmission(using: submissionContext)
             return false
         }
     }
 
-    func toggleYolo() async {
-        _ = await setYoloMode(!runtime.yolo)
+    func toggleYolo(context: ComposerSubmissionContext? = nil) async {
+        let submissionContext = context ?? composerSubmissionContext()
+        _ = await setYoloMode(!runtime.yolo, context: submissionContext)
     }
 
     @discardableResult
-    func setYoloMode(_ enabled: Bool) async -> Bool {
+    func setYoloMode(
+        _ enabled: Bool,
+        context: ComposerSubmissionContext? = nil
+    ) async -> Bool {
+        let submissionContext = context ?? composerSubmissionContext()
+        guard isCurrentComposerSubmission(submissionContext) else { return false }
         guard let client, let sessionId = activeSessionId else { return false }
         do {
             if let setSessionYolo = chatResumeLifecycleOperations.setSessionYolo {
@@ -4438,6 +4558,9 @@ final class AppState: ObservableObject {
             } else {
                 try await client.setSessionYolo(sessionId, enabled: enabled)
             }
+            // Hermes accepted the setting. Avoid publishing it into a new
+            // session if the composer origin was handed off while awaiting.
+            guard isCurrentComposerSubmission(submissionContext) else { return true }
             let persistedSessionID = canonicalSessionID(for: sessionId) ?? sessionId
             sessionYoloStore.setOverride(
                 enabled,
@@ -4448,6 +4571,7 @@ final class AppState: ObservableObject {
             runtime.yolo = enabled
             return true
         } catch {
+            guard isCurrentComposerSubmission(submissionContext) else { return false }
             errorMessage = "Unable to change YOLO mode: \(error.localizedDescription)"
             return false
         }
@@ -4641,7 +4765,12 @@ final class AppState: ObservableObject {
         return nil
     }
 
-    func executeSlashCommand(_ text: String) async {
+    func executeSlashCommand(
+        _ text: String,
+        context: ComposerSubmissionContext? = nil
+    ) async {
+        let submissionContext = context ?? composerSubmissionContext()
+        guard isCurrentComposerSubmission(submissionContext) else { return }
         guard let client,
               let sessionId = activeSessionId,
               let command = Self.parseSlashCommand(text) else { return }
@@ -4692,12 +4821,12 @@ final class AppState: ObservableObject {
         case "yolo":
             if command.argument.isEmpty {
                 cancelChatResumeRestoration()
-                await toggleYolo()
+                await toggleYolo(context: submissionContext)
                 return
             }
         case "help":
             cancelChatResumeRestoration()
-            appendSlashOutput(Self.formatSlashHelp())
+            appendSlashOutput(Self.formatSlashHelp(), context: submissionContext)
             return
         default:
             break
@@ -4706,17 +4835,35 @@ final class AppState: ObservableObject {
         // Server-side execution
         cancelChatResumeRestoration()
         do {
-            let result = try await executeGatewaySlash(client: client, sessionID: sessionId, command: command.cleaned)
-            await handleSlashResult(result, depth: 0, aliasArgument: command.argument)
+            let result = try await executeGatewaySlash(
+                client: client,
+                sessionID: sessionId,
+                command: command.cleaned,
+                context: submissionContext
+            )
+            guard isCurrentComposerSubmission(submissionContext) else { return }
+            await handleSlashResult(
+                result,
+                depth: 0,
+                aliasArgument: command.argument,
+                client: client,
+                sessionID: sessionId,
+                context: submissionContext
+            )
         } catch {
-            appendSlashOutput("⚠️ Command failed: \(error.localizedDescription)")
+            guard isCurrentComposerSubmission(submissionContext) else { return }
+            appendSlashOutput(
+                "⚠️ Command failed: \(error.localizedDescription)",
+                context: submissionContext
+            )
         }
     }
 
     private func executeGatewaySlash(
         client: HermesClient,
         sessionID: String,
-        command: String
+        command: String,
+        context: ComposerSubmissionContext? = nil
     ) async throws -> AnyCodable {
         do {
             if let executeSlash = chatResumeLifecycleOperations.executeSlash {
@@ -4724,6 +4871,9 @@ final class AppState: ObservableObject {
             }
             return try await client.executeSlash(sessionId: sessionID, command: command)
         } catch {
+            if let context {
+                guard isCurrentComposerSubmission(context) else { throw error }
+            }
             guard let parsed = Self.parseSlashCommand(command) else { throw error }
             if let dispatchCommand = chatResumeLifecycleOperations.dispatchCommand {
                 return try await dispatchCommand(
@@ -4737,9 +4887,17 @@ final class AppState: ObservableObject {
         }
     }
 
-    private func handleSlashResult(_ result: AnyCodable, depth: Int, aliasArgument: String) async {
+    private func handleSlashResult(
+        _ result: AnyCodable,
+        depth: Int,
+        aliasArgument: String,
+        client: HermesClient,
+        sessionID: String,
+        context: ComposerSubmissionContext
+    ) async {
+        guard isCurrentComposerSubmission(context) else { return }
         guard depth < 4 else {
-            appendSlashOutput("⚠️ Too many command aliases.")
+            appendSlashOutput("⚠️ Too many command aliases.", context: context)
             return
         }
 
@@ -4751,20 +4909,20 @@ final class AppState: ObservableObject {
         case "exec", "plugin":
             // Command executed server-side; show any output
             if !output.isEmpty {
-                appendSlashOutput(output)
+                appendSlashOutput(output, context: context)
             }
         case "send", "skill":
             // These send a prompt — extract the message and send it
             let message = obj["message"]?.stringValue ?? output
             if !message.isEmpty {
-                await sendMessage(message, attachments: [])
+                _ = await sendMessage(message, attachments: [], context: context)
             }
         case "prefill":
             if let notice = obj["notice"]?.stringValue, !notice.isEmpty {
-                appendSlashOutput(notice)
+                appendSlashOutput(notice, context: context)
             }
             let message = obj["message"]?.stringValue ?? output
-            if !message.isEmpty {
+            if !message.isEmpty, isCurrentComposerSubmission(context) {
                 composerPrefillText = message
                 composerPrefillToken = UUID()
             }
@@ -4773,25 +4931,48 @@ final class AppState: ObservableObject {
             let target = obj["target"]?.stringValue ?? obj["command"]?.stringValue ?? obj["name"]?.stringValue ?? ""
             if !target.isEmpty {
                 do {
-                    guard let client, let sessionId = activeSessionId else { return }
+                    guard isCurrentComposerSubmission(context) else { return }
                     let nestedCommand = aliasArgument.isEmpty ? target : "\(target) \(aliasArgument)"
-                    let nested = try await executeGatewaySlash(client: client, sessionID: sessionId, command: nestedCommand)
-                    await handleSlashResult(nested, depth: depth + 1, aliasArgument: aliasArgument)
+                    let nested = try await executeGatewaySlash(
+                        client: client,
+                        sessionID: sessionID,
+                        command: nestedCommand,
+                        context: context
+                    )
+                    guard isCurrentComposerSubmission(context) else { return }
+                    await handleSlashResult(
+                        nested,
+                        depth: depth + 1,
+                        aliasArgument: aliasArgument,
+                        client: client,
+                        sessionID: sessionID,
+                        context: context
+                    )
                 } catch {
-                    appendSlashOutput("⚠️ Alias target failed: \(error.localizedDescription)")
+                    guard isCurrentComposerSubmission(context) else { return }
+                    appendSlashOutput(
+                        "⚠️ Alias target failed: \(error.localizedDescription)",
+                        context: context
+                    )
                 }
             } else if !output.isEmpty {
-                appendSlashOutput(output)
+                appendSlashOutput(output, context: context)
             }
         default:
             // Unknown type — show output if present
             if !output.isEmpty {
-                appendSlashOutput(output)
+                appendSlashOutput(output, context: context)
             }
         }
     }
 
-    private func appendSlashOutput(_ text: String) {
+    private func appendSlashOutput(
+        _ text: String,
+        context: ComposerSubmissionContext? = nil
+    ) {
+        if let context {
+            guard isCurrentComposerSubmission(context) else { return }
+        }
         messages.append(ChatMessage(
             id: "slash-\(Date().timeIntervalSince1970)",
             role: .system,
@@ -4807,7 +4988,12 @@ final class AppState: ObservableObject {
         return "**Slash Commands**\n\nType `/` followed by a command name.\n\n**Built-in:**\n• `/new` — Start a new conversation\n• `/model` — Open the model picker\n• `/yolo` — Toggle auto-approve mode\n• `/help` — Show this help\n\nUse the suggestions list to discover gateway commands."
     }
 
-    private func steer(_ text: String) async -> Bool {
+    private func steer(
+        _ text: String,
+        context: ComposerSubmissionContext? = nil
+    ) async -> Bool {
+        let submissionContext = context ?? composerSubmissionContext()
+        guard isCurrentComposerSubmission(submissionContext) else { return false }
         guard let client, let sessionId = activeSessionId else { return false }
         cancelChatResumeRestoration()
         do {
@@ -4816,10 +5002,14 @@ final class AppState: ObservableObject {
             } else {
                 try await client.steer(sessionId, text: text)
             }
+            // A successful steer is accepted by Hermes even if the user
+            // switched sessions while the RPC was suspended. It has no local
+            // post-await mutation, so preserve success for draft handling.
             return true
         } catch {
+            guard isCurrentOrAliasedComposerSubmission(submissionContext) else { return false }
             errorMessage = error.localizedDescription
-            await syncSession()
+            await recoverComposerSubmission(using: submissionContext)
             return false
         }
     }
@@ -4828,7 +5018,13 @@ final class AppState: ObservableObject {
     /// request while retaining completed work; gateways can also acknowledge a
     /// correction as queued during their agent-build window. Older gateways
     /// retain the established `session.interrupt` then `prompt.submit` flow.
-    private func redirectOrInterruptAndSend(_ text: String, retriedAfterResume: Bool = false) async -> Bool {
+    private func redirectOrInterruptAndSend(
+        _ text: String,
+        retriedAfterResume: Bool = false,
+        context: ComposerSubmissionContext? = nil
+    ) async -> Bool {
+        let submissionContext = context ?? composerSubmissionContext()
+        guard isCurrentComposerSubmission(submissionContext) else { return false }
         guard let client, let sessionId = activeSessionId else { return false }
         cancelChatResumeRestoration()
 
@@ -4841,50 +5037,82 @@ final class AppState: ObservableObject {
             }
             switch outcome {
             case .redirected, .queued:
-                appendLocalUserMessage(text)
+                if isCurrentOrAliasedComposerSubmission(submissionContext) {
+                    appendLocalUserMessage(text)
+                }
                 return true
             case .rejected:
                 // A reject commonly means the turn won the race to completion.
                 // Reconcile first so we submit directly when it is already idle
                 // instead of surfacing a misleading interrupt failure.
-                await syncSession()
+                guard isCurrentOrAliasedComposerSubmission(submissionContext) else { return false }
+                guard let recoveredContext = await recoverComposerSubmission(using: submissionContext) else {
+                    return false
+                }
+                guard isCurrentComposerSubmission(recoveredContext) else { return false }
                 if turnState == .idle {
-                    return await sendMessage(text, attachments: [])
+                    return await sendMessage(
+                        text,
+                        attachments: [],
+                        context: recoveredContext
+                    )
                 }
                 guard turnState == .running else { return false }
-                return await interruptAndSendLegacy(text)
+                return await interruptAndSendLegacy(text, context: recoveredContext)
             }
         } catch let error as RpcError {
+            guard isCurrentOrAliasedComposerSubmission(submissionContext) else { return false }
             if isUnsupportedRedirect(error) {
-                return await interruptAndSendLegacy(text)
+                guard let currentContext = currentComposerSubmissionContextIfOwnedAndAliased(submissionContext) else {
+                    return false
+                }
+                return await interruptAndSendLegacy(text, context: currentContext)
             }
 
             // A runtime session can be rotated while the app was backgrounded.
             // Reconcile once, then retry against the recovered runtime id.
             if !retriedAfterResume, isSessionNotFound(error) {
-                await syncSession()
+                guard let recoveredContext = await recoverComposerSubmission(using: submissionContext) else {
+                    return false
+                }
+                guard isCurrentComposerSubmission(recoveredContext) else { return false }
                 if turnState == .running {
-                    return await redirectOrInterruptAndSend(text, retriedAfterResume: true)
+                    return await redirectOrInterruptAndSend(
+                        text,
+                        retriedAfterResume: true,
+                        context: recoveredContext
+                    )
                 }
                 if turnState == .idle {
-                    return await sendMessage(text, attachments: [])
+                    return await sendMessage(
+                        text,
+                        attachments: [],
+                        context: recoveredContext
+                    )
                 }
                 return false
             }
 
             errorMessage = "Could not redirect the active response: \(error.localizedDescription)"
-            await syncSession()
+            await recoverComposerSubmission(using: submissionContext)
             return false
         } catch {
+            guard isCurrentOrAliasedComposerSubmission(submissionContext) else { return false }
             errorMessage = "Could not redirect the active response: \(error.localizedDescription)"
-            await syncSession()
+            await recoverComposerSubmission(using: submissionContext)
             return false
         }
     }
 
-    private func interruptAndSendLegacy(_ text: String) async -> Bool {
-        guard await interruptForReplacement() else { return false }
-        return await sendMessage(text, attachments: [])
+    private func interruptAndSendLegacy(
+        _ text: String,
+        context: ComposerSubmissionContext
+    ) async -> Bool {
+        guard await interruptForReplacement(context: context) else { return false }
+        guard let currentContext = currentComposerSubmissionContextIfOwnedAndAliased(context) else {
+            return false
+        }
+        return await sendMessage(text, attachments: [], context: currentContext)
     }
 
     private func appendLocalUserMessage(_ text: String) {
@@ -4921,8 +5149,14 @@ final class AppState: ObservableObject {
         error.message.lowercased().contains("session not found")
     }
 
-    private func interruptForReplacement() async -> Bool {
-        guard let client, let sessionId = activeSessionId else { return false }
+    private func interruptForReplacement(
+        context: ComposerSubmissionContext? = nil
+    ) async -> Bool {
+        let submissionContext = context ?? composerSubmissionContext()
+        guard let currentContext = currentComposerSubmissionContextIfOwnedAndAliased(submissionContext) else {
+            return false
+        }
+        guard let client, let sessionId = currentContext.sessionID else { return false }
         cancelChatResumeRestoration()
         turnState = .synchronizing
         do {
@@ -4931,18 +5165,22 @@ final class AppState: ObservableObject {
             } else {
                 try await client.cancel(sessionId)
             }
+            guard isCurrentOrAliasedComposerSubmission(currentContext) else { return false }
             return true
         } catch {
+            guard isCurrentOrAliasedComposerSubmission(currentContext) else { return false }
             errorMessage = "Could not interrupt the active response: \(error.localizedDescription)"
-            await syncSession()
+            await recoverComposerSubmission(using: currentContext)
             return false
         }
     }
 
     func cancelCurrent() async {
         guard isBusy else { return }
-        guard await interruptForReplacement() else { return }
-        await syncSession()
+        let submissionContext = composerSubmissionContext()
+        guard await interruptForReplacement(context: submissionContext) else { return }
+        guard let currentContext = currentComposerSubmissionContextIfOwnedAndAliased(submissionContext) else { return }
+        await recoverComposerSubmission(using: currentContext)
     }
 
     func respondToClarify(requestId: String, answer: String) async {
@@ -6693,6 +6931,10 @@ final class AppState: ObservableObject {
 
     func requestChatScrollToLatest() {
         chatScrollRequest &+= 1
+    }
+
+    func requestChatScrollToTop() {
+        chatScrollToTopRequest &+= 1
     }
 
     private func updateActiveSessionTitle(for sessionId: String, fallbackSessionId: String? = nil) {

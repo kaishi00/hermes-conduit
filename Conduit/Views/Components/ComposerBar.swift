@@ -24,7 +24,102 @@ struct ComposerBar: View {
     @State private var isFocused = false
     @State private var isShowingSlashSuggestions = false
     @State private var composerErrorMessage: String?
+    @State private var draftStore = ComposerDraftStore()
+    @State private var editorIdentity = UUID()
+    @State private var loadedDraftKey: ComposerDraftKey?
+    @State private var photoImportContext: AsyncAttachmentContext?
+    @State private var photoImportGeneration: UInt64 = 0
+    @State private var documentImportContext: AsyncAttachmentContext?
+    @State private var attachmentGeneration: UInt64 = 0
+    @State private var suppressNextTextChangeSuggestions = false
     @Namespace private var glassNamespace
+
+    struct AsyncAttachmentContext: Equatable {
+        let editorIdentity: UUID
+        let draftKey: ComposerDraftKey
+        let attachmentGeneration: UInt64
+    }
+
+    static func composerDraftKey(for sessionID: String?, profile: String) -> ComposerDraftKey {
+        ComposerDraftKey(
+            profile: profile,
+            sessionID: sessionID ?? ComposerDraftKey.newConversationSessionID
+        )
+    }
+
+    static func draftKeysAreEquivalent(
+        _ lhs: ComposerDraftKey,
+        _ rhs: ComposerDraftKey,
+        identity: ChatScrollSessionIdentity
+    ) -> Bool {
+        guard lhs.profile == rhs.profile else { return false }
+        if lhs == rhs { return true }
+        guard !lhs.isNewConversation, !rhs.isNewConversation else { return false }
+        return identity.areEquivalent(lhs.sessionID, rhs.sessionID)
+    }
+
+    static func shouldAcceptAsyncAttachmentCompletion(
+        startedIn origin: AsyncAttachmentContext,
+        currentEditorIdentity: UUID,
+        currentDraftKey: ComposerDraftKey,
+        currentAttachmentGeneration: UInt64
+    ) -> Bool {
+        origin.editorIdentity == currentEditorIdentity
+            && origin.draftKey == currentDraftKey
+            && origin.attachmentGeneration == currentAttachmentGeneration
+    }
+
+    static func photoImportContext(
+        editorIdentity: UUID,
+        draftKey: ComposerDraftKey,
+        attachmentGeneration: UInt64
+    ) -> AsyncAttachmentContext {
+        AsyncAttachmentContext(
+            editorIdentity: editorIdentity,
+            draftKey: draftKey,
+            attachmentGeneration: attachmentGeneration
+        )
+    }
+
+    static func shouldAcceptPhotoPickerCompletion(
+        openedIn origin: AsyncAttachmentContext?,
+        currentEditorIdentity: UUID,
+        currentDraftKey: ComposerDraftKey,
+        currentAttachmentGeneration: UInt64
+    ) -> Bool {
+        guard let origin else { return false }
+        return shouldAcceptAsyncAttachmentCompletion(
+            startedIn: origin,
+            currentEditorIdentity: currentEditorIdentity,
+            currentDraftKey: currentDraftKey,
+            currentAttachmentGeneration: currentAttachmentGeneration
+        )
+    }
+
+    static func shouldClearPhotoImportContext(
+        completingGeneration: UInt64,
+        completingContext: AsyncAttachmentContext,
+        currentGeneration: UInt64,
+        currentContext: AsyncAttachmentContext?
+    ) -> Bool {
+        completingGeneration == currentGeneration && completingContext == currentContext
+    }
+
+    static func shouldShowSlashSuggestions(
+        for text: String,
+        isProgrammaticDraftRestore: Bool
+    ) -> Bool {
+        guard !isProgrammaticDraftRestore else { return false }
+        return slashPrefix(in: text) != nil
+    }
+
+    private static func slashPrefix(in text: String) -> String? {
+        let trimmed = text.replacingOccurrences(of: "^\\s+", with: "", options: .regularExpression)
+        guard trimmed.hasPrefix("/") else { return nil }
+        let prefix = String(trimmed.dropFirst())
+        guard !prefix.contains(where: { $0.isWhitespace || $0.isNewline }) else { return nil }
+        return prefix.lowercased()
+    }
 
     static func pastedImageAttachmentMetadata(for typeIdentifier: String) -> (name: String, mimeType: String) {
         guard let type = UTType(typeIdentifier),
@@ -48,11 +143,7 @@ struct ComposerBar: View {
     /// Returns the slash prefix being typed, or nil if the cursor has moved
     /// beyond the command name. Leading whitespace is accepted on purpose.
     private var slashPrefix: String? {
-        let trimmed = text.replacingOccurrences(of: "^\\s+", with: "", options: .regularExpression)
-        guard trimmed.hasPrefix("/") else { return nil }
-        let prefix = String(trimmed.dropFirst())
-        guard !prefix.contains(where: { $0.isWhitespace || $0.isNewline }) else { return nil }
-        return prefix.lowercased()
+        Self.slashPrefix(in: text)
     }
 
     private var filteredSlashCommands: [SlashCommand] {
@@ -68,6 +159,10 @@ struct ComposerBar: View {
 
     private var action: ComposerAction {
         appState.composerAction(hasText: hasText, hasAttachments: !attachments.isEmpty)
+    }
+
+    private var activeDraftKey: ComposerDraftKey {
+        composerDraftKey(for: appState.activeSessionId)
     }
 
     private var stopOnly: Bool {
@@ -134,13 +229,18 @@ struct ComposerBar: View {
         .padding(.top, 8)
         .padding(.bottom, 10)
         .onChange(of: text) { _, newValue in
+            let isProgrammaticDraftRestore = suppressNextTextChangeSuggestions
+            suppressNextTextChangeSuggestions = false
             composerErrorMessage = nil
             if newValue.isEmpty {
                 composerTextHeight = ComposerPasteTextView.minimumHeight
             }
             // Show suggestions when actively typing a slash command prefix
             withAnimation(ConduitMotion.response) {
-                isShowingSlashSuggestions = slashPrefix != nil
+                isShowingSlashSuggestions = Self.shouldShowSlashSuggestions(
+                    for: newValue,
+                    isProgrammaticDraftRestore: isProgrammaticDraftRestore
+                )
             }
         }
         .onChange(of: appState.composerPrefillToken) { _, _ in
@@ -151,20 +251,32 @@ struct ComposerBar: View {
         .onChange(of: photoItem) { _, _ in
             handlePhotoSelection()
         }
+        .onAppear {
+            guard loadedDraftKey == nil else { return }
+            loadDraft(for: activeDraftKey)
+        }
+        .onChange(of: activeDraftKey) { _, newKey in
+            handoffComposer(to: newKey)
+        }
         // A session resume can complete before the gateway has refreshed its
         // context accounting. Recheck once the active composer is on screen,
         // rather than making the user open the context sheet to populate it.
         .task(id: appState.activeSessionId) {
-            guard appState.activeSessionId != nil else { return }
+            let sessionID = appState.activeSessionId
+            guard sessionID != nil else { return }
             try? await Task.sleep(for: .milliseconds(350))
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, appState.activeSessionId == sessionID else { return }
             await appState.refreshContextUsage()
         }
         .fileImporter(
             isPresented: $showDocumentPicker,
             allowedContentTypes: [.data],
             allowsMultipleSelection: true,
-            onCompletion: handleDocumentSelection
+            onCompletion: { result in
+                let origin = documentImportContext
+                handleDocumentSelection(result, startedIn: origin)
+                clearDocumentImportContextIfCurrent(origin)
+            }
         )
     }
 
@@ -202,6 +314,7 @@ struct ComposerBar: View {
                 voiceButton
 
                 ZStack(alignment: .topLeading) {
+                    let currentEditorIdentity = editorIdentity
                     if text.isEmpty {
                         Text(appState.composerPlaceholder)
                             .foregroundStyle(.secondary)
@@ -214,22 +327,14 @@ struct ComposerBar: View {
                         measuredHeight: $composerTextHeight,
                         enabled: appState.composerIsEnabled,
                         onPastedImage: { pastedImage in
-                            composerErrorMessage = nil
-                            let metadata = Self.pastedImageAttachmentMetadata(
-                                for: pastedImage.typeIdentifier
-                            )
-                            addAttachment(
-                                data: pastedImage.data,
-                                name: metadata.name,
-                                mimeType: metadata.mimeType,
-                                kind: .image
-                            )
+                            handlePastedImage(pastedImage, editorIdentity: currentEditorIdentity)
                         },
                         onPastedImageError: { message in
-                            composerErrorMessage = Self.pastedImageErrorMessage(message)
-                            Haptics.error()
-                        }
+                            handlePastedImageError(message, editorIdentity: currentEditorIdentity)
+                        },
+                        editorIdentity: editorIdentity
                     )
+                    .id(editorIdentity)
                     .padding(.horizontal, 5)
                     .frame(height: composerTextHeight)
                 }
@@ -334,11 +439,12 @@ struct ComposerBar: View {
     private var attachmentButton: some View {
         Menu {
             Button {
-                showAttachmentMenu = true
+                openPhotoLibraryPicker()
             } label: {
                 Label("Photo Library", systemImage: "photo")
             }
             Button {
+                documentImportContext = asyncAttachmentContext
                 showDocumentPicker = true
             } label: {
                 Label("Document", systemImage: "doc")
@@ -483,6 +589,10 @@ struct ComposerBar: View {
         let submittedAttachments = attachments
         let submittedAction = action
         let prefillToken = appState.composerPrefillToken
+        let submittedDraftKey = loadedDraftKey ?? activeDraftKey
+        let submittedDraftBucket = draftStore.submissionBucket(for: submittedDraftKey)
+        let submissionContext = appState.composerSubmissionContext()
+        rotateAttachmentGeneration()
         collapseSubmittedDraft()
 
         switch submittedAction {
@@ -495,16 +605,20 @@ struct ComposerBar: View {
         Task {
             let didSubmit = await appState.submitComposer(
                 text: trimmed,
-                attachments: submittedAttachments
+                attachments: submittedAttachments,
+                context: submissionContext
             )
             guard didSubmit else {
                 restoreSubmittedDraftIfNeeded(
                     text: submittedText,
-                    attachments: submittedAttachments
+                    attachments: submittedAttachments,
+                    for: submittedDraftKey
                 )
                 Haptics.error()
                 return
             }
+            draftStore.removeDraft(for: submittedDraftBucket)
+            guard loadedDraftKey == submittedDraftKey else { return }
             if appState.composerPrefillToken != prefillToken {
                 text = appState.composerPrefillText
                 isFocused = !text.isEmpty
@@ -562,8 +676,27 @@ struct ComposerBar: View {
 
     private func restoreSubmittedDraftIfNeeded(
         text submittedText: String,
-        attachments submittedAttachments: [Attachment]
+        attachments submittedAttachments: [Attachment],
+        for key: ComposerDraftKey
     ) {
+        let restorationKey: ComposerDraftKey
+        if Self.draftKeysAreEquivalent(
+            key,
+            activeDraftKey,
+            identity: appState.activeChatScrollSessionIdentity
+        ) {
+            restorationKey = activeDraftKey
+        } else {
+            restorationKey = key
+        }
+
+        guard loadedDraftKey == restorationKey else {
+            draftStore.saveIfMissing(
+                ComposerDraft(text: submittedText, attachments: submittedAttachments),
+                for: restorationKey
+            )
+            return
+        }
         // Do not overwrite a new draft if the user already returned to the
         // composer while the failed request was in flight.
         guard text.isEmpty, attachments.isEmpty else { return }
@@ -579,17 +712,149 @@ struct ComposerBar: View {
         isShowingSlashSuggestions = false
     }
 
+    private func composerDraftKey(for sessionID: String?) -> ComposerDraftKey {
+        Self.composerDraftKey(for: sessionID, profile: appState.activeProfile)
+    }
+
+    private var asyncAttachmentContext: AsyncAttachmentContext {
+        Self.photoImportContext(
+            editorIdentity: editorIdentity,
+            draftKey: activeDraftKey,
+            attachmentGeneration: attachmentGeneration
+        )
+    }
+
+    private func shouldAcceptAsyncAttachmentCompletion(startedIn origin: AsyncAttachmentContext) -> Bool {
+        Self.shouldAcceptAsyncAttachmentCompletion(
+            startedIn: origin,
+            currentEditorIdentity: editorIdentity,
+            currentDraftKey: activeDraftKey,
+            currentAttachmentGeneration: attachmentGeneration
+        )
+    }
+
+    private func shouldAcceptPhotoPickerCompletion(openedIn origin: AsyncAttachmentContext?) -> Bool {
+        Self.shouldAcceptPhotoPickerCompletion(
+            openedIn: origin,
+            currentEditorIdentity: editorIdentity,
+            currentDraftKey: activeDraftKey,
+            currentAttachmentGeneration: attachmentGeneration
+        )
+    }
+
+    private func openPhotoLibraryPicker() {
+        photoImportContext = asyncAttachmentContext
+        photoImportGeneration &+= 1
+        showAttachmentMenu = true
+    }
+
+    private func saveDraft(for key: ComposerDraftKey) {
+        draftStore.save(ComposerDraft(text: text, attachments: attachments), for: key)
+    }
+
+    private func loadDraft(for key: ComposerDraftKey) {
+        let draft = draftStore.draft(for: key)
+        if text != draft.text {
+            suppressNextTextChangeSuggestions = true
+        }
+        text = draft.text
+        attachments = draft.attachments
+        loadedDraftKey = key
+        composerTextHeight = ComposerPasteTextView.minimumHeight
+        isFocused = false
+        isShowingSlashSuggestions = false
+    }
+
+    private func handoffComposer(to destinationKey: ComposerDraftKey) {
+        guard loadedDraftKey != destinationKey else { return }
+        if let loadedDraftKey {
+            saveDraft(for: loadedDraftKey)
+            if Self.draftKeysAreEquivalent(
+                loadedDraftKey,
+                destinationKey,
+                identity: appState.activeChatScrollSessionIdentity
+            ) {
+                draftStore.migrateDraft(from: loadedDraftKey, to: destinationKey)
+            }
+        }
+        composerErrorMessage = nil
+        isFocused = false
+        isShowingSlashSuggestions = false
+        rotateAttachmentGeneration()
+        editorIdentity = UUID()
+        loadDraft(for: destinationKey)
+        composerTextHeight = ComposerPasteTextView.minimumHeight
+        isFocused = false
+    }
+
+    private func rotateAttachmentGeneration() {
+        attachmentGeneration &+= 1
+        photoImportGeneration &+= 1
+        photoItem = nil
+        photoImportContext = nil
+        documentImportContext = nil
+        editorIdentity = UUID()
+    }
+
+    private func handlePastedImage(_ pastedImage: PastedImage, editorIdentity callbackEditorIdentity: UUID) {
+        guard callbackEditorIdentity == editorIdentity else { return }
+        composerErrorMessage = nil
+        let metadata = Self.pastedImageAttachmentMetadata(
+            for: pastedImage.typeIdentifier
+        )
+        addAttachment(
+            data: pastedImage.data,
+            name: metadata.name,
+            mimeType: metadata.mimeType,
+            kind: .image
+        )
+    }
+
+    private func handlePastedImageError(_ message: String, editorIdentity callbackEditorIdentity: UUID) {
+        guard callbackEditorIdentity == editorIdentity else { return }
+        composerErrorMessage = Self.pastedImageErrorMessage(message)
+        Haptics.error()
+    }
+
     private func handlePhotoSelection() {
         guard let item = photoItem else { return }
+        guard let origin = photoImportContext else {
+            photoItem = nil
+            return
+        }
+        let completionGeneration = photoImportGeneration
         Task {
-            if let data = try? await item.loadTransferable(type: Data.self) {
+            if let data = try? await item.loadTransferable(type: Data.self),
+               shouldAcceptPhotoPickerCompletion(openedIn: origin) {
                 addAttachment(data: data, name: "photo.jpg", mimeType: "image/jpeg", kind: .image)
             }
-            photoItem = nil
+            clearPhotoImportContextIfCurrent(
+                completingGeneration: completionGeneration,
+                completingContext: origin
+            )
         }
     }
 
-    private func handleDocumentSelection(_ result: Result<[URL], Error>) {
+    private func clearPhotoImportContextIfCurrent(
+        completingGeneration: UInt64,
+        completingContext: AsyncAttachmentContext
+    ) {
+        guard Self.shouldClearPhotoImportContext(
+            completingGeneration: completingGeneration,
+            completingContext: completingContext,
+            currentGeneration: photoImportGeneration,
+            currentContext: photoImportContext
+        ) else { return }
+        photoItem = nil
+        photoImportContext = nil
+    }
+
+    private func handleDocumentSelection(
+        _ result: Result<[URL], Error>,
+        startedIn origin: AsyncAttachmentContext?
+    ) {
+        guard let origin,
+              shouldAcceptAsyncAttachmentCompletion(startedIn: origin) else { return }
         guard case .success(let urls) = result else { return }
         for url in urls {
             let didAccess = url.startAccessingSecurityScopedResource()
@@ -603,6 +868,11 @@ struct ComposerBar: View {
                 kind: type?.conforms(to: .image) == true ? .image : .document
             )
         }
+    }
+
+    private func clearDocumentImportContextIfCurrent(_ completingContext: AsyncAttachmentContext?) {
+        guard documentImportContext == completingContext else { return }
+        documentImportContext = nil
     }
 
     private func addAttachment(data: Data, name: String, mimeType: String, kind: Attachment.Kind) {
