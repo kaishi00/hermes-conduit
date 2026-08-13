@@ -1,7 +1,7 @@
 # Design Spec: Persist Session YOLO Overrides
 
-**Date:** 2026-08-13  
-**Branch:** `codex/session-yolo-persistence`  
+**Date:** 2026-08-13
+**Branch:** `codex/session-yolo-persistence`
 **Status:** Approved design; implementation pending
 
 ## Problem
