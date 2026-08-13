@@ -65,10 +65,29 @@ response, so an explicit conflicting value in a live push does not clear a
 local override. A later resume with no newer local write performs the
 server-authority reconciliation.
 
+### Buffered resume events
+
+While a fresh resume is in flight, buffered `session.info` events may describe
+the state that preceded the resume snapshot. If a buffered event conflicts with
+an authoritative fresh-resume YOLO value, replay it with that YOLO value
+anchored to the resume snapshot while preserving the event's other runtime
+fields, including running state, model, provider, and context usage. Do not
+drop the entire event merely because its YOLO field is stale. Compute the
+authority decision once for the reconciliation and use that same decision for
+both resume application and buffered-event replay. Events received after
+reconciliation remain normal live pushes.
+
 When the active session changes, recompute this value for the new canonical
 session. A session with no override must not retain the previous session's
 local value; it should use that session's snapshot/global fallback. Returning
 to an overridden session must reload its saved choice.
+
+### Model Picker draft state
+
+The Model Picker seeds its YOLO draft and comparison baseline only on the first
+appearance of a presentation. Repeated `onAppear` calls must not overwrite a
+toggle the user has already changed; asynchronous model loading uses the same
+nil-baseline guard.
 
 ### Write and lifecycle behavior
 
@@ -124,6 +143,8 @@ to an overridden session must reload its saved choice.
   that newer override when the response arrives afterward.
 - A stale live `session.info` snapshot cannot clear a just-persisted local
   override or revert the visible runtime value.
+- A contradictory buffered `session.info` event preserves its non-YOLO fields
+  while the fresh-resume YOLO authority remains visible after replay.
 - Switching from an overridden session to an unoverridden session clears the
   previous local value from the visible runtime; switching back restores it.
 - A failed `config.set` does not write the override.
@@ -131,6 +152,8 @@ to an overridden session must reload its saved choice.
   and removes the raw alias.
 - Archiving or deleting a session removes its canonical and alternate-ID
   overrides after the server mutation succeeds.
+- Repeated Model Picker appearances do not reset an in-progress YOLO toggle or
+  its change baseline.
 - Corrupt or unsupported persisted data is ignored and produces a diagnostic.
 - The complete existing test suite remains green.
 
