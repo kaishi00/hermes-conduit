@@ -7,6 +7,11 @@
 
 import SwiftUI
 
+func sessionYoloSelectionChanged(from initial: Bool?, to selected: Bool) -> Bool {
+    guard let initial else { return false }
+    return initial != selected
+}
+
 struct ModelPickerView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.colorScheme) private var colorScheme
@@ -16,6 +21,7 @@ struct ModelPickerView: View {
     @State private var reasoningEffort = "medium"
     @State private var fastEnabled = false
     @State private var yoloEnabled = false
+    @State private var initialYoloEnabled: Bool?
     @State private var providers: [ProviderInfo] = []
     @State private var expandedProvider: String?
     @State private var editingVisibility = false
@@ -384,6 +390,7 @@ struct ModelPickerView: View {
             }
             fastEnabled = appState.runtime.fast
             yoloEnabled = appState.runtime.yolo
+            initialYoloEnabled = appState.runtime.yolo
         } catch {
             // Model options are supplementary to the current session state.
         }
@@ -402,7 +409,9 @@ struct ModelPickerView: View {
             appState.runtime.reasoningEffort = reasoningEnabled ? reasoningEffort : ""
             try await client.setFast(sessionId, enabled: fastEnabled)
             appState.runtime.fast = fastEnabled
-            guard await appState.setYoloMode(yoloEnabled) else { return }
+            if sessionYoloSelectionChanged(from: initialYoloEnabled, to: yoloEnabled) {
+                guard await appState.setYoloMode(yoloEnabled) else { return }
+            }
             appState.showModelPicker = false
         } catch {
             appState.errorMessage = error.localizedDescription

@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-13
 **Branch:** `codex/session-yolo-persistence`
-**Status:** Approved design; implementation pending
+**Status:** Implemented
 
 ## Problem
 
@@ -48,14 +48,15 @@ ID address the same entry. Profile and session keys must remain independent.
 
 When deriving `runtime.yolo` for a session, use this precedence:
 
-1. A locally persisted override for the active normalized profile/session.
-2. An explicit session-level `snapshot.yolo` from Hermes.
+1. An explicit session-level `snapshot.yolo` from Hermes.
+2. A locally persisted override for the active normalized profile/session when
+   the snapshot omits session YOLO.
 3. The profile-level `snapshot.approvalsMode` fallback.
 
-The local override takes precedence because it records the user's explicit
-choice in this app and prevents a later snapshot that omitted session-level
-YOLO from silently replacing it. If the session has no local override, the
-existing server-provided precedence remains intact.
+The local override preserves the user's explicit choice when a later snapshot
+omits session-level YOLO. When Hermes explicitly reports session YOLO, that
+gateway state is authoritative; a conflicting local override is cleared so the
+visible runtime and the server cannot diverge.
 
 When the active session changes, recompute this value for the new canonical
 session. A session with no override must not retain the previous session's
@@ -99,6 +100,8 @@ to an overridden session must reload its saved choice.
 - With no stored override, explicit `snapshot.yolo` still wins over
   `approvalsMode`, and `approvalsMode` remains the fallback when session YOLO
   is omitted.
+- An explicit `snapshot.yolo` replaces a conflicting local override and clears
+  the stale persisted value.
 - Switching from an overridden session to an unoverridden session clears the
   previous local value from the visible runtime; switching back restores it.
 - A failed `config.set` does not write the override.

@@ -37,6 +37,48 @@ final class SessionYoloPersistenceTests: XCTestCase {
         XCTAssertTrue(relaunched.runtime.yolo)
     }
 
+    func testRuntimeIDOverrideRemainsVisibleAfterCatalogProvidesCanonicalID() {
+        let (suite, defaults) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = SessionYoloStore(defaults: defaults, storageKey: "test.session-yolo")
+        store.setOverride(true, for: "default", sessionID: "runtime-session")
+
+        let appState = makeAppState(defaults: defaults, store: store)
+        appState.sessions = [session("canonical-session", alternateIDs: ["runtime-session"])]
+        appState.applyChatResume(SessionResumeResult(
+            sessionId: "runtime-session",
+            messages: [],
+            snapshot: SessionRuntimeSnapshot(object: [
+                "running": .bool(false),
+                "approvals_mode": .string("on")
+            ])
+        ))
+
+        XCTAssertTrue(appState.runtime.yolo)
+    }
+
+    func testExplicitGatewayYoloReplacesConflictingLocalOverride() {
+        let (suite, defaults) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = SessionYoloStore(defaults: defaults, storageKey: "test.session-yolo")
+        store.setOverride(true, for: "default", sessionID: "session-a")
+
+        let appState = makeAppState(defaults: defaults, store: store)
+        appState.sessions = [session("session-a")]
+        appState.applyChatResume(SessionResumeResult(
+            sessionId: "session-a",
+            messages: [],
+            snapshot: SessionRuntimeSnapshot(object: [
+                "running": .bool(false),
+                "yolo": .bool(false),
+                "approvals_mode": .string("on")
+            ])
+        ))
+
+        XCTAssertFalse(appState.runtime.yolo)
+        XCTAssertNil(store.storedOverride(for: "default", sessionID: "session-a"))
+    }
+
     func testServerSessionYoloWinsOverProfileApprovalFallbackWhenNoOverrideExists() {
         let (suite, defaults) = makeDefaults()
         defer { defaults.removePersistentDomain(forName: suite) }

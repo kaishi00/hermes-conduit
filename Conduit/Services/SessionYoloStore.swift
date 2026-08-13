@@ -32,10 +32,19 @@ final class SessionYoloStore {
     }
 
     func storedOverride(for profile: String, sessionID: String) -> Bool? {
-        guard let key = normalizedKey(profile: profile, sessionID: sessionID) else {
-            return nil
+        storedOverride(for: profile, sessionIDs: [sessionID])
+    }
+
+    func storedOverride(for profile: String, sessionIDs: [String]) -> Bool? {
+        for sessionID in sessionIDs {
+            guard let key = normalizedKey(profile: profile, sessionID: sessionID) else {
+                continue
+            }
+            if let override = payload.overrides[key.profile]?[key.sessionID] {
+                return override
+            }
         }
-        return payload.overrides[key.profile]?[key.sessionID]
+        return nil
     }
 
     func setOverride(_ enabled: Bool, for profile: String, sessionID: String) {
@@ -46,6 +55,28 @@ final class SessionYoloStore {
         profileOverrides[key.sessionID] = enabled
         payload.overrides[key.profile] = profileOverrides
         persist()
+    }
+
+    func clearOverride(for profile: String, sessionID: String) {
+        clearOverride(for: profile, sessionIDs: [sessionID])
+    }
+
+    func clearOverride(for profile: String, sessionIDs: [String]) {
+        var changed = false
+        for sessionID in sessionIDs {
+            guard let key = normalizedKey(profile: profile, sessionID: sessionID),
+                  payload.overrides[key.profile]?[key.sessionID] != nil else {
+                continue
+            }
+            payload.overrides[key.profile]?.removeValue(forKey: key.sessionID)
+            if payload.overrides[key.profile]?.isEmpty == true {
+                payload.overrides.removeValue(forKey: key.profile)
+            }
+            changed = true
+        }
+        if changed {
+            persist()
+        }
     }
 
     private func normalizedKey(profile: String, sessionID: String) -> ChatScrollSessionKey? {

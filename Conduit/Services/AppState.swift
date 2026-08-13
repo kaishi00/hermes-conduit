@@ -3167,14 +3167,24 @@ final class AppState: ObservableObject {
             runtime.reasoningEffort = reasoningEffort.lowercased() == "none" ? "" : reasoningEffort
         }
         if let fast = snapshot.fast { runtime.fast = fast }
-        if let canonicalSessionID = canonicalSessionID(for: sessionID ?? activeSessionId),
-           let storedOverride = sessionYoloStore.storedOverride(
-               for: activeProfile,
-               sessionID: canonicalSessionID
-           ) {
-            runtime.yolo = storedOverride
-        } else if let yolo = snapshot.yolo {
+        let requestedSessionID = sessionID ?? activeSessionId
+        let resolvedCanonicalSessionID = canonicalSessionID(for: requestedSessionID)
+        let sessionIDsForOverride = [resolvedCanonicalSessionID, requestedSessionID]
+            .compactMap { $0 }
+        let storedOverride = sessionYoloStore.storedOverride(
+            for: activeProfile,
+            sessionIDs: sessionIDsForOverride
+        )
+        if let yolo = snapshot.yolo {
+            if let storedOverride, storedOverride != yolo {
+                sessionYoloStore.clearOverride(
+                    for: activeProfile,
+                    sessionIDs: sessionIDsForOverride
+                )
+            }
             runtime.yolo = yolo
+        } else if let storedOverride {
+            runtime.yolo = storedOverride
         } else if let approvalsMode = snapshot.approvalsMode {
             runtime.yolo = approvalsMode.lowercased() == "off"
         }
