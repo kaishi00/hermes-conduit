@@ -2783,7 +2783,11 @@ final class AppState: ObservableObject {
         activeAssistantMessageId = nil
         activeReasoningMessageId = nil
         receivedReasoningForCurrentTurn = false
-        applyRuntime(result.snapshot, for: result.sessionId)
+        applyRuntime(
+            result.snapshot,
+            for: result.sessionId,
+            reconcileExplicitYolo: true
+        )
 
         // A paused clarification or approval can have neither a live text
         // projection nor an explicit `running` field. The restored card is
@@ -3154,7 +3158,8 @@ final class AppState: ObservableObject {
 
     private func applyRuntime(
         _ snapshot: SessionRuntimeSnapshot,
-        for sessionID: String? = nil
+        for sessionID: String? = nil,
+        reconcileExplicitYolo: Bool = false
     ) {
         if let model = snapshot.model { runtime.model = model }
         if let provider = snapshot.provider { runtime.provider = provider }
@@ -3185,13 +3190,22 @@ final class AppState: ObservableObject {
             sessionIDs: sessionIDsForOverride
         )
         if let yolo = snapshot.yolo {
-            if let storedOverride, storedOverride != yolo {
-                sessionYoloStore.clearOverride(
-                    for: activeProfile,
-                    sessionIDs: sessionIDsForOverride
-                )
+            if let storedOverride {
+                if reconcileExplicitYolo, storedOverride != yolo {
+                    sessionYoloStore.clearOverride(
+                        for: activeProfile,
+                        sessionIDs: sessionIDsForOverride
+                    )
+                    runtime.yolo = yolo
+                } else {
+                    // Live session.info pushes can be older than a client
+                    // initiated config.set RPC. Keep the local choice until a
+                    // fresh resume snapshot can reconcile server authority.
+                    runtime.yolo = storedOverride
+                }
+            } else {
+                runtime.yolo = yolo
             }
-            runtime.yolo = yolo
         } else if let storedOverride {
             runtime.yolo = storedOverride
         } else if let approvalsMode = snapshot.approvalsMode {

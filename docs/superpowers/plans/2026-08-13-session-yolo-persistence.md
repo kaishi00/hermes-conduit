@@ -32,7 +32,7 @@
 - [x] 3. Wire AppState lifecycle, canonical identity, and precedence
   - In `Conduit/Services/AppState.swift`, inject a `SessionYoloStore` (defaulting to one backed by the AppState defaults) without breaking existing test constructors.
   - Add a helper that resolves the active canonical session ID with `ChatSessionPersistenceIdentity.canonicalID`, `activeChatScrollSessionIdentity`, the session/cron catalog, and `activeProfile`.
-  - Apply the local override when resuming a session and whenever runtime snapshots arrive, while treating explicit `snapshot.yolo` as authoritative, clearing conflicting local aliases, and falling back to the local override only when session YOLO is omitted. Pass the resumed session ID explicitly where that avoids resolving a stale active ID.
+  - Apply the local override when resuming a session and whenever runtime snapshots arrive. Treat explicit `snapshot.yolo` as authoritative for fresh resume snapshots, but do not clear a local override from a potentially stale live `session.info` push; fall back to the local override when session YOLO is omitted. Pass the resumed session ID explicitly where that avoids resolving a stale active ID.
   - Recompute/clear the session-local visible state on profile/session transitions so switching sessions cannot retain the previous session's override; a session without an override must use its own snapshot/global fallback.
   - Clear the canonical session ID and known alternate IDs after successful archive and delete mutations.
   - Extend `ChatResumeLifecycleOperations` with an injectable session-YOLO setter if required by the failure test, and have `setYoloMode(_:)` call it or the real `HermesClient` method first.

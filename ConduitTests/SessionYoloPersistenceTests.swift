@@ -181,6 +181,41 @@ final class SessionYoloPersistenceTests: XCTestCase {
         XCTAssertFalse(appState.runtime.yolo)
     }
 
+    func testStaleLiveSessionInfoCannotClearJustPersistedOverride() async {
+        let (suite, defaults) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = SessionYoloStore(defaults: defaults, storageKey: "test.session-yolo")
+        let operations = ChatResumeLifecycleOperations(
+            setSessionYolo: { _, _, _ in }
+        )
+        let appState = makeAppState(
+            defaults: defaults,
+            store: store,
+            lifecycleOperations: operations
+        )
+        appState.sessions = [session("session-a")]
+        appState.activeSessionId = "session-a"
+        appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+
+        let enabled = await appState.setYoloMode(true)
+        XCTAssertTrue(enabled)
+
+        appState.handleStreamEvent(.sessionInfo(
+            sessionId: "session-a",
+            snapshot: SessionRuntimeSnapshot(object: [
+                "running": .bool(false),
+                "yolo": .bool(false),
+                "approvals_mode": .string("on")
+            ])
+        ))
+
+        XCTAssertTrue(appState.runtime.yolo)
+        XCTAssertEqual(store.storedOverride(for: "default", sessionID: "session-a"), true)
+    }
+
     func testFailedSessionYoloChangeDoesNotPersistOrChangeRuntime() async {
         let (suite, defaults) = makeDefaults()
         defer { defaults.removePersistentDomain(forName: suite) }

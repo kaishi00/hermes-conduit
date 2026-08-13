@@ -54,9 +54,12 @@ When deriving `runtime.yolo` for a session, use this precedence:
 3. The profile-level `snapshot.approvalsMode` fallback.
 
 The local override preserves the user's explicit choice when a later snapshot
-omits session-level YOLO. When Hermes explicitly reports session YOLO, that
-gateway state is authoritative; a conflicting local override is cleared so the
-visible runtime and the server cannot diverge.
+omits session-level YOLO. A fresh resume snapshot is authoritative when Hermes
+explicitly reports session YOLO; a conflicting local override is cleared so the
+visible runtime and the server can reconcile. Live `session.info` pushes may be
+older than a client-initiated `config.set` response, so an explicit conflicting
+value in a live push does not clear a local override. The next fresh resume
+snapshot performs that server-authority reconciliation.
 
 When the active session changes, recompute this value for the new canonical
 session. A session with no override must not retain the previous session's
@@ -72,7 +75,9 @@ to an overridden session must reload its saved choice.
   and the existing error reporting remains in place.
 - Resume, foreground synchronization, session selection, and app relaunch
   paths must resolve the canonical active session and apply the store before or
-  alongside runtime snapshot reconciliation.
+  alongside runtime snapshot reconciliation. Fresh resume snapshots may clear
+  a conflicting local override; live session-info pushes must not invalidate a
+  local write because their ordering relative to config.set is not guaranteed.
 - A new conversation without a canonical session ID has no session override;
   it must not reuse the last session's value.
 - When a runtime/session alias is resolved to a catalog session ID, migrate the
@@ -108,7 +113,9 @@ to an overridden session must reload its saved choice.
   `approvalsMode`, and `approvalsMode` remains the fallback when session YOLO
   is omitted.
 - An explicit `snapshot.yolo` replaces a conflicting local override and clears
-  the stale persisted value.
+  the stale persisted value on a fresh resume.
+- A stale live `session.info` snapshot cannot clear a just-persisted local
+  override or revert the visible runtime value.
 - Switching from an overridden session to an unoverridden session clears the
   previous local value from the visible runtime; switching back restores it.
 - A failed `config.set` does not write the override.
