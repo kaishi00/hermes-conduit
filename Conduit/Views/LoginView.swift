@@ -28,11 +28,21 @@ struct LoginView: View {
 
     private enum LoginField {
         case server, username, password
+        case cloudflareClientID, cloudflareClientSecret
     }
 
     var body: some View {
         ZStack {
             ConduitBackdrop()
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    // Tapping the backdrop (outside any field or control) clears
+                    // focus so the keyboard dismisses and the Connect button is
+                    // reachable. The gesture lives on the background layer — not
+                    // the root — so it never competes with a text field's
+                    // first-responder touch (no two-tap-to-focus regression).
+                    focusedField = nil
+                }
 
             VStack(spacing: 28) {
                 Spacer(minLength: 36)
@@ -125,9 +135,11 @@ struct LoginView: View {
                         if cloudflareEnabled {
                             TextField("Cloudflare Client ID", text: $cloudflareClientID)
                                 .textInputAutocapitalization(.never).autocorrectionDisabled()
+                                .focused($focusedField, equals: .cloudflareClientID)
                                 .padding(.horizontal, 14).frame(height: 50)
                                 .conduitGlassSurface(cornerRadius: 17, tint: .conduitAura.opacity(0.06))
                             SecureField("Cloudflare Client Secret", text: $cloudflareClientSecret)
+                                .focused($focusedField, equals: .cloudflareClientSecret)
                                 .padding(.horizontal, 14).frame(height: 50)
                                 .conduitGlassSurface(cornerRadius: 17, tint: .conduitAura.opacity(0.06))
                             Text("Used only to reach this Cloudflare-protected dashboard; the secret stays in Keychain.")
