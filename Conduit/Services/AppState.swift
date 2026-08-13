@@ -682,14 +682,19 @@ final class AppState: ObservableObject {
                 matching: $0
             )
         } ?? messages
+        let pendingDecisionKeys = SessionPresentationCache.pendingDecisionKeys(in: cacheableMessages)
+        // Gateway-provided cards do not create a restoration guard, so keep
+        // their bounded expiry marker across ordinary cache flushes as well.
+        let pendingDecisionKeysToPreserve = restorationKeys
+            ?? pendingDecisionKeys
         let preservePendingDecisionCards = restorationKeys == nil
-            || !SessionPresentationCache.pendingDecisionKeys(in: cacheableMessages).isEmpty
+            || !pendingDecisionKeys.isEmpty
         sessionPresentationCache.save(
             cacheableMessages,
             profile: activeProfile,
             sessionIDs: ids,
             preservePendingDecisionCards: preservePendingDecisionCards,
-            unconfirmedPendingDecisionKeys: restorationKeys ?? []
+            unconfirmedPendingDecisionKeys: pendingDecisionKeysToPreserve
         )
     }
 
@@ -2733,7 +2738,9 @@ final class AppState: ObservableObject {
         // lost. A locally restored card remains in the active AppState for the
         // next foreground cycle. Any pending decision observed without an
         // explicit active-turn signal is persisted with a bounded unconfirmed
-        // marker until Hermes confirms the turn or the user interacts with it.
+        // marker. The marker is intentionally independent from
+        // `gatewayConfirmsActiveTurn`: an ambiguous resume may contain a
+        // gateway-provided card that still needs the same stale-card guard.
         let gatewayConfirmsActiveTurn = result.snapshot.running == true
             || (result.snapshot.running != false && gatewayHasPendingDecision)
         let unconfirmedPendingDecisionKeys = result.snapshot.running != true
@@ -2809,7 +2816,8 @@ final class AppState: ObservableObject {
         for index in messages.indices {
             if var clarify = messages[index].clarify,
                clarify.status == .submitting,
-               keys.contains("clarify:\(clarify.requestId)") {
+               let key = SessionPresentationCache.decisionKey(for: messages[index]),
+               keys.contains(key) {
                 clarify.status = .pending
                 clarify.answer = nil
                 clarify.error = nil
@@ -2817,7 +2825,8 @@ final class AppState: ObservableObject {
             }
             if var approval = messages[index].approval,
                approval.status == .submitting,
-               keys.contains("approval:\(approval.sessionId)") {
+               let key = SessionPresentationCache.decisionKey(for: messages[index]),
+               keys.contains(key) {
                 approval.status = .pending
                 approval.choice = nil
                 approval.error = nil

@@ -1448,6 +1448,64 @@ final class SessionPresentationCacheTests: XCTestCase {
         )
     }
 
+    func testBackgroundCacheFlushPreservesGatewayPendingDecisionExpiryMarker() {
+        let suiteName = "conduit.tests.session-presentation-gateway-flush-marker-\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Could not create isolated UserDefaults suite")
+            return
+        }
+        var currentDate = Date(timeIntervalSince1970: 3_000_000)
+        let cache = SessionPresentationCache(defaults: defaults, now: { currentDate })
+        let sessionId = "test-apply-resume-gateway-flush-marker-\(UUID().uuidString)"
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: { cache.clear() },
+            sessionPresentationCache: cache
+        )
+        let profile = appState.activeProfile
+        let approval = ApprovalActivity(
+            sessionId: sessionId,
+            command: "ls",
+            description: "List files",
+            choices: ["once", "deny"],
+            allowPermanent: false,
+            smartDenied: false,
+            status: .pending
+        )
+        let gatewayMessage = ChatMessage(
+            id: "approval-gateway-flush-marker",
+            role: .approval,
+            content: approval.description,
+            timestamp: "2024-01-01",
+            approval: approval
+        )
+        defer {
+            cache.clear()
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        appState.applyChatResume(SessionResumeResult(
+            sessionId: sessionId,
+            messages: [gatewayMessage],
+            snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+        ))
+        let initialMarker = cache.unconfirmedPendingDecisionDate(
+            profile: profile,
+            sessionIDs: [sessionId]
+        )
+        XCTAssertEqual(initialMarker, currentDate)
+
+        currentDate.addTimeInterval(60)
+        appState.handleScenePhase(.background)
+
+        XCTAssertEqual(
+            cache.unconfirmedPendingDecisionDate(profile: profile, sessionIDs: [sessionId]),
+            initialMarker,
+            "A guard-less cache flush must preserve the original pending-decision expiry marker"
+        )
+    }
+
     func testApplyChatResumeExpiresGatewayPendingApprovalAfterGracePeriod() {
         let suiteName = "conduit.tests.session-presentation-gateway-approval-expiry-\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suiteName) else {
