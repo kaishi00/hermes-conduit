@@ -427,6 +427,13 @@ struct ModelPickerView: View {
         guard let client = appState.client, let sessionId = appState.activeSessionId else { return }
 
         do {
+            // Apply YOLO first. setYoloMode persists the session override only
+            // after the gateway accepts it, so a failure must bail before any of
+            // the other settings are mutated — otherwise the sheet hangs open
+            // showing a partially-applied configuration with no rollback.
+            if sessionYoloSelectionChanged(from: initialYoloEnabled, to: yoloEnabled) {
+                guard await appState.setYoloMode(yoloEnabled) else { return }
+            }
             if !selectedModel.isEmpty && !selectedProvider.isEmpty {
                 try await client.setModel(sessionId, model: selectedModel, provider: selectedProvider)
                 appState.runtime.model = selectedModel
@@ -436,9 +443,6 @@ struct ModelPickerView: View {
             appState.runtime.reasoningEffort = reasoningEnabled ? reasoningEffort : ""
             try await client.setFast(sessionId, enabled: fastEnabled)
             appState.runtime.fast = fastEnabled
-            if sessionYoloSelectionChanged(from: initialYoloEnabled, to: yoloEnabled) {
-                guard await appState.setYoloMode(yoloEnabled) else { return }
-            }
             appState.showModelPicker = false
         } catch {
             appState.errorMessage = error.localizedDescription
