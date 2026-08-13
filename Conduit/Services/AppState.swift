@@ -55,6 +55,7 @@ struct ChatResumeLifecycleOperations {
         String
     ) async throws -> AnyCodable)?
     var setBusyInputMode: (@MainActor (HermesClient, BusyInputMode) async throws -> Void)?
+    var setSessionYolo: (@MainActor (HermesClient, String, Bool) async throws -> Void)?
     var loadProfiles: (@MainActor () async -> Void)?
     var loadBusyInputMode: (@MainActor (HermesClient) async -> Void)?
     var loadProfileDisplayPreferences: (@MainActor () async -> Void)?
@@ -90,6 +91,7 @@ struct ChatResumeLifecycleOperations {
             String
         ) async throws -> AnyCodable)? = nil,
         setBusyInputMode: (@MainActor (HermesClient, BusyInputMode) async throws -> Void)? = nil,
+        setSessionYolo: (@MainActor (HermesClient, String, Bool) async throws -> Void)? = nil,
         loadProfiles: (@MainActor () async -> Void)? = nil,
         loadBusyInputMode: (@MainActor (HermesClient) async -> Void)? = nil,
         loadProfileDisplayPreferences: (@MainActor () async -> Void)? = nil,
@@ -109,6 +111,7 @@ struct ChatResumeLifecycleOperations {
         self.executeSlash = executeSlash
         self.dispatchCommand = dispatchCommand
         self.setBusyInputMode = setBusyInputMode
+        self.setSessionYolo = setSessionYolo
         self.loadProfiles = loadProfiles
         self.loadBusyInputMode = loadBusyInputMode
         self.loadProfileDisplayPreferences = loadProfileDisplayPreferences
@@ -632,6 +635,7 @@ final class AppState: ObservableObject {
     private var sessionCatalogCache = SessionCatalogCache()
     private var projectsRequestGeneration = 0
     private let sessionPresentationCache: SessionPresentationCache
+    private let sessionYoloStore: SessionYoloStore
 
     /// The dashboard's persisted transcript is richer than `session.resume`:
     /// it retains database timestamps, complete tool-call inputs, and other
@@ -800,10 +804,12 @@ final class AppState: ObservableObject {
         reconnectScheduler: ChatResumeReconnectScheduler? = nil,
         reconnectExecutor: ChatResumeReconnectExecutor? = nil,
         chatResumeLifecycleOperations: ChatResumeLifecycleOperations = .live,
-        sessionPresentationCache: SessionPresentationCache = .shared
+        sessionPresentationCache: SessionPresentationCache = .shared,
+        sessionYoloStore: SessionYoloStore? = nil
     ) {
         self.defaults = defaults
         self.sessionPresentationCache = sessionPresentationCache
+        self.sessionYoloStore = sessionYoloStore ?? SessionYoloStore(defaults: defaults)
         self.chatResumeCoordinator = chatResumeCoordinator
             ?? ChatResumeCoordinator(store: ChatResumeStore(defaults: defaults))
         self.recoverySequence = recoverySequence
@@ -2777,7 +2783,7 @@ final class AppState: ObservableObject {
         activeAssistantMessageId = nil
         activeReasoningMessageId = nil
         receivedReasoningForCurrentTurn = false
-        applyRuntime(result.snapshot)
+        applyRuntime(result.snapshot, for: result.sessionId)
 
         // A paused clarification or approval can have neither a live text
         // projection nor an explicit `running` field. The restored card is
@@ -3137,7 +3143,19 @@ final class AppState: ObservableObject {
         return recovered
     }
 
-    private func applyRuntime(_ snapshot: SessionRuntimeSnapshot) {
+    private func canonicalSessionID(for sessionID: String?) -> String? {
+        ChatSessionPersistenceIdentity.canonicalID(
+            for: sessionID,
+            identity: activeChatScrollSessionIdentity,
+            catalog: sessions + cronSessions,
+            activeProfile: activeProfile
+        )
+    }
+
+    private func applyRuntime(
+        _ snapshot: SessionRuntimeSnapshot,
+        for sessionID: String? = nil
+    ) {
         if let model = snapshot.model { runtime.model = model }
         if let provider = snapshot.provider { runtime.provider = provider }
         if let cwd = snapshot.cwd { runtime.cwd = cwd }
@@ -3149,7 +3167,13 @@ final class AppState: ObservableObject {
             runtime.reasoningEffort = reasoningEffort.lowercased() == "none" ? "" : reasoningEffort
         }
         if let fast = snapshot.fast { runtime.fast = fast }
-        if let yolo = snapshot.yolo {
+        if let canonicalSessionID = canonicalSessionID(for: sessionID ?? activeSessionId),
+           let storedOverride = sessionYoloStore.storedOverride(
+               for: activeProfile,
+               sessionID: canonicalSessionID
+           ) {
+            runtime.yolo = storedOverride
+        } else if let yolo = snapshot.yolo {
             runtime.yolo = yolo
         } else if let approvalsMode = snapshot.approvalsMode {
             runtime.yolo = approvalsMode.lowercased() == "off"
@@ -4293,7 +4317,17 @@ final class AppState: ObservableObject {
     func setYoloMode(_ enabled: Bool) async -> Bool {
         guard let client, let sessionId = activeSessionId else { return false }
         do {
-            try await client.setSessionYolo(sessionId, enabled: enabled)
+            if let setSessionYolo = chatResumeLifecycleOperations.setSessionYolo {
+                try await setSessionYolo(client, sessionId, enabled)
+            } else {
+                try await client.setSessionYolo(sessionId, enabled: enabled)
+            }
+            let persistedSessionID = canonicalSessionID(for: sessionId) ?? sessionId
+            sessionYoloStore.setOverride(
+                enabled,
+                for: activeProfile,
+                sessionID: persistedSessionID
+            )
             runtime.yolo = enabled
             return true
         } catch {
@@ -6349,8 +6383,8 @@ final class AppState: ObservableObject {
                 scheduleResponseHapticConclusion(after: 180)
             }
 
-        case .sessionInfo(_, let snapshot):
-            applyRuntime(snapshot)
+        case .sessionInfo(let sessionID, let snapshot):
+            applyRuntime(snapshot, for: sessionID)
             if let running = snapshot.running {
                 setRunning(running)
             }
