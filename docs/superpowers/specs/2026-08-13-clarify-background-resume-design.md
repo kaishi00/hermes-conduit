@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-13
 **Branch:** `codex/clarify-background-resume`
-**Status:** Approved design; implementation in progress
+**Status:** Implemented and verified
 
 ## Problem
 
