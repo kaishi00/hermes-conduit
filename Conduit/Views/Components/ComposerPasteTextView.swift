@@ -146,6 +146,45 @@ final class ImagePasteTextView: UITextView {
         return super.canPaste(itemProviders)
     }
 
+    /// Surfaces the standard "Paste" edit-menu item when an image is on the
+    /// pasteboard. UITextView drops "Paste" for image-only content (it cannot
+    /// paste an image as text), leaving system items such as "Autofill" as the
+    /// only options. `canPaste`/`paste(itemProviders:)` route external paste
+    /// triggers but never gate the long-press menu, so without this override
+    /// the image paste code is unreachable from the edit menu.
+    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        if action == #selector(paste(_:)), shouldOfferImagePaste() {
+            return true
+        }
+        return super.canPerformAction(action, withSender: sender)
+    }
+
+    /// Whether the edit menu should offer "Paste" for an image. Extracted as a
+    /// pure function over `isEditable` and `pasteboardContainsImage()` so the
+    /// gate is unit-testable in isolation, without depending on `super` or the
+    /// view's first-responder/window state.
+    func shouldOfferImagePaste() -> Bool {
+        isEditable && pasteboardContainsImage()
+    }
+
+    /// Reports whether the general pasteboard advertises image content using
+    /// only banner-safe metadata access: `hasImages` (Apple's conformance-aware
+    /// detector) plus a conformance scan over `pasteboard.types` as a
+    /// belt-and-suspenders fallback. Both read type metadata rather than
+    /// contents, so they do NOT raise the iOS "Paste from Other App" prompt —
+    /// important because `canPerformAction` runs before the user consents to a
+    /// paste and is called repeatedly while the edit menu is displayed. This
+    /// deliberately avoids `pb.image`/`pb.data(...)`, `pb.url`, and
+    /// materializing `pb.itemProviders`, all of which can trigger the banner.
+    /// Note: an image *URL* without image data (e.g. copied from Safari) is not
+    /// detected here, so "Paste" is not offered for that case; the legacy
+    /// `pb.url` path in `paste(_:)` stays reachable only via external triggers.
+    func pasteboardContainsImage() -> Bool {
+        let pasteboard = UIPasteboard.general
+        if pasteboard.hasImages { return true }
+        return pasteboard.types.contains { UTType($0)?.conforms(to: .image) ?? false }
+    }
+
     override func layoutSubviews() {
         super.layoutSubviews()
         let contentHeight = bounds.width > 0 && contentSize.height.isFinite
@@ -234,6 +273,10 @@ final class ImagePasteTextView: UITextView {
         }
     }
 
+    /// When the pasteboard holds an image it is delivered as an attachment via
+    /// `onPastedImage`; any accompanying text is not inserted, since this
+    /// attachment composer treats the image as the payload. Non-image
+    /// pasteboards fall through to the standard text behavior.
     override func paste(_ sender: Any?) {
         let pb = UIPasteboard.general
 
