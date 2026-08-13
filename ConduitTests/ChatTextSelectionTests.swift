@@ -4,6 +4,271 @@ import SwiftUI
 @testable import Conduit
 
 final class ChatTextSelectionTests: XCTestCase {
+    @MainActor
+    func testSelectableTextViewDefaultsToNoSelectionCoordinatorHooks() {
+        let view = SelectableTextView(text: "plain text")
+
+        XCTAssertNil(view.selectionCoordinator)
+        XCTAssertNil(view.selectionSegment)
+    }
+
+    @MainActor
+    func testSelectableTextViewStoresOptionalSelectionCoordinatorHooks() {
+        let coordinator = MarkdownSelectionCoordinator()
+        let descriptor = MarkdownSelectionSegmentDescriptor(id: "paragraph", order: 0, separatorBefore: "")
+        let view = SelectableTextView(
+            text: "coordinated text",
+            selectionCoordinator: coordinator,
+            selectionSegment: descriptor
+        )
+
+        XCTAssertTrue(view.selectionCoordinator === coordinator)
+        XCTAssertEqual(view.selectionSegment, descriptor)
+    }
+
+    @MainActor
+    func testSelectionBridgeCanBeEnabledAndDisabledAcrossUpdates() {
+        let selectionCoordinator = MarkdownSelectionCoordinator()
+        let descriptor = MarkdownSelectionSegmentDescriptor(id: "paragraph", order: 0, separatorBefore: "")
+        selectionCoordinator.replaceSegments([descriptor], revision: "bridge-toggle-v1")
+
+        let coordinatedView = SelectableTextView(
+            text: "toggle me",
+            selectionCoordinator: selectionCoordinator,
+            selectionSegment: descriptor
+        )
+        let bridgeCoordinator = coordinatedView.makeCoordinator()
+        let hostView = coordinatedView.makeUIViewForTests(coordinator: bridgeCoordinator)
+
+        XCTAssertTrue(hostView.isUsingCoordinatedTextView)
+        hostView.simulateTouchBeganForTesting(at: CGPoint(x: 3, y: 3))
+        XCTAssertFalse(selectionCoordinator.hasActiveSelection)
+
+        hostView.mountedTextView.selectedRange = NSRange(location: 0, length: 3)
+        bridgeCoordinator.textViewDidChangeSelection(hostView.mountedTextView)
+
+        XCTAssertTrue(selectionCoordinator.hasActiveSelection)
+        XCTAssertEqual(
+            selectionCoordinator.activeSpans,
+            [MarkdownSelectionSpan(segmentID: descriptor.id, range: NSRange(location: 0, length: 3))]
+        )
+
+        selectionCoordinator.clearSelection()
+
+        let uncoordinatedView = SelectableTextView(text: "toggle me")
+        uncoordinatedView.updateUIViewForTests(hostView, coordinator: bridgeCoordinator)
+
+        XCTAssertFalse(hostView.isUsingCoordinatedTextView)
+        hostView.simulateTouchBeganForTesting(at: CGPoint(x: 3, y: 3))
+        XCTAssertFalse(selectionCoordinator.hasActiveSelection)
+    }
+
+    @MainActor
+    func testReverseNativeSelectionActivationPreservesTouchedUpperEndpointForCrossSegmentUpdate() {
+        let selectionCoordinator = MarkdownSelectionCoordinator()
+        let descriptors = [
+            MarkdownSelectionSegmentDescriptor(id: "first", order: 0, separatorBefore: ""),
+            MarkdownSelectionSegmentDescriptor(id: "second", order: 1, separatorBefore: "\n\n")
+        ]
+        selectionCoordinator.replaceSegments(descriptors, revision: "reverse-native-cross-segment-v1")
+
+        let firstTextView = SelectableTextView.makeTextView()
+        firstTextView.attributedText = NSAttributedString(string: "Alpha")
+        selectionCoordinator.register(descriptor: descriptors[0], textView: firstTextView)
+
+        let view = SelectableTextView(
+            text: "Bravo",
+            selectionCoordinator: selectionCoordinator,
+            selectionSegment: descriptors[1]
+        )
+        let bridgeCoordinator = view.makeCoordinator()
+        let hostView = view.makeUIViewForTests(coordinator: bridgeCoordinator)
+
+        selectionCoordinator.beginPendingSelection(
+            segmentID: descriptors[1].id,
+            offset: 4,
+            windowPoint: CGPoint(x: 40, y: 0)
+        )
+        hostView.mountedTextView.selectedRange = NSRange(location: 1, length: 3)
+        bridgeCoordinator.textViewDidChangeSelection(hostView.mountedTextView)
+
+        selectionCoordinator.updateSelection(
+            segmentID: descriptors[0].id,
+            offset: 2,
+            windowPoint: CGPoint(x: 0, y: 0)
+        )
+
+        XCTAssertEqual(
+            selectionCoordinator.activeSpans,
+            [
+                MarkdownSelectionSpan(segmentID: descriptors[0].id, range: NSRange(location: 2, length: 3)),
+                MarkdownSelectionSpan(segmentID: descriptors[1].id, range: NSRange(location: 0, length: 4))
+            ]
+        )
+    }
+
+    @MainActor
+    func testReverseNativeSelectionUpdateKeepsTouchedUpperEndpointAsAnchor() {
+        let selectionCoordinator = MarkdownSelectionCoordinator()
+        let descriptor = MarkdownSelectionSegmentDescriptor(id: "paragraph", order: 0, separatorBefore: "")
+        selectionCoordinator.replaceSegments([descriptor], revision: "reverse-native-update-v1")
+
+        let view = SelectableTextView(
+            text: "ABCDE",
+            selectionCoordinator: selectionCoordinator,
+            selectionSegment: descriptor
+        )
+        let bridgeCoordinator = view.makeCoordinator()
+        let hostView = view.makeUIViewForTests(coordinator: bridgeCoordinator)
+
+        selectionCoordinator.beginPendingSelection(
+            segmentID: descriptor.id,
+            offset: 4,
+            windowPoint: CGPoint(x: 40, y: 0)
+        )
+        hostView.mountedTextView.selectedRange = NSRange(location: 1, length: 3)
+        bridgeCoordinator.textViewDidChangeSelection(hostView.mountedTextView)
+
+        hostView.mountedTextView.selectedRange = NSRange(location: 0, length: 4)
+        bridgeCoordinator.textViewDidChangeSelection(hostView.mountedTextView)
+
+        XCTAssertEqual(
+            selectionCoordinator.activeSpans,
+            [
+                MarkdownSelectionSpan(segmentID: descriptor.id, range: NSRange(location: 0, length: 4))
+            ]
+        )
+    }
+
+    @MainActor
+    func testCoordinatedMountedTextViewUsesSelectableBaseConfiguration() {
+        let selectionCoordinator = MarkdownSelectionCoordinator()
+        let descriptor = MarkdownSelectionSegmentDescriptor(id: "paragraph", order: 0, separatorBefore: "")
+        selectionCoordinator.replaceSegments([descriptor], revision: "coordinated-config-v1")
+
+        let view = SelectableTextView(
+            text: "configured",
+            selectionCoordinator: selectionCoordinator,
+            selectionSegment: descriptor
+        )
+        let hostView = view.makeUIViewForTests(coordinator: view.makeCoordinator())
+        let textView = hostView.mountedTextView
+
+        XCTAssertTrue(hostView.isUsingCoordinatedTextView)
+        XCTAssertFalse(textView.isEditable)
+        XCTAssertTrue(textView.isSelectable)
+        XCTAssertFalse(textView.isScrollEnabled)
+        XCTAssertEqual(textView.backgroundColor, .clear)
+        XCTAssertEqual(textView.textContainerInset, .zero)
+        XCTAssertEqual(textView.textContainer.lineFragmentPadding, 0)
+        XCTAssertEqual(textView.contentHuggingPriority(for: .vertical), .required)
+        XCTAssertEqual(textView.contentCompressionResistancePriority(for: .vertical), .required)
+    }
+
+    @MainActor
+    func testSimpleTapClearsPreviousCrossBlockSelectionWithoutStartingANewOne() {
+        let selectionCoordinator = MarkdownSelectionCoordinator()
+        let descriptors = [
+            MarkdownSelectionSegmentDescriptor(id: "first", order: 0, separatorBefore: ""),
+            MarkdownSelectionSegmentDescriptor(id: "second", order: 1, separatorBefore: "\n\n")
+        ]
+        selectionCoordinator.replaceSegments(descriptors, revision: "tap-clear-v1")
+
+        let view = SelectableTextView(
+            text: "First",
+            selectionCoordinator: selectionCoordinator,
+            selectionSegment: descriptors[0]
+        )
+        let bridgeCoordinator = view.makeCoordinator()
+        let hostView = view.makeUIViewForTests(coordinator: bridgeCoordinator)
+
+        let secondTextView = SelectableTextView.makeTextView()
+        secondTextView.attributedText = NSAttributedString(string: "Second")
+        selectionCoordinator.register(descriptor: descriptors[1], textView: secondTextView)
+
+        selectionCoordinator.beginSelection(segmentID: "first", offset: 2, windowPoint: .zero)
+        selectionCoordinator.updateSelection(segmentID: "second", offset: 3, windowPoint: CGPoint(x: 0, y: 10))
+        XCTAssertTrue(selectionCoordinator.hasCrossSegmentSelection)
+
+        hostView.simulateTouchBeganForTesting(at: CGPoint(x: 3, y: 3))
+
+        XCTAssertFalse(selectionCoordinator.hasActiveSelection)
+        XCTAssertFalse(selectionCoordinator.hasCrossSegmentSelection)
+    }
+
+    @MainActor
+    func testDismantleUnregistersMountedCoordinatedTextView() {
+        let selectionCoordinator = MarkdownSelectionCoordinator()
+        let descriptor = MarkdownSelectionSegmentDescriptor(id: "paragraph", order: 0, separatorBefore: "")
+        selectionCoordinator.replaceSegments([descriptor], revision: "dismantle-v1")
+
+        let view = SelectableTextView(
+            text: "registered",
+            selectionCoordinator: selectionCoordinator,
+            selectionSegment: descriptor
+        )
+        let bridgeCoordinator = view.makeCoordinator()
+        let hostView = view.makeUIViewForTests(coordinator: bridgeCoordinator)
+
+        XCTAssertEqual(selectionCoordinator.text(for: descriptor.id), "registered")
+
+        SelectableTextView.dismantleUIView(hostView, coordinator: bridgeCoordinator)
+
+        XCTAssertNil(selectionCoordinator.text(for: descriptor.id))
+    }
+
+    @MainActor
+    func testCoordinatedCopyPathUsesCoordinatorActiveSelection() {
+        let selectionCoordinator = MarkdownSelectionCoordinator()
+        let descriptors = [
+            MarkdownSelectionSegmentDescriptor(id: "first", order: 0, separatorBefore: ""),
+            MarkdownSelectionSegmentDescriptor(id: "second", order: 1, separatorBefore: "\n\n")
+        ]
+        selectionCoordinator.replaceSegments(descriptors, revision: "copy-bridge-v1")
+
+        let view = SelectableTextView(
+            text: "First",
+            selectionCoordinator: selectionCoordinator,
+            selectionSegment: descriptors[0]
+        )
+        let bridgeCoordinator = view.makeCoordinator()
+        let hostView = view.makeUIViewForTests(coordinator: bridgeCoordinator)
+
+        let secondTextView = SelectableTextView.makeTextView()
+        secondTextView.attributedText = NSAttributedString(string: "Second")
+        selectionCoordinator.register(descriptor: descriptors[1], textView: secondTextView)
+
+        selectionCoordinator.beginSelection(
+            segmentID: descriptors[0].id,
+            offset: 2,
+            windowPoint: CGPoint(x: 0, y: 0)
+        )
+        selectionCoordinator.updateSelection(
+            segmentID: descriptors[1].id,
+            offset: 3,
+            windowPoint: CGPoint(x: 0, y: 10)
+        )
+
+        XCTAssertEqual(hostView.coordinatedCopiedAttributedTextForTesting()?.string, "rst\n\nSec")
+    }
+
+    @MainActor
+    func testLinkPreviewInteractionRemainsEnabled() {
+        let coordinator = SelectableTextView.Coordinator(
+            linkColor: .link,
+            selectionCoordinator: nil,
+            selectionSegment: nil
+        )
+        let shouldAllowPreview = coordinator.textView(
+            SelectableTextView.makeTextView(),
+            shouldInteractWith: URL(string: "https://example.com")!,
+            in: NSRange(location: 0, length: 4),
+            interaction: .preview
+        )
+
+        XCTAssertTrue(shouldAllowPreview)
+    }
+
     func testSelectableTextSurfaceSupportsCharacterRangeSelection() {
         let textView = SelectableTextView.makeTextView()
 
@@ -54,6 +319,16 @@ final class ChatTextSelectionTests: XCTestCase {
         XCTAssertEqual(codeFont.pointSize, expectedCodeSize,
                        "Code font point size must match the body font, not a hardcoded constant")
         XCTAssertEqual(link.absoluteString, "https://example.com")
+    }
+
+    func testMarkdownBridgeUsesLinkDisplayTextAndPreservesURLAttribute() throws {
+        let markdown = try AttributedString(markdown: "[display text](https://example.com/path)")
+        let text = SelectableTextView(attributedText: markdown).attributedText
+
+        XCTAssertEqual(text.string, "display text")
+
+        let link = try XCTUnwrap(text.attribute(.link, at: 0, effectiveRange: nil) as? URL)
+        XCTAssertEqual(link.absoluteString, "https://example.com/path")
     }
 
     func testMarkdownSelectionSpansParagraphBlocks() throws {
