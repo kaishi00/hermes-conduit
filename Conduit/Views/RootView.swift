@@ -64,12 +64,19 @@ struct MainView: View {
                     .accessibilityLabel("Open sessions")
                 }
                 ToolbarItem(placement: .principal) {
-                    Text(appState.activeSessionTitle)
-                        .font(.subheadline.weight(.semibold))
-                        .lineLimit(1)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 7)
-                        .conduitGlassSurface(cornerRadius: 16, tint: .conduitAccent.opacity(0.06))
+                    Button {
+                        appState.requestChatScrollToTop()
+                    } label: {
+                        Text(appState.activeSessionTitle)
+                            .font(.subheadline.weight(.semibold))
+                            .lineLimit(1)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
+                            .conduitGlassSurface(cornerRadius: 16, tint: .conduitAccent.opacity(0.06))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(appState.activeSessionTitle)
+                    .accessibilityHint("Scroll to top of conversation")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
