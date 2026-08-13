@@ -35,6 +35,143 @@ enum ChatMessageScrollUpdatePolicy {
     }
 }
 
+struct ChatDragCompletionToken: Hashable {
+    let dragGeneration: UInt64
+    let sessionKey: ChatScrollSessionKey?
+    let viewportTransitionGeneration: UInt64
+}
+
+struct ChatDragLifecycleState: Equatable {
+    private(set) var generation: UInt64 = 0
+    private var activeCompletion: ChatDragCompletionToken?
+    private var activeGestureInvalidated = false
+
+    mutating func begin(
+        sessionKey: ChatScrollSessionKey?,
+        viewportTransitionGeneration: UInt64
+    ) -> Bool {
+        guard activeCompletion == nil, !activeGestureInvalidated else { return false }
+        generation &+= 1
+        activeCompletion = ChatDragCompletionToken(
+            dragGeneration: generation,
+            sessionKey: sessionKey,
+            viewportTransitionGeneration: viewportTransitionGeneration
+        )
+        return true
+    }
+
+    mutating func invalidate(hasActiveGesture: Bool) {
+        generation &+= 1
+        if hasActiveGesture || activeCompletion != nil {
+            activeGestureInvalidated = true
+        }
+    }
+
+    mutating func abandon() {
+        generation &+= 1
+        activeCompletion = nil
+        activeGestureInvalidated = false
+    }
+
+    mutating func finish() -> ChatDragCompletionToken? {
+        defer {
+            activeCompletion = nil
+            activeGestureInvalidated = false
+        }
+        guard !activeGestureInvalidated else { return nil }
+        return activeCompletion
+    }
+
+    func currentToken(
+        sessionKey: ChatScrollSessionKey?,
+        viewportTransitionGeneration: UInt64
+    ) -> ChatDragCompletionToken {
+        ChatDragCompletionToken(
+            dragGeneration: generation,
+            sessionKey: sessionKey,
+            viewportTransitionGeneration: viewportTransitionGeneration
+        )
+    }
+}
+
+enum ChatFollowLatestRelatchPolicy {
+    static func shouldRelatch(
+        isNearBottom: Bool,
+        hasPendingRestoration: Bool,
+        hasNotificationHandoff: Bool,
+        isDragging: Bool
+    ) -> Bool {
+        isNearBottom
+            && !hasPendingRestoration
+            && !hasNotificationHandoff
+            && !isDragging
+    }
+
+    static func shouldFollowLatestAfterTransition(isDragging: Bool) -> Bool {
+        !isDragging
+    }
+
+    static func isCompletionCurrent(
+        completed: ChatDragCompletionToken,
+        current: ChatDragCompletionToken,
+        identity: ChatScrollSessionIdentity,
+        isDragging: Bool,
+        hasPendingRestoration: Bool,
+        hasNotificationHandoff: Bool
+    ) -> Bool {
+        // A new chat can acquire its first server session ID without replacing
+        // the viewport. The transition generation distinguishes that identity
+        // resolution from an actual transcript transition.
+        let sameSession = completed.sessionKey == nil
+            || completed.sessionKey == current.sessionKey
+            || identity.areEquivalent(completed.sessionKey, current.sessionKey)
+        return completed.dragGeneration == current.dragGeneration
+            && completed.viewportTransitionGeneration == current.viewportTransitionGeneration
+            && sameSession
+            && !isDragging
+            && !hasPendingRestoration
+            && !hasNotificationHandoff
+    }
+
+    static func persistenceSessionKey(
+        currentKey: ChatScrollSessionKey?,
+        identity: ChatScrollSessionIdentity
+    ) -> ChatScrollSessionKey? {
+        guard let currentKey else { return nil }
+        if identity.areEquivalent(currentKey, identity.canonicalSessionKey) {
+            return identity.canonicalSessionKey
+        }
+        return currentKey
+    }
+
+    @MainActor
+    static func waitForNextMainActorTurn() async {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async {
+                continuation.resume()
+            }
+        }
+    }
+
+    /// Defers completion until the next main-actor turn. A newer drag or
+    /// transcript transition invalidates the work via `isCurrent`; otherwise
+    /// persistence runs after the relatch decision.
+    @MainActor
+    static func completeDragAfterNextTurn(
+        suspend: @MainActor () async -> Void = {
+            await ChatFollowLatestRelatchPolicy.waitForNextMainActorTurn()
+        },
+        isCurrent: @MainActor () -> Bool,
+        relatch: @MainActor () -> Void,
+        persist: @MainActor () -> Void
+    ) async {
+        await suspend()
+        guard !Task.isCancelled, isCurrent() else { return }
+        relatch()
+        persist()
+    }
+}
+
 struct ChatMessageScrollTargetCache: Equatable {
     private(set) var targets: [ChatMessageScrollTarget] = []
     private(set) var renderingRevision: UInt64 = 0

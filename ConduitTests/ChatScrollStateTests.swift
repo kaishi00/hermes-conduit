@@ -1,7 +1,453 @@
 import XCTest
 @testable import Conduit
 
+private actor ChatScrollTestGate {
+    private var isOpen = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func wait() async {
+        guard !isOpen else { return }
+        await withCheckedContinuation { continuation in
+            if isOpen {
+                continuation.resume()
+            } else {
+                waiters.append(continuation)
+            }
+        }
+    }
+
+    func open() {
+        isOpen = true
+        let pending = waiters
+        waiters.removeAll()
+        pending.forEach { $0.resume() }
+    }
+}
+
 final class ChatScrollStateTests: XCTestCase {
+    func testFollowLatestRelatchRequiresSettledNearBottomViewport() {
+        let cases: [(
+            isNearBottom: Bool,
+            hasPendingRestoration: Bool,
+            hasNotificationHandoff: Bool,
+            isDragging: Bool,
+            expected: Bool
+        )] = [
+            (true, false, false, false, true),
+            (false, false, false, false, false),
+            (true, true, false, false, false),
+            (true, false, true, false, false),
+            (true, false, false, true, false),
+        ]
+
+        for testCase in cases {
+            XCTAssertEqual(
+                ChatFollowLatestRelatchPolicy.shouldRelatch(
+                    isNearBottom: testCase.isNearBottom,
+                    hasPendingRestoration: testCase.hasPendingRestoration,
+                    hasNotificationHandoff: testCase.hasNotificationHandoff,
+                    isDragging: testCase.isDragging
+                ),
+                testCase.expected
+            )
+        }
+    }
+
+    func testDragCompletionRequiresCurrentGestureViewportAndSession() {
+        let runtimeKey = ChatScrollSessionKey(profile: "default", sessionID: "runtime-id")
+        let canonicalKey = ChatScrollSessionKey(profile: "default", sessionID: "canonical-id")
+        let unrelatedKey = ChatScrollSessionKey(profile: "default", sessionID: "other-id")
+        let identity = ChatScrollSessionIdentity(
+            profile: "default",
+            canonicalSessionID: "canonical-id",
+            equivalentSessionIDs: ["runtime-id"],
+            isReconciling: false,
+            settledRevision: 1
+        )
+        let completed = ChatDragCompletionToken(
+            dragGeneration: 7,
+            sessionKey: runtimeKey,
+            viewportTransitionGeneration: 11
+        )
+        let equivalentCurrent = ChatDragCompletionToken(
+            dragGeneration: 7,
+            sessionKey: canonicalKey,
+            viewportTransitionGeneration: 11
+        )
+        let cases: [(
+            current: ChatDragCompletionToken,
+            isDragging: Bool,
+            hasPendingRestoration: Bool,
+            hasNotificationHandoff: Bool,
+            expected: Bool
+        )] = [
+            (equivalentCurrent, false, false, false, true),
+            (
+                ChatDragCompletionToken(
+                    dragGeneration: 8,
+                    sessionKey: canonicalKey,
+                    viewportTransitionGeneration: 11
+                ),
+                false,
+                false,
+                false,
+                false
+            ),
+            (
+                ChatDragCompletionToken(
+                    dragGeneration: 7,
+                    sessionKey: canonicalKey,
+                    viewportTransitionGeneration: 12
+                ),
+                false,
+                false,
+                false,
+                false
+            ),
+            (
+                ChatDragCompletionToken(
+                    dragGeneration: 7,
+                    sessionKey: unrelatedKey,
+                    viewportTransitionGeneration: 11
+                ),
+                false,
+                false,
+                false,
+                false
+            ),
+            (equivalentCurrent, true, false, false, false),
+            (equivalentCurrent, false, true, false, false),
+            (equivalentCurrent, false, false, true, false),
+        ]
+
+        for testCase in cases {
+            XCTAssertEqual(
+                ChatFollowLatestRelatchPolicy.isCompletionCurrent(
+                    completed: completed,
+                    current: testCase.current,
+                    identity: identity,
+                    isDragging: testCase.isDragging,
+                    hasPendingRestoration: testCase.hasPendingRestoration,
+                    hasNotificationHandoff: testCase.hasNotificationHandoff
+                ),
+                testCase.expected
+            )
+        }
+
+        let noSession = ChatDragCompletionToken(
+            dragGeneration: 7,
+            sessionKey: nil,
+            viewportTransitionGeneration: 11
+        )
+        XCTAssertTrue(
+            ChatFollowLatestRelatchPolicy.isCompletionCurrent(
+                completed: noSession,
+                current: noSession,
+                identity: .none,
+                isDragging: false,
+                hasPendingRestoration: false,
+                hasNotificationHandoff: false
+            )
+        )
+        XCTAssertTrue(
+            ChatFollowLatestRelatchPolicy.isCompletionCurrent(
+                completed: noSession,
+                current: equivalentCurrent,
+                identity: identity,
+                isDragging: false,
+                hasPendingRestoration: false,
+                hasNotificationHandoff: false
+            )
+        )
+        XCTAssertFalse(
+            ChatFollowLatestRelatchPolicy.isCompletionCurrent(
+                completed: equivalentCurrent,
+                current: noSession,
+                identity: identity,
+                isDragging: false,
+                hasPendingRestoration: false,
+                hasNotificationHandoff: false
+            )
+        )
+    }
+
+    func testTranscriptTransitionKeepsFollowDisabledForActiveDrag() {
+        XCTAssertFalse(
+            ChatFollowLatestRelatchPolicy.shouldFollowLatestAfterTransition(
+                isDragging: true
+            )
+        )
+        XCTAssertTrue(
+            ChatFollowLatestRelatchPolicy.shouldFollowLatestAfterTransition(
+                isDragging: false
+            )
+        )
+    }
+
+    func testDragLifecycleCapturesStartAndSuppressesInvalidatedGestureUntilFinish() {
+        let originalKey = ChatScrollSessionKey(profile: "default", sessionID: "original")
+        let replacementKey = ChatScrollSessionKey(profile: "default", sessionID: "replacement")
+        var lifecycle = ChatDragLifecycleState()
+
+        XCTAssertTrue(
+            lifecycle.begin(
+                sessionKey: originalKey,
+                viewportTransitionGeneration: 4
+            )
+        )
+        lifecycle.invalidate(hasActiveGesture: true)
+        XCTAssertFalse(
+            lifecycle.begin(
+                sessionKey: replacementKey,
+                viewportTransitionGeneration: 5
+            )
+        )
+        XCTAssertNil(lifecycle.finish())
+
+        XCTAssertTrue(
+            lifecycle.begin(
+                sessionKey: replacementKey,
+                viewportTransitionGeneration: 5
+            )
+        )
+        XCTAssertEqual(
+            lifecycle.finish(),
+            ChatDragCompletionToken(
+                dragGeneration: 3,
+                sessionKey: replacementKey,
+                viewportTransitionGeneration: 5
+            )
+        )
+    }
+
+    func testDragLifecycleIgnoresDuplicateChangedCallbacks() {
+        let originalKey = ChatScrollSessionKey(profile: "default", sessionID: "original")
+        let replacementKey = ChatScrollSessionKey(profile: "default", sessionID: "replacement")
+        var lifecycle = ChatDragLifecycleState()
+
+        XCTAssertTrue(
+            lifecycle.begin(
+                sessionKey: originalKey,
+                viewportTransitionGeneration: 4
+            )
+        )
+        XCTAssertFalse(
+            lifecycle.begin(
+                sessionKey: replacementKey,
+                viewportTransitionGeneration: 5
+            )
+        )
+        XCTAssertEqual(
+            lifecycle.currentToken(
+                sessionKey: replacementKey,
+                viewportTransitionGeneration: 5
+            ),
+            ChatDragCompletionToken(
+                dragGeneration: 1,
+                sessionKey: replacementKey,
+                viewportTransitionGeneration: 5
+            )
+        )
+        XCTAssertEqual(
+            lifecycle.finish()?.sessionKey,
+            originalKey
+        )
+    }
+
+    func testDragLifecycleInvalidatesPendingCompletionAfterGestureStateReset() {
+        let sessionKey = ChatScrollSessionKey(profile: "default", sessionID: "session")
+        var lifecycle = ChatDragLifecycleState()
+
+        XCTAssertTrue(
+            lifecycle.begin(
+                sessionKey: sessionKey,
+                viewportTransitionGeneration: 1
+            )
+        )
+        lifecycle.invalidate(hasActiveGesture: false)
+
+        XCTAssertNil(lifecycle.finish())
+    }
+
+    func testIdleDragInvalidationDoesNotBlockNextGesture() {
+        let sessionKey = ChatScrollSessionKey(profile: "default", sessionID: "session")
+        var lifecycle = ChatDragLifecycleState()
+
+        lifecycle.invalidate(hasActiveGesture: false)
+
+        XCTAssertTrue(
+            lifecycle.begin(
+                sessionKey: sessionKey,
+                viewportTransitionGeneration: 1
+            )
+        )
+        XCTAssertEqual(lifecycle.finish()?.dragGeneration, 2)
+    }
+
+    func testDragLifecycleSuppressesInvalidationBeforeFirstChangedCallback() {
+        let sessionKey = ChatScrollSessionKey(profile: "default", sessionID: "session")
+        var lifecycle = ChatDragLifecycleState()
+
+        lifecycle.invalidate(hasActiveGesture: true)
+        XCTAssertFalse(
+            lifecycle.begin(
+                sessionKey: sessionKey,
+                viewportTransitionGeneration: 1
+            )
+        )
+        XCTAssertNil(lifecycle.finish())
+        XCTAssertTrue(
+            lifecycle.begin(
+                sessionKey: sessionKey,
+                viewportTransitionGeneration: 1
+            )
+        )
+    }
+
+    func testDragLifecycleAbandonAllowsFreshGestureAfterViewReappears() {
+        let sessionKey = ChatScrollSessionKey(profile: "default", sessionID: "session")
+        var lifecycle = ChatDragLifecycleState()
+
+        XCTAssertTrue(
+            lifecycle.begin(
+                sessionKey: sessionKey,
+                viewportTransitionGeneration: 1
+            )
+        )
+        lifecycle.invalidate(hasActiveGesture: true)
+        lifecycle.abandon()
+
+        XCTAssertTrue(
+            lifecycle.begin(
+                sessionKey: sessionKey,
+                viewportTransitionGeneration: 1
+            )
+        )
+        XCTAssertEqual(
+            lifecycle.finish()?.dragGeneration,
+            4
+        )
+    }
+
+    func testDragCompletionPersistsUsingCanonicalSessionIdentity() {
+        let runtimeKey = ChatScrollSessionKey(profile: "default", sessionID: "runtime-id")
+        let canonicalKey = ChatScrollSessionKey(profile: "default", sessionID: "canonical-id")
+        let unrelatedKey = ChatScrollSessionKey(profile: "default", sessionID: "other-id")
+        let identity = ChatScrollSessionIdentity(
+            profile: "default",
+            canonicalSessionID: "canonical-id",
+            equivalentSessionIDs: ["runtime-id"],
+            isReconciling: false,
+            settledRevision: 1
+        )
+
+        XCTAssertEqual(
+            ChatFollowLatestRelatchPolicy.persistenceSessionKey(
+                currentKey: runtimeKey,
+                identity: identity
+            ),
+            canonicalKey
+        )
+        XCTAssertEqual(
+            ChatFollowLatestRelatchPolicy.persistenceSessionKey(
+                currentKey: unrelatedKey,
+                identity: identity
+            ),
+            unrelatedKey
+        )
+        XCTAssertNil(
+            ChatFollowLatestRelatchPolicy.persistenceSessionKey(
+                currentKey: nil,
+                identity: identity
+            )
+        )
+    }
+
+    @MainActor
+    func testDragCompletionRechecksStateAfterControlledSuspension() async {
+        var dragGeneration = 1
+        var completionEvents: [String] = []
+        let suspensionReached = expectation(description: "completion reached suspension")
+        let gate = ChatScrollTestGate()
+
+        let completion = Task { @MainActor in
+            await ChatFollowLatestRelatchPolicy.completeDragAfterNextTurn(
+                suspend: {
+                    suspensionReached.fulfill()
+                    await gate.wait()
+                },
+                isCurrent: { dragGeneration == 1 },
+                relatch: { completionEvents.append("relatch") },
+                persist: { completionEvents.append("persist") }
+            )
+        }
+
+        await fulfillment(of: [suspensionReached], timeout: 1)
+        dragGeneration = 2
+        await gate.open()
+        await completion.value
+
+        XCTAssertEqual(completionEvents, [])
+    }
+
+    @MainActor
+    func testCancelledDragCompletionDoesNotRelatchOrPersist() async {
+        var completionEvents: [String] = []
+        let suspensionReached = expectation(description: "completion reached suspension")
+        let gate = ChatScrollTestGate()
+
+        let completion = Task { @MainActor in
+            await ChatFollowLatestRelatchPolicy.completeDragAfterNextTurn(
+                suspend: {
+                    suspensionReached.fulfill()
+                    await gate.wait()
+                },
+                isCurrent: { true },
+                relatch: { completionEvents.append("relatch") },
+                persist: { completionEvents.append("persist") }
+            )
+        }
+
+        await fulfillment(of: [suspensionReached], timeout: 1)
+        completion.cancel()
+        await gate.open()
+        await completion.value
+
+        XCTAssertEqual(completionEvents, [])
+    }
+
+    @MainActor
+    func testDragCompletionWaitsForNextMainActorTurn() async {
+        var completionEvents: [String] = []
+        DispatchQueue.main.async {
+            completionEvents.append("queued")
+        }
+
+        await ChatFollowLatestRelatchPolicy.completeDragAfterNextTurn(
+            isCurrent: {
+                completionEvents.append("validate")
+                return true
+            },
+            relatch: { completionEvents.append("relatch") },
+            persist: { completionEvents.append("persist") }
+        )
+
+        XCTAssertEqual(completionEvents, ["queued", "validate", "relatch", "persist"])
+    }
+
+    @MainActor
+    func testDragCompletionPersistsAfterRelatchDecision() async {
+        var completionEvents: [String] = []
+
+        await ChatFollowLatestRelatchPolicy.completeDragAfterNextTurn(
+            isCurrent: { true },
+            relatch: { completionEvents.append("relatch") },
+            persist: { completionEvents.append("persist") }
+        )
+
+        XCTAssertEqual(completionEvents, ["relatch", "persist"])
+    }
+
     func testRestorationWaitsForMatchingRenderedTargetAndGeometryConfirmation() {
         let sessionA = ChatScrollSessionKey(profile: "default", sessionID: "session-a")
         let sessionB = ChatScrollSessionKey(profile: "default", sessionID: "session-b")
