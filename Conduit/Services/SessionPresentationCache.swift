@@ -229,10 +229,11 @@ final class SessionPresentationCache {
                 Self.isPendingDecision($0.status)
             }
 
-            // A gateway resume can retain the running clarify tool call but omit
-            // the one-shot clarify.request event. Restore the locally observed
-            // card only while the session is still running, and hide that duplicate
-            // generic tool row behind the answerable clarification UI.
+            // A gateway resume can retain the preceding transcript or generic
+            // clarify tool call but omit the one-shot clarify.request event.
+            // Restore the locally observed card while it remains unresolved,
+            // and hide that duplicate generic tool row behind the answerable
+            // clarification UI.
             if !pendingClarifications.isEmpty {
                 merged.removeAll { message in
                     message.role == .tool && message.tool?.name.lowercased() == "clarify"

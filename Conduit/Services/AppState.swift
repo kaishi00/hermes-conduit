@@ -2680,33 +2680,46 @@ final class AppState: ObservableObject {
             for: result.sessionId,
             fallbackSessionId: reconciliation?.requestedSessionId
         )
-        // Hermes can omit `running` on versions that still support paused
-        // clarify/approval turns. Only an explicit false means the turn is
-        // settled, so nil remains eligible for restoring locally observed
-        // pending decision cards.
-        let restorePendingCards = Self.shouldRestorePendingCards(running: result.snapshot.running)
+        // A clarification request is a user-actionable event, not merely a
+        // projection of the gateway's current turn state. Hermes can omit the
+        // one-shot clarify event from a resume, and `running == false` can
+        // describe the preceding text even while that clarification remains
+        // unresolved. Keep clarification restoration independent of running;
+        // approvals retain the older explicit-running eligibility rule.
+        let restorePendingClarifications = true
+        let restorePendingApprovals = Self.shouldRestorePendingCards(running: result.snapshot.running)
         let sessionIDs = [result.sessionId, reconciliation?.requestedSessionId].compactMap { $0 }
         let gatewayDecisionKeys = Set(result.messages.compactMap(SessionPresentationCache.decisionKey(for:)))
-        let retainedMessages = restorePendingCards
-            ? retainedRestoredMessages.filter {
-                guard let key = SessionPresentationCache.decisionKey(for: $0) else { return false }
-                return !gatewayDecisionKeys.contains(key)
+        let retainedMessages = retainedRestoredMessages.filter { message in
+            guard let key = SessionPresentationCache.decisionKey(for: message),
+                  !gatewayDecisionKeys.contains(key) else {
+                return false
             }
-            : []
+            if message.clarify != nil { return restorePendingClarifications }
+            return restorePendingApprovals
+        }
         let restored = sessionPresentationCache.merge(
             result.messages + retainedMessages,
             profile: activeProfile,
             sessionIDs: sessionIDs,
-            includePendingClarifications: restorePendingCards,
-            includePendingApprovals: restorePendingCards
+            includePendingClarifications: restorePendingClarifications,
+            includePendingApprovals: restorePendingApprovals
         )
         messages = mergeCachedReviews(into: restored, sessionId: result.sessionId)
         noteChatViewportTranscriptReplacement()
         let gatewayPendingDecisionKeys = SessionPresentationCache.pendingDecisionKeys(in: result.messages)
-        if result.snapshot.running == false && !gatewayPendingDecisionKeys.isEmpty {
+        let gatewayPendingClarificationKeys = Set(result.messages.compactMap { message -> String? in
+            guard let clarify = message.clarify,
+                  SessionPresentationCache.isPendingDecision(clarify.status) else {
+                return nil
+            }
+            return "clarify:\(clarify.requestId)"
+        })
+        let gatewayPendingApprovalKeys = gatewayPendingDecisionKeys.subtracting(gatewayPendingClarificationKeys)
+        if result.snapshot.running == false && !gatewayPendingApprovalKeys.isEmpty {
             messages = SessionPresentationCache.removingPendingDecisionPresentation(
                 from: messages,
-                matching: gatewayPendingDecisionKeys
+                matching: gatewayPendingApprovalKeys
             )
         }
         let restoredPendingDecisionKeys = SessionPresentationCache
@@ -2736,6 +2749,7 @@ final class AppState: ObservableObject {
         // marker until Hermes confirms the turn or the user interacts with it.
         let gatewayConfirmsActiveTurn = result.snapshot.running == true
             || (result.snapshot.running != false && gatewaySentPendingDecision)
+            || !gatewayPendingClarificationKeys.isEmpty
         let unconfirmedPendingDecisionKeys = result.snapshot.running != true
             ? restoredPendingDecisionKeys
             : []
@@ -2779,11 +2793,15 @@ final class AppState: ObservableObject {
         receivedReasoningForCurrentTurn = false
         applyRuntime(result.snapshot)
 
-        // A paused clarification or approval can have neither a live text
-        // projection nor an explicit `running` field. The restored card is
-        // actionable evidence for this UI, so keep the composer enabled for
-        // it instead of treating the gateway as unsupported.
-        if result.snapshot.running == nil && (result.snapshot.hasLiveProjection || hasPendingDecision) {
+        // A pending clarification can survive a resume that reports the
+        // preceding turn as settled. Its answer controls remain actionable,
+        // so keep the composer enabled even when `running == false`.
+        let hasPendingClarification = messages.contains { message in
+            guard let clarify = message.clarify else { return false }
+            return SessionPresentationCache.isPendingDecision(clarify.status)
+        }
+        if hasPendingClarification
+            || (result.snapshot.running == nil && (result.snapshot.hasLiveProjection || hasPendingDecision)) {
             turnState = .running
         } else if TurnState.fromGatewayRunning(result.snapshot.running) == .unsupportedGateway {
             turnState = .unsupportedGateway
@@ -2795,10 +2813,10 @@ final class AppState: ObservableObject {
         return true
     }
 
-    /// Testable helper: derives whether pending clarify/approval cards should
-    /// be restored from the presentation cache on resume. An explicit false
-    /// is the only settled-turn signal; nil is still eligible because older
-    /// Hermes gateways omit `running` for paused decision turns.
+    /// Testable helper: derives whether pending approval cards should be
+    /// restored from the presentation cache on resume. Clarification cards
+    /// have independent eligibility because an unresolved request can survive
+    /// a resume that reports `running == false`.
     static func shouldRestorePendingCards(running: Bool?) -> Bool {
         running != false
     }
