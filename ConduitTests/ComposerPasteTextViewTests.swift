@@ -7,6 +7,95 @@ import XCTest
 
 @MainActor
 final class ComposerPasteTextViewTests: XCTestCase {
+    private var savedPasteboardItems: [[String: Any]] = []
+
+    override func setUp() {
+        super.setUp()
+        // Snapshot the system pasteboard so tearDown can restore it instead of
+        // clobbering a real clipboard (relevant when the suite runs on a device).
+        savedPasteboardItems = UIPasteboard.general.items
+    }
+
+    override func tearDown() {
+        UIPasteboard.general.items = savedPasteboardItems
+        super.tearDown()
+    }
+
+    func testPasteboardContainsImageTrueForImagePasteboard() {
+        let view = ImagePasteTextView()
+        UIPasteboard.general.image = Self.fixtureImage()
+
+        XCTAssertTrue(view.pasteboardContainsImage())
+    }
+
+    func testPasteboardContainsImageFalseForTextPasteboard() {
+        let view = ImagePasteTextView()
+        UIPasteboard.general.string = "just text"
+
+        XCTAssertFalse(view.pasteboardContainsImage())
+    }
+
+    func testCanPerformActionOffersPasteForImagePasteboard() {
+        let view = ImagePasteTextView()
+        view.isEditable = true
+        UIPasteboard.general.image = Self.fixtureImage()
+
+        // Regression: UITextView drops "Paste" for an image-only pasteboard, so
+        // the long-press edit menu only offered system items like "Autofill".
+        // canPerformAction must surface paste: so the existing paste(_:) path
+        // becomes reachable from the menu.
+        XCTAssertTrue(view.canPerformAction(#selector(UIResponder.paste(_:)), withSender: nil))
+    }
+
+    func testShouldOfferImagePasteTrueForImagePasteboard() {
+        let view = ImagePasteTextView()
+        view.isEditable = true
+        UIPasteboard.general.image = Self.fixtureImage()
+
+        XCTAssertTrue(view.shouldOfferImagePaste())
+    }
+
+    func testShouldOfferImagePasteFalseWhenNotEditable() {
+        let view = ImagePasteTextView()
+        view.isEditable = false
+        UIPasteboard.general.image = Self.fixtureImage()
+
+        // A disabled composer must not offer image paste even with an image on
+        // the pasteboard.
+        XCTAssertFalse(view.shouldOfferImagePaste())
+    }
+
+    func testShouldOfferImagePasteFalseForTextOnlyPasteboard() {
+        let view = ImagePasteTextView()
+        view.isEditable = true
+        UIPasteboard.general.string = "just text"
+
+        // Text-only content must not be treated as an image paste.
+        XCTAssertFalse(view.shouldOfferImagePaste())
+    }
+
+    func testPasteSelectorDeliversImageFromPasteboard() async {
+        // End-to-end check of the exact path a menu tap now dispatches: the
+        // legacy paste(_:) selector reads UIPasteboard.general and fires
+        // onPastedImage. This is independent of the canPerformAction gate.
+        let view = ImagePasteTextView()
+        UIPasteboard.general.image = Self.fixtureImage()
+
+        let callback = expectation(description: "paste(_:) delivered image")
+        view.onPastedImage = { pastedImage in
+            XCTAssertFalse(pastedImage.data.isEmpty)
+            XCTAssertEqual(pastedImage.typeIdentifier, UTType.png.identifier)
+            callback.fulfill()
+        }
+        view.onPastedImageError = { message in
+            XCTFail("paste(_:) should deliver the image, got: \(message)")
+        }
+
+        view.paste(nil as Any?)
+
+        await fulfillment(of: [callback], timeout: 5.0)
+    }
+
     func testPasteItemProvidersDeliversImageData() async {
         let view = ImagePasteTextView()
         let expectedData = Data([0x89, 0x50, 0x4E, 0x47])
@@ -253,6 +342,13 @@ final class ComposerPasteTextViewTests: XCTestCase {
             ComposerBar.pastedImageErrorMessage("The image provider failed."),
             "Could not paste image: The image provider failed."
         )
+    }
+
+    private static func fixtureImage() -> UIImage {
+        UIGraphicsImageRenderer(size: CGSize(width: 2, height: 2)).image { context in
+            UIColor.systemOrange.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 2, height: 2))
+        }
     }
 
     private func encodedImageData(_ image: UIImage, type: UTType) -> Data? {
