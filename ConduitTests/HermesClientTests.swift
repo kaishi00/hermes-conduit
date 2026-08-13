@@ -108,6 +108,7 @@ final class HermesClientTests: XCTestCase {
         let connectA = Task { try? await client.connect() }
         transport.open(socketA)
         _ = await connectA.value
+        await flushMainActor()
         await aReceivePending.wait()
 
         // Reconnect to B, then deliver a frame to the old socket A. The guard
