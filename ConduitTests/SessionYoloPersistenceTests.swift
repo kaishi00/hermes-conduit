@@ -265,6 +265,61 @@ final class SessionYoloPersistenceTests: XCTestCase {
         XCTAssertEqual(store.storedOverride(for: "default", sessionID: "session-a"), true)
     }
 
+    func testBufferedStaleSessionInfoCannotReapplyClearedOverride() async {
+        let (suite, defaults) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let openGate = SessionYoloResumeGate()
+        let operations = ChatResumeLifecycleOperations(
+            loadCatalog: { _, _ in [self.session("session-a")] },
+            openSession: { _, sessionID in
+                await openGate.suspend()
+                return SessionResumeResult(
+                    sessionId: sessionID,
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: [
+                        "running": .bool(false),
+                        "yolo": .bool(false),
+                        "approvals_mode": .string("on")
+                    ])
+                )
+            },
+            refreshContext: { _, _ in }
+        )
+        let store = SessionYoloStore(defaults: defaults, storageKey: "test.session-yolo")
+        store.setOverride(true, for: "default", sessionID: "session-a")
+        let appState = makeAppState(
+            defaults: defaults,
+            store: store,
+            lifecycleOperations: operations
+        )
+        appState.sessions = [session("session-a")]
+        appState.activeSessionId = "session-a"
+        appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+
+        let resume = Task { @MainActor in
+            await appState.syncSession()
+        }
+        await openGate.waitUntilSuspended()
+
+        appState.handleStreamEvent(.sessionInfo(
+            sessionId: "session-a",
+            snapshot: SessionRuntimeSnapshot(object: [
+                "running": .bool(false),
+                "yolo": .bool(true),
+                "approvals_mode": .string("on")
+            ])
+        ))
+
+        openGate.resume()
+        await resume.value
+
+        XCTAssertFalse(appState.runtime.yolo)
+        XCTAssertNil(store.storedOverride(for: "default", sessionID: "session-a"))
+    }
+
     func testFailedSessionYoloChangeDoesNotPersistOrChangeRuntime() async {
         let (suite, defaults) = makeDefaults()
         defer { defaults.removePersistentDomain(forName: suite) }

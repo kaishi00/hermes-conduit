@@ -2409,6 +2409,13 @@ final class AppState: ObservableObject {
                 presentationResult = result
             }
 
+            let resumeSessionIDs = [result.sessionId, reconciliation?.requestedSessionId]
+                .compactMap { $0 }
+            let reconcileExplicitYolo = !hasNewerSessionYoloWrite(
+                since: yoloWriteBaseline,
+                sessionIDs: resumeSessionIDs
+            )
+
             guard applyChatResume(
                 presentationResult,
                 automaticWorkToken: automaticWorkToken,
@@ -2498,6 +2505,17 @@ final class AppState: ObservableObject {
                     hasBoundaryAnchor: boundary?.streamTextAtBoundary?
                         .trimmingCharacters(in: .whitespacesAndNewlines)
                         .isEmpty == false
+                )
+            }
+            if reconcileExplicitYolo {
+                // A session.info received while resume was in flight may be a
+                // pre-resume snapshot. Do not replay a contradictory YOLO
+                // value after fresh resume reconciliation clears an override;
+                // pushes received after reconciliation remain authoritative.
+                bufferedEvents = Self.filteringBufferedSessionInfo(
+                    bufferedEvents,
+                    against: result.snapshot,
+                    acceptedSessionIDs: reconciliation?.acceptedSessionIDs ?? Set([result.sessionId])
                 )
             }
             bufferedEvents.forEach(applyStreamEvent)
@@ -3102,6 +3120,24 @@ final class AppState: ObservableObject {
             }
         }
         return deduplicated
+    }
+
+    nonisolated static func filteringBufferedSessionInfo(
+        _ events: [StreamEvent],
+        against resumeSnapshot: SessionRuntimeSnapshot,
+        acceptedSessionIDs: Set<String>
+    ) -> [StreamEvent] {
+        guard let resumeYolo = resumeSnapshot.yolo else { return events }
+        return events.filter { event in
+            guard case .sessionInfo(let sessionID, let snapshot) = event,
+                  acceptedSessionIDs.contains(sessionID) else {
+                return true
+            }
+            let eventYolo = snapshot.yolo
+                ?? snapshot.approvalsMode.map { $0.lowercased() == "off" }
+            guard let eventYolo else { return true }
+            return eventYolo == resumeYolo
+        }
     }
 
     /// Returns every non-empty prefix of `buffered` that is also a suffix of
