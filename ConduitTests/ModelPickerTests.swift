@@ -9,6 +9,18 @@ final class ModelPickerTests: XCTestCase {
         XCTAssertTrue(draft.selected)
     }
 
+    func testModelPickerYoloDraftSeedsWhenInitialBaselineIsMissing() {
+        let draft = ModelPickerYoloDraft.seededIfNeeded(initial: nil, runtimeYolo: true)
+
+        XCTAssertEqual(draft, ModelPickerYoloDraft(runtimeYolo: true))
+    }
+
+    func testModelPickerYoloDraftDoesNotReseedAnExistingBaseline() {
+        let draft = ModelPickerYoloDraft.seededIfNeeded(initial: false, runtimeYolo: true)
+
+        XCTAssertNil(draft)
+    }
+
     func testUnchangedYoloSelectionDoesNotPersistASessionOverride() {
         XCTAssertFalse(sessionYoloSelectionChanged(from: true, to: true))
     }

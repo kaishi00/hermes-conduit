@@ -20,6 +20,11 @@ struct ModelPickerYoloDraft: Equatable {
         initial = runtimeYolo
         selected = runtimeYolo
     }
+
+    static func seededIfNeeded(initial: Bool?, runtimeYolo: Bool) -> ModelPickerYoloDraft? {
+        guard initial == nil else { return nil }
+        return ModelPickerYoloDraft(runtimeYolo: runtimeYolo)
+    }
 }
 
 struct ModelPickerView: View {
@@ -83,9 +88,13 @@ struct ModelPickerView: View {
         }
         .preferredColorScheme(appState.themePreference.colorScheme)
         .onAppear {
-            let draft = ModelPickerYoloDraft(runtimeYolo: appState.runtime.yolo)
-            yoloEnabled = draft.selected
-            initialYoloEnabled = draft.initial
+            if let draft = ModelPickerYoloDraft.seededIfNeeded(
+                initial: initialYoloEnabled,
+                runtimeYolo: appState.runtime.yolo
+            ) {
+                yoloEnabled = draft.selected
+                initialYoloEnabled = draft.initial
+            }
         }
         .task { await loadModels() }
     }
