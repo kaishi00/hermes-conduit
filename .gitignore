@@ -12,6 +12,9 @@ build/
 .build/
 Package.resolved
 
+# Local Git worktrees
+.worktrees/
+
 # macOS
 .DS_Store
 *.swp
