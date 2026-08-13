@@ -216,6 +216,55 @@ final class SessionYoloPersistenceTests: XCTestCase {
         XCTAssertEqual(store.storedOverride(for: "default", sessionID: "session-a"), true)
     }
 
+    func testStaleResumeSnapshotCannotClearJustPersistedOverride() async {
+        let (suite, defaults) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let openGate = SessionYoloResumeGate()
+        let operations = ChatResumeLifecycleOperations(
+            loadCatalog: { _, _ in [self.session("session-a")] },
+            openSession: { _, sessionID in
+                await openGate.suspend()
+                return SessionResumeResult(
+                    sessionId: sessionID,
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: [
+                        "running": .bool(false),
+                        "yolo": .bool(false),
+                        "approvals_mode": .string("on")
+                    ])
+                )
+            },
+            refreshContext: { _, _ in },
+            setSessionYolo: { _, _, _ in }
+        )
+        let store = SessionYoloStore(defaults: defaults, storageKey: "test.session-yolo")
+        let appState = makeAppState(
+            defaults: defaults,
+            store: store,
+            lifecycleOperations: operations
+        )
+        appState.sessions = [session("session-a")]
+        appState.activeSessionId = "session-a"
+        appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+
+        let resume = Task { @MainActor in
+            await appState.syncSession()
+        }
+        await openGate.waitUntilSuspended()
+
+        let enabled = await appState.setYoloMode(true)
+        XCTAssertTrue(enabled)
+
+        openGate.resume()
+        await resume.value
+
+        XCTAssertTrue(appState.runtime.yolo)
+        XCTAssertEqual(store.storedOverride(for: "default", sessionID: "session-a"), true)
+    }
+
     func testFailedSessionYoloChangeDoesNotPersistOrChangeRuntime() async {
         let (suite, defaults) = makeDefaults()
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -285,4 +334,30 @@ final class SessionYoloPersistenceTests: XCTestCase {
 
 private enum TestError: Error {
     case rejected
+}
+
+@MainActor
+private final class SessionYoloResumeGate {
+    private var suspension: CheckedContinuation<Void, Never>?
+    private var observer: CheckedContinuation<Void, Never>?
+
+    func suspend() async {
+        await withCheckedContinuation { continuation in
+            suspension = continuation
+            observer?.resume()
+            observer = nil
+        }
+    }
+
+    func waitUntilSuspended() async {
+        guard suspension == nil else { return }
+        await withCheckedContinuation { continuation in
+            observer = continuation
+        }
+    }
+
+    func resume() {
+        suspension?.resume()
+        suspension = nil
+    }
 }

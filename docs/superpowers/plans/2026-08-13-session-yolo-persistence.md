@@ -32,11 +32,12 @@
 - [x] 3. Wire AppState lifecycle, canonical identity, and precedence
   - In `Conduit/Services/AppState.swift`, inject a `SessionYoloStore` (defaulting to one backed by the AppState defaults) without breaking existing test constructors.
   - Add a helper that resolves the active canonical session ID with `ChatSessionPersistenceIdentity.canonicalID`, `activeChatScrollSessionIdentity`, the session/cron catalog, and `activeProfile`.
-  - Apply the local override when resuming a session and whenever runtime snapshots arrive. Treat explicit `snapshot.yolo` as authoritative for fresh resume snapshots, but do not clear a local override from a potentially stale live `session.info` push; fall back to the local override when session YOLO is omitted. Pass the resumed session ID explicitly where that avoids resolving a stale active ID.
+  - Apply the local override when resuming a session and whenever runtime snapshots arrive. Treat explicit `snapshot.yolo` as authoritative for fresh resume snapshots when no newer local write occurred after that resume began; capture a per-session local-write baseline so a stale resume response cannot clear a newer override. Do not clear a local override from a potentially stale live `session.info` push; fall back to the local override when session YOLO is omitted. Pass the resumed session ID explicitly where that avoids resolving a stale active ID.
   - Recompute/clear the session-local visible state on profile/session transitions so switching sessions cannot retain the previous session's override; a session without an override must use its own snapshot/global fallback.
   - Clear the canonical session ID and known alternate IDs after successful archive and delete mutations.
   - Extend `ChatResumeLifecycleOperations` with an injectable session-YOLO setter if required by the failure test, and have `setYoloMode(_:)` call it or the real `HermesClient` method first.
   - Persist the boolean and update `runtime.yolo` only after the gateway call succeeds. Preserve existing error handling and leave persistence/runtime unchanged on failure.
+  - Record each successful local write in the in-memory per-session revision map used to reject stale resume reconciliation.
   - Cover relaunch by constructing a new AppState/store against the same defaults suite and restoring the same conversation.
 
 - [x] 4. Run focused verification (GREEN)

@@ -55,11 +55,15 @@ When deriving `runtime.yolo` for a session, use this precedence:
 
 The local override preserves the user's explicit choice when a later snapshot
 omits session-level YOLO. A fresh resume snapshot is authoritative when Hermes
-explicitly reports session YOLO; a conflicting local override is cleared so the
-visible runtime and the server can reconcile. Live `session.info` pushes may be
-older than a client-initiated `config.set` response, so an explicit conflicting
-value in a live push does not clear a local override. The next fresh resume
-snapshot performs that server-authority reconciliation.
+explicitly reports session YOLO, and a conflicting local override is cleared so
+the visible runtime and the server can reconcile. A resume can, however, have
+started before a client-initiated `config.set` completes. AppState captures the
+per-session local-write revision when the resume starts and skips conflict
+clearing if a newer successful write exists when the response arrives. Live
+`session.info` pushes may also be older than a client-initiated `config.set`
+response, so an explicit conflicting value in a live push does not clear a
+local override. A later resume with no newer local write performs the
+server-authority reconciliation.
 
 When the active session changes, recompute this value for the new canonical
 session. A session with no override must not retain the previous session's
@@ -76,8 +80,10 @@ to an overridden session must reload its saved choice.
 - Resume, foreground synchronization, session selection, and app relaunch
   paths must resolve the canonical active session and apply the store before or
   alongside runtime snapshot reconciliation. Fresh resume snapshots may clear
-  a conflicting local override; live session-info pushes must not invalidate a
-  local write because their ordering relative to config.set is not guaranteed.
+  a conflicting local override when no newer local write occurred after that
+  resume began; a stale resume response must not invalidate the newer write.
+  Live session-info pushes must also not invalidate a local write because their
+  ordering relative to config.set is not guaranteed.
 - A new conversation without a canonical session ID has no session override;
   it must not reuse the last session's value.
 - When a runtime/session alias is resolved to a catalog session ID, migrate the
@@ -114,6 +120,8 @@ to an overridden session must reload its saved choice.
   is omitted.
 - An explicit `snapshot.yolo` replaces a conflicting local override and clears
   the stale persisted value on a fresh resume.
+- A resume snapshot captured before a successful local YOLO write cannot clear
+  that newer override when the response arrives afterward.
 - A stale live `session.info` snapshot cannot clear a just-persisted local
   override or revert the visible runtime value.
 - Switching from an overridden session to an unoverridden session clears the
