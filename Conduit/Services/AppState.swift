@@ -2420,7 +2420,8 @@ final class AppState: ObservableObject {
                 presentationResult,
                 automaticWorkToken: automaticWorkToken,
                 automaticSyncOperationID: automaticSyncOperationID,
-                yoloWriteBaseline: yoloWriteBaseline
+                yoloWriteBaseline: yoloWriteBaseline,
+                reconcileExplicitYolo: reconcileExplicitYolo
             ) else {
                 settleReconciliation(token, automaticSyncOperationID: automaticSyncOperationID)
                 return false
@@ -2507,18 +2508,10 @@ final class AppState: ObservableObject {
                         .isEmpty == false
                 )
             }
-            if reconcileExplicitYolo {
-                // A session.info received while resume was in flight may be a
-                // pre-resume snapshot. Do not replay a contradictory YOLO
-                // value after fresh resume reconciliation clears an override;
-                // pushes received after reconciliation remain authoritative.
-                bufferedEvents = Self.filteringBufferedSessionInfo(
-                    bufferedEvents,
-                    against: result.snapshot,
-                    acceptedSessionIDs: reconciliation?.acceptedSessionIDs ?? Set([result.sessionId])
-                )
+            let bufferedYoloAuthority = reconcileExplicitYolo ? result.snapshot.yolo : nil
+            bufferedEvents.forEach { event in
+                applyStreamEvent(event, authoritativeYolo: bufferedYoloAuthority)
             }
-            bufferedEvents.forEach(applyStreamEvent)
             return settleReconciliationAndPublish(
                 token,
                 automaticWorkToken: automaticWorkToken,
@@ -2717,7 +2710,8 @@ final class AppState: ObservableObject {
         _ result: SessionResumeResult,
         automaticWorkToken: ChatResumeAutomaticWorkToken? = nil,
         automaticSyncOperationID: UUID? = nil,
-        yoloWriteBaseline: SessionYoloWriteBaseline?
+        yoloWriteBaseline: SessionYoloWriteBaseline?,
+        reconcileExplicitYolo: Bool? = nil
     ) -> Bool {
         guard automaticChatResumeWorkIsCurrent(
             automaticWorkToken,
@@ -2830,7 +2824,7 @@ final class AppState: ObservableObject {
         applyRuntime(
             result.snapshot,
             for: result.sessionId,
-            reconcileExplicitYolo: yoloWriteBaseline.map {
+            reconcileExplicitYolo: reconcileExplicitYolo ?? yoloWriteBaseline.map {
                 !hasNewerSessionYoloWrite(
                     since: $0,
                     sessionIDs: [result.sessionId, reconciliation?.requestedSessionId].compactMap { $0 }
@@ -3122,24 +3116,6 @@ final class AppState: ObservableObject {
         return deduplicated
     }
 
-    nonisolated static func filteringBufferedSessionInfo(
-        _ events: [StreamEvent],
-        against resumeSnapshot: SessionRuntimeSnapshot,
-        acceptedSessionIDs: Set<String>
-    ) -> [StreamEvent] {
-        guard let resumeYolo = resumeSnapshot.yolo else { return events }
-        return events.filter { event in
-            guard case .sessionInfo(let sessionID, let snapshot) = event,
-                  acceptedSessionIDs.contains(sessionID) else {
-                return true
-            }
-            let eventYolo = snapshot.yolo
-                ?? snapshot.approvalsMode.map { $0.lowercased() == "off" }
-            guard let eventYolo else { return true }
-            return eventYolo == resumeYolo
-        }
-    }
-
     /// Returns every non-empty prefix of `buffered` that is also a suffix of
     /// `covered`. The prefix-function scan stays linear in the cumulative
     /// projection size; callers can reject repeated-content ambiguity when
@@ -3257,7 +3233,8 @@ final class AppState: ObservableObject {
     private func applyRuntime(
         _ snapshot: SessionRuntimeSnapshot,
         for sessionID: String? = nil,
-        reconcileExplicitYolo: Bool = false
+        reconcileExplicitYolo: Bool = false,
+        authoritativeYolo: Bool? = nil
     ) {
         if let model = snapshot.model { runtime.model = model }
         if let provider = snapshot.provider { runtime.provider = provider }
@@ -3287,7 +3264,7 @@ final class AppState: ObservableObject {
             for: activeProfile,
             sessionIDs: sessionIDsForOverride
         )
-        if let yolo = snapshot.yolo {
+        if let yolo = authoritativeYolo ?? snapshot.yolo {
             if let storedOverride {
                 if reconcileExplicitYolo, storedOverride != yolo {
                     sessionYoloStore.clearOverride(
@@ -6462,7 +6439,7 @@ final class AppState: ObservableObject {
         return reconciliation.acceptedSessionIDs.contains(sessionId)
     }
 
-    private func applyStreamEvent(_ event: StreamEvent) {
+    private func applyStreamEvent(_ event: StreamEvent, authoritativeYolo: Bool? = nil) {
         let streamSessionId = sessionID(for: event)
         guard eventBelongsToActiveSession(streamSessionId) else { return }
         defer { schedulePresentationCacheFlush(for: streamSessionId) }
@@ -6524,7 +6501,7 @@ final class AppState: ObservableObject {
             }
 
         case .sessionInfo(let sessionID, let snapshot):
-            applyRuntime(snapshot, for: sessionID)
+            applyRuntime(snapshot, for: sessionID, authoritativeYolo: authoritativeYolo)
             if let running = snapshot.running {
                 setRunning(running)
             }

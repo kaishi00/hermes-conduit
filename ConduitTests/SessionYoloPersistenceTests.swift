@@ -320,6 +320,66 @@ final class SessionYoloPersistenceTests: XCTestCase {
         XCTAssertNil(store.storedOverride(for: "default", sessionID: "session-a"))
     }
 
+    func testBufferedConflictingSessionInfoPreservesNonYoloRuntimeFields() async {
+        let (suite, defaults) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let openGate = SessionYoloResumeGate()
+        let operations = ChatResumeLifecycleOperations(
+            loadCatalog: { _, _ in [self.session("session-a")] },
+            openSession: { _, sessionID in
+                await openGate.suspend()
+                return SessionResumeResult(
+                    sessionId: sessionID,
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: [
+                        "running": .bool(false),
+                        "model": .string("resume-model"),
+                        "provider": .string("resume-provider"),
+                        "context_percent": .number(10),
+                        "yolo": .bool(false)
+                    ])
+                )
+            },
+            refreshContext: { _, _ in }
+        )
+        let store = SessionYoloStore(defaults: defaults, storageKey: "test.session-yolo")
+        let appState = makeAppState(
+            defaults: defaults,
+            store: store,
+            lifecycleOperations: operations
+        )
+        appState.sessions = [session("session-a")]
+        appState.activeSessionId = "session-a"
+        appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+
+        let resume = Task { @MainActor in
+            await appState.syncSession()
+        }
+        await openGate.waitUntilSuspended()
+
+        appState.handleStreamEvent(.sessionInfo(
+            sessionId: "session-a",
+            snapshot: SessionRuntimeSnapshot(object: [
+                "running": .bool(true),
+                "model": .string("buffered-model"),
+                "provider": .string("buffered-provider"),
+                "context_percent": .number(42),
+                "yolo": .bool(true)
+            ])
+        ))
+
+        openGate.resume()
+        await resume.value
+
+        XCTAssertFalse(appState.runtime.yolo)
+        XCTAssertEqual(appState.runtime.model, "buffered-model")
+        XCTAssertEqual(appState.runtime.provider, "buffered-provider")
+        XCTAssertEqual(appState.runtime.contextPercent, 42)
+    }
+
     func testFailedSessionYoloChangeDoesNotPersistOrChangeRuntime() async {
         let (suite, defaults) = makeDefaults()
         defer { defaults.removePersistentDomain(forName: suite) }
