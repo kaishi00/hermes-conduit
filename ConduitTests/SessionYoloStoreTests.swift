@@ -57,6 +57,44 @@ final class SessionYoloStoreTests: XCTestCase {
         XCTAssertNil(store.storedOverride(for: "default", sessionID: ""))
     }
 
+    func testCorruptPersistedPayloadReportsDiagnostic() {
+        let (suite, defaults) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let key = "test.session-yolo"
+        defaults.set(Data("not-json".utf8), forKey: key)
+        var diagnostics: [SessionYoloStoreDiagnostic] = []
+
+        let store = SessionYoloStore(
+            defaults: defaults,
+            storageKey: key,
+            diagnosticHandler: { diagnostics.append($0) }
+        )
+
+        XCTAssertNil(store.storedOverride(for: "default", sessionID: "session-a"))
+        XCTAssertEqual(diagnostics, [.decodeFailure])
+    }
+
+    func testUnsupportedPersistedPayloadVersionReportsDiagnostic() throws {
+        let (suite, defaults) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let key = "test.session-yolo"
+        let data = try JSONSerialization.data(withJSONObject: [
+            "version": 99,
+            "overrides": [:]
+        ])
+        defaults.set(data, forKey: key)
+        var diagnostics: [SessionYoloStoreDiagnostic] = []
+
+        let store = SessionYoloStore(
+            defaults: defaults,
+            storageKey: key,
+            diagnosticHandler: { diagnostics.append($0) }
+        )
+
+        XCTAssertNil(store.storedOverride(for: "default", sessionID: "session-a"))
+        XCTAssertEqual(diagnostics, [.unsupportedVersion(99)])
+    }
+
     private func makeDefaults() -> (String, UserDefaults) {
         let suite = "SessionYoloStoreTests.\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suite) else {

@@ -75,11 +75,18 @@ to an overridden session must reload its saved choice.
   alongside runtime snapshot reconciliation.
 - A new conversation without a canonical session ID has no session override;
   it must not reuse the last session's value.
+- When a runtime/session alias is resolved to a catalog session ID, migrate the
+  stored override to the canonical key and remove the raw alias.
+- On successful archive or delete, clear overrides for the session's canonical
+  and known alternate IDs so retired conversations do not retain stale state.
+- Invalid or unsupported persisted payloads are ignored and reported through
+  the session-store diagnostics logger.
 
 ## Expected implementation surface
 
 - `Conduit/Services/SessionYoloStore.swift`: injectable profile/session-keyed
-  persistence with explicit optional override semantics.
+  persistence with explicit optional override semantics, alias migration, and
+  diagnostics for unreadable payloads.
 - `Conduit/Services/AppState.swift`: inject/use the store, persist successful
   changes, apply precedence, and refresh on session/profile transitions.
 - `Conduit/Services/ChatScrollState.swift` or the existing identity seam only
@@ -105,6 +112,11 @@ to an overridden session must reload its saved choice.
 - Switching from an overridden session to an unoverridden session clears the
   previous local value from the visible runtime; switching back restores it.
 - A failed `config.set` does not write the override.
+- A runtime alias migration leaves the override under the canonical session ID
+  and removes the raw alias.
+- Archiving or deleting a session removes its canonical and alternate-ID
+  overrides after the server mutation succeeds.
+- Corrupt or unsupported persisted data is ignored and produces a diagnostic.
 - The complete existing test suite remains green.
 
 ## Verification

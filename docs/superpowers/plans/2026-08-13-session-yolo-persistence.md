@@ -2,7 +2,7 @@
 
 **Goal:** Persist an explicit YOLO choice per normalized profile and canonical conversation, restore it across turns/backgrounding/relaunch, and prevent it from leaking between sessions.
 
-**Architecture:** Add an injectable `UserDefaults`-backed `SessionYoloStore` with three states (`true`, `false`, absent). Resolve the active canonical session through the existing chat identity/catalog seam, then apply explicit session snapshot `yolo` > local override when omitted > profile `approvalsMode`.
+**Architecture:** Add an injectable `UserDefaults`-backed `SessionYoloStore` with three states (`true`, `false`, absent). Resolve the active canonical session through the existing chat identity/catalog seam, then apply explicit session snapshot `yolo` > local override when omitted > profile `approvalsMode`. Migrate runtime aliases to canonical keys, evict overrides when sessions are archived or deleted, and report persistence failures through OSLog diagnostics.
 
 **Tech Stack:** Swift, SwiftUI `AppState`, UserDefaults/JSON Codable storage, XCTest, XcodeGen, iOS Simulator.
 
@@ -25,6 +25,8 @@
   - Add `Conduit/Services/SessionYoloStore.swift`.
   - Inject `UserDefaults` and a storage key; encode a profile/session-keyed `[String: Bool]` payload so explicit `false` is preserved and an absent key remains distinguishable from false.
   - Normalize profile and session components using the existing `ChatScrollSessionKey` identity normalization, reject invalid/empty keys, and expose read/write operations suitable for isolated tests.
+  - Migrate a stored runtime alias to its canonical session key when catalog identity becomes available, removing the stale alias.
+  - Report decode, unsupported-version, and encode failures through OSLog and an injectable diagnostic handler.
   - Keep the store limited to session YOLO overrides; do not mutate or reuse the profile-wide approval settings.
 
 - [x] 3. Wire AppState lifecycle, canonical identity, and precedence
@@ -32,6 +34,7 @@
   - Add a helper that resolves the active canonical session ID with `ChatSessionPersistenceIdentity.canonicalID`, `activeChatScrollSessionIdentity`, the session/cron catalog, and `activeProfile`.
   - Apply the local override when resuming a session and whenever runtime snapshots arrive, while treating explicit `snapshot.yolo` as authoritative, clearing conflicting local aliases, and falling back to the local override only when session YOLO is omitted. Pass the resumed session ID explicitly where that avoids resolving a stale active ID.
   - Recompute/clear the session-local visible state on profile/session transitions so switching sessions cannot retain the previous session's override; a session without an override must use its own snapshot/global fallback.
+  - Clear the canonical session ID and known alternate IDs after successful archive and delete mutations.
   - Extend `ChatResumeLifecycleOperations` with an injectable session-YOLO setter if required by the failure test, and have `setYoloMode(_:)` call it or the real `HermesClient` method first.
   - Persist the boolean and update `runtime.yolo` only after the gateway call succeeds. Preserve existing error handling and leave persistence/runtime unchanged on failure.
   - Cover relaunch by constructing a new AppState/store against the same defaults suite and restoring the same conversation.

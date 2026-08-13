@@ -55,6 +55,8 @@ final class SessionYoloPersistenceTests: XCTestCase {
         ))
 
         XCTAssertTrue(appState.runtime.yolo)
+        XCTAssertEqual(store.storedOverride(for: "default", sessionID: "canonical-session"), true)
+        XCTAssertNil(store.storedOverride(for: "default", sessionID: "runtime-session"))
     }
 
     func testExplicitGatewayYoloReplacesConflictingLocalOverride() {

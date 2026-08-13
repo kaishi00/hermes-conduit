@@ -12,6 +12,16 @@ func sessionYoloSelectionChanged(from initial: Bool?, to selected: Bool) -> Bool
     return initial != selected
 }
 
+struct ModelPickerYoloDraft: Equatable {
+    let initial: Bool
+    let selected: Bool
+
+    init(runtimeYolo: Bool) {
+        initial = runtimeYolo
+        selected = runtimeYolo
+    }
+}
+
 struct ModelPickerView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.colorScheme) private var colorScheme
@@ -72,6 +82,11 @@ struct ModelPickerView: View {
             }
         }
         .preferredColorScheme(appState.themePreference.colorScheme)
+        .onAppear {
+            let draft = ModelPickerYoloDraft(runtimeYolo: appState.runtime.yolo)
+            yoloEnabled = draft.selected
+            initialYoloEnabled = draft.initial
+        }
         .task { await loadModels() }
     }
 
@@ -389,8 +404,11 @@ struct ModelPickerView: View {
                 reasoningEffort = appState.runtime.reasoningEffort
             }
             fastEnabled = appState.runtime.fast
-            yoloEnabled = appState.runtime.yolo
-            initialYoloEnabled = appState.runtime.yolo
+            if initialYoloEnabled == nil {
+                let draft = ModelPickerYoloDraft(runtimeYolo: appState.runtime.yolo)
+                yoloEnabled = draft.selected
+                initialYoloEnabled = draft.initial
+            }
         } catch {
             // Model options are supplementary to the current session state.
         }

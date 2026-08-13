@@ -3171,6 +3171,15 @@ final class AppState: ObservableObject {
         let resolvedCanonicalSessionID = canonicalSessionID(for: requestedSessionID)
         let sessionIDsForOverride = [resolvedCanonicalSessionID, requestedSessionID]
             .compactMap { $0 }
+        if let resolvedCanonicalSessionID,
+           let requestedSessionID,
+           resolvedCanonicalSessionID != requestedSessionID {
+            sessionYoloStore.canonicalizeOverride(
+                for: activeProfile,
+                canonicalSessionID: resolvedCanonicalSessionID,
+                aliases: [requestedSessionID]
+            )
+        }
         let storedOverride = sessionYoloStore.storedOverride(
             for: activeProfile,
             sessionIDs: sessionIDsForOverride
@@ -3692,6 +3701,10 @@ final class AppState: ObservableObject {
             var updated = session
             updated.isArchived = archived
             if archived {
+                sessionYoloStore.clearOverride(
+                    for: profile,
+                    sessionIDs: [updated.id] + updated.alternateIds
+                )
                 removeSessionFromLiveCatalog(updated)
                 archivedSessions = [updated] + archivedSessions.filter { !sessionMatches($0, updated) }
                 removePinnedState(for: updated)
@@ -3804,6 +3817,10 @@ final class AppState: ObservableObject {
                 method: "DELETE"
             )
             guard profile == activeProfile else { return false }
+            sessionYoloStore.clearOverride(
+                for: profile,
+                sessionIDs: [session.id] + session.alternateIds
+            )
             removeSessionFromLiveCatalog(session)
             archivedSessions.removeAll { sessionMatches($0, session) }
             removePinnedState(for: session)

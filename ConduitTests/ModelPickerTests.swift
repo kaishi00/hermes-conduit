@@ -2,6 +2,13 @@ import XCTest
 @testable import Conduit
 
 final class ModelPickerTests: XCTestCase {
+    func testModelPickerYoloDraftStartsFromCurrentRuntimeValue() {
+        let draft = ModelPickerYoloDraft(runtimeYolo: true)
+
+        XCTAssertTrue(draft.initial)
+        XCTAssertTrue(draft.selected)
+    }
+
     func testUnchangedYoloSelectionDoesNotPersistASessionOverride() {
         XCTAssertFalse(sessionYoloSelectionChanged(from: true, to: true))
     }
