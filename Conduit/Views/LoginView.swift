@@ -170,6 +170,12 @@ struct LoginView: View {
             }
             .padding(.horizontal, 24)
         }
+        .onTapGesture {
+            // Tapping outside the text fields clears focus so the keyboard
+            // dismisses and the Connect button stays reachable. Interactive
+            // controls (fields, toggles, the button) still consume their own taps.
+            focusedField = nil
+        }
         .onAppear {
             guard serverUrl.isEmpty else { return }
             serverUrl = appState.lastDashboardURL
