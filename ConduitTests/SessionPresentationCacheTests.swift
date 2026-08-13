@@ -349,16 +349,12 @@ final class SessionPresentationCacheTests: XCTestCase {
         cache.save(savedMessages, profile: profile, sessionIDs: [sessionId])
         defer { cache.clear(profile: profile) }
 
-        // Hermes versions that omit `running` can still be paused on this
-        // clarification request. Nil must remain eligible for restoration;
-        // explicit false is the only resolved/idle signal.
-        let shouldRestore = AppState.shouldRestorePendingCards(running: nil)
         let gatewayMessages: [ChatMessage] = []
         let merged = cache.merge(
             gatewayMessages,
             profile: profile,
             sessionIDs: [sessionId],
-            includePendingClarifications: shouldRestore
+            includePendingClarifications: true
         )
 
         XCTAssertTrue(merged.contains { $0.role == .clarify },
@@ -444,25 +440,6 @@ final class SessionPresentationCacheTests: XCTestCase {
 
         XCTAssertFalse(merged.contains { $0.role == .approval },
                        "Approval should not be restored when includePendingApprovals is false")
-    }
-
-    // MARK: - restorePendingCards derivation
-
-    func testShouldRestorePendingCardsWhenRunningIsTrue() {
-        XCTAssertTrue(AppState.shouldRestorePendingCards(running: true),
-                      "Must restore pending cards when gateway confirms turn is active")
-    }
-
-    func testShouldNotRestorePendingCardsWhenRunningIsFalse() {
-        XCTAssertFalse(AppState.shouldRestorePendingCards(running: false),
-                       "Must not restore pending cards when gateway reports turn is inactive")
-    }
-
-    func testShouldRestorePendingCardsWhenRunningIsNil() {
-        // Hermes can omit `running` while a turn is paused on a user decision.
-        // Only an explicit false is proof that the turn is no longer active.
-        XCTAssertTrue(AppState.shouldRestorePendingCards(running: nil),
-                      "Must restore pending cards when gateway omits running state")
     }
 
     // MARK: - Save preserves restored pending cards
@@ -947,14 +924,14 @@ final class SessionPresentationCacheTests: XCTestCase {
         )
     }
 
-    func testApplyChatResumeDoesNotRestorePendingCardsWhenRunningIsFalse() {
-        let suiteName = "conduit.tests.session-presentation-settled-\(UUID().uuidString)"
+    func testApplyChatResumeRestoresPendingClarificationWhenRunningIsFalse() {
+        let suiteName = "conduit.tests.session-presentation-background-clarify-\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suiteName) else {
             XCTFail("Could not create isolated UserDefaults suite")
             return
         }
         let cache = SessionPresentationCache(defaults: defaults)
-        let sessionId = "test-apply-resume-settled-\(UUID().uuidString)"
+        let sessionId = "test-apply-resume-background-clarify-\(UUID().uuidString)"
         let appState = AppState(
             defaults: defaults,
             loadSavedConnection: false,
@@ -970,7 +947,7 @@ final class SessionPresentationCacheTests: XCTestCase {
         )
         cache.save([
             ChatMessage(
-                id: "clarify-settled",
+                id: "clarify-background",
                 role: .clarify,
                 content: clarify.question,
                 timestamp: "2024-01-01",
@@ -984,20 +961,106 @@ final class SessionPresentationCacheTests: XCTestCase {
 
         appState.applyChatResume(SessionResumeResult(
             sessionId: sessionId,
-            messages: [],
+            messages: [ChatMessage(
+                id: "assistant-before-clarify",
+                role: .assistant,
+                content: "I need one more detail before I continue.",
+                timestamp: "2024-01-02"
+            )],
             snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
         ))
 
-        XCTAssertFalse(appState.messages.contains { $0.clarify?.requestId == clarify.requestId })
+        XCTAssertTrue(appState.messages.contains { $0.content == "I need one more detail before I continue." })
+        XCTAssertEqual(
+            appState.messages.first(where: { $0.clarify?.requestId == clarify.requestId })?.clarify?.status,
+            ClarifyActivity.Status.pending
+        )
         XCTAssertEqual(appState.turnState, TurnState.idle)
-        XCTAssertFalse(
+        XCTAssertTrue(appState.composerIsEnabled)
+        XCTAssertEqual(
+            appState.composerAction(hasText: true, hasAttachments: false),
+            ComposerAction.send
+        )
+        XCTAssertTrue(
             cache.merge(
                 [],
                 profile: profile,
                 sessionIDs: [sessionId],
                 includePendingClarifications: true
             ).contains { $0.clarify?.requestId == clarify.requestId },
-            "An explicitly settled resume must remove the cached pending card"
+            "An unresolved clarification must remain cached after a settled-looking background resume"
+        )
+    }
+
+    func testApplyChatResumeRestoresPendingApprovalWhenRunningIsFalse() {
+        let suiteName = "conduit.tests.session-presentation-background-approval-\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Could not create isolated UserDefaults suite")
+            return
+        }
+        let cache = SessionPresentationCache(defaults: defaults)
+        let sessionId = "test-apply-resume-background-approval-\(UUID().uuidString)"
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: { cache.clear() },
+            sessionPresentationCache: cache
+        )
+        let profile = appState.activeProfile
+        let approval = ApprovalActivity(
+            sessionId: sessionId,
+            command: "ls",
+            description: "List files",
+            choices: ["once", "deny"],
+            allowPermanent: false,
+            smartDenied: false,
+            status: .pending
+        )
+        cache.save([
+            ChatMessage(
+                id: "approval-background",
+                role: .approval,
+                content: approval.description,
+                timestamp: "2024-01-01",
+                approval: approval
+            )
+        ], profile: profile, sessionIDs: [sessionId])
+        defer {
+            cache.clear()
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        appState.applyChatResume(SessionResumeResult(
+            sessionId: sessionId,
+            messages: [ChatMessage(
+                id: "assistant-before-approval",
+                role: .assistant,
+                content: "I need permission before I continue.",
+                timestamp: "2024-01-02"
+            )],
+            snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+        ))
+
+        XCTAssertTrue(appState.messages.contains { $0.content == "I need permission before I continue." })
+        XCTAssertEqual(
+            appState.messages.first(where: { $0.approval?.sessionId == sessionId })?.approval?.status,
+            ApprovalActivity.Status.pending
+        )
+        XCTAssertTrue(AppState.hasPendingDecision(in: appState.messages))
+        XCTAssertEqual(appState.turnState, TurnState.idle)
+        XCTAssertTrue(appState.composerIsEnabled)
+        XCTAssertEqual(
+            appState.composerAction(hasText: true, hasAttachments: false),
+            ComposerAction.send
+        )
+        XCTAssertTrue(
+            cache.merge(
+                [],
+                profile: profile,
+                sessionIDs: [sessionId],
+                includePendingApprovals: true
+            ).contains { $0.approval?.sessionId == sessionId },
+            "An unresolved approval must remain cached after a settled-looking background resume"
         )
     }
 
@@ -1258,14 +1321,14 @@ final class SessionPresentationCacheTests: XCTestCase {
         )
     }
 
-    func testApplyChatResumePrunesGatewayPendingCardWhenRunningIsFalse() {
-        let suiteName = "conduit.tests.session-presentation-gateway-settled-\(UUID().uuidString)"
+    func testApplyChatResumePreservesGatewayPendingClarificationWhenRunningIsFalse() {
+        let suiteName = "conduit.tests.session-presentation-gateway-pending-clarify-\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suiteName) else {
             XCTFail("Could not create isolated UserDefaults suite")
             return
         }
         let cache = SessionPresentationCache(defaults: defaults)
-        let sessionId = "test-apply-resume-gateway-settled-\(UUID().uuidString)"
+        let sessionId = "test-apply-resume-gateway-pending-clarify-\(UUID().uuidString)"
         let appState = AppState(
             defaults: defaults,
             loadSavedConnection: false,
@@ -1274,13 +1337,13 @@ final class SessionPresentationCacheTests: XCTestCase {
         )
         let profile = appState.activeProfile
         let clarify = ClarifyActivity(
-            requestId: "req-gateway-settled",
+            requestId: "req-gateway-pending-false",
             question: "Which color?",
             choices: [ClarifyChoice(label: "Red", value: "red")],
             status: .pending
         )
         let gatewayMessage = ChatMessage(
-            id: "clarify-gateway-settled",
+            id: "clarify-gateway-pending-false",
             role: .clarify,
             content: clarify.question,
             timestamp: "2024-01-01",
@@ -1298,18 +1361,222 @@ final class SessionPresentationCacheTests: XCTestCase {
         ))
 
         XCTAssertEqual(appState.turnState, TurnState.idle)
-        XCTAssertFalse(
+        XCTAssertTrue(
             AppState.hasPendingDecision(in: appState.messages),
-            "An explicitly settled resume must not leave an answerable gateway card in memory"
+            "A gateway clarification without a resolved record must remain answerable"
         )
-        XCTAssertFalse(
+        XCTAssertTrue(appState.composerIsEnabled)
+        XCTAssertEqual(
+            appState.composerAction(hasText: true, hasAttachments: false),
+            ComposerAction.send
+        )
+        XCTAssertTrue(
             cache.merge(
                 [],
                 profile: profile,
                 sessionIDs: [sessionId],
                 includePendingClarifications: true
             ).contains { $0.clarify?.requestId == clarify.requestId },
-            "An explicit settled signal must prune even an inconsistent pending gateway row"
+            "An unresolved gateway clarification must remain cached when running is false"
+        )
+    }
+
+    func testApplyChatResumePreservesGatewayPendingApprovalWhenRunningIsFalse() {
+        let suiteName = "conduit.tests.session-presentation-gateway-settled-approval-\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Could not create isolated UserDefaults suite")
+            return
+        }
+        let cache = SessionPresentationCache(defaults: defaults)
+        let sessionId = "test-apply-resume-gateway-settled-approval-\(UUID().uuidString)"
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: { cache.clear() },
+            sessionPresentationCache: cache
+        )
+        let profile = appState.activeProfile
+        let approval = ApprovalActivity(
+            sessionId: sessionId,
+            command: "ls",
+            description: "List files",
+            choices: ["once", "deny"],
+            allowPermanent: false,
+            smartDenied: false,
+            status: .pending
+        )
+        let gatewayMessage = ChatMessage(
+            id: "approval-gateway-settled",
+            role: .approval,
+            content: approval.description,
+            timestamp: "2024-01-01",
+            approval: approval
+        )
+        defer {
+            cache.clear()
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        appState.applyChatResume(SessionResumeResult(
+            sessionId: sessionId,
+            messages: [gatewayMessage],
+            snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+        ))
+
+        XCTAssertEqual(appState.turnState, TurnState.idle)
+        XCTAssertTrue(
+            AppState.hasPendingDecision(in: appState.messages),
+            "A gateway approval without a resolved record must remain answerable"
+        )
+        XCTAssertEqual(
+            appState.messages.first(where: { $0.approval?.sessionId == sessionId })?.approval?.status,
+            ApprovalActivity.Status.pending
+        )
+        XCTAssertTrue(appState.composerIsEnabled)
+        XCTAssertEqual(
+            appState.composerAction(hasText: true, hasAttachments: false),
+            ComposerAction.send
+        )
+        XCTAssertTrue(
+            cache.merge(
+                [],
+                profile: profile,
+                sessionIDs: [sessionId],
+                includePendingApprovals: true
+            ).contains { $0.approval?.sessionId == sessionId },
+            "An unresolved gateway approval must remain cached when running is false"
+        )
+    }
+
+    func testBackgroundCacheFlushPreservesGatewayPendingDecisionExpiryMarker() {
+        let suiteName = "conduit.tests.session-presentation-gateway-flush-marker-\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Could not create isolated UserDefaults suite")
+            return
+        }
+        var currentDate = Date(timeIntervalSince1970: 3_000_000)
+        let cache = SessionPresentationCache(defaults: defaults, now: { currentDate })
+        let sessionId = "test-apply-resume-gateway-flush-marker-\(UUID().uuidString)"
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: { cache.clear() },
+            sessionPresentationCache: cache
+        )
+        let profile = appState.activeProfile
+        let approval = ApprovalActivity(
+            sessionId: sessionId,
+            command: "ls",
+            description: "List files",
+            choices: ["once", "deny"],
+            allowPermanent: false,
+            smartDenied: false,
+            status: .pending
+        )
+        let gatewayMessage = ChatMessage(
+            id: "approval-gateway-flush-marker",
+            role: .approval,
+            content: approval.description,
+            timestamp: "2024-01-01",
+            approval: approval
+        )
+        defer {
+            cache.clear()
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        appState.applyChatResume(SessionResumeResult(
+            sessionId: sessionId,
+            messages: [gatewayMessage],
+            snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+        ))
+        let initialMarker = cache.unconfirmedPendingDecisionDate(
+            profile: profile,
+            sessionIDs: [sessionId]
+        )
+        XCTAssertEqual(initialMarker, currentDate)
+
+        currentDate.addTimeInterval(60)
+        appState.handleScenePhase(.background)
+
+        XCTAssertEqual(
+            cache.unconfirmedPendingDecisionDate(profile: profile, sessionIDs: [sessionId]),
+            initialMarker,
+            "A guard-less cache flush must preserve the original pending-decision expiry marker"
+        )
+    }
+
+    func testApplyChatResumeExpiresGatewayPendingApprovalAfterGracePeriod() {
+        let suiteName = "conduit.tests.session-presentation-gateway-approval-expiry-\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Could not create isolated UserDefaults suite")
+            return
+        }
+        var currentDate = Date(timeIntervalSince1970: 3_000_000)
+        let cache = SessionPresentationCache(defaults: defaults, now: { currentDate })
+        let sessionId = "test-apply-resume-gateway-approval-expiry-\(UUID().uuidString)"
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: { cache.clear() },
+            sessionPresentationCache: cache
+        )
+        let profile = appState.activeProfile
+        let approval = ApprovalActivity(
+            sessionId: sessionId,
+            command: "ls",
+            description: "List files",
+            choices: ["once", "deny"],
+            allowPermanent: false,
+            smartDenied: false,
+            status: .pending
+        )
+        let gatewayMessage = ChatMessage(
+            id: "approval-gateway-expiring",
+            role: .approval,
+            content: approval.description,
+            timestamp: "2024-01-01",
+            approval: approval
+        )
+        defer {
+            cache.clear()
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        appState.applyChatResume(SessionResumeResult(
+            sessionId: sessionId,
+            messages: [gatewayMessage],
+            snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+        ))
+        XCTAssertTrue(
+            cache.merge(
+                [],
+                profile: profile,
+                sessionIDs: [sessionId],
+                includePendingApprovals: true
+            ).contains { $0.approval?.sessionId == sessionId },
+            "A gateway-provided pending approval should be cached during its grace period"
+        )
+
+        currentDate.addTimeInterval(SessionPresentationCache.maxUnconfirmedPendingDecisionAge + 1)
+        appState.applyChatResume(SessionResumeResult(
+            sessionId: sessionId,
+            messages: [],
+            snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+        ))
+
+        XCTAssertFalse(
+            appState.messages.contains { $0.approval?.sessionId == sessionId },
+            "An unconfirmed gateway approval must not remain answerable forever"
+        )
+        XCTAssertFalse(
+            cache.merge(
+                [],
+                profile: profile,
+                sessionIDs: [sessionId],
+                includePendingApprovals: true
+            ).contains { $0.approval?.sessionId == sessionId },
+            "An expired gateway approval must be removed from the presentation cache"
         )
     }
 }
