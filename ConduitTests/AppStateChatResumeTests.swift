@@ -725,6 +725,268 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(restoredCard?.approval?.status, .pending, "The push-delivered card must survive the open and render answerable")
     }
 
+    func testNotificationClarifyDecisionSurvivesOpenAndRendersAnswerable() async {
+        let cacheSuite = "conduit.tests.notification-clarify-open-\(UUID().uuidString)"
+        guard let cacheDefaults = UserDefaults(suiteName: cacheSuite) else {
+            XCTFail("Could not create isolated UserDefaults suite")
+            return
+        }
+        let cache = SessionPresentationCache(defaults: cacheDefaults)
+        defer {
+            cache.clear()
+            cacheDefaults.removePersistentDomain(forName: cacheSuite)
+        }
+        let transcript = [
+            ChatMessage(id: "a1", role: .assistant, content: "Prior turn text", timestamp: "1")
+        ]
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in [self.session("stored-a")] },
+                openSession: { _, sessionID in
+                    SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: transcript,
+                        snapshot: SessionRuntimeSnapshot(object: [:])
+                    )
+                },
+                refreshContext: { _, _ in }
+            ),
+            sessionPresentationCache: cache
+        )
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        harness.appState.connection = connection
+        harness.appState.client = HermesClient(connection: connection, profile: "default")
+        harness.appState.sessions = [session("stored-a")]
+        harness.appState.activeSessionId = "stored-a"
+        harness.appState.messages = transcript
+
+        let opened = await harness.appState.openNotificationTarget(
+            ConduitNotificationTarget(
+                profile: nil,
+                sessionId: "stored-a",
+                type: "input.needed",
+                decision: .clarify(
+                    requestId: "conduit-push-abc123",
+                    question: "Which color?",
+                    choices: ["Red", "Blue"]
+                )
+            )
+        )
+
+        XCTAssertTrue(opened)
+        let restoredCard = harness.appState.messages.first { $0.role == .clarify }
+        XCTAssertEqual(restoredCard?.clarify?.requestId, "conduit-push-abc123")
+        XCTAssertEqual(restoredCard?.clarify?.status, .pending, "A relay-delivered clarify must render as a normal answerable card")
+        XCTAssertEqual(restoredCard?.clarify?.choices.map(\.label), ["Red", "Blue"])
+    }
+
+    func testLiveClarifyEventSupersedesPushDeliveredCardForSameQuestion() async {
+        let harness = makeHarness()
+        harness.appState.activeSessionId = "stored-a"
+        harness.appState.messages = [
+            ChatMessage(
+                id: "clarify-conduit-push-abc123",
+                role: .clarify,
+                content: "Which color?",
+                timestamp: "1",
+                clarify: ClarifyActivity(
+                    requestId: "conduit-push-abc123",
+                    question: "Which color?",
+                    choices: [ClarifyChoice(label: "Red", value: "Red")],
+                    status: .pending,
+                    answer: nil,
+                    error: nil
+                )
+            )
+        ]
+
+        harness.appState.handleStreamEvent(
+            .clarify(
+                sessionId: "stored-a",
+                requestId: "gateway-rid-1",
+                question: "Which color?",
+                choices: [("Red", "Red")]
+            )
+        )
+
+        let clarifyCards = harness.appState.messages.filter { $0.role == .clarify }
+        XCTAssertEqual(clarifyCards.count, 1, "The still-pending push card must be superseded by the live event")
+        XCTAssertEqual(clarifyCards.first?.clarify?.requestId, "gateway-rid-1")
+    }
+
+    func testLiveClarifyEventSupersedeMatchesNormalizedQuestion() async {
+        // The push question is flattened plugin-side while the live event
+        // carries the gateway's text; formatting drift (whitespace, case)
+        // must not defeat the supersede and render two answerable cards.
+        let harness = makeHarness()
+        harness.appState.activeSessionId = "stored-a"
+        harness.appState.messages = [
+            ChatMessage(
+                id: "clarify-conduit-push-abc123",
+                role: .clarify,
+                content: "  Which Color?  ",
+                timestamp: "1",
+                clarify: ClarifyActivity(
+                    requestId: "conduit-push-abc123",
+                    question: "  Which Color?  ",
+                    choices: [ClarifyChoice(label: "Red", value: "Red")],
+                    status: .pending,
+                    answer: nil,
+                    error: nil
+                )
+            )
+        ]
+
+        harness.appState.handleStreamEvent(
+            .clarify(
+                sessionId: "stored-a",
+                requestId: "gateway-rid-1",
+                question: "which color?",
+                choices: [("Red", "Red")]
+            )
+        )
+
+        let clarifyCards = harness.appState.messages.filter { $0.role == .clarify }
+        XCTAssertEqual(clarifyCards.count, 1, "Formatting drift must not defeat the supersede")
+        XCTAssertEqual(clarifyCards.first?.clarify?.requestId, "gateway-rid-1")
+    }
+
+    func testLiveClarifyEventEvictsSupersededPushCardFromCache() async {
+        // The supersede must evict the push card from the presentation cache,
+        // not just the in-memory transcript: the flush re-appends still-pending
+        // stored cards, and the ids can never dedupe (gateway vs plugin-minted),
+        // so an in-memory-only removal would resurface as a duplicate
+        // answerable card after the next cold-start resume.
+        let cacheSuite = "conduit.tests.clarify-supersede-cache-\(UUID().uuidString)"
+        guard let cacheDefaults = UserDefaults(suiteName: cacheSuite) else {
+            XCTFail("Could not create isolated UserDefaults suite")
+            return
+        }
+        let cache = SessionPresentationCache(defaults: cacheDefaults)
+        defer {
+            cache.clear()
+            cacheDefaults.removePersistentDomain(forName: cacheSuite)
+        }
+        let harness = makeHarness(sessionPresentationCache: cache)
+        harness.appState.activeSessionId = "stored-a"
+        harness.appState.messages = [
+            ChatMessage(
+                id: "clarify-conduit-push-abc123",
+                role: .clarify,
+                content: "Which color?",
+                timestamp: "1",
+                clarify: ClarifyActivity(
+                    requestId: "conduit-push-abc123",
+                    question: "Which color?",
+                    choices: [ClarifyChoice(label: "Red", value: "Red")],
+                    status: .pending,
+                    answer: nil,
+                    error: nil
+                )
+            )
+        ]
+        cache.recordPendingDecision(
+            harness.appState.messages[0],
+            profile: harness.appState.activeProfile,
+            sessionIDs: ["stored-a"]
+        )
+
+        harness.appState.handleStreamEvent(
+            .clarify(
+                sessionId: "stored-a",
+                requestId: "gateway-rid-1",
+                question: "Which color?",
+                choices: [("Red", "Red")]
+            )
+        )
+
+        XCTAssertEqual(harness.appState.messages.filter { $0.role == .clarify }.count, 1)
+        let restored = cache.merge(
+            [],
+            profile: harness.appState.activeProfile,
+            sessionIDs: ["stored-a"],
+            includePendingClarifications: true
+        )
+        XCTAssertFalse(
+            restored.contains { $0.clarify?.requestId == "conduit-push-abc123" },
+            "The superseded push card must not resurface from the cache after a cold restart"
+        )
+    }
+
+    func testLiveClarifyEventPreservesAnsweredPushCardHistory() async {
+        let harness = makeHarness()
+        harness.appState.activeSessionId = "stored-a"
+        harness.appState.messages = [
+            ChatMessage(
+                id: "clarify-conduit-push-abc123",
+                role: .clarify,
+                content: "Which color?",
+                timestamp: "1",
+                clarify: ClarifyActivity(
+                    requestId: "conduit-push-abc123",
+                    question: "Which color?",
+                    choices: [ClarifyChoice(label: "Red", value: "Red")],
+                    status: .answered,
+                    answer: "Red",
+                    error: nil
+                )
+            )
+        ]
+
+        harness.appState.handleStreamEvent(
+            .clarify(
+                sessionId: "stored-a",
+                requestId: "gateway-rid-2",
+                question: "Which color?",
+                choices: [("Red", "Red")]
+            )
+        )
+
+        // Resolved history stays: an earlier answered card is not deleted by a
+        // later clarify with identical text.
+        let clarifyCards = harness.appState.messages.filter { $0.role == .clarify }
+        XCTAssertEqual(clarifyCards.count, 2)
+        XCTAssertTrue(clarifyCards.contains { $0.clarify?.status == .answered && $0.clarify?.answer == "Red" })
+        XCTAssertTrue(clarifyCards.contains { $0.clarify?.requestId == "gateway-rid-2" })
+    }
+
+    func testRelayClarifyAnswerRoutedWithoutGatewayClient() async {
+        // Answering a relay-delivered clarify must not require the gateway
+        // client: the relay answer needs only the relay registration, and a
+        // push just-resumed session is exactly when the gateway client may
+        // still be nil. (Unpaired in tests, so the relay call surfaces its
+        // own error rather than the gateway-unavailable one.)
+        let harness = makeHarness()
+        harness.appState.activeSessionId = "stored-a"
+        harness.appState.messages = [
+            ChatMessage(
+                id: "clarify-conduit-push-abc123",
+                role: .clarify,
+                content: "Which color?",
+                timestamp: "1",
+                clarify: ClarifyActivity(
+                    requestId: "conduit-push-abc123",
+                    question: "Which color?",
+                    choices: [ClarifyChoice(label: "Red", value: "Red")],
+                    status: .pending,
+                    answer: nil,
+                    error: nil
+                )
+            )
+        ]
+        harness.appState.client = nil
+
+        await harness.appState.respondToClarify(requestId: "conduit-push-abc123", answer: "Red")
+
+        let card = harness.appState.messages.first { $0.role == .clarify }
+        XCTAssertEqual(card?.clarify?.status, .error)
+        XCTAssertEqual(
+            card?.clarify?.error,
+            "This device is not paired with a push relay.",
+            "The relay path must run before the gateway-client guard and surface relay errors"
+        )
+    }
+
     func testNotificationDecisionWithMismatchedSessionKeyIsNotRecorded() async {
         let cacheSuite = "conduit.tests.notification-decision-mismatch-\(UUID().uuidString)"
         guard let cacheDefaults = UserDefaults(suiteName: cacheSuite) else {

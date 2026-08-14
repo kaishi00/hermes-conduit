@@ -4273,6 +4273,30 @@ final class AppState: ObservableObject {
                 profile: activeProfile,
                 sessionIDs: sessionIDs
             )
+        case let .clarify(requestId, question, choices):
+            // Relay-delivered clarify: the plugin middleware minted this id and
+            // is polling the relay, so the standard card renders with working
+            // buttons routed through respondToRelayClarify.
+            let activity = ClarifyActivity(
+                requestId: requestId,
+                question: question,
+                choices: choices.map { ClarifyChoice(label: $0, value: $0) },
+                status: .pending,
+                answer: nil,
+                error: nil
+            )
+            let message = ChatMessage(
+                id: "clarify-\(requestId)",
+                role: .clarify,
+                content: question,
+                timestamp: Self.localTimestamp(),
+                clarify: activity
+            )
+            sessionPresentationCache.recordPendingDecision(
+                message,
+                profile: activeProfile,
+                sessionIDs: sessionIDs
+            )
         }
     }
 
@@ -5385,6 +5409,16 @@ final class AppState: ObservableObject {
         setRunning(true)
         cacheMessagePresentation()
 
+        // Plugin-minted clarify ids are answered through the relay's decision
+        // loop (the gateway's own clarify id never reached this device); the
+        // gateway-side middleware polls the relay and resolves the tool call.
+        // Routed BEFORE the gateway-client guard: the relay answer needs only
+        // the relay registration, and answering from a freshly-resumed push
+        // is exactly when the gateway client may still be reconnecting.
+        if requestId.hasPrefix(PendingDecisionPayload.relayRequestPrefix) {
+            await respondToRelayClarify(requestId: requestId, answer: trimmedAnswer)
+            return
+        }
         guard let client else {
             messages[index].clarify?.status = .error
             messages[index].clarify?.answer = nil
@@ -5407,6 +5441,38 @@ final class AppState: ObservableObject {
                 messages[updatedIndex].clarify?.error = "Hermes did not accept that answer."
                 errorMessage = error.localizedDescription
             }
+            cacheMessagePresentation()
+        }
+    }
+
+    private func respondToRelayClarify(requestId: String, answer: String) async {
+        do {
+            let outcome = try await PushNotificationService.shared.respondToRelayDecision(
+                requestId: requestId,
+                answer: answer
+            )
+            guard let updatedIndex = messages.firstIndex(where: { $0.clarify?.requestId == requestId }) else { return }
+            switch outcome {
+            case .answered:
+                messages[updatedIndex].clarify?.status = .answered
+                messages[updatedIndex].clarify?.answer = answer
+            case .alreadyAnsweredElsewhere:
+                // Another device resolved the decision with its own answer;
+                // settle the card but do not display this device's rejected
+                // text as if it were what Hermes received.
+                messages[updatedIndex].clarify?.status = .answered
+                messages[updatedIndex].clarify?.answer = nil
+            case .noLongerActive:
+                messages[updatedIndex].clarify?.status = .error
+                messages[updatedIndex].clarify?.answer = nil
+                messages[updatedIndex].clarify?.error = "This question is no longer active — it was timed out or already resolved."
+            }
+            cacheMessagePresentation()
+        } catch {
+            guard let updatedIndex = messages.firstIndex(where: { $0.clarify?.requestId == requestId }) else { return }
+            messages[updatedIndex].clarify?.status = .error
+            messages[updatedIndex].clarify?.answer = nil
+            messages[updatedIndex].clarify?.error = error.localizedDescription
             cacheMessagePresentation()
         }
     }
@@ -7072,6 +7138,40 @@ final class AppState: ObservableObject {
                 messages[index].content = question
                 messages[index].clarify = activity
             } else {
+                // A still-pending push-delivered card for the same question is
+                // superseded by the live event (different ids: gateway vs
+                // plugin-minted), so one logical clarify never renders two
+                // answerable cards. Resolved history stays visible, and a
+                // .submitting card is left alone: its relay answer may already
+                // be in flight and will settle it by request id.
+                var supersededRequestIds: [String] = []
+                let liveQuestion = question.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                messages.removeAll { message in
+                    guard let clarify = message.clarify,
+                          clarify.requestId.hasPrefix(PendingDecisionPayload.relayRequestPrefix),
+                          clarify.status == .pending,
+                          clarify.question.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == liveQuestion else {
+                        return false
+                    }
+                    supersededRequestIds.append(clarify.requestId)
+                    return true
+                }
+                // The superseded card must also leave the presentation cache —
+                // the ordinary flush re-appends still-pending stored cards, so
+                // an in-memory-only removal would resurface as a duplicate
+                // answerable card after the next cold-start resume.
+                let cacheSessionIDs = [
+                    activeSessionId,
+                    reconciliation?.requestedSessionId,
+                    reconciliation?.resolvedSessionId
+                ].compactMap { $0 }
+                for requestId in supersededRequestIds {
+                    sessionPresentationCache.removePendingDecision(
+                        key: "clarify:\(requestId)",
+                        profile: activeProfile,
+                        sessionIDs: cacheSessionIDs
+                    )
+                }
                 messages.append(ChatMessage(
                     id: "clarify-\(requestId)",
                     role: .clarify,

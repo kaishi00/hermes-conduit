@@ -292,6 +292,37 @@ final class SessionPresentationCache {
         return Set(keys)
     }
 
+    /// Evicts a still-pending decision record from the cache. Used when a
+    /// live event supersedes a push-delivered card: the two carry different
+    /// decision keys (gateway vs plugin-minted ids), so the merge can never
+    /// dedupe them, and without eviction the superseded card would resurface
+    /// as a duplicate answerable card after the next cold-start resume.
+    /// Non-pending records and unrelated cards are untouched.
+    func removePendingDecision(
+        key targetKey: String,
+        profile: String,
+        sessionIDs: [String]
+    ) {
+        let ids = Set(sessionIDs.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })
+        guard !ids.isEmpty else { return }
+        var store = load()
+        var changed = false
+        for id in ids {
+            let cacheKey = key(profile: profile, sessionID: id)
+            guard var session = store[cacheKey] else { continue }
+            let before = session.messages
+            session.messages.removeAll { existing in
+                decisionKey(for: existing) == targetKey && pendingDecisionKey(for: existing) != nil
+            }
+            guard session.messages != before else { continue }
+            session.updatedAt = now()
+            store[cacheKey] = session
+            changed = true
+        }
+        guard changed else { return }
+        persist(store)
+    }
+
     /// Records a pending decision card observed outside the live stream —
     /// today, from a push notification's structured payload, which is the only
     /// source for a decision raised while the app was backgrounded and missed

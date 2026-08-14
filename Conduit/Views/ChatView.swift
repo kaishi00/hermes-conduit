@@ -1786,7 +1786,10 @@ struct ClarifyCard: View {
                     Spacer(minLength: 8)
                     if clarify.status == .submitting {
                         ProgressView().controlSize(.small)
-                    } else if clarify.status == .answered {
+                    } else if clarify.status == .answered, clarify.answer != nil {
+                        // Only this device's accepted answer earns the check;
+                        // an answered-elsewhere settle renders no checkmark so
+                        // the header agrees with the body copy.
                         Image(systemName: "checkmark.circle.fill")
                             .foregroundStyle(.green)
                     }
@@ -1807,6 +1810,13 @@ struct ClarifyCard: View {
                     }
                     .padding(12)
                     .background(Color.green.opacity(0.10), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                } else if clarify.status == .answered {
+                    // Answered elsewhere (relay 409): settled, but this device's
+                    // rejected text must not display as what Hermes received —
+                    // and the disabled controls should not linger either.
+                    Text("Answered on another device")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 } else {
                     ForEach(clarify.choices) { choice in
                         Button {
