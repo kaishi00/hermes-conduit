@@ -146,11 +146,12 @@ untouched.
 at the trust boundary (kind must be `approval` and agree with the event type;
 choices whitelisted to the gateway approval vocabulary; `session_key` +
 `description` + non-empty choices required) and forwards it into the APNs
-`conduit` payload — **gated on the user's `show_previews` preference**, exactly
-like `title`/`body`, so a previews-off installation never has approval
-descriptions in the payload. If the encoded payload would exceed the ~4 KB
-APNs cap, the decision is dropped and the notification degrades to the
-routing stub.
+`conduit` payload — **gated on a dedicated `decision_cards` preference**
+(default on, independent of `show_previews`: previews only control banner
+text, while this controls functional answerability, and the audience running
+approval gates is exactly who the cards are for). If the encoded payload
+would exceed the ~4 KB APNs cap, the decision is dropped and the notification
+degrades to the routing stub.
 
 **iOS change (shipped):** `PushNotificationService` parses the `decision`
 (strictly — an approval without display text or usable choices degrades to a
@@ -229,9 +230,9 @@ and clarify answerability is required).
 
 Extend the existing `conduit` object. Keep `session_id`/`profile`/`type` as
 today; add an optional `decision` object, present only for
-`approval.needed` notifications, only when the user's `show_previews`
-preference is enabled, and only when the encoded payload stays under the
-APNs ~4 KB cap:
+`approval.needed` notifications, only when the user's `decision_cards`
+preference is enabled (default on; independent of `show_previews`), and only
+when the encoded payload stays under the APNs ~4 KB cap:
 
 ```jsonc
 {
@@ -302,8 +303,11 @@ section), degrading either case to the plain routing stub.
   decision content too once they update. (Conduit still defaults to the shared
   `push.milim.dev` for zero-setup use.)
 - **Privacy** — the raw approval `command` never enters the payload (omitted
-  at the plugin), and the `decision` content is gated on `show_previews` at
-  the relay, matching how `title`/`body` previews already work.
+  at the plugin), and the `decision` content is gated on a dedicated
+  `decision_cards` preference (default on, Settings > Notifications > Approval
+  cards in pushes). It is deliberately independent of `show_previews`:
+  previews control banner text, this controls functional answerability, and
+  privacy-focused users can turn just this off.
 - **Receipt-time capture** — alert pushes cannot wake a suspended app, so the
   card is cached when the notification is **opened** (tap or cold-launch via
   the notification). Covering "dismiss the banner, foreground manually" would

@@ -288,6 +288,20 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertNil(service.pendingTarget?.decision, "Choices with no usable entries must degrade to a routing target")
     }
 
+    func testNotificationPreferencesRoundTripDecisionCardsKey() throws {
+        var preferences = ConduitNotificationPreferences()
+        XCTAssertTrue(preferences.decisionCards, "Decision cards default on, independent of show previews")
+        XCTAssertFalse(preferences.showPreviews)
+
+        preferences.decisionCards = false
+        let data = try JSONEncoder().encode(preferences)
+        let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        XCTAssertEqual(object?["decision_cards"] as? Bool, false, "The relay expects the snake_case decision_cards key")
+
+        let decoded = try JSONDecoder().decode(ConduitNotificationPreferences.self, from: data)
+        XCTAssertFalse(decoded.decisionCards)
+    }
+
     func testFailedNotificationRouteRetriesOnceThenClearsTarget() async {
         let service = PushNotificationService(retryDelay: .zero)
         service.receiveNotificationPayload([

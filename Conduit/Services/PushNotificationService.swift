@@ -64,6 +64,11 @@ struct ConduitNotificationPreferences: Codable, Equatable {
     var backgroundTaskFinished = true
     var completionSound = true
     var showPreviews = false
+    /// Independent of `showPreviews`: controls whether pushes carry structured
+    /// decision content (answerable approval cards). Defaults on because the
+    /// feature's audience is exactly the approval-gate crowd; privacy-focused
+    /// users can turn just this off.
+    var decisionCards = true
 
     enum CodingKeys: String, CodingKey {
         case enabled
@@ -74,6 +79,7 @@ struct ConduitNotificationPreferences: Codable, Equatable {
         case backgroundTaskFinished = "background_task_finished"
         case completionSound = "completion_sound"
         case showPreviews = "show_previews"
+        case decisionCards = "decision_cards"
     }
 }
 
