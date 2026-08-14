@@ -803,6 +803,152 @@ final class SessionYoloPersistenceTests: XCTestCase {
         XCTAssertTrue(appState.runtime.yolo)
     }
 
+    // A known non-off mode with the approval signals omitted entirely from a
+    // later snapshot is unknown, not a disagreement: the last-known indicator
+    // value must survive instead of flickering to "approvals on".
+    func testSnapshotOmittingApprovalSignalsKeepsLastKnownYoloUnderKnownNonOffMode() {
+        let (suite, defaults) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = SessionYoloStore(defaults: defaults, storageKey: "test.session-yolo")
+        let appState = makeAppState(defaults: defaults, store: store)
+        appState.sessions = [session("session-a")]
+
+        // Prime a known non-off mode plus an on session flag.
+        appState.applyChatResume(SessionResumeResult(
+            sessionId: "session-a",
+            messages: [],
+            snapshot: SessionRuntimeSnapshot(object: [
+                "running": .bool(false),
+                "yolo": .bool(true),
+                "approvals_mode": .string("manual")
+            ])
+        ))
+        XCTAssertTrue(appState.runtime.yolo)
+
+        // A partial projection omitting both signals must keep the last value.
+        appState.applyChatResume(SessionResumeResult(
+            sessionId: "session-a",
+            messages: [],
+            snapshot: SessionRuntimeSnapshot(object: [
+                "running": .bool(false)
+            ])
+        ))
+        XCTAssertTrue(appState.runtime.yolo)
+        XCTAssertEqual(appState.runtime.approvalsMode, "manual")
+
+        // A snapshot that itself reports a non-off mode with no session flag
+        // still resolves to approvals-required.
+        appState.applyChatResume(SessionResumeResult(
+            sessionId: "session-a",
+            messages: [],
+            snapshot: SessionRuntimeSnapshot(object: [
+                "running": .bool(false),
+                "approvals_mode": .string("manual")
+            ])
+        ))
+        XCTAssertFalse(appState.runtime.yolo)
+    }
+
+    // A resume snapshot that omits the session-level yolo is unknown, not a
+    // disagreement: the re-assert must not fire on every resume for gateways
+    // that omit the field.
+    func testResumeSkipsReassertWhenSnapshotOmitsSessionYolo() async {
+        let (suite, defaults) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let recorder = YoloSetCallRecorder()
+        let operations = ChatResumeLifecycleOperations(
+            loadCatalog: { _, _ in [self.session("session-a")] },
+            openSession: { _, sessionID in
+                SessionResumeResult(
+                    sessionId: sessionID,
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: [
+                        "running": .bool(false),
+                        "approvals_mode": .string("manual")
+                        // yolo deliberately omitted
+                    ])
+                )
+            },
+            refreshContext: { _, _ in },
+            setSessionYolo: { _, sessionID, enabled in recorder.record(sessionID, enabled) }
+        )
+        let store = SessionYoloStore(defaults: defaults, storageKey: "test.session-yolo")
+        store.setOverride(true, for: "default", sessionID: "session-a")
+        let appState = makeAppState(defaults: defaults, store: store, lifecycleOperations: operations)
+        appState.sessions = [session("session-a")]
+        appState.activeSessionId = "session-a"
+        appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+
+        await appState.syncSession()
+
+        // The stored override still governs the indicator, but no config.set
+        // churn is sent for a value the server never reported.
+        XCTAssertTrue(appState.runtime.yolo)
+        XCTAssertTrue(recorder.invocations.isEmpty)
+        XCTAssertEqual(store.storedOverride(for: "default", sessionID: "session-a"), true)
+    }
+
+    // A buffered live session.info that predates the resume must not re-impose
+    // a stale profile approval mode over the fresh resume snapshot's mode.
+    func testBufferedSessionInfoCannotReimposeStaleApprovalMode() async {
+        let (suite, defaults) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let openGate = SessionYoloResumeGate()
+        let operations = ChatResumeLifecycleOperations(
+            loadCatalog: { _, _ in [self.session("session-a")] },
+            openSession: { _, sessionID in
+                await openGate.suspend()
+                return SessionResumeResult(
+                    sessionId: sessionID,
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: [
+                        "running": .bool(false),
+                        "approvals_mode": .string("manual")
+                    ])
+                )
+            },
+            refreshContext: { _, _ in },
+            setSessionYolo: { _, _, _ in }
+        )
+        let store = SessionYoloStore(defaults: defaults, storageKey: "test.session-yolo")
+        let appState = makeAppState(
+            defaults: defaults,
+            store: store,
+            lifecycleOperations: operations
+        )
+        appState.sessions = [session("session-a")]
+        appState.activeSessionId = "session-a"
+        appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+
+        let resume = Task { @MainActor in
+            await appState.syncSession()
+        }
+        await openGate.waitUntilSuspended()
+
+        // Stale buffered push claiming the profile was globally off.
+        appState.handleStreamEvent(.sessionInfo(
+            sessionId: "session-a",
+            snapshot: SessionRuntimeSnapshot(object: [
+                "running": .bool(false),
+                "approvals_mode": .string("off")
+            ])
+        ))
+
+        openGate.resume()
+        await resume.value
+
+        // The fresh resume's manual mode is authoritative; the stale floor
+        // must not engage.
+        XCTAssertEqual(appState.runtime.approvalsMode, "manual")
+        XCTAssertFalse(appState.runtime.yolo)
+    }
+
     private func makeAppState(
         defaults: UserDefaults,
         store: SessionYoloStore,

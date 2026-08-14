@@ -2523,8 +2523,15 @@ final class AppState: ObservableObject {
                 )
             }
             let bufferedYoloAuthority = reconcileExplicitYolo ? result.snapshot.yolo : nil
+            let bufferedApprovalsModeAuthority = reconcileExplicitYolo
+                ? result.snapshot.approvalsMode
+                : nil
             bufferedEvents.forEach { event in
-                applyStreamEvent(event, authoritativeYolo: bufferedYoloAuthority)
+                applyStreamEvent(
+                    event,
+                    authoritativeYolo: bufferedYoloAuthority,
+                    authoritativeApprovalsMode: bufferedApprovalsModeAuthority
+                )
             }
             let settled = settleReconciliationAndPublish(
                 token,
@@ -3234,7 +3241,8 @@ final class AppState: ObservableObject {
     private func applyRuntime(
         _ snapshot: SessionRuntimeSnapshot,
         for sessionID: String? = nil,
-        authoritativeYolo: Bool? = nil
+        authoritativeYolo: Bool? = nil,
+        authoritativeApprovalsMode: String? = nil
     ) {
         if let model = snapshot.model { runtime.model = model }
         if let provider = snapshot.provider { runtime.provider = provider }
@@ -3247,7 +3255,7 @@ final class AppState: ObservableObject {
             runtime.reasoningEffort = reasoningEffort.lowercased() == "none" ? "" : reasoningEffort
         }
         if let fast = snapshot.fast { runtime.fast = fast }
-        if let approvalsMode = snapshot.approvalsMode {
+        if let approvalsMode = authoritativeApprovalsMode ?? snapshot.approvalsMode {
             runtime.approvalsMode = approvalsMode
         }
         let requestedSessionID = sessionID ?? activeSessionId
@@ -3265,7 +3273,8 @@ final class AppState: ObservableObject {
         }
         applyEffectiveYolo(
             sessionIDsForOverride: sessionIDsForOverride,
-            snapshotYolo: authoritativeYolo ?? snapshot.yolo
+            snapshotYolo: authoritativeYolo ?? snapshot.yolo,
+            snapshotReportedApprovalsMode: authoritativeApprovalsMode ?? snapshot.approvalsMode
         )
     }
 
@@ -3276,7 +3285,8 @@ final class AppState: ObservableObject {
     /// with the saved mode.
     private func applyEffectiveYolo(
         sessionIDsForOverride: [String],
-        snapshotYolo: Bool?
+        snapshotYolo: Bool?,
+        snapshotReportedApprovalsMode: String?
     ) {
         let storedOverride = sessionYoloStore.storedOverride(
             for: activeProfile,
@@ -3295,14 +3305,14 @@ final class AppState: ObservableObject {
             runtime.yolo = storedOverride
         } else if let yolo = snapshotYolo {
             runtime.yolo = yolo
-        } else if runtime.approvalsMode != nil {
-            // A known non-off profile mode with no session-level signal means
-            // approvals apply.
+        } else if let mode = snapshotReportedApprovalsMode, mode.lowercased() != "off" {
+            // Only the snapshot's own non-off mode report resolves to "approvals
+            // apply" — a last-known mode with the signal omitted entirely is
+            // unknown, not a disagreement, and must not flicker the indicator.
             runtime.yolo = false
         }
-        // No approval signal has ever been observed: keep the last-known
-        // indicator value rather than flickering to "off" on partial
-        // projections that omit the approval fields.
+        // Otherwise keep the last-known indicator value; a partial projection
+        // omitting the approval fields must not flicker it.
     }
 
     /// The context breakdown RPC is the gateway's complete accounting source.
@@ -4600,10 +4610,11 @@ final class AppState: ObservableObject {
     /// agent forgets the flag and reverts to the profile default. Re-sending
     /// `config.set` restores the user's explicit choice so the server keeps
     /// honoring it. No-op when the profile approval mode is already "off" (the
-    /// flag is then moot), when there is no stored override, or when the
-    /// server's reported value already matches the override. Failure is
-    /// non-fatal: the local override still governs the indicator and the next
-    /// resume retries.
+    /// flag is then moot), when there is no stored override, when the snapshot
+    /// does not report a session-level yolo (unknown is not a disagreement),
+    /// or when the server's reported value already matches the override.
+    /// Failure is non-fatal: the local override still governs the indicator
+    /// and the next resume retries.
     private func reassertSessionYolo(
         for sessionId: String,
         snapshot: SessionRuntimeSnapshot,
@@ -4619,7 +4630,11 @@ final class AppState: ObservableObject {
             for: activeProfile,
             sessionIDs: [persistedSessionID, sessionId]
         ) else { return }
-        guard snapshot.yolo.map({ $0 != override }) ?? true else { return }
+        // A snapshot that omits the session-level yolo is unknown, not a
+        // disagreement; re-asserting on every resume for gateways that omit the
+        // field would be pure churn. The gateway's session.info projection
+        // reports yolo as a boolean, so a real conflict is always visible.
+        guard let reportedYolo = snapshot.yolo, reportedYolo != override else { return }
         do {
             if let setSessionYolo = chatResumeLifecycleOperations.setSessionYolo {
                 try await setSessionYolo(client, sessionId, override)
@@ -5675,8 +5690,10 @@ final class AppState: ObservableObject {
         turnState = .synchronizing
         // The next profile's approval mode is unknown until its first session
         // snapshot arrives; don't let the previous profile's floor leak across
-        // the switch.
+        // the switch, and neutralize the indicator to the safe display
+        // (approvals required) until the new profile resolves it.
         runtime.approvalsMode = nil
+        runtime.yolo = false
 
         do {
             let ticket = try await mintChatResumeTicket(for: savedConnection)
@@ -6373,14 +6390,17 @@ final class AppState: ObservableObject {
                 // Mirror the saved profile mode immediately and re-resolve the
                 // effective indicator state through the same precedence
                 // applyRuntime uses, so the floor and the picker lock take
-                // effect without waiting for the next session snapshot.
+                // effect without waiting for the next session snapshot. The
+                // session-level value is carried through unchanged: only the
+                // floor/override precedence re-runs.
                 runtime.approvalsMode = mode
                 let requestedSessionID = activeSessionId
                 let resolvedCanonicalSessionID = canonicalSessionID(for: requestedSessionID)
                 applyEffectiveYolo(
                     sessionIDsForOverride: [resolvedCanonicalSessionID, requestedSessionID]
                         .compactMap { $0 },
-                    snapshotYolo: nil
+                    snapshotYolo: runtime.yolo,
+                    snapshotReportedApprovalsMode: nil
                 )
             }
             return true
@@ -6752,7 +6772,11 @@ final class AppState: ObservableObject {
         return reconciliation.acceptedSessionIDs.contains(sessionId)
     }
 
-    private func applyStreamEvent(_ event: StreamEvent, authoritativeYolo: Bool? = nil) {
+    private func applyStreamEvent(
+        _ event: StreamEvent,
+        authoritativeYolo: Bool? = nil,
+        authoritativeApprovalsMode: String? = nil
+    ) {
         let streamSessionId = sessionID(for: event)
         guard eventBelongsToActiveSession(streamSessionId) else { return }
         defer { schedulePresentationCacheFlush(for: streamSessionId) }
@@ -6814,7 +6838,12 @@ final class AppState: ObservableObject {
             }
 
         case .sessionInfo(let sessionID, let snapshot):
-            applyRuntime(snapshot, for: sessionID, authoritativeYolo: authoritativeYolo)
+            applyRuntime(
+                snapshot,
+                for: sessionID,
+                authoritativeYolo: authoritativeYolo,
+                authoritativeApprovalsMode: authoritativeApprovalsMode
+            )
             if let running = snapshot.running {
                 setRunning(running)
             }

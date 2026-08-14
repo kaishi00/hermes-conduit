@@ -40,9 +40,10 @@ precedence in `applyRuntime` is:
    Hermes auto-approves globally; a per-session toggle cannot require approvals).
 2. Else a stored per-session override wins (the user's explicit choice).
 3. Else the snapshot's `yolo` (or buffered-resume authority).
-4. Else a known non-off profile mode means approvals apply (`false`); if no
-   approval signal has ever been seen, the last-known indicator value is kept
-   so partial projections cannot flicker it off.
+4. Else a non-off approval mode **reported by the snapshot itself** means
+   approvals apply (`false`). A last-known mode with the signals omitted
+   entirely is unknown, not a disagreement — the last-known indicator value is
+   kept so partial projections cannot flicker it.
 
 ### Resume re-assertion (`reassertSessionYolo`)
 
@@ -59,12 +60,20 @@ stale one. A residual race (a switch after the send begins) is accepted: the
 value was chosen under verified ownership and the next resume reconciles.
 
 It is a no-op under `approvalsMode == "off"` (the floor dominates), when there
-is no override, or when the server already agrees. The floor check reads the
-same resolved source `applyRuntime` maintains (`runtime.approvalsMode`: the
-snapshot's value when present, else the last-known mode), so a snapshot that
-omits `approvals_mode` cannot make the floor and the re-assert decision
-diverge. Failure is non-fatal (logged via the `SessionYolo` OSLog category);
-the local override still governs the indicator and the next resume retries.
+is no override, when the snapshot does not report a session-level `yolo`
+(unknown is not a disagreement — the gateway's `session.info` projection always
+reports `yolo` as a boolean, so omitting it means "no signal", and re-asserting
+every resume would be churn), or when the server's reported value already
+matches the override. The floor check reads the same resolved source
+`applyRuntime` maintains (`runtime.approvalsMode`: the snapshot's value when
+present, else the last-known mode), so a snapshot that omits `approvals_mode`
+cannot make the floor and the re-assert decision diverge. Failure is non-fatal
+(logged via the `SessionYolo` OSLog category); the local override still governs
+the indicator and the next resume retries.
+
+Buffered `session.info` replay anchors the approval mode to the fresh resume
+snapshot the same way it anchors `yolo` (`authoritativeApprovalsMode`), so a
+stale buffered event cannot re-impose an outdated global floor.
 
 This single hook covers cold start, foreground re-sync, WebSocket reconnect, and
 session switching because they all funnel through `reconcile`.
@@ -97,10 +106,12 @@ applies again if the profile mode changes.
 `runtime.approvalsMode` is refreshed from snapshots, is mirrored immediately
 when Approval mode is saved in Workspace & safety (re-resolving the effective
 indicator through the same precedence `applyRuntime` uses, via the shared
-`applyEffectiveYolo` helper), and is reset on profile switch so one profile's
-floor cannot leak into the next. The picker re-seeds its draft only when the
-save or push crosses the `off` boundary — other mode changes (e.g.
-`manual ↔ smart`) leave an in-progress draft untouched.
+`applyEffectiveYolo` helper, carrying the session-level value through so only
+the floor/override precedence re-runs), and is reset on profile switch — along
+with neutralizing `runtime.yolo` to the safe display — so one profile's floor
+cannot leak into the next. The picker re-seeds its draft only when the save or
+push crosses the `off` boundary — other mode changes (e.g. `manual ↔ smart`)
+leave an in-progress draft untouched.
 
 ### Settings copy
 
