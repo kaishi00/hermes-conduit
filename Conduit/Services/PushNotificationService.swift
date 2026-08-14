@@ -52,7 +52,6 @@ struct RelayMetaInfo: Decodable, Equatable {
         let name: String
         let pluginVersion: String?
         let pluginCapabilities: [String]
-        let lastEventAt: String?
 
         var supportsApprovalCards: Bool { pluginCapabilities.contains("approval-decisions") }
         var supportsClarifyCards: Bool { pluginCapabilities.contains("clarify-loop") }
@@ -62,7 +61,6 @@ struct RelayMetaInfo: Decodable, Equatable {
             case name
             case pluginVersion = "plugin_version"
             case pluginCapabilities = "plugin_capabilities"
-            case lastEventAt = "last_event_at"
         }
     }
 
@@ -71,6 +69,33 @@ struct RelayMetaInfo: Decodable, Equatable {
     let gateways: [Gateway]
 
     var supportsDecisionCards: Bool { capabilities.contains("decisions") }
+
+    /// One malformed gateway record must not hide the whole section: decode
+    /// gateway rows lossily so a single incompatible record degrades to just
+    /// its row while the relay and other gateways still render.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        version = try container.decode(String.self, forKey: .version)
+        capabilities = try container.decode([String].self, forKey: .capabilities)
+        var gateways: [Gateway] = []
+        var array = try container.nestedUnkeyedContainer(forKey: .gateways)
+        while !array.isAtEnd {
+            if let gateway = try? array.decode(Gateway.self) {
+                gateways.append(gateway)
+            } else {
+                _ = try? array.decode(Empty.self)
+            }
+        }
+        self.gateways = gateways
+    }
+
+    private struct Empty: Decodable {}
+
+    private enum CodingKeys: String, CodingKey {
+        case version
+        case capabilities
+        case gateways
+    }
 }
 
 enum NotificationSessionResolver {
@@ -155,6 +180,7 @@ final class PushNotificationService: ObservableObject {
     @Published private(set) var navigationAttempt = 0
     @Published var preferences = ConduitNotificationPreferences()
     @Published private(set) var relayMeta: RelayMetaInfo?
+    @Published private(set) var isFetchingMeta = false
 
     private var relayURL: URL {
         if let saved = UserDefaults.standard.string(forKey: "conduit.relayURL"),
@@ -195,12 +221,18 @@ final class PushNotificationService: ObservableObject {
     }
 
     /// Loads relay + plugin compatibility state for Settings > Notifications.
-    /// Nil (also on 404 from older/self-hosted relays) renders as unknown.
+    /// Nil after a completed fetch (also on 404 from older/self-hosted relays)
+    /// renders as unknown; `isFetchingMeta` distinguishes that from an
+    /// in-flight request so the UI never diagnoses "predates version
+    /// reporting" while still loading.
     func refreshMeta() async {
         guard let registration else {
             relayMeta = nil
+            isFetchingMeta = false
             return
         }
+        isFetchingMeta = true
+        defer { isFetchingMeta = false }
         var request = URLRequest(url: relayURL.appending(path: "/v1/meta"))
         request.setValue("Bearer \(registration.credential)", forHTTPHeaderField: "Authorization")
         do {

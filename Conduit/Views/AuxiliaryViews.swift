@@ -1362,13 +1362,17 @@ private struct NotificationsSettingsDetail: View {
                 }
 
                 ConduitSettingsSection(title: "Compatibility", symbol: "checkmark.seal", tint: .conduitAura) {
-                    if let meta = notifications.relayMeta {
+                    if notifications.isFetchingMeta {
+                        Text("Checking compatibility…")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    } else if let meta = notifications.relayMeta {
                         compatibilityRow(
                             title: "Push relay",
                             version: meta.version,
                             isSupported: meta.supportsDecisionCards,
                             supportedDetail: "Supports decision cards",
-                            outdatedDetail: "Decision cards need a relay update (0.2.0 or newer)"
+                            outdatedDetail: "Decision cards need a relay update"
                         )
                         ForEach(meta.gateways) { gateway in
                             compatibilityRow(
@@ -1378,7 +1382,7 @@ private struct NotificationsSettingsDetail: View {
                                 supportedDetail: "Notifier supports approval and clarify cards",
                                 outdatedDetail: gateway.pluginVersion == nil
                                     ? "Waiting for the first notification from this profile"
-                                    : "Notifier update available — approval and clarify cards need 0.2.0 or newer"
+                                    : "Notifier update available — approval and clarify cards need a newer plugin"
                             )
                             if gateway.pluginVersion != nil,
                                !gateway.supportsApprovalCards || !gateway.supportsClarifyCards {
@@ -1392,6 +1396,7 @@ private struct NotificationsSettingsDetail: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+                .task { await notifications.refreshMeta() }
 
                 ConduitSettingsSection(title: "Connect a Hermes profile", symbol: "link.badge.plus", tint: .conduitAura) {
                     Text("Install the notifier once on the gateway, then create a short-lived pairing code here for each Hermes profile you want to reach.")
@@ -1441,6 +1446,9 @@ private struct NotificationsSettingsDetail: View {
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
                         .keyboardType(.URL)
+                        .onSubmit {
+                            Task { await notifications.refreshMeta() }
+                        }
                     Text("Leave blank to use the default relay. Change this if you run your own push relay server.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
@@ -1465,6 +1473,7 @@ private struct NotificationsSettingsDetail: View {
         HStack(spacing: 10) {
             Image(systemName: isSupported ? "checkmark.circle.fill" : "exclamationmark.circle")
                 .foregroundStyle(isSupported ? .green : .orange)
+                .accessibilityLabel(isSupported ? "Supported" : "Update needed")
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(title).font(.subheadline.weight(.medium))
@@ -1480,6 +1489,7 @@ private struct NotificationsSettingsDetail: View {
             }
         }
         .padding(.vertical, 2)
+        .accessibilityElement(children: .combine)
     }
 
     @ViewBuilder

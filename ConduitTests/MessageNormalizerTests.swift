@@ -338,15 +338,13 @@ final class MessageNormalizerTests: XCTestCase {
               "id": "gw-1",
               "name": "Mac Studio Hermes",
               "plugin_version": "0.2.0",
-              "plugin_capabilities": ["approval-decisions", "clarify-loop", "version-reporting"],
-              "last_event_at": "2026-08-15T00:00:00Z"
+              "plugin_capabilities": ["approval-decisions", "clarify-loop", "version-reporting"]
             },
             {
               "id": "gw-2",
               "name": "Old laptop",
               "plugin_version": null,
-              "plugin_capabilities": [],
-              "last_event_at": null
+              "plugin_capabilities": []
             }
           ]
         }
@@ -365,6 +363,23 @@ final class MessageNormalizerTests: XCTestCase {
         let neverReported = meta.gateways[1]
         XCTAssertNil(neverReported.pluginVersion)
         XCTAssertFalse(neverReported.supportsApprovalCards)
+    }
+
+    func testRelayMetaDecodingDropsMalformedGatewayRowsLossily() throws {
+        // One incompatible gateway record must not hide the whole section.
+        let json = """
+        {
+          "version": "0.2.0",
+          "capabilities": ["decisions"],
+          "gateways": [
+            { "id": "gw-bad" },
+            { "id": "gw-good", "name": "Main", "plugin_version": "0.2.0", "plugin_capabilities": ["clarify-loop"] }
+          ]
+        }
+        """
+        let meta = try JSONDecoder().decode(RelayMetaInfo.self, from: Data(json.utf8))
+        XCTAssertEqual(meta.gateways.map(\.id), ["gw-good"])
+        XCTAssertTrue(meta.supportsDecisionCards)
     }
 
     func testExpiredPromptErrorClassification() {
