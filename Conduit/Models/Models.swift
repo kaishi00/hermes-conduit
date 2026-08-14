@@ -527,6 +527,10 @@ struct RuntimeState: Equatable {
     var model: String = ""
     var provider: String = ""
     var reasoningEffort: String = ""
+    /// Last-known profile-wide approval mode ("manual", "smart", "off").
+    /// When "off", Hermes auto-approves globally and no per-session YOLO toggle
+    /// can require approvals; the indicator reflects that effective state.
+    var approvalsMode: String? = nil
     var yolo: Bool = false
 }
 

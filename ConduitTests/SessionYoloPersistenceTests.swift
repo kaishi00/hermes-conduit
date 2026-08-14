@@ -59,7 +59,11 @@ final class SessionYoloPersistenceTests: XCTestCase {
         XCTAssertNil(store.storedOverride(for: "default", sessionID: "runtime-session"))
     }
 
-    func testExplicitGatewayYoloReplacesConflictingLocalOverride() {
+    // The Hermes gateway holds the per-session YOLO flag in memory only and
+    // forgets it on resume, so a resume snapshot's `yolo` is the reverted
+    // profile default rather than an authoritative value. The local override
+    // must survive a conflicting resume snapshot (AppState re-asserts it).
+    func testExplicitGatewayYoloDoesNotReplaceConflictingLocalOverride() {
         let (suite, defaults) = makeDefaults()
         defer { defaults.removePersistentDomain(forName: suite) }
         let store = SessionYoloStore(defaults: defaults, storageKey: "test.session-yolo")
@@ -77,11 +81,14 @@ final class SessionYoloPersistenceTests: XCTestCase {
             ])
         ))
 
-        XCTAssertFalse(appState.runtime.yolo)
-        XCTAssertNil(store.storedOverride(for: "default", sessionID: "session-a"))
+        XCTAssertTrue(appState.runtime.yolo)
+        XCTAssertEqual(store.storedOverride(for: "default", sessionID: "session-a"), true)
     }
 
-    func testServerSessionYoloWinsOverProfileApprovalFallbackWhenNoOverrideExists() {
+    // With no per-session override, the snapshot's `yolo` wins while the
+    // profile approval mode is not "off"; once the profile is "off", the global
+    // floor forces auto-approve regardless of the snapshot.
+    func testNoOverrideFallsBackToSnapshotThenGlobalFloor() {
         let (suite, defaults) = makeDefaults()
         defer { defaults.removePersistentDomain(forName: suite) }
         let store = SessionYoloStore(defaults: defaults, storageKey: "test.session-yolo")
@@ -94,7 +101,7 @@ final class SessionYoloPersistenceTests: XCTestCase {
             snapshot: SessionRuntimeSnapshot(object: [
                 "running": .bool(false),
                 "yolo": .bool(false),
-                "approvals_mode": .string("off")
+                "approvals_mode": .string("manual")
             ])
         ))
 
@@ -265,10 +272,14 @@ final class SessionYoloPersistenceTests: XCTestCase {
         XCTAssertEqual(store.storedOverride(for: "default", sessionID: "session-a"), true)
     }
 
-    func testBufferedStaleSessionInfoCannotReapplyClearedOverride() async {
+    // A buffered live `session.info` that predates a resume must not overwrite
+    // the retained per-session override. The override survives the stale
+    // buffered event, and AppState re-asserts it once the resume settles.
+    func testBufferedSessionInfoDoesNotOverwriteRetainedOverride() async {
         let (suite, defaults) = makeDefaults()
         defer { defaults.removePersistentDomain(forName: suite) }
         let openGate = SessionYoloResumeGate()
+        let recorder = YoloSetCallRecorder()
         let operations = ChatResumeLifecycleOperations(
             loadCatalog: { _, _ in [self.session("session-a")] },
             openSession: { _, sessionID in
@@ -283,7 +294,8 @@ final class SessionYoloPersistenceTests: XCTestCase {
                     ])
                 )
             },
-            refreshContext: { _, _ in }
+            refreshContext: { _, _ in },
+            setSessionYolo: { _, sessionID, enabled in recorder.record(sessionID, enabled) }
         )
         let store = SessionYoloStore(defaults: defaults, storageKey: "test.session-yolo")
         store.setOverride(true, for: "default", sessionID: "session-a")
@@ -316,8 +328,10 @@ final class SessionYoloPersistenceTests: XCTestCase {
         openGate.resume()
         await resume.value
 
-        XCTAssertFalse(appState.runtime.yolo)
-        XCTAssertNil(store.storedOverride(for: "default", sessionID: "session-a"))
+        XCTAssertTrue(appState.runtime.yolo)
+        XCTAssertEqual(store.storedOverride(for: "default", sessionID: "session-a"), true)
+        XCTAssertEqual(recorder.invocations.count, 1)
+        XCTAssertEqual(recorder.invocations.first?.enabled, true)
     }
 
     func testBufferedConflictingSessionInfoPreservesNonYoloRuntimeFields() async {
@@ -405,6 +419,217 @@ final class SessionYoloPersistenceTests: XCTestCase {
         XCTAssertFalse(appState.runtime.yolo)
     }
 
+    // MARK: - Global approval floor (approvals.mode == "off")
+
+    func testGlobalApprovalOffForcesIndicatorYoloDespiteSessionOverrideOff() {
+        let (suite, defaults) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = SessionYoloStore(defaults: defaults, storageKey: "test.session-yolo")
+        store.setOverride(false, for: "default", sessionID: "session-a")
+
+        let appState = makeAppState(defaults: defaults, store: store)
+        appState.sessions = [session("session-a")]
+        appState.applyChatResume(SessionResumeResult(
+            sessionId: "session-a",
+            messages: [],
+            snapshot: SessionRuntimeSnapshot(object: [
+                "running": .bool(false),
+                "yolo": .bool(true),
+                "approvals_mode": .string("off")
+            ])
+        ))
+
+        // Hermes auto-approves globally under approvals.mode == "off"; the
+        // indicator must reflect that effective state, not the stale override.
+        XCTAssertTrue(appState.runtime.yolo)
+        XCTAssertEqual(appState.runtime.approvalsMode, "off")
+        // The override is retained so it applies again if the profile changes.
+        XCTAssertEqual(store.storedOverride(for: "default", sessionID: "session-a"), false)
+    }
+
+    func testApprovalModeChangeOffThenManualRestoresOverrideEffect() {
+        let (suite, defaults) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = SessionYoloStore(defaults: defaults, storageKey: "test.session-yolo")
+        store.setOverride(false, for: "default", sessionID: "session-a")
+
+        let appState = makeAppState(defaults: defaults, store: store)
+        appState.sessions = [session("session-a")]
+        appState.applyChatResume(SessionResumeResult(
+            sessionId: "session-a",
+            messages: [],
+            snapshot: SessionRuntimeSnapshot(object: [
+                "running": .bool(false),
+                "approvals_mode": .string("off")
+            ])
+        ))
+        XCTAssertTrue(appState.runtime.yolo)
+
+        appState.applyChatResume(SessionResumeResult(
+            sessionId: "session-a",
+            messages: [],
+            snapshot: SessionRuntimeSnapshot(object: [
+                "running": .bool(false),
+                "approvals_mode": .string("manual")
+            ])
+        ))
+        // Floor gone; the retained per-session override (off) takes effect.
+        XCTAssertFalse(appState.runtime.yolo)
+    }
+
+    // MARK: - Resume re-assertion (gateway forgets the in-memory session flag)
+
+    func testResumeReassertsSessionYoloWhenGatewayForgot() async {
+        let (suite, defaults) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let recorder = YoloSetCallRecorder()
+        let operations = ChatResumeLifecycleOperations(
+            loadCatalog: { _, _ in [self.session("session-a")] },
+            openSession: { _, sessionID in
+                SessionResumeResult(
+                    sessionId: sessionID,
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: [
+                        "running": .bool(false),
+                        "yolo": .bool(false),
+                        "approvals_mode": .string("manual")
+                    ])
+                )
+            },
+            refreshContext: { _, _ in },
+            setSessionYolo: { _, sessionID, enabled in recorder.record(sessionID, enabled) }
+        )
+        let store = SessionYoloStore(defaults: defaults, storageKey: "test.session-yolo")
+        store.setOverride(true, for: "default", sessionID: "session-a")
+        let appState = makeAppState(defaults: defaults, store: store, lifecycleOperations: operations)
+        appState.sessions = [session("session-a")]
+        appState.activeSessionId = "session-a"
+        appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+
+        await appState.syncSession()
+
+        XCTAssertTrue(appState.runtime.yolo)
+        XCTAssertEqual(store.storedOverride(for: "default", sessionID: "session-a"), true)
+        XCTAssertEqual(recorder.invocations.count, 1)
+        XCTAssertEqual(recorder.invocations.first?.enabled, true)
+    }
+
+    func testResumeSkipsReassertWhenServerAlreadyAgrees() async {
+        let (suite, defaults) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let recorder = YoloSetCallRecorder()
+        let operations = ChatResumeLifecycleOperations(
+            loadCatalog: { _, _ in [self.session("session-a")] },
+            openSession: { _, sessionID in
+                SessionResumeResult(
+                    sessionId: sessionID,
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: [
+                        "running": .bool(false),
+                        "yolo": .bool(true),
+                        "approvals_mode": .string("manual")
+                    ])
+                )
+            },
+            refreshContext: { _, _ in },
+            setSessionYolo: { _, sessionID, enabled in recorder.record(sessionID, enabled) }
+        )
+        let store = SessionYoloStore(defaults: defaults, storageKey: "test.session-yolo")
+        store.setOverride(true, for: "default", sessionID: "session-a")
+        let appState = makeAppState(defaults: defaults, store: store, lifecycleOperations: operations)
+        appState.sessions = [session("session-a")]
+        appState.activeSessionId = "session-a"
+        appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+
+        await appState.syncSession()
+
+        XCTAssertTrue(appState.runtime.yolo)
+        XCTAssertEqual(store.storedOverride(for: "default", sessionID: "session-a"), true)
+        // The server already reports the override value; no re-assert needed.
+        XCTAssertTrue(recorder.invocations.isEmpty)
+    }
+
+    func testResumeSkipsReassertUnderGlobalOff() async {
+        let (suite, defaults) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let recorder = YoloSetCallRecorder()
+        let operations = ChatResumeLifecycleOperations(
+            loadCatalog: { _, _ in [self.session("session-a")] },
+            openSession: { _, sessionID in
+                SessionResumeResult(
+                    sessionId: sessionID,
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: [
+                        "running": .bool(false),
+                        "yolo": .bool(true),
+                        "approvals_mode": .string("off")
+                    ])
+                )
+            },
+            refreshContext: { _, _ in },
+            setSessionYolo: { _, sessionID, enabled in recorder.record(sessionID, enabled) }
+        )
+        let store = SessionYoloStore(defaults: defaults, storageKey: "test.session-yolo")
+        store.setOverride(true, for: "default", sessionID: "session-a")
+        let appState = makeAppState(defaults: defaults, store: store, lifecycleOperations: operations)
+        appState.sessions = [session("session-a")]
+        appState.activeSessionId = "session-a"
+        appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+
+        await appState.syncSession()
+
+        // Global floor forces auto-approve; per-session re-assert is moot.
+        XCTAssertTrue(appState.runtime.yolo)
+        XCTAssertEqual(store.storedOverride(for: "default", sessionID: "session-a"), true)
+        XCTAssertTrue(recorder.invocations.isEmpty)
+    }
+
+    func testResumeReassertFailureIsNonFatal() async {
+        let (suite, defaults) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let operations = ChatResumeLifecycleOperations(
+            loadCatalog: { _, _ in [self.session("session-a")] },
+            openSession: { _, sessionID in
+                SessionResumeResult(
+                    sessionId: sessionID,
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: [
+                        "running": .bool(false),
+                        "yolo": .bool(false),
+                        "approvals_mode": .string("manual")
+                    ])
+                )
+            },
+            refreshContext: { _, _ in },
+            setSessionYolo: { _, _, _ in throw TestError.rejected }
+        )
+        let store = SessionYoloStore(defaults: defaults, storageKey: "test.session-yolo")
+        store.setOverride(true, for: "default", sessionID: "session-a")
+        let appState = makeAppState(defaults: defaults, store: store, lifecycleOperations: operations)
+        appState.sessions = [session("session-a")]
+        appState.activeSessionId = "session-a"
+        appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+
+        await appState.syncSession()
+
+        // The re-assert failed, but the resume still settled and the local
+        // override continues to govern the indicator.
+        XCTAssertTrue(appState.runtime.yolo)
+        XCTAssertEqual(store.storedOverride(for: "default", sessionID: "session-a"), true)
+    }
+
     private func makeAppState(
         defaults: UserDefaults,
         store: SessionYoloStore,
@@ -474,5 +699,13 @@ private final class SessionYoloResumeGate {
     func resume() {
         suspension?.resume()
         suspension = nil
+    }
+}
+
+private final class YoloSetCallRecorder {
+    private(set) var invocations: [(sessionID: String, enabled: Bool)] = []
+
+    func record(_ sessionID: String, _ enabled: Bool) {
+        invocations.append((sessionID, enabled))
     }
 }

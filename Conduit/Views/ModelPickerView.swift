@@ -87,14 +87,9 @@ struct ModelPickerView: View {
             }
         }
         .preferredColorScheme(appState.themePreference.colorScheme)
-        .onAppear {
-            if let draft = ModelPickerYoloDraft.seededIfNeeded(
-                initial: initialYoloEnabled,
-                runtimeYolo: appState.runtime.yolo
-            ) {
-                yoloEnabled = draft.selected
-                initialYoloEnabled = draft.initial
-            }
+        .onAppear { refreshYoloToggle(force: false) }
+        .onChange(of: appState.runtime.approvalsMode) { _, _ in
+            refreshYoloToggle(force: true)
         }
         .task { await loadModels() }
     }
@@ -232,10 +227,25 @@ struct ModelPickerView: View {
         ModelPickerSection(title: "Run settings", symbol: "slider.horizontal.3", tint: .conduitAccent) {
             Toggle("Fast mode", isOn: $fastEnabled)
             Toggle("YOLO mode", isOn: $yoloEnabled)
-            Text("YOLO automatically approves tool actions for this conversation only. Set the profile default in Workspace & safety.")
+                .disabled(globalYoloFloor)
+            Text(yoloHelpText)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
+    }
+
+    /// Hermes auto-approves globally when the profile approval mode is "off", so
+    /// a per-session YOLO toggle cannot require approvals. Lock the toggle on
+    /// and explain why rather than offering a control that silently does nothing.
+    private var globalYoloFloor: Bool {
+        appState.runtime.approvalsMode?.lowercased() == "off"
+    }
+
+    private var yoloHelpText: String {
+        if globalYoloFloor {
+            return "Profile approval mode is off, so Hermes auto-approves this conversation regardless. This toggle is locked on until you change the profile mode in Workspace & safety."
+        }
+        return "YOLO automatically approves tool actions for this conversation only. Set the profile default in Workspace & safety."
     }
 
     private var visibleProviders: [ProviderInfo] {
@@ -413,13 +423,33 @@ struct ModelPickerView: View {
                 reasoningEffort = appState.runtime.reasoningEffort
             }
             fastEnabled = appState.runtime.fast
-            if initialYoloEnabled == nil {
-                let draft = ModelPickerYoloDraft(runtimeYolo: appState.runtime.yolo)
-                yoloEnabled = draft.selected
-                initialYoloEnabled = draft.initial
-            }
+            refreshYoloToggle(force: false)
         } catch {
             // Model options are supplementary to the current session state.
+        }
+    }
+
+    /// Seed the YOLO toggle from the effective runtime value. While the global
+    /// approval floor is active the toggle is pinned on (and marked unchanged so
+    /// `applyModel` sends no spurious write). Otherwise it follows the runtime
+    /// value, respecting an in-progress draft unless `force` re-seeds after a
+    /// global approval-mode change.
+    private func refreshYoloToggle(force: Bool) {
+        if globalYoloFloor {
+            yoloEnabled = true
+            initialYoloEnabled = true
+            return
+        }
+        if force {
+            let draft = ModelPickerYoloDraft(runtimeYolo: appState.runtime.yolo)
+            yoloEnabled = draft.selected
+            initialYoloEnabled = draft.initial
+        } else if let draft = ModelPickerYoloDraft.seededIfNeeded(
+            initial: initialYoloEnabled,
+            runtimeYolo: appState.runtime.yolo
+        ) {
+            yoloEnabled = draft.selected
+            initialYoloEnabled = draft.initial
         }
     }
 

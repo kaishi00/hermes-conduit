@@ -15,6 +15,7 @@ import WebKit
 
 private let sessionCatalogLog = Logger(subsystem: "com.milim.conduit", category: "SessionCatalog")
 private let titleGenerationLog = Logger(subsystem: "com.milim.conduit", category: "TitleGeneration")
+private let sessionYoloLog = Logger(subsystem: "com.milim.conduit", category: "SessionYolo")
 
 typealias ChatResumeReconnectCancellation = @MainActor () -> Void
 typealias ChatResumeReconnectExecutor = @MainActor (ChatResumeSyncPurpose) async -> Void
@@ -2434,14 +2435,17 @@ final class AppState: ObservableObject {
             guard applyChatResume(
                 presentationResult,
                 automaticWorkToken: automaticWorkToken,
-                automaticSyncOperationID: automaticSyncOperationID,
-                yoloWriteBaseline: yoloWriteBaseline,
-                reconcileExplicitYolo: reconcileExplicitYolo
+                automaticSyncOperationID: automaticSyncOperationID
             ) else {
                 settleReconciliation(token, automaticSyncOperationID: automaticSyncOperationID)
                 return false
             }
             await refreshChatResumeContext(sessionId: result.sessionId, using: client)
+            await reassertSessionYolo(
+                for: result.sessionId,
+                snapshot: result.snapshot,
+                using: client
+            )
 
             guard automaticChatResumeWorkIsCurrent(
                     automaticWorkToken,
@@ -2712,22 +2716,6 @@ final class AppState: ObservableObject {
         automaticWorkToken: ChatResumeAutomaticWorkToken? = nil,
         automaticSyncOperationID: UUID? = nil
     ) -> Bool {
-        applyChatResume(
-            result,
-            automaticWorkToken: automaticWorkToken,
-            automaticSyncOperationID: automaticSyncOperationID,
-            yoloWriteBaseline: nil
-        )
-    }
-
-    @discardableResult
-    private func applyChatResume(
-        _ result: SessionResumeResult,
-        automaticWorkToken: ChatResumeAutomaticWorkToken? = nil,
-        automaticSyncOperationID: UUID? = nil,
-        yoloWriteBaseline: SessionYoloWriteBaseline?,
-        reconcileExplicitYolo: Bool? = nil
-    ) -> Bool {
         guard automaticChatResumeWorkIsCurrent(
             automaticWorkToken,
             syncOperationID: automaticSyncOperationID
@@ -2839,13 +2827,7 @@ final class AppState: ObservableObject {
         receivedReasoningForCurrentTurn = false
         applyRuntime(
             result.snapshot,
-            for: result.sessionId,
-            reconcileExplicitYolo: reconcileExplicitYolo ?? yoloWriteBaseline.map {
-                !hasNewerSessionYoloWrite(
-                    since: $0,
-                    sessionIDs: [result.sessionId, reconciliation?.requestedSessionId].compactMap { $0 }
-                )
-            } ?? true
+            for: result.sessionId
         )
 
         // An omitted running state is ambiguous while a decision or live
@@ -3242,7 +3224,6 @@ final class AppState: ObservableObject {
     private func applyRuntime(
         _ snapshot: SessionRuntimeSnapshot,
         for sessionID: String? = nil,
-        reconcileExplicitYolo: Bool = false,
         authoritativeYolo: Bool? = nil
     ) {
         if let model = snapshot.model { runtime.model = model }
@@ -3256,6 +3237,9 @@ final class AppState: ObservableObject {
             runtime.reasoningEffort = reasoningEffort.lowercased() == "none" ? "" : reasoningEffort
         }
         if let fast = snapshot.fast { runtime.fast = fast }
+        if let approvalsMode = snapshot.approvalsMode {
+            runtime.approvalsMode = approvalsMode
+        }
         let requestedSessionID = sessionID ?? activeSessionId
         let resolvedCanonicalSessionID = canonicalSessionID(for: requestedSessionID)
         let sessionIDsForOverride = [resolvedCanonicalSessionID, requestedSessionID]
@@ -3273,27 +3257,21 @@ final class AppState: ObservableObject {
             for: activeProfile,
             sessionIDs: sessionIDsForOverride
         )
-        if let yolo = authoritativeYolo ?? snapshot.yolo {
-            if let storedOverride {
-                if reconcileExplicitYolo, storedOverride != yolo {
-                    sessionYoloStore.clearOverride(
-                        for: activeProfile,
-                        sessionIDs: sessionIDsForOverride
-                    )
-                    runtime.yolo = yolo
-                } else {
-                    // Live session.info pushes can be older than a client
-                    // initiated config.set RPC. Keep the local choice until a
-                    // fresh resume snapshot can reconcile server authority.
-                    runtime.yolo = storedOverride
-                }
-            } else {
-                runtime.yolo = yolo
-            }
+        let globalYoloFloor = runtime.approvalsMode?.lowercased() == "off"
+        if globalYoloFloor {
+            // Hermes auto-approves globally when approvals.mode == "off"; a
+            // per-session toggle cannot require approvals. Reflect the server's
+            // effective state so the indicator does not claim otherwise.
+            runtime.yolo = true
         } else if let storedOverride {
+            // The per-session choice is authoritative. The gateway holds the
+            // flag in memory only and forgets it on restart, so AppState
+            // re-asserts it after resume (see reassertSessionYolo).
             runtime.yolo = storedOverride
-        } else if let approvalsMode = snapshot.approvalsMode {
-            runtime.yolo = approvalsMode.lowercased() == "off"
+        } else if let yolo = authoritativeYolo ?? snapshot.yolo {
+            runtime.yolo = yolo
+        } else {
+            runtime.yolo = false
         }
     }
 
@@ -4574,6 +4552,43 @@ final class AppState: ObservableObject {
             guard isCurrentComposerSubmission(submissionContext) else { return false }
             errorMessage = "Unable to change YOLO mode: \(error.localizedDescription)"
             return false
+        }
+    }
+
+    /// Re-assert a persisted per-session YOLO override after a resume.
+    ///
+    /// The Hermes gateway keeps the per-session YOLO flag in memory only and
+    /// never persists it (unlike the CLI), so a gateway restart or rebuilt
+    /// agent forgets the flag and reverts to the profile default. Re-sending
+    /// `config.set` restores the user's explicit choice so the server keeps
+    /// honoring it. No-op when the profile approval mode is already "off" (the
+    /// flag is then moot), when there is no stored override, or when the
+    /// server's reported value already matches the override. Failure is
+    /// non-fatal: the local override still governs the indicator and the next
+    /// resume retries.
+    private func reassertSessionYolo(
+        for sessionId: String,
+        snapshot: SessionRuntimeSnapshot,
+        using client: HermesClient
+    ) async {
+        guard snapshot.approvalsMode?.lowercased() != "off" else { return }
+        let persistedSessionID = canonicalSessionID(for: sessionId) ?? sessionId
+        guard let override = sessionYoloStore.storedOverride(
+            for: activeProfile,
+            sessionIDs: [persistedSessionID, sessionId]
+        ) else { return }
+        guard snapshot.yolo.map({ $0 != override }) ?? true else { return }
+        do {
+            if let setSessionYolo = chatResumeLifecycleOperations.setSessionYolo {
+                try await setSessionYolo(client, sessionId, override)
+            } else {
+                try await client.setSessionYolo(sessionId, enabled: override)
+            }
+            recordSessionYoloWrite(for: [sessionId, persistedSessionID])
+        } catch {
+            sessionYoloLog.error(
+                "Failed to re-assert session YOLO override \(override, privacy: .public) for \(sessionId, privacy: .public): \(error.localizedDescription, privacy: .public)"
+            )
         }
     }
 
