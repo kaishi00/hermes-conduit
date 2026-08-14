@@ -3263,6 +3263,21 @@ final class AppState: ObservableObject {
                 aliases: [requestedSessionID]
             )
         }
+        applyEffectiveYolo(
+            sessionIDsForOverride: sessionIDsForOverride,
+            snapshotYolo: authoritativeYolo ?? snapshot.yolo
+        )
+    }
+
+    /// Resolve the effective session YOLO state from the current profile
+    /// approval mode and the stored per-session override. Shared by
+    /// `applyRuntime` (snapshot reconciliation) and the Settings save path so
+    /// the indicator, the floor, and the Model Picker lock can never disagree
+    /// with the saved mode.
+    private func applyEffectiveYolo(
+        sessionIDsForOverride: [String],
+        snapshotYolo: Bool?
+    ) {
         let storedOverride = sessionYoloStore.storedOverride(
             for: activeProfile,
             sessionIDs: sessionIDsForOverride
@@ -3278,7 +3293,7 @@ final class AppState: ObservableObject {
             // flag in memory only and forgets it on restart, so AppState
             // re-asserts it after resume (see reassertSessionYolo).
             runtime.yolo = storedOverride
-        } else if let yolo = authoritativeYolo ?? snapshot.yolo {
+        } else if let yolo = snapshotYolo {
             runtime.yolo = yolo
         } else if runtime.approvalsMode != nil {
             // A known non-off profile mode with no session-level signal means
@@ -6355,10 +6370,18 @@ final class AppState: ObservableObject {
                 body: ["config": config, "profile": profile]
             )
             if key == "approvals.mode", let mode = value.textValue?.lowercased() {
-                // Mirror the saved profile mode immediately so the global floor
-                // and the Model Picker lock reflect it without waiting for the
-                // next session snapshot.
+                // Mirror the saved profile mode immediately and re-resolve the
+                // effective indicator state through the same precedence
+                // applyRuntime uses, so the floor and the picker lock take
+                // effect without waiting for the next session snapshot.
                 runtime.approvalsMode = mode
+                let requestedSessionID = activeSessionId
+                let resolvedCanonicalSessionID = canonicalSessionID(for: requestedSessionID)
+                applyEffectiveYolo(
+                    sessionIDsForOverride: [resolvedCanonicalSessionID, requestedSessionID]
+                        .compactMap { $0 },
+                    snapshotYolo: nil
+                )
             }
             return true
         } catch {

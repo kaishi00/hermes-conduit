@@ -12,6 +12,13 @@ func sessionYoloSelectionChanged(from initial: Bool?, to selected: Bool) -> Bool
     return initial != selected
 }
 
+/// Whether an approval-mode change crosses the global "off" floor boundary.
+/// Only such transitions affect the YOLO toggle; e.g. manual ↔ smart must not
+/// discard an in-progress draft.
+func yoloFloorBoundaryCrossed(from previousMode: String?, to newMode: String?) -> Bool {
+    (previousMode?.lowercased() == "off") != (newMode?.lowercased() == "off")
+}
+
 struct ModelPickerYoloDraft: Equatable {
     let initial: Bool
     let selected: Bool
@@ -88,7 +95,11 @@ struct ModelPickerView: View {
         }
         .preferredColorScheme(appState.themePreference.colorScheme)
         .onAppear { refreshYoloToggle(force: false) }
-        .onChange(of: appState.runtime.approvalsMode) { _, _ in
+        .onChange(of: appState.runtime.approvalsMode) { oldMode, newMode in
+            // Only transitions into/out of the global floor affect the toggle;
+            // other mode changes (manual ↔ smart) must not discard an
+            // in-progress draft.
+            guard yoloFloorBoundaryCrossed(from: oldMode, to: newMode) else { return }
             refreshYoloToggle(force: true)
         }
         .task { await loadModels() }
@@ -226,8 +237,13 @@ struct ModelPickerView: View {
     private var runSettingsSection: some View {
         ModelPickerSection(title: "Run settings", symbol: "slider.horizontal.3", tint: .conduitAccent) {
             Toggle("Fast mode", isOn: $fastEnabled)
-            Toggle("YOLO mode", isOn: $yoloEnabled)
-                .disabled(globalYoloFloor)
+            if globalYoloFloor {
+                Toggle("YOLO mode", isOn: $yoloEnabled)
+                    .disabled(true)
+                    .accessibilityHint("Locked on because the profile approval mode is off. Change it in Workspace & safety.")
+            } else {
+                Toggle("YOLO mode", isOn: $yoloEnabled)
+            }
             Text(yoloHelpText)
                 .font(.footnote)
                 .foregroundStyle(.secondary)

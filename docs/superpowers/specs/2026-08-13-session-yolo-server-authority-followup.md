@@ -95,8 +95,12 @@ slash command and any other caller. The override is retained in the store so it
 applies again if the profile mode changes.
 
 `runtime.approvalsMode` is refreshed from snapshots, is mirrored immediately
-when Approval mode is saved in Workspace & safety, and is reset on profile
-switch so one profile's floor cannot leak into the next.
+when Approval mode is saved in Workspace & safety (re-resolving the effective
+indicator through the same precedence `applyRuntime` uses, via the shared
+`applyEffectiveYolo` helper), and is reset on profile switch so one profile's
+floor cannot leak into the next. The picker re-seeds its draft only when the
+save or push crosses the `off` boundary — other mode changes (e.g.
+`manual ↔ smart`) leave an in-progress draft untouched.
 
 ### Settings copy
 

@@ -33,4 +33,18 @@ final class ModelPickerTests: XCTestCase {
     func testSelectionBeforeInitialLoadDoesNotPersistAnOverride() {
         XCTAssertFalse(sessionYoloSelectionChanged(from: nil, to: true))
     }
+
+    func testFloorBoundaryOnlyCrossesBetweenOffAndNonOff() {
+        // Boundary crossings re-seed the toggle.
+        XCTAssertTrue(yoloFloorBoundaryCrossed(from: nil, to: "off"))
+        XCTAssertTrue(yoloFloorBoundaryCrossed(from: "manual", to: "off"))
+        XCTAssertTrue(yoloFloorBoundaryCrossed(from: "off", to: "manual"))
+        XCTAssertTrue(yoloFloorBoundaryCrossed(from: "off", to: nil))
+        // Same-side transitions must not discard an in-progress draft.
+        XCTAssertFalse(yoloFloorBoundaryCrossed(from: nil, to: "manual"))
+        XCTAssertFalse(yoloFloorBoundaryCrossed(from: "manual", to: "smart"))
+        XCTAssertFalse(yoloFloorBoundaryCrossed(from: "smart", to: "manual"))
+        XCTAssertFalse(yoloFloorBoundaryCrossed(from: "off", to: "off"))
+        XCTAssertFalse(yoloFloorBoundaryCrossed(from: nil, to: nil))
+    }
 }
