@@ -1807,6 +1807,13 @@ struct ClarifyCard: View {
                     }
                     .padding(12)
                     .background(Color.green.opacity(0.10), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                } else if clarify.status == .answered {
+                    // Answered elsewhere (relay 409): settled, but this device's
+                    // rejected text must not display as what Hermes received —
+                    // and the disabled controls should not linger either.
+                    Text("Answered on another device")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 } else {
                     ForEach(clarify.choices) { choice in
                         Button {

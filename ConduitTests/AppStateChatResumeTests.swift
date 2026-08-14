@@ -814,6 +814,68 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(clarifyCards.first?.clarify?.requestId, "gateway-rid-1")
     }
 
+    func testLiveClarifyEventEvictsSupersededPushCardFromCache() async {
+        // The supersede must evict the push card from the presentation cache,
+        // not just the in-memory transcript: the flush re-appends still-pending
+        // stored cards, and the ids can never dedupe (gateway vs plugin-minted),
+        // so an in-memory-only removal would resurface as a duplicate
+        // answerable card after the next cold-start resume.
+        let cacheSuite = "conduit.tests.clarify-supersede-cache-\(UUID().uuidString)"
+        guard let cacheDefaults = UserDefaults(suiteName: cacheSuite) else {
+            XCTFail("Could not create isolated UserDefaults suite")
+            return
+        }
+        let cache = SessionPresentationCache(defaults: cacheDefaults)
+        defer {
+            cache.clear()
+            cacheDefaults.removePersistentDomain(forName: cacheSuite)
+        }
+        let harness = makeHarness(sessionPresentationCache: cache)
+        harness.appState.activeSessionId = "stored-a"
+        harness.appState.messages = [
+            ChatMessage(
+                id: "clarify-conduit-push-abc123",
+                role: .clarify,
+                content: "Which color?",
+                timestamp: "1",
+                clarify: ClarifyActivity(
+                    requestId: "conduit-push-abc123",
+                    question: "Which color?",
+                    choices: [ClarifyChoice(label: "Red", value: "Red")],
+                    status: .pending,
+                    answer: nil,
+                    error: nil
+                )
+            )
+        ]
+        cache.recordPendingDecision(
+            harness.appState.messages[0],
+            profile: harness.appState.activeProfile,
+            sessionIDs: ["stored-a"]
+        )
+
+        harness.appState.handleStreamEvent(
+            .clarify(
+                sessionId: "stored-a",
+                requestId: "gateway-rid-1",
+                question: "Which color?",
+                choices: [("Red", "Red")]
+            )
+        )
+
+        XCTAssertEqual(harness.appState.messages.filter { $0.role == .clarify }.count, 1)
+        let restored = cache.merge(
+            [],
+            profile: harness.appState.activeProfile,
+            sessionIDs: ["stored-a"],
+            includePendingClarifications: true
+        )
+        XCTAssertFalse(
+            restored.contains { $0.clarify?.requestId == "conduit-push-abc123" },
+            "The superseded push card must not resurface from the cache after a cold restart"
+        )
+    }
+
     func testLiveClarifyEventPreservesAnsweredPushCardHistory() async {
         let harness = makeHarness()
         harness.appState.activeSessionId = "stored-a"

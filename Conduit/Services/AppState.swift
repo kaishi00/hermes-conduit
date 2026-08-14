@@ -5465,7 +5465,7 @@ final class AppState: ObservableObject {
             case .noLongerActive:
                 messages[updatedIndex].clarify?.status = .error
                 messages[updatedIndex].clarify?.answer = nil
-                messages[updatedIndex].clarify?.error = "This question is no longer active — Hermes timed it out and continued."
+                messages[updatedIndex].clarify?.error = "This question is no longer active — it was timed out or already resolved."
             }
             cacheMessagePresentation()
         } catch {
@@ -7141,14 +7141,35 @@ final class AppState: ObservableObject {
                 // A still-pending push-delivered card for the same question is
                 // superseded by the live event (different ids: gateway vs
                 // plugin-minted), so one logical clarify never renders two
-                // answerable cards. Resolved history stays visible.
+                // answerable cards. Resolved history stays visible, and a
+                // .submitting card is left alone: its relay answer may already
+                // be in flight and will settle it by request id.
+                var supersededRequestIds: [String] = []
                 messages.removeAll { message in
                     guard let clarify = message.clarify,
                           clarify.requestId.hasPrefix(PendingDecisionPayload.relayRequestPrefix),
-                          clarify.status == .pending || clarify.status == .submitting else {
+                          clarify.status == .pending,
+                          clarify.question == question else {
                         return false
                     }
-                    return clarify.question == question
+                    supersededRequestIds.append(clarify.requestId)
+                    return true
+                }
+                // The superseded card must also leave the presentation cache —
+                // the ordinary flush re-appends still-pending stored cards, so
+                // an in-memory-only removal would resurface as a duplicate
+                // answerable card after the next cold-start resume.
+                let cacheSessionIDs = [
+                    activeSessionId,
+                    reconciliation?.requestedSessionId,
+                    reconciliation?.resolvedSessionId
+                ].compactMap { $0 }
+                for requestId in supersededRequestIds {
+                    sessionPresentationCache.removePendingDecision(
+                        key: "clarify:\(requestId)",
+                        profile: activeProfile,
+                        sessionIDs: cacheSessionIDs
+                    )
                 }
                 messages.append(ChatMessage(
                     id: "clarify-\(requestId)",

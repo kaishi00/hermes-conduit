@@ -213,7 +213,6 @@ final class PushNotificationService: ObservableObject {
             case 409:
                 return .alreadyAnsweredElsewhere
             default:
-                _ = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
                 throw RelayDecisionError.server(http.statusCode)
             }
         } catch let error as RelayDecisionError {
