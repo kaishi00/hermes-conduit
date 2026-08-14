@@ -6,7 +6,33 @@ struct ConduitNotificationTarget: Equatable, Identifiable {
     let profile: String?
     let sessionId: String
     let type: String?
+    /// Structured decision content carried alongside a decision notification.
+    /// Lets Conduit render an answerable card from the push payload alone when
+    /// the one-shot gateway stream event was missed while the app was
+    /// backgrounded. Nil for non-decision notifications.
+    let decision: PendingDecisionPayload?
     var id: String { "\(profile ?? "default"):\(sessionId):\(type ?? "")" }
+
+    init(
+        profile: String?,
+        sessionId: String,
+        type: String?,
+        decision: PendingDecisionPayload? = nil
+    ) {
+        self.profile = profile
+        self.sessionId = sessionId
+        self.type = type
+        self.decision = decision
+    }
+}
+
+/// The structured card content for a decision notification. Approval is
+/// session-keyed (`approval.respond { choice, session_id }`), so a payload
+/// carrying the session key is fully answerable. Clarify is keyed by a
+/// gateway-generated request id that no plugin hook exposes, so it is not
+/// representable here yet (see the background-arrival design doc).
+enum PendingDecisionPayload: Equatable {
+    case approval(sessionKey: String, description: String, choices: [String])
 }
 
 enum NotificationSessionResolver {
@@ -237,8 +263,37 @@ final class PushNotificationService: ObservableObject {
         return ConduitNotificationTarget(
             profile: profile?.isEmpty == false ? profile : nil,
             sessionId: sessionId,
-            type: type?.isEmpty == false ? type : nil
+            type: type?.isEmpty == false ? type : nil,
+            decision: pendingDecision(from: payload)
         )
+    }
+
+    /// Parses the structured decision content the relay forwards alongside a
+    /// decision notification (see the background-arrival design doc). Returns
+    /// nil for non-decision notifications or malformed/unknown payloads so the
+    /// notification degrades to its ordinary routing target.
+    private func pendingDecision(from payload: [String: Any]) -> PendingDecisionPayload? {
+        guard let decision = payload["decision"] as? [String: Any],
+              let kind = (decision["kind"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+              !kind.isEmpty else {
+            return nil
+        }
+        switch kind {
+        case "approval":
+            guard let sessionKey = (decision["session_key"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+                !sessionKey.isEmpty else {
+                return nil
+            }
+            let description = (decision["description"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let choices = ((decision["choices"] as? [Any])?
+                .compactMap { ($0 as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }) ?? []
+            return .approval(sessionKey: sessionKey, description: description, choices: choices)
+        default:
+            return nil
+        }
     }
 
     private func requestDeviceToken() async throws -> String {

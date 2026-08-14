@@ -274,6 +274,51 @@ final class SessionPresentationCache {
         return merged
     }
 
+    /// Records a pending decision card observed outside the live stream —
+    /// today, from a push notification's structured payload, which is the only
+    /// source for a decision raised while the app was backgrounded and missed
+    /// the one-shot gateway event. Upserts the single card into whatever is
+    /// already cached for each session (the transcript is otherwise the
+    /// gateway's source of truth), dedupes by decision key, and stamps the
+    /// bounded unconfirmed marker so a stale card expires rather than
+    /// lingering. `merge(includePendingApprovals:)` restores it on resume.
+    func recordPendingDecision(
+        _ message: ChatMessage,
+        profile: String,
+        sessionIDs: [String]
+    ) {
+        guard Self.pendingDecisionKey(for: message) != nil,
+              let targetKey = Self.decisionKey(for: message) else { return }
+        let ids = Set(sessionIDs.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })
+        guard !ids.isEmpty else { return }
+
+        var store = load()
+        let record = CachedMessage(message)
+        let stampedAt = now()
+        var changed = false
+        for id in ids {
+            let cacheKey = key(profile: profile, sessionID: id)
+            var session = store[cacheKey] ?? CachedSession(
+                updatedAt: stampedAt,
+                messages: [],
+                unconfirmedPendingDecisionAt: nil
+            )
+            // Replace any prior card for this exact decision, then append the
+            // fresh one. Other cached rows (the transcript) are untouched.
+            session.messages.removeAll { existing in
+                decisionKey(for: existing) == targetKey
+            }
+            session.messages.append(record)
+            session.unconfirmedPendingDecisionAt = session.unconfirmedPendingDecisionAt ?? stampedAt
+            session.updatedAt = stampedAt
+            store[cacheKey] = session
+            changed = true
+        }
+        guard changed else { return }
+        trim(&store)
+        persist(store)
+    }
+
     func save(
         _ messages: [ChatMessage],
         profile: String,

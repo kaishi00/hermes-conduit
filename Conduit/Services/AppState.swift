@@ -4138,6 +4138,14 @@ final class AppState: ObservableObject {
             for: requestedID,
             in: sessions + cronSessions
         )
+        // A decision raised while the app was backgrounded is delivered as a
+        // structured payload on the notification (the one-shot gateway stream
+        // event was missed). Cache it under both the runtime and resolved
+        // stored IDs so the upcoming resume's `merge` restores the card
+        // regardless of which identity the gateway resumes against.
+        if let decision = target.decision {
+            recordNotificationDecision(decision, sessionIDs: [resumableID, requestedID])
+        }
         let opened = await openSession(
             resumableID,
             reusing: transitionGeneration
@@ -4147,6 +4155,42 @@ final class AppState: ObservableObject {
             transitionGeneration: transitionGeneration
         ) else { return false }
         return opened
+    }
+
+    /// Caches a push-delivered decision card so the resume merge can restore
+    /// it. The card is recorded as pending and answerable through the existing
+    /// `respondToApproval` path; the bounded unconfirmed marker is stamped by
+    /// `SessionPresentationCache` so a stale card expires rather than lingering.
+    private func recordNotificationDecision(
+        _ decision: PendingDecisionPayload,
+        sessionIDs: [String]
+    ) {
+        switch decision {
+        case let .approval(sessionKey, description, choices):
+            let activity = ApprovalActivity(
+                sessionId: sessionKey,
+                command: "",
+                description: description,
+                choices: choices.isEmpty ? nil : choices,
+                allowPermanent: false,
+                smartDenied: false,
+                status: .pending,
+                choice: nil,
+                error: nil
+            )
+            let message = ChatMessage(
+                id: "approval-\(sessionKey)",
+                role: .approval,
+                content: description,
+                timestamp: Self.localTimestamp(),
+                approval: activity
+            )
+            sessionPresentationCache.recordPendingDecision(
+                message,
+                profile: activeProfile,
+                sessionIDs: sessionIDs
+            )
+        }
     }
 
     private func notificationOpenAttemptIsCurrent(

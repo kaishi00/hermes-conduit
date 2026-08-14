@@ -404,6 +404,153 @@ final class SessionPresentationCacheTests: XCTestCase {
         XCTAssertEqual(restoredApproval?.approval?.status, .pending)
     }
 
+    func testRecordPendingDecisionRestoresApprovalWithoutDisturbingTranscript() {
+        let suiteName = "conduit.tests.record-decision-\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Could not create isolated UserDefaults suite")
+            return
+        }
+        let cache = SessionPresentationCache(defaults: defaults)
+        let sessionId = "test-record-\(UUID().uuidString)"
+        let profile = "test"
+        defer {
+            cache.clear(profile: profile)
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        // Seed the cached transcript the way a normal save would.
+        let transcript = [
+            ChatMessage(id: "u1", role: .user, content: "please clean tmp", timestamp: "t1"),
+            ChatMessage(id: "a1", role: .assistant, content: "on it", timestamp: "t2"),
+        ]
+        cache.save(transcript, profile: profile, sessionIDs: [sessionId])
+
+        // A push delivers a pending approval card that arrived while backgrounded.
+        let approval = ApprovalActivity(
+            sessionId: sessionId,
+            command: "",
+            description: "Delete temp files",
+            choices: ["once", "deny"],
+            allowPermanent: false,
+            smartDenied: false,
+            status: .pending,
+            choice: nil,
+            error: nil
+        )
+        let card = ChatMessage(
+            id: "approval-\(sessionId)",
+            role: .approval,
+            content: "Delete temp files",
+            timestamp: "t3",
+            approval: approval
+        )
+        cache.recordPendingDecision(card, profile: profile, sessionIDs: [sessionId])
+
+        // Gateway resume replays the transcript but omits the one-shot approval event.
+        let merged = cache.merge(
+            transcript,
+            profile: profile,
+            sessionIDs: [sessionId],
+            includePendingApprovals: true
+        )
+
+        let restored = merged.first { $0.role == .approval }
+        XCTAssertEqual(restored?.approval?.sessionId, sessionId)
+        XCTAssertEqual(restored?.approval?.status, .pending)
+        // The transcript rows survive the upsert (non-destructive).
+        XCTAssertTrue(merged.contains { $0.id == "u1" })
+        XCTAssertTrue(merged.contains { $0.id == "a1" })
+    }
+
+    func testRecordPendingDecisionReplacesExistingCardForSameDecision() {
+        let suiteName = "conduit.tests.record-decision-dedupe-\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Could not create isolated UserDefaults suite")
+            return
+        }
+        let cache = SessionPresentationCache(defaults: defaults)
+        let sessionId = "test-record-dedupe-\(UUID().uuidString)"
+        let profile = "test"
+        defer {
+            cache.clear(profile: profile)
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        func card(description: String) -> ChatMessage {
+            ChatMessage(
+                id: "approval-\(sessionId)",
+                role: .approval,
+                content: description,
+                timestamp: "t",
+                approval: ApprovalActivity(
+                    sessionId: sessionId,
+                    command: "",
+                    description: description,
+                    choices: ["once", "deny"],
+                    allowPermanent: false,
+                    smartDenied: false,
+                    status: .pending,
+                    choice: nil,
+                    error: nil
+                )
+            )
+        }
+        cache.recordPendingDecision(card(description: "old"), profile: profile, sessionIDs: [sessionId])
+        cache.recordPendingDecision(card(description: "new"), profile: profile, sessionIDs: [sessionId])
+
+        let merged = cache.merge([], profile: profile, sessionIDs: [sessionId], includePendingApprovals: true)
+        let approvals = merged.filter { $0.role == .approval }
+        XCTAssertEqual(approvals.count, 1, "Recording the same decision twice must not duplicate the card")
+        XCTAssertEqual(approvals.first?.approval?.description, "new")
+    }
+
+    func testRecordPendingDecisionAppliesAcrossRuntimeAndStoredSessionIDs() {
+        let suiteName = "conduit.tests.record-decision-ids-\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Could not create isolated UserDefaults suite")
+            return
+        }
+        let cache = SessionPresentationCache(defaults: defaults)
+        let profile = "test"
+        let runtimeID = "runtime-\(UUID().uuidString)"
+        let storedID = "stored-\(UUID().uuidString)"
+        defer {
+            cache.clear(profile: profile)
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        let card = ChatMessage(
+            id: "approval-\(runtimeID)",
+            role: .approval,
+            content: "Delete temp files",
+            timestamp: "t",
+            approval: ApprovalActivity(
+                sessionId: runtimeID,
+                command: "",
+                description: "Delete temp files",
+                choices: ["once", "deny"],
+                allowPermanent: false,
+                smartDenied: false,
+                status: .pending,
+                choice: nil,
+                error: nil
+            )
+        )
+        // Written under both identities, as openNotificationTarget does.
+        cache.recordPendingDecision(card, profile: profile, sessionIDs: [storedID, runtimeID])
+
+        XCTAssertTrue(
+            cache.merge([], profile: profile, sessionIDs: [storedID], includePendingApprovals: true)
+                .contains { $0.role == .approval },
+            "Card recorded under the stored id should restore on merge"
+        )
+        XCTAssertTrue(
+            cache.merge([], profile: profile, sessionIDs: [runtimeID], includePendingApprovals: true)
+                .contains { $0.role == .approval },
+            "Card recorded under the runtime id should restore on merge"
+        )
+    }
+
     func testMergeDoesNotRestoreApprovalWhenNotRequested() {
         let cache = SessionPresentationCache.shared
         let sessionId = "test-merge-approval-off-\(UUID().uuidString)"
