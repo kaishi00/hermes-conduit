@@ -2441,11 +2441,6 @@ final class AppState: ObservableObject {
                 return false
             }
             await refreshChatResumeContext(sessionId: result.sessionId, using: client)
-            await reassertSessionYolo(
-                for: result.sessionId,
-                snapshot: result.snapshot,
-                using: client
-            )
 
             guard automaticChatResumeWorkIsCurrent(
                     automaticWorkToken,
@@ -2531,11 +2526,26 @@ final class AppState: ObservableObject {
             bufferedEvents.forEach { event in
                 applyStreamEvent(event, authoritativeYolo: bufferedYoloAuthority)
             }
-            return settleReconciliationAndPublish(
+            let settled = settleReconciliationAndPublish(
                 token,
                 automaticWorkToken: automaticWorkToken,
                 automaticSyncOperationID: automaticSyncOperationID
             )
+            if settled {
+                // Re-assert only after the ownership guard above (token,
+                // profile, client) re-validated this reconciliation and after
+                // the synchronous settle, so a profile or client switch during
+                // the suspending context refresh above cannot push a stale
+                // write through the old client for the old profile's session.
+                // The mid-RPC race is accepted: the value was chosen under
+                // verified ownership, and the next resume reconciles.
+                await reassertSessionYolo(
+                    for: result.sessionId,
+                    snapshot: result.snapshot,
+                    using: client
+                )
+            }
+            return settled
 
         } catch {
             guard automaticChatResumeWorkIsCurrent(

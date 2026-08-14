@@ -630,6 +630,60 @@ final class SessionYoloPersistenceTests: XCTestCase {
         XCTAssertEqual(store.storedOverride(for: "default", sessionID: "session-a"), true)
     }
 
+    // A profile or client switch during the suspending context refresh makes
+    // the reconciliation stale. The recovery write must abort: re-asserting
+    // through the old client could otherwise apply the wrong profile's
+    // override to the old profile's session.
+    func testResumeSkipsReassertWhenClientIsReplacedDuringContextRefresh() async {
+        let (suite, defaults) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let refreshGate = SessionYoloResumeGate()
+        let recorder = YoloSetCallRecorder()
+        let operations = ChatResumeLifecycleOperations(
+            loadCatalog: { _, _ in [self.session("session-a")] },
+            openSession: { _, sessionID in
+                SessionResumeResult(
+                    sessionId: sessionID,
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: [
+                        "running": .bool(false),
+                        "yolo": .bool(false),
+                        "approvals_mode": .string("manual")
+                    ])
+                )
+            },
+            refreshContext: { _, _ in await refreshGate.suspend() },
+            setSessionYolo: { _, sessionID, enabled in recorder.record(sessionID, enabled) }
+        )
+        let store = SessionYoloStore(defaults: defaults, storageKey: "test.session-yolo")
+        store.setOverride(true, for: "default", sessionID: "session-a")
+        let appState = makeAppState(defaults: defaults, store: store, lifecycleOperations: operations)
+        appState.sessions = [session("session-a")]
+        appState.activeSessionId = "session-a"
+        appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+
+        let resume = Task { @MainActor in
+            await appState.syncSession()
+        }
+        await refreshGate.waitUntilSuspended()
+
+        // Simulate a reconnect replacing the client while the context refresh
+        // is suspended; the in-flight reconciliation becomes stale.
+        appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://two.example", ticket: "ticket"),
+            profile: "default"
+        )
+
+        refreshGate.resume()
+        await resume.value
+
+        XCTAssertTrue(recorder.invocations.isEmpty)
+        XCTAssertEqual(store.storedOverride(for: "default", sessionID: "session-a"), true)
+    }
+
     private func makeAppState(
         defaults: UserDefaults,
         store: SessionYoloStore,
