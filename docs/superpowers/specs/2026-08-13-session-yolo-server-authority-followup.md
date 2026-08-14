@@ -56,8 +56,13 @@ then the buffered-event replay and the synchronous
 `settleReconciliationAndPublish` complete atomically, and only then — gated on
 the settle succeeding — does the re-assert fire. A profile or client switch
 during the context refresh therefore aborts the write instead of pushing a
-stale one. A residual race (a switch after the send begins) is accepted: the
-value was chosen under verified ownership and the next resume reconciles.
+stale one. The re-assert is also gated on `reconcileExplicitYolo` (a user
+write that completed since the resume began already pushed the server) and on
+a per-session in-flight marker (a user write still awaiting its RPC has not
+reached the store; re-asserting could read the pre-toggle override and land
+after the user's write). A residual race (a switch after the send begins) is
+accepted: the value was chosen under verified ownership and the next resume
+reconciles.
 
 It is a no-op under `approvalsMode == "off"` (the floor dominates), when there
 is no override, when the snapshot does not report a session-level `yolo`
@@ -106,12 +111,15 @@ applies again if the profile mode changes.
 `runtime.approvalsMode` is refreshed from snapshots, is mirrored immediately
 when Approval mode is saved in Workspace & safety (re-resolving the effective
 indicator through the same precedence `applyRuntime` uses, via the shared
-`applyEffectiveYolo` helper, carrying the session-level value through so only
-the floor/override precedence re-runs), and is reset on profile switch — along
-with neutralizing `runtime.yolo` to the safe display — so one profile's floor
-cannot leak into the next. The picker re-seeds its draft only when the save or
-push crosses the `off` boundary — other mode changes (e.g. `manual ↔ smart`)
-leave an in-progress draft untouched.
+`applyEffectiveYolo` helper, carrying the last server-reported session value —
+`lastReportedSessionYolo`, distinct from the floor-forced `runtime.yolo` — so
+only the floor/override precedence re-runs), and is reset on profile switch —
+along with neutralizing `runtime.yolo` to the safe display — so one profile's
+floor cannot leak into the next. A newly created conversation (`/new`)
+re-resolves from the profile mode instead of inheriting the previous
+session's effective indicator. The picker re-seeds its draft only when the
+save or push crosses the `off` boundary — other mode changes (e.g.
+`manual ↔ smart`) leave an in-progress draft untouched.
 
 ### Settings copy
 

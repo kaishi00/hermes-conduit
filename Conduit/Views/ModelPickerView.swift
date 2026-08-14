@@ -238,15 +238,23 @@ struct ModelPickerView: View {
         ModelPickerSection(title: "Run settings", symbol: "slider.horizontal.3", tint: .conduitAccent) {
             Toggle("Fast mode", isOn: $fastEnabled)
             if globalYoloFloor {
-                Toggle("YOLO mode", isOn: $yoloEnabled)
-                    .disabled(true)
-                    .accessibilityHint("Locked on because the profile approval mode is off. Change it in Workspace & safety.")
+                VStack(alignment: .leading, spacing: 4) {
+                    Toggle("YOLO mode", isOn: $yoloEnabled)
+                        .disabled(true)
+                    Text(yoloHelpText)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                // VoiceOver can skim past disabled controls and their separate
+                // footnotes; merge the locked toggle with its rationale so the
+                // reason is always read with the control.
+                .accessibilityElement(children: .combine)
             } else {
                 Toggle("YOLO mode", isOn: $yoloEnabled)
+                Text(yoloHelpText)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
-            Text(yoloHelpText)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
         }
     }
 

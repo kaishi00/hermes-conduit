@@ -949,6 +949,133 @@ final class SessionYoloPersistenceTests: XCTestCase {
         XCTAssertFalse(appState.runtime.yolo)
     }
 
+    // A user YOLO write that completed while the resume RPC was in flight
+    // already pushed the server; the recovery re-assert must not fire on top
+    // of it.
+    func testResumeSkipsReassertWhenUserToggledDuringResume() async {
+        let (suite, defaults) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let openGate = SessionYoloResumeGate()
+        let recorder = YoloSetCallRecorder()
+        let operations = ChatResumeLifecycleOperations(
+            loadCatalog: { _, _ in [self.session("session-a")] },
+            openSession: { _, sessionID in
+                await openGate.suspend()
+                return SessionResumeResult(
+                    sessionId: sessionID,
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: [
+                        "running": .bool(false),
+                        "yolo": .bool(false),
+                        "approvals_mode": .string("manual")
+                    ])
+                )
+            },
+            refreshContext: { _, _ in },
+            setSessionYolo: { _, sessionID, enabled in recorder.record(sessionID, enabled) }
+        )
+        let store = SessionYoloStore(defaults: defaults, storageKey: "test.session-yolo")
+        let appState = makeAppState(defaults: defaults, store: store, lifecycleOperations: operations)
+        appState.sessions = [session("session-a")]
+        appState.activeSessionId = "session-a"
+        appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+
+        let resume = Task { @MainActor in
+            await appState.syncSession()
+        }
+        await openGate.waitUntilSuspended()
+
+        // The user toggles YOLO on while the resume is suspended; the write
+        // completes (and bumps the write revision) before the resume returns.
+        let enabled = await appState.setYoloMode(true)
+        XCTAssertTrue(enabled)
+
+        openGate.resume()
+        await resume.value
+
+        // Only the user's write fired; the snapshot's stale false did not
+        // trigger a duplicate re-assert.
+        XCTAssertEqual(recorder.invocations.count, 1)
+        XCTAssertEqual(recorder.invocations.first?.enabled, true)
+        XCTAssertTrue(appState.runtime.yolo)
+        XCTAssertEqual(store.storedOverride(for: "default", sessionID: "session-a"), true)
+    }
+
+    // A user write still awaiting its RPC has not reached the store; the
+    // re-assert must not read the pre-toggle override and race the user's
+    // write with a stale value.
+    func testResumeSkipsReassertWhileUserWriteIsInFlight() async {
+        let (suite, defaults) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let writeGate = SessionYoloResumeGate()
+        let recorder = YoloSetCallRecorder()
+        let operations = ChatResumeLifecycleOperations(
+            loadCatalog: { _, _ in [self.session("session-a")] },
+            openSession: { _, sessionID in
+                SessionResumeResult(
+                    sessionId: sessionID,
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: [
+                        "running": .bool(false),
+                        "yolo": .bool(false),
+                        "approvals_mode": .string("manual")
+                    ])
+                )
+            },
+            refreshContext: { _, _ in },
+            setSessionYolo: { _, sessionID, enabled in
+                await writeGate.suspend()
+                recorder.record(sessionID, enabled)
+            }
+        )
+        let store = SessionYoloStore(defaults: defaults, storageKey: "test.session-yolo")
+        // The pre-toggle override the store still holds while the write is
+        // in flight.
+        store.setOverride(true, for: "default", sessionID: "session-a")
+        let appState = makeAppState(defaults: defaults, store: store, lifecycleOperations: operations)
+        appState.sessions = [session("session-a")]
+        appState.activeSessionId = "session-a"
+        appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+        appState.applyChatResume(SessionResumeResult(
+            sessionId: "session-a",
+            messages: [],
+            snapshot: SessionRuntimeSnapshot(object: [
+                "running": .bool(false),
+                "yolo": .bool(true),
+                "approvals_mode": .string("manual")
+            ])
+        ))
+        XCTAssertTrue(appState.runtime.yolo)
+
+        // Start the user's toggle-off; its RPC suspends inside the stub, so
+        // the store still holds the old true override.
+        let toggle = Task { @MainActor in
+            await appState.setYoloMode(false)
+        }
+        await writeGate.waitUntilSuspended()
+
+        // The resume settles while the user's write is in flight. Its
+        // snapshot disagrees with the OLD override, so only the in-flight
+        // guard can stop the re-assert from racing the user's write with a
+        // stale true.
+        await appState.syncSession()
+        XCTAssertTrue(recorder.invocations.isEmpty)
+
+        writeGate.resume()
+        await toggle.value
+
+        XCTAssertEqual(recorder.invocations.count, 1)
+        XCTAssertEqual(recorder.invocations.first?.enabled, false)
+        XCTAssertEqual(store.storedOverride(for: "default", sessionID: "session-a"), false)
+        XCTAssertFalse(appState.runtime.yolo)
+    }
+
     private func makeAppState(
         defaults: UserDefaults,
         store: SessionYoloStore,
