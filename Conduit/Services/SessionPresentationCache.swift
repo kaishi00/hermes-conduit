@@ -309,7 +309,14 @@ final class SessionPresentationCache {
                 decisionKey(for: existing) == targetKey
             }
             session.messages.append(record)
-            session.unconfirmedPendingDecisionAt = session.unconfirmedPendingDecisionAt ?? stampedAt
+            // Restart the bounded unconfirmed window from this observation.
+            // The marker is per session, and expiry strips every pending card
+            // in the session at once, so preserving an old marker would let a
+            // near-24h stamp immediately expire a decision that just arrived.
+            // (The card is also written under each session identity; an
+            // answered card can linger under an identity the answer flow did
+            // not update, but this same bounded window retires that copy.)
+            session.unconfirmedPendingDecisionAt = stampedAt
             session.updatedAt = stampedAt
             store[cacheKey] = session
             changed = true

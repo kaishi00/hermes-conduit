@@ -551,6 +551,59 @@ final class SessionPresentationCacheTests: XCTestCase {
         )
     }
 
+    func testRecordPendingDecisionRestartsExpiryWindowForFreshObservation() {
+        let suiteName = "conduit.tests.record-decision-expiry-\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Could not create isolated UserDefaults suite")
+            return
+        }
+        var now = Date(timeIntervalSince1970: 1_700_000_000)
+        let cache = SessionPresentationCache(defaults: defaults, now: { now })
+        let sessionId = "test-record-expiry-\(UUID().uuidString)"
+        let profile = "test"
+        defer {
+            cache.clear(profile: profile)
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        func card(description: String) -> ChatMessage {
+            ChatMessage(
+                id: "approval-\(sessionId)",
+                role: .approval,
+                content: description,
+                timestamp: "t",
+                approval: ApprovalActivity(
+                    sessionId: sessionId,
+                    command: "",
+                    description: description,
+                    choices: ["once", "deny"],
+                    allowPermanent: false,
+                    smartDenied: false,
+                    status: .pending,
+                    choice: nil,
+                    error: nil
+                )
+            )
+        }
+
+        // A card recorded yesterday, beyond the 24h unconfirmed window...
+        cache.recordPendingDecision(card(description: "stale"), profile: profile, sessionIDs: [sessionId])
+        // ...then a fresh push-delivered observation for the same decision today.
+        now = now.addingTimeInterval(25 * 60 * 60)
+        cache.recordPendingDecision(card(description: "fresh"), profile: profile, sessionIDs: [sessionId])
+        // An hour later the fresh card must still restore: recording it
+        // restarted the bounded window instead of inheriting yesterday's stamp.
+        now = now.addingTimeInterval(60 * 60)
+
+        let merged = cache.merge([], profile: profile, sessionIDs: [sessionId], includePendingApprovals: true)
+        let restored = merged.first { $0.role == .approval }
+        XCTAssertEqual(
+            restored?.approval?.description,
+            "fresh",
+            "A freshly recorded decision must not inherit an expired session marker"
+        )
+    }
+
     func testMergeDoesNotRestoreApprovalWhenNotRequested() {
         let cache = SessionPresentationCache.shared
         let sessionId = "test-merge-approval-off-\(UUID().uuidString)"

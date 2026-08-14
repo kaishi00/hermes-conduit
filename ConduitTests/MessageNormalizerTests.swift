@@ -233,6 +233,61 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertNil(service.pendingTarget?.decision)
     }
 
+    func testNotificationPayloadDecisionRejectedWithoutDisplayText() {
+        let service = PushNotificationService(retryDelay: .zero)
+        defer {
+            if let target = service.pendingTarget {
+                service.clearPendingTarget(target)
+            }
+        }
+        service.receiveNotificationPayload([
+            "conduit": [
+                "session_id": "session-1",
+                "type": "approval.needed",
+                "decision": [
+                    "kind": "approval",
+                    "session_key": "session-1",
+                    "description": "   ",
+                    "choices": ["once", "deny"],
+                ] as [String: Any],
+            ] as [String: Any],
+        ])
+        XCTAssertNil(service.pendingTarget?.decision, "An approval with no display text must degrade to a routing target")
+    }
+
+    func testNotificationPayloadDecisionRejectedWithoutUsableChoices() {
+        let service = PushNotificationService(retryDelay: .zero)
+        defer {
+            if let target = service.pendingTarget {
+                service.clearPendingTarget(target)
+            }
+        }
+        // Absent choices.
+        service.receiveNotificationPayload([
+            "conduit": [
+                "session_id": "session-1",
+                "type": "approval.needed",
+                "decision": ["kind": "approval", "session_key": "session-1", "description": "d"] as [String: Any],
+            ] as [String: Any],
+        ])
+        XCTAssertNil(service.pendingTarget?.decision, "Absent choices must degrade to a routing target")
+
+        // All-empty/invalid choices.
+        service.receiveNotificationPayload([
+            "conduit": [
+                "session_id": "session-1",
+                "type": "approval.needed",
+                "decision": [
+                    "kind": "approval",
+                    "session_key": "session-1",
+                    "description": "d",
+                    "choices": ["  ", ""],
+                ] as [String: Any],
+            ] as [String: Any],
+        ])
+        XCTAssertNil(service.pendingTarget?.decision, "Choices with no usable entries must degrade to a routing target")
+    }
+
     func testFailedNotificationRouteRetriesOnceThenClearsTarget() async {
         let service = PushNotificationService(retryDelay: .zero)
         service.receiveNotificationPayload([

@@ -108,43 +108,60 @@ without depending on the one-shot stream event or any new gateway RPC.
 ## Design
 
 Enrich the existing pipeline so decision **content** rides along the
-notification, then cache it on receipt (which runs from the APNs handler and
-therefore works while backgrounded). On resume, PR #54's cache-restore path
-(`SessionPresentationCache.merge` with `includePendingClarifications` /
-`includePendingApprovals`) renders the cached card.
+notification, then cache the card when the app processes that notification.
+On the subsequent resume, PR #54's cache-restore path
+(`SessionPresentationCache.merge` with `includePendingApprovals`) renders the
+cached card.
 
-This is strictly stronger than fetch-on-resume: the card is captured on the
-device the moment the push lands, so it is visible even if the user does not
-immediately open the notification, and it survives the agent's ~5-minute
-server-side prompt timeout (the card stays visible; only a late *response*
-would be rejected).
+**Scope of "receipt":** these are alert-style pushes; iOS does not wake a
+suspended app on delivery, so the payload reaches the app only when the user
+taps the notification or cold-launches from it. The card is therefore cached
+at **notification-open time** (in `openNotificationTarget`, where the session
+catalog is also available to resolve the runtime id to the stored id), not at
+banner-display time. If the user dismisses the banner and foregrounds the app
+manually, no payload is delivered to the app and the card cannot be
+reconstructed — that case would require a silent (`content-available`) push
+or the Phase 3 gateway work. Within its scope the card still survives the
+agent's ~5-minute server-side prompt timeout: once cached, the card is
+visible even though a late *response* would be rejected.
 
 ### Approval — clean and fully answerable
 
-The `pre_approval_request` hook already has everything needed:
+The `pre_approval_request` hook has what is needed for an answerable card:
+`session_key` (approvals are session-keyed; `approval.respond` takes
+`{choice, session_id}` — confirmed at `HermesClient.swift:932`, no separate
+request id required to respond), `description`, and — because the hook does
+**not** expose `allow_session`/`allow_permanent` — the always-valid
+`once`/`deny` choice subset (Hermes builds every `ApprovalRequest` with at
+least those two).
 
-- `session_key` (approvals are session-keyed; `approval.respond` takes
-  `{choice, session_id}` — confirmed at `HermesClient.swift:932`. No separate
-  request id required to respond.)
-- `command`, `description`, `pattern_key`, and the allowed choices
-  (derivable from `allow_permanent` / `smart_denied` per
-  `_emit_approval_request` in `server.py`).
+**Plugin change (shipped):** in `_pre_approval_request`, attach a structured
+`decision` object: `{kind: "approval", session_key, description,
+choices: ["once","deny"]}`. The raw `command` is intentionally **omitted** —
+it can carry secrets and the relay/APNs path is an extra egress transport.
+Observer-hook capture only; the foreground `approval.request` event path is
+untouched.
 
-**Plugin change:** in `_pre_approval_request`, include a structured
-`approval` object in the event: `{session_key, description, command (redacted),
-choices, allow_permanent}`. (Use observer-hook capture — additive, leaves the
-foreground `approval.request` event path untouched. This matches the chosen
-"Observer hook" direction.)
+**Relay change (shipped):** `relay/src/server.mjs` re-validates the decision
+at the trust boundary (kind must be `approval` and agree with the event type;
+choices whitelisted to the gateway approval vocabulary; `session_key` +
+`description` + non-empty choices required) and forwards it into the APNs
+`conduit` payload — **gated on the user's `show_previews` preference**, exactly
+like `title`/`body`, so a previews-off installation never has approval
+descriptions in the payload. If the encoded payload would exceed the ~4 KB
+APNs cap, the decision is dropped and the notification degrades to the
+routing stub.
 
-**Relay change** (`relay/src/server.mjs` in the notifier repo): accept the
-`approval` object in `validateEvent()` and forward it into the APNs `conduit`
-payload in `notificationFor()`.
-
-**iOS change:** `PushNotificationService` parses the `approval` object, builds
-an `ApprovalActivity` (status `.pending`), wraps it in a `.approval`
-`ChatMessage`, and writes it to `SessionPresentationCache.save` for that
-session on receipt. PR #54 restores it on resume; the existing
-`respondToApproval(sessionId:choice:)` answers it.
+**iOS change (shipped):** `PushNotificationService` parses the `decision`
+(strictly — an approval without display text or usable choices degrades to a
+plain routing target) onto `ConduitNotificationTarget`. When the user opens
+the notification, `AppState.openNotificationTarget` builds the `.pending`
+`ApprovalActivity` card and records it via a new non-destructive
+`SessionPresentationCache.recordPendingDecision` upsert, under both the
+notification's runtime session id and the resolved stored id, guarded so the
+decision's session key must match one of those identities. PR #54's merge
+restores it on resume; the existing `respondToApproval(sessionId:choice:)`
+answers it.
 
 ### Clarify — answerability is blocked by the gateway; only visibility is plugin-reachable
 
@@ -204,62 +221,67 @@ and clarify answerability is required).
 
 | Component | Repo | Change |
 | --- | --- | --- |
-| Notifier plugin | `kaishi00/hermes-conduit-notifier` | Add structured `clarify`/`approval` content (incl. `clarify_id` for clarify) to `input.needed`/`approval.needed` events. Clarify via tool override (option A). |
-| Relay server | `kaishi00/hermes-conduit-notifier` under `relay/` (Node.js; same repo as the plugin) | Extend `validateEvent()` + `notificationFor()` in `relay/src/server.mjs` to pass `decision` into the APNs `conduit` payload. Contract below. |
-| iOS client | `hermes-conduit` (this repo) | Parse `clarify`/`approval` from the APNs payload; build + cache the card on receipt; PR #54 restores on resume. |
+| Notifier plugin | `kaishi00/hermes-conduit-notifier` | Attach structured **approval** `decision` content (`session_key`, `description`, `once`/`deny` choices) to `approval.needed` events. Clarify is deliberately not emitted (see the Clarify section). |
+| Relay server | `kaishi00/hermes-conduit-notifier` under `relay/` (Node.js; same repo as the plugin) | `relay/src/server.mjs`: re-validate the decision (approval-only, kind↔type bound, choice whitelist) and forward it into the APNs `conduit` payload, gated on `show_previews` and the APNs size cap. Contract below. |
+| iOS client | `hermes-conduit` (this repo) | Parse `decision` from the APNs payload; record the card via `SessionPresentationCache.recordPendingDecision` when the notification is opened; PR #54 restores it on resume. |
 
-### Relay → APNs payload contract
+### Relay → APNs payload contract (shipped)
 
 Extend the existing `conduit` object. Keep `session_id`/`profile`/`type` as
-today; add an optional `decision` object:
+today; add an optional `decision` object, present only for
+`approval.needed` notifications, only when the user's `show_previews`
+preference is enabled, and only when the encoded payload stays under the
+APNs ~4 KB cap:
 
 ```jsonc
 {
   "conduit": {
-    "session_id": "<stored-or-runtime-session-id>",
+    "session_id": "<runtime session id>",
     "profile": "default",
-    "type": "input_needed",            // or "approval_needed"
-    "decision": {                       // optional; present only for decision notifications
-      "kind": "clarify",                // "clarify" | "approval"
-      "request_id": "<clarify_id>",     // clarify only (from option A)
-      "session_key": "<approval session key>", // approval only
-      "question": "Which color?",       // clarify
-      "description": "...",             // approval
-      "command": "<redacted>",          // approval, redacted
-      "choices": [                      // clarify: {label,value}; approval: ["once","session","always","deny"]
-        { "label": "Red", "value": "red" }
-      ],
-      "allow_permanent": true           // approval
+    "type": "approval.needed",
+    "decision": {                       // optional; approval only in Phase 1
+      "kind": "approval",
+      "session_key": "<approval session key>", // same value as session_id
+      "description": "Run a dangerous shell command",
+      "choices": ["once", "deny"]       // always-valid subset; hook hides allow flags
     }
   }
 }
 ```
 
-Constraints: APNs allows ~4 KB; decision payloads are tiny. **Security:** the
-approval `command` MUST be redacted before it leaves the gateway (reuse the
-gateway's `_redact_approval_command` semantics; the approval transport contract
-already treats the request as display-only/redacted). Prefer sending
-`description` over raw `command`; never echo credentials. This matters because
-the README promises no third-party data handling, and APNs/relay is an
-additional egress path.
+Deliberately **absent**: the raw `command` (can carry secrets; this is an
+extra egress transport through the relay and APNs) and `allow_permanent` /
+`smart_denied` (not exposed by the `pre_approval_request` hook — the push card
+offers only the always-accepted `once`/`deny`, while the foreground card shows
+the full server-side choice set). The relay additionally whitelists choices to
+the gateway's approval vocabulary (`once`/`session`/`always`/`deny`) and
+rejects a `clarify` decision (unanswerable from the payload — see the Clarify
+section), degrading either case to the plain routing stub.
 
-### iOS changes (this repo)
+### iOS changes (this repo, shipped)
 
-1. `PushNotificationService.notificationTarget(from:)` /
-   `receiveNotificationPayload`: parse the optional `decision` object into a
-   typed structure (mirror `ClarifyActivity` / `ApprovalActivity`).
-2. On receipt, build the corresponding `.clarify` / `.approval` `ChatMessage`
-   (status `.pending`) and persist it via `SessionPresentationCache.save`
-   (`preservePendingDecisionCards: true`, with the bounded unconfirmed marker
-   so it cannot linger forever — same safeguard PR #54 uses). This runs from
-   the APNs delivery callback, so it works while backgrounded.
-3. On resume, PR #54's `applyChatResume` → `merge` path already restores
-   cached pending cards; verify it renders a card cached this way (it should,
-   since the cache shape is identical to a live-observed card). Reconcile by
-   decision key so a later live/gateway card replaces the cached one without a
-   duplicate.
-4. Keep the existing foreground path authoritative: if a live `*.request`
-   arrives for the same key, it supersedes the cached push card.
+1. `PushNotificationService.notificationTarget(from:)`: parse the optional
+   `decision` object onto `ConduitNotificationTarget`. Strict validation — an
+   approval requires a non-empty `session_key`, non-empty `description`, and
+   at least one usable choice; anything less degrades to the plain routing
+   target (a cached card with no choices would otherwise render the approval
+   view's wider default action set, which the payload never promised).
+2. When the notification is opened, `AppState.openNotificationTarget` builds
+   the `.pending` `ApprovalActivity` card and records it via
+   `SessionPresentationCache.recordPendingDecision` — a new **non-destructive**
+   upsert that touches only the decision card (the cached transcript is
+   preserved), dedupes by decision key, and **restarts** the bounded
+   unconfirmed-expiry window from the fresh observation (a per-session marker
+   inherited from an old card would otherwise expire a brand-new decision
+   immediately). The card is written under both the runtime and resolved
+   stored session ids, and only when the decision's session key matches one
+   of those identities.
+3. On resume, PR #54's `applyChatResume` → `merge` path restores cached
+   pending cards; reconcile by decision key means a later live/gateway card
+   replaces the cached one without a duplicate.
+4. The existing foreground path stays authoritative: if a live
+   `approval.request` arrives for the same key, it supersedes the cached push
+   card.
 
 ## Open issues / decisions
 
@@ -274,11 +296,22 @@ additional egress path.
 - **Self-hosting.** Because the relay is published, self-hosters receive
   decision content too once they update. (Conduit still defaults to the shared
   `push.milim.dev` for zero-setup use.)
-- **Redaction** — must be enforced for approval `command` before it enters the
-  payload (security-sensitive egress).
-- **Coalescing** — multiple decision notifications while backgrounded: approvals
-  are one in-flight per session; clarify is keyable by `clarify_id`. Cache by
-  decision key so the latest pending card per session wins.
+- **Privacy** — the raw approval `command` never enters the payload (omitted
+  at the plugin), and the `decision` content is gated on `show_previews` at
+  the relay, matching how `title`/`body` previews already work.
+- **Receipt-time capture** — alert pushes cannot wake a suspended app, so the
+  card is cached when the notification is **opened** (tap or cold-launch via
+  the notification). Covering "dismiss the banner, foreground manually" would
+  need a silent (`content-available`) push or the Phase 3 gateway work; tracked
+  as a follow-up, not shipped.
+- **Per-card expiry** — the unconfirmed marker is per session and recording a
+  fresh card restarts it (so a new decision is never expired by an old stamp).
+  Per-card stamps and superseding an answered card across *all* cached session
+  identities (the alternate-id copy is retired only by the bounded window)
+  are follow-up refinements.
+- **Coalescing** — multiple decision notifications while backgrounded:
+  approvals are one in-flight per session, and the cache dedupes by decision
+  key so the latest pending card per session wins.
 
 ## Phasing
 
@@ -299,15 +332,21 @@ additional egress path.
 ## Acceptance tests
 
 - An approval raised while the app is backgrounded produces an APNs payload
-  whose `conduit.decision` carries description + redacted command + choices.
-- iOS, on receipt (backgrounded), writes a pending `ApprovalActivity` to the
-  session cache. Foregrounding renders the card answerable via the existing
-  `respondToApproval` path, with `turnState == .idle`.
-- A clarify raised while backgrounded yields a cached `.clarify` card carrying
-  the `clarify_id`; foregrounding renders it answerable via
-  `respondToClarification`.
-- A later live `*.request` for the same decision key supersedes the cached
-  push card without producing a duplicate.
+  whose `conduit.decision` carries `kind`/`session_key`/`description` and the
+  `once`/`deny` choices — but only when `show_previews` is enabled, and never
+  the raw `command`.
+- iOS, when the notification is opened, records a pending `ApprovalActivity`
+  to the session cache under both session identities; the resume renders the
+  card answerable via the existing `respondToApproval` path.
+- A malformed decision — missing session key, missing display text, or no
+  usable choices — is rejected on both sides and degrades to the plain
+  routing target.
+- A decision whose `session_key` does not match the routed session identity
+  is not recorded.
+- Recording a fresh card restarts the bounded expiry window; a card is never
+  expired by a stamp older than its own observation.
+- A later live `approval.request` for the same decision key supersedes the
+  cached push card without producing a duplicate.
 - An unconfirmed cached card expires after
   `SessionPresentationCache.maxUnconfirmedPendingDecisionAge`.
 - The existing `SessionPresentationCacheTests` and full XCTest suite remain

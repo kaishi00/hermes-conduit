@@ -4161,17 +4161,21 @@ final class AppState: ObservableObject {
     /// it. The card is recorded as pending and answerable through the existing
     /// `respondToApproval` path; the bounded unconfirmed marker is stamped by
     /// `SessionPresentationCache` so a stale card expires rather than lingering.
+    /// The decision's session key must match one of the routed session
+    /// identities — a mismatched key could not be answered via
+    /// `approval.respond` and would only duplicate or contradict the live card.
     private func recordNotificationDecision(
         _ decision: PendingDecisionPayload,
         sessionIDs: [String]
     ) {
         switch decision {
         case let .approval(sessionKey, description, choices):
+            guard sessionIDs.contains(sessionKey) else { return }
             let activity = ApprovalActivity(
                 sessionId: sessionKey,
                 command: "",
                 description: description,
-                choices: choices.isEmpty ? nil : choices,
+                choices: choices,
                 allowPermanent: false,
                 smartDenied: false,
                 status: .pending,

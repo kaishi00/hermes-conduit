@@ -271,7 +271,10 @@ final class PushNotificationService: ObservableObject {
     /// Parses the structured decision content the relay forwards alongside a
     /// decision notification (see the background-arrival design doc). Returns
     /// nil for non-decision notifications or malformed/unknown payloads so the
-    /// notification degrades to its ordinary routing target.
+    /// notification degrades to its ordinary routing target. An approval
+    /// requires a session key to answer, a description to display, and at
+    /// least one usable choice — otherwise a cached card could render the
+    /// approval view's default action set, which the payload never promised.
     private func pendingDecision(from payload: [String: Any]) -> PendingDecisionPayload? {
         guard let decision = payload["decision"] as? [String: Any],
               let kind = (decision["kind"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
@@ -282,14 +285,17 @@ final class PushNotificationService: ObservableObject {
         case "approval":
             guard let sessionKey = (decision["session_key"] as? String)?
                 .trimmingCharacters(in: .whitespacesAndNewlines),
-                !sessionKey.isEmpty else {
+                !sessionKey.isEmpty,
+                let description = (decision["description"] as? String)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines),
+                !description.isEmpty,
+                let rawChoices = decision["choices"] as? [Any] else {
                 return nil
             }
-            let description = (decision["description"] as? String)?
-                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            let choices = ((decision["choices"] as? [Any])?
+            let choices = rawChoices
                 .compactMap { ($0 as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) }
-                .filter { !$0.isEmpty }) ?? []
+                .filter { !$0.isEmpty }
+            guard !choices.isEmpty else { return nil }
             return .approval(sessionKey: sessionKey, description: description, choices: choices)
         default:
             return nil
