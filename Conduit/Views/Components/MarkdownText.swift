@@ -25,6 +25,7 @@ struct MarkdownText: View {
     /// to its trailing glyphs, allowing a streaming tail to fade independently
     /// while already-read text remains fully stable.
     var newestCharacterOpacities: [Double] = []
+    @StateObject private var selectionCoordinator = MarkdownSelectionCoordinator()
 
     /// True only for the actively streaming reply, whose `source` changes
     /// every frame. Settled messages (the default) populate the render cache;
@@ -40,6 +41,9 @@ struct MarkdownText: View {
             usesAccentSurface: usesAccentSurface,
             isStreaming: isStreaming
         )
+        let selectionSegments = rendering.selectableText == nil
+            ? MarkdownSelectionSegmentPlan.descriptors(for: rendering.blocks)
+            : []
 
         Group {
             if let baseText = rendering.selectableText {
@@ -60,18 +64,106 @@ struct MarkdownText: View {
                     ForEach(Array(rendering.blocks.enumerated()), id: \.offset) { index, block in
                         MarkdownBlockView(
                             block: block,
+                            blockIndex: index,
                             foregroundStyle: foregroundStyle,
                             usesAccentSurface: usesAccentSurface,
                             gatewayMediaDataURL: gatewayMediaDataURL,
+                            selectionCoordinator: selectionCoordinator,
+                            selectionSegments: selectionSegments,
                             newestCharacterOpacities: index == rendering.blocks.count - 1
                                 ? newestCharacterOpacities
                                 : []
                         )
                     }
                 }
+                .onAppear {
+                    selectionCoordinator.replaceSegments(selectionSegments, revision: source)
+                }
+                .onChange(of: source) { _, _ in
+                    selectionCoordinator.replaceSegments(selectionSegments, revision: source)
+                }
+                .modifier(MarkdownSelectionHost(coordinator: selectionCoordinator))
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+struct MarkdownSelectionHost: ViewModifier {
+    @ObservedObject var coordinator: MarkdownSelectionCoordinator
+
+    func body(content: Content) -> some View {
+        content
+            .contentShape(Rectangle())
+            .overlay {
+                MarkdownSelectionHighlightOverlay(coordinator: coordinator)
+                    .allowsHitTesting(false)
+            }
+            .simultaneousGesture(
+                TapGesture()
+                    .onEnded {
+                        coordinator.clearSelection()
+                    }
+            )
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 0, coordinateSpace: .global)
+                    .onChanged { value in
+                        guard coordinator.isSelectionGestureActive else { return }
+                        coordinator.updateSelection(windowPoint: value.location)
+                    }
+                    .onEnded { _ in
+                        guard coordinator.isSelectionGestureActive else { return }
+                        coordinator.endSelection()
+                    }
+            )
+            .onDisappear {
+                coordinator.clearSelection()
+            }
+    }
+}
+
+private struct MarkdownSelectionHighlightOverlay: UIViewRepresentable {
+    @ObservedObject var coordinator: MarkdownSelectionCoordinator
+
+    func makeUIView(context: Context) -> MarkdownSelectionHighlightView {
+        let view = MarkdownSelectionHighlightView(frame: .zero)
+        view.coordinator = coordinator
+        return view
+    }
+
+    func updateUIView(_ uiView: MarkdownSelectionHighlightView, context: Context) {
+        uiView.coordinator = coordinator
+        uiView.setNeedsDisplay()
+    }
+}
+
+private final class MarkdownSelectionHighlightView: UIView {
+    weak var coordinator: MarkdownSelectionCoordinator?
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isOpaque = false
+        backgroundColor = .clear
+        isUserInteractionEnabled = false
+        contentMode = .redraw
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func draw(_ rect: CGRect) {
+        guard let coordinator, let window else { return }
+
+        UIColor.systemBlue.withAlphaComponent(0.24).setFill()
+        for windowRect in coordinator.highlightRects(in: window) {
+            let localRect = convert(windowRect, from: window)
+            guard localRect.intersects(bounds) else { continue }
+            UIBezierPath(
+                roundedRect: localRect.intersection(bounds).insetBy(dx: -0.5, dy: -0.5),
+                cornerRadius: 2
+            ).fill()
+        }
     }
 }
 
@@ -417,9 +509,12 @@ enum MarkdownHeading {
 
 private struct MarkdownBlockView: View {
     let block: MarkdownBlock
+    let blockIndex: Int
     let foregroundStyle: Color
     let usesAccentSurface: Bool
     let gatewayMediaDataURL: ((String) async -> String?)?
+    let selectionCoordinator: MarkdownSelectionCoordinator?
+    let selectionSegments: [MarkdownSelectionSegmentDescriptor]
     let newestCharacterOpacities: [Double]
 
     var body: some View {
@@ -430,6 +525,8 @@ private struct MarkdownBlockView: View {
                 foregroundStyle: foregroundStyle,
                 usesAccentSurface: usesAccentSurface,
                 font: headingFont(level),
+                selectionCoordinator: selectionCoordinator,
+                selectionSegment: blockDescriptor,
                 trailingCharacterOpacities: newestCharacterOpacities
             )
                 .padding(.top, level <= 2 ? 6 : 2)
@@ -440,6 +537,8 @@ private struct MarkdownBlockView: View {
                 foregroundStyle: foregroundStyle,
                 usesAccentSurface: usesAccentSurface,
                 lineSpacing: 4,
+                selectionCoordinator: selectionCoordinator,
+                selectionSegment: blockDescriptor,
                 trailingCharacterOpacities: newestCharacterOpacities
             )
 
@@ -448,6 +547,8 @@ private struct MarkdownBlockView: View {
                 lines: lines,
                 foregroundStyle: foregroundStyle,
                 usesAccentSurface: usesAccentSurface,
+                selectionCoordinator: selectionCoordinator,
+                selectionSegments: blockSelectionSegments,
                 trailingCharacterOpacities: newestCharacterOpacities
             )
 
@@ -457,6 +558,8 @@ private struct MarkdownBlockView: View {
                 ordered: false,
                 foregroundStyle: foregroundStyle,
                 usesAccentSurface: usesAccentSurface,
+                selectionCoordinator: selectionCoordinator,
+                selectionSegments: blockSelectionSegments,
                 trailingCharacterOpacities: newestCharacterOpacities
             )
 
@@ -466,6 +569,8 @@ private struct MarkdownBlockView: View {
                 ordered: true,
                 foregroundStyle: foregroundStyle,
                 usesAccentSurface: usesAccentSurface,
+                selectionCoordinator: selectionCoordinator,
+                selectionSegments: blockSelectionSegments,
                 trailingCharacterOpacities: newestCharacterOpacities
             )
 
@@ -475,7 +580,10 @@ private struct MarkdownBlockView: View {
                 alignments: alignments,
                 rows: rows,
                 foregroundStyle: foregroundStyle,
-                usesAccentSurface: usesAccentSurface
+                usesAccentSurface: usesAccentSurface,
+                selectionCoordinator: selectionCoordinator,
+                blockIndex: blockIndex,
+                selectionSegments: selectionSegments
             )
 
         case .image(let url, let alt):
@@ -490,6 +598,8 @@ private struct MarkdownBlockView: View {
                 text: text,
                 foregroundStyle: foregroundStyle,
                 usesAccentSurface: usesAccentSurface,
+                selectionCoordinator: selectionCoordinator,
+                selectionSegment: blockDescriptor,
                 trailingCharacterOpacities: newestCharacterOpacities
             )
 
@@ -498,6 +608,8 @@ private struct MarkdownBlockView: View {
                 columns: columns,
                 foregroundStyle: foregroundStyle,
                 usesAccentSurface: usesAccentSurface,
+                selectionCoordinator: selectionCoordinator,
+                selectionSegments: blockSelectionSegments,
                 trailingCharacterOpacities: newestCharacterOpacities
             )
 
@@ -505,7 +617,13 @@ private struct MarkdownBlockView: View {
             if MarkdownLanguage.normalized(language) == "mermaid" {
                 MermaidBlock(source: source)
             } else {
-                ChatCodeBlock(source: source, language: language, usesAccentSurface: usesAccentSurface)
+                ChatCodeBlock(
+                    source: source,
+                    language: language,
+                    usesAccentSurface: usesAccentSurface,
+                    selectionCoordinator: selectionCoordinator,
+                    selectionSegment: selectionSegment(id: "block-\(blockIndex)-code")
+                )
             }
 
         case .divider:
@@ -519,6 +637,22 @@ private struct MarkdownBlockView: View {
     private func headingFont(_ level: Int) -> UIFont {
         MarkdownHeading.font(for: level)
     }
+
+    private var blockDescriptor: MarkdownSelectionSegmentDescriptor? {
+        selectionSegment(id: "block-\(blockIndex)")
+    }
+
+    private var blockSelectionSegments: [MarkdownSelectionSegmentDescriptor] {
+        let blockID = "block-\(blockIndex)"
+        let blockPrefix = "\(blockID)-"
+        return selectionSegments.filter { descriptor in
+            descriptor.id == blockID || descriptor.id.hasPrefix(blockPrefix)
+        }
+    }
+
+    private func selectionSegment(id: String) -> MarkdownSelectionSegmentDescriptor? {
+        selectionSegments.first { $0.id == id }
+    }
 }
 
 private struct InlineMarkdown: View {
@@ -528,6 +662,8 @@ private struct InlineMarkdown: View {
     var font: UIFont = .preferredFont(forTextStyle: .body)
     var lineSpacing: CGFloat = 0
     var maximumNumberOfLines: Int = 0
+    var selectionCoordinator: MarkdownSelectionCoordinator?
+    var selectionSegment: MarkdownSelectionSegmentDescriptor?
     var trailingCharacterOpacities: [Double] = []
 
     private var attributed: AttributedString {
@@ -553,7 +689,9 @@ private struct InlineMarkdown: View {
             textColor: usesAccentSurface ? .white : UIColor(foregroundStyle),
             lineSpacing: lineSpacing,
             maximumNumberOfLines: maximumNumberOfLines,
-            linkColor: usesAccentSurface ? .white : .link
+            linkColor: usesAccentSurface ? .white : .link,
+            selectionCoordinator: selectionCoordinator,
+            selectionSegment: selectionSegment
         )
             .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -564,6 +702,8 @@ private struct MarkdownList: View {
     let ordered: Bool
     let foregroundStyle: Color
     let usesAccentSurface: Bool
+    let selectionCoordinator: MarkdownSelectionCoordinator?
+    let selectionSegments: [MarkdownSelectionSegmentDescriptor]
     var trailingCharacterOpacities: [Double] = []
 
     var body: some View {
@@ -588,6 +728,8 @@ private struct MarkdownList: View {
                         foregroundStyle: foregroundStyle,
                         usesAccentSurface: usesAccentSurface,
                         lineSpacing: 3,
+                        selectionCoordinator: selectionCoordinator,
+                        selectionSegment: selectionSegments.indices.contains(index) ? selectionSegments[index] : nil,
                         trailingCharacterOpacities: index == items.count - 1
                             ? trailingCharacterOpacities
                             : []
@@ -602,6 +744,8 @@ private struct MarkdownQuote: View {
     let lines: [MarkdownQuoteLine]
     let foregroundStyle: Color
     let usesAccentSurface: Bool
+    let selectionCoordinator: MarkdownSelectionCoordinator?
+    let selectionSegments: [MarkdownSelectionSegmentDescriptor]
     var trailingCharacterOpacities: [Double] = []
 
     private var callout: (kind: String, text: String)? {
@@ -619,6 +763,8 @@ private struct MarkdownQuote: View {
                 text: callout.text,
                 foregroundStyle: foregroundStyle,
                 usesAccentSurface: usesAccentSurface,
+                selectionCoordinator: selectionCoordinator,
+                selectionSegment: selectionSegments.first,
                 trailingCharacterOpacities: trailingCharacterOpacities
             )
         } else {
@@ -636,6 +782,8 @@ private struct MarkdownQuote: View {
                             usesAccentSurface: usesAccentSurface,
                             font: UIFont.preferredFont(forTextStyle: .body).withTraits(.traitItalic),
                             lineSpacing: 3,
+                            selectionCoordinator: selectionCoordinator,
+                            selectionSegment: selectionSegments.indices.contains(index) ? selectionSegments[index] : nil,
                             trailingCharacterOpacities: index == lines.count - 1
                                 ? trailingCharacterOpacities
                                 : []
@@ -658,6 +806,8 @@ private struct MarkdownCallout: View {
     let text: String
     let foregroundStyle: Color
     let usesAccentSurface: Bool
+    let selectionCoordinator: MarkdownSelectionCoordinator?
+    let selectionSegment: MarkdownSelectionSegmentDescriptor?
     var trailingCharacterOpacities: [Double] = []
 
     private var detail: (title: String, icon: String, color: Color) {
@@ -680,6 +830,8 @@ private struct MarkdownCallout: View {
                 foregroundStyle: foregroundStyle,
                 usesAccentSurface: usesAccentSurface,
                 lineSpacing: 3,
+                selectionCoordinator: selectionCoordinator,
+                selectionSegment: selectionSegment,
                 trailingCharacterOpacities: trailingCharacterOpacities
             )
         }
@@ -696,6 +848,8 @@ private struct MarkdownColumns: View {
     let columns: [String]
     let foregroundStyle: Color
     let usesAccentSurface: Bool
+    let selectionCoordinator: MarkdownSelectionCoordinator?
+    let selectionSegments: [MarkdownSelectionSegmentDescriptor]
     var trailingCharacterOpacities: [Double] = []
 
     var body: some View {
@@ -706,6 +860,8 @@ private struct MarkdownColumns: View {
                     foregroundStyle: foregroundStyle,
                     usesAccentSurface: usesAccentSurface,
                     lineSpacing: 3,
+                    selectionCoordinator: selectionCoordinator,
+                    selectionSegment: selectionSegments.indices.contains(index) ? selectionSegments[index] : nil,
                     trailingCharacterOpacities: index == columns.count - 1
                         ? trailingCharacterOpacities
                         : []
@@ -734,14 +890,17 @@ private struct MarkdownTable: View {
     let rows: [[String]]
     let foregroundStyle: Color
     let usesAccentSurface: Bool
+    let selectionCoordinator: MarkdownSelectionCoordinator?
+    let blockIndex: Int
+    let selectionSegments: [MarkdownSelectionSegmentDescriptor]
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
-                tableRow(headers, isHeader: true)
-                ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                tableRow(headers, rowIndex: 0, isHeader: true)
+                ForEach(Array(rows.enumerated()), id: \.offset) { rowOffset, row in
                     Divider().overlay(usesAccentSurface ? Color.white.opacity(0.22) : Color.secondary.opacity(0.18))
-                    tableRow(row, isHeader: false)
+                    tableRow(row, rowIndex: rowOffset + 1, isHeader: false)
                 }
             }
             .background(
@@ -755,7 +914,7 @@ private struct MarkdownTable: View {
         }
     }
 
-    private func tableRow(_ cells: [String], isHeader: Bool) -> some View {
+    private func tableRow(_ cells: [String], rowIndex: Int, isHeader: Bool) -> some View {
         HStack(spacing: 0) {
             ForEach(Array(cells.enumerated()), id: \.offset) { index, cell in
                 InlineMarkdown(
@@ -765,7 +924,9 @@ private struct MarkdownTable: View {
                     font: isHeader
                         ? UIFont.preferredFont(forTextStyle: .caption1).withTraits(.traitBold)
                         : UIFont.preferredFont(forTextStyle: .footnote),
-                    maximumNumberOfLines: 4
+                    maximumNumberOfLines: 4,
+                    selectionCoordinator: selectionCoordinator,
+                    selectionSegment: selectionSegment(row: rowIndex, column: index)
                 )
                     .frame(minWidth: 112, maxWidth: 220, alignment: alignment(at: index).swiftUI)
                     .padding(.horizontal, 10)
@@ -779,6 +940,11 @@ private struct MarkdownTable: View {
 
     private func alignment(at index: Int) -> MarkdownTableAlignment {
         alignments.indices.contains(index) ? alignments[index] : .leading
+    }
+
+    private func selectionSegment(row: Int, column: Int) -> MarkdownSelectionSegmentDescriptor? {
+        let id = "block-\(blockIndex)-table-r\(row)-c\(column)"
+        return selectionSegments.first { $0.id == id }
     }
 }
 
@@ -1139,6 +1305,8 @@ struct ChatCodeBlock: View {
     let source: String
     var language: String = ""
     var usesAccentSurface = false
+    var selectionCoordinator: MarkdownSelectionCoordinator?
+    var selectionSegment: MarkdownSelectionSegmentDescriptor?
     @State private var copied = false
 
     private var normalizedLanguage: String { MarkdownLanguage.normalized(language) }
@@ -1171,7 +1339,9 @@ struct ChatCodeBlock: View {
                             font: .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .footnote).pointSize, weight: .regular),
                             textColor: UIColor.white.withAlphaComponent(0.96),
                             lineSpacing: 3,
-                            wrapsLines: false
+                            wrapsLines: false,
+                            selectionCoordinator: selectionCoordinator,
+                            selectionSegment: selectionSegment
                         )
                     } else {
                         SelectableTextView(
@@ -1179,7 +1349,9 @@ struct ChatCodeBlock: View {
                             font: .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .footnote).pointSize, weight: .regular),
                             textColor: .label,
                             lineSpacing: 3,
-                            wrapsLines: false
+                            wrapsLines: false,
+                            selectionCoordinator: selectionCoordinator,
+                            selectionSegment: selectionSegment
                         )
                     }
                 }
@@ -1545,7 +1717,7 @@ enum MarkdownParser {
     }
 }
 
-private enum MarkdownLanguage {
+enum MarkdownLanguage {
     static func normalized(_ value: String) -> String {
         switch value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
         case "", "text", "plaintext": return "plain"

@@ -22,6 +22,7 @@ struct ChatView: View {
     @State private var renderedTranscriptRevision: UInt64 = 0
     @State private var renderedViewportTransitionGeneration: UInt64 = 0
     @State private var viewportSnapshotProviderID = UUID()
+    @State private var scrollOwnerState = ChatScrollOwnerState()
     @GestureState private var isDraggingChat = false
     @State private var chatDragLifecycle = ChatDragLifecycleState()
     @State private var chatDragCompletionToken: ChatDragCompletionToken?
@@ -41,11 +42,25 @@ struct ChatView: View {
         return fallback.isValid ? fallback : nil
     }
 
-    private var bottomAnchor: String {
-        let scope = activeScrollSessionKey ?? ChatScrollSessionKey(
+    private var activeOrFallbackScrollSessionKey: ChatScrollSessionKey {
+        activeScrollSessionKey ?? ChatScrollSessionKey(
             profile: appState.activeProfile,
             sessionID: "new"
         )
+    }
+
+    private var topAnchor: String {
+        ChatTitleScrollAnchor.id(for: activeOrFallbackScrollSessionKey)
+    }
+
+    private var renderedTopAnchor: String {
+        ChatTitleScrollAnchor.id(
+            for: renderedScrollSessionKey ?? activeOrFallbackScrollSessionKey
+        )
+    }
+
+    private var bottomAnchor: String {
+        let scope = activeOrFallbackScrollSessionKey
         return "chat-latest-\(scope.profile)-\(scope.sessionID)"
     }
 
@@ -76,6 +91,10 @@ struct ChatView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 18) {
+                        Color.clear
+                            .frame(height: 1)
+                            .id(topAnchor)
+
                         if appState.messages.isEmpty {
                             EmptyChatState().padding(.top, 60)
                         }
@@ -187,16 +206,14 @@ struct ChatView: View {
                                 return nil
                             }
                             let followsLatest = followsLatestState.wrappedValue
-                            let target = targetCacheState.wrappedValue.targets.first {
-                                $0.id == topVisibleChatIDState.wrappedValue
-                            }
-                            guard followsLatest || target != nil else { return nil }
-                            let snapshot = ChatScrollSnapshot(
-                                anchorMessageID: followsLatest ? nil : target?.semanticID,
+                            guard let snapshot = ChatTitleScrollViewportSnapshot.make(
                                 followsLatest: followsLatest,
-                                anchorMetadata: followsLatest ? nil : target?.restorationMetadata,
-                                anchorSourceMessageID: followsLatest ? nil : target?.id
-                            )
+                                topVisibleID: topVisibleChatIDState.wrappedValue,
+                                topAnchorID: ChatTitleScrollAnchor.id(for: sessionKey),
+                                targets: targetCacheState.wrappedValue.targets
+                            ) else {
+                                return nil
+                            }
                             return ChatRenderedViewportSnapshot(
                                 sessionKey: sessionKey,
                                 snapshot: snapshot
@@ -293,9 +310,16 @@ struct ChatView: View {
                     followsLatest = true
                     scrollToLatest(using: proxy)
                 }
+                .onChange(of: appState.chatScrollToTopRequest) { _, request in
+                    invalidateChatDrag()
+                    cancelAutomaticRestoration()
+                    followsLatest = false
+                    scrollToTop(using: proxy, request: request)
+                }
                 .onChange(of: appState.activeSessionId) { oldSessionID, newSessionID in
                     guard !appState.isOpeningNotificationSession else {
                         invalidateChatDrag()
+                        scrollOwnerState.invalidateForSessionTransition()
                         cancelAutomaticRestoration()
                         notificationHandoffPending = true
                         notificationHandoffSessionKey = activeScrollSessionKey
@@ -316,6 +340,7 @@ struct ChatView: View {
                     let keysAreEquivalent = identity.areEquivalent(oldKey, newKey)
                     if !keysAreEquivalent {
                         invalidateChatDrag()
+                        scrollOwnerState.invalidateForSessionTransition()
                     }
                     renderedScrollSessionKey = newKey
                     if followsLatest {
@@ -332,6 +357,7 @@ struct ChatView: View {
                 }
                 .onChange(of: appState.activeProfile) { _, _ in
                     invalidateChatDrag()
+                    scrollOwnerState.invalidateForSessionTransition()
                     let oldKey = renderedScrollSessionKey
                     let newKey = activeScrollSessionKey
                     if let request = appState.chatResumeRestorationRequest,
@@ -374,6 +400,7 @@ struct ChatView: View {
                 .onChange(of: appState.isOpeningNotificationSession) { _, isOpening in
                     if isOpening {
                         invalidateChatDrag()
+                        scrollOwnerState.invalidateForSessionTransition()
                         cancelAutomaticRestoration()
                         notificationHandoffPending = true
                         notificationHandoffSessionKey = nil
@@ -447,15 +474,11 @@ struct ChatView: View {
     }
 
     private func currentChatViewportSnapshot() -> ChatScrollSnapshot? {
-        let anchorTarget = chatMessageScrollTargetCache.targets.first {
-            $0.id == topVisibleChatID
-        }
-        guard followsLatest || anchorTarget != nil else { return nil }
-        return ChatScrollSnapshot(
-            anchorMessageID: followsLatest ? nil : anchorTarget?.semanticID,
+        ChatTitleScrollViewportSnapshot.make(
             followsLatest: followsLatest,
-            anchorMetadata: followsLatest ? nil : anchorTarget?.restorationMetadata,
-            anchorSourceMessageID: followsLatest ? nil : anchorTarget?.id
+            topVisibleID: topVisibleChatID,
+            topAnchorID: renderedTopAnchor,
+            targets: chatMessageScrollTargetCache.targets
         )
     }
 
@@ -480,6 +503,7 @@ struct ChatView: View {
             sessionKey: renderedScrollSessionKey ?? activeScrollSessionKey,
             viewportTransitionGeneration: appState.chatViewportTransitionGeneration
         ) else { return }
+        scrollOwnerState.invalidateForUserDrag()
         chatDragCompletionToken = nil
         cancelAutomaticRestoration()
         followsLatest = false
@@ -663,8 +687,10 @@ struct ChatView: View {
 
     private func scrollToLatest(using proxy: ScrollViewProxy) {
         guard !hasPendingRestoration else { return }
+        let ownerToken = scrollOwnerState.claimLatest()
+        let anchorID = bottomAnchor
         withAnimation(ConduitMotion.response) {
-            proxy.scrollTo(bottomAnchor, anchor: .bottom)
+            proxy.scrollTo(anchorID, anchor: .bottom)
         }
         // Retry after a short delay: proxy.scrollTo is a silent no-op if the
         // bottom anchor row isn't materialized yet (LazyVStack on a long
@@ -672,9 +698,39 @@ struct ChatView: View {
         // messages arrive on the same main-actor turn.
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(150))
-            guard !Task.isCancelled, !hasPendingRestoration else { return }
+            guard let retryAnchor = scrollOwnerState.latestRetryAnchor(
+                for: ownerToken,
+                currentAnchor: bottomAnchor,
+                followsLatest: followsLatest,
+                hasPendingRestoration: hasPendingRestoration,
+                isCancelled: Task.isCancelled
+            ) else { return }
             withAnimation(ConduitMotion.response) {
-                proxy.scrollTo(bottomAnchor, anchor: .bottom)
+                proxy.scrollTo(retryAnchor, anchor: .bottom)
+            }
+        }
+    }
+
+    private func scrollToTop(using proxy: ScrollViewProxy, request: Int) {
+        let ownerToken = scrollOwnerState.claimTop(request: request)
+        let anchorID = topAnchor
+        var transaction = Transaction()
+        transaction.animation = nil
+        withTransaction(transaction) {
+            proxy.scrollTo(anchorID, anchor: .top)
+        }
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(150))
+            guard let retryAnchor = scrollOwnerState.topRetryAnchor(
+                for: ownerToken,
+                currentRequest: appState.chatScrollToTopRequest,
+                currentAnchor: topAnchor,
+                isCancelled: Task.isCancelled
+            ) else { return }
+            var transaction = Transaction()
+            transaction.animation = nil
+            withTransaction(transaction) {
+                proxy.scrollTo(retryAnchor, anchor: .top)
             }
         }
     }
@@ -706,12 +762,28 @@ struct ChatView: View {
         cancelAutomaticRestoration()
         let shouldFollowLatest = ChatFollowLatestRelatchPolicy
             .shouldFollowLatestAfterTransition(isDragging: isDraggingChat)
-        followsLatest = shouldFollowLatest
-        guard shouldFollowLatest else { return }
-        var transaction = Transaction()
-        transaction.animation = nil
-        withTransaction(transaction) {
-            proxy.scrollTo(bottomAnchor, anchor: .bottom)
+        switch scrollOwnerState.handoffCompletionAction(
+            currentTopRequest: appState.chatScrollToTopRequest,
+            currentTopAnchor: topAnchor,
+            shouldFollowLatest: shouldFollowLatest
+        ) {
+        case .top:
+            followsLatest = false
+            // The handoff completes once the destination's bottom-marker
+            // geometry arrives, but the lazy top anchor may not be laid out
+            // yet. Use the retry-capable path so the viewport still lands at
+            // the top once the anchor materializes.
+            scrollToTop(using: proxy, request: appState.chatScrollToTopRequest)
+        case .latest:
+            followsLatest = true
+            _ = scrollOwnerState.claimLatest()
+            var transaction = Transaction()
+            transaction.animation = nil
+            withTransaction(transaction) {
+                proxy.scrollTo(bottomAnchor, anchor: .bottom)
+            }
+        case .none:
+            followsLatest = false
         }
     }
 
@@ -731,6 +803,19 @@ struct ChatView: View {
     /// near-bottom window each streamed delta would yank the scroll back to
     /// the bottom, fighting the drag.
     private func relatchFollowsLatestIfSettled() {
+        if scrollOwnerState.hasActiveTopOwner(
+            currentRequest: appState.chatScrollToTopRequest
+        ) {
+            // A title tap pins the viewport near the top so the user can read
+            // back up the thread without streamed deltas yanking them to the
+            // bottom. Once they return near the bottom, hand ownership back to
+            // "latest" so auto-follow of new messages resumes instead of staying
+            // suppressed for the rest of the session. (A finger drag already
+            // clears this owner via beginChatDragIfNeeded; this covers the
+            // non-drag paths, e.g. short conversations where top ≈ bottom.)
+            guard isNearBottom else { return }
+            scrollOwnerState.claimLatest()
+        }
         if ChatFollowLatestRelatchPolicy.shouldRelatch(
             isNearBottom: isNearBottom,
             hasPendingRestoration: hasPendingRestoration,
@@ -740,6 +825,151 @@ struct ChatView: View {
         ) {
             followsLatest = true
         }
+    }
+}
+
+enum ChatTitleScrollAnchor {
+    static func id(for sessionKey: ChatScrollSessionKey) -> String {
+        "chat-top-\(sessionKey.profile)-\(sessionKey.sessionID)"
+    }
+}
+
+enum ChatScrollOwner: Equatable {
+    case latest
+    case explicitTop(request: Int)
+    case userDrag
+    case sessionTransition
+}
+
+struct ChatScrollOwnerToken: Equatable {
+    let generation: UInt64
+    let owner: ChatScrollOwner
+}
+
+enum ChatHandoffCompletionAction: Equatable {
+    case top(anchorID: String)
+    case latest
+    case none
+}
+
+struct ChatScrollOwnerState: Equatable {
+    private(set) var generation: UInt64 = 0
+    private(set) var owner: ChatScrollOwner = .latest
+
+    @discardableResult
+    mutating func claimLatest() -> ChatScrollOwnerToken {
+        advance(to: .latest)
+    }
+
+    @discardableResult
+    mutating func claimTop(request: Int) -> ChatScrollOwnerToken {
+        advance(to: .explicitTop(request: request))
+    }
+
+    mutating func invalidateForUserDrag() {
+        advance(to: .userDrag)
+    }
+
+    mutating func invalidateForSessionTransition() {
+        advance(to: .sessionTransition)
+    }
+
+    func hasActiveTopOwner(currentRequest: Int) -> Bool {
+        guard case .explicitTop(let request) = owner else { return false }
+        return request == currentRequest
+    }
+
+    func topRetryAnchor(
+        for token: ChatScrollOwnerToken,
+        currentRequest: Int,
+        currentAnchor: String,
+        isCancelled: Bool
+    ) -> String? {
+        guard !isCancelled,
+              token == currentToken,
+              hasActiveTopOwner(currentRequest: currentRequest) else {
+            return nil
+        }
+        return currentAnchor
+    }
+
+    func latestRetryAnchor(
+        for token: ChatScrollOwnerToken,
+        currentAnchor: String,
+        followsLatest: Bool,
+        hasPendingRestoration: Bool,
+        isCancelled: Bool
+    ) -> String? {
+        guard !isCancelled,
+              token == currentToken,
+              owner == .latest,
+              followsLatest,
+              !hasPendingRestoration else {
+            return nil
+        }
+        return currentAnchor
+    }
+
+    func handoffCompletionAction(
+        currentTopRequest: Int,
+        currentTopAnchor: String,
+        shouldFollowLatest: Bool
+    ) -> ChatHandoffCompletionAction {
+        if hasActiveTopOwner(currentRequest: currentTopRequest) {
+            return .top(anchorID: currentTopAnchor)
+        }
+        return shouldFollowLatest ? .latest : .none
+    }
+
+    private var currentToken: ChatScrollOwnerToken {
+        ChatScrollOwnerToken(generation: generation, owner: owner)
+    }
+
+    @discardableResult
+    private mutating func advance(to nextOwner: ChatScrollOwner) -> ChatScrollOwnerToken {
+        generation &+= 1
+        owner = nextOwner
+        return currentToken
+    }
+}
+
+enum ChatTitleScrollViewportSnapshot {
+    static func make(
+        followsLatest: Bool,
+        topVisibleID: String?,
+        topAnchorID: String,
+        targets: [ChatMessageScrollTarget]
+    ) -> ChatScrollSnapshot? {
+        if followsLatest {
+            return ChatScrollSnapshot(
+                anchorMessageID: nil,
+                followsLatest: true
+            )
+        }
+        guard let target = visibleTarget(
+            topVisibleID: topVisibleID,
+            topAnchorID: topAnchorID,
+            targets: targets
+        ) else {
+            return nil
+        }
+        return ChatScrollSnapshot(
+            anchorMessageID: target.semanticID,
+            followsLatest: false,
+            anchorMetadata: target.restorationMetadata,
+            anchorSourceMessageID: target.id
+        )
+    }
+
+    private static func visibleTarget(
+        topVisibleID: String?,
+        topAnchorID: String,
+        targets: [ChatMessageScrollTarget]
+    ) -> ChatMessageScrollTarget? {
+        if topVisibleID == topAnchorID {
+            return targets.first
+        }
+        return targets.first { $0.id == topVisibleID }
     }
 }
 

@@ -26,6 +26,7 @@ struct ComposerPasteTextView: UIViewRepresentable {
     let enabled: Bool
     let onPastedImage: (PastedImage) -> Void
     let onPastedImageError: (String) -> Void
+    let editorIdentity: UUID
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -46,6 +47,7 @@ struct ComposerPasteTextView: UIViewRepresentable {
         view.keyboardDismissMode = .interactive
         view.minimumReportedHeight = Self.minimumHeight
         view.maximumReportedHeight = Self.maximumHeight
+        view.editorIdentity = editorIdentity
         view.onContentHeightChange = { height in
             context.coordinator.updateMeasuredHeight(height)
         }
@@ -54,10 +56,16 @@ struct ComposerPasteTextView: UIViewRepresentable {
         return view
     }
 
+    static func dismantleUIView(_ uiView: ImagePasteTextView, coordinator: Coordinator) {
+        coordinator.deactivate(textView: uiView)
+    }
+
     func updateUIView(_ uiView: ImagePasteTextView, context: Context) {
         context.coordinator.parent = self
-        if uiView.text != text { uiView.text = text }
+        context.coordinator.isActive = true
+        context.coordinator.apply(text: text, editorIdentity: editorIdentity, to: uiView)
         uiView.isEditable = enabled
+        uiView.editorIdentity = editorIdentity
         uiView.onContentHeightChange = { height in
             context.coordinator.updateMeasuredHeight(height)
         }
@@ -70,20 +78,75 @@ struct ComposerPasteTextView: UIViewRepresentable {
 
     final class Coordinator: NSObject, UITextViewDelegate {
         var parent: ComposerPasteTextView
+        var isApplyingProgrammaticState = false
+        var isActive = true
+        private var editorIdentity: UUID?
 
         init(_ parent: ComposerPasteTextView) { self.parent = parent }
 
         func textViewDidChange(_ textView: UITextView) {
+            guard isActive, !isApplyingProgrammaticState else { return }
             parent.text = textView.text
             textView.scrollRangeToVisible(textView.selectedRange)
             textView.setNeedsLayout()
         }
-        func textViewDidBeginEditing(_ textView: UITextView) { parent.isFocused = true }
-        func textViewDidEndEditing(_ textView: UITextView) { parent.isFocused = false }
+        func textViewDidBeginEditing(_ textView: UITextView) {
+            guard isActive, !isApplyingProgrammaticState else { return }
+            parent.isFocused = true
+        }
+        func textViewDidEndEditing(_ textView: UITextView) {
+            guard isActive, !isApplyingProgrammaticState else { return }
+            parent.isFocused = false
+        }
 
         func updateMeasuredHeight(_ height: CGFloat) {
+            guard isActive else { return }
             guard abs(parent.measuredHeight - height) > 0.5 else { return }
             parent.measuredHeight = height
+        }
+
+        func apply(text: String, editorIdentity: UUID, to textView: UITextView) {
+            let needsTextUpdate = textView.text != text
+            let needsIdentityUpdate = self.editorIdentity != editorIdentity
+            guard needsTextUpdate || needsIdentityUpdate else { return }
+
+            let clampedSelection = clampedSelectionRange(
+                textView.selectedRange,
+                maxLength: (text as NSString).length
+            )
+
+            isApplyingProgrammaticState = true
+            defer {
+                isApplyingProgrammaticState = false
+                self.editorIdentity = editorIdentity
+            }
+
+            textView.text = text
+            textView.selectedRange = clampedSelection
+            textView.setNeedsLayout()
+        }
+
+        func deactivate(textView: UITextView) {
+            isActive = false
+            isApplyingProgrammaticState = false
+            editorIdentity = nil
+            textView.delegate = nil
+            if let textView = textView as? ImagePasteTextView {
+                textView.editorIdentity = nil
+                textView.onContentHeightChange = nil
+                textView.onPastedImage = nil
+                textView.onPastedImageError = nil
+            }
+            if textView.isFirstResponder {
+                textView.resignFirstResponder()
+            }
+        }
+
+        private func clampedSelectionRange(_ range: NSRange, maxLength: Int) -> NSRange {
+            let location = min(max(range.location, 0), maxLength)
+            let remaining = max(0, maxLength - location)
+            let length = min(max(range.length, 0), remaining)
+            return NSRange(location: location, length: length)
         }
     }
 }
@@ -92,6 +155,7 @@ final class ImagePasteTextView: UITextView {
     var onPastedImage: ((PastedImage) -> Void)?
     var onPastedImageError: ((String) -> Void)?
     var onContentHeightChange: ((CGFloat) -> Void)?
+    var editorIdentity: UUID?
     var minimumReportedHeight: CGFloat = 44
     var maximumReportedHeight: CGFloat = 160
     private var lastReportedHeight: CGFloat = 0
@@ -204,25 +268,39 @@ final class ImagePasteTextView: UITextView {
             return
         }
 
+        let pasteEditorIdentity = editorIdentity
         if let imageType = imageTypeIdentifier(for: provider) {
             provider.loadDataRepresentation(forTypeIdentifier: imageType) { [weak self] data, error in
                 guard let data, !data.isEmpty else {
                     if provider.canLoadObject(ofClass: UIImage.self) {
-                        self?.loadImageObject(from: provider, fallbackError: error)
+                        self?.loadImageObject(
+                            from: provider,
+                            fallbackError: error,
+                            editorIdentity: pasteEditorIdentity
+                        )
                     } else {
-                        self?.reportImageLoadFailure(error)
+                        self?.reportImageLoadFailure(error, editorIdentity: pasteEditorIdentity)
                     }
                     return
                 }
-                self?.deliverImageData(data, typeIdentifier: imageType)
+                self?.deliverImageData(
+                    data,
+                    typeIdentifier: imageType,
+                    editorIdentity: pasteEditorIdentity
+                )
             }
             return
         }
 
-        loadImageObject(from: provider)
+        loadImageObject(from: provider, editorIdentity: pasteEditorIdentity)
     }
 
-    private func loadImageObject(from provider: NSItemProvider, fallbackError: Error? = nil) {
+    private func loadImageObject(
+        from provider: NSItemProvider,
+        fallbackError: Error? = nil,
+        editorIdentity pasteEditorIdentity: UUID? = nil
+    ) {
+        let pasteEditorIdentity = pasteEditorIdentity ?? editorIdentity
         // Spell out the protocol existential so Swift selects the
         // NSItemProviderReading overload. The inferred generic overload on
         // newer SDKs expects UIImage to be _ObjectiveCBridgeable and fails
@@ -231,20 +309,32 @@ final class ImagePasteTextView: UITextView {
             guard let image = object as? UIImage,
                   let data = image.pngData(),
                   !data.isEmpty else {
-                self?.reportImageLoadFailure(error ?? fallbackError)
+                self?.reportImageLoadFailure(
+                    error ?? fallbackError,
+                    editorIdentity: pasteEditorIdentity
+                )
                 return
             }
-            self?.deliverImageData(data, typeIdentifier: UTType.png.identifier)
+            self?.deliverImageData(
+                data,
+                typeIdentifier: UTType.png.identifier,
+                editorIdentity: pasteEditorIdentity
+            )
         }
     }
 
-    private func deliverImageData(_ data: Data, typeIdentifier: String) {
+    private func deliverImageData(
+        _ data: Data,
+        typeIdentifier: String,
+        editorIdentity pasteEditorIdentity: UUID? = nil
+    ) {
+        let pasteEditorIdentity = pasteEditorIdentity ?? editorIdentity
         let pastedImage: PastedImage
         if typeIdentifier == UTType.image.identifier {
             guard let image = UIImage(data: data),
                   let normalizedData = image.pngData(),
                   !normalizedData.isEmpty else {
-                reportImageNormalizationFailure()
+                reportImageNormalizationFailure(editorIdentity: pasteEditorIdentity)
                 return
             }
             pastedImage = PastedImage(
@@ -256,20 +346,28 @@ final class ImagePasteTextView: UITextView {
         }
 
         DispatchQueue.main.async { [weak self] in
-            self?.onPastedImage?(pastedImage)
+            guard let self, self.editorIdentity == pasteEditorIdentity else { return }
+            self.onPastedImage?(pastedImage)
         }
     }
 
-    private func reportImageNormalizationFailure() {
+    private func reportImageNormalizationFailure(editorIdentity pasteEditorIdentity: UUID? = nil) {
+        let pasteEditorIdentity = pasteEditorIdentity ?? editorIdentity
         DispatchQueue.main.async { [weak self] in
-            self?.onPastedImageError?("The image provider returned invalid image data.")
+            guard let self, self.editorIdentity == pasteEditorIdentity else { return }
+            self.onPastedImageError?("The image provider returned invalid image data.")
         }
     }
 
-    private func reportImageLoadFailure(_ error: Error?) {
+    private func reportImageLoadFailure(
+        _ error: Error?,
+        editorIdentity pasteEditorIdentity: UUID? = nil
+    ) {
+        let pasteEditorIdentity = pasteEditorIdentity ?? editorIdentity
         let message = error?.localizedDescription ?? "The image provider returned no data."
         DispatchQueue.main.async { [weak self] in
-            self?.onPastedImageError?(message)
+            guard let self, self.editorIdentity == pasteEditorIdentity else { return }
+            self.onPastedImageError?(message)
         }
     }
 
@@ -279,10 +377,15 @@ final class ImagePasteTextView: UITextView {
     /// pasteboards fall through to the standard text behavior.
     override func paste(_ sender: Any?) {
         let pb = UIPasteboard.general
+        let pasteEditorIdentity = editorIdentity
 
         // Direct image in pasteboard
         if let image = pb.image, let data = image.pngData() {
-            onPastedImage?(PastedImage(data: data, typeIdentifier: UTType.png.identifier))
+            deliverImageData(
+                data,
+                typeIdentifier: UTType.png.identifier,
+                editorIdentity: pasteEditorIdentity
+            )
             return
         }
 
@@ -294,7 +397,11 @@ final class ImagePasteTextView: UITextView {
                 URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
                     guard let data = data else { return }
                     let typeIdentifier = UTType(filenameExtension: ext)?.identifier ?? UTType.image.identifier
-                    self?.deliverImageData(data, typeIdentifier: typeIdentifier)
+                    self?.deliverImageData(
+                        data,
+                        typeIdentifier: typeIdentifier,
+                        editorIdentity: pasteEditorIdentity
+                    )
                 }.resume()
                 return
             }
@@ -302,7 +409,11 @@ final class ImagePasteTextView: UITextView {
 
         // Raw image data without .image property
         if let data = pb.data(forPasteboardType: "public.image"), !data.isEmpty {
-            deliverImageData(data, typeIdentifier: UTType.image.identifier)
+            deliverImageData(
+                data,
+                typeIdentifier: UTType.image.identifier,
+                editorIdentity: pasteEditorIdentity
+            )
             return
         }
 

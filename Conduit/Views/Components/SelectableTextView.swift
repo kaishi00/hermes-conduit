@@ -6,6 +6,8 @@ import UIKit
 /// selection API is intentionally kept for controls outside this surface,
 /// but it cannot select a range within a Text view on older OS releases.
 struct SelectableTextView: UIViewRepresentable {
+    typealias UIViewType = SelectableTextViewHostView
+
     let attributedText: NSAttributedString
     let font: UIFont
     let textColor: UIColor
@@ -13,6 +15,8 @@ struct SelectableTextView: UIViewRepresentable {
     let maximumNumberOfLines: Int
     let wrapsLines: Bool
     let linkColor: UIColor
+    let selectionCoordinator: MarkdownSelectionCoordinator?
+    let selectionSegment: MarkdownSelectionSegmentDescriptor?
 
     init(
         attributedText: NSAttributedString,
@@ -21,7 +25,9 @@ struct SelectableTextView: UIViewRepresentable {
         lineSpacing: CGFloat = 0,
         maximumNumberOfLines: Int = 0,
         wrapsLines: Bool = true,
-        linkColor: UIColor = .link
+        linkColor: UIColor = .link,
+        selectionCoordinator: MarkdownSelectionCoordinator? = nil,
+        selectionSegment: MarkdownSelectionSegmentDescriptor? = nil
     ) {
         self.attributedText = attributedText
         self.font = font
@@ -30,6 +36,8 @@ struct SelectableTextView: UIViewRepresentable {
         self.maximumNumberOfLines = maximumNumberOfLines
         self.wrapsLines = wrapsLines
         self.linkColor = linkColor
+        self.selectionCoordinator = selectionCoordinator
+        self.selectionSegment = selectionSegment
     }
 
     init(
@@ -39,7 +47,9 @@ struct SelectableTextView: UIViewRepresentable {
         lineSpacing: CGFloat = 0,
         maximumNumberOfLines: Int = 0,
         wrapsLines: Bool = true,
-        linkColor: UIColor = .link
+        linkColor: UIColor = .link,
+        selectionCoordinator: MarkdownSelectionCoordinator? = nil,
+        selectionSegment: MarkdownSelectionSegmentDescriptor? = nil
     ) {
         self.init(
             attributedText: Self.bridge(attributedText, defaultFont: font, defaultColor: textColor, linkColor: linkColor),
@@ -48,7 +58,9 @@ struct SelectableTextView: UIViewRepresentable {
             lineSpacing: lineSpacing,
             maximumNumberOfLines: maximumNumberOfLines,
             wrapsLines: wrapsLines,
-            linkColor: linkColor
+            linkColor: linkColor,
+            selectionCoordinator: selectionCoordinator,
+            selectionSegment: selectionSegment
         )
     }
 
@@ -59,7 +71,9 @@ struct SelectableTextView: UIViewRepresentable {
         lineSpacing: CGFloat = 0,
         maximumNumberOfLines: Int = 0,
         wrapsLines: Bool = true,
-        linkColor: UIColor = .link
+        linkColor: UIColor = .link,
+        selectionCoordinator: MarkdownSelectionCoordinator? = nil,
+        selectionSegment: MarkdownSelectionSegmentDescriptor? = nil
     ) {
         self.init(
             attributedText: NSAttributedString(
@@ -71,7 +85,9 @@ struct SelectableTextView: UIViewRepresentable {
             lineSpacing: lineSpacing,
             maximumNumberOfLines: maximumNumberOfLines,
             wrapsLines: wrapsLines,
-            linkColor: linkColor
+            linkColor: linkColor,
+            selectionCoordinator: selectionCoordinator,
+            selectionSegment: selectionSegment
         )
     }
 
@@ -79,6 +95,11 @@ struct SelectableTextView: UIViewRepresentable {
     /// tested directly instead of being inferred from a SwiftUI modifier.
     static func makeTextView() -> UITextView {
         let textView = UITextView(frame: .zero)
+        configureBaseTextView(textView)
+        return textView
+    }
+
+    private static func configureBaseTextView(_ textView: UITextView) {
         textView.isEditable = false
         textView.isSelectable = true
         textView.isScrollEnabled = false
@@ -87,23 +108,58 @@ struct SelectableTextView: UIViewRepresentable {
         textView.textContainer.lineFragmentPadding = 0
         textView.setContentHuggingPriority(.required, for: .vertical)
         textView.setContentCompressionResistancePriority(.required, for: .vertical)
-        return textView
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(linkColor: linkColor)
+        Coordinator(
+            linkColor: linkColor,
+            selectionCoordinator: selectionCoordinator,
+            selectionSegment: selectionSegment
+        )
     }
 
-    func makeUIView(context: Context) -> UITextView {
-        let textView = Self.makeTextView()
-        textView.delegate = context.coordinator
-        configure(textView)
-        return textView
+    func makeUIView(context: Context) -> SelectableTextViewHostView {
+        makeUIViewForTests(coordinator: context.coordinator)
     }
 
-    func updateUIView(_ textView: UITextView, context: Context) {
-        context.coordinator.linkColor = linkColor
+    func updateUIView(_ uiView: SelectableTextViewHostView, context: Context) {
+        updateUIViewForTests(uiView, coordinator: context.coordinator)
+    }
+
+    static func dismantleUIView(_ uiView: SelectableTextViewHostView, coordinator: Coordinator) {
+        tearDownMountedTextView(in: uiView)
+    }
+
+    @MainActor
+    func makeUIViewForTests(coordinator: Coordinator) -> SelectableTextViewHostView {
+        let hostView = SelectableTextViewHostView(frame: .zero)
+        updateUIViewForTests(hostView, coordinator: coordinator)
+        return hostView
+    }
+
+    @MainActor
+    func updateUIViewForTests(_ uiView: SelectableTextViewHostView, coordinator: Coordinator) {
+        coordinator.linkColor = linkColor
+        coordinator.selectionCoordinator = selectionCoordinator
+        coordinator.selectionSegment = selectionSegment
+
+        unregisterMountedTextViewIfNeeded(in: uiView, coordinator: coordinator)
+
+        let needsCoordinatedTextView = selectionCoordinator != nil && selectionSegment != nil
+        if uiView.isUsingCoordinatedTextView != needsCoordinatedTextView {
+            let replacementTextView = makeMountedTextView(needsCoordinatedTextView: needsCoordinatedTextView)
+            replacementTextView.attributedText = uiView.mountedTextView.attributedText
+            replacementTextView.selectedRange = uiView.mountedTextView.selectedRange
+            uiView.setMountedTextView(replacementTextView)
+        }
+
+        let textView = uiView.mountedTextView
+        textView.delegate = coordinator
+        configureSelectionBridge(for: textView, coordinator: coordinator)
         configure(textView)
+        registerSelectionIfNeeded(for: textView, coordinator: coordinator)
+        uiView.mountedSelectionCoordinator = coordinator.selectionCoordinator
+        uiView.mountedSelectionSegment = coordinator.selectionSegment
     }
 
     /// Extracted measurement logic so sizeThatFits and tests share one path.
@@ -136,13 +192,13 @@ struct SelectableTextView: UIViewRepresentable {
         )
     }
 
-    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: SelectableTextViewHostView, context: Context) -> CGSize? {
         if !wrapsLines {
             return measureNonWrapping()
         }
 
         guard let width = proposal.width, width > 0 else { return nil }
-        let measured = uiView.sizeThatFits(CGSize(width: width, height: CGFloat.greatestFiniteMagnitude))
+        let measured = uiView.mountedTextView.sizeThatFits(CGSize(width: width, height: CGFloat.greatestFiniteMagnitude))
         return CGSize(width: width, height: ceil(measured.height))
     }
 
@@ -200,6 +256,80 @@ struct SelectableTextView: UIViewRepresentable {
         textView.invalidateIntrinsicContentSize()
     }
 
+    private func registerSelectionIfNeeded(for textView: UITextView, coordinator: Coordinator) {
+        guard
+            let selectionCoordinator = coordinator.selectionCoordinator,
+            let selectionSegment = coordinator.selectionSegment
+        else { return }
+
+        selectionCoordinator.register(descriptor: selectionSegment, textView: textView)
+    }
+
+    private func unregisterMountedTextViewIfNeeded(in hostView: SelectableTextViewHostView, coordinator: Coordinator) {
+        guard
+            let selectionCoordinator = hostView.mountedSelectionCoordinator,
+            let selectionSegment = hostView.mountedSelectionSegment
+        else { return }
+
+        if selectionCoordinator !== coordinator.selectionCoordinator || selectionSegment != coordinator.selectionSegment {
+            selectionCoordinator.unregister(segmentID: selectionSegment.id, textView: hostView.mountedTextView)
+            hostView.mountedSelectionCoordinator = nil
+            hostView.mountedSelectionSegment = nil
+        }
+    }
+
+    private func configureSelectionBridge(for textView: UITextView, coordinator: Coordinator) {
+        guard let coordinatedTextView = textView as? MarkdownSelectionTextView else { return }
+
+        coordinatedTextView.selectionCoordinator = coordinator.selectionCoordinator
+        coordinatedTextView.selectionSegment = coordinator.selectionSegment
+        coordinatedTextView.onTouchBegan = makeTouchHandler(coordinator: coordinator)
+    }
+
+    private func makeTouchHandler(coordinator: Coordinator) -> ((MarkdownSelectionTextView, CGPoint) -> Void)? {
+        guard coordinator.selectionCoordinator != nil, coordinator.selectionSegment != nil else {
+            return nil
+        }
+
+        return { [weak selectionCoordinator = coordinator.selectionCoordinator, selectionSegment = coordinator.selectionSegment] coordinatedTextView, localPoint in
+            guard
+                let selectionCoordinator,
+                let selectionSegment
+            else { return }
+            selectionCoordinator.beginPendingSelection(
+                segmentID: selectionSegment.id,
+                offset: coordinatedTextView.utf16Offset(for: localPoint),
+                windowPoint: coordinatedTextView.windowPoint(forLocalPoint: localPoint) ?? .zero
+            )
+        }
+    }
+
+    private func makeMountedTextView(needsCoordinatedTextView: Bool) -> UITextView {
+        if needsCoordinatedTextView {
+            let textView = MarkdownSelectionTextView(frame: .zero)
+            Self.configureBaseTextView(textView)
+            return textView
+        }
+        return Self.makeTextView()
+    }
+
+    private static func tearDownMountedTextView(in hostView: SelectableTextViewHostView) {
+        let textView = hostView.mountedTextView
+        textView.delegate = nil
+        if let coordinated = textView as? MarkdownSelectionTextView {
+            coordinated.onTouchBegan = nil
+            coordinated.selectionCoordinator = nil
+            coordinated.selectionSegment = nil
+        }
+        textView.resignFirstResponder()
+        if let selectionCoordinator = hostView.mountedSelectionCoordinator,
+           let selectionSegment = hostView.mountedSelectionSegment {
+            selectionCoordinator.unregister(segmentID: selectionSegment.id, textView: textView)
+        }
+        hostView.mountedSelectionCoordinator = nil
+        hostView.mountedSelectionSegment = nil
+    }
+
     /// Converts an AttributedString (from Markdown parsing) into an
     /// NSAttributedString with UIKit-compatible font traits. Exposed as
     /// internal so callers can convert without instantiating the full view.
@@ -255,9 +385,17 @@ struct SelectableTextView: UIViewRepresentable {
 
     final class Coordinator: NSObject, UITextViewDelegate {
         var linkColor: UIColor
+        weak var selectionCoordinator: MarkdownSelectionCoordinator?
+        var selectionSegment: MarkdownSelectionSegmentDescriptor?
 
-        init(linkColor: UIColor) {
+        init(
+            linkColor: UIColor,
+            selectionCoordinator: MarkdownSelectionCoordinator?,
+            selectionSegment: MarkdownSelectionSegmentDescriptor?
+        ) {
             self.linkColor = linkColor
+            self.selectionCoordinator = selectionCoordinator
+            self.selectionSegment = selectionSegment
         }
 
         // shouldInteractWith is formally deprecated in iOS 17 in favor of
@@ -284,6 +422,158 @@ struct SelectableTextView: UIViewRepresentable {
                 return true
             }
         }
+
+        func textViewDidChangeSelection(_ textView: UITextView) {
+            guard
+                let selectionCoordinator,
+                let selectionSegment,
+                !selectionCoordinator.isApplyingNativeSelectionRanges,
+                let textRange = textView.selectedTextRange
+            else { return }
+
+            let startOffset = textView.offset(from: textView.beginningOfDocument, to: textRange.start)
+            let endOffset = textView.offset(from: textView.beginningOfDocument, to: textRange.end)
+            let startWindowPoint = windowPoint(for: textRange.start, in: textView)
+            let endWindowPoint = windowPoint(for: textRange.end, in: textView)
+
+            let selectedRange: NSRange
+            let lowerWindowPoint: CGPoint
+            let upperWindowPoint: CGPoint
+            if startOffset <= endOffset {
+                selectedRange = NSRange(location: startOffset, length: endOffset - startOffset)
+                lowerWindowPoint = startWindowPoint
+                upperWindowPoint = endWindowPoint
+            } else {
+                selectedRange = NSRange(location: endOffset, length: startOffset - endOffset)
+                lowerWindowPoint = endWindowPoint
+                upperWindowPoint = startWindowPoint
+            }
+
+            selectionCoordinator.updateNativeSelection(
+                segmentID: selectionSegment.id,
+                selectedRange: selectedRange,
+                lowerWindowPoint: lowerWindowPoint,
+                upperWindowPoint: upperWindowPoint
+            )
+        }
+
+        private func windowPoint(for position: UITextPosition, in textView: UITextView) -> CGPoint {
+            let caretRect = textView.caretRect(for: position)
+            let caretPoint = CGPoint(x: caretRect.midX, y: caretRect.midY)
+            return (textView as? MarkdownSelectionTextView)?.windowPoint(forLocalPoint: caretPoint)
+                ?? textView.window.map { textView.convert(caretPoint, to: $0) }
+                ?? .zero
+        }
+    }
+}
+
+private final class MarkdownSelectionTextView: UITextView {
+    var onTouchBegan: ((MarkdownSelectionTextView, CGPoint) -> Void)?
+    weak var selectionCoordinator: MarkdownSelectionCoordinator?
+    var selectionSegment: MarkdownSelectionSegmentDescriptor?
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if let touch = touches.first {
+            onTouchBegan?(self, touch.location(in: self))
+        }
+        super.touchesBegan(touches, with: event)
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        selectionCoordinator?.cancelPendingSelection()
+        super.touchesEnded(touches, with: event)
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        selectionCoordinator?.cancelPendingSelection()
+        super.touchesCancelled(touches, with: event)
+    }
+
+    override func copy(_ sender: Any?) {
+        guard let copied = coordinatedCopiedAttributedText() else {
+            super.copy(sender)
+            return
+        }
+
+        UIPasteboard.general.string = copied.string
+        if let rtf = try? copied.data(
+            from: NSRange(location: 0, length: copied.length),
+            documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]
+        ) {
+            UIPasteboard.general.setData(rtf, forPasteboardType: "public.rtf")
+        }
+    }
+
+    func simulateTouchBeganForTesting(_ localPoint: CGPoint) {
+        onTouchBegan?(self, localPoint)
+    }
+
+    func coordinatedCopiedAttributedText() -> NSAttributedString? {
+        guard
+            let selectionCoordinator,
+            selectionCoordinator.hasCrossSegmentSelection
+        else { return nil }
+
+        let copied = selectionCoordinator.copiedAttributedTextForActiveSelection()
+        return copied.length > 0 ? copied : nil
+    }
+
+    func utf16Offset(for localPoint: CGPoint) -> Int {
+        guard let position = closestPosition(to: localPoint) else {
+            return selectedRange.location
+        }
+        return offset(from: beginningOfDocument, to: position)
+    }
+
+    func windowPoint(forLocalPoint localPoint: CGPoint) -> CGPoint? {
+        guard let window else { return nil }
+        return convert(localPoint, to: window)
+    }
+}
+
+final class SelectableTextViewHostView: UIView {
+    private(set) var mountedTextView: UITextView
+    weak var mountedSelectionCoordinator: MarkdownSelectionCoordinator?
+    var mountedSelectionSegment: MarkdownSelectionSegmentDescriptor?
+
+    override init(frame: CGRect) {
+        self.mountedTextView = SelectableTextView.makeTextView()
+        super.init(frame: frame)
+        embedMountedTextView()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    var isUsingCoordinatedTextView: Bool {
+        mountedTextView is MarkdownSelectionTextView
+    }
+
+    func setMountedTextView(_ textView: UITextView) {
+        guard mountedTextView !== textView else { return }
+        mountedTextView.removeFromSuperview()
+        mountedTextView = textView
+        embedMountedTextView()
+    }
+
+    func simulateTouchBeganForTesting(at localPoint: CGPoint) {
+        (mountedTextView as? MarkdownSelectionTextView)?.simulateTouchBeganForTesting(localPoint)
+    }
+
+    func coordinatedCopiedAttributedTextForTesting() -> NSAttributedString? {
+        (mountedTextView as? MarkdownSelectionTextView)?.coordinatedCopiedAttributedText()
+    }
+
+    private func embedMountedTextView() {
+        addSubview(mountedTextView)
+        mountedTextView.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            mountedTextView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            mountedTextView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            mountedTextView.topAnchor.constraint(equalTo: topAnchor),
+            mountedTextView.bottomAnchor.constraint(equalTo: bottomAnchor)
+        ])
     }
 }
 
