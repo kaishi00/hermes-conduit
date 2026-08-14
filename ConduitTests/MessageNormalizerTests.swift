@@ -384,6 +384,27 @@ final class MessageNormalizerTests: XCTestCase {
             ] as [String: Any],
         ])
         XCTAssertNil(service.pendingTarget?.decision)
+
+        // A non-prefixed id would be routed to the gateway's clarify.respond,
+        // which can never resolve a plugin-minted decision; reject it too.
+        service.receiveNotificationPayload([
+            "conduit": [
+                "session_id": "session-1",
+                "type": "input.needed",
+                "decision": ["kind": "clarify", "request_id": "gateway-rid-1", "question": "Which color?"] as [String: Any],
+            ] as [String: Any],
+        ])
+        XCTAssertNil(service.pendingTarget?.decision)
+
+        // The bare prefix with no unique suffix is equally unanswerable.
+        service.receiveNotificationPayload([
+            "conduit": [
+                "session_id": "session-1",
+                "type": "input.needed",
+                "decision": ["kind": "clarify", "request_id": "conduit-push-", "question": "Which color?"] as [String: Any],
+            ] as [String: Any],
+        ])
+        XCTAssertNil(service.pendingTarget?.decision)
     }
 
     func testFailedNotificationRouteRetriesOnceThenClearsTarget() async {

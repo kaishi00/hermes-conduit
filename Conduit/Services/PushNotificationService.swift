@@ -393,12 +393,13 @@ final class PushNotificationService: ObservableObject {
             guard !choices.isEmpty else { return nil }
             return .approval(sessionKey: sessionKey, description: description, choices: choices)
         case "clarify":
-            // The request id is plugin-minted (`conduit-push-…`); without it
-            // the card is not answerable and the notification degrades to a
-            // plain routing target.
+            // The request id must be a plugin-minted `conduit-push-…` id: any
+            // other id would be routed to the gateway's clarify.respond, which
+            // can never resolve it.
             guard let requestId = (decision["request_id"] as? String)?
                 .trimmingCharacters(in: .whitespacesAndNewlines),
-                !requestId.isEmpty,
+                requestId.hasPrefix(PendingDecisionPayload.relayRequestPrefix),
+                requestId.count > PendingDecisionPayload.relayRequestPrefix.count,
                 let question = (decision["question"] as? String)?
                     .trimmingCharacters(in: .whitespacesAndNewlines),
                 !question.isEmpty else {

@@ -5409,18 +5409,21 @@ final class AppState: ObservableObject {
         setRunning(true)
         cacheMessagePresentation()
 
+        // Plugin-minted clarify ids are answered through the relay's decision
+        // loop (the gateway's own clarify id never reached this device); the
+        // gateway-side middleware polls the relay and resolves the tool call.
+        // Routed BEFORE the gateway-client guard: the relay answer needs only
+        // the relay registration, and answering from a freshly-resumed push
+        // is exactly when the gateway client may still be reconnecting.
+        if requestId.hasPrefix(PendingDecisionPayload.relayRequestPrefix) {
+            await respondToRelayClarify(requestId: requestId, answer: trimmedAnswer)
+            return
+        }
         guard let client else {
             messages[index].clarify?.status = .error
             messages[index].clarify?.answer = nil
             messages[index].clarify?.error = "Gateway connection is unavailable."
             cacheMessagePresentation()
-            return
-        }
-        // Plugin-minted clarify ids are answered through the relay's decision
-        // loop (the gateway's own clarify id never reached this device); the
-        // gateway-side middleware polls the relay and resolves the tool call.
-        if requestId.hasPrefix(PendingDecisionPayload.relayRequestPrefix) {
-            await respondToRelayClarify(requestId: requestId, answer: trimmedAnswer)
             return
         }
         do {
@@ -5450,11 +5453,15 @@ final class AppState: ObservableObject {
             )
             guard let updatedIndex = messages.firstIndex(where: { $0.clarify?.requestId == requestId }) else { return }
             switch outcome {
-            case .answered, .alreadyAnsweredElsewhere:
-                // Someone answered it (possibly this device on an earlier
-                // attempt); either way the decision is settled.
+            case .answered:
                 messages[updatedIndex].clarify?.status = .answered
                 messages[updatedIndex].clarify?.answer = answer
+            case .alreadyAnsweredElsewhere:
+                // Another device resolved the decision with its own answer;
+                // settle the card but do not display this device's rejected
+                // text as if it were what Hermes received.
+                messages[updatedIndex].clarify?.status = .answered
+                messages[updatedIndex].clarify?.answer = nil
             case .noLongerActive:
                 messages[updatedIndex].clarify?.status = .error
                 messages[updatedIndex].clarify?.answer = nil
@@ -7131,12 +7138,17 @@ final class AppState: ObservableObject {
                 messages[index].content = question
                 messages[index].clarify = activity
             } else {
-                // A push-delivered card for the same question is superseded by
-                // the live event (different ids: gateway vs plugin-minted), so
-                // one logical clarify never renders two cards.
-                messages.removeAll {
-                    $0.clarify?.requestId.hasPrefix(PendingDecisionPayload.relayRequestPrefix) == true
-                        && $0.clarify?.question == question
+                // A still-pending push-delivered card for the same question is
+                // superseded by the live event (different ids: gateway vs
+                // plugin-minted), so one logical clarify never renders two
+                // answerable cards. Resolved history stays visible.
+                messages.removeAll { message in
+                    guard let clarify = message.clarify,
+                          clarify.requestId.hasPrefix(PendingDecisionPayload.relayRequestPrefix),
+                          clarify.status == .pending || clarify.status == .submitting else {
+                        return false
+                    }
+                    return clarify.question == question
                 }
                 messages.append(ChatMessage(
                     id: "clarify-\(requestId)",
