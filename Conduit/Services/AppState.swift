@@ -7145,11 +7145,12 @@ final class AppState: ObservableObject {
                 // .submitting card is left alone: its relay answer may already
                 // be in flight and will settle it by request id.
                 var supersededRequestIds: [String] = []
+                let liveQuestion = question.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
                 messages.removeAll { message in
                     guard let clarify = message.clarify,
                           clarify.requestId.hasPrefix(PendingDecisionPayload.relayRequestPrefix),
                           clarify.status == .pending,
-                          clarify.question == question else {
+                          clarify.question.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == liveQuestion else {
                         return false
                     }
                     supersededRequestIds.append(clarify.requestId)

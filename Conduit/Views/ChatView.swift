@@ -1786,7 +1786,10 @@ struct ClarifyCard: View {
                     Spacer(minLength: 8)
                     if clarify.status == .submitting {
                         ProgressView().controlSize(.small)
-                    } else if clarify.status == .answered {
+                    } else if clarify.status == .answered, clarify.answer != nil {
+                        // Only this device's accepted answer earns the check;
+                        // an answered-elsewhere settle renders no checkmark so
+                        // the header agrees with the body copy.
                         Image(systemName: "checkmark.circle.fill")
                             .foregroundStyle(.green)
                     }

@@ -27,7 +27,7 @@ struct ConduitNotificationTarget: Equatable, Identifiable {
 }
 
 /// The structured card content for a decision notification. Approval is
-/// session-keyed (`approval.respond {choice, session_id}`), so a payload
+/// session-keyed (`approval.respond { choice, session_id }`), so a payload
 /// carrying the session key is fully answerable. Clarify is keyed by a
 /// plugin-minted id (`conduit-push-…`) whose answers return through the push
 /// relay rather than the gateway — the gateway's own clarify id is unreachable

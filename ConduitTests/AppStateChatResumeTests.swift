@@ -814,6 +814,43 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(clarifyCards.first?.clarify?.requestId, "gateway-rid-1")
     }
 
+    func testLiveClarifyEventSupersedeMatchesNormalizedQuestion() async {
+        // The push question is flattened plugin-side while the live event
+        // carries the gateway's text; formatting drift (whitespace, case)
+        // must not defeat the supersede and render two answerable cards.
+        let harness = makeHarness()
+        harness.appState.activeSessionId = "stored-a"
+        harness.appState.messages = [
+            ChatMessage(
+                id: "clarify-conduit-push-abc123",
+                role: .clarify,
+                content: "  Which Color?  ",
+                timestamp: "1",
+                clarify: ClarifyActivity(
+                    requestId: "conduit-push-abc123",
+                    question: "  Which Color?  ",
+                    choices: [ClarifyChoice(label: "Red", value: "Red")],
+                    status: .pending,
+                    answer: nil,
+                    error: nil
+                )
+            )
+        ]
+
+        harness.appState.handleStreamEvent(
+            .clarify(
+                sessionId: "stored-a",
+                requestId: "gateway-rid-1",
+                question: "which color?",
+                choices: [("Red", "Red")]
+            )
+        )
+
+        let clarifyCards = harness.appState.messages.filter { $0.role == .clarify }
+        XCTAssertEqual(clarifyCards.count, 1, "Formatting drift must not defeat the supersede")
+        XCTAssertEqual(clarifyCards.first?.clarify?.requestId, "gateway-rid-1")
+    }
+
     func testLiveClarifyEventEvictsSupersededPushCardFromCache() async {
         // The supersede must evict the push card from the presentation cache,
         // not just the in-memory transcript: the flush re-appends still-pending
