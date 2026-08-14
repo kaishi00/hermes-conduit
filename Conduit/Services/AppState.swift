@@ -5275,8 +5275,12 @@ final class AppState: ObservableObject {
             guard let updatedIndex = messages.firstIndex(where: { $0.clarify?.requestId == requestId }) else { return }
             messages[updatedIndex].clarify?.status = .error
             messages[updatedIndex].clarify?.answer = nil
-            messages[updatedIndex].clarify?.error = "Hermes did not accept that answer."
-            errorMessage = error.localizedDescription
+            if Self.isExpiredPromptError(error) {
+                messages[updatedIndex].clarify?.error = "This question is no longer active — Hermes timed it out and continued."
+            } else {
+                messages[updatedIndex].clarify?.error = "Hermes did not accept that answer."
+                errorMessage = error.localizedDescription
+            }
             cacheMessagePresentation()
         }
     }
@@ -5781,6 +5785,20 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Hermes blocks a clarify/approval prompt for only ~5 minutes server-side
+    /// (JSON-RPC error 4009, "no pending … request"), while a restored or
+    /// push-delivered card can legitimately outlive it — a notification opened
+    /// an hour later is the feature's ordinary case, not an error. Treat that
+    /// outcome as "the decision is no longer active" instead of a generic
+    /// failure the user can retry forever.
+    static func isExpiredPromptError(_ error: Error) -> Bool {
+        if let rpcError = error as? RpcError {
+            if rpcError.code == 4009 { return true }
+            return rpcError.message.lowercased().contains("no pending")
+        }
+        return error.localizedDescription.lowercased().contains("no pending")
+    }
+
     func respondToApproval(messageId: String, choice: String) async {
         guard let index = messages.firstIndex(where: { $0.id == messageId }),
               let current = messages[index].approval,
@@ -5808,8 +5826,12 @@ final class AppState: ObservableObject {
             guard let updatedIndex = messages.firstIndex(where: { $0.id == messageId }) else { return }
             messages[updatedIndex].approval?.status = .error
             messages[updatedIndex].approval?.choice = nil
-            messages[updatedIndex].approval?.error = "Hermes did not accept that decision."
-            errorMessage = error.localizedDescription
+            if Self.isExpiredPromptError(error) {
+                messages[updatedIndex].approval?.error = "This approval is no longer active — Hermes timed it out and continued."
+            } else {
+                messages[updatedIndex].approval?.error = "Hermes did not accept that decision."
+                errorMessage = error.localizedDescription
+            }
             cacheMessagePresentation()
         }
     }

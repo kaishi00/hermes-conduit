@@ -328,6 +328,17 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertTrue(decoded.decisionCards, "Absent decision_cards must fall back to the default-on value")
     }
 
+    func testExpiredPromptErrorClassification() {
+        // The gateway's one-shot prompt timeout: JSON-RPC 4009.
+        XCTAssertTrue(AppState.isExpiredPromptError(RpcError(code: 4009, message: "no pending approval request")))
+        // Code-less variants still classify via the message, case-insensitively.
+        XCTAssertTrue(AppState.isExpiredPromptError(RpcError(code: nil, message: "No Pending clarify request")))
+        // Genuine failures must not be misread as expiry.
+        XCTAssertFalse(AppState.isExpiredPromptError(RpcError(code: 4004, message: "session not found")))
+        XCTAssertFalse(AppState.isExpiredPromptError(HermesError.timeout("approval.respond")))
+        XCTAssertFalse(AppState.isExpiredPromptError(HermesError.notConnected))
+    }
+
     func testFailedNotificationRouteRetriesOnceThenClearsTarget() async {
         let service = PushNotificationService(retryDelay: .zero)
         service.receiveNotificationPayload([
