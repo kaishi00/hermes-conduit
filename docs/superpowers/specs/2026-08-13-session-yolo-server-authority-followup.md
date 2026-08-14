@@ -77,14 +77,19 @@ cannot make the floor and the re-assert decision diverge. Failure is non-fatal
 the indicator and the next resume retries.
 
 Buffered `session.info` replay anchors the approval mode to the fresh resume
-snapshot the same way it anchors `yolo` (`authoritativeApprovalsMode`), so a
-stale buffered event cannot re-impose an outdated global floor.
+snapshot (`authoritativeApprovalsMode`, unconditionally — the mode is
+profile-scoped and independent of the per-session YOLO write gate, unlike the
+`yolo` authority which respects `reconcileExplicitYolo`), so a stale buffered
+event cannot re-impose an outdated global floor even when the user toggled
+YOLO during the resume.
 
 This single hook covers cold start, foreground re-sync, WebSocket reconnect, and
 session switching because they all funnel through `reconcile`.
 
 **Known trade-off:** with clear-on-conflict removed, an override is only
-cleared by an explicit toggle (or archive/delete). If a conversation were ever
+cleared by an explicit toggle (possible only once the profile mode leaves
+`off` — under the floor the picker toggle is disabled and `setYoloMode`
+returns early) or by archive/delete. If a conversation were ever
 reset server-side while reusing the same session ID, a stale override would be
 re-asserted into it. Session IDs are freshly minted per conversation in
 practice, so the store cannot distinguish a reconnect from a genuine new

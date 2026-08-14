@@ -2532,9 +2532,10 @@ final class AppState: ObservableObject {
                 )
             }
             let bufferedYoloAuthority = reconcileExplicitYolo ? result.snapshot.yolo : nil
-            let bufferedApprovalsModeAuthority = reconcileExplicitYolo
-                ? result.snapshot.approvalsMode
-                : nil
+            // The approval mode is profile-scoped and independent of the
+            // per-session YOLO write gate: a user toggle during the resume must
+            // not let a stale buffered event re-impose an outdated floor.
+            let bufferedApprovalsModeAuthority = result.snapshot.approvalsMode
             bufferedEvents.forEach { event in
                 applyStreamEvent(
                     event,
@@ -5732,6 +5733,9 @@ final class AppState: ObservableObject {
         }
 
         let previousProfile = activeProfile
+        let previousApprovalsMode = runtime.approvalsMode
+        let previousYolo = runtime.yolo
+        let previousLastReportedSessionYolo = lastReportedSessionYolo
         let previousSessions = sessions
         let previousCronSessions = cronSessions
         let previousArchivedSessions = archivedSessions
@@ -5812,6 +5816,12 @@ final class AppState: ObservableObject {
             errorMessage = "Could not switch workspace: \(error.localizedDescription)"
             clearPendingDecisionRestorationGuard()
             activeProfile = previousProfile
+            // The pre-switch reset neutralized the approval state; restore it
+            // with the rest of the previous profile or a failed switch loses
+            // the floor while the previous profile is still the active one.
+            runtime.approvalsMode = previousApprovalsMode
+            runtime.yolo = previousYolo
+            lastReportedSessionYolo = previousLastReportedSessionYolo
             sessions = previousSessions
             cronSessions = previousCronSessions
             archivedSessions = previousArchivedSessions
@@ -6440,7 +6450,7 @@ final class AppState: ObservableObject {
                 method: "PUT",
                 body: ["config": config, "profile": profile]
             )
-            if key == "approvals.mode", let mode = value.textValue?.lowercased() {
+            if key == "approvals.mode", let mode = value.textValue?.lowercased(), profile == activeProfile {
                 // Mirror the saved profile mode immediately and re-resolve the
                 // effective indicator state through the same precedence
                 // applyRuntime uses, so the floor and the picker lock take

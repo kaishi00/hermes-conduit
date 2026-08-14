@@ -38,6 +38,8 @@ final class ModelPickerTests: XCTestCase {
         // Boundary crossings re-seed the toggle.
         XCTAssertTrue(yoloFloorBoundaryCrossed(from: nil, to: "off"))
         XCTAssertTrue(yoloFloorBoundaryCrossed(from: "manual", to: "off"))
+        XCTAssertTrue(yoloFloorBoundaryCrossed(from: "manual", to: "OFF"))
+        XCTAssertTrue(yoloFloorBoundaryCrossed(from: "Off", to: "manual"))
         XCTAssertTrue(yoloFloorBoundaryCrossed(from: "off", to: "manual"))
         XCTAssertTrue(yoloFloorBoundaryCrossed(from: "off", to: nil))
         // Same-side transitions must not discard an in-progress draft.

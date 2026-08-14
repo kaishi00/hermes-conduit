@@ -1076,6 +1076,75 @@ final class SessionYoloPersistenceTests: XCTestCase {
         XCTAssertFalse(appState.runtime.yolo)
     }
 
+    // The buffered-mode anchoring is independent of the per-session YOLO write
+    // gate: even when the user toggled during the resume
+    // (reconcileExplicitYolo == false), a stale buffered event must not
+    // re-impose an outdated floor over the fresh resume's mode.
+    func testBufferedSessionInfoCannotReimposeStaleApprovalModeWhenUserToggledDuringResume() async {
+        let (suite, defaults) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let openGate = SessionYoloResumeGate()
+        let recorder = YoloSetCallRecorder()
+        let operations = ChatResumeLifecycleOperations(
+            loadCatalog: { _, _ in [self.session("session-a")] },
+            openSession: { _, sessionID in
+                await openGate.suspend()
+                return SessionResumeResult(
+                    sessionId: sessionID,
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: [
+                        "running": .bool(false),
+                        "approvals_mode": .string("manual")
+                    ])
+                )
+            },
+            refreshContext: { _, _ in },
+            setSessionYolo: { _, sessionID, enabled in recorder.record(sessionID, enabled) }
+        )
+        let store = SessionYoloStore(defaults: defaults, storageKey: "test.session-yolo")
+        let appState = makeAppState(
+            defaults: defaults,
+            store: store,
+            lifecycleOperations: operations
+        )
+        appState.sessions = [session("session-a")]
+        appState.activeSessionId = "session-a"
+        appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+
+        let resume = Task { @MainActor in
+            await appState.syncSession()
+        }
+        await openGate.waitUntilSuspended()
+
+        // The user toggles YOLO on during the resume (bumps the write revision,
+        // so reconcileExplicitYolo will be false)...
+        let enabled = await appState.setYoloMode(true)
+        XCTAssertTrue(enabled)
+
+        // ...and a stale buffered push claims the profile was globally off.
+        appState.handleStreamEvent(.sessionInfo(
+            sessionId: "session-a",
+            snapshot: SessionRuntimeSnapshot(object: [
+                "running": .bool(false),
+                "approvals_mode": .string("off")
+            ])
+        ))
+
+        openGate.resume()
+        await resume.value
+
+        // The fresh resume's manual mode stays authoritative; the stale floor
+        // must not engage, and the recovery re-assert stays skipped because
+        // the user's write is newer.
+        XCTAssertEqual(appState.runtime.approvalsMode, "manual")
+        XCTAssertTrue(appState.runtime.yolo)
+        XCTAssertEqual(recorder.invocations.count, 1)
+        XCTAssertEqual(recorder.invocations.first?.enabled, true)
+    }
+
     private func makeAppState(
         defaults: UserDefaults,
         store: SessionYoloStore,
