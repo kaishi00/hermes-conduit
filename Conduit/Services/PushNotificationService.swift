@@ -83,6 +83,27 @@ struct ConduitNotificationPreferences: Codable, Equatable {
     }
 }
 
+extension ConduitNotificationPreferences {
+    /// Decoding must tolerate registrations persisted by older builds, which
+    /// predate later-added keys — a `keyNotFound` failure would make the
+    /// `try?` in the init drop the whole stored registration and silently
+    /// disable push for an upgrading user. Every key falls back to its
+    /// default when absent. (Declared in an extension so the synthesized
+    /// `init()` is preserved.)
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+        approvalNeeded = try container.decodeIfPresent(Bool.self, forKey: .approvalNeeded) ?? true
+        inputNeeded = try container.decodeIfPresent(Bool.self, forKey: .inputNeeded) ?? true
+        responseReady = try container.decodeIfPresent(Bool.self, forKey: .responseReady) ?? true
+        turnFailed = try container.decodeIfPresent(Bool.self, forKey: .turnFailed) ?? true
+        backgroundTaskFinished = try container.decodeIfPresent(Bool.self, forKey: .backgroundTaskFinished) ?? true
+        completionSound = try container.decodeIfPresent(Bool.self, forKey: .completionSound) ?? true
+        showPreviews = try container.decodeIfPresent(Bool.self, forKey: .showPreviews) ?? false
+        decisionCards = try container.decodeIfPresent(Bool.self, forKey: .decisionCards) ?? true
+    }
+}
+
 @MainActor
 final class PushNotificationService: ObservableObject {
     static let shared = PushNotificationService()

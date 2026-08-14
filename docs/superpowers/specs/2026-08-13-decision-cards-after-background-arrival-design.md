@@ -223,7 +223,7 @@ and clarify answerability is required).
 | Component | Repo | Change |
 | --- | --- | --- |
 | Notifier plugin | `kaishi00/hermes-conduit-notifier` | Attach structured **approval** `decision` content (`session_key`, `description`, `once`/`deny` choices) to `approval.needed` events. Clarify is deliberately not emitted (see the Clarify section). |
-| Relay server | `kaishi00/hermes-conduit-notifier` under `relay/` (Node.js; same repo as the plugin) | `relay/src/server.mjs`: re-validate the decision (approval-only, kind↔type bound, choice whitelist) and forward it into the APNs `conduit` payload, gated on `show_previews` and the APNs size cap. Contract below. |
+| Relay server | `kaishi00/hermes-conduit-notifier` under `relay/` (Node.js; same repo as the plugin) | `relay/src/server.mjs`: re-validate the decision (approval-only, kind↔type bound, choice whitelist) and forward it into the APNs `conduit` payload, gated on `decision_cards` and the APNs size cap. Contract below. |
 | iOS client | `hermes-conduit` (this repo) | Parse `decision` from the APNs payload; record the card via `SessionPresentationCache.recordPendingDecision` when the notification is opened; PR #54 restores it on resume. |
 
 ### Relay → APNs payload contract (shipped)
@@ -342,7 +342,7 @@ section), degrading either case to the plain routing stub.
 
 - An approval raised while the app is backgrounded produces an APNs payload
   whose `conduit.decision` carries `kind`/`session_key`/`description` and the
-  `once`/`deny` choices — but only when `show_previews` is enabled, and never
+  `once`/`deny` choices — but only when `decision_cards` is enabled, and never
   the raw `command`.
 - iOS, when the notification is opened, records a pending `ApprovalActivity`
   to the session cache under both session identities; the resume renders the

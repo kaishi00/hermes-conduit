@@ -302,6 +302,32 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertFalse(decoded.decisionCards)
     }
 
+    func testNotificationPreferencesDecodeLegacyRegistrationWithoutDecisionCardsKey() throws {
+        // A registration persisted by a build that predated decision_cards.
+        // Decoding must fall back to the default rather than throwing — a
+        // throw would make the `try?` in the service init drop the whole
+        // stored registration and silently disable push on upgrade.
+        let legacyJSON = """
+        {
+          "enabled": true,
+          "approval_needed": false,
+          "input_needed": true,
+          "response_ready": true,
+          "turn_failed": true,
+          "background_task_finished": true,
+          "completion_sound": true,
+          "show_previews": true
+        }
+        """
+        let decoded = try JSONDecoder().decode(
+            ConduitNotificationPreferences.self,
+            from: Data(legacyJSON.utf8)
+        )
+        XCTAssertFalse(decoded.approvalNeeded, "Persisted values must survive")
+        XCTAssertTrue(decoded.showPreviews, "Persisted values must survive")
+        XCTAssertTrue(decoded.decisionCards, "Absent decision_cards must fall back to the default-on value")
+    }
+
     func testFailedNotificationRouteRetriesOnceThenClearsTarget() async {
         let service = PushNotificationService(retryDelay: .zero)
         service.receiveNotificationPayload([
