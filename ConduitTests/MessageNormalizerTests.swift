@@ -328,6 +328,45 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertTrue(decoded.decisionCards, "Absent decision_cards must fall back to the default-on value")
     }
 
+    func testRelayMetaDecodingAndCapabilityChecks() throws {
+        let json = """
+        {
+          "version": "0.2.0",
+          "capabilities": ["decisions", "decision-cards", "meta"],
+          "gateways": [
+            {
+              "id": "gw-1",
+              "name": "Mac Studio Hermes",
+              "plugin_version": "0.2.0",
+              "plugin_capabilities": ["approval-decisions", "clarify-loop", "version-reporting"],
+              "last_event_at": "2026-08-15T00:00:00Z"
+            },
+            {
+              "id": "gw-2",
+              "name": "Old laptop",
+              "plugin_version": null,
+              "plugin_capabilities": [],
+              "last_event_at": null
+            }
+          ]
+        }
+        """
+        let meta = try JSONDecoder().decode(RelayMetaInfo.self, from: Data(json.utf8))
+
+        XCTAssertTrue(meta.supportsDecisionCards)
+        XCTAssertEqual(meta.gateways.count, 2)
+
+        let current = meta.gateways[0]
+        XCTAssertTrue(current.supportsApprovalCards)
+        XCTAssertTrue(current.supportsClarifyCards)
+
+        // A gateway that has never reported (paired against an older relay)
+        // renders as unknown, not as a false "outdated".
+        let neverReported = meta.gateways[1]
+        XCTAssertNil(neverReported.pluginVersion)
+        XCTAssertFalse(neverReported.supportsApprovalCards)
+    }
+
     func testExpiredPromptErrorClassification() {
         // The gateway's one-shot prompt timeout: JSON-RPC 4009.
         XCTAssertTrue(AppState.isExpiredPromptError(RpcError(code: 4009, message: "no pending approval request")))

@@ -41,6 +41,38 @@ enum PendingDecisionPayload: Equatable {
     static let relayRequestPrefix = "conduit-push-"
 }
 
+/// Relay + paired-plugin compatibility state (`GET /v1/meta`), rendered in
+/// Settings > Notifications so users can see when the notifier plugin or the
+/// relay needs an update for decision cards to work. Capability flags (not
+/// version parsing) drive the checks; a relay without the endpoint (older or
+/// self-hosted pre-0.2) surfaces as `nil` and renders an unknown state.
+struct RelayMetaInfo: Decodable, Equatable {
+    struct Gateway: Decodable, Equatable, Identifiable {
+        let id: String
+        let name: String
+        let pluginVersion: String?
+        let pluginCapabilities: [String]
+        let lastEventAt: String?
+
+        var supportsApprovalCards: Bool { pluginCapabilities.contains("approval-decisions") }
+        var supportsClarifyCards: Bool { pluginCapabilities.contains("clarify-loop") }
+
+        enum CodingKeys: String, CodingKey {
+            case id
+            case name
+            case pluginVersion = "plugin_version"
+            case pluginCapabilities = "plugin_capabilities"
+            case lastEventAt = "last_event_at"
+        }
+    }
+
+    let version: String
+    let capabilities: [String]
+    let gateways: [Gateway]
+
+    var supportsDecisionCards: Bool { capabilities.contains("decisions") }
+}
+
 enum NotificationSessionResolver {
     /// Hermes notifications identify a live runtime session, while
     /// `session.resume` is keyed by the durable stored session. Catalog rows
@@ -122,6 +154,7 @@ final class PushNotificationService: ObservableObject {
     @Published private(set) var pendingTarget: ConduitNotificationTarget?
     @Published private(set) var navigationAttempt = 0
     @Published var preferences = ConduitNotificationPreferences()
+    @Published private(set) var relayMeta: RelayMetaInfo?
 
     private var relayURL: URL {
         if let saved = UserDefaults.standard.string(forKey: "conduit.relayURL"),
@@ -159,6 +192,27 @@ final class PushNotificationService: ObservableObject {
     func refresh() async {
         let settings = await UNUserNotificationCenter.current().notificationSettings()
         authorizationStatus = settings.authorizationStatus
+    }
+
+    /// Loads relay + plugin compatibility state for Settings > Notifications.
+    /// Nil (also on 404 from older/self-hosted relays) renders as unknown.
+    func refreshMeta() async {
+        guard let registration else {
+            relayMeta = nil
+            return
+        }
+        var request = URLRequest(url: relayURL.appending(path: "/v1/meta"))
+        request.setValue("Bearer \(registration.credential)", forHTTPHeaderField: "Authorization")
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+                relayMeta = nil
+                return
+            }
+            relayMeta = try JSONDecoder().decode(RelayMetaInfo.self, from: data)
+        } catch {
+            relayMeta = nil
+        }
     }
 
     /// Outcome of answering a plugin-minted clarify (`conduit-push-…`) through
