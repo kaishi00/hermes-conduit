@@ -561,7 +561,7 @@ struct SettingsView: View {
     private static let workspaceFields: [ProfileSettingField] = [
         .init(key: "terminal.cwd", label: "Default working directory", help: "Server-side path for new workspaces.", control: .text(defaultValue: "")),
         .init(key: "code_execution.mode", label: "Code execution mode", help: "Default execution boundary.", control: .options(["project", "strict"], defaultValue: "project")),
-        .init(key: "approvals.mode", label: "Approval mode", help: "Profile-wide default: manual asks every time; smart asks when risk warrants it; off is YOLO mode. A chat can enable YOLO without changing this profile setting.", control: .options(["manual", "smart", "off"], defaultValue: "smart")),
+        .init(key: "approvals.mode", label: "Approval mode", help: "Profile-wide default: manual asks every time; smart asks when risk warrants it; off is YOLO mode. When set to off, Hermes auto-approves everything and per-session YOLO toggles have no effect — that's a Hermes limitation, not a Conduit bug. To use per-session YOLO, set this to manual or smart.", control: .options(["manual", "smart", "off"], defaultValue: "smart")),
         .init(key: "security.redact_secrets", label: "Redact secrets", help: "Hide detected credentials from tool output where possible.", control: .toggle(defaultValue: true)),
         .init(key: "security.allow_private_urls", label: "Allow private URLs", help: "Permit tool access to private-network URLs.", control: .toggle(defaultValue: false)),
     ]

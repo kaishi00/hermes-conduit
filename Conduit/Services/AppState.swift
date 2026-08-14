@@ -15,6 +15,7 @@ import WebKit
 
 private let sessionCatalogLog = Logger(subsystem: "com.milim.conduit", category: "SessionCatalog")
 private let titleGenerationLog = Logger(subsystem: "com.milim.conduit", category: "TitleGeneration")
+private let sessionYoloLog = Logger(subsystem: "com.milim.conduit", category: "SessionYolo")
 
 typealias ChatResumeReconnectCancellation = @MainActor () -> Void
 typealias ChatResumeReconnectExecutor = @MainActor (ChatResumeSyncPurpose) async -> Void
@@ -652,6 +653,15 @@ final class AppState: ObservableObject {
     private let sessionYoloStore: SessionYoloStore
     private var sessionYoloWriteRevision: UInt64 = 0
     private var sessionYoloWriteRevisions: [ChatScrollSessionKey: UInt64] = [:]
+    /// Sessions whose user-initiated YOLO write is awaiting its RPC. The
+    /// override store is only updated after the gateway accepts, so readers
+    /// (notably the resume re-assert) must not treat the store as current
+    /// while a write is in flight.
+    private var inFlightSessionYoloWrites: Set<ChatScrollSessionKey> = []
+    /// The last session-level `yolo` the gateway itself reported, distinct
+    /// from `runtime.yolo`, which also folds in the profile floor and the
+    /// stored override.
+    private var lastReportedSessionYolo: Bool?
 
     /// The dashboard's persisted transcript is richer than `session.resume`:
     /// it retains database timestamps, complete tool-call inputs, and other
@@ -2434,9 +2444,7 @@ final class AppState: ObservableObject {
             guard applyChatResume(
                 presentationResult,
                 automaticWorkToken: automaticWorkToken,
-                automaticSyncOperationID: automaticSyncOperationID,
-                yoloWriteBaseline: yoloWriteBaseline,
-                reconcileExplicitYolo: reconcileExplicitYolo
+                automaticSyncOperationID: automaticSyncOperationID
             ) else {
                 settleReconciliation(token, automaticSyncOperationID: automaticSyncOperationID)
                 return false
@@ -2524,14 +2532,41 @@ final class AppState: ObservableObject {
                 )
             }
             let bufferedYoloAuthority = reconcileExplicitYolo ? result.snapshot.yolo : nil
+            // The approval mode is profile-scoped and independent of the
+            // per-session YOLO write gate: a user toggle during the resume must
+            // not let a stale buffered event re-impose an outdated floor.
+            let bufferedApprovalsModeAuthority = result.snapshot.approvalsMode
             bufferedEvents.forEach { event in
-                applyStreamEvent(event, authoritativeYolo: bufferedYoloAuthority)
+                applyStreamEvent(
+                    event,
+                    authoritativeYolo: bufferedYoloAuthority,
+                    authoritativeApprovalsMode: bufferedApprovalsModeAuthority
+                )
             }
-            return settleReconciliationAndPublish(
+            let settled = settleReconciliationAndPublish(
                 token,
                 automaticWorkToken: automaticWorkToken,
                 automaticSyncOperationID: automaticSyncOperationID
             )
+            if settled, reconcileExplicitYolo {
+                // Re-assert only after the ownership guard above (token,
+                // profile, client) re-validated this reconciliation and after
+                // the synchronous settle, so a profile or client switch during
+                // the suspending context refresh above cannot push a stale
+                // write through the old client for the old profile's session.
+                // A user YOLO write that completed since the resume began
+                // already pushed the server, so skip instead of duplicating
+                // it; one still in flight is skipped inside
+                // reassertSessionYolo. The mid-RPC race is accepted: the value
+                // was chosen under verified ownership, and the next resume
+                // reconciles.
+                await reassertSessionYolo(
+                    for: result.sessionId,
+                    snapshot: result.snapshot,
+                    using: client
+                )
+            }
+            return settled
 
         } catch {
             guard automaticChatResumeWorkIsCurrent(
@@ -2640,6 +2675,21 @@ final class AppState: ObservableObject {
             receivedReasoningForCurrentTurn = false
             turnState = .idle
             errorMessage = nil
+            // A fresh conversation has no per-session override and no
+            // server-reported flag yet; re-resolve from the profile mode
+            // (still valid — it is profile-scoped) so the new chat does not
+            // inherit the previous session's effective indicator until the
+            // first snapshot arrives.
+            lastReportedSessionYolo = nil
+            if runtime.approvalsMode != nil {
+                applyEffectiveYolo(
+                    sessionIDsForOverride: [runtimeSessionID],
+                    snapshotYolo: nil,
+                    snapshotReportedApprovalsMode: runtime.approvalsMode
+                )
+            } else {
+                runtime.yolo = false
+            }
 
             let storedID = created.storedSessionId ?? runtimeSessionID
             let summary = SessionSummary(
@@ -2711,22 +2761,6 @@ final class AppState: ObservableObject {
         _ result: SessionResumeResult,
         automaticWorkToken: ChatResumeAutomaticWorkToken? = nil,
         automaticSyncOperationID: UUID? = nil
-    ) -> Bool {
-        applyChatResume(
-            result,
-            automaticWorkToken: automaticWorkToken,
-            automaticSyncOperationID: automaticSyncOperationID,
-            yoloWriteBaseline: nil
-        )
-    }
-
-    @discardableResult
-    private func applyChatResume(
-        _ result: SessionResumeResult,
-        automaticWorkToken: ChatResumeAutomaticWorkToken? = nil,
-        automaticSyncOperationID: UUID? = nil,
-        yoloWriteBaseline: SessionYoloWriteBaseline?,
-        reconcileExplicitYolo: Bool? = nil
     ) -> Bool {
         guard automaticChatResumeWorkIsCurrent(
             automaticWorkToken,
@@ -2839,13 +2873,7 @@ final class AppState: ObservableObject {
         receivedReasoningForCurrentTurn = false
         applyRuntime(
             result.snapshot,
-            for: result.sessionId,
-            reconcileExplicitYolo: reconcileExplicitYolo ?? yoloWriteBaseline.map {
-                !hasNewerSessionYoloWrite(
-                    since: $0,
-                    sessionIDs: [result.sessionId, reconciliation?.requestedSessionId].compactMap { $0 }
-                )
-            } ?? true
+            for: result.sessionId
         )
 
         // An omitted running state is ambiguous while a decision or live
@@ -3239,11 +3267,25 @@ final class AppState: ObservableObject {
         }
     }
 
+    private func beginSessionYoloWrite(for sessionIDs: [String]) {
+        inFlightSessionYoloWrites.formUnion(sessionYoloKeys(for: sessionIDs))
+    }
+
+    private func endSessionYoloWrite(for sessionIDs: [String]) {
+        for key in sessionYoloKeys(for: sessionIDs) {
+            inFlightSessionYoloWrites.remove(key)
+        }
+    }
+
+    private func hasInFlightSessionYoloWrite(sessionIDs: [String]) -> Bool {
+        !sessionYoloKeys(for: sessionIDs).isDisjoint(with: inFlightSessionYoloWrites)
+    }
+
     private func applyRuntime(
         _ snapshot: SessionRuntimeSnapshot,
         for sessionID: String? = nil,
-        reconcileExplicitYolo: Bool = false,
-        authoritativeYolo: Bool? = nil
+        authoritativeYolo: Bool? = nil,
+        authoritativeApprovalsMode: String? = nil
     ) {
         if let model = snapshot.model { runtime.model = model }
         if let provider = snapshot.provider { runtime.provider = provider }
@@ -3256,6 +3298,12 @@ final class AppState: ObservableObject {
             runtime.reasoningEffort = reasoningEffort.lowercased() == "none" ? "" : reasoningEffort
         }
         if let fast = snapshot.fast { runtime.fast = fast }
+        if let approvalsMode = authoritativeApprovalsMode ?? snapshot.approvalsMode {
+            runtime.approvalsMode = approvalsMode
+        }
+        if let reportedYolo = authoritativeYolo ?? snapshot.yolo {
+            lastReportedSessionYolo = reportedYolo
+        }
         let requestedSessionID = sessionID ?? activeSessionId
         let resolvedCanonicalSessionID = canonicalSessionID(for: requestedSessionID)
         let sessionIDsForOverride = [resolvedCanonicalSessionID, requestedSessionID]
@@ -3269,32 +3317,48 @@ final class AppState: ObservableObject {
                 aliases: [requestedSessionID]
             )
         }
+        applyEffectiveYolo(
+            sessionIDsForOverride: sessionIDsForOverride,
+            snapshotYolo: authoritativeYolo ?? snapshot.yolo,
+            snapshotReportedApprovalsMode: authoritativeApprovalsMode ?? snapshot.approvalsMode
+        )
+    }
+
+    /// Resolve the effective session YOLO state from the current profile
+    /// approval mode and the stored per-session override. Shared by
+    /// `applyRuntime` (snapshot reconciliation) and the Settings save path so
+    /// the indicator, the floor, and the Model Picker lock can never disagree
+    /// with the saved mode.
+    private func applyEffectiveYolo(
+        sessionIDsForOverride: [String],
+        snapshotYolo: Bool?,
+        snapshotReportedApprovalsMode: String?
+    ) {
         let storedOverride = sessionYoloStore.storedOverride(
             for: activeProfile,
             sessionIDs: sessionIDsForOverride
         )
-        if let yolo = authoritativeYolo ?? snapshot.yolo {
-            if let storedOverride {
-                if reconcileExplicitYolo, storedOverride != yolo {
-                    sessionYoloStore.clearOverride(
-                        for: activeProfile,
-                        sessionIDs: sessionIDsForOverride
-                    )
-                    runtime.yolo = yolo
-                } else {
-                    // Live session.info pushes can be older than a client
-                    // initiated config.set RPC. Keep the local choice until a
-                    // fresh resume snapshot can reconcile server authority.
-                    runtime.yolo = storedOverride
-                }
-            } else {
-                runtime.yolo = yolo
-            }
+        let globalYoloFloor = runtime.approvalsMode?.lowercased() == "off"
+        if globalYoloFloor {
+            // Hermes auto-approves globally when approvals.mode == "off"; a
+            // per-session toggle cannot require approvals. Reflect the server's
+            // effective state so the indicator does not claim otherwise.
+            runtime.yolo = true
         } else if let storedOverride {
+            // The per-session choice is authoritative. The gateway holds the
+            // flag in memory only and forgets it on restart, so AppState
+            // re-asserts it after resume (see reassertSessionYolo).
             runtime.yolo = storedOverride
-        } else if let approvalsMode = snapshot.approvalsMode {
-            runtime.yolo = approvalsMode.lowercased() == "off"
+        } else if let yolo = snapshotYolo {
+            runtime.yolo = yolo
+        } else if let mode = snapshotReportedApprovalsMode, mode.lowercased() != "off" {
+            // Only the snapshot's own non-off mode report resolves to "approvals
+            // apply" — a last-known mode with the signal omitted entirely is
+            // unknown, not a disagreement, and must not flicker the indicator.
+            runtime.yolo = false
         }
+        // Otherwise keep the last-known indicator value; a partial projection
+        // omitting the approval fields must not flicker it.
     }
 
     /// The context breakdown RPC is the gateway's complete accounting source.
@@ -4551,7 +4615,18 @@ final class AppState: ObservableObject {
     ) async -> Bool {
         let submissionContext = context ?? composerSubmissionContext()
         guard isCurrentComposerSubmission(submissionContext) else { return false }
+        guard runtime.approvalsMode?.lowercased() != "off" else {
+            // Hermes auto-approves globally under approvals.mode == "off"; the
+            // per-session write is a server-side no-op, and persisting an
+            // override here would silently resurface when the profile mode
+            // changes back. Send nothing and keep the effective floor state.
+            runtime.yolo = true
+            return true
+        }
         guard let client, let sessionId = activeSessionId else { return false }
+        let persistedSessionID = canonicalSessionID(for: sessionId) ?? sessionId
+        beginSessionYoloWrite(for: [sessionId, persistedSessionID])
+        defer { endSessionYoloWrite(for: [sessionId, persistedSessionID]) }
         do {
             if let setSessionYolo = chatResumeLifecycleOperations.setSessionYolo {
                 try await setSessionYolo(client, sessionId, enabled)
@@ -4561,19 +4636,70 @@ final class AppState: ObservableObject {
             // Hermes accepted the setting. Avoid publishing it into a new
             // session if the composer origin was handed off while awaiting.
             guard isCurrentComposerSubmission(submissionContext) else { return true }
-            let persistedSessionID = canonicalSessionID(for: sessionId) ?? sessionId
             sessionYoloStore.setOverride(
                 enabled,
                 for: activeProfile,
                 sessionID: persistedSessionID
             )
             recordSessionYoloWrite(for: [sessionId, persistedSessionID])
+            lastReportedSessionYolo = enabled
             runtime.yolo = enabled
             return true
         } catch {
             guard isCurrentComposerSubmission(submissionContext) else { return false }
             errorMessage = "Unable to change YOLO mode: \(error.localizedDescription)"
             return false
+        }
+    }
+
+    /// Re-assert a persisted per-session YOLO override after a resume.
+    ///
+    /// The Hermes gateway keeps the per-session YOLO flag in memory only and
+    /// never persists it (unlike the CLI), so a gateway restart or rebuilt
+    /// agent forgets the flag and reverts to the profile default. Re-sending
+    /// `config.set` restores the user's explicit choice so the server keeps
+    /// honoring it. No-op when the profile approval mode is already "off" (the
+    /// flag is then moot), when there is no stored override, when the snapshot
+    /// does not report a session-level yolo (unknown is not a disagreement),
+    /// or when the server's reported value already matches the override.
+    /// Failure is non-fatal: the local override still governs the indicator
+    /// and the next resume retries.
+    private func reassertSessionYolo(
+        for sessionId: String,
+        snapshot: SessionRuntimeSnapshot,
+        using client: HermesClient
+    ) async {
+        // Use the same resolved floor source applyRuntime just updated (the
+        // snapshot's value when present, else the last-known mode) so the
+        // floor decision and the re-assert decision can never diverge when a
+        // snapshot omits approvals_mode.
+        guard runtime.approvalsMode?.lowercased() != "off" else { return }
+        let persistedSessionID = canonicalSessionID(for: sessionId) ?? sessionId
+        // A user write awaiting its RPC has not reached the store yet;
+        // re-asserting now could read the pre-toggle override and land after
+        // the user's write, leaving the server on the stale value. Skip — the
+        // user's write settles the server and the next resume reconciles.
+        guard !hasInFlightSessionYoloWrite(sessionIDs: [persistedSessionID, sessionId]) else { return }
+        guard let override = sessionYoloStore.storedOverride(
+            for: activeProfile,
+            sessionIDs: [persistedSessionID, sessionId]
+        ) else { return }
+        // A snapshot that omits the session-level yolo is unknown, not a
+        // disagreement; re-asserting on every resume for gateways that omit the
+        // field would be pure churn. The gateway's session.info projection
+        // reports yolo as a boolean, so a real conflict is always visible.
+        guard let reportedYolo = snapshot.yolo, reportedYolo != override else { return }
+        do {
+            if let setSessionYolo = chatResumeLifecycleOperations.setSessionYolo {
+                try await setSessionYolo(client, sessionId, override)
+            } else {
+                try await client.setSessionYolo(sessionId, enabled: override)
+            }
+            recordSessionYoloWrite(for: [sessionId, persistedSessionID])
+        } catch {
+            sessionYoloLog.error(
+                "Failed to re-assert session YOLO override \(override, privacy: .public) for \(sessionId, privacy: .public): \(error.localizedDescription, privacy: .public)"
+            )
         }
     }
 
@@ -5607,6 +5733,9 @@ final class AppState: ObservableObject {
         }
 
         let previousProfile = activeProfile
+        let previousApprovalsMode = runtime.approvalsMode
+        let previousYolo = runtime.yolo
+        let previousLastReportedSessionYolo = lastReportedSessionYolo
         let previousSessions = sessions
         let previousCronSessions = cronSessions
         let previousArchivedSessions = archivedSessions
@@ -5616,6 +5745,13 @@ final class AppState: ObservableObject {
         defer { isProfileSwitching = false }
         invalidateReconciliation()
         turnState = .synchronizing
+        // The next profile's approval mode is unknown until its first session
+        // snapshot arrives; don't let the previous profile's floor leak across
+        // the switch, and neutralize the indicator to the safe display
+        // (approvals required) until the new profile resolves it.
+        runtime.approvalsMode = nil
+        runtime.yolo = false
+        lastReportedSessionYolo = nil
 
         do {
             let ticket = try await mintChatResumeTicket(for: savedConnection)
@@ -5680,6 +5816,12 @@ final class AppState: ObservableObject {
             errorMessage = "Could not switch workspace: \(error.localizedDescription)"
             clearPendingDecisionRestorationGuard()
             activeProfile = previousProfile
+            // The pre-switch reset neutralized the approval state; restore it
+            // with the rest of the previous profile or a failed switch loses
+            // the floor while the previous profile is still the active one.
+            runtime.approvalsMode = previousApprovalsMode
+            runtime.yolo = previousYolo
+            lastReportedSessionYolo = previousLastReportedSessionYolo
             sessions = previousSessions
             cronSessions = previousCronSessions
             archivedSessions = previousArchivedSessions
@@ -6308,6 +6450,24 @@ final class AppState: ObservableObject {
                 method: "PUT",
                 body: ["config": config, "profile": profile]
             )
+            if key == "approvals.mode", let mode = value.textValue?.lowercased(), profile == activeProfile {
+                // Mirror the saved profile mode immediately and re-resolve the
+                // effective indicator state through the same precedence
+                // applyRuntime uses, so the floor and the picker lock take
+                // effect without waiting for the next session snapshot. The
+                // last server-reported session value carries through when
+                // known (runtime.yolo may be the floor-forced value, not the
+                // session flag); only the floor/override precedence re-runs.
+                runtime.approvalsMode = mode
+                let requestedSessionID = activeSessionId
+                let resolvedCanonicalSessionID = canonicalSessionID(for: requestedSessionID)
+                applyEffectiveYolo(
+                    sessionIDsForOverride: [resolvedCanonicalSessionID, requestedSessionID]
+                        .compactMap { $0 },
+                    snapshotYolo: lastReportedSessionYolo ?? runtime.yolo,
+                    snapshotReportedApprovalsMode: nil
+                )
+            }
             return true
         } catch {
             errorMessage = "Could not save \(key): \(error.localizedDescription)"
@@ -6677,7 +6837,11 @@ final class AppState: ObservableObject {
         return reconciliation.acceptedSessionIDs.contains(sessionId)
     }
 
-    private func applyStreamEvent(_ event: StreamEvent, authoritativeYolo: Bool? = nil) {
+    private func applyStreamEvent(
+        _ event: StreamEvent,
+        authoritativeYolo: Bool? = nil,
+        authoritativeApprovalsMode: String? = nil
+    ) {
         let streamSessionId = sessionID(for: event)
         guard eventBelongsToActiveSession(streamSessionId) else { return }
         defer { schedulePresentationCacheFlush(for: streamSessionId) }
@@ -6739,7 +6903,12 @@ final class AppState: ObservableObject {
             }
 
         case .sessionInfo(let sessionID, let snapshot):
-            applyRuntime(snapshot, for: sessionID, authoritativeYolo: authoritativeYolo)
+            applyRuntime(
+                snapshot,
+                for: sessionID,
+                authoritativeYolo: authoritativeYolo,
+                authoritativeApprovalsMode: authoritativeApprovalsMode
+            )
             if let running = snapshot.running {
                 setRunning(running)
             }
