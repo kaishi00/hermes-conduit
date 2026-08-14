@@ -27,12 +27,18 @@ struct ConduitNotificationTarget: Equatable, Identifiable {
 }
 
 /// The structured card content for a decision notification. Approval is
-/// session-keyed (`approval.respond { choice, session_id }`), so a payload
+/// session-keyed (`approval.respond {choice, session_id}`), so a payload
 /// carrying the session key is fully answerable. Clarify is keyed by a
-/// gateway-generated request id that no plugin hook exposes, so it is not
-/// representable here yet (see the background-arrival design doc).
+/// plugin-minted id (`conduit-push-…`) whose answers return through the push
+/// relay rather than the gateway — the gateway's own clarify id is unreachable
+/// to plugins (see the background-arrival design docs).
 enum PendingDecisionPayload: Equatable {
     case approval(sessionKey: String, description: String, choices: [String])
+    case clarify(requestId: String, question: String, choices: [String])
+
+    /// Request ids minted by the notifier plugin's clarify loop; answers to
+    /// these route through the relay instead of `clarify.respond`.
+    static let relayRequestPrefix = "conduit-push-"
 }
 
 enum NotificationSessionResolver {
@@ -153,6 +159,68 @@ final class PushNotificationService: ObservableObject {
     func refresh() async {
         let settings = await UNUserNotificationCenter.current().notificationSettings()
         authorizationStatus = settings.authorizationStatus
+    }
+
+    /// Outcome of answering a plugin-minted clarify (`conduit-push-…`) through
+    /// the relay's decision loop.
+    enum RelayDecisionOutcome {
+        case answered
+        /// The decision expired (clarify timed out server-side or was answered
+        /// on another surface first).
+        case noLongerActive
+        /// Another device already answered this decision.
+        case alreadyAnsweredElsewhere
+    }
+
+    enum RelayDecisionError: LocalizedError {
+        case unregistered
+        case transport(String)
+        case server(Int)
+
+        var errorDescription: String? {
+            switch self {
+            case .unregistered: return "This device is not paired with a push relay."
+            case .transport(let message): return "Could not reach the push relay: \(message)"
+            case .server(let status): return "The push relay rejected the answer (HTTP \(status))."
+            }
+        }
+    }
+
+    /// Answers a plugin-minted clarify decision through the relay. The gateway
+    /// polls the relay for this answer while its clarify middleware blocks, so
+    /// the agent thread unblocks exactly as if `clarify.respond` had been used.
+    @discardableResult
+    func respondToRelayDecision(
+        requestId: String,
+        answer: String
+    ) async throws -> RelayDecisionOutcome {
+        guard let registration else { throw RelayDecisionError.unregistered }
+        var request = URLRequest(url: relayURL.appending(path: "/v1/decisions/\(requestId)/respond"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(registration.credential)", forHTTPHeaderField: "Authorization")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["answer": answer])
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                throw RelayDecisionError.transport("invalid response")
+            }
+            switch http.statusCode {
+            case 200:
+                return .answered
+            case 404:
+                return .noLongerActive
+            case 409:
+                return .alreadyAnsweredElsewhere
+            default:
+                _ = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+                throw RelayDecisionError.server(http.statusCode)
+            }
+        } catch let error as RelayDecisionError {
+            throw error
+        } catch {
+            throw RelayDecisionError.transport(error.localizedDescription)
+        }
     }
 
     func enable() async {
@@ -324,6 +392,22 @@ final class PushNotificationService: ObservableObject {
                 .filter { !$0.isEmpty }
             guard !choices.isEmpty else { return nil }
             return .approval(sessionKey: sessionKey, description: description, choices: choices)
+        case "clarify":
+            // The request id is plugin-minted (`conduit-push-…`); without it
+            // the card is not answerable and the notification degrades to a
+            // plain routing target.
+            guard let requestId = (decision["request_id"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+                !requestId.isEmpty,
+                let question = (decision["question"] as? String)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines),
+                !question.isEmpty else {
+                return nil
+            }
+            let choices = ((decision["choices"] as? [Any])?
+                .compactMap { ($0 as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }) ?? []
+            return .clarify(requestId: requestId, question: question, choices: choices)
         default:
             return nil
         }

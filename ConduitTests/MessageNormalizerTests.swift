@@ -339,6 +339,53 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertFalse(AppState.isExpiredPromptError(HermesError.notConnected))
     }
 
+    func testNotificationPayloadCarriesClarifyDecision() {
+        let service = PushNotificationService(retryDelay: .zero)
+        defer {
+            if let target = service.pendingTarget {
+                service.clearPendingTarget(target)
+            }
+        }
+        service.receiveNotificationPayload([
+            "conduit": [
+                "session_id": "runtime-1",
+                "profile": "default",
+                "type": "input.needed",
+                "decision": [
+                    "kind": "clarify",
+                    "request_id": "conduit-push-abc123",
+                    "question": "Which color?",
+                    "choices": ["Red", "Blue"],
+                ] as [String: Any],
+            ] as [String: Any],
+        ])
+
+        guard case let .clarify(requestId, question, choices) = service.pendingTarget?.decision else {
+            return XCTFail("Expected a clarify decision carried on the notification target")
+        }
+        XCTAssertEqual(requestId, "conduit-push-abc123")
+        XCTAssertEqual(question, "Which color?")
+        XCTAssertEqual(choices, ["Red", "Blue"])
+    }
+
+    func testNotificationPayloadClarifyDecisionRejectedWithoutRequestId() {
+        let service = PushNotificationService(retryDelay: .zero)
+        defer {
+            if let target = service.pendingTarget {
+                service.clearPendingTarget(target)
+            }
+        }
+        // Without the plugin-minted id the card is not answerable; degrade.
+        service.receiveNotificationPayload([
+            "conduit": [
+                "session_id": "session-1",
+                "type": "input.needed",
+                "decision": ["kind": "clarify", "question": "Which color?"] as [String: Any],
+            ] as [String: Any],
+        ])
+        XCTAssertNil(service.pendingTarget?.decision)
+    }
+
     func testFailedNotificationRouteRetriesOnceThenClearsTarget() async {
         let service = PushNotificationService(retryDelay: .zero)
         service.receiveNotificationPayload([

@@ -725,6 +725,95 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(restoredCard?.approval?.status, .pending, "The push-delivered card must survive the open and render answerable")
     }
 
+    func testNotificationClarifyDecisionSurvivesOpenAndRendersAnswerable() async {
+        let cacheSuite = "conduit.tests.notification-clarify-open-\(UUID().uuidString)"
+        guard let cacheDefaults = UserDefaults(suiteName: cacheSuite) else {
+            XCTFail("Could not create isolated UserDefaults suite")
+            return
+        }
+        let cache = SessionPresentationCache(defaults: cacheDefaults)
+        defer {
+            cache.clear()
+            cacheDefaults.removePersistentDomain(forName: cacheSuite)
+        }
+        let transcript = [
+            ChatMessage(id: "a1", role: .assistant, content: "Prior turn text", timestamp: "1")
+        ]
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in [self.session("stored-a")] },
+                openSession: { _, sessionID in
+                    SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: transcript,
+                        snapshot: SessionRuntimeSnapshot(object: [:])
+                    )
+                },
+                refreshContext: { _, _ in }
+            ),
+            sessionPresentationCache: cache
+        )
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        harness.appState.connection = connection
+        harness.appState.client = HermesClient(connection: connection, profile: "default")
+        harness.appState.sessions = [session("stored-a")]
+        harness.appState.activeSessionId = "stored-a"
+        harness.appState.messages = transcript
+
+        let opened = await harness.appState.openNotificationTarget(
+            ConduitNotificationTarget(
+                profile: nil,
+                sessionId: "stored-a",
+                type: "input.needed",
+                decision: .clarify(
+                    requestId: "conduit-push-abc123",
+                    question: "Which color?",
+                    choices: ["Red", "Blue"]
+                )
+            )
+        )
+
+        XCTAssertTrue(opened)
+        let restoredCard = harness.appState.messages.first { $0.role == .clarify }
+        XCTAssertEqual(restoredCard?.clarify?.requestId, "conduit-push-abc123")
+        XCTAssertEqual(restoredCard?.clarify?.status, .pending, "A relay-delivered clarify must render as a normal answerable card")
+        XCTAssertEqual(restoredCard?.clarify?.choices.map(\.label), ["Red", "Blue"])
+    }
+
+    func testLiveClarifyEventSupersedesPushDeliveredCardForSameQuestion() async {
+        let harness = makeHarness()
+        harness.appState.activeSessionId = "stored-a"
+        harness.appState.messages = [
+            ChatMessage(
+                id: "clarify-conduit-push-abc123",
+                role: .clarify,
+                content: "Which color?",
+                timestamp: "1",
+                clarify: ClarifyActivity(
+                    requestId: "conduit-push-abc123",
+                    question: "Which color?",
+                    choices: [ClarifyChoice(label: "Red", value: "Red")],
+                    status: .pending,
+                    answer: nil,
+                    error: nil
+                )
+            )
+        ]
+
+        harness.appState.handleStreamEvent(
+            .clarify(
+                sessionId: "stored-a",
+                requestId: "gateway-rid-1",
+                question: "Which color?",
+                choices: [("Red", "Red")]
+            )
+        )
+
+        let clarifyCards = harness.appState.messages.filter { $0.role == .clarify }
+        XCTAssertEqual(clarifyCards.count, 1, "The push-delivered card must be superseded by the live event")
+        XCTAssertEqual(clarifyCards.first?.clarify?.requestId, "gateway-rid-1")
+    }
+
     func testNotificationDecisionWithMismatchedSessionKeyIsNotRecorded() async {
         let cacheSuite = "conduit.tests.notification-decision-mismatch-\(UUID().uuidString)"
         guard let cacheDefaults = UserDefaults(suiteName: cacheSuite) else {
