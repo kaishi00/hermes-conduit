@@ -275,7 +275,12 @@ section), degrading either case to the plain routing stub.
    inherited from an old card would otherwise expire a brand-new decision
    immediately). The card is written under both the runtime and resolved
    stored session ids, and only when the decision's session key matches one
-   of those identities.
+   of those identities. Presentation-cache flushes union the store's pending
+   decision keys into the preserve set, so the pre-resume flush inside
+   `openSession` — which rebuilds the cache entry from the in-memory
+   transcript that has never seen the push card — cannot wipe a store-only
+   card when the notified session is already active (regression-tested at the
+   AppState level).
 3. On resume, PR #54's `applyChatResume` → `merge` path restores cached
    pending cards; reconcile by decision key means a later live/gateway card
    replaces the cached one without a duplicate.

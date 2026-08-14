@@ -704,10 +704,19 @@ final class AppState: ObservableObject {
         let pendingDecisionKeys = SessionPresentationCache.pendingDecisionKeys(in: cacheableMessages)
         // Gateway-provided cards do not create a restoration guard, so keep
         // their bounded expiry marker across ordinary cache flushes as well.
+        // Push-recorded cards (recordPendingDecision) live only in the store —
+        // the in-memory transcript has never seen them — so union in the
+        // store's pending keys or the flush would drop the card before the
+        // notification-open resume merge could restore it.
+        let storedPendingDecisionKeys = sessionPresentationCache.storedPendingDecisionKeys(
+            profile: activeProfile,
+            sessionIDs: ids
+        )
         let pendingDecisionKeysToPreserve = restorationKeys
-            ?? pendingDecisionKeys
+            ?? pendingDecisionKeys.union(storedPendingDecisionKeys)
         let preservePendingDecisionCards = restorationKeys == nil
             || !pendingDecisionKeys.isEmpty
+            || !storedPendingDecisionKeys.isEmpty
         sessionPresentationCache.save(
             cacheableMessages,
             profile: activeProfile,
@@ -4170,7 +4179,13 @@ final class AppState: ObservableObject {
     ) {
         switch decision {
         case let .approval(sessionKey, description, choices):
-            guard sessionIDs.contains(sessionKey) else { return }
+            // Compare trimmed on both sides: the payload parser trims the
+            // session key, but the routed ids arrive as the notification
+            // delivered them.
+            let knownKeys = sessionIDs.map {
+                $0.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            guard knownKeys.contains(sessionKey) else { return }
             let activity = ApprovalActivity(
                 sessionId: sessionKey,
                 command: "",

@@ -274,6 +274,24 @@ final class SessionPresentationCache {
         return merged
     }
 
+    /// Pending decision keys currently held in the store for the given
+    /// sessions, regardless of what the live in-memory transcript contains.
+    /// A presentation-cache flush rebuilds its records from the in-memory
+    /// transcript, so without this a flush for a session whose store holds a
+    /// push-recorded card (`recordPendingDecision`) would silently drop that
+    /// card — most notably the open-from-notification path, which records and
+    /// then immediately flushes when the notified session is already active.
+    func storedPendingDecisionKeys(
+        profile: String,
+        sessionIDs: [String]
+    ) -> Set<String> {
+        let stored = load()
+        let keys = sessionIDs
+            .compactMap { stored[key(profile: profile, sessionID: $0)] }
+            .flatMap { session in session.messages.compactMap(pendingDecisionKey(for:)) }
+        return Set(keys)
+    }
+
     /// Records a pending decision card observed outside the live stream —
     /// today, from a push notification's structured payload, which is the only
     /// source for a decision raised while the app was backgrounded and missed
