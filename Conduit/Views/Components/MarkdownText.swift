@@ -94,28 +94,20 @@ struct MarkdownSelectionHost: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .contentShape(Rectangle())
+            // The SwiftUI TapGesture + DragGesture that used to wrap this
+            // content were removed: any SwiftUI gesture here fought the
+            // enclosing chat ScrollView's vertical pan and deadened the message
+            // area whenever a response contained a table or code block, and the
+            // selection handles flashed and vanished. Removing them restores
+            // scrolling and stable per-block text selection. Cross-block
+            // selection across table/code blocks is not currently wired — it
+            // needs a mechanism that can coexist with UITextView's private
+            // text-selection gesture; the coordinator infrastructure and this
+            // non-interactive highlight overlay remain for that future use.
             .overlay {
                 MarkdownSelectionHighlightOverlay(coordinator: coordinator)
                     .allowsHitTesting(false)
             }
-            .simultaneousGesture(
-                TapGesture()
-                    .onEnded {
-                        coordinator.clearSelection()
-                    }
-            )
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 0, coordinateSpace: .global)
-                    .onChanged { value in
-                        guard coordinator.isSelectionGestureActive else { return }
-                        coordinator.updateSelection(windowPoint: value.location)
-                    }
-                    .onEnded { _ in
-                        guard coordinator.isSelectionGestureActive else { return }
-                        coordinator.endSelection()
-                    }
-            )
             .onDisappear {
                 coordinator.clearSelection()
             }
