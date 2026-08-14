@@ -274,6 +274,76 @@ final class SessionPresentationCache {
         return merged
     }
 
+    /// Pending decision keys currently held in the store for the given
+    /// sessions, regardless of what the live in-memory transcript contains.
+    /// A presentation-cache flush rebuilds its records from the in-memory
+    /// transcript, so without this a flush for a session whose store holds a
+    /// push-recorded card (`recordPendingDecision`) would silently drop that
+    /// card — most notably the open-from-notification path, which records and
+    /// then immediately flushes when the notified session is already active.
+    func storedPendingDecisionKeys(
+        profile: String,
+        sessionIDs: [String]
+    ) -> Set<String> {
+        let stored = load()
+        let keys = sessionIDs
+            .compactMap { stored[key(profile: profile, sessionID: $0)] }
+            .flatMap { session in session.messages.compactMap(pendingDecisionKey(for:)) }
+        return Set(keys)
+    }
+
+    /// Records a pending decision card observed outside the live stream —
+    /// today, from a push notification's structured payload, which is the only
+    /// source for a decision raised while the app was backgrounded and missed
+    /// the one-shot gateway event. Upserts the single card into whatever is
+    /// already cached for each session (the transcript is otherwise the
+    /// gateway's source of truth), dedupes by decision key, and stamps the
+    /// bounded unconfirmed marker so a stale card expires rather than
+    /// lingering. `merge(includePendingApprovals:)` restores it on resume.
+    func recordPendingDecision(
+        _ message: ChatMessage,
+        profile: String,
+        sessionIDs: [String]
+    ) {
+        guard Self.pendingDecisionKey(for: message) != nil,
+              let targetKey = Self.decisionKey(for: message) else { return }
+        let ids = Set(sessionIDs.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })
+        guard !ids.isEmpty else { return }
+
+        var store = load()
+        let record = CachedMessage(message)
+        let stampedAt = now()
+        var changed = false
+        for id in ids {
+            let cacheKey = key(profile: profile, sessionID: id)
+            var session = store[cacheKey] ?? CachedSession(
+                updatedAt: stampedAt,
+                messages: [],
+                unconfirmedPendingDecisionAt: nil
+            )
+            // Replace any prior card for this exact decision, then append the
+            // fresh one. Other cached rows (the transcript) are untouched.
+            session.messages.removeAll { existing in
+                decisionKey(for: existing) == targetKey
+            }
+            session.messages.append(record)
+            // Restart the bounded unconfirmed window from this observation.
+            // The marker is per session, and expiry strips every pending card
+            // in the session at once, so preserving an old marker would let a
+            // near-24h stamp immediately expire a decision that just arrived.
+            // (The card is also written under each session identity; an
+            // answered card can linger under an identity the answer flow did
+            // not update, but this same bounded window retires that copy.)
+            session.unconfirmedPendingDecisionAt = stampedAt
+            session.updatedAt = stampedAt
+            store[cacheKey] = session
+            changed = true
+        }
+        guard changed else { return }
+        trim(&store)
+        persist(store)
+    }
+
     func save(
         _ messages: [ChatMessage],
         profile: String,

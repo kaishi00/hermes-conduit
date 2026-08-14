@@ -665,6 +665,121 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertFalse(harness.appState.isOpeningNotificationSession)
     }
 
+    func testNotificationDecisionSurvivesOpenWhenNotifiedSessionIsActive() async {
+        // The warm-resume case: the tapped notification targets the session
+        // that is already active. The push-recorded card lives only in the
+        // presentation cache, while the pre-resume flush inside openSession
+        // rebuilds the cache entry from the in-memory transcript — which has
+        // never seen the card. The flush must preserve store-only pending
+        // decisions or the merge finds nothing and the card never appears.
+        let cacheSuite = "conduit.tests.notification-decision-open-\(UUID().uuidString)"
+        guard let cacheDefaults = UserDefaults(suiteName: cacheSuite) else {
+            XCTFail("Could not create isolated UserDefaults suite")
+            return
+        }
+        let cache = SessionPresentationCache(defaults: cacheDefaults)
+        defer {
+            cache.clear()
+            cacheDefaults.removePersistentDomain(forName: cacheSuite)
+        }
+        let transcript = [
+            ChatMessage(id: "a1", role: .assistant, content: "Prior turn text", timestamp: "1")
+        ]
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in [self.session("stored-a")] },
+                openSession: { _, sessionID in
+                    SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: transcript,
+                        snapshot: SessionRuntimeSnapshot(object: [:])
+                    )
+                },
+                refreshContext: { _, _ in }
+            ),
+            sessionPresentationCache: cache
+        )
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        harness.appState.connection = connection
+        harness.appState.client = HermesClient(connection: connection, profile: "default")
+        harness.appState.sessions = [session("stored-a")]
+        harness.appState.activeSessionId = "stored-a"
+        harness.appState.messages = transcript
+
+        let opened = await harness.appState.openNotificationTarget(
+            ConduitNotificationTarget(
+                profile: nil,
+                sessionId: "stored-a",
+                type: "approval.needed",
+                decision: .approval(
+                    sessionKey: "stored-a",
+                    description: "Run a dangerous shell command",
+                    choices: ["once", "deny"]
+                )
+            )
+        )
+
+        XCTAssertTrue(opened)
+        let restoredCard = harness.appState.messages.first { $0.role == .approval }
+        XCTAssertEqual(restoredCard?.approval?.sessionId, "stored-a")
+        XCTAssertEqual(restoredCard?.approval?.status, .pending, "The push-delivered card must survive the open and render answerable")
+    }
+
+    func testNotificationDecisionWithMismatchedSessionKeyIsNotRecorded() async {
+        let cacheSuite = "conduit.tests.notification-decision-mismatch-\(UUID().uuidString)"
+        guard let cacheDefaults = UserDefaults(suiteName: cacheSuite) else {
+            XCTFail("Could not create isolated UserDefaults suite")
+            return
+        }
+        let cache = SessionPresentationCache(defaults: cacheDefaults)
+        defer {
+            cache.clear()
+            cacheDefaults.removePersistentDomain(forName: cacheSuite)
+        }
+        let transcript = [
+            ChatMessage(id: "a1", role: .assistant, content: "Prior turn text", timestamp: "1")
+        ]
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in [self.session("stored-a")] },
+                openSession: { _, sessionID in
+                    SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: transcript,
+                        snapshot: SessionRuntimeSnapshot(object: [:])
+                    )
+                },
+                refreshContext: { _, _ in }
+            ),
+            sessionPresentationCache: cache
+        )
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        harness.appState.connection = connection
+        harness.appState.client = HermesClient(connection: connection, profile: "default")
+        harness.appState.sessions = [session("stored-a")]
+        harness.appState.activeSessionId = "stored-a"
+        harness.appState.messages = transcript
+
+        let opened = await harness.appState.openNotificationTarget(
+            ConduitNotificationTarget(
+                profile: nil,
+                sessionId: "stored-a",
+                type: "approval.needed",
+                decision: .approval(
+                    sessionKey: "some-other-session",
+                    description: "Not this session's approval",
+                    choices: ["once", "deny"]
+                )
+            )
+        )
+
+        XCTAssertTrue(opened)
+        XCTAssertFalse(
+            harness.appState.messages.contains { $0.role == .approval },
+            "A decision whose session key does not match the routed session must not be recorded"
+        )
+    }
+
     func testStaleSameTokenSyncCannotSettleNewerOpeningReconciliation() async {
         let staleCatalogGate = ControlledSuspension()
         let newerOpenGate = ControlledSuspension()
@@ -2901,7 +3016,8 @@ final class AppStateChatResumeTests: XCTestCase {
         configureDefaults: (UserDefaults) -> Void = { _ in },
         reconnectScheduler: ChatResumeReconnectScheduler? = nil,
         reconnectExecutor: ChatResumeReconnectExecutor? = nil,
-        lifecycleOperations: ChatResumeLifecycleOperations = .live
+        lifecycleOperations: ChatResumeLifecycleOperations = .live,
+        sessionPresentationCache: SessionPresentationCache = .shared
     ) -> (
         appState: AppState,
         coordinator: ChatResumeCoordinator,
@@ -2932,7 +3048,8 @@ final class AppStateChatResumeTests: XCTestCase {
             clearSessionPresentationCache: { cacheClearSpy.count += 1 },
             reconnectScheduler: reconnectScheduler,
             reconnectExecutor: reconnectExecutor,
-            chatResumeLifecycleOperations: lifecycleOperations
+            chatResumeLifecycleOperations: lifecycleOperations,
+            sessionPresentationCache: sessionPresentationCache
         )
         return (appState, coordinator, store, recoverySequence, cacheClearSpy, defaults, suite)
     }

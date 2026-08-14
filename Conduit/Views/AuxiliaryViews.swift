@@ -1358,6 +1358,7 @@ private struct NotificationsSettingsDetail: View {
                     notificationToggle("Background task finished", detail: "A delegated agent completes", keyPath: \.backgroundTaskFinished)
                     notificationToggle("Completion sound", detail: "Play a sound with notifications", keyPath: \.completionSound)
                     notificationToggle("Show previews", detail: "Include response text in notifications", keyPath: \.showPreviews)
+                    notificationToggle("Approval cards in pushes", detail: "Include approval details so cards work from notifications. Disable for maximum privacy.", keyPath: \.decisionCards)
                 }
 
                 ConduitSettingsSection(title: "Connect a Hermes profile", symbol: "link.badge.plus", tint: .conduitAura) {

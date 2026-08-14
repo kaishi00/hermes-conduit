@@ -6,7 +6,33 @@ struct ConduitNotificationTarget: Equatable, Identifiable {
     let profile: String?
     let sessionId: String
     let type: String?
+    /// Structured decision content carried alongside a decision notification.
+    /// Lets Conduit render an answerable card from the push payload alone when
+    /// the one-shot gateway stream event was missed while the app was
+    /// backgrounded. Nil for non-decision notifications.
+    let decision: PendingDecisionPayload?
     var id: String { "\(profile ?? "default"):\(sessionId):\(type ?? "")" }
+
+    init(
+        profile: String?,
+        sessionId: String,
+        type: String?,
+        decision: PendingDecisionPayload? = nil
+    ) {
+        self.profile = profile
+        self.sessionId = sessionId
+        self.type = type
+        self.decision = decision
+    }
+}
+
+/// The structured card content for a decision notification. Approval is
+/// session-keyed (`approval.respond { choice, session_id }`), so a payload
+/// carrying the session key is fully answerable. Clarify is keyed by a
+/// gateway-generated request id that no plugin hook exposes, so it is not
+/// representable here yet (see the background-arrival design doc).
+enum PendingDecisionPayload: Equatable {
+    case approval(sessionKey: String, description: String, choices: [String])
 }
 
 enum NotificationSessionResolver {
@@ -38,6 +64,11 @@ struct ConduitNotificationPreferences: Codable, Equatable {
     var backgroundTaskFinished = true
     var completionSound = true
     var showPreviews = false
+    /// Independent of `showPreviews`: controls whether pushes carry structured
+    /// decision content (answerable approval cards). Defaults on because the
+    /// feature's audience is exactly the approval-gate crowd; privacy-focused
+    /// users can turn just this off.
+    var decisionCards = true
 
     enum CodingKeys: String, CodingKey {
         case enabled
@@ -48,6 +79,28 @@ struct ConduitNotificationPreferences: Codable, Equatable {
         case backgroundTaskFinished = "background_task_finished"
         case completionSound = "completion_sound"
         case showPreviews = "show_previews"
+        case decisionCards = "decision_cards"
+    }
+}
+
+extension ConduitNotificationPreferences {
+    /// Decoding must tolerate registrations persisted by older builds, which
+    /// predate later-added keys — a `keyNotFound` failure would make the
+    /// `try?` in the init drop the whole stored registration and silently
+    /// disable push for an upgrading user. Every key falls back to its
+    /// default when absent. (Declared in an extension so the synthesized
+    /// `init()` is preserved.)
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+        approvalNeeded = try container.decodeIfPresent(Bool.self, forKey: .approvalNeeded) ?? true
+        inputNeeded = try container.decodeIfPresent(Bool.self, forKey: .inputNeeded) ?? true
+        responseReady = try container.decodeIfPresent(Bool.self, forKey: .responseReady) ?? true
+        turnFailed = try container.decodeIfPresent(Bool.self, forKey: .turnFailed) ?? true
+        backgroundTaskFinished = try container.decodeIfPresent(Bool.self, forKey: .backgroundTaskFinished) ?? true
+        completionSound = try container.decodeIfPresent(Bool.self, forKey: .completionSound) ?? true
+        showPreviews = try container.decodeIfPresent(Bool.self, forKey: .showPreviews) ?? false
+        decisionCards = try container.decodeIfPresent(Bool.self, forKey: .decisionCards) ?? true
     }
 }
 
@@ -237,8 +290,43 @@ final class PushNotificationService: ObservableObject {
         return ConduitNotificationTarget(
             profile: profile?.isEmpty == false ? profile : nil,
             sessionId: sessionId,
-            type: type?.isEmpty == false ? type : nil
+            type: type?.isEmpty == false ? type : nil,
+            decision: pendingDecision(from: payload)
         )
+    }
+
+    /// Parses the structured decision content the relay forwards alongside a
+    /// decision notification (see the background-arrival design doc). Returns
+    /// nil for non-decision notifications or malformed/unknown payloads so the
+    /// notification degrades to its ordinary routing target. An approval
+    /// requires a session key to answer, a description to display, and at
+    /// least one usable choice — otherwise a cached card could render the
+    /// approval view's default action set, which the payload never promised.
+    private func pendingDecision(from payload: [String: Any]) -> PendingDecisionPayload? {
+        guard let decision = payload["decision"] as? [String: Any],
+              let kind = (decision["kind"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+              !kind.isEmpty else {
+            return nil
+        }
+        switch kind {
+        case "approval":
+            guard let sessionKey = (decision["session_key"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+                !sessionKey.isEmpty,
+                let description = (decision["description"] as? String)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines),
+                !description.isEmpty,
+                let rawChoices = decision["choices"] as? [Any] else {
+                return nil
+            }
+            let choices = rawChoices
+                .compactMap { ($0 as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+            guard !choices.isEmpty else { return nil }
+            return .approval(sessionKey: sessionKey, description: description, choices: choices)
+        default:
+            return nil
+        }
     }
 
     private func requestDeviceToken() async throws -> String {

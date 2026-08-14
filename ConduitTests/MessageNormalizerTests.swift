@@ -170,6 +170,175 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertNil(service.pendingTarget)
     }
 
+    func testNotificationPayloadCarriesApprovalDecision() {
+        let service = PushNotificationService(retryDelay: .zero)
+        defer {
+            if let target = service.pendingTarget {
+                service.clearPendingTarget(target)
+            }
+        }
+        service.receiveNotificationPayload([
+            "conduit": [
+                "session_id": "runtime-1",
+                "profile": "default",
+                "type": "approval.needed",
+                "decision": [
+                    "kind": "approval",
+                    "session_key": "runtime-1",
+                    "description": "Run a dangerous shell command",
+                    "choices": ["once", "deny"],
+                ] as [String: Any],
+            ] as [String: Any],
+        ])
+
+        guard case let .approval(sessionKey, description, choices) = service.pendingTarget?.decision else {
+            return XCTFail("Expected an approval decision carried on the notification target")
+        }
+        XCTAssertEqual(sessionKey, "runtime-1")
+        XCTAssertEqual(description, "Run a dangerous shell command")
+        XCTAssertEqual(choices, ["once", "deny"])
+    }
+
+    func testNotificationPayloadDecisionAbsentForNonDecisionEvents() {
+        let service = PushNotificationService(retryDelay: .zero)
+        defer {
+            if let target = service.pendingTarget {
+                service.clearPendingTarget(target)
+            }
+        }
+        service.receiveNotificationPayload([
+            "conduit": [
+                "session_id": "session-1",
+                "type": "response.ready",
+            ] as [String: Any],
+        ])
+        XCTAssertNil(service.pendingTarget?.decision, "Non-decision notifications must not carry a decision")
+    }
+
+    func testNotificationPayloadDecisionRejectedWithoutSessionKey() {
+        let service = PushNotificationService(retryDelay: .zero)
+        defer {
+            if let target = service.pendingTarget {
+                service.clearPendingTarget(target)
+            }
+        }
+        // An approval with no answerable session key is not useful; drop it.
+        service.receiveNotificationPayload([
+            "conduit": [
+                "session_id": "session-1",
+                "type": "approval.needed",
+                "decision": ["kind": "approval", "description": "something"] as [String: Any],
+            ] as [String: Any],
+        ])
+        XCTAssertNil(service.pendingTarget?.decision)
+    }
+
+    func testNotificationPayloadDecisionRejectedWithoutDisplayText() {
+        let service = PushNotificationService(retryDelay: .zero)
+        defer {
+            if let target = service.pendingTarget {
+                service.clearPendingTarget(target)
+            }
+        }
+        service.receiveNotificationPayload([
+            "conduit": [
+                "session_id": "session-1",
+                "type": "approval.needed",
+                "decision": [
+                    "kind": "approval",
+                    "session_key": "session-1",
+                    "description": "   ",
+                    "choices": ["once", "deny"],
+                ] as [String: Any],
+            ] as [String: Any],
+        ])
+        XCTAssertNil(service.pendingTarget?.decision, "An approval with no display text must degrade to a routing target")
+    }
+
+    func testNotificationPayloadDecisionRejectedWithoutUsableChoices() {
+        let service = PushNotificationService(retryDelay: .zero)
+        defer {
+            if let target = service.pendingTarget {
+                service.clearPendingTarget(target)
+            }
+        }
+        // Absent choices.
+        service.receiveNotificationPayload([
+            "conduit": [
+                "session_id": "session-1",
+                "type": "approval.needed",
+                "decision": ["kind": "approval", "session_key": "session-1", "description": "d"] as [String: Any],
+            ] as [String: Any],
+        ])
+        XCTAssertNil(service.pendingTarget?.decision, "Absent choices must degrade to a routing target")
+
+        // All-empty/invalid choices.
+        service.receiveNotificationPayload([
+            "conduit": [
+                "session_id": "session-1",
+                "type": "approval.needed",
+                "decision": [
+                    "kind": "approval",
+                    "session_key": "session-1",
+                    "description": "d",
+                    "choices": ["  ", ""],
+                ] as [String: Any],
+            ] as [String: Any],
+        ])
+        XCTAssertNil(service.pendingTarget?.decision, "Choices with no usable entries must degrade to a routing target")
+    }
+
+    func testNotificationPreferencesRoundTripDecisionCardsKey() throws {
+        var preferences = ConduitNotificationPreferences()
+        XCTAssertTrue(preferences.decisionCards, "Decision cards default on, independent of show previews")
+        XCTAssertFalse(preferences.showPreviews)
+
+        preferences.decisionCards = false
+        let data = try JSONEncoder().encode(preferences)
+        let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        XCTAssertEqual(object?["decision_cards"] as? Bool, false, "The relay expects the snake_case decision_cards key")
+
+        let decoded = try JSONDecoder().decode(ConduitNotificationPreferences.self, from: data)
+        XCTAssertFalse(decoded.decisionCards)
+    }
+
+    func testNotificationPreferencesDecodeLegacyRegistrationWithoutDecisionCardsKey() throws {
+        // A registration persisted by a build that predated decision_cards.
+        // Decoding must fall back to the default rather than throwing — a
+        // throw would make the `try?` in the service init drop the whole
+        // stored registration and silently disable push on upgrade.
+        let legacyJSON = """
+        {
+          "enabled": true,
+          "approval_needed": false,
+          "input_needed": true,
+          "response_ready": true,
+          "turn_failed": true,
+          "background_task_finished": true,
+          "completion_sound": true,
+          "show_previews": true
+        }
+        """
+        let decoded = try JSONDecoder().decode(
+            ConduitNotificationPreferences.self,
+            from: Data(legacyJSON.utf8)
+        )
+        XCTAssertFalse(decoded.approvalNeeded, "Persisted values must survive")
+        XCTAssertTrue(decoded.showPreviews, "Persisted values must survive")
+        XCTAssertTrue(decoded.decisionCards, "Absent decision_cards must fall back to the default-on value")
+    }
+
+    func testExpiredPromptErrorClassification() {
+        // The gateway's one-shot prompt timeout: JSON-RPC 4009.
+        XCTAssertTrue(AppState.isExpiredPromptError(RpcError(code: 4009, message: "no pending approval request")))
+        // Code-less variants still classify via the message, case-insensitively.
+        XCTAssertTrue(AppState.isExpiredPromptError(RpcError(code: nil, message: "No Pending clarify request")))
+        // Genuine failures must not be misread as expiry.
+        XCTAssertFalse(AppState.isExpiredPromptError(RpcError(code: 4004, message: "session not found")))
+        XCTAssertFalse(AppState.isExpiredPromptError(HermesError.timeout("approval.respond")))
+        XCTAssertFalse(AppState.isExpiredPromptError(HermesError.notConnected))
+    }
+
     func testFailedNotificationRouteRetriesOnceThenClearsTarget() async {
         let service = PushNotificationService(retryDelay: .zero)
         service.receiveNotificationPayload([

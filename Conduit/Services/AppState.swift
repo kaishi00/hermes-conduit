@@ -714,10 +714,19 @@ final class AppState: ObservableObject {
         let pendingDecisionKeys = SessionPresentationCache.pendingDecisionKeys(in: cacheableMessages)
         // Gateway-provided cards do not create a restoration guard, so keep
         // their bounded expiry marker across ordinary cache flushes as well.
+        // Push-recorded cards (recordPendingDecision) live only in the store —
+        // the in-memory transcript has never seen them — so union in the
+        // store's pending keys or the flush would drop the card before the
+        // notification-open resume merge could restore it.
+        let storedPendingDecisionKeys = sessionPresentationCache.storedPendingDecisionKeys(
+            profile: activeProfile,
+            sessionIDs: ids
+        )
         let pendingDecisionKeysToPreserve = restorationKeys
-            ?? pendingDecisionKeys
+            ?? pendingDecisionKeys.union(storedPendingDecisionKeys)
         let preservePendingDecisionCards = restorationKeys == nil
             || !pendingDecisionKeys.isEmpty
+            || !storedPendingDecisionKeys.isEmpty
         sessionPresentationCache.save(
             cacheableMessages,
             profile: activeProfile,
@@ -4202,6 +4211,14 @@ final class AppState: ObservableObject {
             for: requestedID,
             in: sessions + cronSessions
         )
+        // A decision raised while the app was backgrounded is delivered as a
+        // structured payload on the notification (the one-shot gateway stream
+        // event was missed). Cache it under both the runtime and resolved
+        // stored IDs so the upcoming resume's `merge` restores the card
+        // regardless of which identity the gateway resumes against.
+        if let decision = target.decision {
+            recordNotificationDecision(decision, sessionIDs: [resumableID, requestedID])
+        }
         let opened = await openSession(
             resumableID,
             reusing: transitionGeneration
@@ -4211,6 +4228,52 @@ final class AppState: ObservableObject {
             transitionGeneration: transitionGeneration
         ) else { return false }
         return opened
+    }
+
+    /// Caches a push-delivered decision card so the resume merge can restore
+    /// it. The card is recorded as pending and answerable through the existing
+    /// `respondToApproval` path; the bounded unconfirmed marker is stamped by
+    /// `SessionPresentationCache` so a stale card expires rather than lingering.
+    /// The decision's session key must match one of the routed session
+    /// identities — a mismatched key could not be answered via
+    /// `approval.respond` and would only duplicate or contradict the live card.
+    private func recordNotificationDecision(
+        _ decision: PendingDecisionPayload,
+        sessionIDs: [String]
+    ) {
+        switch decision {
+        case let .approval(sessionKey, description, choices):
+            // Compare trimmed on both sides: the payload parser trims the
+            // session key, but the routed ids arrive as the notification
+            // delivered them.
+            let knownKeys = sessionIDs.map {
+                $0.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            guard knownKeys.contains(sessionKey) else { return }
+            let activity = ApprovalActivity(
+                sessionId: sessionKey,
+                command: "",
+                description: description,
+                choices: choices,
+                allowPermanent: false,
+                smartDenied: false,
+                status: .pending,
+                choice: nil,
+                error: nil
+            )
+            let message = ChatMessage(
+                id: "approval-\(sessionKey)",
+                role: .approval,
+                content: description,
+                timestamp: Self.localTimestamp(),
+                approval: activity
+            )
+            sessionPresentationCache.recordPendingDecision(
+                message,
+                profile: activeProfile,
+                sessionIDs: sessionIDs
+            )
+        }
     }
 
     private func notificationOpenAttemptIsCurrent(
@@ -5338,8 +5401,12 @@ final class AppState: ObservableObject {
             guard let updatedIndex = messages.firstIndex(where: { $0.clarify?.requestId == requestId }) else { return }
             messages[updatedIndex].clarify?.status = .error
             messages[updatedIndex].clarify?.answer = nil
-            messages[updatedIndex].clarify?.error = "Hermes did not accept that answer."
-            errorMessage = error.localizedDescription
+            if Self.isExpiredPromptError(error) {
+                messages[updatedIndex].clarify?.error = "This question is no longer active — Hermes timed it out and continued."
+            } else {
+                messages[updatedIndex].clarify?.error = "Hermes did not accept that answer."
+                errorMessage = error.localizedDescription
+            }
             cacheMessagePresentation()
         }
     }
@@ -5860,6 +5927,20 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Hermes blocks a clarify/approval prompt for only ~5 minutes server-side
+    /// (JSON-RPC error 4009, "no pending … request"), while a restored or
+    /// push-delivered card can legitimately outlive it — a notification opened
+    /// an hour later is the feature's ordinary case, not an error. Treat that
+    /// outcome as "the decision is no longer active" instead of a generic
+    /// failure the user can retry forever.
+    static func isExpiredPromptError(_ error: Error) -> Bool {
+        if let rpcError = error as? RpcError {
+            if rpcError.code == 4009 { return true }
+            return rpcError.message.lowercased().contains("no pending")
+        }
+        return error.localizedDescription.lowercased().contains("no pending")
+    }
+
     func respondToApproval(messageId: String, choice: String) async {
         guard let index = messages.firstIndex(where: { $0.id == messageId }),
               let current = messages[index].approval,
@@ -5887,8 +5968,12 @@ final class AppState: ObservableObject {
             guard let updatedIndex = messages.firstIndex(where: { $0.id == messageId }) else { return }
             messages[updatedIndex].approval?.status = .error
             messages[updatedIndex].approval?.choice = nil
-            messages[updatedIndex].approval?.error = "Hermes did not accept that decision."
-            errorMessage = error.localizedDescription
+            if Self.isExpiredPromptError(error) {
+                messages[updatedIndex].approval?.error = "This approval is no longer active — Hermes timed it out and continued."
+            } else {
+                messages[updatedIndex].approval?.error = "Hermes did not accept that decision."
+                errorMessage = error.localizedDescription
+            }
             cacheMessagePresentation()
         }
     }
