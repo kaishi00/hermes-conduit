@@ -684,6 +684,125 @@ final class SessionYoloPersistenceTests: XCTestCase {
         XCTAssertEqual(store.storedOverride(for: "default", sessionID: "session-a"), true)
     }
 
+    // MARK: - Global floor vs. manual toggle paths
+
+    // The /yolo slash command routes through toggleYolo → setYoloMode. Under
+    // the global floor that write is a server-side no-op, and persisting the
+    // override would silently resurface when the profile mode changes, so
+    // nothing must be sent and the floor must stay visible.
+    func testToggleYoloUnderGlobalOffSendsNothingAndKeepsFloor() async {
+        let (suite, defaults) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let recorder = YoloSetCallRecorder()
+        let operations = ChatResumeLifecycleOperations(
+            setSessionYolo: { _, sessionID, enabled in recorder.record(sessionID, enabled) }
+        )
+        let store = SessionYoloStore(defaults: defaults, storageKey: "test.session-yolo")
+        let appState = makeAppState(defaults: defaults, store: store, lifecycleOperations: operations)
+        appState.sessions = [session("session-a")]
+        appState.activeSessionId = "session-a"
+        appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+        appState.applyChatResume(SessionResumeResult(
+            sessionId: "session-a",
+            messages: [],
+            snapshot: SessionRuntimeSnapshot(object: [
+                "running": .bool(false),
+                "approvals_mode": .string("off")
+            ])
+        ))
+        XCTAssertTrue(appState.runtime.yolo)
+
+        await appState.toggleYolo()
+
+        XCTAssertTrue(appState.runtime.yolo)
+        XCTAssertTrue(recorder.invocations.isEmpty)
+        XCTAssertNil(store.storedOverride(for: "default", sessionID: "session-a"))
+    }
+
+    // applyRuntime derives the floor from the last-known approvalsMode, so a
+    // resume snapshot that omits approvals_mode must not let the re-assert
+    // proceed under an "off" floor it cannot see in the snapshot alone.
+    func testReassertUsesLastKnownApprovalModeWhenSnapshotOmitsIt() async {
+        let (suite, defaults) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let recorder = YoloSetCallRecorder()
+        let operations = ChatResumeLifecycleOperations(
+            loadCatalog: { _, _ in [self.session("session-a")] },
+            openSession: { _, sessionID in
+                SessionResumeResult(
+                    sessionId: sessionID,
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: [
+                        "running": .bool(false),
+                        "yolo": .bool(true)
+                        // approvals_mode deliberately omitted
+                    ])
+                )
+            },
+            refreshContext: { _, _ in },
+            setSessionYolo: { _, sessionID, enabled in recorder.record(sessionID, enabled) }
+        )
+        let store = SessionYoloStore(defaults: defaults, storageKey: "test.session-yolo")
+        store.setOverride(false, for: "default", sessionID: "session-a")
+        let appState = makeAppState(defaults: defaults, store: store, lifecycleOperations: operations)
+        appState.sessions = [session("session-a")]
+        appState.activeSessionId = "session-a"
+        appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+        // Prime the last-known profile mode before the resume.
+        appState.applyChatResume(SessionResumeResult(
+            sessionId: "session-a",
+            messages: [],
+            snapshot: SessionRuntimeSnapshot(object: [
+                "running": .bool(false),
+                "approvals_mode": .string("off")
+            ])
+        ))
+
+        await appState.syncSession()
+
+        // The last-known floor still governs the indicator and suppresses the
+        // moot re-assert even though the resume snapshot omitted the mode.
+        XCTAssertTrue(appState.runtime.yolo)
+        XCTAssertTrue(recorder.invocations.isEmpty)
+        XCTAssertEqual(store.storedOverride(for: "default", sessionID: "session-a"), false)
+    }
+
+    // A snapshot that carries no approval signal at all (older gateways /
+    // partial projections) must not flip the indicator off; keep the
+    // last-known value instead.
+    func testSnapshotOmittingAllApprovalSignalsKeepsLastKnownYolo() {
+        let (suite, defaults) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = SessionYoloStore(defaults: defaults, storageKey: "test.session-yolo")
+        let appState = makeAppState(defaults: defaults, store: store)
+        appState.sessions = [session("session-a")]
+
+        appState.applyChatResume(SessionResumeResult(
+            sessionId: "session-a",
+            messages: [],
+            snapshot: SessionRuntimeSnapshot(object: [
+                "running": .bool(false),
+                "yolo": .bool(true)
+            ])
+        ))
+        XCTAssertTrue(appState.runtime.yolo)
+
+        appState.applyChatResume(SessionResumeResult(
+            sessionId: "session-a",
+            messages: [],
+            snapshot: SessionRuntimeSnapshot(object: [
+                "running": .bool(false)
+            ])
+        ))
+        XCTAssertTrue(appState.runtime.yolo)
+    }
+
     private func makeAppState(
         defaults: UserDefaults,
         store: SessionYoloStore,

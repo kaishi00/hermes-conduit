@@ -3280,9 +3280,14 @@ final class AppState: ObservableObject {
             runtime.yolo = storedOverride
         } else if let yolo = authoritativeYolo ?? snapshot.yolo {
             runtime.yolo = yolo
-        } else {
+        } else if runtime.approvalsMode != nil {
+            // A known non-off profile mode with no session-level signal means
+            // approvals apply.
             runtime.yolo = false
         }
+        // No approval signal has ever been observed: keep the last-known
+        // indicator value rather than flickering to "off" on partial
+        // projections that omit the approval fields.
     }
 
     /// The context breakdown RPC is the gateway's complete accounting source.
@@ -4539,6 +4544,14 @@ final class AppState: ObservableObject {
     ) async -> Bool {
         let submissionContext = context ?? composerSubmissionContext()
         guard isCurrentComposerSubmission(submissionContext) else { return false }
+        guard runtime.approvalsMode?.lowercased() != "off" else {
+            // Hermes auto-approves globally under approvals.mode == "off"; the
+            // per-session write is a server-side no-op, and persisting an
+            // override here would silently resurface when the profile mode
+            // changes back. Send nothing and keep the effective floor state.
+            runtime.yolo = true
+            return true
+        }
         guard let client, let sessionId = activeSessionId else { return false }
         do {
             if let setSessionYolo = chatResumeLifecycleOperations.setSessionYolo {
@@ -4581,7 +4594,11 @@ final class AppState: ObservableObject {
         snapshot: SessionRuntimeSnapshot,
         using client: HermesClient
     ) async {
-        guard snapshot.approvalsMode?.lowercased() != "off" else { return }
+        // Use the same resolved floor source applyRuntime just updated (the
+        // snapshot's value when present, else the last-known mode) so the
+        // floor decision and the re-assert decision can never diverge when a
+        // snapshot omits approvals_mode.
+        guard runtime.approvalsMode?.lowercased() != "off" else { return }
         let persistedSessionID = canonicalSessionID(for: sessionId) ?? sessionId
         guard let override = sessionYoloStore.storedOverride(
             for: activeProfile,
@@ -5641,6 +5658,10 @@ final class AppState: ObservableObject {
         defer { isProfileSwitching = false }
         invalidateReconciliation()
         turnState = .synchronizing
+        // The next profile's approval mode is unknown until its first session
+        // snapshot arrives; don't let the previous profile's floor leak across
+        // the switch.
+        runtime.approvalsMode = nil
 
         do {
             let ticket = try await mintChatResumeTicket(for: savedConnection)
@@ -6333,6 +6354,12 @@ final class AppState: ObservableObject {
                 method: "PUT",
                 body: ["config": config, "profile": profile]
             )
+            if key == "approvals.mode", let mode = value.textValue?.lowercased() {
+                // Mirror the saved profile mode immediately so the global floor
+                // and the Model Picker lock reflect it without waiting for the
+                // next session snapshot.
+                runtime.approvalsMode = mode
+            }
             return true
         } catch {
             errorMessage = "Could not save \(key): \(error.localizedDescription)"

@@ -40,21 +40,41 @@ precedence in `applyRuntime` is:
    Hermes auto-approves globally; a per-session toggle cannot require approvals).
 2. Else a stored per-session override wins (the user's explicit choice).
 3. Else the snapshot's `yolo` (or buffered-resume authority).
-4. Else `false`.
+4. Else a known non-off profile mode means approvals apply (`false`); if no
+   approval signal has ever been seen, the last-known indicator value is kept
+   so partial projections cannot flicker it off.
 
 ### Resume re-assertion (`reassertSessionYolo`)
 
-After every successful resume (`reconcile`, immediately after
-`refreshChatResumeContext`), if a stored override exists and the server's
+After every successful resume, if a stored override exists and the server's
 reported `yolo` disagrees, AppState re-sends `config.set { key: "yolo",
-session_id, value }` via the same seam `setYoloMode` uses. It is a no-op under
-`approvalsMode == "off"` (the floor dominates), when there is no override, or
-when the server already agrees. Failure is non-fatal (logged via the `SessionYolo`
-OSLog category); the local override still governs the indicator and the next
-resume retries.
+session_id, value }` via the same seam `setYoloMode` uses. Ordering inside
+`reconcile`: the suspending `refreshChatResumeContext` runs first, then the
+existing token/profile/client ownership guard re-validates the reconciliation,
+then the buffered-event replay and the synchronous
+`settleReconciliationAndPublish` complete atomically, and only then — gated on
+the settle succeeding — does the re-assert fire. A profile or client switch
+during the context refresh therefore aborts the write instead of pushing a
+stale one. A residual race (a switch after the send begins) is accepted: the
+value was chosen under verified ownership and the next resume reconciles.
+
+It is a no-op under `approvalsMode == "off"` (the floor dominates), when there
+is no override, or when the server already agrees. The floor check reads the
+same resolved source `applyRuntime` maintains (`runtime.approvalsMode`: the
+snapshot's value when present, else the last-known mode), so a snapshot that
+omits `approvals_mode` cannot make the floor and the re-assert decision
+diverge. Failure is non-fatal (logged via the `SessionYolo` OSLog category);
+the local override still governs the indicator and the next resume retries.
 
 This single hook covers cold start, foreground re-sync, WebSocket reconnect, and
 session switching because they all funnel through `reconcile`.
+
+**Known trade-off:** with clear-on-conflict removed, an override is only
+cleared by an explicit toggle (or archive/delete). If a conversation were ever
+reset server-side while reusing the same session ID, a stale override would be
+re-asserted into it. Session IDs are freshly minted per conversation in
+practice, so the store cannot distinguish a reconnect from a genuine new
+conversation and this risk is accepted.
 
 ### Reversal of the PR-55 clear-on-conflict semantic
 
@@ -63,12 +83,20 @@ disagrees. The `reconcileExplicitYolo` parameter was removed from `applyRuntime`
 and `applyChatResume` (it is still computed in `reconcile` to drive the buffered
 `session.info` replay authority).
 
-### UX: Model Picker toggle lock
+### UX: Model Picker toggle lock and manual-toggle guard
 
 When `approvalsMode == "off"`, the Model Picker YOLO toggle is locked on
 (`.disabled`) with a note explaining the global floor, so users are not offered a
-control that silently does nothing. The override is retained in the store so it
+control that silently does nothing. The same floor guards `setYoloMode` itself:
+under `off` it returns early without sending `config.set` or persisting an
+override (a write would be a server-side no-op, and a persisted override would
+silently resurface when the profile mode changes back). This covers the `/yolo`
+slash command and any other caller. The override is retained in the store so it
 applies again if the profile mode changes.
+
+`runtime.approvalsMode` is refreshed from snapshots, is mirrored immediately
+when Approval mode is saved in Workspace & safety, and is reset on profile
+switch so one profile's floor cannot leak into the next.
 
 ### Settings copy
 
