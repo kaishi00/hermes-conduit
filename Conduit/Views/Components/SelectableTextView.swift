@@ -514,13 +514,10 @@ private final class MarkdownSelectionTextView: UITextView {
             return
         }
 
+        // String-only, matching the copy paths proven to paste cross-app;
+        // pairing the write with an RTF item made external paste targets
+        // come up empty even though in-app reads showed the text.
         UIPasteboard.general.string = copied.string
-        if let rtf = try? copied.data(
-            from: NSRange(location: 0, length: copied.length),
-            documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]
-        ) {
-            UIPasteboard.general.setData(rtf, forPasteboardType: "public.rtf")
-        }
     }
 
     func simulateTouchBeganForTesting(_ localPoint: CGPoint) {

@@ -65,6 +65,8 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
     }
 
     private var repositioningDisplayLink: CADisplayLink?
+    private var lastAnchorCaret: CGRect?
+    private var lastFocusCaret: CGRect?
 
     override func layoutSubviews() {
         super.layoutSubviews()
@@ -88,6 +90,8 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
             stopRepositioningDisplayLink()
             return
         }
+        lastAnchorCaret = anchorCaret
+        lastFocusCaret = focusCaret
 
         anchorHandle?.isHidden = false
         focusHandle?.isHidden = false
@@ -99,7 +103,6 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
         positionHandle(focusHandle, atCaret: focusCaret)
 
         if let pill = copyPill {
-            pill.invalidateIntrinsicContentSize()
             let fitted = pill.intrinsicContentSize
             let pillSize = CGSize(width: fitted.width, height: max(32, fitted.height))
             // Anchor to the focus end — the endpoint the finger last touched
@@ -197,6 +200,9 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
             addSubview($0)
         }
 
+        anchor.onAccessibilityAdjust = { [weak self] step in self?.moveEndpoint(role: .anchor, by: step) }
+        focus.onAccessibilityAdjust = { [weak self] step in self?.moveEndpoint(role: .focus, by: step) }
+
         anchorHandle = anchor
         focusHandle = focus
         copyPill = pill
@@ -204,10 +210,33 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
         copyFeedbackLabel = feedback
     }
 
+    private func moveEndpoint(role: MarkdownSelectionHandleView.Role, by step: Int) {
+        guard let coordinator else { return }
+        if role == .anchor, let anchor = coordinator.activeAnchorEndpoint {
+            coordinator.updateAnchorSelection(
+                segmentID: anchor.segmentID,
+                offset: anchor.offset + step,
+                windowPoint: .zero
+            )
+        } else if role == .focus, let focus = coordinator.activeFocusEndpoint {
+            coordinator.updateSelection(
+                segmentID: focus.segmentID,
+                offset: focus.offset + step,
+                windowPoint: .zero
+            )
+        }
+        setNeedsLayout()
+    }
+
     /// The container sits outside the transcript scroll view, so nothing
     /// naturally triggers a relayout while the transcript scrolls and the
     /// chrome would stay pinned at stale window coordinates. A display link
     /// (running only while the chrome is visible) repositions it every frame.
+    /// The display link retains its target and the container retains the
+    /// link, so the only safe teardown is explicit: leaving the window,
+    /// losing the selection, or having the coordinator swap out. Relying on
+    /// deinit would leak — the cycle makes it unreachable while running —
+    /// and a layout pass never fires once SwiftUI removes the overlay.
     private func startRepositioningDisplayLink() {
         guard repositioningDisplayLink == nil else { return }
         let link = CADisplayLink(target: self, selector: #selector(repositionFromDisplayLink))
@@ -218,20 +247,39 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
     private func stopRepositioningDisplayLink() {
         repositioningDisplayLink?.invalidate()
         repositioningDisplayLink = nil
+        lastAnchorCaret = nil
+        lastFocusCaret = nil
+    }
+
+    override func willMove(toWindow newWindow: UIWindow?) {
+        super.willMove(toWindow: newWindow)
+        if newWindow == nil {
+            stopRepositioningDisplayLink()
+        }
     }
 
     @objc private func repositionFromDisplayLink() {
-        // Coordinator state gone — the next layout pass hides the chrome and
-        // stops the link.
-        guard let coordinator, coordinator.hasCrossSegmentSelection else {
+        guard
+            let coordinator,
+            coordinator.hasCrossSegmentSelection,
+            let anchor = coordinator.activeAnchorEndpoint,
+            let focus = coordinator.activeFocusEndpoint,
+            let window
+        else {
+            stopRepositioningDisplayLink()
             setNeedsLayout()
             return
         }
-        setNeedsLayout()
-    }
 
-    deinit {
-        repositioningDisplayLink?.invalidate()
+        // Skip the layout pass when neither endpoint moved — otherwise the
+        // link turns a resting selection into constant per-frame work.
+        let anchorCaret = coordinator.caretRect(for: anchor, in: window)
+        let focusCaret = coordinator.caretRect(for: focus, in: window)
+        if let lastAnchorCaret, anchorCaret == lastAnchorCaret,
+           let lastFocusCaret, focusCaret == lastFocusCaret {
+            return
+        }
+        setNeedsLayout()
     }
 
     /// Draggable chrome inside a scroll view: without this, the ancestor
@@ -352,6 +400,9 @@ final class MarkdownSelectionHandleView: UIView {
     }
 
     let role: Role
+    /// VoiceOver adjustment: positive moves the endpoint forward one
+    /// character, negative backward.
+    var onAccessibilityAdjust: ((Int) -> Void)?
 
     init(role: Role) {
         self.role = role
@@ -367,7 +418,16 @@ final class MarkdownSelectionHandleView: UIView {
         // Without this the views are invisible to the accessibility tree —
         // both VoiceOver and the UI tests' identifier queries.
         isAccessibilityElement = true
+        accessibilityTraits = .adjustable
         accessibilityLabel = role == .anchor ? "Selection start handle" : "Selection end handle"
+    }
+
+    override func accessibilityIncrement() {
+        onAccessibilityAdjust?(1)
+    }
+
+    override func accessibilityDecrement() {
+        onAccessibilityAdjust?(-1)
     }
 
     @available(*, unavailable)
