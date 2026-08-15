@@ -2326,6 +2326,62 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(reconnectSpy.purposes, [.preserveCurrent])
     }
 
+    func testBackgroundedSceneDropsScheduledReconnectExecution() async {
+        let scheduler = ControlledReconnectScheduler()
+        let reconnectSpy = ReconnectExecutionSpy()
+        let harness = makeHarness(
+            reconnectScheduler: scheduler.schedule(after:operation:),
+            reconnectExecutor: { purpose in
+                reconnectSpy.purposes.append(purpose)
+            }
+        )
+        harness.appState.connection = HermesConnection(
+            baseUrl: "https://one.example",
+            ticket: "ticket"
+        )
+
+        // A socket drop while the scene is backgrounded must not run the
+        // reconnect cycle: the churn it causes can starve the scene-update
+        // watchdog (0x8BADF00D). handleScenePhase(.active) re-establishes
+        // the transport on return instead.
+        harness.appState.handleScenePhase(.background)
+        harness.appState.scheduleReconnect(purpose: .automaticReturn)
+        await scheduler.runAll()
+
+        XCTAssertTrue(reconnectSpy.purposes.isEmpty)
+    }
+
+    func testSceneActivationRestoresReconnectExecution() async {
+        let scheduler = ControlledReconnectScheduler()
+        let reconnectSpy = ReconnectExecutionSpy()
+        let harness = makeHarness(
+            reconnectScheduler: scheduler.schedule(after:operation:),
+            reconnectExecutor: { purpose in
+                reconnectSpy.purposes.append(purpose)
+            },
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                mintTicket: { _ in throw DashboardTicketBridgeError.notReady }
+            )
+        )
+        harness.appState.connection = HermesConnection(
+            baseUrl: "https://one.example",
+            ticket: "ticket"
+        )
+
+        harness.appState.handleScenePhase(.background)
+        harness.appState.scheduleReconnect(purpose: .automaticReturn)
+        await scheduler.runAll()
+        XCTAssertTrue(reconnectSpy.purposes.isEmpty)
+
+        // Returning to the foreground re-enables reconnect execution; the
+        // scene task's own recovery attempt stays on the controlled
+        // scheduler and must not reach the executor unscheduled.
+        harness.appState.handleScenePhase(.active)
+        await harness.appState.reconnect()
+
+        XCTAssertEqual(reconnectSpy.purposes, [.preserveCurrent])
+    }
+
     func testCreatedFallbackRemainsFrozenAndPublishesAfterSettlement() {
         let harness = makeHarness()
         let oldKey = ChatScrollSessionKey(profile: "default", sessionID: "stored-a")

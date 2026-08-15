@@ -646,6 +646,10 @@ final class AppState: ObservableObject {
     private let sessionRenameOperationsOverride: SessionRenameOperation.Operations?
     private let sessionCatalogLoaderOverride: ((Bool) async throws -> [SessionSummary])?
     private var reconnectAttempts = 0
+    /// Whether the UI scene is active. Backgrounded scene updates must
+    /// complete within ~10s of wall clock before the watchdog kills the app
+    /// (0x8BADF00D), so reconnect work is deferred while this is false.
+    private var isSceneActive = true
     private var connectedAt: Date?
     private var sessionCatalogCache = SessionCatalogCache()
     private var projectsRequestGeneration = 0
@@ -3458,6 +3462,13 @@ final class AppState: ObservableObject {
     }
 
     private func executeReconnect(purpose: ChatResumeSyncPurpose) async {
+        // A reconnect cycle mints a ticket, reloads the session catalog, and
+        // mutates a handful of @Published properties — each driving SwiftUI
+        // transactions on the main thread. On a flaky link that churn can
+        // saturate the main thread, and a backgrounded scene update then
+        // misses its 10s watchdog deadline. Drop the attempt here instead;
+        // handleScenePhase(.active) re-establishes the transport on return.
+        guard isSceneActive else { return }
         if let reconnectExecutor {
             await reconnectExecutor(purpose)
         } else {
@@ -3661,6 +3672,7 @@ final class AppState: ObservableObject {
         }
         switch phase {
         case .active:
+            isSceneActive = true
             voiceConversationController.setForegroundActive(true)
             guard connection != nil else { return nil }
             cancelScenePhaseAttempt()
@@ -3711,6 +3723,7 @@ final class AppState: ObservableObject {
             return task
 
         case .background:
+            isSceneActive = false
             voiceConversationController.setForegroundActive(false)
             showVoiceSheet = false
             // Flush any pending coalesced cache writes before the app
@@ -3723,6 +3736,7 @@ final class AppState: ObservableObject {
             return nil
 
         case .inactive:
+            isSceneActive = false
             chatResumeCoordinator.freezeViewport()
             voiceConversationController.setForegroundActive(false)
             return nil
