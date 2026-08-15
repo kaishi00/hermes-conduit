@@ -333,7 +333,13 @@ final class DashboardTicketBridge: NSObject {
         for _ in 0..<readinessPollAttempts where !isReady && !isInvalidated {
             try await Task.sleep(for: readinessPollInterval)
         }
-        guard !isInvalidated, isReady else { throw DashboardTicketBridgeError.notReady }
+        guard !isInvalidated, isReady else {
+            // Mirror waitUntilReady(): a login-parked bridge is signed out,
+            // not loading, for non-mint callers too.
+            throw didLandOnLogin
+                ? DashboardTicketBridgeError.signInRequired
+                : DashboardTicketBridgeError.notReady
+        }
 
         requestID += 1
         let id = requestID
@@ -434,6 +440,17 @@ final class DashboardTicketBridge: NSObject {
         return literal
     }
 
+    /// Test hook: put the bridge into the state a /login landing produces.
+    /// WKWebView's URL is only settable by real navigation, which the unit
+    /// test host cannot drive deterministically. The simulated landing is
+    /// cleared by the next `loadDashboardSession()` exactly as in
+    /// production.
+    func simulateLoginLandingForTesting() {
+        isReady = false
+        isLoadFailed = false
+        didLandOnLogin = true
+    }
+
     private func loadDashboardSession() {
         guard let normalized = try? ConnectionURLPolicy.normalizedBaseURL(baseURL),
               let url = URL(string: "\(normalized)/api/status") else { return }
@@ -480,6 +497,11 @@ extension DashboardTicketBridge: WKNavigationDelegate {
         guard let expectedURL = URL(string: baseURL),
               ConnectionURLPolicy.originMatches(webView.url, expected: expectedURL) else {
             isReady = false
+            // A settled foreign-origin landing (e.g. an SSO redirect that
+            // slipped past the navigation policy) is unusable, not still
+            // loading — mark it failed so mint retries reload back to the
+            // dashboard origin instead of polling a finished page.
+            isLoadFailed = true
             rejectPending(with: DashboardTicketBridgeError.requestFailed("Dashboard navigation left the configured origin."))
             return
         }

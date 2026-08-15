@@ -3780,6 +3780,10 @@ final class AppState: ObservableObject {
             // center) is recovered by the .active scene task — the same
             // moment the user can see the transcript again.
             cancelScheduledReconnect()
+            // The scene treats .inactive like .background for reconnect
+            // purposes; formally abort the in-flight scene attempt at the
+            // transition too, rather than at its next checkpoint.
+            cancelScenePhaseAttempt()
             chatResumeCoordinator.freezeViewport()
             voiceConversationController.setForegroundActive(false)
             return nil
