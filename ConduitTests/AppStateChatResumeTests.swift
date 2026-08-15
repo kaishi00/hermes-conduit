@@ -2434,9 +2434,11 @@ final class AppStateChatResumeTests: XCTestCase {
             },
             lifecycleOperations: ChatResumeLifecycleOperations(
                 connectClient: { _ in
-                    // Enforces isolation: even if the harness mintTicket were
-                    // changed to succeed, the scene task's recovery attempt
-                    // could never touch a live connection path.
+                    // Isolation tripwire: if the scene task's recovery
+                    // attempt ever reaches a connection path (e.g. a future
+                    // harness change makes minting succeed), the
+                    // connectCount assertion below fails rather than letting
+                    // the test touch a live connection.
                     connectCount.value += 1
                 },
                 mintTicket: { _ in throw DashboardTicketBridgeError.notReady }

@@ -187,6 +187,10 @@ final class DashboardTicketBridge: NSObject {
     /// load that may be about to finish on a degraded connection.
     /// Readable for tests; written only by the navigation callbacks.
     private(set) var isLoadFailed = false
+    /// Whether the dashboard redirected the bridge to its login page — the
+    /// session is genuinely absent, which callers must hear as
+    /// `.signInRequired` rather than as unreadiness.
+    private var didLandOnLogin = false
     private var isInvalidated = false
     private var requestID = 0
     private let pendingRequests: DashboardTicketBridgePendingRequests
@@ -269,12 +273,13 @@ final class DashboardTicketBridge: NSObject {
         //  - signInRequired: a freshly restored session cookie can reach
         //    WebKit's cookie store a moment before its network process, so a
         //    first 401 is not enough evidence to erase the durable session
-        //    and force a login;
-        //  - notReady: a failed initial page load (e.g. launch during a
-        //    network outage) leaves the bridge cold forever — waitUntilReady()
-        //    never sees isReady and no request is ever attempted, so nothing
-        //    else triggers a reload. Re-attempt the dashboard session instead
-        //    of wedging every future reconnect.
+        //    and force a login. Reload unconditionally so the cookie store
+        //    settles, then re-attempt.
+        //  - notReady: the dashboard page has not produced a ready session.
+        //    Only a terminally failed load is reloaded — on a degraded link a
+        //    load can still be in flight when the readiness poll times out,
+        //    and restarting it would abort a navigation that may be about to
+        //    finish, so keep polling the same load instead.
         for attempt in 0..<3 {
             do {
                 try await waitUntilReady()
@@ -283,14 +288,12 @@ final class DashboardTicketBridge: NSObject {
                     throw DashboardTicketBridgeError.requestFailed("Dashboard did not return a WebSocket ticket.")
                 }
                 return ticket
-            } catch DashboardTicketBridgeError.signInRequired where attempt < 2,
-                  DashboardTicketBridgeError.notReady where attempt < 2 {
-                // Only restart a page load that terminally failed. On a
-                // degraded link a load can still be in flight when the
-                // readiness poll times out; tearing it down would restart a
-                // navigation that may be about to finish, so keep polling the
-                // same load instead. A silently hung load is eventually
-                // failed by the system request timeout and becomes reloadable.
+            } catch DashboardTicketBridgeError.signInRequired where attempt < 2 {
+                reload()
+                try await Task.sleep(for: .milliseconds(350))
+            } catch DashboardTicketBridgeError.notReady where attempt < 2 {
+                // A silently hung load is eventually failed by the system
+                // request timeout and becomes reloadable.
                 if isLoadFailed {
                     reload()
                 }
@@ -307,7 +310,14 @@ final class DashboardTicketBridge: NSObject {
         for _ in 0..<readinessPollAttempts where !isReady && !isInvalidated {
             try await Task.sleep(for: readinessPollInterval)
         }
-        guard !isInvalidated, isReady else { throw DashboardTicketBridgeError.notReady }
+        guard !isInvalidated, isReady else {
+            // A bridge parked on the login page is signed out, not loading:
+            // surface the expiry so callers run their sign-in recovery
+            // instead of polling an already-settled page.
+            throw didLandOnLogin
+                ? DashboardTicketBridgeError.signInRequired
+                : DashboardTicketBridgeError.notReady
+        }
     }
 
     /// Requests authenticated dashboard JSON through the same WebKit cookie
@@ -430,6 +440,9 @@ final class DashboardTicketBridge: NSObject {
         var request = URLRequest(url: url)
         request = cloudflareAccess?.applying(to: request) ?? request
         isLoadFailed = false
+        // The fresh load's landing is unknown until didFinish; a stale
+        // sign-in-required verdict must not leak into its poll window.
+        didLandOnLogin = false
         webView.load(request)
     }
 
@@ -471,6 +484,7 @@ extension DashboardTicketBridge: WKNavigationDelegate {
             return
         }
         isReady = !(webView.url?.path.contains("/login") ?? true)
+        didLandOnLogin = !isReady
         if !isReady {
             rejectPending(with: DashboardTicketBridgeError.signInRequired)
         } else {
