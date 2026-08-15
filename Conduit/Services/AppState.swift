@@ -15,6 +15,7 @@ import WebKit
 
 private let sessionCatalogLog = Logger(subsystem: "com.milim.conduit", category: "SessionCatalog")
 private let titleGenerationLog = Logger(subsystem: "com.milim.conduit", category: "TitleGeneration")
+private let sessionYoloLog = Logger(subsystem: "com.milim.conduit", category: "SessionYolo")
 
 typealias ChatResumeReconnectCancellation = @MainActor () -> Void
 typealias ChatResumeReconnectExecutor = @MainActor (ChatResumeSyncPurpose) async -> Void
@@ -652,6 +653,15 @@ final class AppState: ObservableObject {
     private let sessionYoloStore: SessionYoloStore
     private var sessionYoloWriteRevision: UInt64 = 0
     private var sessionYoloWriteRevisions: [ChatScrollSessionKey: UInt64] = [:]
+    /// Sessions whose user-initiated YOLO write is awaiting its RPC. The
+    /// override store is only updated after the gateway accepts, so readers
+    /// (notably the resume re-assert) must not treat the store as current
+    /// while a write is in flight.
+    private var inFlightSessionYoloWrites: Set<ChatScrollSessionKey> = []
+    /// The last session-level `yolo` the gateway itself reported, distinct
+    /// from `runtime.yolo`, which also folds in the profile floor and the
+    /// stored override.
+    private var lastReportedSessionYolo: Bool?
 
     /// The dashboard's persisted transcript is richer than `session.resume`:
     /// it retains database timestamps, complete tool-call inputs, and other
@@ -704,10 +714,19 @@ final class AppState: ObservableObject {
         let pendingDecisionKeys = SessionPresentationCache.pendingDecisionKeys(in: cacheableMessages)
         // Gateway-provided cards do not create a restoration guard, so keep
         // their bounded expiry marker across ordinary cache flushes as well.
+        // Push-recorded cards (recordPendingDecision) live only in the store —
+        // the in-memory transcript has never seen them — so union in the
+        // store's pending keys or the flush would drop the card before the
+        // notification-open resume merge could restore it.
+        let storedPendingDecisionKeys = sessionPresentationCache.storedPendingDecisionKeys(
+            profile: activeProfile,
+            sessionIDs: ids
+        )
         let pendingDecisionKeysToPreserve = restorationKeys
-            ?? pendingDecisionKeys
+            ?? pendingDecisionKeys.union(storedPendingDecisionKeys)
         let preservePendingDecisionCards = restorationKeys == nil
             || !pendingDecisionKeys.isEmpty
+            || !storedPendingDecisionKeys.isEmpty
         sessionPresentationCache.save(
             cacheableMessages,
             profile: activeProfile,
@@ -2434,9 +2453,7 @@ final class AppState: ObservableObject {
             guard applyChatResume(
                 presentationResult,
                 automaticWorkToken: automaticWorkToken,
-                automaticSyncOperationID: automaticSyncOperationID,
-                yoloWriteBaseline: yoloWriteBaseline,
-                reconcileExplicitYolo: reconcileExplicitYolo
+                automaticSyncOperationID: automaticSyncOperationID
             ) else {
                 settleReconciliation(token, automaticSyncOperationID: automaticSyncOperationID)
                 return false
@@ -2524,14 +2541,41 @@ final class AppState: ObservableObject {
                 )
             }
             let bufferedYoloAuthority = reconcileExplicitYolo ? result.snapshot.yolo : nil
+            // The approval mode is profile-scoped and independent of the
+            // per-session YOLO write gate: a user toggle during the resume must
+            // not let a stale buffered event re-impose an outdated floor.
+            let bufferedApprovalsModeAuthority = result.snapshot.approvalsMode
             bufferedEvents.forEach { event in
-                applyStreamEvent(event, authoritativeYolo: bufferedYoloAuthority)
+                applyStreamEvent(
+                    event,
+                    authoritativeYolo: bufferedYoloAuthority,
+                    authoritativeApprovalsMode: bufferedApprovalsModeAuthority
+                )
             }
-            return settleReconciliationAndPublish(
+            let settled = settleReconciliationAndPublish(
                 token,
                 automaticWorkToken: automaticWorkToken,
                 automaticSyncOperationID: automaticSyncOperationID
             )
+            if settled, reconcileExplicitYolo {
+                // Re-assert only after the ownership guard above (token,
+                // profile, client) re-validated this reconciliation and after
+                // the synchronous settle, so a profile or client switch during
+                // the suspending context refresh above cannot push a stale
+                // write through the old client for the old profile's session.
+                // A user YOLO write that completed since the resume began
+                // already pushed the server, so skip instead of duplicating
+                // it; one still in flight is skipped inside
+                // reassertSessionYolo. The mid-RPC race is accepted: the value
+                // was chosen under verified ownership, and the next resume
+                // reconciles.
+                await reassertSessionYolo(
+                    for: result.sessionId,
+                    snapshot: result.snapshot,
+                    using: client
+                )
+            }
+            return settled
 
         } catch {
             guard automaticChatResumeWorkIsCurrent(
@@ -2640,6 +2684,21 @@ final class AppState: ObservableObject {
             receivedReasoningForCurrentTurn = false
             turnState = .idle
             errorMessage = nil
+            // A fresh conversation has no per-session override and no
+            // server-reported flag yet; re-resolve from the profile mode
+            // (still valid — it is profile-scoped) so the new chat does not
+            // inherit the previous session's effective indicator until the
+            // first snapshot arrives.
+            lastReportedSessionYolo = nil
+            if runtime.approvalsMode != nil {
+                applyEffectiveYolo(
+                    sessionIDsForOverride: [runtimeSessionID],
+                    snapshotYolo: nil,
+                    snapshotReportedApprovalsMode: runtime.approvalsMode
+                )
+            } else {
+                runtime.yolo = false
+            }
 
             let storedID = created.storedSessionId ?? runtimeSessionID
             let summary = SessionSummary(
@@ -2711,22 +2770,6 @@ final class AppState: ObservableObject {
         _ result: SessionResumeResult,
         automaticWorkToken: ChatResumeAutomaticWorkToken? = nil,
         automaticSyncOperationID: UUID? = nil
-    ) -> Bool {
-        applyChatResume(
-            result,
-            automaticWorkToken: automaticWorkToken,
-            automaticSyncOperationID: automaticSyncOperationID,
-            yoloWriteBaseline: nil
-        )
-    }
-
-    @discardableResult
-    private func applyChatResume(
-        _ result: SessionResumeResult,
-        automaticWorkToken: ChatResumeAutomaticWorkToken? = nil,
-        automaticSyncOperationID: UUID? = nil,
-        yoloWriteBaseline: SessionYoloWriteBaseline?,
-        reconcileExplicitYolo: Bool? = nil
     ) -> Bool {
         guard automaticChatResumeWorkIsCurrent(
             automaticWorkToken,
@@ -2839,13 +2882,7 @@ final class AppState: ObservableObject {
         receivedReasoningForCurrentTurn = false
         applyRuntime(
             result.snapshot,
-            for: result.sessionId,
-            reconcileExplicitYolo: reconcileExplicitYolo ?? yoloWriteBaseline.map {
-                !hasNewerSessionYoloWrite(
-                    since: $0,
-                    sessionIDs: [result.sessionId, reconciliation?.requestedSessionId].compactMap { $0 }
-                )
-            } ?? true
+            for: result.sessionId
         )
 
         // An omitted running state is ambiguous while a decision or live
@@ -3239,11 +3276,25 @@ final class AppState: ObservableObject {
         }
     }
 
+    private func beginSessionYoloWrite(for sessionIDs: [String]) {
+        inFlightSessionYoloWrites.formUnion(sessionYoloKeys(for: sessionIDs))
+    }
+
+    private func endSessionYoloWrite(for sessionIDs: [String]) {
+        for key in sessionYoloKeys(for: sessionIDs) {
+            inFlightSessionYoloWrites.remove(key)
+        }
+    }
+
+    private func hasInFlightSessionYoloWrite(sessionIDs: [String]) -> Bool {
+        !sessionYoloKeys(for: sessionIDs).isDisjoint(with: inFlightSessionYoloWrites)
+    }
+
     private func applyRuntime(
         _ snapshot: SessionRuntimeSnapshot,
         for sessionID: String? = nil,
-        reconcileExplicitYolo: Bool = false,
-        authoritativeYolo: Bool? = nil
+        authoritativeYolo: Bool? = nil,
+        authoritativeApprovalsMode: String? = nil
     ) {
         if let model = snapshot.model { runtime.model = model }
         if let provider = snapshot.provider { runtime.provider = provider }
@@ -3256,6 +3307,12 @@ final class AppState: ObservableObject {
             runtime.reasoningEffort = reasoningEffort.lowercased() == "none" ? "" : reasoningEffort
         }
         if let fast = snapshot.fast { runtime.fast = fast }
+        if let approvalsMode = authoritativeApprovalsMode ?? snapshot.approvalsMode {
+            runtime.approvalsMode = approvalsMode
+        }
+        if let reportedYolo = authoritativeYolo ?? snapshot.yolo {
+            lastReportedSessionYolo = reportedYolo
+        }
         let requestedSessionID = sessionID ?? activeSessionId
         let resolvedCanonicalSessionID = canonicalSessionID(for: requestedSessionID)
         let sessionIDsForOverride = [resolvedCanonicalSessionID, requestedSessionID]
@@ -3269,32 +3326,48 @@ final class AppState: ObservableObject {
                 aliases: [requestedSessionID]
             )
         }
+        applyEffectiveYolo(
+            sessionIDsForOverride: sessionIDsForOverride,
+            snapshotYolo: authoritativeYolo ?? snapshot.yolo,
+            snapshotReportedApprovalsMode: authoritativeApprovalsMode ?? snapshot.approvalsMode
+        )
+    }
+
+    /// Resolve the effective session YOLO state from the current profile
+    /// approval mode and the stored per-session override. Shared by
+    /// `applyRuntime` (snapshot reconciliation) and the Settings save path so
+    /// the indicator, the floor, and the Model Picker lock can never disagree
+    /// with the saved mode.
+    private func applyEffectiveYolo(
+        sessionIDsForOverride: [String],
+        snapshotYolo: Bool?,
+        snapshotReportedApprovalsMode: String?
+    ) {
         let storedOverride = sessionYoloStore.storedOverride(
             for: activeProfile,
             sessionIDs: sessionIDsForOverride
         )
-        if let yolo = authoritativeYolo ?? snapshot.yolo {
-            if let storedOverride {
-                if reconcileExplicitYolo, storedOverride != yolo {
-                    sessionYoloStore.clearOverride(
-                        for: activeProfile,
-                        sessionIDs: sessionIDsForOverride
-                    )
-                    runtime.yolo = yolo
-                } else {
-                    // Live session.info pushes can be older than a client
-                    // initiated config.set RPC. Keep the local choice until a
-                    // fresh resume snapshot can reconcile server authority.
-                    runtime.yolo = storedOverride
-                }
-            } else {
-                runtime.yolo = yolo
-            }
+        let globalYoloFloor = runtime.approvalsMode?.lowercased() == "off"
+        if globalYoloFloor {
+            // Hermes auto-approves globally when approvals.mode == "off"; a
+            // per-session toggle cannot require approvals. Reflect the server's
+            // effective state so the indicator does not claim otherwise.
+            runtime.yolo = true
         } else if let storedOverride {
+            // The per-session choice is authoritative. The gateway holds the
+            // flag in memory only and forgets it on restart, so AppState
+            // re-asserts it after resume (see reassertSessionYolo).
             runtime.yolo = storedOverride
-        } else if let approvalsMode = snapshot.approvalsMode {
-            runtime.yolo = approvalsMode.lowercased() == "off"
+        } else if let yolo = snapshotYolo {
+            runtime.yolo = yolo
+        } else if let mode = snapshotReportedApprovalsMode, mode.lowercased() != "off" {
+            // Only the snapshot's own non-off mode report resolves to "approvals
+            // apply" — a last-known mode with the signal omitted entirely is
+            // unknown, not a disagreement, and must not flicker the indicator.
+            runtime.yolo = false
         }
+        // Otherwise keep the last-known indicator value; a partial projection
+        // omitting the approval fields must not flicker it.
     }
 
     /// The context breakdown RPC is the gateway's complete accounting source.
@@ -4138,6 +4211,14 @@ final class AppState: ObservableObject {
             for: requestedID,
             in: sessions + cronSessions
         )
+        // A decision raised while the app was backgrounded is delivered as a
+        // structured payload on the notification (the one-shot gateway stream
+        // event was missed). Cache it under both the runtime and resolved
+        // stored IDs so the upcoming resume's `merge` restores the card
+        // regardless of which identity the gateway resumes against.
+        if let decision = target.decision {
+            recordNotificationDecision(decision, sessionIDs: [resumableID, requestedID])
+        }
         let opened = await openSession(
             resumableID,
             reusing: transitionGeneration
@@ -4147,6 +4228,76 @@ final class AppState: ObservableObject {
             transitionGeneration: transitionGeneration
         ) else { return false }
         return opened
+    }
+
+    /// Caches a push-delivered decision card so the resume merge can restore
+    /// it. The card is recorded as pending and answerable through the existing
+    /// `respondToApproval` path; the bounded unconfirmed marker is stamped by
+    /// `SessionPresentationCache` so a stale card expires rather than lingering.
+    /// The decision's session key must match one of the routed session
+    /// identities — a mismatched key could not be answered via
+    /// `approval.respond` and would only duplicate or contradict the live card.
+    private func recordNotificationDecision(
+        _ decision: PendingDecisionPayload,
+        sessionIDs: [String]
+    ) {
+        switch decision {
+        case let .approval(sessionKey, description, choices):
+            // Compare trimmed on both sides: the payload parser trims the
+            // session key, but the routed ids arrive as the notification
+            // delivered them.
+            let knownKeys = sessionIDs.map {
+                $0.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            guard knownKeys.contains(sessionKey) else { return }
+            let activity = ApprovalActivity(
+                sessionId: sessionKey,
+                command: "",
+                description: description,
+                choices: choices,
+                allowPermanent: false,
+                smartDenied: false,
+                status: .pending,
+                choice: nil,
+                error: nil
+            )
+            let message = ChatMessage(
+                id: "approval-\(sessionKey)",
+                role: .approval,
+                content: description,
+                timestamp: Self.localTimestamp(),
+                approval: activity
+            )
+            sessionPresentationCache.recordPendingDecision(
+                message,
+                profile: activeProfile,
+                sessionIDs: sessionIDs
+            )
+        case let .clarify(requestId, question, choices):
+            // Relay-delivered clarify: the plugin middleware minted this id and
+            // is polling the relay, so the standard card renders with working
+            // buttons routed through respondToRelayClarify.
+            let activity = ClarifyActivity(
+                requestId: requestId,
+                question: question,
+                choices: choices.map { ClarifyChoice(label: $0, value: $0) },
+                status: .pending,
+                answer: nil,
+                error: nil
+            )
+            let message = ChatMessage(
+                id: "clarify-\(requestId)",
+                role: .clarify,
+                content: question,
+                timestamp: Self.localTimestamp(),
+                clarify: activity
+            )
+            sessionPresentationCache.recordPendingDecision(
+                message,
+                profile: activeProfile,
+                sessionIDs: sessionIDs
+            )
+        }
     }
 
     private func notificationOpenAttemptIsCurrent(
@@ -4551,7 +4702,18 @@ final class AppState: ObservableObject {
     ) async -> Bool {
         let submissionContext = context ?? composerSubmissionContext()
         guard isCurrentComposerSubmission(submissionContext) else { return false }
+        guard runtime.approvalsMode?.lowercased() != "off" else {
+            // Hermes auto-approves globally under approvals.mode == "off"; the
+            // per-session write is a server-side no-op, and persisting an
+            // override here would silently resurface when the profile mode
+            // changes back. Send nothing and keep the effective floor state.
+            runtime.yolo = true
+            return true
+        }
         guard let client, let sessionId = activeSessionId else { return false }
+        let persistedSessionID = canonicalSessionID(for: sessionId) ?? sessionId
+        beginSessionYoloWrite(for: [sessionId, persistedSessionID])
+        defer { endSessionYoloWrite(for: [sessionId, persistedSessionID]) }
         do {
             if let setSessionYolo = chatResumeLifecycleOperations.setSessionYolo {
                 try await setSessionYolo(client, sessionId, enabled)
@@ -4561,19 +4723,70 @@ final class AppState: ObservableObject {
             // Hermes accepted the setting. Avoid publishing it into a new
             // session if the composer origin was handed off while awaiting.
             guard isCurrentComposerSubmission(submissionContext) else { return true }
-            let persistedSessionID = canonicalSessionID(for: sessionId) ?? sessionId
             sessionYoloStore.setOverride(
                 enabled,
                 for: activeProfile,
                 sessionID: persistedSessionID
             )
             recordSessionYoloWrite(for: [sessionId, persistedSessionID])
+            lastReportedSessionYolo = enabled
             runtime.yolo = enabled
             return true
         } catch {
             guard isCurrentComposerSubmission(submissionContext) else { return false }
             errorMessage = "Unable to change YOLO mode: \(error.localizedDescription)"
             return false
+        }
+    }
+
+    /// Re-assert a persisted per-session YOLO override after a resume.
+    ///
+    /// The Hermes gateway keeps the per-session YOLO flag in memory only and
+    /// never persists it (unlike the CLI), so a gateway restart or rebuilt
+    /// agent forgets the flag and reverts to the profile default. Re-sending
+    /// `config.set` restores the user's explicit choice so the server keeps
+    /// honoring it. No-op when the profile approval mode is already "off" (the
+    /// flag is then moot), when there is no stored override, when the snapshot
+    /// does not report a session-level yolo (unknown is not a disagreement),
+    /// or when the server's reported value already matches the override.
+    /// Failure is non-fatal: the local override still governs the indicator
+    /// and the next resume retries.
+    private func reassertSessionYolo(
+        for sessionId: String,
+        snapshot: SessionRuntimeSnapshot,
+        using client: HermesClient
+    ) async {
+        // Use the same resolved floor source applyRuntime just updated (the
+        // snapshot's value when present, else the last-known mode) so the
+        // floor decision and the re-assert decision can never diverge when a
+        // snapshot omits approvals_mode.
+        guard runtime.approvalsMode?.lowercased() != "off" else { return }
+        let persistedSessionID = canonicalSessionID(for: sessionId) ?? sessionId
+        // A user write awaiting its RPC has not reached the store yet;
+        // re-asserting now could read the pre-toggle override and land after
+        // the user's write, leaving the server on the stale value. Skip — the
+        // user's write settles the server and the next resume reconciles.
+        guard !hasInFlightSessionYoloWrite(sessionIDs: [persistedSessionID, sessionId]) else { return }
+        guard let override = sessionYoloStore.storedOverride(
+            for: activeProfile,
+            sessionIDs: [persistedSessionID, sessionId]
+        ) else { return }
+        // A snapshot that omits the session-level yolo is unknown, not a
+        // disagreement; re-asserting on every resume for gateways that omit the
+        // field would be pure churn. The gateway's session.info projection
+        // reports yolo as a boolean, so a real conflict is always visible.
+        guard let reportedYolo = snapshot.yolo, reportedYolo != override else { return }
+        do {
+            if let setSessionYolo = chatResumeLifecycleOperations.setSessionYolo {
+                try await setSessionYolo(client, sessionId, override)
+            } else {
+                try await client.setSessionYolo(sessionId, enabled: override)
+            }
+            recordSessionYoloWrite(for: [sessionId, persistedSessionID])
+        } catch {
+            sessionYoloLog.error(
+                "Failed to re-assert session YOLO override \(override, privacy: .public) for \(sessionId, privacy: .public): \(error.localizedDescription, privacy: .public)"
+            )
         }
     }
 
@@ -5196,6 +5409,16 @@ final class AppState: ObservableObject {
         setRunning(true)
         cacheMessagePresentation()
 
+        // Plugin-minted clarify ids are answered through the relay's decision
+        // loop (the gateway's own clarify id never reached this device); the
+        // gateway-side middleware polls the relay and resolves the tool call.
+        // Routed BEFORE the gateway-client guard: the relay answer needs only
+        // the relay registration, and answering from a freshly-resumed push
+        // is exactly when the gateway client may still be reconnecting.
+        if requestId.hasPrefix(PendingDecisionPayload.relayRequestPrefix) {
+            await respondToRelayClarify(requestId: requestId, answer: trimmedAnswer)
+            return
+        }
         guard let client else {
             messages[index].clarify?.status = .error
             messages[index].clarify?.answer = nil
@@ -5212,8 +5435,44 @@ final class AppState: ObservableObject {
             guard let updatedIndex = messages.firstIndex(where: { $0.clarify?.requestId == requestId }) else { return }
             messages[updatedIndex].clarify?.status = .error
             messages[updatedIndex].clarify?.answer = nil
-            messages[updatedIndex].clarify?.error = "Hermes did not accept that answer."
-            errorMessage = error.localizedDescription
+            if Self.isExpiredPromptError(error) {
+                messages[updatedIndex].clarify?.error = "This question is no longer active — Hermes timed it out and continued."
+            } else {
+                messages[updatedIndex].clarify?.error = "Hermes did not accept that answer."
+                errorMessage = error.localizedDescription
+            }
+            cacheMessagePresentation()
+        }
+    }
+
+    private func respondToRelayClarify(requestId: String, answer: String) async {
+        do {
+            let outcome = try await PushNotificationService.shared.respondToRelayDecision(
+                requestId: requestId,
+                answer: answer
+            )
+            guard let updatedIndex = messages.firstIndex(where: { $0.clarify?.requestId == requestId }) else { return }
+            switch outcome {
+            case .answered:
+                messages[updatedIndex].clarify?.status = .answered
+                messages[updatedIndex].clarify?.answer = answer
+            case .alreadyAnsweredElsewhere:
+                // Another device resolved the decision with its own answer;
+                // settle the card but do not display this device's rejected
+                // text as if it were what Hermes received.
+                messages[updatedIndex].clarify?.status = .answered
+                messages[updatedIndex].clarify?.answer = nil
+            case .noLongerActive:
+                messages[updatedIndex].clarify?.status = .error
+                messages[updatedIndex].clarify?.answer = nil
+                messages[updatedIndex].clarify?.error = "This question is no longer active — it was timed out or already resolved."
+            }
+            cacheMessagePresentation()
+        } catch {
+            guard let updatedIndex = messages.firstIndex(where: { $0.clarify?.requestId == requestId }) else { return }
+            messages[updatedIndex].clarify?.status = .error
+            messages[updatedIndex].clarify?.answer = nil
+            messages[updatedIndex].clarify?.error = error.localizedDescription
             cacheMessagePresentation()
         }
     }
@@ -5607,6 +5866,9 @@ final class AppState: ObservableObject {
         }
 
         let previousProfile = activeProfile
+        let previousApprovalsMode = runtime.approvalsMode
+        let previousYolo = runtime.yolo
+        let previousLastReportedSessionYolo = lastReportedSessionYolo
         let previousSessions = sessions
         let previousCronSessions = cronSessions
         let previousArchivedSessions = archivedSessions
@@ -5616,6 +5878,13 @@ final class AppState: ObservableObject {
         defer { isProfileSwitching = false }
         invalidateReconciliation()
         turnState = .synchronizing
+        // The next profile's approval mode is unknown until its first session
+        // snapshot arrives; don't let the previous profile's floor leak across
+        // the switch, and neutralize the indicator to the safe display
+        // (approvals required) until the new profile resolves it.
+        runtime.approvalsMode = nil
+        runtime.yolo = false
+        lastReportedSessionYolo = nil
 
         do {
             let ticket = try await mintChatResumeTicket(for: savedConnection)
@@ -5680,6 +5949,12 @@ final class AppState: ObservableObject {
             errorMessage = "Could not switch workspace: \(error.localizedDescription)"
             clearPendingDecisionRestorationGuard()
             activeProfile = previousProfile
+            // The pre-switch reset neutralized the approval state; restore it
+            // with the rest of the previous profile or a failed switch loses
+            // the floor while the previous profile is still the active one.
+            runtime.approvalsMode = previousApprovalsMode
+            runtime.yolo = previousYolo
+            lastReportedSessionYolo = previousLastReportedSessionYolo
             sessions = previousSessions
             cronSessions = previousCronSessions
             archivedSessions = previousArchivedSessions
@@ -5718,6 +5993,20 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Hermes blocks a clarify/approval prompt for only ~5 minutes server-side
+    /// (JSON-RPC error 4009, "no pending … request"), while a restored or
+    /// push-delivered card can legitimately outlive it — a notification opened
+    /// an hour later is the feature's ordinary case, not an error. Treat that
+    /// outcome as "the decision is no longer active" instead of a generic
+    /// failure the user can retry forever.
+    static func isExpiredPromptError(_ error: Error) -> Bool {
+        if let rpcError = error as? RpcError {
+            if rpcError.code == 4009 { return true }
+            return rpcError.message.lowercased().contains("no pending")
+        }
+        return error.localizedDescription.lowercased().contains("no pending")
+    }
+
     func respondToApproval(messageId: String, choice: String) async {
         guard let index = messages.firstIndex(where: { $0.id == messageId }),
               let current = messages[index].approval,
@@ -5745,8 +6034,12 @@ final class AppState: ObservableObject {
             guard let updatedIndex = messages.firstIndex(where: { $0.id == messageId }) else { return }
             messages[updatedIndex].approval?.status = .error
             messages[updatedIndex].approval?.choice = nil
-            messages[updatedIndex].approval?.error = "Hermes did not accept that decision."
-            errorMessage = error.localizedDescription
+            if Self.isExpiredPromptError(error) {
+                messages[updatedIndex].approval?.error = "This approval is no longer active — Hermes timed it out and continued."
+            } else {
+                messages[updatedIndex].approval?.error = "Hermes did not accept that decision."
+                errorMessage = error.localizedDescription
+            }
             cacheMessagePresentation()
         }
     }
@@ -6308,6 +6601,24 @@ final class AppState: ObservableObject {
                 method: "PUT",
                 body: ["config": config, "profile": profile]
             )
+            if key == "approvals.mode", let mode = value.textValue?.lowercased(), profile == activeProfile {
+                // Mirror the saved profile mode immediately and re-resolve the
+                // effective indicator state through the same precedence
+                // applyRuntime uses, so the floor and the picker lock take
+                // effect without waiting for the next session snapshot. The
+                // last server-reported session value carries through when
+                // known (runtime.yolo may be the floor-forced value, not the
+                // session flag); only the floor/override precedence re-runs.
+                runtime.approvalsMode = mode
+                let requestedSessionID = activeSessionId
+                let resolvedCanonicalSessionID = canonicalSessionID(for: requestedSessionID)
+                applyEffectiveYolo(
+                    sessionIDsForOverride: [resolvedCanonicalSessionID, requestedSessionID]
+                        .compactMap { $0 },
+                    snapshotYolo: lastReportedSessionYolo ?? runtime.yolo,
+                    snapshotReportedApprovalsMode: nil
+                )
+            }
             return true
         } catch {
             errorMessage = "Could not save \(key): \(error.localizedDescription)"
@@ -6677,7 +6988,11 @@ final class AppState: ObservableObject {
         return reconciliation.acceptedSessionIDs.contains(sessionId)
     }
 
-    private func applyStreamEvent(_ event: StreamEvent, authoritativeYolo: Bool? = nil) {
+    private func applyStreamEvent(
+        _ event: StreamEvent,
+        authoritativeYolo: Bool? = nil,
+        authoritativeApprovalsMode: String? = nil
+    ) {
         let streamSessionId = sessionID(for: event)
         guard eventBelongsToActiveSession(streamSessionId) else { return }
         defer { schedulePresentationCacheFlush(for: streamSessionId) }
@@ -6739,7 +7054,12 @@ final class AppState: ObservableObject {
             }
 
         case .sessionInfo(let sessionID, let snapshot):
-            applyRuntime(snapshot, for: sessionID, authoritativeYolo: authoritativeYolo)
+            applyRuntime(
+                snapshot,
+                for: sessionID,
+                authoritativeYolo: authoritativeYolo,
+                authoritativeApprovalsMode: authoritativeApprovalsMode
+            )
             if let running = snapshot.running {
                 setRunning(running)
             }
@@ -6818,6 +7138,40 @@ final class AppState: ObservableObject {
                 messages[index].content = question
                 messages[index].clarify = activity
             } else {
+                // A still-pending push-delivered card for the same question is
+                // superseded by the live event (different ids: gateway vs
+                // plugin-minted), so one logical clarify never renders two
+                // answerable cards. Resolved history stays visible, and a
+                // .submitting card is left alone: its relay answer may already
+                // be in flight and will settle it by request id.
+                var supersededRequestIds: [String] = []
+                let liveQuestion = question.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                messages.removeAll { message in
+                    guard let clarify = message.clarify,
+                          clarify.requestId.hasPrefix(PendingDecisionPayload.relayRequestPrefix),
+                          clarify.status == .pending,
+                          clarify.question.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == liveQuestion else {
+                        return false
+                    }
+                    supersededRequestIds.append(clarify.requestId)
+                    return true
+                }
+                // The superseded card must also leave the presentation cache —
+                // the ordinary flush re-appends still-pending stored cards, so
+                // an in-memory-only removal would resurface as a duplicate
+                // answerable card after the next cold-start resume.
+                let cacheSessionIDs = [
+                    activeSessionId,
+                    reconciliation?.requestedSessionId,
+                    reconciliation?.resolvedSessionId
+                ].compactMap { $0 }
+                for requestId in supersededRequestIds {
+                    sessionPresentationCache.removePendingDecision(
+                        key: "clarify:\(requestId)",
+                        profile: activeProfile,
+                        sessionIDs: cacheSessionIDs
+                    )
+                }
                 messages.append(ChatMessage(
                     id: "clarify-\(requestId)",
                     role: .clarify,

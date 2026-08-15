@@ -94,28 +94,22 @@ struct MarkdownSelectionHost: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .contentShape(Rectangle())
+            // No SwiftUI gesture ever sits over this content: the last one
+            // (PR #57) fought the chat ScrollView's vertical pan and deadened
+            // touches on table/code responses. Cross-block selection is
+            // driven from below instead — MarkdownSelectionObserverGestureRecognizer
+            // (SelectableTextView.swift) rides each block's text view as a
+            // never-recognizing observer and forwards touch points to the
+            // coordinator during a native selection drag, while this
+            // non-interactive overlay draws the cross-block highlights and
+            // the interactive handle overlay supplies coordinator-owned
+            // endpoint handles plus a copy pill (the native handles cannot
+            // leave the owner's own text view) — the chrome lives at the
+            // chat root via MarkdownSelectionChromeRoot, not here.
             .overlay {
                 MarkdownSelectionHighlightOverlay(coordinator: coordinator)
                     .allowsHitTesting(false)
             }
-            .simultaneousGesture(
-                TapGesture()
-                    .onEnded {
-                        coordinator.clearSelection()
-                    }
-            )
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 0, coordinateSpace: .global)
-                    .onChanged { value in
-                        guard coordinator.isSelectionGestureActive else { return }
-                        coordinator.updateSelection(windowPoint: value.location)
-                    }
-                    .onEnded { _ in
-                        guard coordinator.isSelectionGestureActive else { return }
-                        coordinator.endSelection()
-                    }
-            )
             .onDisappear {
                 coordinator.clearSelection()
             }
@@ -134,6 +128,11 @@ private struct MarkdownSelectionHighlightOverlay: UIViewRepresentable {
     func updateUIView(_ uiView: MarkdownSelectionHighlightView, context: Context) {
         uiView.coordinator = coordinator
         uiView.setNeedsDisplay()
+    }
+
+    /// Match the content exactly — see MarkdownSelectionHandleOverlay.
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: MarkdownSelectionHighlightView, context: Context) -> CGSize? {
+        CGSize(width: proposal.width ?? uiView.bounds.width, height: proposal.height ?? uiView.bounds.height)
     }
 }
 

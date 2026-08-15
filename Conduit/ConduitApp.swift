@@ -65,27 +65,41 @@ struct ConduitApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView()
-                .environmentObject(appState)
-                .preferredColorScheme(appState.themePreference.colorScheme)
-                .tint(.conduitAccent)
-                .task { await PushNotificationService.shared.refresh() }
-                .task(id: notificationRouteKey) {
-                    guard appState.isConnected, let target = notifications.pendingTarget else { return }
-                    if await appState.openNotificationTarget(target) {
-                        notifications.clearPendingTarget(target)
-                    } else {
-                        notifications.handleFailedNotificationRoute(target)
-                    }
-                }
-                .task(id: voiceIntentRouteKey) {
-                    guard appState.isConnected else { return }
-                    let router = PendingVoiceIntentRouter(store: pendingVoiceIntents)
-                    await router.routePending { intent in
-                        await appState.openVoiceConversation(intent)
-                    }
-                }
+#if DEBUG
+            // The fixture is compiled out of release builds, so the launch
+            // argument branch must be too.
+            if ProcessInfo.processInfo.arguments.contains(SelectionFixtureView.launchArgument) {
+                SelectionFixtureView()
+            } else {
+                rootContent
+            }
+#else
+            rootContent
+#endif
         }
+    }
+
+    private var rootContent: some View {
+        RootView()
+            .environmentObject(appState)
+            .preferredColorScheme(appState.themePreference.colorScheme)
+            .tint(.conduitAccent)
+            .task { await PushNotificationService.shared.refresh() }
+            .task(id: notificationRouteKey) {
+                guard appState.isConnected, let target = notifications.pendingTarget else { return }
+                if await appState.openNotificationTarget(target) {
+                    notifications.clearPendingTarget(target)
+                } else {
+                    notifications.handleFailedNotificationRoute(target)
+                }
+            }
+            .task(id: voiceIntentRouteKey) {
+                guard appState.isConnected else { return }
+                let router = PendingVoiceIntentRouter(store: pendingVoiceIntents)
+                await router.routePending { intent in
+                    await appState.openVoiceConversation(intent)
+                }
+            }
     }
 
     private var notificationRouteKey: String {

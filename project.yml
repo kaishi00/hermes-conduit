@@ -49,3 +49,13 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
     dependencies:
       - target: Conduit
+  ConduitUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: ConduitUITests
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - target: Conduit

@@ -6,7 +6,96 @@ struct ConduitNotificationTarget: Equatable, Identifiable {
     let profile: String?
     let sessionId: String
     let type: String?
+    /// Structured decision content carried alongside a decision notification.
+    /// Lets Conduit render an answerable card from the push payload alone when
+    /// the one-shot gateway stream event was missed while the app was
+    /// backgrounded. Nil for non-decision notifications.
+    let decision: PendingDecisionPayload?
     var id: String { "\(profile ?? "default"):\(sessionId):\(type ?? "")" }
+
+    init(
+        profile: String?,
+        sessionId: String,
+        type: String?,
+        decision: PendingDecisionPayload? = nil
+    ) {
+        self.profile = profile
+        self.sessionId = sessionId
+        self.type = type
+        self.decision = decision
+    }
+}
+
+/// The structured card content for a decision notification. Approval is
+/// session-keyed (`approval.respond { choice, session_id }`), so a payload
+/// carrying the session key is fully answerable. Clarify is keyed by a
+/// plugin-minted id (`conduit-push-…`) whose answers return through the push
+/// relay rather than the gateway — the gateway's own clarify id is unreachable
+/// to plugins (see the background-arrival design docs).
+enum PendingDecisionPayload: Equatable {
+    case approval(sessionKey: String, description: String, choices: [String])
+    case clarify(requestId: String, question: String, choices: [String])
+
+    /// Request ids minted by the notifier plugin's clarify loop; answers to
+    /// these route through the relay instead of `clarify.respond`.
+    static let relayRequestPrefix = "conduit-push-"
+}
+
+/// Relay + paired-plugin compatibility state (`GET /v1/meta`), rendered in
+/// Settings > Notifications so users can see when the notifier plugin or the
+/// relay needs an update for decision cards to work. Capability flags (not
+/// version parsing) drive the checks; a relay without the endpoint (older or
+/// self-hosted pre-0.2) surfaces as `nil` and renders an unknown state.
+struct RelayMetaInfo: Decodable, Equatable {
+    struct Gateway: Decodable, Equatable, Identifiable {
+        let id: String
+        let name: String
+        let pluginVersion: String?
+        let pluginCapabilities: [String]
+
+        var supportsApprovalCards: Bool { pluginCapabilities.contains("approval-decisions") }
+        var supportsClarifyCards: Bool { pluginCapabilities.contains("clarify-loop") }
+
+        enum CodingKeys: String, CodingKey {
+            case id
+            case name
+            case pluginVersion = "plugin_version"
+            case pluginCapabilities = "plugin_capabilities"
+        }
+    }
+
+    let version: String
+    let capabilities: [String]
+    let gateways: [Gateway]
+
+    var supportsDecisionCards: Bool { capabilities.contains("decisions") }
+
+    /// One malformed gateway record must not hide the whole section: decode
+    /// gateway rows lossily so a single incompatible record degrades to just
+    /// its row while the relay and other gateways still render.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        version = try container.decode(String.self, forKey: .version)
+        capabilities = try container.decode([String].self, forKey: .capabilities)
+        var gateways: [Gateway] = []
+        var array = try container.nestedUnkeyedContainer(forKey: .gateways)
+        while !array.isAtEnd {
+            if let gateway = try? array.decode(Gateway.self) {
+                gateways.append(gateway)
+            } else {
+                _ = try? array.decode(Empty.self)
+            }
+        }
+        self.gateways = gateways
+    }
+
+    private struct Empty: Decodable {}
+
+    private enum CodingKeys: String, CodingKey {
+        case version
+        case capabilities
+        case gateways
+    }
 }
 
 enum NotificationSessionResolver {
@@ -38,6 +127,11 @@ struct ConduitNotificationPreferences: Codable, Equatable {
     var backgroundTaskFinished = true
     var completionSound = true
     var showPreviews = false
+    /// Independent of `showPreviews`: controls whether pushes carry structured
+    /// decision content (answerable approval cards). Defaults on because the
+    /// feature's audience is exactly the approval-gate crowd; privacy-focused
+    /// users can turn just this off.
+    var decisionCards = true
 
     enum CodingKeys: String, CodingKey {
         case enabled
@@ -48,6 +142,28 @@ struct ConduitNotificationPreferences: Codable, Equatable {
         case backgroundTaskFinished = "background_task_finished"
         case completionSound = "completion_sound"
         case showPreviews = "show_previews"
+        case decisionCards = "decision_cards"
+    }
+}
+
+extension ConduitNotificationPreferences {
+    /// Decoding must tolerate registrations persisted by older builds, which
+    /// predate later-added keys — a `keyNotFound` failure would make the
+    /// `try?` in the init drop the whole stored registration and silently
+    /// disable push for an upgrading user. Every key falls back to its
+    /// default when absent. (Declared in an extension so the synthesized
+    /// `init()` is preserved.)
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+        approvalNeeded = try container.decodeIfPresent(Bool.self, forKey: .approvalNeeded) ?? true
+        inputNeeded = try container.decodeIfPresent(Bool.self, forKey: .inputNeeded) ?? true
+        responseReady = try container.decodeIfPresent(Bool.self, forKey: .responseReady) ?? true
+        turnFailed = try container.decodeIfPresent(Bool.self, forKey: .turnFailed) ?? true
+        backgroundTaskFinished = try container.decodeIfPresent(Bool.self, forKey: .backgroundTaskFinished) ?? true
+        completionSound = try container.decodeIfPresent(Bool.self, forKey: .completionSound) ?? true
+        showPreviews = try container.decodeIfPresent(Bool.self, forKey: .showPreviews) ?? false
+        decisionCards = try container.decodeIfPresent(Bool.self, forKey: .decisionCards) ?? true
     }
 }
 
@@ -63,6 +179,8 @@ final class PushNotificationService: ObservableObject {
     @Published private(set) var pendingTarget: ConduitNotificationTarget?
     @Published private(set) var navigationAttempt = 0
     @Published var preferences = ConduitNotificationPreferences()
+    @Published private(set) var relayMeta: RelayMetaInfo?
+    @Published private(set) var isFetchingMeta = false
 
     private var relayURL: URL {
         if let saved = UserDefaults.standard.string(forKey: "conduit.relayURL"),
@@ -100,6 +218,94 @@ final class PushNotificationService: ObservableObject {
     func refresh() async {
         let settings = await UNUserNotificationCenter.current().notificationSettings()
         authorizationStatus = settings.authorizationStatus
+    }
+
+    /// Loads relay + plugin compatibility state for Settings > Notifications.
+    /// Nil after a completed fetch (also on 404 from older/self-hosted relays)
+    /// renders as unknown; `isFetchingMeta` distinguishes that from an
+    /// in-flight request so the UI never diagnoses "predates version
+    /// reporting" while still loading.
+    func refreshMeta() async {
+        guard let registration else {
+            relayMeta = nil
+            isFetchingMeta = false
+            return
+        }
+        isFetchingMeta = true
+        defer { isFetchingMeta = false }
+        var request = URLRequest(url: relayURL.appending(path: "/v1/meta"))
+        request.setValue("Bearer \(registration.credential)", forHTTPHeaderField: "Authorization")
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+                relayMeta = nil
+                return
+            }
+            relayMeta = try JSONDecoder().decode(RelayMetaInfo.self, from: data)
+        } catch {
+            relayMeta = nil
+        }
+    }
+
+    /// Outcome of answering a plugin-minted clarify (`conduit-push-…`) through
+    /// the relay's decision loop.
+    enum RelayDecisionOutcome {
+        case answered
+        /// The decision expired (clarify timed out server-side or was answered
+        /// on another surface first).
+        case noLongerActive
+        /// Another device already answered this decision.
+        case alreadyAnsweredElsewhere
+    }
+
+    enum RelayDecisionError: LocalizedError {
+        case unregistered
+        case transport(String)
+        case server(Int)
+
+        var errorDescription: String? {
+            switch self {
+            case .unregistered: return "This device is not paired with a push relay."
+            case .transport(let message): return "Could not reach the push relay: \(message)"
+            case .server(let status): return "The push relay rejected the answer (HTTP \(status))."
+            }
+        }
+    }
+
+    /// Answers a plugin-minted clarify decision through the relay. The gateway
+    /// polls the relay for this answer while its clarify middleware blocks, so
+    /// the agent thread unblocks exactly as if `clarify.respond` had been used.
+    @discardableResult
+    func respondToRelayDecision(
+        requestId: String,
+        answer: String
+    ) async throws -> RelayDecisionOutcome {
+        guard let registration else { throw RelayDecisionError.unregistered }
+        var request = URLRequest(url: relayURL.appending(path: "/v1/decisions/\(requestId)/respond"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(registration.credential)", forHTTPHeaderField: "Authorization")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["answer": answer])
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                throw RelayDecisionError.transport("invalid response")
+            }
+            switch http.statusCode {
+            case 200:
+                return .answered
+            case 404:
+                return .noLongerActive
+            case 409:
+                return .alreadyAnsweredElsewhere
+            default:
+                throw RelayDecisionError.server(http.statusCode)
+            }
+        } catch let error as RelayDecisionError {
+            throw error
+        } catch {
+            throw RelayDecisionError.transport(error.localizedDescription)
+        }
     }
 
     func enable() async {
@@ -237,8 +443,60 @@ final class PushNotificationService: ObservableObject {
         return ConduitNotificationTarget(
             profile: profile?.isEmpty == false ? profile : nil,
             sessionId: sessionId,
-            type: type?.isEmpty == false ? type : nil
+            type: type?.isEmpty == false ? type : nil,
+            decision: pendingDecision(from: payload)
         )
+    }
+
+    /// Parses the structured decision content the relay forwards alongside a
+    /// decision notification (see the background-arrival design doc). Returns
+    /// nil for non-decision notifications or malformed/unknown payloads so the
+    /// notification degrades to its ordinary routing target. An approval
+    /// requires a session key to answer, a description to display, and at
+    /// least one usable choice — otherwise a cached card could render the
+    /// approval view's default action set, which the payload never promised.
+    private func pendingDecision(from payload: [String: Any]) -> PendingDecisionPayload? {
+        guard let decision = payload["decision"] as? [String: Any],
+              let kind = (decision["kind"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+              !kind.isEmpty else {
+            return nil
+        }
+        switch kind {
+        case "approval":
+            guard let sessionKey = (decision["session_key"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+                !sessionKey.isEmpty,
+                let description = (decision["description"] as? String)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines),
+                !description.isEmpty,
+                let rawChoices = decision["choices"] as? [Any] else {
+                return nil
+            }
+            let choices = rawChoices
+                .compactMap { ($0 as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+            guard !choices.isEmpty else { return nil }
+            return .approval(sessionKey: sessionKey, description: description, choices: choices)
+        case "clarify":
+            // The request id must be a plugin-minted `conduit-push-…` id: any
+            // other id would be routed to the gateway's clarify.respond, which
+            // can never resolve it.
+            guard let requestId = (decision["request_id"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+                requestId.hasPrefix(PendingDecisionPayload.relayRequestPrefix),
+                requestId.count > PendingDecisionPayload.relayRequestPrefix.count,
+                let question = (decision["question"] as? String)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines),
+                !question.isEmpty else {
+                return nil
+            }
+            let choices = ((decision["choices"] as? [Any])?
+                .compactMap { ($0 as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }) ?? []
+            return .clarify(requestId: requestId, question: question, choices: choices)
+        default:
+            return nil
+        }
     }
 
     private func requestDeviceToken() async throws -> String {
