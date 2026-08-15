@@ -249,20 +249,31 @@ final class DashboardTicketBridge: NSObject {
         // A freshly restored session cookie can reach WebKit's cookie store a
         // moment before its network process. A first 401 is therefore not
         // enough evidence to erase the durable session and force a login.
+        var lastError = DashboardTicketBridgeError.signInRequired
         for attempt in 0..<3 {
-            try await waitUntilReady()
             do {
+                try await waitUntilReady()
                 let response = try await requestJSON(path: "/api/auth/ws-ticket", method: "POST")
                 guard let ticket = response["ticket"] as? String, !ticket.isEmpty else {
                     throw DashboardTicketBridgeError.requestFailed("Dashboard did not return a WebSocket ticket.")
                 }
                 return ticket
             } catch DashboardTicketBridgeError.signInRequired where attempt < 2 {
+                lastError = .signInRequired
+                reload()
+                try await Task.sleep(for: .milliseconds(350))
+            } catch DashboardTicketBridgeError.notReady where attempt < 2 {
+                // A failed initial page load (e.g. launch during a network
+                // outage) leaves the bridge cold forever: waitUntilReady()
+                // never sees isReady and no request is ever attempted, so
+                // nothing else triggers a reload. Re-attempt the dashboard
+                // session instead of wedging every future reconnect.
+                lastError = .notReady
                 reload()
                 try await Task.sleep(for: .milliseconds(350))
             }
         }
-        throw DashboardTicketBridgeError.signInRequired
+        throw lastError
     }
 
     private func waitUntilReady() async throws {
