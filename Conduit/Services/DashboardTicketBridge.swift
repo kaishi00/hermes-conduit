@@ -186,8 +186,9 @@ final class DashboardTicketBridge: NSObject {
     private let pendingRequests: DashboardTicketBridgePendingRequests
     private let readinessPollAttempts: Int
     private let readinessPollInterval: Duration
-    /// Number of times `reload()` re-attempted the dashboard page load.
-    /// Test visibility for the cold-bridge recovery path.
+    /// Number of times `reload()` re-attempted the dashboard page load, from
+    /// any caller (mint retries and AppState's sign-in recovery alike).
+    /// Diagnostic/test counter for the cold-bridge recovery path.
     private(set) var reloadCount = 0
 
     init(
@@ -201,7 +202,8 @@ final class DashboardTicketBridge: NSObject {
         self.baseURL = normalizedBaseURL
         self.cloudflareAccess = cloudflareAccess
         self.pendingRequests = pendingRequests
-        self.readinessPollAttempts = readinessPollAttempts
+        // A negative count would build an invalid Range in the polling loops.
+        self.readinessPollAttempts = max(0, readinessPollAttempts)
         self.readinessPollInterval = readinessPollInterval
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .default()

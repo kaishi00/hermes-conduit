@@ -2392,12 +2392,19 @@ final class AppStateChatResumeTests: XCTestCase {
     func testSceneActivationRestoresReconnectExecution() async {
         let scheduler = ControlledReconnectScheduler()
         let reconnectSpy = ReconnectExecutionSpy()
+        let connectCount = ConnectCount()
         let harness = makeHarness(
             reconnectScheduler: scheduler.schedule(after:operation:),
             reconnectExecutor: { purpose in
                 reconnectSpy.purposes.append(purpose)
             },
             lifecycleOperations: ChatResumeLifecycleOperations(
+                connectClient: { _ in
+                    // Enforces isolation: even if the harness mintTicket were
+                    // changed to succeed, the scene task's recovery attempt
+                    // could never touch a live connection path.
+                    connectCount.value += 1
+                },
                 mintTicket: { _ in throw DashboardTicketBridgeError.notReady }
             )
         )
@@ -2418,6 +2425,7 @@ final class AppStateChatResumeTests: XCTestCase {
         await harness.appState.reconnect()
 
         XCTAssertEqual(reconnectSpy.purposes, [.preserveCurrent])
+        XCTAssertEqual(connectCount.value, 0)
     }
 
     func testCreatedFallbackRemainsFrozenAndPublishesAfterSettlement() {

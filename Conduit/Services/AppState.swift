@@ -649,6 +649,11 @@ final class AppState: ObservableObject {
     /// Whether the UI scene is active. Backgrounded scene updates must
     /// complete within ~10s of wall clock before the watchdog kills the app
     /// (0x8BADF00D), so reconnect work is deferred while this is false.
+    /// Deliberately true at init: launches head toward active, and blocking
+    /// the cold-start restore on the first scene-phase event would regress
+    /// startup. `.inactive` is treated like `.background` on purpose — it
+    /// immediately precedes backgrounding on home-press, and a socket that
+    /// dies under a system overlay is recovered by the `.active` scene task.
     private var isSceneActive = true
     private var connectedAt: Date?
     private var sessionCatalogCache = SessionCatalogCache()
@@ -3456,6 +3461,14 @@ final class AppState: ObservableObject {
             self.reconnectTask = nil
             let purpose = self.recoverySequence.takeQueuedReconnectPurpose()
                 ?? .preserveCurrent
+            guard self.isSceneActive else {
+                // Dropped for scene inactivity, not for a gateway failure —
+                // undo the backoff step this schedule took so repeated
+                // background/foreground cycling cannot ratchet the retry
+                // delay toward its cap without a real failure.
+                self.reconnectAttempts = max(0, self.reconnectAttempts - 1)
+                return
+            }
             await self.executeReconnect(purpose: purpose)
         }
     }
@@ -3745,6 +3758,12 @@ final class AppState: ObservableObject {
 
         case .inactive:
             isSceneActive = false
+            // Reconnects are suppressed during .inactive too, so an armed
+            // timer would only fire to be discarded. Drop it here; a socket
+            // that dies under a system overlay (incoming call, control
+            // center) is recovered by the .active scene task — the same
+            // moment the user can see the transcript again.
+            cancelScheduledReconnect()
             chatResumeCoordinator.freezeViewport()
             voiceConversationController.setForegroundActive(false)
             return nil
