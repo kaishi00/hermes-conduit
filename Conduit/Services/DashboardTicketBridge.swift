@@ -269,8 +269,7 @@ final class DashboardTicketBridge: NSObject {
         //    never sees isReady and no request is ever attempted, so nothing
         //    else triggers a reload. Re-attempt the dashboard session instead
         //    of wedging every future reconnect.
-        var attempt = 0
-        while true {
+        for attempt in 0..<3 {
             do {
                 try await waitUntilReady()
                 let response = try await requestJSON(path: "/api/auth/ws-ticket", method: "POST")
@@ -280,11 +279,14 @@ final class DashboardTicketBridge: NSObject {
                 return ticket
             } catch DashboardTicketBridgeError.signInRequired where attempt < 2,
                   DashboardTicketBridgeError.notReady where attempt < 2 {
-                attempt += 1
                 reload()
                 try await Task.sleep(for: .milliseconds(350))
             }
         }
+        // Unreachable in practice: on the final attempt neither catch
+        // pattern matches, so that attempt's error has already propagated.
+        // Present only to satisfy definite-exit checking.
+        throw DashboardTicketBridgeError.notReady
     }
 
     private func waitUntilReady() async throws {

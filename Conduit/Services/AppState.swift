@@ -1202,10 +1202,12 @@ final class AppState: ObservableObject {
         automaticWorkToken: ChatResumeAutomaticWorkToken?,
         automaticReconnectOperationID: UUID?
     ) -> ChatResumeTransportContinuation? {
-        // Checked after every suspension in connect(with:)/reconnectForRetry.
-        // A scene that went inactive/backgrounded mid-flight must not keep
-        // driving reconnect churn (watchdog: 0x8BADF00D); handleScenePhase
-        // (.active) re-establishes the transport on return.
+        // Checked after every suspension in connect(with:),
+        // reconnectForRetry, and the post-connect sync flow — the gate is
+        // transport-wide, not reconnect-only: any chat-resume work that goes
+        // inactive/backgrounded mid-flight must not keep publishing state
+        // (watchdog: 0x8BADF00D). handleScenePhase(.active) re-establishes
+        // the transport and syncs the session catalog on return.
         guard !Task.isCancelled, isSceneActive else { return nil }
         if let automaticReconnectOperationID,
            activeAutomaticReconnectOperation?.id != automaticReconnectOperationID {
@@ -3454,21 +3456,20 @@ final class AppState: ObservableObject {
             break
         }
         let delay = immediately ? 0.1 : min(5.0, pow(2.0, Double(reconnectAttempts)))
-        if !immediately { reconnectAttempts += 1 }
+        // The backoff step is consumed only when the cycle actually runs.
+        // A timer canceled by scene backgrounding — or a cycle dropped for
+        // scene inactivity before execution — never counts as a gateway
+        // failure, so background/foreground cycling cannot ratchet the
+        // retry delay toward its cap without a real failure.
+        let incrementsBackoff = !immediately
 
         reconnectTask = reconnectScheduler(delay) { [weak self] in
             guard let self else { return }
             self.reconnectTask = nil
             let purpose = self.recoverySequence.takeQueuedReconnectPurpose()
                 ?? .preserveCurrent
-            guard self.isSceneActive else {
-                // Dropped for scene inactivity, not for a gateway failure —
-                // undo the backoff step this schedule took so repeated
-                // background/foreground cycling cannot ratchet the retry
-                // delay toward its cap without a real failure.
-                self.reconnectAttempts = max(0, self.reconnectAttempts - 1)
-                return
-            }
+            guard self.isSceneActive else { return }
+            if incrementsBackoff { self.reconnectAttempts += 1 }
             await self.executeReconnect(purpose: purpose)
         }
     }
@@ -3480,11 +3481,13 @@ final class AppState: ObservableObject {
 
     private func executeReconnect(purpose: ChatResumeSyncPurpose) async {
         // A reconnect cycle mints a ticket, reloads the session catalog, and
-        // mutates a handful of @Published properties — each driving SwiftUI
+        // mutates a series of @Published properties — each driving SwiftUI
         // transactions on the main thread. On a flaky link that churn can
         // saturate the main thread, and a backgrounded scene update then
         // misses its 10s watchdog deadline. Drop the attempt here instead;
         // handleScenePhase(.active) re-establishes the transport on return.
+        // This also makes the public reconnect() a no-op while the scene is
+        // inactive/backgrounded — the retry is picked up on the next .active.
         guard isSceneActive else { return }
         if let reconnectExecutor {
             await reconnectExecutor(purpose)

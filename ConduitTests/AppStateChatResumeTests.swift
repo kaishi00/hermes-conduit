@@ -2351,6 +2351,39 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertTrue(reconnectSpy.purposes.isEmpty)
     }
 
+    func testCanceledReconnectTimerDoesNotAdvanceBackoff() async {
+        let scheduler = ControlledReconnectScheduler()
+        let reconnectSpy = ReconnectExecutionSpy()
+        let harness = makeHarness(
+            reconnectScheduler: scheduler.schedule(after:operation:),
+            reconnectExecutor: { purpose in
+                reconnectSpy.purposes.append(purpose)
+            },
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                mintTicket: { _ in throw DashboardTicketBridgeError.notReady }
+            )
+        )
+        harness.appState.connection = HermesConnection(
+            baseUrl: "https://one.example",
+            ticket: "ticket"
+        )
+
+        // Socket drops while active: a timer is armed at the first backoff
+        // step (2^0 = 1s).
+        harness.appState.scheduleReconnect()
+        XCTAssertEqual(scheduler.delays, [1.0])
+
+        // The user backgrounds before the timer fires; the armed timer is
+        // canceled by the scene transition rather than executed.
+        harness.appState.handleScenePhase(.background)
+
+        // Reconnecting later must still start from the first backoff step:
+        // a canceled cycle was not a gateway failure.
+        harness.appState.handleScenePhase(.active)
+        harness.appState.scheduleReconnect()
+        XCTAssertEqual(scheduler.delays, [1.0, 1.0])
+    }
+
     func testBackgroundingMidMintAbortsInFlightReconnect() async {
         let mintGate = ControlledSuspension()
         let connectCount = ConnectCount()
@@ -3554,6 +3587,7 @@ private final class ControlledReconnectScheduler {
     }
 
     private var work: [Work] = []
+    private(set) var delays: [TimeInterval] = []
 
     var cancelledCount: Int {
         work.filter(\.isCancelled).count
@@ -3569,6 +3603,7 @@ private final class ControlledReconnectScheduler {
     ) -> ChatResumeReconnectCancellation {
         let item = Work(operation: operation)
         work.append(item)
+        delays.append(delay)
         return {
             item.isCancelled = true
         }
