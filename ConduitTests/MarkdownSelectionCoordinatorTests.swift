@@ -641,7 +641,7 @@ final class MarkdownSelectionCoordinatorTests: XCTestCase {
         // dismisses it: a non-first-responder view renders no native
         // selection, and the overlay covers every span so the coordinator's
         // visual is the only one.
-        _ = firstTextView.becomeFirstResponder()
+        XCTAssertTrue(firstTextView.becomeFirstResponder())
         XCTAssertTrue(firstTextView.isFirstResponder)
 
         coordinator.applySelectionRanges()
@@ -668,7 +668,7 @@ final class MarkdownSelectionCoordinatorTests: XCTestCase {
         coordinator.register(descriptor: descriptors[1], textView: secondTextView)
         coordinator.beginSelection(segmentID: "first", offset: 1, windowPoint: CGPoint(x: 18, y: 20))
         coordinator.updateSelection(segmentID: "second", offset: 2, windowPoint: CGPoint(x: 28, y: 90))
-        _ = firstTextView.becomeFirstResponder()
+        XCTAssertTrue(firstTextView.becomeFirstResponder())
         coordinator.endSelection()
         XCTAssertFalse(firstTextView.isFirstResponder)
 
@@ -770,7 +770,7 @@ final class MarkdownSelectionCoordinatorTests: XCTestCase {
         coordinator.updateSelection(segmentID: "second", offset: 3, windowPoint: CGPoint(x: 0, y: 10))
         XCTAssertTrue(coordinator.hasCrossSegmentSelection)
 
-        _ = firstTextView.becomeFirstResponder()
+        XCTAssertTrue(firstTextView.becomeFirstResponder())
         XCTAssertTrue(firstTextView.isFirstResponder)
 
         coordinator.endSelection()
@@ -797,7 +797,7 @@ final class MarkdownSelectionCoordinatorTests: XCTestCase {
         // The real gesture flow holds first responder when the selection
         // goes cross-block, engaging the native-chrome suppression.
         coordinator.beginSelection(segmentID: "first", offset: 2, windowPoint: .zero)
-        _ = firstTextView.becomeFirstResponder()
+        XCTAssertTrue(firstTextView.becomeFirstResponder())
         coordinator.updateSelection(segmentID: "second", offset: 3, windowPoint: CGPoint(x: 0, y: 10))
         XCTAssertTrue(coordinator.hasCrossSegmentSelection)
         XCTAssertFalse(firstTextView.isFirstResponder)
@@ -919,7 +919,7 @@ final class MarkdownSelectionCoordinatorTests: XCTestCase {
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 240, height: 180))
         let rootView = UIView(frame: window.bounds)
         window.addSubview(rootView)
-        window.isHidden = false
+        window.makeKeyAndVisible()
         rootView.layoutIfNeeded()
         return window
     }

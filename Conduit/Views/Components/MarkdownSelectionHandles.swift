@@ -64,9 +64,11 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
         return view === self ? nil : view
     }
 
+    private var copyFeedbackResetWorkItem: DispatchWorkItem?
     private var repositioningDisplayLink: CADisplayLink?
     private var lastAnchorCaret: CGRect?
     private var lastFocusCaret: CGRect?
+    private var lastScrollPosition: CGPoint?
 
     override func layoutSubviews() {
         super.layoutSubviews()
@@ -213,19 +215,27 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
     private func moveEndpoint(role: MarkdownSelectionHandleView.Role, by step: Int) {
         guard let coordinator else { return }
         if role == .anchor, let anchor = coordinator.activeAnchorEndpoint {
+            let offset = anchor.offset + step
             coordinator.updateAnchorSelection(
                 segmentID: anchor.segmentID,
-                offset: anchor.offset + step,
+                offset: offset,
                 windowPoint: .zero
             )
+            anchorHandle?.accessibilityValue = Self.endpointAccessibilityValue(anchor.segmentID, offset: offset)
         } else if role == .focus, let focus = coordinator.activeFocusEndpoint {
+            let offset = focus.offset + step
             coordinator.updateSelection(
                 segmentID: focus.segmentID,
-                offset: focus.offset + step,
+                offset: offset,
                 windowPoint: .zero
             )
+            focusHandle?.accessibilityValue = Self.endpointAccessibilityValue(focus.segmentID, offset: offset)
         }
         setNeedsLayout()
+    }
+
+    private static func endpointAccessibilityValue(_ segmentID: String, offset: Int) -> String {
+        String(format: NSLocalizedString("character %d", comment: "VoiceOver position of a selection endpoint"), offset)
     }
 
     /// The container sits outside the transcript scroll view, so nothing
@@ -249,6 +259,7 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
         repositioningDisplayLink = nil
         lastAnchorCaret = nil
         lastFocusCaret = nil
+        lastScrollPosition = nil
     }
 
     override func willMove(toWindow newWindow: UIWindow?) {
@@ -271,12 +282,21 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
             return
         }
 
-        // Skip the layout pass when neither endpoint moved — otherwise the
-        // link turns a resting selection into constant per-frame work.
+        // A resting selection must cost nothing per frame: compare the
+        // transcript's scroll offset (nearly free) and only recompute caret
+        // geometry — layoutIfNeeded plus glyph queries — when content has
+        // actually moved.
+        let scrollPosition = coordinator.transcriptScrollPosition()
+        if let lastScrollPosition, scrollPosition == lastScrollPosition,
+           let lastAnchorCaret, let lastFocusCaret {
+            return
+        }
+        lastScrollPosition = scrollPosition
+
         let anchorCaret = coordinator.caretRect(for: anchor, in: window)
         let focusCaret = coordinator.caretRect(for: focus, in: window)
-        if let lastAnchorCaret, anchorCaret == lastAnchorCaret,
-           let lastFocusCaret, focusCaret == lastFocusCaret {
+        if let anchorCaret, anchorCaret == lastAnchorCaret,
+           let focusCaret, focusCaret == lastFocusCaret {
             return
         }
         setNeedsLayout()
@@ -340,24 +360,29 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
         // come up empty even though in-app reads showed the text.
         UIPasteboard.general.string = copied.string
 
+        copyFeedbackResetWorkItem?.cancel()
+
         copyFeedbackLabel?.isHidden = false
         if let pill = copyPill {
-            var copied = pill.configuration
-            copied?.title = nil
-            copied?.image = UIImage(systemName: "checkmark")
-            copied?.contentInsets = NSDirectionalEdgeInsets(top: 7, leading: 16, bottom: 7, trailing: 16)
-            pill.configuration = copied
+            var feedbackConfiguration = pill.configuration
+            feedbackConfiguration?.title = nil
+            feedbackConfiguration?.image = UIImage(systemName: "checkmark")
+            feedbackConfiguration?.contentInsets = NSDirectionalEdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16)
+            pill.configuration = feedbackConfiguration
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
+
+        let reset = DispatchWorkItem { [weak self] in
             self?.copyFeedbackLabel?.isHidden = true
             if let pill = self?.copyPill {
                 var config = pill.configuration
                 config?.title = NSLocalizedString("Copy", comment: "Copy the cross-block selection")
                 config?.image = UIImage(systemName: "doc.on.doc")
-                config?.contentInsets = NSDirectionalEdgeInsets(top: 7, leading: 14, bottom: 7, trailing: 16)
+                config?.contentInsets = NSDirectionalEdgeInsets(top: 8, leading: 14, bottom: 8, trailing: 16)
                 pill.configuration = config
             }
         }
+        copyFeedbackResetWorkItem = reset
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2, execute: reset)
     }
 }
 

@@ -26,12 +26,7 @@ struct SelectionFixtureView: View {
     """
 
     @State private var pasteboardText = ""
-
-    init() {
-        if ProcessInfo.processInfo.environment["CONDUIT_UITEST"] == "1" {
-            UIView.setAnimationsEnabled(false)
-        }
-    }
+    @State private var restoredAnimations = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -74,6 +69,19 @@ struct SelectionFixtureView: View {
         }
         .overlay {
             MarkdownSelectionChromeRoot()
+        }
+        .onAppear {
+            // XCUITest launches only; restored on disappear so a debug
+            // session never leaves animations off app-wide.
+            if ProcessInfo.processInfo.environment["CONDUIT_UITEST"] == "1", !restoredAnimations {
+                UIView.setAnimationsEnabled(false)
+            }
+        }
+        .onDisappear {
+            if !restoredAnimations {
+                UIView.setAnimationsEnabled(true)
+                restoredAnimations = true
+            }
         }
     }
 }

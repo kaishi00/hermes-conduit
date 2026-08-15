@@ -713,6 +713,26 @@ final class MarkdownSelectionCoordinator: ObservableObject {
     /// Caret-style rect (window coordinates) for a selection endpoint —
     /// the trailing edge of the character before the offset, or the leading
     /// edge for offset 0. Drives the custom handle positions.
+    private weak var transcriptScrollView: UIScrollView?
+
+    /// Nearly-free motion signal for the chrome's display link: the content
+    /// offset of the scroll view hosting the registered text views. When it
+    /// is unchanged, no caret geometry can have moved and the per-frame
+    /// caret recomputation can be skipped.
+    func transcriptScrollPosition() -> CGPoint? {
+        if transcriptScrollView == nil {
+            var candidate: UIView? = recordsByID.values.first?.textView?.superview
+            while let view = candidate {
+                if let scrollView = view as? UIScrollView {
+                    transcriptScrollView = scrollView
+                    break
+                }
+                candidate = view.superview
+            }
+        }
+        return transcriptScrollView?.contentOffset
+    }
+
     func caretRect(for endpoint: MarkdownSelectionEndpoint, in window: UIWindow) -> CGRect? {
         guard
             let textView = recordsByID[endpoint.segmentID]?.textView,

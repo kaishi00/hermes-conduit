@@ -56,9 +56,10 @@ final class SelectionObserverUITests: XCTestCase {
         XCTAssertTrue(focusHandle.waitForExistence(timeout: 5), "Cell-anchored drag must produce a cross-block selection with endpoint handles")
     }
 
-    /// A plain vertical drag (no long-press) must still scroll rather than
-    /// select — the observer must be invisible outside selection gestures.
-    func testPlainDragStillScrolls() throws {
+    /// A plain vertical drag (no long-press) must not select or copy — the
+    /// observer must be invisible outside selection gestures. (The fixture's
+    /// content is shorter than the viewport, so no scroll can occur here.)
+    func testPlainDragDoesNotSelectOrCopy() throws {
         let app = XCUIApplication()
         app.launchArguments = ["-conduitSelectionFixture"]
         app.launch()
@@ -159,8 +160,7 @@ final class SelectionObserverUITests: XCTestCase {
         fixtureCopy.tap()
 
         Thread.sleep(forTimeInterval: 0.8)
-        try XCUIScreen.main.screenshot().pngRepresentation
-            .write(to: URL(fileURLWithPath: "/tmp/conduit-uitest-copy.png"))
+        attachScreenshot("copy-after-drag")
 
         // Assert through the fixture's pasteboard mirror; see the handles
         // test for why the runner does not read UIPasteboard directly.
@@ -194,20 +194,34 @@ final class SelectionObserverUITests: XCTestCase {
 
         copyPill.tap()
         Thread.sleep(forTimeInterval: 0.6)
-        try XCUIScreen.main.screenshot().pngRepresentation
-            .write(to: URL(fileURLWithPath: "/tmp/conduit-uitest-handles.png"))
+        attachScreenshot("handles-after-copy")
 
         let pasteboardMirror = app.staticTexts.matching(identifier: "fixture.pasteboard").firstMatch
         let copied = pasteboardMirror.label
         XCTAssertTrue(copied.contains("Column A"), "Copy pill did not copy cross-block text: \(copied)")
         XCTAssertTrue(copied.contains("After the"), "Copy pill did not copy through the trailing paragraph: \(copied)")
 
-        // Drag the ending handle back up into the table: the selection must
-        // shrink (focus follows the finger).
+        // Drag the ending handle back up into the table, then copy again:
+        // the coordinated text must have shrunk to match the moved endpoint
+        // — no longer reaching the trailing paragraph.
         focusHandle.press(forDuration: 0.05, thenDragTo: app.textViews.matching(NSPredicate(format: "label CONTAINS %@", "alpha cell")).firstMatch)
         Thread.sleep(forTimeInterval: 0.6)
-        try XCUIScreen.main.screenshot().pngRepresentation
-            .write(to: URL(fileURLWithPath: "/tmp/conduit-uitest-focus-drag.png"))
+
+        let shrunkPill = app.descendants(matching: .any).matching(identifier: "selection.copyPill").firstMatch
+        XCTAssertTrue(shrunkPill.waitForExistence(timeout: 5), "Chrome must persist after a handle drag")
+        shrunkPill.tap()
+        Thread.sleep(forTimeInterval: 0.6)
+
+        let shrunkCopied = pasteboardMirror.label
+        XCTAssertTrue(shrunkCopied.contains("Column A"), "Shrunk copy should still include the table: \(shrunkCopied)")
+        XCTAssertFalse(shrunkCopied.contains("After the"), "Shrunk copy must not reach the trailing paragraph: \(shrunkCopied)")
+    }
+
+    private func attachScreenshot(_ name: String) {
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
     }
 
     private func markerCoordinate(
