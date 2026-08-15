@@ -190,10 +190,40 @@ final class ChatTextSelectionTests: XCTestCase {
         selectionCoordinator.updateSelection(segmentID: "second", offset: 3, windowPoint: CGPoint(x: 0, y: 10))
         XCTAssertTrue(selectionCoordinator.hasCrossSegmentSelection)
 
+        // The observer recognizer ends the gesture on touch-up; a later tap is
+        // a fresh touch down, modeled by ending the gesture before the tap.
+        selectionCoordinator.endSelection()
+
         hostView.simulateTouchBeganForTesting(at: CGPoint(x: 3, y: 3))
 
         XCTAssertFalse(selectionCoordinator.hasActiveSelection)
         XCTAssertFalse(selectionCoordinator.hasCrossSegmentSelection)
+    }
+
+    @MainActor
+    func testMidGestureRedeliveredTouchBeganDoesNotClearActiveSelection() {
+        let selectionCoordinator = MarkdownSelectionCoordinator()
+        let descriptors = [
+            MarkdownSelectionSegmentDescriptor(id: "first", order: 0, separatorBefore: ""),
+            MarkdownSelectionSegmentDescriptor(id: "second", order: 1, separatorBefore: "\n\n")
+        ]
+        selectionCoordinator.replaceSegments(descriptors, revision: "mid-gesture-v1")
+
+        selectionCoordinator.beginSelection(segmentID: "first", offset: 2, windowPoint: .zero)
+        selectionCoordinator.updateSelection(segmentID: "second", offset: 3, windowPoint: CGPoint(x: 0, y: 10))
+        XCTAssertTrue(selectionCoordinator.isSelectionGestureActive)
+
+        // The private text-selection gesture re-delivers a synthetic
+        // touchesBegan mid-drag as it takes over the touch; that must not
+        // clear the selection being dragged.
+        selectionCoordinator.beginPendingSelection(
+            segmentID: "first",
+            offset: 1,
+            windowPoint: CGPoint(x: 0, y: 0)
+        )
+
+        XCTAssertTrue(selectionCoordinator.hasActiveSelection)
+        XCTAssertTrue(selectionCoordinator.hasCrossSegmentSelection)
     }
 
     @MainActor
@@ -250,6 +280,113 @@ final class ChatTextSelectionTests: XCTestCase {
         )
 
         XCTAssertEqual(hostView.coordinatedCopiedAttributedTextForTesting()?.string, "rst\n\nSec")
+    }
+
+    // MARK: - Selection observer recognizer
+
+    @MainActor
+    func testObserverRecognizerIsAttachedToCoordinatedTextViewAndAllowsSimultaneousRecognition() throws {
+        let selectionCoordinator = MarkdownSelectionCoordinator()
+        let descriptor = MarkdownSelectionSegmentDescriptor(id: "paragraph", order: 0, separatorBefore: "")
+        selectionCoordinator.replaceSegments([descriptor], revision: "observer-attach-v1")
+
+        let view = SelectableTextView(
+            text: "observed",
+            selectionCoordinator: selectionCoordinator,
+            selectionSegment: descriptor
+        )
+        let hostView = view.makeUIViewForTests(coordinator: view.makeCoordinator())
+        let observer = try XCTUnwrap(hostView.selectionObserverForTesting)
+
+        XCTAssertFalse(observer.cancelsTouchesInView)
+        XCTAssertFalse(observer.delaysTouchesBegan)
+        XCTAssertFalse(observer.delaysTouchesEnded)
+        XCTAssertTrue(
+            observer.gestureRecognizer(
+                observer,
+                shouldRecognizeSimultaneouslyWith: UIPanGestureRecognizer()
+            )
+        )
+    }
+
+    @MainActor
+    func testObserverMoveExtendsActiveSelectionAcrossSegmentsAndTouchEndPreservesIt() throws {
+        let selectionCoordinator = MarkdownSelectionCoordinator()
+        let descriptors = [
+            MarkdownSelectionSegmentDescriptor(id: "first", order: 0, separatorBefore: ""),
+            MarkdownSelectionSegmentDescriptor(id: "second", order: 1, separatorBefore: "\n\n")
+        ]
+        selectionCoordinator.replaceSegments(descriptors, revision: "observer-move-v1")
+
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 240, height: 180))
+        let rootView = UIView(frame: window.bounds)
+        window.addSubview(rootView)
+        window.isHidden = false
+
+        let firstHost = mountedSelectionHost(
+            text: "Anchor",
+            segment: descriptors[0],
+            frame: CGRect(x: 10, y: 10, width: 180, height: 40),
+            coordinator: selectionCoordinator,
+            in: window
+        )
+        let secondTextView = SelectableTextView.makeTextView()
+        secondTextView.attributedText = NSAttributedString(string: "Focus")
+        secondTextView.frame = CGRect(x: 10, y: 80, width: 180, height: 40)
+        window.subviews.first?.addSubview(secondTextView)
+        secondTextView.layoutIfNeeded()
+        selectionCoordinator.register(descriptor: descriptors[1], textView: secondTextView)
+
+        let observer = try XCTUnwrap(firstHost.selectionObserverForTesting)
+
+        // A move with no active selection drag is a no-op (plain scrolling).
+        observer.handleMove(toWindowPoint: CGPoint(x: 18, y: 90))
+        XCTAssertFalse(selectionCoordinator.hasActiveSelection)
+
+        // The long-press lands and the native gesture reports a selection.
+        firstHost.simulateTouchBeganForTesting(at: CGPoint(x: 18, y: 20))
+        firstHost.mountedTextView.selectedRange = NSRange(location: 1, length: 3)
+        selectionCoordinator.updateNativeSelection(
+            segmentID: descriptors[0].id,
+            selectedRange: NSRange(location: 1, length: 3),
+            lowerWindowPoint: CGPoint(x: 18, y: 20),
+            upperWindowPoint: CGPoint(x: 34, y: 20)
+        )
+        XCTAssertTrue(selectionCoordinator.isSelectionGestureActive)
+
+        // The finger crosses into the second segment; the observer extends
+        // the selection across both text views.
+        observer.handleMove(toWindowPoint: CGPoint(x: 150, y: 100))
+        XCTAssertTrue(selectionCoordinator.hasCrossSegmentSelection)
+        XCTAssertEqual(selectionCoordinator.activeSpans.map(\.segmentID), ["first", "second"])
+        XCTAssertEqual(secondTextView.selectedRange.location, 0)
+        XCTAssertTrue((1...5).contains(secondTextView.selectedRange.length))
+
+        // Touch-up ends the gesture but keeps the selection for Copy.
+        observer.handleTouchEnd()
+        XCTAssertFalse(selectionCoordinator.isSelectionGestureActive)
+        XCTAssertTrue(selectionCoordinator.hasCrossSegmentSelection)
+    }
+
+    @MainActor
+    private func mountedSelectionHost(
+        text: String,
+        segment: MarkdownSelectionSegmentDescriptor,
+        frame: CGRect,
+        coordinator: MarkdownSelectionCoordinator,
+        in window: UIWindow
+    ) -> SelectableTextViewHostView {
+        let view = SelectableTextView(
+            text: text,
+            selectionCoordinator: coordinator,
+            selectionSegment: segment
+        )
+        let hostView = view.makeUIViewForTests(coordinator: view.makeCoordinator())
+        hostView.frame = frame
+        window.subviews.first?.addSubview(hostView)
+        hostView.layoutIfNeeded()
+        hostView.mountedTextView.layoutIfNeeded()
+        return hostView
     }
 
     @MainActor
