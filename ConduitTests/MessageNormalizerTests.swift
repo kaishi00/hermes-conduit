@@ -344,7 +344,8 @@ final class MessageNormalizerTests: XCTestCase {
               "id": "gw-2",
               "name": "Old laptop",
               "plugin_version": null,
-              "plugin_capabilities": []
+              "plugin_capabilities": [],
+              "last_event_at": "2026-08-15T01:00:00Z"
             }
           ]
         }
@@ -358,11 +359,12 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertTrue(current.supportsApprovalCards)
         XCTAssertTrue(current.supportsClarifyCards)
 
-        // A gateway that has never reported (paired against an older relay)
-        // renders as unknown, not as a false "outdated".
-        let neverReported = meta.gateways[1]
-        XCTAssertNil(neverReported.pluginVersion)
-        XCTAssertFalse(neverReported.supportsApprovalCards)
+        // Events sent but never a plugin version = pre-0.2 notifier: prompt
+        // the update instead of showing "waiting for the first notification".
+        let legacy = meta.gateways[1]
+        XCTAssertNil(legacy.pluginVersion)
+        XCTAssertNotNil(legacy.lastEventAt)
+        XCTAssertTrue(legacy.isLegacyPlugin)
     }
 
     func testRelayMetaDecodingDropsMalformedGatewayRowsLossily() throws {

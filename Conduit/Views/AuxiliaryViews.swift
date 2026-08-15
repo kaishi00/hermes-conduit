@@ -1380,12 +1380,15 @@ private struct NotificationsSettingsDetail: View {
                                 version: gateway.pluginVersion,
                                 isSupported: gateway.supportsApprovalCards && gateway.supportsClarifyCards,
                                 supportedDetail: "Notifier supports approval and clarify cards",
-                                outdatedDetail: gateway.pluginVersion == nil
-                                    ? "Waiting for the first notification from this profile"
-                                    : "Notifier update available — approval and clarify cards need a newer plugin"
+                                outdatedDetail: gateway.isLegacyPlugin
+                                    ? "This profile's notifier predates decision cards — update it to receive them"
+                                    : gateway.pluginVersion == nil
+                                        ? "Waiting for the first notification from this profile"
+                                        : "Notifier update available — approval and clarify cards need a newer plugin"
                             )
-                            if gateway.pluginVersion != nil,
-                               !gateway.supportsApprovalCards || !gateway.supportsClarifyCards {
+                            // Prompt the update both for a reported-but-old
+                            // plugin and for a never-reporting (pre-0.2) one.
+                            if !gateway.supportsApprovalCards || !gateway.supportsClarifyCards || gateway.isLegacyPlugin {
                                 NotificationSetupCommand(step: 1, title: "Update the notifier", command: "hermes plugins update conduit_push")
                                 NotificationSetupCommand(step: 2, title: "Restart the gateway", command: "hermes gateway restart")
                             }
