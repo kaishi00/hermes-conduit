@@ -65,13 +65,17 @@ final class SelectionObserverUITests: XCTestCase {
         let top = app.descendants(matching: .any).matching(identifier: "fixture.top").firstMatch
         XCTAssertTrue(top.waitForExistence(timeout: 5))
 
+        let pasteboardLabel = app.staticTexts.matching(identifier: "fixture.pasteboard").firstMatch
+        XCTAssertTrue(pasteboardLabel.waitForExistence(timeout: 5))
+        let pasteboardBeforeDrag = pasteboardLabel.label
+
+        // The anchor marker is 2pt tall, so a -12 normalized offset is a
+        // 24pt drag — small enough to stay a plain drag, not a long-press.
         let start = top.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0))
         let end = top.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: -12))
         start.press(forDuration: 0.05, thenDragTo: end)
 
-        let pasteboardLabel = app.staticTexts.matching(identifier: "fixture.pasteboard").firstMatch
-        XCTAssertTrue(pasteboardLabel.waitForExistence(timeout: 5))
-        XCTAssertEqual(pasteboardLabel.label, "pasteboard:empty", "A plain drag must not select or copy anything")
+        XCTAssertEqual(pasteboardLabel.label, pasteboardBeforeDrag, "A plain drag must not select or copy anything")
     }
 
     // MARK: - Anchors
@@ -174,7 +178,8 @@ final class SelectionObserverUITests: XCTestCase {
         try XCUIScreen.main.screenshot().pngRepresentation
             .write(to: URL(fileURLWithPath: "/tmp/conduit-uitest-handles.png"))
 
-        let copied = UIPasteboard.general.string ?? ""
+        let pasteboardMirror = app.staticTexts.matching(identifier: "fixture.pasteboard").firstMatch
+        let copied = pasteboardMirror.label
         XCTAssertTrue(copied.contains("Column A"), "Copy pill did not copy cross-block text: \(copied)")
         XCTAssertTrue(copied.contains("After the"), "Copy pill did not copy through the trailing paragraph: \(copied)")
 

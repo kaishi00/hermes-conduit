@@ -64,6 +64,8 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
         return view === self ? nil : view
     }
 
+    private var repositioningDisplayLink: CADisplayLink?
+
     override func layoutSubviews() {
         super.layoutSubviews()
 
@@ -75,6 +77,7 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
             let focus = coordinator.activeFocusEndpoint
         else {
             subviews.forEach { $0.isHidden = true }
+            stopRepositioningDisplayLink()
             return
         }
 
@@ -82,6 +85,7 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
         let focusCaret = coordinator.caretRect(for: focus, in: window)
         guard let anchorCaret, let focusCaret else {
             subviews.forEach { $0.isHidden = true }
+            stopRepositioningDisplayLink()
             return
         }
 
@@ -89,6 +93,7 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
         focusHandle?.isHidden = false
         copyPill?.isHidden = false
         copyPillBackdrop?.isHidden = false
+        startRepositioningDisplayLink()
 
         positionHandle(anchorHandle, atCaret: anchorCaret)
         positionHandle(focusHandle, atCaret: focusCaret)
@@ -199,6 +204,36 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
         copyFeedbackLabel = feedback
     }
 
+    /// The container sits outside the transcript scroll view, so nothing
+    /// naturally triggers a relayout while the transcript scrolls and the
+    /// chrome would stay pinned at stale window coordinates. A display link
+    /// (running only while the chrome is visible) repositions it every frame.
+    private func startRepositioningDisplayLink() {
+        guard repositioningDisplayLink == nil else { return }
+        let link = CADisplayLink(target: self, selector: #selector(repositionFromDisplayLink))
+        link.add(to: .main, forMode: .common)
+        repositioningDisplayLink = link
+    }
+
+    private func stopRepositioningDisplayLink() {
+        repositioningDisplayLink?.invalidate()
+        repositioningDisplayLink = nil
+    }
+
+    @objc private func repositionFromDisplayLink() {
+        // Coordinator state gone — the next layout pass hides the chrome and
+        // stops the link.
+        guard let coordinator, coordinator.hasCrossSegmentSelection else {
+            setNeedsLayout()
+            return
+        }
+        setNeedsLayout()
+    }
+
+    deinit {
+        repositioningDisplayLink?.invalidate()
+    }
+
     /// Draggable chrome inside a scroll view: without this, the ancestor
     /// scroll pan claims any moving touch and the handles freeze.
     func gestureRecognizer(
@@ -247,9 +282,10 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
     private func copyActiveSelection() {
         guard
             let coordinator,
-            let copied = coordinator.copiedAttributedTextForActiveSelection() as NSAttributedString?,
-            copied.length > 0
+            coordinator.hasActiveSelection
         else { return }
+        let copied = coordinator.copiedAttributedTextForActiveSelection()
+        guard copied.length > 0 else { return }
 
         // String-only, matching the copy paths proven to paste cross-app;
         // pairing the write with an RTF item made external paste targets
@@ -328,6 +364,9 @@ final class MarkdownSelectionHandleView: UIView {
         layer.shadowOpacity = 0.18
         layer.shadowRadius = 1.5
         layer.shadowOffset = CGSize(width: 0, height: 1)
+        // Without this the views are invisible to the accessibility tree —
+        // both VoiceOver and the UI tests' identifier queries.
+        isAccessibilityElement = true
         accessibilityLabel = role == .anchor ? "Selection start handle" : "Selection end handle"
     }
 

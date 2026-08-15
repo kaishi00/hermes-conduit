@@ -398,52 +398,14 @@ struct SelectableTextView: UIViewRepresentable {
             self.selectionSegment = selectionSegment
         }
 
-        /// The system edit menu's Copy runs a private text-system copy of the
-        /// owner view's native selection AFTER invoking `copy:` — and it
-        /// re-asserts that write whenever anything else touches the
-        /// pasteboard (a logged exchange showed writes traded every ~6ms),
-        /// so the coordinated copy can never win by writing last. Replacing
-        /// the menu's Copy action stops the private copy from running at
-        /// all. NOTE: this is the iOS 17 selector
-        /// (menuConfigurationFor:defaultMenu:); the iOS 16
-        /// suggestedActions variant has a different selector and is never
-        /// called on iOS 17+.
-        func textView(
-            _ textView: UITextView,
-            menuConfigurationFor textRange: UITextRange,
-            defaultMenu: UIMenu
-        ) -> UIMenu {
-            guard
-                let selectionCoordinator,
-                selectionCoordinator.hasCrossSegmentSelection,
-                let selectionSegment,
-                selectionCoordinator.nativeSelectionOwnerSegmentID == selectionSegment.id
-            else {
-                return defaultMenu
-            }
-
-            let coordinatedCopy = UIAction(
-                title: NSLocalizedString("Copy", comment: "Copy the cross-block selection")
-            ) { _ in
-                UIPasteboard.general.string = selectionCoordinator.copiedAttributedTextForActiveSelection().string
-            }
-
-            var children: [UIMenuElement] = []
-            var replacedCopy = false
-            for element in defaultMenu.children {
-                if let action = element as? UIAction,
-                   action.title.localizedCaseInsensitiveContains("copy") {
-                    children.append(coordinatedCopy)
-                    replacedCopy = true
-                } else {
-                    children.append(element)
-                }
-            }
-            if !replacedCopy {
-                children.insert(coordinatedCopy, at: 0)
-            }
-            return UIMenu(children: children)
-        }
+        // NOTE: there is deliberately no edit-menu interception here. The
+        // only menuConfigurationFor delegate selector is for text items
+        // (links/attachments), not the selection menu — an interception with
+        // a near-miss selector compiles silently and never runs. And since
+        // cross-block selections dismiss the owner's first responder (see
+        // MarkdownSelectionCoordinator), they never present the system menu
+        // at all: copying goes through the coordinator-owned pill, while
+        // within-block selections keep the fully native menu.
 
         // shouldInteractWith is formally deprecated in iOS 17 in favor of
         // textView(_:primaryActionFor:defaultAction:) and
