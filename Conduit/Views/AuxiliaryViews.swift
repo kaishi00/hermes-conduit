@@ -1361,6 +1361,43 @@ private struct NotificationsSettingsDetail: View {
                     notificationToggle("Approval cards in pushes", detail: "Include approval details so cards work from notifications. Disable for maximum privacy.", keyPath: \.decisionCards)
                 }
 
+                ConduitSettingsSection(title: "Compatibility", symbol: "checkmark.seal", tint: .conduitAura) {
+                    if notifications.isFetchingMeta {
+                        Text("Checking compatibility…")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    } else if let meta = notifications.relayMeta {
+                        compatibilityRow(
+                            title: "Push relay",
+                            version: meta.version,
+                            isSupported: meta.supportsDecisionCards,
+                            supportedDetail: "Supports decision cards",
+                            outdatedDetail: "Decision cards need a relay update"
+                        )
+                        ForEach(meta.gateways) { gateway in
+                            compatibilityRow(
+                                title: gateway.name,
+                                version: gateway.pluginVersion,
+                                isSupported: gateway.supportsApprovalCards && gateway.supportsClarifyCards,
+                                supportedDetail: "Notifier supports approval and clarify cards",
+                                outdatedDetail: gateway.pluginVersion == nil
+                                    ? "Waiting for the first notification from this profile"
+                                    : "Notifier update available — approval and clarify cards need a newer plugin"
+                            )
+                            if gateway.pluginVersion != nil,
+                               !gateway.supportsApprovalCards || !gateway.supportsClarifyCards {
+                                NotificationSetupCommand(step: 1, title: "Update the notifier", command: "hermes plugins update conduit_push")
+                                NotificationSetupCommand(step: 2, title: "Restart the gateway", command: "hermes gateway restart")
+                            }
+                        }
+                    } else {
+                        Text("Compatibility unknown. Your relay predates version reporting; decision cards may not be available until it updates.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .task { await notifications.refreshMeta() }
+
                 ConduitSettingsSection(title: "Connect a Hermes profile", symbol: "link.badge.plus", tint: .conduitAura) {
                     Text("Install the notifier once on the gateway, then create a short-lived pairing code here for each Hermes profile you want to reach.")
                         .font(.footnote)
@@ -1409,6 +1446,9 @@ private struct NotificationsSettingsDetail: View {
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
                         .keyboardType(.URL)
+                        .onSubmit {
+                            Task { await notifications.refreshMeta() }
+                        }
                     Text("Leave blank to use the default relay. Change this if you run your own push relay server.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
@@ -1416,7 +1456,40 @@ private struct NotificationsSettingsDetail: View {
             }
         }
         .navigationTitle("Notifications")
-        .task { await notifications.refresh() }
+        .task {
+            await notifications.refresh()
+            await notifications.refreshMeta()
+        }
+    }
+
+    @ViewBuilder
+    private func compatibilityRow(
+        title: String,
+        version: String?,
+        isSupported: Bool,
+        supportedDetail: String,
+        outdatedDetail: String
+    ) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: isSupported ? "checkmark.circle.fill" : "exclamationmark.circle")
+                .foregroundStyle(isSupported ? .green : .orange)
+                .accessibilityLabel(isSupported ? "Supported" : "Update needed")
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(title).font(.subheadline.weight(.medium))
+                    if let version {
+                        Text("v\(version)")
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Text(isSupported ? supportedDetail : outdatedDetail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 2)
+        .accessibilityElement(children: .combine)
     }
 
     @ViewBuilder
