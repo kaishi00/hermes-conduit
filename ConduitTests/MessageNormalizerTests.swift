@@ -344,7 +344,15 @@ final class MessageNormalizerTests: XCTestCase {
               "id": "gw-2",
               "name": "Old laptop",
               "plugin_version": null,
-              "plugin_capabilities": []
+              "plugin_capabilities": [],
+              "last_event_at": "2026-08-15T01:00:00Z"
+            },
+            {
+              "id": "gw-3",
+              "name": "Fresh pair",
+              "plugin_version": null,
+              "plugin_capabilities": [],
+              "last_event_at": null
             }
           ]
         }
@@ -352,17 +360,25 @@ final class MessageNormalizerTests: XCTestCase {
         let meta = try JSONDecoder().decode(RelayMetaInfo.self, from: Data(json.utf8))
 
         XCTAssertTrue(meta.supportsDecisionCards)
-        XCTAssertEqual(meta.gateways.count, 2)
+        XCTAssertEqual(meta.gateways.count, 3)
 
         let current = meta.gateways[0]
         XCTAssertTrue(current.supportsApprovalCards)
         XCTAssertTrue(current.supportsClarifyCards)
 
-        // A gateway that has never reported (paired against an older relay)
-        // renders as unknown, not as a false "outdated".
-        let neverReported = meta.gateways[1]
-        XCTAssertNil(neverReported.pluginVersion)
-        XCTAssertFalse(neverReported.supportsApprovalCards)
+        // Events sent but never a plugin version = pre-0.2 notifier: prompt
+        // the update instead of showing "waiting for the first notification".
+        let legacy = meta.gateways[1]
+        XCTAssertNil(legacy.pluginVersion)
+        XCTAssertNotNil(legacy.lastEventAt)
+        XCTAssertTrue(legacy.hasSentEventsButNeverReported)
+
+        // A gateway that has sent nothing keeps the waiting state — it is not
+        // evidence of an old plugin, so no contradictory update prompt.
+        let neverSent = meta.gateways[2]
+        XCTAssertNil(neverSent.pluginVersion)
+        XCTAssertNil(neverSent.lastEventAt)
+        XCTAssertFalse(neverSent.hasSentEventsButNeverReported)
     }
 
     func testRelayMetaDecodingDropsMalformedGatewayRowsLossily() throws {

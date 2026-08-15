@@ -52,15 +52,23 @@ struct RelayMetaInfo: Decodable, Equatable {
         let name: String
         let pluginVersion: String?
         let pluginCapabilities: [String]
+        let lastEventAt: String?
 
         var supportsApprovalCards: Bool { pluginCapabilities.contains("approval-decisions") }
         var supportsClarifyCards: Bool { pluginCapabilities.contains("clarify-loop") }
+
+        /// A gateway that has sent events but never reported a plugin version
+        /// runs a pre-0.2 notifier — every 0.2+ event carries the version, so
+        /// any version-less event is one. Only this evidence justifies the
+        /// update prompt; a gateway that has sent nothing stays "waiting".
+        var hasSentEventsButNeverReported: Bool { pluginVersion == nil && lastEventAt != nil }
 
         enum CodingKeys: String, CodingKey {
             case id
             case name
             case pluginVersion = "plugin_version"
             case pluginCapabilities = "plugin_capabilities"
+            case lastEventAt = "last_event_at"
         }
     }
 
