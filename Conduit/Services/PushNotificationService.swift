@@ -57,10 +57,11 @@ struct RelayMetaInfo: Decodable, Equatable {
         var supportsApprovalCards: Bool { pluginCapabilities.contains("approval-decisions") }
         var supportsClarifyCards: Bool { pluginCapabilities.contains("clarify-loop") }
 
-        /// A gateway that has sent events but never a plugin version runs a
-        /// pre-0.2 notifier (0.2 stamps every event) and should be prompted to
-        /// update, not shown as "waiting".
-        var isLegacyPlugin: Bool { pluginVersion == nil && lastEventAt != nil }
+        /// A gateway that has sent events but never reported a plugin version
+        /// runs a pre-0.2 notifier — every 0.2+ event carries the version, so
+        /// any version-less event is one. Only this evidence justifies the
+        /// update prompt; a gateway that has sent nothing stays "waiting".
+        var hasSentEventsButNeverReported: Bool { pluginVersion == nil && lastEventAt != nil }
 
         enum CodingKeys: String, CodingKey {
             case id

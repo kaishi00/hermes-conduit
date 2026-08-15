@@ -346,6 +346,13 @@ final class MessageNormalizerTests: XCTestCase {
               "plugin_version": null,
               "plugin_capabilities": [],
               "last_event_at": "2026-08-15T01:00:00Z"
+            },
+            {
+              "id": "gw-3",
+              "name": "Fresh pair",
+              "plugin_version": null,
+              "plugin_capabilities": [],
+              "last_event_at": null
             }
           ]
         }
@@ -353,7 +360,7 @@ final class MessageNormalizerTests: XCTestCase {
         let meta = try JSONDecoder().decode(RelayMetaInfo.self, from: Data(json.utf8))
 
         XCTAssertTrue(meta.supportsDecisionCards)
-        XCTAssertEqual(meta.gateways.count, 2)
+        XCTAssertEqual(meta.gateways.count, 3)
 
         let current = meta.gateways[0]
         XCTAssertTrue(current.supportsApprovalCards)
@@ -364,7 +371,14 @@ final class MessageNormalizerTests: XCTestCase {
         let legacy = meta.gateways[1]
         XCTAssertNil(legacy.pluginVersion)
         XCTAssertNotNil(legacy.lastEventAt)
-        XCTAssertTrue(legacy.isLegacyPlugin)
+        XCTAssertTrue(legacy.hasSentEventsButNeverReported)
+
+        // A gateway that has sent nothing keeps the waiting state — it is not
+        // evidence of an old plugin, so no contradictory update prompt.
+        let neverSent = meta.gateways[2]
+        XCTAssertNil(neverSent.pluginVersion)
+        XCTAssertNil(neverSent.lastEventAt)
+        XCTAssertFalse(neverSent.hasSentEventsButNeverReported)
     }
 
     func testRelayMetaDecodingDropsMalformedGatewayRowsLossily() throws {
