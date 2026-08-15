@@ -155,8 +155,17 @@ final class MarkdownSelectionCoordinator: ObservableObject {
     private var pendingSelectionState: PendingSelectionState?
     private var selectionGestureIsActive = false
     private var isApplyingSelectionRanges = false
-    private var nativeSelectionOwnerSegmentID: String?
+    /// Readable by selection observers: the segment whose text view owns the
+    /// native (private-gesture) selection, so a new touch landing on that
+    /// view's selection or handles can keep driving the drag.
+    private(set) var nativeSelectionOwnerSegmentID: String?
     private var nativeSelectionAnchorEdge: NativeSelectionEdge?
+    /// True once the owner's native selection chrome (highlight + handles)
+    /// has been dismissed because the coordinator owns a cross-block
+    /// selection: the owner drops first responder, and a non-first-responder
+    /// text view with a programmatic range renders nothing. The overlay
+    /// draws every span in that state.
+    private var isOwnerNativeChromeSuppressed = false
 
     func replaceSegments(_ descriptors: [MarkdownSelectionSegmentDescriptor], revision: String) {
         let before = visibleSelectionSnapshot()
@@ -522,6 +531,13 @@ final class MarkdownSelectionCoordinator: ObservableObject {
     }
 
     func beginPendingSelection(segmentID: String, offset: Int, windowPoint: CGPoint) {
+        // While a selection drag is underway, the private text-selection
+        // gesture re-delivers a synthetic touchesBegan as it takes over the
+        // touch; that re-delivery must not clear the in-progress selection.
+        // The observer recognizer ends the gesture on touch-up, so a genuine
+        // later tap still reaches this path and clears as before.
+        guard !selectionGestureIsActive else { return }
+
         if let previous = Self.activeVisibleSelectionCoordinator, previous !== self {
             previous.clearSelection()
         }
@@ -559,6 +575,21 @@ final class MarkdownSelectionCoordinator: ObservableObject {
         let lower = clamp(selectedRange.location, to: length)
         let upper = clamp(NSMaxRange(selectedRange), to: length)
         guard upper > lower else { return }
+
+        // While the selection's focus sits in another segment, the owner's
+        // private gesture (and the first-responder dance when the edit menu
+        // appears, or an out-of-bounds handle drag ends) keeps reporting the
+        // owner's own range — capped at its bounds, sometimes an empty caret.
+        // Honoring those reports would collapse the cross-block selection
+        // after the finger lifts, right when the user goes to copy. Reports
+        // from the segment the focus currently sits in still flow through: a
+        // fresh touch on text clears state via beginPendingSelection first,
+        // and dragging back into the owner keeps native granularity there.
+        if let focusSegmentID = activeSelectionState?.focus.segmentID,
+           focusSegmentID != segmentID,
+           nativeSelectionOwnerSegmentID == segmentID {
+            return
+        }
 
         claimVisibleSelectionOwnership()
         let before = visibleSelectionSnapshot()
@@ -610,6 +641,20 @@ final class MarkdownSelectionCoordinator: ObservableObject {
             return
         }
 
+        // Between blocks (spacers, dividers, card chrome) the finger still
+        // means "keep dragging the selection": resolve to the nearest
+        // registered text view and clamp to its leading/trailing edge, so
+        // fast drags with sparse touch samples don't freeze the focus in
+        // dead zones.
+        if let endpoint = nearestEndpoint(at: windowPoint) {
+            updateSelection(
+                segmentID: endpoint.segmentID,
+                offset: endpoint.offset,
+                windowPoint: windowPoint
+            )
+            return
+        }
+
         guard var activeSelectionState else { return }
         activeSelectionState.focusWindowPoint = windowPoint
         self.activeSelectionState = activeSelectionState
@@ -627,11 +672,110 @@ final class MarkdownSelectionCoordinator: ObservableObject {
         publishIfVisibleSelectionChanged(from: before)
     }
 
+    /// Anchor-side counterpart to updateSelection(windowPoint:), used when
+    /// dragging the custom anchor handle: the focus stays put while the
+    /// selection's leading endpoint follows the finger.
+    func updateAnchorSelection(windowPoint: CGPoint) {
+        if let endpoint = endpoint(at: windowPoint) ?? nearestEndpoint(at: windowPoint) {
+            updateAnchorSelection(
+                segmentID: endpoint.segmentID,
+                offset: endpoint.offset,
+                windowPoint: windowPoint
+            )
+            return
+        }
+
+        guard var activeSelectionState else { return }
+        activeSelectionState.anchorWindowPoint = windowPoint
+        self.activeSelectionState = activeSelectionState
+        applySelectionRanges()
+    }
+
+    func updateAnchorSelection(segmentID: String, offset: Int, windowPoint: CGPoint) {
+        guard var activeSelectionState else { return }
+
+        let before = visibleSelectionSnapshot()
+        activeSelectionState.anchor = MarkdownSelectionEndpoint(segmentID: segmentID, offset: offset)
+        activeSelectionState.anchorWindowPoint = windowPoint
+        self.activeSelectionState = activeSelectionState
+        applySelectionRanges()
+        publishIfVisibleSelectionChanged(from: before)
+    }
+
+    var activeAnchorEndpoint: MarkdownSelectionEndpoint? {
+        activeSelectionState?.anchor
+    }
+
+    var activeFocusEndpoint: MarkdownSelectionEndpoint? {
+        activeSelectionState?.focus
+    }
+
+    /// Caret-style rect (window coordinates) for a selection endpoint —
+    /// the trailing edge of the character before the offset, or the leading
+    /// edge for offset 0. Drives the custom handle positions.
+    func caretRect(for endpoint: MarkdownSelectionEndpoint, in window: UIWindow) -> CGRect? {
+        guard
+            let textView = recordsByID[endpoint.segmentID]?.textView,
+            textView.window === window
+        else { return nil }
+
+        textView.layoutIfNeeded()
+        let length = textView.textStorage.length
+        let lineHeight = textView.font?.lineHeight ?? 16
+        let viewRect: CGRect
+        if length == 0 {
+            viewRect = CGRect(x: 0, y: 0, width: 2, height: lineHeight)
+        } else {
+            let offset = clamp(endpoint.offset, to: length)
+            let characterIndex = offset > 0 ? offset - 1 : 0
+            let glyphRange = textView.layoutManager.glyphRange(
+                forCharacterRange: NSRange(location: characterIndex, length: 1),
+                actualCharacterRange: nil
+            )
+            if glyphRange.length > 0 {
+                var glyphRect = textView.layoutManager.boundingRect(
+                    forGlyphRange: glyphRange,
+                    in: textView.textContainer
+                )
+                if offset > 0 {
+                    glyphRect.origin.x = glyphRect.maxX
+                }
+                glyphRect.size.width = 2
+                viewRect = glyphRect
+            } else {
+                viewRect = CGRect(x: offset > 0 ? textView.textContainer.size.width : 0, y: 0, width: 2, height: lineHeight)
+            }
+        }
+
+        let insetRect = viewRect.offsetBy(
+            dx: textView.textContainerInset.left - textView.contentOffset.x,
+            dy: textView.textContainerInset.top - textView.contentOffset.y
+        )
+        let windowRect = textView.convert(insetRect, to: window)
+        guard !windowRect.isNull else { return nil }
+        return windowRect
+    }
+
     func endSelection() {
         let before = visibleSelectionSnapshot()
         selectionGestureIsActive = false
         pendingSelectionState = nil
         applySelectionRanges()
+
+        // A cross-segment selection is coordinator-owned from here on: the
+        // custom handles and copy pill take over, so the owner drops first-
+        // responder and its ranges are re-applied programmatically — which
+        // renders without the system's native handles (they cannot travel
+        // outside the owner's own text view). Within-block selections keep
+        // the fully native flow.
+        if hasCrossSegmentSelection,
+           let ownerID = nativeSelectionOwnerSegmentID,
+           let owner = recordsByID[ownerID]?.textView,
+           owner.isFirstResponder {
+            owner.resignFirstResponder()
+            applySelectionRanges()
+        }
+
         publishIfVisibleSelectionChanged(from: before)
     }
 
@@ -652,10 +796,20 @@ final class MarkdownSelectionCoordinator: ObservableObject {
         let nativeSelectionOwnerSegmentID = nativeSelectionOwnerSegmentID
 
         return activeSpans.flatMap { span -> [CGRect] in
-            guard span.segmentID != nativeSelectionOwnerSegmentID,
-                  let textView = recordsByID[span.segmentID]?.textView,
-                  textView.window === window
+            guard
+                let textView = recordsByID[span.segmentID]?.textView,
+                textView.window === window
             else {
+                return []
+            }
+            // While the owner's native chrome is visible (within-block
+            // selection, or the first instants of a drag), its span shows the
+            // native highlight and must not double-draw under the overlay.
+            // From the moment a selection spans blocks the native chrome is
+            /// tint-suppressed and the overlay covers every span.
+            if span.segmentID == nativeSelectionOwnerSegmentID,
+               textView.isFirstResponder,
+               !isOwnerNativeChromeSuppressed {
                 return []
             }
             return selectionRects(for: span.range, in: textView, window: window)
@@ -684,6 +838,48 @@ final class MarkdownSelectionCoordinator: ObservableObject {
         return nil
     }
 
+    /// Resolves a window point that hit no text view to the nearest
+    /// registered one, clamping the offset to the nearest edge: above the
+    /// view selects from its start, below selects through its end, and a
+    /// horizontal miss picks the closest insertion point on the line.
+    private func nearestEndpoint(at windowPoint: CGPoint) -> MarkdownSelectionEndpoint? {
+        var nearest: (segmentID: String, textView: UITextView, distance: CGFloat)?
+
+        for segmentID in orderedSegmentIDs {
+            guard
+                let textView = recordsByID[segmentID]?.textView,
+                let window = textView.window
+            else {
+                continue
+            }
+
+            let bounds = textView.convert(textView.bounds, to: window)
+            let dx = max(bounds.minX - windowPoint.x, 0, windowPoint.x - bounds.maxX)
+            let dy = max(bounds.minY - windowPoint.y, 0, windowPoint.y - bounds.maxY)
+            let distance = hypot(dx, dy)
+            if nearest == nil || distance < nearest!.distance {
+                nearest = (segmentID, textView, distance)
+            }
+        }
+
+        guard let (segmentID, textView, _) = nearest, let window = textView.window else { return nil }
+
+        let bounds = textView.convert(textView.bounds, to: window)
+        let offset: Int
+        if windowPoint.y < bounds.minY {
+            offset = 0
+        } else if windowPoint.y > bounds.maxY {
+            offset = textLength(for: segmentID)
+        } else {
+            let clamped = CGPoint(
+                x: min(max(windowPoint.x, bounds.minX), bounds.maxX),
+                y: min(max(windowPoint.y, bounds.minY), bounds.maxY)
+            )
+            offset = utf16Offset(for: textView.convert(clamped, from: window), in: textView)
+        }
+        return MarkdownSelectionEndpoint(segmentID: segmentID, offset: offset)
+    }
+
     private func utf16Offset(for localPoint: CGPoint, in textView: UITextView) -> Int {
         let length = textView.textStorage.length
         guard length > 0 else { return 0 }
@@ -705,11 +901,15 @@ final class MarkdownSelectionCoordinator: ObservableObject {
         return clamp(insertionIndex, to: length)
     }
 
-    private func applySelectionRanges() {
+    /// Internal for tests: the selection suites drive span re-application
+    /// directly to verify chrome dismissal behavior.
+    func applySelectionRanges() {
         guard activeSelectionState != nil else {
             clearSelectionRanges()
             return
         }
+
+        updateOwnerNativeChromeSuppression()
 
         isApplyingSelectionRanges = true
         defer { isApplyingSelectionRanges = false }
@@ -733,6 +933,24 @@ final class MarkdownSelectionCoordinator: ObservableObject {
         for record in recordsByID.values {
             guard let textView = record.textView else { continue }
             clearSelectionRange(in: textView)
+        }
+    }
+
+    /// While a selection spans blocks, the coordinator draws every span in
+    /// the overlay and the owner's native chrome must not render alongside
+    /// it. Clearing the tint renders iOS 26's selection black rather than
+    /// hiding it, so instead the owner resigns first responder at the first
+    /// cross-block instant — a non-first-responder text view renders no
+    /// native selection at all, while the gesture machinery (recognizer and
+    /// delegate reports, not first-responder based) keeps driving the drag.
+    private func updateOwnerNativeChromeSuppression() {
+        guard let ownerID = nativeSelectionOwnerSegmentID,
+              let owner = recordsByID[ownerID]?.textView
+        else { return }
+
+        if hasCrossSegmentSelection, !isOwnerNativeChromeSuppressed, owner.isFirstResponder {
+            isOwnerNativeChromeSuppressed = true
+            owner.resignFirstResponder()
         }
     }
 
@@ -799,7 +1017,21 @@ final class MarkdownSelectionCoordinator: ObservableObject {
             previous.clearSelection()
         }
         Self.activeVisibleSelectionCoordinator = self
+        MarkdownSelectionChromeLocator.shared.selectionOwnerDidChange()
     }
+
+    #if DEBUG
+    /// Selection-fixture affordance: copies the app's active cross-block
+    /// selection to the pasteboard and returns it, so UI tests and manual
+    /// passes can verify the copy path without driving the system menu.
+    static func copyActiveSelectionToPasteboard() -> String? {
+        guard let coordinator = activeVisibleSelectionCoordinator else { return nil }
+        let text = coordinator.copiedAttributedTextForActiveSelection().string
+        guard !text.isEmpty else { return nil }
+        UIPasteboard.general.string = text
+        return text
+    }
+    #endif
 
     private func resetSelectionState() {
         activeSelectionState = nil
@@ -809,6 +1041,14 @@ final class MarkdownSelectionCoordinator: ObservableObject {
         nativeSelectionAnchorEdge = nil
         if Self.activeVisibleSelectionCoordinator === self {
             Self.activeVisibleSelectionCoordinator = nil
+            MarkdownSelectionChromeLocator.shared.selectionOwnerDidChange()
         }
+        isOwnerNativeChromeSuppressed = false
+    }
+
+    /// The coordinator owning the currently visible selection, used by the
+    /// window-level selection chrome (handles + copy pill).
+    static var activeCoordinator: MarkdownSelectionCoordinator? {
+        activeVisibleSelectionCoordinator
     }
 }

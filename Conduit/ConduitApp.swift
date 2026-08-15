@@ -65,7 +65,10 @@ struct ConduitApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView()
+            if ProcessInfo.processInfo.arguments.contains(SelectionFixtureView.launchArgument) {
+                SelectionFixtureView()
+            } else {
+                RootView()
                 .environmentObject(appState)
                 .preferredColorScheme(appState.themePreference.colorScheme)
                 .tint(.conduitAccent)
@@ -85,6 +88,7 @@ struct ConduitApp: App {
                         await appState.openVoiceConversation(intent)
                     }
                 }
+            }
         }
     }
 

@@ -398,6 +398,53 @@ struct SelectableTextView: UIViewRepresentable {
             self.selectionSegment = selectionSegment
         }
 
+        /// The system edit menu's Copy runs a private text-system copy of the
+        /// owner view's native selection AFTER invoking `copy:` — and it
+        /// re-asserts that write whenever anything else touches the
+        /// pasteboard (a logged exchange showed writes traded every ~6ms),
+        /// so the coordinated copy can never win by writing last. Replacing
+        /// the menu's Copy action stops the private copy from running at
+        /// all. NOTE: this is the iOS 17 selector
+        /// (menuConfigurationFor:defaultMenu:); the iOS 16
+        /// suggestedActions variant has a different selector and is never
+        /// called on iOS 17+.
+        func textView(
+            _ textView: UITextView,
+            menuConfigurationFor textRange: UITextRange,
+            defaultMenu: UIMenu
+        ) -> UIMenu {
+            guard
+                let selectionCoordinator,
+                selectionCoordinator.hasCrossSegmentSelection,
+                let selectionSegment,
+                selectionCoordinator.nativeSelectionOwnerSegmentID == selectionSegment.id
+            else {
+                return defaultMenu
+            }
+
+            let coordinatedCopy = UIAction(
+                title: NSLocalizedString("Copy", comment: "Copy the cross-block selection")
+            ) { _ in
+                UIPasteboard.general.string = selectionCoordinator.copiedAttributedTextForActiveSelection().string
+            }
+
+            var children: [UIMenuElement] = []
+            var replacedCopy = false
+            for element in defaultMenu.children {
+                if let action = element as? UIAction,
+                   action.title.localizedCaseInsensitiveContains("copy") {
+                    children.append(coordinatedCopy)
+                    replacedCopy = true
+                } else {
+                    children.append(element)
+                }
+            }
+            if !replacedCopy {
+                children.insert(coordinatedCopy, at: 0)
+            }
+            return UIMenu(children: children)
+        }
+
         // shouldInteractWith is formally deprecated in iOS 17 in favor of
         // textView(_:primaryActionFor:defaultAction:) and
         // textView(_:menuConfigurationFor:defaultMenu:), but those are only
@@ -472,6 +519,16 @@ private final class MarkdownSelectionTextView: UITextView {
     weak var selectionCoordinator: MarkdownSelectionCoordinator?
     var selectionSegment: MarkdownSelectionSegmentDescriptor?
 
+    override init(frame: CGRect, textContainer: NSTextContainer?) {
+        super.init(frame: frame, textContainer: textContainer)
+        addGestureRecognizer(MarkdownSelectionObserverGestureRecognizer(observedTextView: self))
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         if let touch = touches.first {
             onTouchBegan?(self, touch.location(in: self))
@@ -529,6 +586,93 @@ private final class MarkdownSelectionTextView: UITextView {
         guard let window else { return nil }
         return convert(localPoint, to: window)
     }
+
+    var selectionObserverForTesting: MarkdownSelectionObserverGestureRecognizer? {
+        gestureRecognizers?.compactMap { $0 as? MarkdownSelectionObserverGestureRecognizer }.first
+    }
+}
+
+/// Tracks the finger during a native text-selection drag without ever
+/// recognizing, so UITextView's private selection gesture and the enclosing
+/// scroll views keep their exact stock behavior. A recognizer that never
+/// leaves `.possible`, always allows simultaneous recognition, and never
+/// cancels touches can't be failed or excluded by those gestures — yet it
+/// still receives the full touch stream, which is the piece every earlier
+/// cross-block attempt was missing (SwiftUI gestures fought the ScrollView,
+/// a coexisting pan was unpredictably failed by the private gesture, and
+/// view-level touchesMoved was starved). While the coordinator reports an
+/// active selection drag, each move is forwarded as a window point and the
+/// coordinator resolves it against every registered block/cell text view,
+/// extending the selection across them.
+final class MarkdownSelectionObserverGestureRecognizer: UIGestureRecognizer, UIGestureRecognizerDelegate {
+    private weak var observedTextView: MarkdownSelectionTextView?
+    /// Set when a touch begins on this text view's existing selection or its
+    /// handles (e.g. dragging a native handle out of the block): the gesture
+    /// flag is already false by then, so the touch itself arms the observer
+    /// for the drag that follows.
+    private var isDrivingSelectionTouch = false
+
+    fileprivate init(observedTextView: MarkdownSelectionTextView) {
+        self.observedTextView = observedTextView
+        super.init(target: nil, action: nil)
+        cancelsTouchesInView = false
+        delaysTouchesBegan = false
+        delaysTouchesEnded = false
+        delegate = self
+    }
+
+    func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+    ) -> Bool {
+        true
+    }
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+        super.touchesBegan(touches, with: event)
+        guard
+            let coordinator = observedTextView?.selectionCoordinator,
+            let segment = observedTextView?.selectionSegment,
+            coordinator.hasActiveSelection,
+            coordinator.nativeSelectionOwnerSegmentID == segment.id
+        else { return }
+        isDrivingSelectionTouch = true
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
+        super.touchesMoved(touches, with: event)
+        guard let touch = touches.first, let window = observedTextView?.window else { return }
+        handleMove(toWindowPoint: touch.location(in: window))
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
+        super.touchesEnded(touches, with: event)
+        handleTouchEnd()
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
+        super.touchesCancelled(touches, with: event)
+        handleTouchEnd()
+    }
+
+    func handleMove(toWindowPoint windowPoint: CGPoint) {
+        guard
+            let coordinator = observedTextView?.selectionCoordinator,
+            coordinator.hasActiveSelection,
+            coordinator.isSelectionGestureActive || isDrivingSelectionTouch
+        else { return }
+        coordinator.updateSelection(windowPoint: windowPoint)
+    }
+
+    func handleTouchEnd() {
+        let wasDriving = isDrivingSelectionTouch
+        isDrivingSelectionTouch = false
+        guard
+            let coordinator = observedTextView?.selectionCoordinator,
+            coordinator.isSelectionGestureActive || wasDriving
+        else { return }
+        coordinator.endSelection()
+    }
 }
 
 final class SelectableTextViewHostView: UIView {
@@ -563,6 +707,10 @@ final class SelectableTextViewHostView: UIView {
 
     func coordinatedCopiedAttributedTextForTesting() -> NSAttributedString? {
         (mountedTextView as? MarkdownSelectionTextView)?.coordinatedCopiedAttributedText()
+    }
+
+    var selectionObserverForTesting: MarkdownSelectionObserverGestureRecognizer? {
+        (mountedTextView as? MarkdownSelectionTextView)?.selectionObserverForTesting
     }
 
     private func embedMountedTextView() {

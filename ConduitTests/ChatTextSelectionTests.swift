@@ -190,10 +190,40 @@ final class ChatTextSelectionTests: XCTestCase {
         selectionCoordinator.updateSelection(segmentID: "second", offset: 3, windowPoint: CGPoint(x: 0, y: 10))
         XCTAssertTrue(selectionCoordinator.hasCrossSegmentSelection)
 
+        // The observer recognizer ends the gesture on touch-up; a later tap is
+        // a fresh touch down, modeled by ending the gesture before the tap.
+        selectionCoordinator.endSelection()
+
         hostView.simulateTouchBeganForTesting(at: CGPoint(x: 3, y: 3))
 
         XCTAssertFalse(selectionCoordinator.hasActiveSelection)
         XCTAssertFalse(selectionCoordinator.hasCrossSegmentSelection)
+    }
+
+    @MainActor
+    func testMidGestureRedeliveredTouchBeganDoesNotClearActiveSelection() {
+        let selectionCoordinator = MarkdownSelectionCoordinator()
+        let descriptors = [
+            MarkdownSelectionSegmentDescriptor(id: "first", order: 0, separatorBefore: ""),
+            MarkdownSelectionSegmentDescriptor(id: "second", order: 1, separatorBefore: "\n\n")
+        ]
+        selectionCoordinator.replaceSegments(descriptors, revision: "mid-gesture-v1")
+
+        selectionCoordinator.beginSelection(segmentID: "first", offset: 2, windowPoint: .zero)
+        selectionCoordinator.updateSelection(segmentID: "second", offset: 3, windowPoint: CGPoint(x: 0, y: 10))
+        XCTAssertTrue(selectionCoordinator.isSelectionGestureActive)
+
+        // The private text-selection gesture re-delivers a synthetic
+        // touchesBegan mid-drag as it takes over the touch; that must not
+        // clear the selection being dragged.
+        selectionCoordinator.beginPendingSelection(
+            segmentID: "first",
+            offset: 1,
+            windowPoint: CGPoint(x: 0, y: 0)
+        )
+
+        XCTAssertTrue(selectionCoordinator.hasActiveSelection)
+        XCTAssertTrue(selectionCoordinator.hasCrossSegmentSelection)
     }
 
     @MainActor
@@ -250,6 +280,266 @@ final class ChatTextSelectionTests: XCTestCase {
         )
 
         XCTAssertEqual(hostView.coordinatedCopiedAttributedTextForTesting()?.string, "rst\n\nSec")
+    }
+
+    // MARK: - Selection observer recognizer
+
+    @MainActor
+    func testObserverRecognizerIsAttachedToCoordinatedTextViewAndAllowsSimultaneousRecognition() throws {
+        let selectionCoordinator = MarkdownSelectionCoordinator()
+        let descriptor = MarkdownSelectionSegmentDescriptor(id: "paragraph", order: 0, separatorBefore: "")
+        selectionCoordinator.replaceSegments([descriptor], revision: "observer-attach-v1")
+
+        let view = SelectableTextView(
+            text: "observed",
+            selectionCoordinator: selectionCoordinator,
+            selectionSegment: descriptor
+        )
+        let hostView = view.makeUIViewForTests(coordinator: view.makeCoordinator())
+        let observer = try XCTUnwrap(hostView.selectionObserverForTesting)
+
+        XCTAssertFalse(observer.cancelsTouchesInView)
+        XCTAssertFalse(observer.delaysTouchesBegan)
+        XCTAssertFalse(observer.delaysTouchesEnded)
+        XCTAssertTrue(
+            observer.gestureRecognizer(
+                observer,
+                shouldRecognizeSimultaneouslyWith: UIPanGestureRecognizer()
+            )
+        )
+    }
+
+    @MainActor
+    func testObserverMoveExtendsActiveSelectionAcrossSegmentsAndTouchEndPreservesIt() throws {
+        let selectionCoordinator = MarkdownSelectionCoordinator()
+        let descriptors = [
+            MarkdownSelectionSegmentDescriptor(id: "first", order: 0, separatorBefore: ""),
+            MarkdownSelectionSegmentDescriptor(id: "second", order: 1, separatorBefore: "\n\n")
+        ]
+        selectionCoordinator.replaceSegments(descriptors, revision: "observer-move-v1")
+
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 240, height: 180))
+        let rootView = UIView(frame: window.bounds)
+        window.addSubview(rootView)
+        window.isHidden = false
+
+        let firstHost = mountedSelectionHost(
+            text: "Anchor",
+            segment: descriptors[0],
+            frame: CGRect(x: 10, y: 10, width: 180, height: 40),
+            coordinator: selectionCoordinator,
+            in: window
+        )
+        let secondTextView = SelectableTextView.makeTextView()
+        secondTextView.attributedText = NSAttributedString(string: "Focus")
+        secondTextView.frame = CGRect(x: 10, y: 80, width: 180, height: 40)
+        window.subviews.first?.addSubview(secondTextView)
+        secondTextView.layoutIfNeeded()
+        selectionCoordinator.register(descriptor: descriptors[1], textView: secondTextView)
+
+        let observer = try XCTUnwrap(firstHost.selectionObserverForTesting)
+
+        // A move with no active selection drag is a no-op (plain scrolling).
+        observer.handleMove(toWindowPoint: CGPoint(x: 18, y: 90))
+        XCTAssertFalse(selectionCoordinator.hasActiveSelection)
+
+        // The long-press lands and the native gesture reports a selection.
+        firstHost.simulateTouchBeganForTesting(at: CGPoint(x: 18, y: 20))
+        firstHost.mountedTextView.selectedRange = NSRange(location: 1, length: 3)
+        selectionCoordinator.updateNativeSelection(
+            segmentID: descriptors[0].id,
+            selectedRange: NSRange(location: 1, length: 3),
+            lowerWindowPoint: CGPoint(x: 18, y: 20),
+            upperWindowPoint: CGPoint(x: 34, y: 20)
+        )
+        XCTAssertTrue(selectionCoordinator.isSelectionGestureActive)
+
+        // The finger crosses into the second segment; the observer extends
+        // the selection across both text views.
+        observer.handleMove(toWindowPoint: CGPoint(x: 150, y: 100))
+        XCTAssertTrue(selectionCoordinator.hasCrossSegmentSelection)
+        XCTAssertEqual(selectionCoordinator.activeSpans.map(\.segmentID), ["first", "second"])
+        XCTAssertEqual(secondTextView.selectedRange.location, 0)
+        XCTAssertTrue((1...5).contains(secondTextView.selectedRange.length))
+
+        // Touch-up ends the gesture but keeps the selection for Copy.
+        observer.handleTouchEnd()
+        XCTAssertFalse(selectionCoordinator.isSelectionGestureActive)
+        XCTAssertTrue(selectionCoordinator.hasCrossSegmentSelection)
+    }
+
+    @MainActor
+    private func mountedSelectionHost(
+        text: String,
+        segment: MarkdownSelectionSegmentDescriptor,
+        frame: CGRect,
+        coordinator: MarkdownSelectionCoordinator,
+        in window: UIWindow
+    ) -> SelectableTextViewHostView {
+        let view = SelectableTextView(
+            text: text,
+            selectionCoordinator: coordinator,
+            selectionSegment: segment
+        )
+        let hostView = view.makeUIViewForTests(coordinator: view.makeCoordinator())
+        hostView.frame = frame
+        window.subviews.first?.addSubview(hostView)
+        hostView.layoutIfNeeded()
+        hostView.mountedTextView.layoutIfNeeded()
+        return hostView
+    }
+
+    @MainActor
+    func testMenuConfigurationReplacesCopyActionForCrossSegmentSelection() throws {
+        let selectionCoordinator = MarkdownSelectionCoordinator()
+        let descriptors = [
+            MarkdownSelectionSegmentDescriptor(id: "first", order: 0, separatorBefore: ""),
+            MarkdownSelectionSegmentDescriptor(id: "second", order: 1, separatorBefore: "\n\n")
+        ]
+        selectionCoordinator.replaceSegments(descriptors, revision: "menu-cross-v1")
+
+        let firstTextView = SelectableTextView.makeTextView()
+        firstTextView.attributedText = NSAttributedString(string: "First")
+        selectionCoordinator.register(descriptor: descriptors[0], textView: firstTextView)
+        let secondTextView = SelectableTextView.makeTextView()
+        secondTextView.attributedText = NSAttributedString(string: "Second")
+        selectionCoordinator.register(descriptor: descriptors[1], textView: secondTextView)
+
+        selectionCoordinator.beginSelection(segmentID: "first", offset: 2, windowPoint: .zero)
+        selectionCoordinator.updateSelection(segmentID: "second", offset: 3, windowPoint: CGPoint(x: 0, y: 10))
+        XCTAssertTrue(selectionCoordinator.hasCrossSegmentSelection)
+
+        // The owner segment's bridge must swap the system Copy action for the
+        // coordinated one; a non-owner segment must leave the menu untouched.
+        let ownerBridge = SelectableTextView.Coordinator(
+            linkColor: .link,
+            selectionCoordinator: selectionCoordinator,
+            selectionSegment: descriptors[0]
+        )
+        let otherBridge = SelectableTextView.Coordinator(
+            linkColor: .link,
+            selectionCoordinator: selectionCoordinator,
+            selectionSegment: descriptors[1]
+        )
+
+        let textView = SelectableTextView.makeTextView()
+        textView.attributedText = NSAttributedString(string: "First")
+        textView.selectedRange = NSRange(location: 2, length: 3)
+        let textRange = try XCTUnwrap(textView.selectedTextRange)
+
+        let originalCopy = UIAction(title: "Copy") { _ in }
+        let lookUp = UIAction(title: "Look Up") { _ in }
+        let defaultMenu = UIMenu(children: [originalCopy, lookUp])
+
+        let ownerMenu = ownerBridge.textView(
+            textView,
+            menuConfigurationFor: textRange,
+            defaultMenu: defaultMenu
+        )
+        XCTAssertEqual(ownerMenu.children.count, 2)
+        XCTAssertFalse(ownerMenu.children.contains { ($0 as? UIAction) === originalCopy }, "System Copy must be replaced for cross-block selections")
+        let ownerCopy = try XCTUnwrap(ownerMenu.children.compactMap { $0 as? UIAction }.first { $0.title == "Copy" })
+        XCTAssertNotIdentical(ownerCopy, originalCopy)
+
+        let otherMenu = otherBridge.textView(
+            textView,
+            menuConfigurationFor: textRange,
+            defaultMenu: defaultMenu
+        )
+        XCTAssertEqual(otherMenu.children.count, 2)
+        XCTAssertTrue(otherMenu.children.contains { ($0 as? UIAction) === originalCopy }, "Non-owner segments keep the system actions")
+    }
+
+    @MainActor
+    func testCopyPutsCoordinatedCrossSegmentTextOnPasteboard() throws {
+        let selectionCoordinator = MarkdownSelectionCoordinator()
+        let descriptors = [
+            MarkdownSelectionSegmentDescriptor(id: "first", order: 0, separatorBefore: ""),
+            MarkdownSelectionSegmentDescriptor(id: "second", order: 1, separatorBefore: "\n\n")
+        ]
+        selectionCoordinator.replaceSegments(descriptors, revision: "copy-pasteboard-v1")
+
+        let view = SelectableTextView(
+            text: "First",
+            selectionCoordinator: selectionCoordinator,
+            selectionSegment: descriptors[0]
+        )
+        let hostView = view.makeUIViewForTests(coordinator: view.makeCoordinator())
+
+        let secondTextView = SelectableTextView.makeTextView()
+        secondTextView.attributedText = NSAttributedString(string: "Second")
+        selectionCoordinator.register(descriptor: descriptors[1], textView: secondTextView)
+
+        selectionCoordinator.beginSelection(segmentID: "first", offset: 2, windowPoint: .zero)
+        selectionCoordinator.updateSelection(segmentID: "second", offset: 3, windowPoint: CGPoint(x: 0, y: 10))
+        XCTAssertTrue(selectionCoordinator.hasCrossSegmentSelection)
+
+        hostView.mountedTextView.copy(nil)
+        let copied = UIPasteboard.general.string ?? ""
+        XCTAssertTrue(copied.contains("rst"), "copy: should write the coordinated selection text: \(copied)")
+        XCTAssertTrue(copied.contains("Sec"), "Coordinated copy should span both segments: \(copied)")
+    }
+
+    @MainActor
+    func testHandleChromeDragsMoveEachEndpointAndPillCopies() throws {
+        let selectionCoordinator = MarkdownSelectionCoordinator()
+        let descriptors = [
+            MarkdownSelectionSegmentDescriptor(id: "first", order: 0, separatorBefore: ""),
+            MarkdownSelectionSegmentDescriptor(id: "second", order: 1, separatorBefore: "\n\n")
+        ]
+        selectionCoordinator.replaceSegments(descriptors, revision: "handle-chrome-v1")
+
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 240, height: 180))
+        let rootView = UIView(frame: window.bounds)
+        window.addSubview(rootView)
+        window.isHidden = false
+
+        let firstView = SelectableTextView(
+            text: "Anchor",
+            selectionCoordinator: selectionCoordinator,
+            selectionSegment: descriptors[0]
+        )
+        let firstHost = firstView.makeUIViewForTests(coordinator: firstView.makeCoordinator())
+        firstHost.frame = CGRect(x: 10, y: 10, width: 180, height: 40)
+        rootView.addSubview(firstHost)
+        firstHost.layoutIfNeeded()
+
+        let secondTextView = SelectableTextView.makeTextView()
+        secondTextView.attributedText = NSAttributedString(string: "Focus")
+        secondTextView.frame = CGRect(x: 10, y: 80, width: 180, height: 40)
+        rootView.addSubview(secondTextView)
+        secondTextView.layoutIfNeeded()
+        selectionCoordinator.register(descriptor: descriptors[1], textView: secondTextView)
+
+        let container = MarkdownSelectionHandleContainerView(frame: CGRect(x: 0, y: 0, width: 240, height: 130))
+        container.coordinator = selectionCoordinator
+        rootView.addSubview(container)
+        container.layoutIfNeeded()
+
+        selectionCoordinator.beginSelection(segmentID: "first", offset: 2, windowPoint: .zero)
+        selectionCoordinator.updateSelection(segmentID: "second", offset: 3, windowPoint: CGPoint(x: 0, y: 10))
+        selectionCoordinator.endSelection()
+        XCTAssertTrue(selectionCoordinator.hasCrossSegmentSelection)
+
+        // Focus handle drag: the ending endpoint moves with the finger
+        // while the anchor stays put.
+        container.handleDragMoved(role: .focus, windowPoint: CGPoint(x: 100, y: 25))
+        XCTAssertEqual(selectionCoordinator.activeFocusEndpoint?.segmentID, "first")
+        XCTAssertEqual(selectionCoordinator.activeAnchorEndpoint, MarkdownSelectionEndpoint(segmentID: "first", offset: 2))
+
+        // Restore a cross-segment selection, then drag the anchor handle.
+        selectionCoordinator.updateSelection(segmentID: "second", offset: 3, windowPoint: CGPoint(x: 0, y: 10))
+        container.handleDragMoved(role: .anchor, windowPoint: CGPoint(x: 150, y: 100))
+        XCTAssertEqual(selectionCoordinator.activeAnchorEndpoint?.segmentID, "second")
+
+        container.handleDragEnded()
+
+        // The pill must put the coordinated text on the pasteboard.
+        UIPasteboard.general.string = "sentinel:chrome"
+        try XCTUnwrap(container.copyPill).sendActions(for: .touchUpInside)
+        let copied = UIPasteboard.general.string ?? ""
+        XCTAssertNotEqual(copied, "sentinel:chrome", "Pill copy should replace the pasteboard")
+        XCTAssertFalse(copied.isEmpty, "Pill copy should not be empty")
     }
 
     @MainActor

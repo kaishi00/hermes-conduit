@@ -492,6 +492,102 @@ final class MarkdownSelectionCoordinatorTests: XCTestCase {
         XCTAssertEqual(coordinator.copiedAttributedTextForActiveSelection().string, "")
     }
 
+    func testOwnerNativeReportWhileFocusIsInAnotherSegmentDoesNotCollapseSelection() {
+        let descriptors = [
+            MarkdownSelectionSegmentDescriptor(id: "first", order: 0, separatorBefore: ""),
+            MarkdownSelectionSegmentDescriptor(id: "second", order: 1, separatorBefore: "\n\n")
+        ]
+        let coordinator = MarkdownSelectionCoordinator()
+        coordinator.replaceSegments(descriptors, revision: "owner-clobber-v1")
+
+        let firstTextView = SelectableTextView.makeTextView()
+        firstTextView.attributedText = NSAttributedString(string: "First")
+        coordinator.register(descriptor: descriptors[0], textView: firstTextView)
+
+        let secondTextView = SelectableTextView.makeTextView()
+        secondTextView.attributedText = NSAttributedString(string: "Second")
+        coordinator.register(descriptor: descriptors[1], textView: secondTextView)
+
+        coordinator.beginSelection(segmentID: "first", offset: 2, windowPoint: .zero)
+        coordinator.updateSelection(segmentID: "second", offset: 3, windowPoint: CGPoint(x: 0, y: 10))
+        XCTAssertTrue(coordinator.hasCrossSegmentSelection)
+
+        // While the drag focus sits in the second segment, the owner's
+        // private gesture keeps reporting its own capped range; those stale
+        // reports must not collapse the cross-block selection.
+        coordinator.updateNativeSelection(
+            segmentID: "first",
+            selectedRange: NSRange(location: 2, length: 3),
+            lowerWindowPoint: .zero,
+            upperWindowPoint: .zero
+        )
+
+        XCTAssertTrue(coordinator.hasCrossSegmentSelection)
+        XCTAssertEqual(
+            coordinator.activeSpans.map(\.segmentID),
+            ["first", "second"]
+        )
+
+        // Dragging back into the owner re-enables native reports there.
+        coordinator.updateSelection(segmentID: "first", offset: 4, windowPoint: CGPoint(x: 0, y: 0))
+        coordinator.updateNativeSelection(
+            segmentID: "first",
+            selectedRange: NSRange(location: 2, length: 3),
+            lowerWindowPoint: .zero,
+            upperWindowPoint: .zero
+        )
+        XCTAssertEqual(
+            coordinator.activeSpans,
+            [MarkdownSelectionSpan(segmentID: "first", range: NSRange(location: 2, length: 3))]
+        )
+    }
+
+    func testPostLiftOwnerReportsDoNotCollapseCrossBlockSelection() {
+        let descriptors = [
+            MarkdownSelectionSegmentDescriptor(id: "first", order: 0, separatorBefore: ""),
+            MarkdownSelectionSegmentDescriptor(id: "second", order: 1, separatorBefore: "\n\n")
+        ]
+        let coordinator = MarkdownSelectionCoordinator()
+        coordinator.replaceSegments(descriptors, revision: "post-lift-collapse-v1")
+
+        let firstTextView = SelectableTextView.makeTextView()
+        firstTextView.attributedText = NSAttributedString(string: "First")
+        coordinator.register(descriptor: descriptors[0], textView: firstTextView)
+
+        let secondTextView = SelectableTextView.makeTextView()
+        secondTextView.attributedText = NSAttributedString(string: "Second")
+        coordinator.register(descriptor: descriptors[1], textView: secondTextView)
+
+        coordinator.beginSelection(segmentID: "first", offset: 2, windowPoint: .zero)
+        coordinator.updateSelection(segmentID: "second", offset: 3, windowPoint: CGPoint(x: 0, y: 10))
+        coordinator.endSelection()
+
+        // After the finger lifts, the edit menu appearing (or a handle drag
+        // ending out of bounds) makes the owner re-report its own range —
+        // sometimes an empty caret. Those reports must not collapse the
+        // cross-block selection the user is about to copy.
+        coordinator.updateNativeSelection(
+            segmentID: "first",
+            selectedRange: NSRange(location: 2, length: 3),
+            lowerWindowPoint: .zero,
+            upperWindowPoint: .zero
+        )
+        coordinator.updateNativeSelection(
+            segmentID: "first",
+            selectedRange: NSRange(location: 2, length: 0),
+            lowerWindowPoint: .zero,
+            upperWindowPoint: .zero
+        )
+
+        XCTAssertTrue(coordinator.hasCrossSegmentSelection)
+        XCTAssertEqual(coordinator.copiedAttributedTextForActiveSelection().string, "rst\n\nSec")
+
+        // A fresh long-press on the owner's text still clears the old
+        // selection and starts a new one.
+        coordinator.beginPendingSelection(segmentID: "first", offset: 1, windowPoint: .zero)
+        XCTAssertFalse(coordinator.hasActiveSelection)
+    }
+
     func testEndingOutsideTheFirstSegmentProducesAForwardCrossBlockSelection() {
         let coordinator = MarkdownSelectionCoordinator()
         coordinator.replaceSegments([
@@ -541,12 +637,147 @@ final class MarkdownSelectionCoordinatorTests: XCTestCase {
         coordinator.beginSelection(segmentID: "first", offset: 1, windowPoint: CGPoint(x: 18, y: 20))
         coordinator.updateSelection(segmentID: "second", offset: 2, windowPoint: CGPoint(x: 28, y: 90))
 
+        // The owner claims first responder, then a cross-segment selection
+        // dismisses it: a non-first-responder view renders no native
+        // selection, and the overlay covers every span so the coordinator's
+        // visual is the only one.
+        _ = firstTextView.becomeFirstResponder()
+        XCTAssertTrue(firstTextView.isFirstResponder)
+
+        coordinator.applySelectionRanges()
+
+        XCTAssertFalse(firstTextView.isFirstResponder, "Owner native chrome must be dismissed for cross-block selections")
+        let rects = coordinator.highlightRects(in: window)
+        XCTAssertFalse(rects.isEmpty)
+        XCTAssertTrue(rects.contains { $0.maxY <= firstTextView.frame.maxY + 1 }, "Owner span must be covered by the overlay")
+        XCTAssertTrue(rects.contains { $0.minY >= secondTextView.frame.minY - 1 }, "Other spans must be covered too")
+    }
+
+    func testHighlightRectsCoverOwnerSpanOnceNativeChromeIsDismissed() {
+        let descriptors = [
+            MarkdownSelectionSegmentDescriptor(id: "first", order: 0, separatorBefore: ""),
+            MarkdownSelectionSegmentDescriptor(id: "second", order: 1, separatorBefore: "\n\n")
+        ]
+        let coordinator = MarkdownSelectionCoordinator()
+        let window = makeSelectionWindow()
+        let firstTextView = mountedTextView(text: "Anchor", frame: CGRect(x: 10, y: 10, width: 180, height: 40), in: window)
+        let secondTextView = mountedTextView(text: "Focus", frame: CGRect(x: 10, y: 80, width: 180, height: 40), in: window)
+
+        coordinator.replaceSegments(descriptors, revision: "highlights-rest-v1")
+        coordinator.register(descriptor: descriptors[0], textView: firstTextView)
+        coordinator.register(descriptor: descriptors[1], textView: secondTextView)
+        coordinator.beginSelection(segmentID: "first", offset: 1, windowPoint: CGPoint(x: 18, y: 20))
+        coordinator.updateSelection(segmentID: "second", offset: 2, windowPoint: CGPoint(x: 28, y: 90))
+        _ = firstTextView.becomeFirstResponder()
+        coordinator.endSelection()
+        XCTAssertFalse(firstTextView.isFirstResponder)
+
         let rects = coordinator.highlightRects(in: window)
 
-        XCTAssertEqual(firstTextView.selectedRange, NSRange(location: 1, length: 5))
-        XCTAssertEqual(secondTextView.selectedRange, NSRange(location: 0, length: 2))
-        XCTAssertFalse(rects.isEmpty)
-        XCTAssertTrue(rects.allSatisfy { $0.minY >= secondTextView.frame.minY && $0.maxY <= secondTextView.frame.maxY })
+        // At rest the owner span must be covered by the overlay too.
+        XCTAssertTrue(rects.contains { $0.minY >= firstTextView.frame.minY && $0.maxY <= firstTextView.frame.maxY })
+        XCTAssertTrue(rects.contains { $0.minY >= secondTextView.frame.minY && $0.maxY <= secondTextView.frame.maxY })
+    }
+
+    func testWindowPointInGapBetweenBlocksResolvesToNearestSegment() {
+        let descriptors = [
+            MarkdownSelectionSegmentDescriptor(id: "first", order: 0, separatorBefore: ""),
+            MarkdownSelectionSegmentDescriptor(id: "second", order: 1, separatorBefore: "\n\n")
+        ]
+        let coordinator = MarkdownSelectionCoordinator()
+        let window = makeSelectionWindow()
+        let firstTextView = mountedTextView(text: "Anchor", frame: CGRect(x: 10, y: 10, width: 180, height: 40), in: window)
+        let secondTextView = mountedTextView(text: "Focus", frame: CGRect(x: 10, y: 80, width: 180, height: 40), in: window)
+
+        coordinator.replaceSegments(descriptors, revision: "gap-fallback-v1")
+        coordinator.register(descriptor: descriptors[0], textView: firstTextView)
+        coordinator.register(descriptor: descriptors[1], textView: secondTextView)
+
+        coordinator.beginSelection(segmentID: "first", offset: 3, windowPoint: CGPoint(x: 18, y: 20))
+        // (18, 70) sits in the dead zone between the two text views, nearer
+        // the second; the focus must advance instead of freezing.
+        coordinator.updateSelection(windowPoint: CGPoint(x: 18, y: 70))
+
+        XCTAssertTrue(coordinator.hasCrossSegmentSelection)
+        XCTAssertEqual(coordinator.activeSpans.map(\.segmentID), ["first", "second"])
+    }
+
+    func testAnchorHandleDragMovesAnchorWhileFocusStaysPut() {
+        let descriptors = [
+            MarkdownSelectionSegmentDescriptor(id: "first", order: 0, separatorBefore: ""),
+            MarkdownSelectionSegmentDescriptor(id: "second", order: 1, separatorBefore: "\n\n")
+        ]
+        let coordinator = MarkdownSelectionCoordinator()
+        let window = makeSelectionWindow()
+        let firstTextView = mountedTextView(text: "Anchor", frame: CGRect(x: 10, y: 10, width: 180, height: 40), in: window)
+        let secondTextView = mountedTextView(text: "Focus", frame: CGRect(x: 10, y: 80, width: 180, height: 40), in: window)
+
+        coordinator.replaceSegments(descriptors, revision: "anchor-drag-v1")
+        coordinator.register(descriptor: descriptors[0], textView: firstTextView)
+        coordinator.register(descriptor: descriptors[1], textView: secondTextView)
+
+        coordinator.beginSelection(segmentID: "first", offset: 2, windowPoint: CGPoint(x: 18, y: 20))
+        coordinator.updateSelection(segmentID: "second", offset: 3, windowPoint: CGPoint(x: 18, y: 90))
+        XCTAssertEqual(coordinator.activeSpans.map(\.segmentID), ["first", "second"])
+
+        // Dragging the anchor handle into the second segment moves the
+        // anchor; the focus endpoint is untouched.
+        coordinator.updateAnchorSelection(segmentID: "second", offset: 5, windowPoint: CGPoint(x: 150, y: 90))
+        XCTAssertEqual(coordinator.activeAnchorEndpoint?.segmentID, "second")
+        XCTAssertEqual(coordinator.activeAnchorEndpoint?.offset, 5)
+        XCTAssertEqual(coordinator.activeFocusEndpoint, MarkdownSelectionEndpoint(segmentID: "second", offset: 3))
+        XCTAssertEqual(coordinator.activeSpans.map(\.segmentID), ["second"])
+    }
+
+    func testCaretRectTracksEndpointOffsetsWithinTheTextView() {
+        let descriptors = [
+            MarkdownSelectionSegmentDescriptor(id: "first", order: 0, separatorBefore: "")
+        ]
+        let coordinator = MarkdownSelectionCoordinator()
+        let window = makeSelectionWindow()
+        let textView = mountedTextView(text: "Anchor", frame: CGRect(x: 10, y: 10, width: 180, height: 40), in: window)
+
+        coordinator.replaceSegments(descriptors, revision: "caret-rect-v1")
+        coordinator.register(descriptor: descriptors[0], textView: textView)
+
+        let start = coordinator.caretRect(for: MarkdownSelectionEndpoint(segmentID: "first", offset: 0), in: window)
+        let end = coordinator.caretRect(for: MarkdownSelectionEndpoint(segmentID: "first", offset: 5), in: window)
+
+        XCTAssertNotNil(start)
+        XCTAssertNotNil(end)
+        if let start, let end {
+            XCTAssertLessThan(start.midX, end.midX, "Caret rect should advance with the offset")
+            XCTAssertGreaterThanOrEqual(start.minY, textView.frame.minY - 1)
+            XCTAssertLessThanOrEqual(end.maxY, textView.frame.maxY + 1)
+        }
+    }
+
+    func testEndSelectionResignsOwnerFirstResponderForCrossSegmentSelections() {
+        let descriptors = [
+            MarkdownSelectionSegmentDescriptor(id: "first", order: 0, separatorBefore: ""),
+            MarkdownSelectionSegmentDescriptor(id: "second", order: 1, separatorBefore: "\n\n")
+        ]
+        let coordinator = MarkdownSelectionCoordinator()
+        let window = makeSelectionWindow()
+        let firstTextView = mountedTextView(text: "Anchor", frame: CGRect(x: 10, y: 10, width: 180, height: 40), in: window)
+        let secondTextView = mountedTextView(text: "Focus", frame: CGRect(x: 10, y: 80, width: 180, height: 40), in: window)
+
+        coordinator.replaceSegments(descriptors, revision: "resign-owner-v1")
+        coordinator.register(descriptor: descriptors[0], textView: firstTextView)
+        coordinator.register(descriptor: descriptors[1], textView: secondTextView)
+
+        coordinator.beginSelection(segmentID: "first", offset: 2, windowPoint: .zero)
+        coordinator.updateSelection(segmentID: "second", offset: 3, windowPoint: CGPoint(x: 0, y: 10))
+        XCTAssertTrue(coordinator.hasCrossSegmentSelection)
+
+        _ = firstTextView.becomeFirstResponder()
+        XCTAssertTrue(firstTextView.isFirstResponder)
+
+        coordinator.endSelection()
+
+        XCTAssertFalse(firstTextView.isFirstResponder, "Cross-block selections drop native first-responder chrome at rest")
+        XCTAssertTrue(coordinator.hasCrossSegmentSelection)
+        XCTAssertEqual(secondTextView.selectedRange, NSRange(location: 0, length: 3), "Programmatic spans must survive the resign")
     }
 
     func testRevisionChangeClearsActiveSelectionState() {

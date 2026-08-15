@@ -461,6 +461,12 @@ struct ChatView: View {
             }
         }
         .animation(.easeInOut(duration: 0.18), value: appState.isOpeningNotificationSession)
+        .overlay {
+            // Cross-block selection chrome (endpoint handles + copy pill),
+            // mounted at screen level so its frame always covers the whole
+            // transcript; see MarkdownSelectionHandles.swift.
+            MarkdownSelectionChromeRoot()
+        }
     }
 
     private func saveChatScrollPosition(for preferredKey: ChatScrollSessionKey? = nil) {
