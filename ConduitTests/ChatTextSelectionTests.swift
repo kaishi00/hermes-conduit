@@ -474,6 +474,9 @@ final class ChatTextSelectionTests: XCTestCase {
         selectionCoordinator.updateSelection(segmentID: "second", offset: 3, windowPoint: CGPoint(x: 0, y: 10))
         XCTAssertTrue(selectionCoordinator.hasCrossSegmentSelection)
 
+        let originalPasteboard = UIPasteboard.general.string
+        defer { UIPasteboard.general.string = originalPasteboard }
+
         hostView.mountedTextView.copy(nil)
         let copied = UIPasteboard.general.string ?? ""
         XCTAssertTrue(copied.contains("rst"), "copy: should write the coordinated selection text: \(copied)")
@@ -535,6 +538,8 @@ final class ChatTextSelectionTests: XCTestCase {
         container.handleDragEnded()
 
         // The pill must put the coordinated text on the pasteboard.
+        let originalPasteboard = UIPasteboard.general.string
+        defer { UIPasteboard.general.string = originalPasteboard }
         UIPasteboard.general.string = "sentinel:chrome"
         try XCTUnwrap(container.copyPill).sendActions(for: .touchUpInside)
         let copied = UIPasteboard.general.string ?? ""

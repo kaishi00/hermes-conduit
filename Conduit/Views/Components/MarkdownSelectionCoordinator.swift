@@ -857,7 +857,7 @@ final class MarkdownSelectionCoordinator: ObservableObject {
             let dx = max(bounds.minX - windowPoint.x, 0, windowPoint.x - bounds.maxX)
             let dy = max(bounds.minY - windowPoint.y, 0, windowPoint.y - bounds.maxY)
             let distance = hypot(dx, dy)
-            if nearest == nil || distance < nearest!.distance {
+            if distance < (nearest?.distance ?? .greatestFiniteMagnitude) {
                 nearest = (segmentID, textView, distance)
             }
         }
@@ -910,6 +910,12 @@ final class MarkdownSelectionCoordinator: ObservableObject {
         }
 
         updateOwnerNativeChromeSuppression()
+        // The suppression check may have cleared a selection that collapsed
+        // back into a single segment.
+        guard activeSelectionState != nil else {
+            clearSelectionRanges()
+            return
+        }
 
         isApplyingSelectionRanges = true
         defer { isApplyingSelectionRanges = false }
@@ -951,6 +957,13 @@ final class MarkdownSelectionCoordinator: ObservableObject {
         if hasCrossSegmentSelection, !isOwnerNativeChromeSuppressed, owner.isFirstResponder {
             isOwnerNativeChromeSuppressed = true
             owner.resignFirstResponder()
+        } else if isOwnerNativeChromeSuppressed, !hasCrossSegmentSelection {
+            // A handle drag shrank the selection back into a single block:
+            // the owner is no longer first responder (no native handles or
+            // menu) and single-segment state shows no coordinator chrome
+            // either, which would strand a selection with no affordances.
+            // End the selection instead — the same outcome as a tap.
+            clearSelection()
         }
     }
 

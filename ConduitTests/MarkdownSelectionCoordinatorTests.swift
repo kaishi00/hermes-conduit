@@ -780,6 +780,38 @@ final class MarkdownSelectionCoordinatorTests: XCTestCase {
         XCTAssertEqual(secondTextView.selectedRange, NSRange(location: 0, length: 3), "Programmatic spans must survive the resign")
     }
 
+    func testSelectionCollapsedBackToOneSegmentEndsTheSelection() {
+        let descriptors = [
+            MarkdownSelectionSegmentDescriptor(id: "first", order: 0, separatorBefore: ""),
+            MarkdownSelectionSegmentDescriptor(id: "second", order: 1, separatorBefore: "\n\n")
+        ]
+        let coordinator = MarkdownSelectionCoordinator()
+        let window = makeSelectionWindow()
+        let firstTextView = mountedTextView(text: "Anchor", frame: CGRect(x: 10, y: 10, width: 180, height: 40), in: window)
+        let secondTextView = mountedTextView(text: "Focus", frame: CGRect(x: 10, y: 80, width: 180, height: 40), in: window)
+
+        coordinator.replaceSegments(descriptors, revision: "collapse-clears-v1")
+        coordinator.register(descriptor: descriptors[0], textView: firstTextView)
+        coordinator.register(descriptor: descriptors[1], textView: secondTextView)
+
+        // The real gesture flow holds first responder when the selection
+        // goes cross-block, engaging the native-chrome suppression.
+        coordinator.beginSelection(segmentID: "first", offset: 2, windowPoint: .zero)
+        _ = firstTextView.becomeFirstResponder()
+        coordinator.updateSelection(segmentID: "second", offset: 3, windowPoint: CGPoint(x: 0, y: 10))
+        XCTAssertTrue(coordinator.hasCrossSegmentSelection)
+        XCTAssertFalse(firstTextView.isFirstResponder)
+
+        // A handle drag pulls the anchor into the focus's segment, leaving a
+        // single-segment selection with no native chrome (owner resigned)
+        // and no coordinator chrome — the selection ends instead of
+        // stranding itself without handles or a menu.
+        coordinator.updateAnchorSelection(segmentID: "second", offset: 4, windowPoint: .zero)
+
+        XCTAssertFalse(coordinator.hasActiveSelection)
+        XCTAssertFalse(coordinator.hasCrossSegmentSelection)
+    }
+
     func testRevisionChangeClearsActiveSelectionState() {
         let descriptors = [
             MarkdownSelectionSegmentDescriptor(id: "first", order: 0, separatorBefore: ""),

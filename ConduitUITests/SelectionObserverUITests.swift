@@ -123,24 +123,26 @@ final class SelectionObserverUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-conduitSelectionFixture"]
         app.launchEnvironment["CONDUIT_UITEST"] = "1"
-        UIPasteboard.general.string = "sentinel:before-drag"
         app.launch()
 
         let anchor = try pressAnchor(in: app)
         anchor.press(forDuration: 1.2, thenDragTo: try dragDestination(in: app))
 
         Thread.sleep(forTimeInterval: 0.8)
-        // Fixture copy button sits just above the bottom pasteboard label.
-        app.windows.firstMatch
-            .coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
-            .withOffset(CGVector(dx: 220, dy: 866))
-            .tap()
+        // Tap the fixture's copy button by identifier — a hardcoded screen
+        // offset would miss on any other device size.
+        let fixtureCopy = app.buttons.matching(identifier: "fixture.copySelection").firstMatch
+        XCTAssertTrue(fixtureCopy.waitForExistence(timeout: 5), "Fixture copy button not found")
+        fixtureCopy.tap()
 
         Thread.sleep(forTimeInterval: 0.8)
-        let png = XCUIScreen.main.screenshot().pngRepresentation
-        try png.write(to: URL(fileURLWithPath: "/tmp/conduit-uitest-copy.png"))
+        try XCUIScreen.main.screenshot().pngRepresentation
+            .write(to: URL(fileURLWithPath: "/tmp/conduit-uitest-copy.png"))
 
-        let copied = UIPasteboard.general.string ?? ""
+        // Assert through the fixture's pasteboard mirror; see the handles
+        // test for why the runner does not read UIPasteboard directly.
+        let label = app.staticTexts.matching(identifier: "fixture.pasteboard").firstMatch
+        let copied = label.label
         XCTAssertTrue(copied.contains("Column A"), "Copied text missing table content: \(copied)")
         XCTAssertTrue(copied.contains("After the"), "Copied text missing trailing paragraph: \(copied)")
     }
@@ -153,7 +155,6 @@ final class SelectionObserverUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-conduitSelectionFixture"]
         app.launchEnvironment["CONDUIT_UITEST"] = "1"
-        UIPasteboard.general.string = "sentinel:before-handles"
         app.launch()
 
         let anchor = try pressAnchor(in: app)
