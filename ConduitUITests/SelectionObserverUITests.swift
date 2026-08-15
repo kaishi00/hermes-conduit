@@ -48,7 +48,11 @@ final class SelectionObserverUITests: XCTestCase {
         XCTAssertTrue(cellAnchor.waitForExistence(timeout: 5), "Table cell text view not found. Tree:\n\(app.debugDescription)")
         let destination = try dragDestination(in: app)
 
-        cellAnchor.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 1.2, thenDragTo: destination)
+        performCrossBlockDrag(
+            press: cellAnchor.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)),
+            to: destination,
+            app: app
+        )
 
         Thread.sleep(forTimeInterval: 0.8)
         let png = XCUIScreen.main.screenshot().pngRepresentation
@@ -76,6 +80,21 @@ final class SelectionObserverUITests: XCTestCase {
         start.press(forDuration: 0.05, thenDragTo: end)
 
         XCTAssertEqual(pasteboardLabel.label, pasteboardBeforeDrag, "A plain drag must not select or copy anything")
+    }
+
+    /// Synthesized long-press drags occasionally fail to produce a selection
+    /// on slower CI runners (timing between press and drag). Retry once when
+    /// the cross-block chrome does not appear.
+    private func performCrossBlockDrag(
+        press: XCUICoordinate,
+        to destination: XCUICoordinate,
+        app: XCUIApplication,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        press.press(forDuration: 1.2, thenDragTo: destination)
+        if app.descendants(matching: .any).matching(identifier: "selection.handle.anchor").firstMatch.waitForExistence(timeout: 4) { return }
+        press.press(forDuration: 1.2, thenDragTo: destination)
     }
 
     // MARK: - Anchors
@@ -112,6 +131,9 @@ final class SelectionObserverUITests: XCTestCase {
         let destination = try dragDestination(in: app)
 
         anchor.press(forDuration: 1.2, thenDragTo: destination, withVelocity: 3000, thenHoldForDuration: 0.1)
+        if !app.descendants(matching: .any).matching(identifier: "selection.handle.anchor").firstMatch.waitForExistence(timeout: 4) {
+            anchor.press(forDuration: 1.2, thenDragTo: destination, withVelocity: 3000, thenHoldForDuration: 0.1)
+        }
 
         Thread.sleep(forTimeInterval: 0.8)
         let png = XCUIScreen.main.screenshot().pngRepresentation
@@ -130,7 +152,7 @@ final class SelectionObserverUITests: XCTestCase {
         app.launch()
 
         let anchor = try pressAnchor(in: app)
-        anchor.press(forDuration: 1.2, thenDragTo: try dragDestination(in: app))
+        performCrossBlockDrag(press: anchor, to: try dragDestination(in: app), app: app)
 
         Thread.sleep(forTimeInterval: 0.8)
         // Tap the fixture's copy button by identifier — a hardcoded screen
@@ -162,7 +184,7 @@ final class SelectionObserverUITests: XCTestCase {
         app.launch()
 
         let anchor = try pressAnchor(in: app)
-        anchor.press(forDuration: 1.2, thenDragTo: try dragDestination(in: app))
+        performCrossBlockDrag(press: anchor, to: try dragDestination(in: app), app: app)
 
         Thread.sleep(forTimeInterval: 0.8)
         let anchorHandle = app.descendants(matching: .any).matching(identifier: "selection.handle.anchor").firstMatch
