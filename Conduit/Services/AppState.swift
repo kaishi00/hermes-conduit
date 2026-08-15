@@ -1197,7 +1197,11 @@ final class AppState: ObservableObject {
         automaticWorkToken: ChatResumeAutomaticWorkToken?,
         automaticReconnectOperationID: UUID?
     ) -> ChatResumeTransportContinuation? {
-        guard !Task.isCancelled else { return nil }
+        // Checked after every suspension in connect(with:)/reconnectForRetry.
+        // A scene that went inactive/backgrounded mid-flight must not keep
+        // driving reconnect churn (watchdog: 0x8BADF00D); handleScenePhase
+        // (.active) re-establishes the transport on return.
+        guard !Task.isCancelled, isSceneActive else { return nil }
         if let automaticReconnectOperationID,
            activeAutomaticReconnectOperation?.id != automaticReconnectOperationID {
             return nil
@@ -3726,6 +3730,10 @@ final class AppState: ObservableObject {
             isSceneActive = false
             voiceConversationController.setForegroundActive(false)
             showVoiceSheet = false
+            // Drop any armed reconnect timer as well: in-flight cycles abort
+            // at their next transportContinuation checkpoint, and foreground
+            // activation re-establishes the transport.
+            cancelScheduledReconnect()
             // Flush any pending coalesced cache writes before the app
             // suspends — iOS may kill the process before the debounce fires.
             flushPendingPresentationCache()

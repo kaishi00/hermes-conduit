@@ -184,16 +184,25 @@ final class DashboardTicketBridge: NSObject {
     private var isInvalidated = false
     private var requestID = 0
     private let pendingRequests: DashboardTicketBridgePendingRequests
+    private let readinessPollAttempts: Int
+    private let readinessPollInterval: Duration
+    /// Number of times `reload()` re-attempted the dashboard page load.
+    /// Test visibility for the cold-bridge recovery path.
+    private(set) var reloadCount = 0
 
     init(
         baseURL: String,
         cloudflareAccess: CloudflareAccessCredentials? = nil,
-        pendingRequests: DashboardTicketBridgePendingRequests = DashboardTicketBridgePendingRequests()
+        pendingRequests: DashboardTicketBridgePendingRequests = DashboardTicketBridgePendingRequests(),
+        readinessPollAttempts: Int = 30,
+        readinessPollInterval: Duration = .milliseconds(100)
     ) {
         let normalizedBaseURL = (try? ConnectionURLPolicy.normalizedBaseURL(baseURL)) ?? ""
         self.baseURL = normalizedBaseURL
         self.cloudflareAccess = cloudflareAccess
         self.pendingRequests = pendingRequests
+        self.readinessPollAttempts = readinessPollAttempts
+        self.readinessPollInterval = readinessPollInterval
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .default()
         if let script = cloudflareAccess?.fetchInjectionUserScript(expectedBaseURL: normalizedBaseURL), !script.isEmpty {
@@ -231,6 +240,7 @@ final class DashboardTicketBridge: NSObject {
 
     func reload() {
         guard !isInvalidated else { return }
+        reloadCount += 1
         isReady = false
         pendingRequests.rejectAll(with: DashboardTicketBridgeError.notReady)
         Task { [weak self] in
@@ -246,11 +256,19 @@ final class DashboardTicketBridge: NSObject {
     }
 
     func mintTicket() async throws -> String {
-        // A freshly restored session cookie can reach WebKit's cookie store a
-        // moment before its network process. A first 401 is therefore not
-        // enough evidence to erase the durable session and force a login.
-        var lastError = DashboardTicketBridgeError.signInRequired
-        for attempt in 0..<3 {
+        // Retry twice on the two recoverable failures, then let the final
+        // attempt's error propagate to the caller unchanged:
+        //  - signInRequired: a freshly restored session cookie can reach
+        //    WebKit's cookie store a moment before its network process, so a
+        //    first 401 is not enough evidence to erase the durable session
+        //    and force a login;
+        //  - notReady: a failed initial page load (e.g. launch during a
+        //    network outage) leaves the bridge cold forever — waitUntilReady()
+        //    never sees isReady and no request is ever attempted, so nothing
+        //    else triggers a reload. Re-attempt the dashboard session instead
+        //    of wedging every future reconnect.
+        var attempt = 0
+        while true {
             do {
                 try await waitUntilReady()
                 let response = try await requestJSON(path: "/api/auth/ws-ticket", method: "POST")
@@ -258,27 +276,18 @@ final class DashboardTicketBridge: NSObject {
                     throw DashboardTicketBridgeError.requestFailed("Dashboard did not return a WebSocket ticket.")
                 }
                 return ticket
-            } catch DashboardTicketBridgeError.signInRequired where attempt < 2 {
-                lastError = .signInRequired
-                reload()
-                try await Task.sleep(for: .milliseconds(350))
-            } catch DashboardTicketBridgeError.notReady where attempt < 2 {
-                // A failed initial page load (e.g. launch during a network
-                // outage) leaves the bridge cold forever: waitUntilReady()
-                // never sees isReady and no request is ever attempted, so
-                // nothing else triggers a reload. Re-attempt the dashboard
-                // session instead of wedging every future reconnect.
-                lastError = .notReady
+            } catch DashboardTicketBridgeError.signInRequired where attempt < 2,
+                  DashboardTicketBridgeError.notReady where attempt < 2 {
+                attempt += 1
                 reload()
                 try await Task.sleep(for: .milliseconds(350))
             }
         }
-        throw lastError
     }
 
     private func waitUntilReady() async throws {
-        for _ in 0..<30 where !isReady && !isInvalidated {
-            try await Task.sleep(for: .milliseconds(100))
+        for _ in 0..<readinessPollAttempts where !isReady && !isInvalidated {
+            try await Task.sleep(for: readinessPollInterval)
         }
         guard !isInvalidated, isReady else { throw DashboardTicketBridgeError.notReady }
     }
@@ -293,8 +302,8 @@ final class DashboardTicketBridge: NSObject {
         timeoutMilliseconds: Int = 12_000,
         maxResponseBytes: Int = DataURLLimits.maxJSONResponseBytes
     ) async throws -> [String: Any] {
-        for _ in 0..<30 where !isReady && !isInvalidated {
-            try await Task.sleep(for: .milliseconds(100))
+        for _ in 0..<readinessPollAttempts where !isReady && !isInvalidated {
+            try await Task.sleep(for: readinessPollInterval)
         }
         guard !isInvalidated, isReady else { throw DashboardTicketBridgeError.notReady }
 

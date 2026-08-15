@@ -2351,6 +2351,44 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertTrue(reconnectSpy.purposes.isEmpty)
     }
 
+    func testBackgroundingMidMintAbortsInFlightReconnect() async {
+        let mintGate = ControlledSuspension()
+        let connectCount = ConnectCount()
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                connectClient: { _ in
+                    connectCount.value += 1
+                },
+                mintTicket: { _ in
+                    await mintGate.suspend()
+                    return "fresh-ticket"
+                }
+            )
+        )
+        let savedConnection = HermesConnection(
+            baseUrl: "https://one.example",
+            ticket: "saved-ticket"
+        )
+        let originalClient = HermesClient(connection: savedConnection, profile: "default")
+        harness.appState.connection = savedConnection
+        harness.appState.client = originalClient
+
+        // The reconnect cycle is already past its starting gate and suspended
+        // while minting a fresh ticket when the scene goes to the background.
+        let reconnectTask = Task { @MainActor in
+            await harness.appState.reconnectForRetry(purpose: .preserveCurrent)
+        }
+        await mintGate.waitUntilSuspended()
+        harness.appState.handleScenePhase(.background)
+        mintGate.resume()
+        await reconnectTask.value
+
+        // The cycle must abort at its post-mint continuation checkpoint
+        // instead of connecting and publishing state while backgrounded.
+        XCTAssertEqual(connectCount.value, 0)
+        XCTAssertTrue(harness.appState.client === originalClient)
+    }
+
     func testSceneActivationRestoresReconnectExecution() async {
         let scheduler = ControlledReconnectScheduler()
         let reconnectSpy = ReconnectExecutionSpy()
@@ -3538,6 +3576,10 @@ private final class ControlledReconnectScheduler {
 @MainActor
 private final class ReconnectExecutionSpy {
     var purposes: [ChatResumeSyncPurpose] = []
+}
+
+private final class ConnectCount {
+    var value = 0
 }
 
 @MainActor
