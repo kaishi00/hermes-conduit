@@ -3442,6 +3442,11 @@ final class AppState: ObservableObject {
         purpose: ChatResumeSyncPurpose = .preserveCurrent
     ) {
         guard connection != nil else { return }
+        // A cycle scheduled while the scene is inactive can never run, so
+        // don't arm a timer or consume the queued reconnect purpose just to
+        // discard them when it fires. handleScenePhase(.active) establishes
+        // the transport on return instead.
+        guard isSceneActive else { return }
         if reconnectTask == nil {
             recoverySequence.clearQueuedReconnect()
         }
@@ -3708,6 +3713,14 @@ final class AppState: ObservableObject {
                 defer { self.finishScenePhaseAttempt(id: sceneAttemptID) }
                 guard self.scenePhaseAttemptIsCurrent(sceneAttemptID) else { return }
                 if let client = self.client, client.isConnected {
+                    // A connect that aborted mid-flight (scene went inactive
+                    // before its checkpoint) can leave the UI's transport
+                    // flags unpublished — "connecting…" with sends disabled —
+                    // even though the socket is alive. Publish the healthy
+                    // transport before syncing; the reconnect path manages
+                    // these flags for unhealthy sockets.
+                    self.isConnected = true
+                    self.isConnecting = false
                     do {
                         try await client.healthCheck()
                         guard self.scenePhaseAttemptIsCurrent(sceneAttemptID),
