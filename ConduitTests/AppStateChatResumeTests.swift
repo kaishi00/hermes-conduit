@@ -2342,13 +2342,14 @@ final class AppStateChatResumeTests: XCTestCase {
 
         // A socket drop while the scene is backgrounded must not run the
         // reconnect cycle: the churn it causes can starve the scene-update
-        // watchdog (0x8BADF00D). handleScenePhase(.active) re-establishes
-        // the transport on return instead.
+        // watchdog (0x8BADF00D). No timer is armed at all, and
+        // handleScenePhase(.active) re-establishes the transport on return.
         harness.appState.handleScenePhase(.background)
         harness.appState.scheduleReconnect(purpose: .automaticReturn)
         await scheduler.runAll()
 
         XCTAssertTrue(reconnectSpy.purposes.isEmpty)
+        XCTAssertEqual(scheduler.scheduledCount, 0)
     }
 
     func testCanceledReconnectTimerDoesNotAdvanceBackoff() async {

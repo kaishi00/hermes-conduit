@@ -181,6 +181,12 @@ final class DashboardTicketBridge: NSObject {
     let cloudflareAccess: CloudflareAccessCredentials?
 
     private var isReady = false
+    /// Whether the current dashboard page load has terminally failed (as
+    /// opposed to still being in flight on a slow link). Retry logic only
+    /// reloads a failed load — restarting an in-progress one would abort a
+    /// load that may be about to finish on a degraded connection.
+    /// Readable for tests; written only by the navigation callbacks.
+    private(set) var isLoadFailed = false
     private var isInvalidated = false
     private var requestID = 0
     private let pendingRequests: DashboardTicketBridgePendingRequests
@@ -279,7 +285,15 @@ final class DashboardTicketBridge: NSObject {
                 return ticket
             } catch DashboardTicketBridgeError.signInRequired where attempt < 2,
                   DashboardTicketBridgeError.notReady where attempt < 2 {
-                reload()
+                // Only restart a page load that terminally failed. On a
+                // degraded link a load can still be in flight when the
+                // readiness poll times out; tearing it down would restart a
+                // navigation that may be about to finish, so keep polling the
+                // same load instead. A silently hung load is eventually
+                // failed by the system request timeout and becomes reloadable.
+                if isLoadFailed {
+                    reload()
+                }
                 try await Task.sleep(for: .milliseconds(350))
             }
         }
@@ -415,6 +429,7 @@ final class DashboardTicketBridge: NSObject {
               let url = URL(string: "\(normalized)/api/status") else { return }
         var request = URLRequest(url: url)
         request = cloudflareAccess?.applying(to: request) ?? request
+        isLoadFailed = false
         webView.load(request)
     }
 
@@ -446,6 +461,7 @@ extension DashboardTicketBridge: WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        isLoadFailed = false
         // A redirect back to /login means the HttpOnly dashboard session is no
         // longer valid; never attempt to mint a misleading gateway ticket.
         guard let expectedURL = URL(string: baseURL),
@@ -469,11 +485,13 @@ extension DashboardTicketBridge: WKNavigationDelegate {
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         isReady = false
+        isLoadFailed = true
         rejectPending(with: error)
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         isReady = false
+        isLoadFailed = true
         rejectPending(with: error)
     }
 }
