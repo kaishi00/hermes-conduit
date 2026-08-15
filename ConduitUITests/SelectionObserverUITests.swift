@@ -25,13 +25,9 @@ final class SelectionObserverUITests: XCTestCase {
         anchor.press(forDuration: 1.2, thenDragTo: destination)
 
         // The edit menu keeps the app from ever idling (XCUITest teardown
-        // hang), so no post-drag interaction happens here. The screenshot is
-        // written where the host can read it; the cross-block highlights
-        // across the table, code block, and trailing paragraph are verified
-        // from it, and the span/copy logic is covered by unit tests.
+        // hang), so no post-drag interaction or screenshot happens here —
+        // screenshot requests time out against a busy app on CI.
         Thread.sleep(forTimeInterval: 0.8)
-        let png = XCUIScreen.main.screenshot().pngRepresentation
-        try png.write(to: URL(fileURLWithPath: "/tmp/conduit-uitest-after-drag.png"))
 
         XCTAssertEqual(pasteboardLabel.label, pasteboardBeforeDrag, "No copy should happen without user action")
     }
@@ -55,8 +51,9 @@ final class SelectionObserverUITests: XCTestCase {
         )
 
         Thread.sleep(forTimeInterval: 0.8)
-        let png = XCUIScreen.main.screenshot().pngRepresentation
-        try png.write(to: URL(fileURLWithPath: "/tmp/conduit-uitest-cell-drag.png"))
+
+        let focusHandle = app.descendants(matching: .any).matching(identifier: "selection.handle.focus").firstMatch
+        XCTAssertTrue(focusHandle.waitForExistence(timeout: 5), "Cell-anchored drag must produce a cross-block selection with endpoint handles")
     }
 
     /// A plain vertical drag (no long-press) must still scroll rather than
@@ -136,13 +133,13 @@ final class SelectionObserverUITests: XCTestCase {
         }
 
         Thread.sleep(forTimeInterval: 0.8)
-        let png = XCUIScreen.main.screenshot().pngRepresentation
-        try png.write(to: URL(fileURLWithPath: "/tmp/conduit-uitest-fast-drag.png"))
+
+        let anchorHandle = app.descendants(matching: .any).matching(identifier: "selection.handle.anchor").firstMatch
+        XCTAssertTrue(anchorHandle.waitForExistence(timeout: 5), "Fast drag must still extend the selection across blocks")
     }
 
-    /// Drags, then copies via the fixture's debug button (the system edit
-    /// menu stalls accessibility queries, so it is tapped by fixed coordinate)
-    /// and asserts the pasteboard from the runner process. This proves the
+    /// Drags, then copies via the fixture's debug button and asserts through
+    /// the fixture's pasteboard mirror. This proves the
     /// selection state survives the drag and copies cross-block text; the
     /// system-menu path itself is verified manually.
     func testCopyAfterDragCapturesCrossBlockText() throws {
