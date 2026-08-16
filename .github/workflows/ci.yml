@@ -18,6 +18,10 @@ jobs:
   test:
     name: Build & Test
     runs-on: macos-26
+    # A wedged simulator can hang a test invocation for hours (the default
+    # step timeout is 360 minutes). Healthy runs finish well under 15
+    # minutes; cap the job so a wedge surfaces as a bounded failure.
+    timeout-minutes: 45
 
     steps:
       - uses: actions/checkout@v7
@@ -90,6 +94,9 @@ jobs:
               xcrun simctl shutdown "$SIMULATOR" || true
               sleep 3
               xcrun simctl boot "$SIMULATOR" || true
+              # Handing a half-booted simulator to xcodebuild wedges UI
+              # tests on cold-start services; wait for a complete boot.
+              xcrun simctl bootstatus "$SIMULATOR" -b -t 180 || true
             fi
             echo "::group::Test attempt $attempt"
             rm -rf "$BUNDLE"
