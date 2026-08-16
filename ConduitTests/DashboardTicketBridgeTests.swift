@@ -99,4 +99,72 @@ final class DashboardTicketBridgeTests: XCTestCase {
         // leave this at zero.
         XCTAssertEqual(bridge.reloadCount, 2)
     }
+
+    /// iOS reclaims the bridge's web content process under memory pressure —
+    /// typically while the app is suspended overnight. The termination
+    /// callback must mark the bridge cold-but-reloadable so the next mint
+    /// revives the page instead of awaiting a JavaScript response that can
+    /// never arrive (the overnight stuck-reconnecting wedge).
+    func testWebContentTerminationMarksBridgeReloadableAndMintRetries() async {
+        let bridge = DashboardTicketBridge(
+            baseURL: "http://127.0.0.1:1",
+            readinessPollAttempts: 2,
+            readinessPollInterval: .milliseconds(10)
+        )
+
+        bridge.webViewWebContentProcessDidTerminate(bridge.webView)
+        XCTAssertTrue(bridge.isLoadFailed, "Termination must make the bridge reloadable")
+
+        do {
+            _ = try await bridge.mintTicket()
+            XCTFail("Expected mintTicket to throw against a terminated web process")
+        } catch DashboardTicketBridgeError.notReady {
+            // expected
+        } catch {
+            XCTFail("Expected DashboardTicketBridgeError.notReady, got \(error)")
+        }
+
+        // The .notReady recovery must reload the dead page.
+        XCTAssertGreaterThanOrEqual(bridge.reloadCount, 1)
+    }
+
+    /// A requestJSON awaiting a JavaScript response when the content process
+    /// dies must be resumed with .notReady — not left pending forever.
+    func testWebContentTerminationResumesPendingRequestAsNotReady() async {
+        let requests = DashboardTicketBridgePendingRequests()
+        let bridge = DashboardTicketBridge(
+            baseURL: "https://example.com",
+            pendingRequests: requests
+        )
+        let requestRegistered = expectation(description: "pending request registered")
+        let resultTask = Task { @MainActor in
+            do {
+                _ = try await withCheckedThrowingContinuation {
+                    (continuation: CheckedContinuation<[String: Any], Error>) in
+                    requests.insert(continuation, for: 99)
+                    requestRegistered.fulfill()
+                }
+                return Result<Void, Error>.success(())
+            } catch {
+                return Result<Void, Error>.failure(error)
+            }
+        }
+
+        await fulfillment(of: [requestRegistered], timeout: 1.0)
+        bridge.webViewWebContentProcessDidTerminate(bridge.webView)
+
+        switch await resultTask.value {
+        case .success:
+            XCTFail("Termination must resume pending requests with an error")
+        case .failure(let error as DashboardTicketBridgeError):
+            if case .notReady = error {
+                // expected
+            } else {
+                XCTFail("Expected .notReady, got \(error)")
+            }
+        case .failure(let error):
+            XCTFail("Expected DashboardTicketBridgeError.notReady, got \(error)")
+        }
+        XCTAssertEqual(requests.count, 0)
+    }
 }
