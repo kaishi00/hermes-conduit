@@ -80,14 +80,13 @@ final class DashboardTicketBridgeTests: XCTestCase {
     }
 
     /// A bridge parked on the dashboard's login page must route minting to
-    /// the signInRequired recovery: the catch reloads the page (the cookie-
+    /// the signInRequired recovery: each retry reloads the page (the cookie-
     /// race recovery round 4 accidentally disabled) rather than blind-
-    /// re-POSTing, and never mints against a logged-out session.
-    ///
-    /// The /login landing itself can't be driven by real WKWebView
-    /// navigation in the unit host, so the state is simulated; the reload
-    /// clears it exactly as a real reloaded landing would, which is why the
-    /// flow continues through the notReady path after the first retry.
+    /// re-POSTing, exhaustion surfaces `.signInRequired` (never a misleading
+    /// `.notReady`), and no ticket is ever minted against a logged-out
+    /// session. The simulation persists across reloads, modeling a session
+    /// that is genuinely gone — which also makes the flow deterministic
+    /// regardless of when the initial page load settles.
     func testMintTicketReloadsForSimulatedLoginLanding() async {
         let bridge = DashboardTicketBridge(
             baseURL: "http://127.0.0.1:1",
@@ -99,14 +98,14 @@ final class DashboardTicketBridgeTests: XCTestCase {
         do {
             _ = try await bridge.mintTicket()
             XCTFail("Expected mintTicket to throw against a login-parked bridge")
+        } catch DashboardTicketBridgeError.signInRequired {
+            // expected on exhaustion
         } catch {
-            // Exhaustion is expected; the error identity beyond that depends
-            // on which attempt the simulated landing survives, which the
-            // deterministic assertions below pin down.
+            XCTFail("Expected DashboardTicketBridgeError.signInRequired, got \(error)")
         }
 
-        // The signInRequired catch must reload (the round-4 regression would
-        // leave this at zero), and no ticket may ever be minted.
-        XCTAssertGreaterThanOrEqual(bridge.reloadCount, 1)
+        // Both retries must reload the page; the round-4 regression would
+        // leave this at zero.
+        XCTAssertEqual(bridge.reloadCount, 2)
     }
 }

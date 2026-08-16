@@ -191,6 +191,9 @@ final class DashboardTicketBridge: NSObject {
     /// session is genuinely absent, which callers must hear as
     /// `.signInRequired` rather than as unreadiness.
     private var didLandOnLogin = false
+    /// Test-only: keep re-asserting the simulated login landing on every
+    /// page load, modeling a dashboard that keeps redirecting to /login.
+    private var simulatedLoginLanding = false
     private var isInvalidated = false
     private var requestID = 0
     private let pendingRequests: DashboardTicketBridgePendingRequests
@@ -440,12 +443,12 @@ final class DashboardTicketBridge: NSObject {
         return literal
     }
 
-    /// Test hook: put the bridge into the state a /login landing produces.
-    /// WKWebView's URL is only settable by real navigation, which the unit
-    /// test host cannot drive deterministically. The simulated landing is
-    /// cleared by the next `loadDashboardSession()` exactly as in
-    /// production.
+    /// Test hook: put the bridge into the state a /login landing produces,
+    /// and keep producing it across reloads — modeling a dashboard whose
+    /// session is genuinely gone. WKWebView's URL is only settable by real
+    /// navigation, which the unit test host cannot drive deterministically.
     func simulateLoginLandingForTesting() {
+        simulatedLoginLanding = true
         isReady = false
         isLoadFailed = false
         didLandOnLogin = true
@@ -458,8 +461,9 @@ final class DashboardTicketBridge: NSObject {
         request = cloudflareAccess?.applying(to: request) ?? request
         isLoadFailed = false
         // The fresh load's landing is unknown until didFinish; a stale
-        // sign-in-required verdict must not leak into its poll window.
-        didLandOnLogin = false
+        // sign-in-required verdict must not leak into its poll window. (The
+        // test simulation re-asserts its landing here on purpose.)
+        didLandOnLogin = simulatedLoginLanding
         webView.load(request)
     }
 
