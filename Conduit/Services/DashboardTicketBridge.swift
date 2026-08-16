@@ -197,12 +197,14 @@ final class DashboardTicketBridge: NSObject {
     private var simulatedLanding: SimulatedLanding?
 
     enum SimulatedLanding {
+        case ready
         case loginPage
         case loadFailure
     }
     private var isInvalidated = false
     private var requestID = 0
     private let pendingRequests: DashboardTicketBridgePendingRequests
+    private let requestDeadlineGraceMilliseconds: Int
     /// Swift-side deadlines for in-flight `requestJSON` continuations. The
     /// JavaScript timeout only fires inside a live web view; if the content
     /// process is gone (or a response message is dropped), nothing but these
@@ -221,7 +223,8 @@ final class DashboardTicketBridge: NSObject {
         cloudflareAccess: CloudflareAccessCredentials? = nil,
         pendingRequests: DashboardTicketBridgePendingRequests = DashboardTicketBridgePendingRequests(),
         readinessPollAttempts: Int = 30,
-        readinessPollInterval: Duration = .milliseconds(100)
+        readinessPollInterval: Duration = .milliseconds(100),
+        requestDeadlineGraceMilliseconds: Int = 3_000
     ) {
         let normalizedBaseURL = (try? ConnectionURLPolicy.normalizedBaseURL(baseURL)) ?? ""
         self.baseURL = normalizedBaseURL
@@ -230,6 +233,7 @@ final class DashboardTicketBridge: NSObject {
         // A negative count would build an invalid Range in the polling loops.
         self.readinessPollAttempts = max(0, readinessPollAttempts)
         self.readinessPollInterval = readinessPollInterval
+        self.requestDeadlineGraceMilliseconds = max(0, requestDeadlineGraceMilliseconds)
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .default()
         if let script = cloudflareAccess?.fetchInjectionUserScript(expectedBaseURL: normalizedBaseURL), !script.isEmpty {
@@ -274,7 +278,7 @@ final class DashboardTicketBridge: NSObject {
         guard !isInvalidated else { return }
         reloadCount += 1
         isReady = false
-        pendingRequests.rejectAll(with: DashboardTicketBridgeError.notReady)
+        rejectPending(with: DashboardTicketBridgeError.notReady)
         Task { [weak self] in
             guard let self else { return }
             await DashboardCookiePersistence.restore(into: self.webView.configuration.websiteDataStore.httpCookieStore)
@@ -386,8 +390,12 @@ final class DashboardTicketBridge: NSObject {
                 // thing that resumes the continuation — convert the silent
                 // hang into a failure the reconnect loop can retry through
                 // the reload path.
+                // A live page answers before this fires (its own 12s abort
+                // posts a response message), so expiry means the view is
+                // stalled and the request marks it for reload below.
+                let deadlineDelayMilliseconds = deadlineDelay(afterMilliseconds: timeout)
                 requestDeadlines[id] = Task { [weak self] in
-                    try? await Task.sleep(for: .milliseconds(timeout + 3_000))
+                    try? await Task.sleep(for: .milliseconds(deadlineDelayMilliseconds))
                     guard !Task.isCancelled else { return }
                     // .notReady (not .requestFailed) so the failure funnels
                     // into mintTicket's internal reload-retry instead of
@@ -396,7 +404,8 @@ final class DashboardTicketBridge: NSObject {
                     // the state reloading revives.
                     self?.failPendingRequest(
                         id: id,
-                        with: DashboardTicketBridgeError.notReady
+                        with: DashboardTicketBridgeError.notReady,
+                        markingWebViewStalled: true
                     )
                 }
                 let script = """
@@ -472,10 +481,29 @@ final class DashboardTicketBridge: NSObject {
     /// Cancels the Swift-side deadline and resumes the pending request, if
     /// any, with `error`. All failure-side resume paths funnel through here
     /// so the deadline task can never fire on an already-resumed request.
-    private func failPendingRequest(id: Int, with error: Error) {
+    private func failPendingRequest(
+        id: Int,
+        with error: Error,
+        markingWebViewStalled: Bool = false
+    ) {
         requestDeadlines.removeValue(forKey: id)?.cancel()
         guard let continuation = pendingRequests.removeValue(for: id) else { return }
+        if markingWebViewStalled {
+            // Only reached when the request deadline expired: a live page
+            // answers before that (its in-JS abort posts a response), so
+            // expiry proves the view is stalled. Mark it cold-but-reloadable
+            // so mintTicket's next attempt reloads instead of retrying
+            // evaluateJavaScript against the same dead view.
+            isReady = false
+            isLoadFailed = true
+        }
         continuation.resume(throwing: error)
+    }
+
+    /// Deadline delay with an overflow-safe grace addition.
+    private func deadlineDelay(afterMilliseconds timeout: Int) -> Int {
+        let grace = requestDeadlineGraceMilliseconds
+        return min(timeout, Int.max - grace) + grace
     }
 
     private func cancelPendingRequest(id: Int) {
@@ -498,6 +526,10 @@ final class DashboardTicketBridge: NSObject {
     func simulateLandingForTesting(_ landing: SimulatedLanding) {
         simulatedLanding = landing
         switch landing {
+        case .ready:
+            isReady = true
+            isLoadFailed = false
+            didLandOnLogin = false
         case .loginPage:
             isReady = false
             isLoadFailed = false

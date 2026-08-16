@@ -167,4 +167,43 @@ final class DashboardTicketBridgeTests: XCTestCase {
         }
         XCTAssertEqual(requests.count, 0)
     }
+
+    /// When a request's Swift-side deadline expires (the JavaScript response
+    /// was silently dropped — stalled web view), the bridge must mark the
+    /// view cold-but-reloadable so mintTicket's retry RELOADS it instead of
+    /// re-evaluating JavaScript against the same dead view forever.
+    ///
+    /// Drives requestJSON directly: mintTicket's request timeout is not
+    /// injectable (~12s deadline), and settling the initial page load first
+    /// makes the run deterministic on both test-host flavors — where WKWebView
+    /// navigation callbacks fire, the initial load's failure must land before
+    /// the simulated ready state (a later didFailProvisionalNavigation would
+    /// otherwise reject the pending request with a connection error instead
+    /// of letting the deadline expire).
+    func testExpiredRequestDeadlineMarksWebViewStalled() async {
+        let bridge = DashboardTicketBridge(
+            baseURL: "http://127.0.0.1:1",
+            readinessPollAttempts: 2,
+            readinessPollInterval: .milliseconds(10),
+            requestDeadlineGraceMilliseconds: 50
+        )
+
+        // Let the initial /api/status load settle (fail or hang) before
+        // modeling the overnight state: the bridge believes it is ready,
+        // but its web view cannot deliver responses.
+        for _ in 0..<80 where !bridge.isLoadFailed {
+            try? await Task.sleep(for: .milliseconds(25))
+        }
+        bridge.simulateLandingForTesting(.ready)
+
+        do {
+            _ = try await bridge.requestJSON(path: "/api/auth/ws-ticket", timeoutMilliseconds: 1_000)
+            XCTFail("Expected requestJSON to throw against a stalled web view")
+        } catch DashboardTicketBridgeError.notReady {
+            XCTAssertTrue(bridge.isLoadFailed, "Deadline expiry must mark the view reloadable")
+        } catch {
+            // Hosts that deliver an immediate evaluateJavaScript error
+            // surface it here; the deadline belt is not exercised there.
+        }
+    }
 }
