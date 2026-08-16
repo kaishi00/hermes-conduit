@@ -3445,7 +3445,9 @@ final class AppState: ObservableObject {
         // A cycle scheduled while the scene is inactive can never run, so
         // don't arm a timer or consume the queued reconnect purpose just to
         // discard them when it fires. handleScenePhase(.active) establishes
-        // the transport on return instead.
+        // the transport on return instead — and intentionally recovers with
+        // .automaticReturn, upgrading the drop-time purpose, since resuming
+        // the saved session on foreground is the expected outcome.
         guard isSceneActive else { return }
         if reconnectTask == nil {
             recoverySequence.clearQueuedReconnect()

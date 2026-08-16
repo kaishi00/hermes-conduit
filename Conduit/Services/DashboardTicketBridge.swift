@@ -316,7 +316,10 @@ final class DashboardTicketBridge: NSObject {
     }
 
     private func waitUntilReady() async throws {
-        for _ in 0..<readinessPollAttempts where !isReady && !isInvalidated {
+        // Stop polling as soon as the navigation terminally fails: a failed
+        // load can only become ready again via reload, so sleeping out the
+        // window would just delay the .notReady recovery.
+        for _ in 0..<readinessPollAttempts where !isReady && !isInvalidated && !isLoadFailed {
             try await Task.sleep(for: readinessPollInterval)
         }
         guard !isInvalidated, isReady else {
@@ -339,7 +342,7 @@ final class DashboardTicketBridge: NSObject {
         timeoutMilliseconds: Int = 12_000,
         maxResponseBytes: Int = DataURLLimits.maxJSONResponseBytes
     ) async throws -> [String: Any] {
-        for _ in 0..<readinessPollAttempts where !isReady && !isInvalidated {
+        for _ in 0..<readinessPollAttempts where !isReady && !isInvalidated && !isLoadFailed {
             try await Task.sleep(for: readinessPollInterval)
         }
         guard !isInvalidated, isReady else {
