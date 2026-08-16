@@ -203,6 +203,12 @@ final class DashboardTicketBridge: NSObject {
     private var isInvalidated = false
     private var requestID = 0
     private let pendingRequests: DashboardTicketBridgePendingRequests
+    /// Swift-side deadlines for in-flight `requestJSON` continuations. The
+    /// JavaScript timeout only fires inside a live web view; if the content
+    /// process is gone (or a response message is dropped), nothing but these
+    /// deadlines resumes the continuation — without them a single lost
+    /// response hangs ticket minting, and therefore reconnecting, forever.
+    private var requestDeadlines: [Int: Task<Void, Never>] = [:]
     private let readinessPollAttempts: Int
     private let readinessPollInterval: Duration
     /// Number of times `reload()` re-attempted the dashboard page load, from
@@ -248,6 +254,11 @@ final class DashboardTicketBridge: NSObject {
     }
 
     deinit {
+        // Stored-property access and Task.cancel() are safe from nonisolated
+        // deinit; cancelling here stops deadline tasks from outliving the
+        // bridge they were created to guard.
+        for deadline in requestDeadlines.values { deadline.cancel() }
+        requestDeadlines.removeAll()
         pendingRequests.rejectAll(with: DashboardTicketBridgeError.notReady)
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "dashboard-response")
     }
@@ -256,7 +267,7 @@ final class DashboardTicketBridge: NSObject {
         guard !isInvalidated else { return }
         isInvalidated = true
         isReady = false
-        pendingRequests.rejectAll(with: DashboardTicketBridgeError.notReady)
+        rejectPending(with: DashboardTicketBridgeError.notReady)
     }
 
     func reload() {
@@ -369,6 +380,25 @@ final class DashboardTicketBridge: NSObject {
                 }
 
                 pendingRequests.insert(continuation, for: id)
+                // Swift-side deadline: the JavaScript AbortController above
+                // only runs inside a live web view. If the content process
+                // is gone or a response message is dropped, this is the only
+                // thing that resumes the continuation — convert the silent
+                // hang into a failure the reconnect loop can retry through
+                // the reload path.
+                requestDeadlines[id] = Task { [weak self] in
+                    try? await Task.sleep(for: .milliseconds(timeout + 3_000))
+                    guard !Task.isCancelled else { return }
+                    // .notReady (not .requestFailed) so the failure funnels
+                    // into mintTicket's internal reload-retry instead of
+                    // surfacing past it — a timed-out JavaScript response is
+                    // almost always a dead or stalled web view, i.e. exactly
+                    // the state reloading revives.
+                    self?.failPendingRequest(
+                        id: id,
+                        with: DashboardTicketBridgeError.notReady
+                    )
+                }
                 let script = """
                 (async function() {
                     try {
@@ -428,8 +458,8 @@ final class DashboardTicketBridge: NSObject {
                 true;
                 """
                 webView.evaluateJavaScript(script) { _, error in
-                    guard let error, let pending = self.pendingRequests.removeValue(for: id) else { return }
-                    pending.resume(throwing: error)
+                    guard let error else { return }
+                    self.failPendingRequest(id: id, with: error)
                 }
             }
         }, onCancel: {
@@ -439,9 +469,17 @@ final class DashboardTicketBridge: NSObject {
         })
     }
 
-    private func cancelPendingRequest(id: Int) {
+    /// Cancels the Swift-side deadline and resumes the pending request, if
+    /// any, with `error`. All failure-side resume paths funnel through here
+    /// so the deadline task can never fire on an already-resumed request.
+    private func failPendingRequest(id: Int, with error: Error) {
+        requestDeadlines.removeValue(forKey: id)?.cancel()
         guard let continuation = pendingRequests.removeValue(for: id) else { return }
-        continuation.resume(throwing: CancellationError())
+        continuation.resume(throwing: error)
+    }
+
+    private func cancelPendingRequest(id: Int) {
+        failPendingRequest(id: id, with: CancellationError())
     }
 
     private func javaScriptLiteral(_ value: Any) throws -> String {
@@ -485,6 +523,8 @@ final class DashboardTicketBridge: NSObject {
     }
 
     private func rejectPending(with error: Error) {
+        for deadline in requestDeadlines.values { deadline.cancel() }
+        requestDeadlines.removeAll()
         pendingRequests.rejectAll(with: error)
     }
 }
@@ -551,6 +591,21 @@ extension DashboardTicketBridge: WKNavigationDelegate {
         isLoadFailed = true
         rejectPending(with: error)
     }
+
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        // iOS reclaims the web content process under memory pressure —
+        // typically while the app is suspended overnight. From that moment
+        // the in-memory isReady flag is stale: evaluateJavaScript gets no
+        // usable page, and without this callback nothing ever reloads it,
+        // so the next ticket mint (and therefore every reconnect) hangs
+        // until the user force-quits the app. Treat the bridge as cold but
+        // reloadable: pending requests resume into the retry paths, and
+        // mintTicket's .notReady recovery revives the page.
+        isReady = false
+        isLoadFailed = true
+        didLandOnLogin = false
+        rejectPending(with: DashboardTicketBridgeError.notReady)
+    }
 }
 
 extension DashboardTicketBridge: WKScriptMessageHandler {
@@ -569,6 +624,7 @@ extension DashboardTicketBridge: WKScriptMessageHandler {
               payload["type"] as? String == "dashboard-response",
               let id = payload["id"] as? Int,
               let continuation = pendingRequests.removeValue(for: id) else { return }
+        requestDeadlines.removeValue(forKey: id)?.cancel()
 
         if payload["ok"] as? Bool == true {
             continuation.resume(returning: payload["body"] as? [String: Any] ?? [:])
