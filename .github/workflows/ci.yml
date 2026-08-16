@@ -85,6 +85,11 @@ jobs:
             else
               SCOPE="-only-testing:ConduitUITests"
               BUNDLE=TestResults-retry.xcresult
+              # A wedged simulator is the one failure mode in-test retries
+              # cannot clear; restart the device so the retry starts clean.
+              xcrun simctl shutdown "$SIMULATOR" || true
+              sleep 3
+              xcrun simctl boot "$SIMULATOR" || true
             fi
             echo "::group::Test attempt $attempt"
             rm -rf "$BUNDLE"

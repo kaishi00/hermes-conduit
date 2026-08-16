@@ -89,6 +89,13 @@ final class SelectionObserverUITests: XCTestCase {
     /// Waiting for both handles matters: the cell-anchored test asserts on
     /// the focus handle, so a retry that only watched the anchor handle
     /// could give up (or stop) while the chrome was half-installed.
+    ///
+    /// A failed attempt can leave a partial selection or the system edit
+    /// menu up, and a synthesized long-press behaves differently against
+    /// that dirty state — so each retry relaunches the fixture for a clean
+    /// slate (captured screen coordinates stay valid; the fixture renders
+    /// identically). Worst case for a genuinely broken feature is roughly
+    /// 35s: three attempts of drag + 4s + 4s handle waits plus relaunches.
     @discardableResult
     private func performCrossBlockDrag(
         app: XCUIApplication,
@@ -96,9 +103,13 @@ final class SelectionObserverUITests: XCTestCase {
     ) -> Bool {
         let anchorHandle = app.descendants(matching: .any).matching(identifier: "selection.handle.anchor").firstMatch
         let focusHandle = app.descendants(matching: .any).matching(identifier: "selection.handle.focus").firstMatch
-        for _ in 0..<3 {
+        for attempt in 0..<3 {
+            if attempt > 0 {
+                app.terminate()
+                app.launch()
+            }
             performDrag()
-            if anchorHandle.waitForExistence(timeout: 4), focusHandle.waitForExistence(timeout: 2) {
+            if anchorHandle.waitForExistence(timeout: 4), focusHandle.waitForExistence(timeout: 4) {
                 return true
             }
         }
