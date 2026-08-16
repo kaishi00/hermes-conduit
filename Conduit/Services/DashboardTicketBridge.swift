@@ -254,6 +254,11 @@ final class DashboardTicketBridge: NSObject {
     }
 
     deinit {
+        // Stored-property access and Task.cancel() are safe from nonisolated
+        // deinit; cancelling here stops deadline tasks from outliving the
+        // bridge they were created to guard.
+        for deadline in requestDeadlines.values { deadline.cancel() }
+        requestDeadlines.removeAll()
         pendingRequests.rejectAll(with: DashboardTicketBridgeError.notReady)
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "dashboard-response")
     }
@@ -262,7 +267,7 @@ final class DashboardTicketBridge: NSObject {
         guard !isInvalidated else { return }
         isInvalidated = true
         isReady = false
-        pendingRequests.rejectAll(with: DashboardTicketBridgeError.notReady)
+        rejectPending(with: DashboardTicketBridgeError.notReady)
     }
 
     func reload() {
@@ -384,9 +389,14 @@ final class DashboardTicketBridge: NSObject {
                 requestDeadlines[id] = Task { [weak self] in
                     try? await Task.sleep(for: .milliseconds(timeout + 3_000))
                     guard !Task.isCancelled else { return }
+                    // .notReady (not .requestFailed) so the failure funnels
+                    // into mintTicket's internal reload-retry instead of
+                    // surfacing past it — a timed-out JavaScript response is
+                    // almost always a dead or stalled web view, i.e. exactly
+                    // the state reloading revives.
                     self?.failPendingRequest(
                         id: id,
-                        with: DashboardTicketBridgeError.requestFailed("Dashboard request timed out.")
+                        with: DashboardTicketBridgeError.notReady
                     )
                 }
                 let script = """
