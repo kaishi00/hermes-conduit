@@ -646,6 +646,15 @@ final class AppState: ObservableObject {
     private let sessionRenameOperationsOverride: SessionRenameOperation.Operations?
     private let sessionCatalogLoaderOverride: ((Bool) async throws -> [SessionSummary])?
     private var reconnectAttempts = 0
+    /// Whether the UI scene is active. Backgrounded scene updates must
+    /// complete within ~10s of wall clock before the watchdog kills the app
+    /// (0x8BADF00D), so reconnect work is deferred while this is false.
+    /// Deliberately true at init: launches head toward active, and blocking
+    /// the cold-start restore on the first scene-phase event would regress
+    /// startup. `.inactive` is treated like `.background` on purpose — it
+    /// immediately precedes backgrounding on home-press, and a socket that
+    /// dies under a system overlay is recovered by the `.active` scene task.
+    private var isSceneActive = true
     private var connectedAt: Date?
     private var sessionCatalogCache = SessionCatalogCache()
     private var projectsRequestGeneration = 0
@@ -1193,7 +1202,13 @@ final class AppState: ObservableObject {
         automaticWorkToken: ChatResumeAutomaticWorkToken?,
         automaticReconnectOperationID: UUID?
     ) -> ChatResumeTransportContinuation? {
-        guard !Task.isCancelled else { return nil }
+        // Checked after every suspension in connect(with:),
+        // reconnectForRetry, and the post-connect sync flow — the gate is
+        // transport-wide, not reconnect-only: any chat-resume work that goes
+        // inactive/backgrounded mid-flight must not keep publishing state
+        // (watchdog: 0x8BADF00D). handleScenePhase(.active) re-establishes
+        // the transport and syncs the session catalog on return.
+        guard !Task.isCancelled, isSceneActive else { return nil }
         if let automaticReconnectOperationID,
            activeAutomaticReconnectOperation?.id != automaticReconnectOperationID {
             return nil
@@ -3427,6 +3442,13 @@ final class AppState: ObservableObject {
         purpose: ChatResumeSyncPurpose = .preserveCurrent
     ) {
         guard connection != nil else { return }
+        // A cycle scheduled while the scene is inactive can never run, so
+        // don't arm a timer or consume the queued reconnect purpose just to
+        // discard them when it fires. handleScenePhase(.active) establishes
+        // the transport on return instead — and intentionally recovers with
+        // .automaticReturn, upgrading the drop-time purpose, since resuming
+        // the saved session on foreground is the expected outcome.
+        guard isSceneActive else { return }
         if reconnectTask == nil {
             recoverySequence.clearQueuedReconnect()
         }
@@ -3441,13 +3463,20 @@ final class AppState: ObservableObject {
             break
         }
         let delay = immediately ? 0.1 : min(5.0, pow(2.0, Double(reconnectAttempts)))
-        if !immediately { reconnectAttempts += 1 }
+        // The backoff step is consumed only when the cycle actually runs.
+        // A timer canceled by scene backgrounding — or a cycle dropped for
+        // scene inactivity before execution — never counts as a gateway
+        // failure, so background/foreground cycling cannot ratchet the
+        // retry delay toward its cap without a real failure.
+        let incrementsBackoff = !immediately
 
         reconnectTask = reconnectScheduler(delay) { [weak self] in
             guard let self else { return }
             self.reconnectTask = nil
             let purpose = self.recoverySequence.takeQueuedReconnectPurpose()
                 ?? .preserveCurrent
+            guard self.isSceneActive else { return }
+            if incrementsBackoff { self.reconnectAttempts += 1 }
             await self.executeReconnect(purpose: purpose)
         }
     }
@@ -3458,6 +3487,15 @@ final class AppState: ObservableObject {
     }
 
     private func executeReconnect(purpose: ChatResumeSyncPurpose) async {
+        // A reconnect cycle mints a ticket, reloads the session catalog, and
+        // mutates a series of @Published properties — each driving SwiftUI
+        // transactions on the main thread. On a flaky link that churn can
+        // saturate the main thread, and a backgrounded scene update then
+        // misses its 10s watchdog deadline. Drop the attempt here instead;
+        // handleScenePhase(.active) re-establishes the transport on return.
+        // This also makes the public reconnect() a no-op while the scene is
+        // inactive/backgrounded — the retry is picked up on the next .active.
+        guard isSceneActive else { return }
         if let reconnectExecutor {
             await reconnectExecutor(purpose)
         } else {
@@ -3661,6 +3699,7 @@ final class AppState: ObservableObject {
         }
         switch phase {
         case .active:
+            isSceneActive = true
             voiceConversationController.setForegroundActive(true)
             guard connection != nil else { return nil }
             cancelScenePhaseAttempt()
@@ -3676,6 +3715,14 @@ final class AppState: ObservableObject {
                 defer { self.finishScenePhaseAttempt(id: sceneAttemptID) }
                 guard self.scenePhaseAttemptIsCurrent(sceneAttemptID) else { return }
                 if let client = self.client, client.isConnected {
+                    // A connect that aborted mid-flight (scene went inactive
+                    // before its checkpoint) can leave the UI's transport
+                    // flags unpublished — "connecting…" with sends disabled —
+                    // even though the socket is alive. Publish the healthy
+                    // transport before syncing; the reconnect path manages
+                    // these flags for unhealthy sockets.
+                    self.isConnected = true
+                    self.isConnecting = false
                     do {
                         try await client.healthCheck()
                         guard self.scenePhaseAttemptIsCurrent(sceneAttemptID),
@@ -3711,8 +3758,13 @@ final class AppState: ObservableObject {
             return task
 
         case .background:
+            isSceneActive = false
             voiceConversationController.setForegroundActive(false)
             showVoiceSheet = false
+            // Drop any armed reconnect timer as well: in-flight cycles abort
+            // at their next transportContinuation checkpoint, and foreground
+            // activation re-establishes the transport.
+            cancelScheduledReconnect()
             // Flush any pending coalesced cache writes before the app
             // suspends — iOS may kill the process before the debounce fires.
             flushPendingPresentationCache()
@@ -3723,6 +3775,17 @@ final class AppState: ObservableObject {
             return nil
 
         case .inactive:
+            isSceneActive = false
+            // Reconnects are suppressed during .inactive too, so an armed
+            // timer would only fire to be discarded. Drop it here; a socket
+            // that dies under a system overlay (incoming call, control
+            // center) is recovered by the .active scene task — the same
+            // moment the user can see the transcript again.
+            cancelScheduledReconnect()
+            // The scene treats .inactive like .background for reconnect
+            // purposes; formally abort the in-flight scene attempt at the
+            // transition too, rather than at its next checkpoint.
+            cancelScenePhaseAttempt()
             chatResumeCoordinator.freezeViewport()
             voiceConversationController.setForegroundActive(false)
             return nil

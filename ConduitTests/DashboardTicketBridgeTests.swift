@@ -41,4 +41,62 @@ final class DashboardTicketBridgeTests: XCTestCase {
         }
         XCTAssertEqual(requests.count, 0)
     }
+
+    /// A bridge whose dashboard page load keeps failing (e.g. launch during
+    /// a network outage) must keep re-attempting the page load while minting
+    /// and, on exhaustion, surface `.notReady` — never a misleading
+    /// `.signInRequired`, which would sign the user out of a valid session.
+    /// The failed landing is simulated (WKWebView's failure callbacks are
+    /// not deterministically drivable in the unit test host) and persists
+    /// across reloads, modeling a dashboard that stays unreachable.
+    func testColdBridgeMintTicketRetriesReloadAndSurfacesNotReady() async {
+        let bridge = DashboardTicketBridge(
+            baseURL: "http://127.0.0.1:1", // nothing listens: load cannot succeed
+            readinessPollAttempts: 2,
+            readinessPollInterval: .milliseconds(10)
+        )
+        bridge.simulateLandingForTesting(.loadFailure)
+
+        do {
+            _ = try await bridge.mintTicket()
+            XCTFail("Expected mintTicket to throw on a cold bridge")
+        } catch DashboardTicketBridgeError.notReady {
+            // expected
+        } catch {
+            XCTFail("Expected DashboardTicketBridgeError.notReady, got \(error)")
+        }
+
+        // Both retries must re-attempt the terminally failed page load; the
+        // original wedge (no reload at all) would leave this at zero.
+        XCTAssertEqual(bridge.reloadCount, 2)
+    }
+
+    /// A bridge parked on the dashboard's login page must route minting to
+    /// the signInRequired recovery: each retry reloads the page (the cookie-
+    /// race recovery round 4 accidentally disabled) rather than blind-
+    /// re-POSTing, exhaustion surfaces `.signInRequired` (never a misleading
+    /// `.notReady`), and no ticket is ever minted against a logged-out
+    /// session. The simulation persists across reloads, modeling a session
+    /// that is genuinely gone.
+    func testMintTicketReloadsForSimulatedLoginLanding() async {
+        let bridge = DashboardTicketBridge(
+            baseURL: "http://127.0.0.1:1",
+            readinessPollAttempts: 2,
+            readinessPollInterval: .milliseconds(10)
+        )
+        bridge.simulateLandingForTesting(.loginPage)
+
+        do {
+            _ = try await bridge.mintTicket()
+            XCTFail("Expected mintTicket to throw against a login-parked bridge")
+        } catch DashboardTicketBridgeError.signInRequired {
+            // expected on exhaustion
+        } catch {
+            XCTFail("Expected DashboardTicketBridgeError.signInRequired, got \(error)")
+        }
+
+        // Both retries must reload the page; the round-4 regression would
+        // leave this at zero.
+        XCTAssertEqual(bridge.reloadCount, 2)
+    }
 }

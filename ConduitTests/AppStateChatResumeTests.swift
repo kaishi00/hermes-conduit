@@ -2326,6 +2326,144 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(reconnectSpy.purposes, [.preserveCurrent])
     }
 
+    func testBackgroundedSceneDropsScheduledReconnectExecution() async {
+        let scheduler = ControlledReconnectScheduler()
+        let reconnectSpy = ReconnectExecutionSpy()
+        let harness = makeHarness(
+            reconnectScheduler: scheduler.schedule(after:operation:),
+            reconnectExecutor: { purpose in
+                reconnectSpy.purposes.append(purpose)
+            }
+        )
+        harness.appState.connection = HermesConnection(
+            baseUrl: "https://one.example",
+            ticket: "ticket"
+        )
+
+        // A socket drop while the scene is backgrounded must not run the
+        // reconnect cycle: the churn it causes can starve the scene-update
+        // watchdog (0x8BADF00D). No timer is armed at all, and
+        // handleScenePhase(.active) re-establishes the transport on return.
+        harness.appState.handleScenePhase(.background)
+        harness.appState.scheduleReconnect(purpose: .automaticReturn)
+        await scheduler.runAll()
+
+        XCTAssertTrue(reconnectSpy.purposes.isEmpty)
+        XCTAssertEqual(scheduler.scheduledCount, 0)
+    }
+
+    func testCanceledReconnectTimerDoesNotAdvanceBackoff() async {
+        let scheduler = ControlledReconnectScheduler()
+        let reconnectSpy = ReconnectExecutionSpy()
+        let harness = makeHarness(
+            reconnectScheduler: scheduler.schedule(after:operation:),
+            reconnectExecutor: { purpose in
+                reconnectSpy.purposes.append(purpose)
+            },
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                mintTicket: { _ in throw DashboardTicketBridgeError.notReady }
+            )
+        )
+        harness.appState.connection = HermesConnection(
+            baseUrl: "https://one.example",
+            ticket: "ticket"
+        )
+
+        // Socket drops while active: a timer is armed at the first backoff
+        // step (2^0 = 1s).
+        harness.appState.scheduleReconnect()
+        XCTAssertEqual(scheduler.delays, [1.0])
+
+        // The user backgrounds before the timer fires; the armed timer is
+        // canceled by the scene transition rather than executed.
+        harness.appState.handleScenePhase(.background)
+
+        // Reconnecting later must still start from the first backoff step:
+        // a canceled cycle was not a gateway failure.
+        harness.appState.handleScenePhase(.active)
+        harness.appState.scheduleReconnect()
+        XCTAssertEqual(scheduler.delays, [1.0, 1.0])
+    }
+
+    func testBackgroundingMidMintAbortsInFlightReconnect() async {
+        let mintGate = ControlledSuspension()
+        let connectCount = ConnectCount()
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                connectClient: { _ in
+                    connectCount.value += 1
+                },
+                mintTicket: { _ in
+                    await mintGate.suspend()
+                    return "fresh-ticket"
+                }
+            )
+        )
+        let savedConnection = HermesConnection(
+            baseUrl: "https://one.example",
+            ticket: "saved-ticket"
+        )
+        let originalClient = HermesClient(connection: savedConnection, profile: "default")
+        harness.appState.connection = savedConnection
+        harness.appState.client = originalClient
+
+        // The reconnect cycle is already past its starting gate and suspended
+        // while minting a fresh ticket when the scene goes to the background.
+        let reconnectTask = Task { @MainActor in
+            await harness.appState.reconnectForRetry(purpose: .preserveCurrent)
+        }
+        await mintGate.waitUntilSuspended()
+        harness.appState.handleScenePhase(.background)
+        mintGate.resume()
+        await reconnectTask.value
+
+        // The cycle must abort at its post-mint continuation checkpoint
+        // instead of connecting and publishing state while backgrounded.
+        XCTAssertEqual(connectCount.value, 0)
+        XCTAssertTrue(harness.appState.client === originalClient)
+    }
+
+    func testSceneActivationRestoresReconnectExecution() async {
+        let scheduler = ControlledReconnectScheduler()
+        let reconnectSpy = ReconnectExecutionSpy()
+        let connectCount = ConnectCount()
+        let harness = makeHarness(
+            reconnectScheduler: scheduler.schedule(after:operation:),
+            reconnectExecutor: { purpose in
+                reconnectSpy.purposes.append(purpose)
+            },
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                connectClient: { _ in
+                    // Isolation tripwire: if the scene task's recovery
+                    // attempt ever reaches a connection path (e.g. a future
+                    // harness change makes minting succeed), the
+                    // connectCount assertion below fails rather than letting
+                    // the test touch a live connection.
+                    connectCount.value += 1
+                },
+                mintTicket: { _ in throw DashboardTicketBridgeError.notReady }
+            )
+        )
+        harness.appState.connection = HermesConnection(
+            baseUrl: "https://one.example",
+            ticket: "ticket"
+        )
+
+        harness.appState.handleScenePhase(.background)
+        harness.appState.scheduleReconnect(purpose: .automaticReturn)
+        await scheduler.runAll()
+        XCTAssertTrue(reconnectSpy.purposes.isEmpty)
+
+        // Returning to the foreground re-enables reconnect execution; the
+        // scene task's own recovery attempt stays on the controlled
+        // scheduler and must not reach the executor unscheduled.
+        harness.appState.handleScenePhase(.active)
+        await harness.appState.reconnect()
+
+        XCTAssertEqual(reconnectSpy.purposes, [.preserveCurrent])
+        XCTAssertEqual(connectCount.value, 0)
+    }
+
     func testCreatedFallbackRemainsFrozenAndPublishesAfterSettlement() {
         let harness = makeHarness()
         let oldKey = ChatScrollSessionKey(profile: "default", sessionID: "stored-a")
@@ -3452,6 +3590,7 @@ private final class ControlledReconnectScheduler {
     }
 
     private var work: [Work] = []
+    private(set) var delays: [TimeInterval] = []
 
     var cancelledCount: Int {
         work.filter(\.isCancelled).count
@@ -3467,6 +3606,7 @@ private final class ControlledReconnectScheduler {
     ) -> ChatResumeReconnectCancellation {
         let item = Work(operation: operation)
         work.append(item)
+        delays.append(delay)
         return {
             item.isCancelled = true
         }
@@ -3482,6 +3622,10 @@ private final class ControlledReconnectScheduler {
 @MainActor
 private final class ReconnectExecutionSpy {
     var purposes: [ChatResumeSyncPurpose] = []
+}
+
+private final class ConnectCount {
+    var value = 0
 }
 
 @MainActor

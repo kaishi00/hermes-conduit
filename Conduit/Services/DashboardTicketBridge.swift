@@ -181,19 +181,49 @@ final class DashboardTicketBridge: NSObject {
     let cloudflareAccess: CloudflareAccessCredentials?
 
     private var isReady = false
+    /// Whether the current dashboard page load has terminally failed (as
+    /// opposed to still being in flight on a slow link). Retry logic only
+    /// reloads a failed load — restarting an in-progress one would abort a
+    /// load that may be about to finish on a degraded connection.
+    /// Readable for tests; written only by the navigation callbacks.
+    private(set) var isLoadFailed = false
+    /// Whether the dashboard redirected the bridge to its login page — the
+    /// session is genuinely absent, which callers must hear as
+    /// `.signInRequired` rather than as unreadiness.
+    private var didLandOnLogin = false
+    /// Test-only landing state, re-asserted by every page load so tests can
+    /// model a dashboard that keeps producing the same landing regardless of
+    /// when WKWebView's nondeterministic callbacks arrive.
+    private var simulatedLanding: SimulatedLanding?
+
+    enum SimulatedLanding {
+        case loginPage
+        case loadFailure
+    }
     private var isInvalidated = false
     private var requestID = 0
     private let pendingRequests: DashboardTicketBridgePendingRequests
+    private let readinessPollAttempts: Int
+    private let readinessPollInterval: Duration
+    /// Number of times `reload()` re-attempted the dashboard page load, from
+    /// any caller (mint retries and AppState's sign-in recovery alike).
+    /// Diagnostic/test counter for the cold-bridge recovery path.
+    private(set) var reloadCount = 0
 
     init(
         baseURL: String,
         cloudflareAccess: CloudflareAccessCredentials? = nil,
-        pendingRequests: DashboardTicketBridgePendingRequests = DashboardTicketBridgePendingRequests()
+        pendingRequests: DashboardTicketBridgePendingRequests = DashboardTicketBridgePendingRequests(),
+        readinessPollAttempts: Int = 30,
+        readinessPollInterval: Duration = .milliseconds(100)
     ) {
         let normalizedBaseURL = (try? ConnectionURLPolicy.normalizedBaseURL(baseURL)) ?? ""
         self.baseURL = normalizedBaseURL
         self.cloudflareAccess = cloudflareAccess
         self.pendingRequests = pendingRequests
+        // A negative count would build an invalid Range in the polling loops.
+        self.readinessPollAttempts = max(0, readinessPollAttempts)
+        self.readinessPollInterval = readinessPollInterval
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .default()
         if let script = cloudflareAccess?.fetchInjectionUserScript(expectedBaseURL: normalizedBaseURL), !script.isEmpty {
@@ -231,6 +261,7 @@ final class DashboardTicketBridge: NSObject {
 
     func reload() {
         guard !isInvalidated else { return }
+        reloadCount += 1
         isReady = false
         pendingRequests.rejectAll(with: DashboardTicketBridgeError.notReady)
         Task { [weak self] in
@@ -246,12 +277,21 @@ final class DashboardTicketBridge: NSObject {
     }
 
     func mintTicket() async throws -> String {
-        // A freshly restored session cookie can reach WebKit's cookie store a
-        // moment before its network process. A first 401 is therefore not
-        // enough evidence to erase the durable session and force a login.
+        // Retry twice on the two recoverable failures, then let the final
+        // attempt's error propagate to the caller unchanged:
+        //  - signInRequired: a freshly restored session cookie can reach
+        //    WebKit's cookie store a moment before its network process, so a
+        //    first 401 is not enough evidence to erase the durable session
+        //    and force a login. Reload unconditionally so the cookie store
+        //    settles, then re-attempt.
+        //  - notReady: the dashboard page has not produced a ready session.
+        //    Only a terminally failed load is reloaded — on a degraded link a
+        //    load can still be in flight when the readiness poll times out,
+        //    and restarting it would abort a navigation that may be about to
+        //    finish, so keep polling the same load instead.
         for attempt in 0..<3 {
-            try await waitUntilReady()
             do {
+                try await waitUntilReady()
                 let response = try await requestJSON(path: "/api/auth/ws-ticket", method: "POST")
                 guard let ticket = response["ticket"] as? String, !ticket.isEmpty else {
                     throw DashboardTicketBridgeError.requestFailed("Dashboard did not return a WebSocket ticket.")
@@ -260,16 +300,36 @@ final class DashboardTicketBridge: NSObject {
             } catch DashboardTicketBridgeError.signInRequired where attempt < 2 {
                 reload()
                 try await Task.sleep(for: .milliseconds(350))
+            } catch DashboardTicketBridgeError.notReady where attempt < 2 {
+                // A silently hung load is eventually failed by the system
+                // request timeout and becomes reloadable.
+                if isLoadFailed {
+                    reload()
+                }
+                try await Task.sleep(for: .milliseconds(350))
             }
         }
-        throw DashboardTicketBridgeError.signInRequired
+        // Unreachable in practice: on the final attempt neither catch
+        // pattern matches, so that attempt's error has already propagated.
+        // Present only to satisfy definite-exit checking.
+        throw DashboardTicketBridgeError.notReady
     }
 
     private func waitUntilReady() async throws {
-        for _ in 0..<30 where !isReady && !isInvalidated {
-            try await Task.sleep(for: .milliseconds(100))
+        // Stop polling as soon as the navigation terminally fails: a failed
+        // load can only become ready again via reload, so sleeping out the
+        // window would just delay the .notReady recovery.
+        for _ in 0..<readinessPollAttempts where !isReady && !isInvalidated && !isLoadFailed {
+            try await Task.sleep(for: readinessPollInterval)
         }
-        guard !isInvalidated, isReady else { throw DashboardTicketBridgeError.notReady }
+        guard !isInvalidated, isReady else {
+            // A bridge parked on the login page is signed out, not loading:
+            // surface the expiry so callers run their sign-in recovery
+            // instead of polling an already-settled page.
+            throw didLandOnLogin
+                ? DashboardTicketBridgeError.signInRequired
+                : DashboardTicketBridgeError.notReady
+        }
     }
 
     /// Requests authenticated dashboard JSON through the same WebKit cookie
@@ -282,10 +342,16 @@ final class DashboardTicketBridge: NSObject {
         timeoutMilliseconds: Int = 12_000,
         maxResponseBytes: Int = DataURLLimits.maxJSONResponseBytes
     ) async throws -> [String: Any] {
-        for _ in 0..<30 where !isReady && !isInvalidated {
-            try await Task.sleep(for: .milliseconds(100))
+        for _ in 0..<readinessPollAttempts where !isReady && !isInvalidated && !isLoadFailed {
+            try await Task.sleep(for: readinessPollInterval)
         }
-        guard !isInvalidated, isReady else { throw DashboardTicketBridgeError.notReady }
+        guard !isInvalidated, isReady else {
+            // Mirror waitUntilReady(): a login-parked bridge is signed out,
+            // not loading, for non-mint callers too.
+            throw didLandOnLogin
+                ? DashboardTicketBridgeError.signInRequired
+                : DashboardTicketBridgeError.notReady
+        }
 
         requestID += 1
         let id = requestID
@@ -386,11 +452,35 @@ final class DashboardTicketBridge: NSObject {
         return literal
     }
 
+    /// Test hook: put the bridge into the state a given landing produces
+    /// and keep producing it across reloads (login page or terminally
+    /// failed load). WKWebView's URL and failure callbacks are not
+    /// deterministically drivable in the unit test host, so tests model the
+    /// landing state instead.
+    func simulateLandingForTesting(_ landing: SimulatedLanding) {
+        simulatedLanding = landing
+        switch landing {
+        case .loginPage:
+            isReady = false
+            isLoadFailed = false
+            didLandOnLogin = true
+        case .loadFailure:
+            isReady = false
+            isLoadFailed = true
+            didLandOnLogin = false
+        }
+    }
+
     private func loadDashboardSession() {
         guard let normalized = try? ConnectionURLPolicy.normalizedBaseURL(baseURL),
               let url = URL(string: "\(normalized)/api/status") else { return }
         var request = URLRequest(url: url)
         request = cloudflareAccess?.applying(to: request) ?? request
+        // The fresh load's landing is unknown until its navigation callback;
+        // a stale verdict must not leak into its poll window. (The test
+        // simulation re-asserts its landing here on purpose.)
+        isLoadFailed = simulatedLanding == .loadFailure
+        didLandOnLogin = simulatedLanding == .loginPage
         webView.load(request)
     }
 
@@ -422,15 +512,22 @@ extension DashboardTicketBridge: WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        isLoadFailed = false
         // A redirect back to /login means the HttpOnly dashboard session is no
         // longer valid; never attempt to mint a misleading gateway ticket.
         guard let expectedURL = URL(string: baseURL),
               ConnectionURLPolicy.originMatches(webView.url, expected: expectedURL) else {
             isReady = false
+            // A settled foreign-origin landing (e.g. an SSO redirect that
+            // slipped past the navigation policy) is unusable, not still
+            // loading — mark it failed so mint retries reload back to the
+            // dashboard origin instead of polling a finished page.
+            isLoadFailed = true
             rejectPending(with: DashboardTicketBridgeError.requestFailed("Dashboard navigation left the configured origin."))
             return
         }
         isReady = !(webView.url?.path.contains("/login") ?? true)
+        didLandOnLogin = !isReady
         if !isReady {
             rejectPending(with: DashboardTicketBridgeError.signInRequired)
         } else {
@@ -445,11 +542,13 @@ extension DashboardTicketBridge: WKNavigationDelegate {
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         isReady = false
+        isLoadFailed = true
         rejectPending(with: error)
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         isReady = false
+        isLoadFailed = true
         rejectPending(with: error)
     }
 }
