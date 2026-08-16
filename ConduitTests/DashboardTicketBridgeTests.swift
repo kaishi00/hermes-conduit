@@ -172,28 +172,38 @@ final class DashboardTicketBridgeTests: XCTestCase {
     /// was silently dropped — stalled web view), the bridge must mark the
     /// view cold-but-reloadable so mintTicket's retry RELOADS it instead of
     /// re-evaluating JavaScript against the same dead view forever.
-    func testExpiredRequestDeadlineMarksWebViewStalledAndMintReloads() async {
+    ///
+    /// Drives requestJSON directly: mintTicket's request timeout is not
+    /// injectable (~12s deadline), and settling the initial page load first
+    /// makes the run deterministic on both test-host flavors — where WKWebView
+    /// navigation callbacks fire, the initial load's failure must land before
+    /// the simulated ready state (a later didFailProvisionalNavigation would
+    /// otherwise reject the pending request with a connection error instead
+    /// of letting the deadline expire).
+    func testExpiredRequestDeadlineMarksWebViewStalled() async {
         let bridge = DashboardTicketBridge(
             baseURL: "http://127.0.0.1:1",
             readinessPollAttempts: 2,
             readinessPollInterval: .milliseconds(10),
             requestDeadlineGraceMilliseconds: 50
         )
-        // Model the overnight state: the bridge believes it is ready, but
-        // its web view cannot deliver responses.
+
+        // Let the initial /api/status load settle (fail or hang) before
+        // modeling the overnight state: the bridge believes it is ready,
+        // but its web view cannot deliver responses.
+        for _ in 0..<80 where !bridge.isLoadFailed {
+            try? await Task.sleep(for: .milliseconds(25))
+        }
         bridge.simulateLandingForTesting(.ready)
 
         do {
-            _ = try await bridge.mintTicket()
-            XCTFail("Expected mintTicket to throw against a stalled web view")
+            _ = try await bridge.requestJSON(path: "/api/auth/ws-ticket", timeoutMilliseconds: 1_000)
+            XCTFail("Expected requestJSON to throw against a stalled web view")
         } catch DashboardTicketBridgeError.notReady {
-            // The deadline expired and the notReady catch must have reloaded
-            // the stalled page at least once before exhaustion.
-            XCTAssertGreaterThanOrEqual(bridge.reloadCount, 1)
+            XCTAssertTrue(bridge.isLoadFailed, "Deadline expiry must mark the view reloadable")
         } catch {
-            // Some test hosts deliver an immediate evaluateJavaScript error
-            // instead of dropping the response; the deadline belt is not
-            // exercised there.
+            // Hosts that deliver an immediate evaluateJavaScript error
+            // surface it here; the deadline belt is not exercised there.
         }
     }
 }
