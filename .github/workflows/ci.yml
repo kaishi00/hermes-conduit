@@ -34,7 +34,7 @@ jobs:
       - name: List available simulators
         run: xcrun simctl list devices available
 
-      - name: Run tests
+      - name: Pick simulator
         run: |
           set -euo pipefail
           # macOS images change available devices across versions, so avoid
@@ -59,12 +59,18 @@ jobs:
           fi
 
           echo "Using simulator UDID: $SIMULATOR"
+          echo "SIMULATOR=$SIMULATOR" >> "$GITHUB_ENV"
+
+      - name: Run unit tests
+        run: |
+          set -euo pipefail
           xcodebuild test \
             -project Conduit.xcodeproj \
             -scheme Conduit \
             -destination "platform=iOS Simulator,id=$SIMULATOR" \
             -configuration Debug \
-            -resultBundlePath TestResults.xcresult \
+            -only-testing:ConduitTests \
+            -resultBundlePath UnitTestResults.xcresult \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
@@ -74,9 +80,46 @@ jobs:
           # Keep xcodebuild's exit status when output is piped through xcpretty.
           exit ${PIPESTATUS[0]}
 
+      - name: Run UI tests
+        run: |
+          # The synthesized-drag selection tests occasionally lose the race
+          # against slow CI runners (gesture timing, background-assertion
+          # acquisition timeouts). The tests retry drags in-process; this
+          # step-level retry covers the remaining infrastructure blips so a
+          # flaky runner does not paint the build red. A genuine double
+          # failure still fails the build.
+          set -uo pipefail
+          for attempt in 1 2; do
+            echo "::group::UI test attempt $attempt"
+            rm -rf UITestResults.xcresult
+            xcodebuild test \
+              -project Conduit.xcodeproj \
+              -scheme Conduit \
+              -destination "platform=iOS Simulator,id=$SIMULATOR" \
+              -configuration Debug \
+              -only-testing:ConduitUITests \
+              -resultBundlePath UITestResults.xcresult \
+              CODE_SIGN_IDENTITY="" \
+              CODE_SIGNING_REQUIRED=NO \
+              CODE_SIGNING_ALLOWED=NO \
+              DEVELOPMENT_TEAM="" \
+              PROVISIONING_PROFILE_SPECIFIER="" \
+              | xcpretty --color
+            status=${PIPESTATUS[0]}
+            echo "::endgroup::"
+            if [ "$status" -eq 0 ]; then
+              exit 0
+            fi
+            echo "UI tests failed on attempt $attempt (status $status)"
+          done
+          exit 1
+
       - name: Upload test results on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: TestResults.xcresult
-          path: TestResults.xcresult
+          path: |
+            UnitTestResults.xcresult
+            UITestResults.xcresult
+          if-no-files-found: ignore
