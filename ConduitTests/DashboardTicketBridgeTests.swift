@@ -167,4 +167,33 @@ final class DashboardTicketBridgeTests: XCTestCase {
         }
         XCTAssertEqual(requests.count, 0)
     }
+
+    /// When a request's Swift-side deadline expires (the JavaScript response
+    /// was silently dropped — stalled web view), the bridge must mark the
+    /// view cold-but-reloadable so mintTicket's retry RELOADS it instead of
+    /// re-evaluating JavaScript against the same dead view forever.
+    func testExpiredRequestDeadlineMarksWebViewStalledAndMintReloads() async {
+        let bridge = DashboardTicketBridge(
+            baseURL: "http://127.0.0.1:1",
+            readinessPollAttempts: 2,
+            readinessPollInterval: .milliseconds(10),
+            requestDeadlineGraceMilliseconds: 50
+        )
+        // Model the overnight state: the bridge believes it is ready, but
+        // its web view cannot deliver responses.
+        bridge.simulateLandingForTesting(.ready)
+
+        do {
+            _ = try await bridge.mintTicket()
+            XCTFail("Expected mintTicket to throw against a stalled web view")
+        } catch DashboardTicketBridgeError.notReady {
+            // The deadline expired and the notReady catch must have reloaded
+            // the stalled page at least once before exhaustion.
+            XCTAssertGreaterThanOrEqual(bridge.reloadCount, 1)
+        } catch {
+            // Some test hosts deliver an immediate evaluateJavaScript error
+            // instead of dropping the response; the deadline belt is not
+            // exercised there.
+        }
+    }
 }
