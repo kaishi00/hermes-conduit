@@ -332,11 +332,13 @@ final class DashboardTicketBridge: NSObject {
     /// Re-asserts the test-simulated landing state; a no-op in production.
     private func applySimulatedLanding() {
         switch simulatedLanding {
-        case .loadFailure:
-            isLoadFailed = true
+        case .ready:
+            isReady = true
         case .loginPage:
             didLandOnLogin = true
-        case .ready, nil:
+        case .loadFailure:
+            isLoadFailed = true
+        case nil:
             break
         }
     }
@@ -527,7 +529,8 @@ final class DashboardTicketBridge: NSObject {
                 })();
                 true;
                 """
-                webView.evaluateJavaScript(script) { _, error in
+                webView.evaluateJavaScript(script) { [weak self] _, error in
+                    guard let self else { return }
                     guard let error else { return }
                     // The injected IIFE funnels every JS-level failure into
                     // the message channel, so a completion error means the
