@@ -72,11 +72,19 @@ enum DashboardCookiePersistence {
         }
     }
 
-    static func capture(from cookieStore: WKHTTPCookieStore, for url: URL?) async {
+    static func capture(
+        from cookieStore: WKHTTPCookieStore,
+        for url: URL?,
+        shouldPersist: (() -> Bool)? = nil
+    ) async {
         guard let host = url?.host?.lowercased() else { return }
         let cookies = await cookieStore.allCookies().filter { cookie in
             cookieMatchesHost(cookie, host: host)
         }
+        // The cookie-store await above can straddle an invalidation or
+        // disconnect; only the moment of the keychain write decides whether
+        // the durable mirror survives, so consult the guard here.
+        if let shouldPersist, !shouldPersist() { return }
         guard let data = try? JSONEncoder().encode(cookies.map(StoredCookie.init)) else { return }
         KeychainHelper.saveDashboardCookies(data)
     }
@@ -203,6 +211,12 @@ final class DashboardTicketBridge: NSObject {
     }
     private var isInvalidated = false
     private var requestID = 0
+    /// Identity of the current dashboard navigation, used to ignore failure
+    /// callbacks for loads a reload has already replaced. `staleNavigations`
+    /// covers the window between a reload and its new load: failures for
+    /// superseded navigations must not fail the fresh state.
+    private var currentNavigation: WKNavigation?
+    private var staleNavigations: Set<WKNavigation> = []
     private let pendingRequests: DashboardTicketBridgePendingRequests
     private let requestDeadlineGraceMilliseconds: Int
     /// Swift-side deadlines for in-flight `requestJSON` continuations. The
@@ -271,6 +285,10 @@ final class DashboardTicketBridge: NSObject {
         guard !isInvalidated else { return }
         isInvalidated = true
         isReady = false
+        // A torn-down bridge must report plain unreadiness: leaving a stale
+        // login verdict would surface .signInRequired (with its session
+        // recovery) from an invalidated instance.
+        didLandOnLogin = false
         rejectPending(with: DashboardTicketBridgeError.notReady)
     }
 
@@ -278,6 +296,26 @@ final class DashboardTicketBridge: NSObject {
         guard !isInvalidated else { return }
         reloadCount += 1
         isReady = false
+        // Supersede the old navigation immediately: its late failure
+        // callbacks must not fail the fresh state during the window before
+        // the new load starts.
+        if let old = currentNavigation {
+            staleNavigations.insert(old)
+        }
+        currentNavigation = nil
+        // Reset the landing verdicts synchronously: leaving them set until
+        // the async load task runs lets the next retry observe a stale
+        // failure/login verdict and reload AGAIN, aborting the load that
+        // was just started. Clearing the login verdict here is safe because
+        // a deliberate reload supersedes it — the fresh landing
+        // re-establishes (or clears) it via didFinish. Without this, a
+        // cookie restore slower than the 350ms retry sleep made the login
+        // fast-exit burn every attempt against the stale verdict and
+        // escalate straight to sign-out. (Test simulations re-assert their
+        // landing so it persists across reloads deterministically.)
+        isLoadFailed = false
+        didLandOnLogin = false
+        applySimulatedLanding()
         rejectPending(with: DashboardTicketBridgeError.notReady)
         Task { [weak self] in
             guard let self else { return }
@@ -288,6 +326,20 @@ final class DashboardTicketBridge: NSObject {
             )
             guard !self.isInvalidated else { return }
             self.loadDashboardSession()
+        }
+    }
+
+    /// Re-asserts the test-simulated landing state; a no-op in production.
+    private func applySimulatedLanding() {
+        switch simulatedLanding {
+        case .ready:
+            isReady = true
+        case .loginPage:
+            didLandOnLogin = true
+        case .loadFailure:
+            isLoadFailed = true
+        case nil:
+            break
         }
     }
 
@@ -331,25 +383,35 @@ final class DashboardTicketBridge: NSObject {
     }
 
     private func waitUntilReady() async throws {
-        // Stop polling as soon as the navigation terminally fails: a failed
-        // load can only become ready again via reload, so sleeping out the
-        // window would just delay the .notReady recovery.
-        for _ in 0..<readinessPollAttempts where !isReady && !isInvalidated && !isLoadFailed {
+        // Stop polling as soon as the navigation terminally fails or the
+        // page has settled on the login screen: neither can become ready
+        // without a reload or sign-in, so sleeping out the window would
+        // just delay the recovery.
+        for _ in 0..<readinessPollAttempts where !isReady && !isInvalidated && !isLoadFailed && !didLandOnLogin {
             try await Task.sleep(for: readinessPollInterval)
         }
         guard !isInvalidated, isReady else {
             // A bridge parked on the login page is signed out, not loading:
             // surface the expiry so callers run their sign-in recovery
-            // instead of polling an already-settled page.
-            throw didLandOnLogin
-                ? DashboardTicketBridgeError.signInRequired
-                : DashboardTicketBridgeError.notReady
+            // instead of polling an already-settled page. An invalidated
+            // bridge always reports plain unreadiness — a late navigation
+            // callback must not resurrect sign-in state on a torn-down
+            // instance.
+            throw isInvalidated || !didLandOnLogin
+                ? DashboardTicketBridgeError.notReady
+                : DashboardTicketBridgeError.signInRequired
         }
     }
 
     /// Requests authenticated dashboard JSON through the same WebKit cookie
     /// jar that the sign-in flow owns. This intentionally avoids duplicating
     /// HttpOnly session handling in URLSession.
+    ///
+    /// Error contract: unusable page states (foreign-origin landing, stalled
+    /// engine) surface as `.notReady` so callers flow into the reload
+    /// recovery; an origin-matching login landing surfaces as
+    /// `.signInRequired`. Direct callers should not expect `.requestFailed`
+    /// for these states.
     func requestJSON(
         path: String,
         method: String = "GET",
@@ -357,15 +419,16 @@ final class DashboardTicketBridge: NSObject {
         timeoutMilliseconds: Int = 12_000,
         maxResponseBytes: Int = DataURLLimits.maxJSONResponseBytes
     ) async throws -> [String: Any] {
-        for _ in 0..<readinessPollAttempts where !isReady && !isInvalidated && !isLoadFailed {
+        for _ in 0..<readinessPollAttempts where !isReady && !isInvalidated && !isLoadFailed && !didLandOnLogin {
             try await Task.sleep(for: readinessPollInterval)
         }
         guard !isInvalidated, isReady else {
-            // Mirror waitUntilReady(): a login-parked bridge is signed out,
-            // not loading, for non-mint callers too.
-            throw didLandOnLogin
-                ? DashboardTicketBridgeError.signInRequired
-                : DashboardTicketBridgeError.notReady
+            // Mirror waitUntilReady(): a login-parked or terminally failed
+            // bridge is settled, not loading, for non-mint callers too, and
+            // an invalidated bridge always reports plain unreadiness.
+            throw isInvalidated || !didLandOnLogin
+                ? DashboardTicketBridgeError.notReady
+                : DashboardTicketBridgeError.signInRequired
         }
 
         requestID += 1
@@ -466,9 +529,22 @@ final class DashboardTicketBridge: NSObject {
                 })();
                 true;
                 """
-                webView.evaluateJavaScript(script) { _, error in
+                webView.evaluateJavaScript(script) { [weak self] _, error in
+                    guard let self else { return }
                     guard let error else { return }
-                    self.failPendingRequest(id: id, with: error)
+                    // The injected IIFE funnels every JS-level failure into
+                    // the message channel, so a completion error means the
+                    // engine never ran the script — a dead or stalled view.
+                    // Always route it onto the typed stall path (which
+                    // reloads the page and flushes sibling requests) instead
+                    // of letting an untyped NSError escape past mintTicket's
+                    // retry funnel. A request whose continuation was already
+                    // resumed (e.g. by reload) no-ops here.
+                    self.failPendingRequest(
+                        id: id,
+                        with: DashboardTicketBridgeError.notReady,
+                        markingWebViewStalled: true
+                    )
                 }
             }
         }, onCancel: {
@@ -489,15 +565,23 @@ final class DashboardTicketBridge: NSObject {
         requestDeadlines.removeValue(forKey: id)?.cancel()
         guard let continuation = pendingRequests.removeValue(for: id) else { return }
         if markingWebViewStalled {
-            // Only reached when the request deadline expired: a live page
-            // answers before that (its in-JS abort posts a response), so
-            // expiry proves the view is stalled. Mark it cold-but-reloadable
-            // so mintTicket's next attempt reloads instead of retrying
-            // evaluateJavaScript against the same dead view.
+            // Only reached when the request deadline expired or the JS
+            // engine never ran the script: a live page answers before that
+            // (its in-JS abort posts a response), so this proves the view
+            // is stalled. Mark it cold-but-reloadable so mintTicket's next
+            // attempt reloads instead of retrying evaluateJavaScript
+            // against the same dead view.
             isReady = false
             isLoadFailed = true
+            didLandOnLogin = false
         }
         continuation.resume(throwing: error)
+        if markingWebViewStalled {
+            // The view is proven stalled; every other in-flight request into
+            // it would hang until its own deadline. Fail them now into the
+            // same reload recovery.
+            rejectPending(with: DashboardTicketBridgeError.notReady)
+        }
     }
 
     /// Deadline delay with an overflow-safe grace addition.
@@ -547,11 +631,16 @@ final class DashboardTicketBridge: NSObject {
         var request = URLRequest(url: url)
         request = cloudflareAccess?.applying(to: request) ?? request
         // The fresh load's landing is unknown until its navigation callback;
-        // a stale verdict must not leak into its poll window. (The test
-        // simulation re-asserts its landing here on purpose.)
-        isLoadFailed = simulatedLanding == .loadFailure
-        didLandOnLogin = simulatedLanding == .loginPage
-        webView.load(request)
+        // a stale verdict must not leak into its poll window. Reset the
+        // verdicts explicitly (nil simulatedLanding in production), then
+        // re-assert any test simulation on purpose. Readiness also flips
+        // off defensively: any caller reaching here with a stale ready flag
+        // must not serve requests against a page that is about to change.
+        isReady = false
+        isLoadFailed = false
+        didLandOnLogin = false
+        applySimulatedLanding()
+        currentNavigation = webView.load(request)
     }
 
     private func rejectPending(with error: Error) {
@@ -584,41 +673,77 @@ extension DashboardTicketBridge: WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        isLoadFailed = false
-        // A redirect back to /login means the HttpOnly dashboard session is no
-        // longer valid; never attempt to mint a misleading gateway ticket.
-        guard let expectedURL = URL(string: baseURL),
-              ConnectionURLPolicy.originMatches(webView.url, expected: expectedURL) else {
-            isReady = false
-            // A settled foreign-origin landing (e.g. an SSO redirect that
-            // slipped past the navigation policy) is unusable, not still
-            // loading — mark it failed so mint retries reload back to the
-            // dashboard origin instead of polling a finished page.
-            isLoadFailed = true
-            rejectPending(with: DashboardTicketBridgeError.requestFailed("Dashboard navigation left the configured origin."))
+        // Reject finishes for navigations a reload has already superseded:
+        // a late didFinish(A) while the fresh load B is in flight would
+        // otherwise process A's landing over B's pending state AND clear
+        // B's identity, disarming the failure-suppression guards below.
+        if let navigation, staleNavigations.remove(navigation) != nil {
             return
         }
-        isReady = !(webView.url?.path.contains("/login") ?? true)
-        didLandOnLogin = !isReady
-        if !isReady {
+        if let currentNavigation, let navigation, navigation !== currentNavigation {
+            return
+        }
+        // The tracked load has resolved; identity-based suppression ends
+        // here (page-initiated navigations after a finish process normally).
+        currentNavigation = nil
+        // A landing with no URL at all is unknown, not "signed out" — treat
+        // it as reloadable rather than guessing a login redirect.
+        guard let landedURL = webView.url,
+              let expectedURL = URL(string: baseURL),
+              ConnectionURLPolicy.originMatches(landedURL, expected: expectedURL) else {
+            isReady = false
+            // A settled foreign-origin or unknown-URL landing (e.g. an SSO
+            // redirect that slipped past the navigation policy, or an error
+            // document) is unusable, not still loading — mark it failed so
+            // mint retries reload back to the dashboard origin. Reject with
+            // .notReady (not .requestFailed) so in-flight mints flow into
+            // that same reload recovery. The login verdict is deliberately
+            // untouched: only an origin-matching landing can change it.
+            isLoadFailed = true
+            rejectPending(with: DashboardTicketBridgeError.notReady)
+            return
+        }
+        isLoadFailed = false
+        // A redirect back to /login means the HttpOnly dashboard session is
+        // no longer valid; never attempt to mint a misleading gateway ticket.
+        let landedOnLogin = landedURL.path.contains("/login")
+        isReady = !landedOnLogin
+        didLandOnLogin = landedOnLogin
+        if landedOnLogin {
             rejectPending(with: DashboardTicketBridgeError.signInRequired)
-        } else {
+        } else if !isInvalidated {
+            // Late cookie capture after disconnect must not resurrect the
+            // durable mirror AppState just cleared: the write guard runs at
+            // the moment of the keychain save, after the cookie-store await.
             Task { @MainActor in
                 await DashboardCookiePersistence.capture(
                     from: webView.configuration.websiteDataStore.httpCookieStore,
-                    for: expectedURL
+                    for: expectedURL,
+                    shouldPersist: { [weak self] in
+                        guard let self else { return false }
+                        return !self.isInvalidated
+                    }
                 )
             }
         }
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        // A failure for a navigation a reload has already replaced (or that
+        // finished) must not fail the fresh load; remove-on-match keeps the
+        // stale set from retaining superseded navigations. A nil identity on
+        // either side processes the callback — failures without navigation
+        // context still carry real signal.
+        if let navigation, staleNavigations.remove(navigation) != nil { return }
+        if let currentNavigation, let navigation, navigation !== currentNavigation { return }
         isReady = false
         isLoadFailed = true
         rejectPending(with: error)
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        if let navigation, staleNavigations.remove(navigation) != nil { return }
+        if let currentNavigation, let navigation, navigation !== currentNavigation { return }
         isReady = false
         isLoadFailed = true
         rejectPending(with: error)
@@ -636,6 +761,7 @@ extension DashboardTicketBridge: WKNavigationDelegate {
         isReady = false
         isLoadFailed = true
         didLandOnLogin = false
+        currentNavigation = nil
         rejectPending(with: DashboardTicketBridgeError.notReady)
     }
 }

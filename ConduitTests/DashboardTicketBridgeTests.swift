@@ -204,6 +204,60 @@ final class DashboardTicketBridgeTests: XCTestCase {
         } catch {
             // Hosts that deliver an immediate evaluateJavaScript error
             // surface it here; the deadline belt is not exercised there.
+            // Recorded so CI logs show which arm ran (the fallback arm is
+            // expected to stay silent/unused on this CI's host flavor).
+            print("deadline test took immediate-error arm: \(error)")
         }
+    }
+
+    /// An invalidated bridge must report plain unreadiness even if its last
+    /// landing was the login page — a stale login verdict would surface
+    /// .signInRequired (with its session-erasing recovery) from a bridge
+    /// that no longer exists for use.
+    func testInvalidateClearsLoginLanding() async {
+        let bridge = DashboardTicketBridge(
+            baseURL: "http://127.0.0.1:1",
+            readinessPollAttempts: 2,
+            readinessPollInterval: .milliseconds(10)
+        )
+        bridge.simulateLandingForTesting(.loginPage)
+        bridge.invalidate()
+
+        do {
+            _ = try await bridge.mintTicket()
+            XCTFail("Expected mintTicket to throw against an invalidated bridge")
+        } catch DashboardTicketBridgeError.notReady {
+            // expected — not .signInRequired
+        } catch {
+            XCTFail("Expected DashboardTicketBridgeError.notReady, got \(error)")
+        }
+        XCTAssertEqual(bridge.reloadCount, 0, "An invalidated bridge must not reload")
+    }
+
+    /// A login-parked bridge has a settled page: its readiness polls must
+    /// exit immediately (the .signInRequired recovery fires right away)
+    /// instead of sleeping out the full window on every attempt.
+    func testLoginParkedBridgeDoesNotBurnPollWindow() async {
+        let bridge = DashboardTicketBridge(
+            baseURL: "http://127.0.0.1:1",
+            readinessPollAttempts: 30,
+            readinessPollInterval: .milliseconds(100)
+        )
+        bridge.simulateLandingForTesting(.loginPage)
+
+        let started = Date()
+        do {
+            _ = try await bridge.mintTicket()
+            XCTFail("Expected mintTicket to throw against a login-parked bridge")
+        } catch DashboardTicketBridgeError.signInRequired {
+            // expected on exhaustion
+        } catch {
+            XCTFail("Expected DashboardTicketBridgeError.signInRequired, got \(error)")
+        }
+        let elapsed = Date().timeIntervalSince(started)
+        // Without the fast exit, three attempts would poll ~3s each plus
+        // sleeps (~9.7s). With it, the run is three ~350ms sleeps (~1.1s).
+        XCTAssertLessThan(elapsed, 3.0, "Login-parked minting must skip the readiness poll window")
+        XCTAssertEqual(bridge.reloadCount, 2, "Both signInRequired retries must reload")
     }
 }
