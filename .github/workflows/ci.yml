@@ -67,61 +67,63 @@ jobs:
 
       - name: Run tests
         run: |
-          # The synthesized-drag selection UI tests occasionally lose the race
-          # against slow CI runners (gesture timing, background-assertion
-          # acquisition timeouts). The tests retry drags in-process; if the
-          # full run still fails, retry the UI target once so an
-          # infrastructure blip does not paint the build red. A genuine
-          # double failure still fails the build.
+          # If the full suite fails, reset the simulator and retry the full
+          # suite once. A genuine double failure still fails CI. Attempt 2
+          # runs the entire suite (not just UI tests) because attempt 1 can
+          # fail in a unit test; a UI-only retry would mask that failure.
           #
-          # Attempt 1 always runs the full suite in ONE xcodebuild
-          # invocation (unit + UI). Do not split unit and UI into separate
-          # invocations: on a cold simulator the composer paste unit tests
-          # can stall against the pasteboard XPC service before the UI
-          # runner has warmed the device (observed hanging 35+ minutes on
-          # CI with -only-testing:ConduitTests; reproduced locally on an
-          # erased simulator).
+          # NOTE: GitHub Actions runs `bash -eo pipefail {0}` by default.
+          # We wrap the piped xcodebuild|xcpretty invocation in an `if`
+          # block so that an expected nonzero exit code is intentionally
+          # handled by the loop instead of killed by errexit.  (Running
+          # `set +e` would also work but the `if` scopes the failure
+          # cleanly and makes the intent obvious.)
           set -uo pipefail
           for attempt in 1 2; do
             if [ "$attempt" -eq 1 ]; then
-              SCOPE=""
               BUNDLE=TestResults.xcresult
             else
-              SCOPE="-only-testing:ConduitUITests"
               BUNDLE=TestResults-retry.xcresult
               # A wedged simulator is the one failure mode in-test retries
               # cannot clear; restart the device so the retry starts clean.
               xcrun simctl shutdown "$SIMULATOR" || true
               sleep 3
               xcrun simctl boot "$SIMULATOR" || true
-              # Handing a half-booted simulator to xcodebuild wedges UI
-              # tests on cold-start services; wait for a complete boot.
+              # Wait for a complete boot before handing the device to
+              # xcodebuild; a half-booted simulator wedges UI tests.
               xcrun simctl bootstatus "$SIMULATOR" -b -t 180 || true
             fi
             echo "::group::Test attempt $attempt"
             rm -rf "$BUNDLE"
-            # Unquoted $SCOPE intentionally: empty on attempt 1, one token
-            # on the UI-only retry.
-            xcodebuild test \
+            status=0
+            if xcodebuild test \
               -project Conduit.xcodeproj \
               -scheme Conduit \
               -destination "platform=iOS Simulator,id=$SIMULATOR" \
               -configuration Debug \
-              $SCOPE \
               -resultBundlePath "$BUNDLE" \
               CODE_SIGN_IDENTITY="" \
               CODE_SIGNING_REQUIRED=NO \
               CODE_SIGNING_ALLOWED=NO \
               DEVELOPMENT_TEAM="" \
               PROVISIONING_PROFILE_SPECIFIER="" \
-              | xcpretty --color
-            status=${PIPESTATUS[0]}
+              | xcpretty --color; then
+              status=0
+            else
+              # Preserve both pipeline statuses: xcodebuild may succeed
+              # while xcpretty fails (or vice versa). Fail/retry if
+              # either command fails.
+              ps=("${PIPESTATUS[@]}")
+              status=$(( ps[0] != 0 ? ps[0] : ps[1] ))
+            fi
             echo "::endgroup::"
             if [ "$status" -eq 0 ]; then
+              echo "tests passed on attempt $attempt"
               exit 0
             fi
-            echo "tests failed on attempt $attempt (status $status)"
+            echo "tests failed on attempt $attempt (exit status $status)"
           done
+          echo "both test attempts failed"
           exit 1
 
       - name: Upload test results on failure
