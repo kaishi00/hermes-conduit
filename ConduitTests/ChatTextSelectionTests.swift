@@ -715,4 +715,96 @@ final class ChatTextSelectionTests: XCTestCase {
         XCTAssertLessThanOrEqual(measured, truncationCeiling,
                                  "Long text must be truncated well below full expansion")
     }
+
+    // MARK: - Full table-view-chain regression (MarkdownText → MarkdownTable → cell text views)
+
+    /// Regression: a Markdown table with a long cell must render every cell's
+    /// selectable text view with unlimited lines and enough height for the
+    /// fully wrapped content. This drives the real SwiftUI chain —
+    /// MarkdownText → MarkdownTable.tableRow → InlineMarkdown →
+    /// SelectableTextView — so re-introducing a line cap or under-height
+    /// sizing at any link fails here.
+    @MainActor
+    func testMarkdownTableLongCellRendersFullContentThroughViewChain() throws {
+        let longCellText = (0..<30).map { "Word\($0)" }.joined(separator: " ")
+        let source = """
+        | Item | Details |
+        |---|---|
+        | Long entry | \(longCellText) |
+        """
+        let host = UIHostingController(rootView: MarkdownText(source: source))
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = host
+        window.isHidden = false
+        host.view.setNeedsLayout()
+        host.view.layoutIfNeeded()
+
+        let textViews = allSubviews(of: host.view).compactMap { $0 as? UITextView }
+        XCTAssertFalse(textViews.isEmpty, "Rendered table must mount selectable text views")
+
+        for textView in textViews {
+            XCTAssertEqual(textView.textContainer.maximumNumberOfLines, 0,
+                           "Every table cell must render unlimited-line text; a finite cap here is the truncation bug")
+        }
+
+        let longCell = try XCTUnwrap(
+            textViews.first { $0.attributedText.string.contains("Word29") },
+            "The long table cell's text view must exist in the rendered hierarchy"
+        )
+        XCTAssertGreaterThan(longCell.bounds.width, 0)
+
+        // Reference: a fresh, unlimited text view with the same content must
+        // wrap to the same height the rendered cell was given. A capped or
+        // under-measured cell falls short of the full-wrap reference.
+        let reference = SelectableTextView.makeTextView()
+        reference.attributedText = longCell.attributedText
+        let fullWrapHeight = SelectableTextView.measuredWrappingHeight(of: reference, at: longCell.bounds.width)
+        XCTAssertGreaterThanOrEqual(longCell.bounds.height + 1, fullWrapHeight,
+                                     "Rendered cell height must cover the fully wrapped content")
+    }
+
+    /// Regression: inside the horizontal table ScrollView the first layout
+    /// pass receives a nil width proposal with zero UIKit bounds — the
+    /// conditions that produced intermittent half-line/1–2-line cells.
+    /// Self-sized table cells must return the full-wrap height at their
+    /// deterministic column width on the first pass, and identical sizes on
+    /// every later pass regardless of proposal.
+    @MainActor
+    func testTableCellFirstPassMeasurementMatchesFullWrapReference() throws {
+        let font = UIFont.preferredFont(forTextStyle: .footnote)
+        let longText = (0..<30).map { "Word\($0)" }.joined(separator: " ")
+        let view = SelectableTextView(text: longText, font: font, selfSizingWidthRange: 112...220)
+        let hostView = view.makeUIViewForTests(coordinator: view.makeCoordinator())
+        let textView = hostView.mountedTextView
+
+        // First pass: no width proposal, zero bounds.
+        textView.bounds = .zero
+        let firstPass = try XCTUnwrap(
+            view.measuredSize(proposalWidth: nil, textView: textView),
+            "Self-sized table cell must produce a size even with nil proposal and zero bounds"
+        )
+
+        // Known-correct reference: full wrap at the deterministic column
+        // width (content ideal width clamped to the table column policy).
+        let idealWidth = view.measureNonWrapping().width
+        let expectedWidth = min(max(idealWidth, 112), 220)
+        let referenceHeight = SelectableTextView.measuredWrappingHeight(of: textView, at: expectedWidth)
+
+        XCTAssertEqual(firstPass.width, expectedWidth, accuracy: 1,
+                       "First-pass width must be the clamped ideal column width")
+        XCTAssertEqual(firstPass.height, referenceHeight, accuracy: 1,
+                       "First-pass height must equal the full-wrap height at the column width")
+
+        // A later pass with a wide proposal (or populated bounds) must not
+        // change the answer — that drift was the intermittent clipping.
+        let laterPass = try XCTUnwrap(view.measuredSize(proposalWidth: 390, textView: textView))
+        XCTAssertEqual(laterPass.width, firstPass.width, accuracy: 1,
+                       "Steady-state width must match the first pass")
+        XCTAssertEqual(laterPass.height, firstPass.height, accuracy: 1,
+                       "Steady-state height must match the first pass")
+    }
+
+    private func allSubviews(of view: UIView) -> [UIView] {
+        view.subviews.flatMap { [$0] + allSubviews(of: $0) }
+    }
 }

@@ -661,6 +661,7 @@ private struct InlineMarkdown: View {
     var font: UIFont = .preferredFont(forTextStyle: .body)
     var lineSpacing: CGFloat = 0
     var maximumNumberOfLines: Int = 0
+    var selfSizingWidthRange: ClosedRange<CGFloat>? = nil
     var selectionCoordinator: MarkdownSelectionCoordinator?
     var selectionSegment: MarkdownSelectionSegmentDescriptor?
     var trailingCharacterOpacities: [Double] = []
@@ -689,6 +690,7 @@ private struct InlineMarkdown: View {
             lineSpacing: lineSpacing,
             maximumNumberOfLines: maximumNumberOfLines,
             linkColor: usesAccentSurface ? .white : .link,
+            selfSizingWidthRange: selfSizingWidthRange,
             selectionCoordinator: selectionCoordinator,
             selectionSegment: selectionSegment
         )
@@ -923,6 +925,9 @@ private struct MarkdownTable: View {
                     font: isHeader
                         ? UIFont.preferredFont(forTextStyle: .caption1).withTraits(.traitBold)
                         : UIFont.preferredFont(forTextStyle: .footnote),
+                    // Match the frame clamp below so the measured wrapping
+                    // width is deterministic from the first layout pass.
+                    selfSizingWidthRange: 112...220,
                     selectionCoordinator: selectionCoordinator,
                     selectionSegment: selectionSegment(row: rowIndex, column: index)
                 )

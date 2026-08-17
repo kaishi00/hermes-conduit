@@ -15,6 +15,10 @@ struct SelectableTextView: UIViewRepresentable {
     let maximumNumberOfLines: Int
     let wrapsLines: Bool
     let linkColor: UIColor
+    /// When set, the view self-sizes at a deterministic width derived from
+    /// its content and this range (used by Markdown table cells), ignoring
+    /// layout proposals. See `measuredSize(proposalWidth:textView:)`.
+    let selfSizingWidthRange: ClosedRange<CGFloat>?
     let selectionCoordinator: MarkdownSelectionCoordinator?
     let selectionSegment: MarkdownSelectionSegmentDescriptor?
 
@@ -26,6 +30,7 @@ struct SelectableTextView: UIViewRepresentable {
         maximumNumberOfLines: Int = 0,
         wrapsLines: Bool = true,
         linkColor: UIColor = .link,
+        selfSizingWidthRange: ClosedRange<CGFloat>? = nil,
         selectionCoordinator: MarkdownSelectionCoordinator? = nil,
         selectionSegment: MarkdownSelectionSegmentDescriptor? = nil
     ) {
@@ -36,6 +41,7 @@ struct SelectableTextView: UIViewRepresentable {
         self.maximumNumberOfLines = maximumNumberOfLines
         self.wrapsLines = wrapsLines
         self.linkColor = linkColor
+        self.selfSizingWidthRange = selfSizingWidthRange
         self.selectionCoordinator = selectionCoordinator
         self.selectionSegment = selectionSegment
     }
@@ -48,6 +54,7 @@ struct SelectableTextView: UIViewRepresentable {
         maximumNumberOfLines: Int = 0,
         wrapsLines: Bool = true,
         linkColor: UIColor = .link,
+        selfSizingWidthRange: ClosedRange<CGFloat>? = nil,
         selectionCoordinator: MarkdownSelectionCoordinator? = nil,
         selectionSegment: MarkdownSelectionSegmentDescriptor? = nil
     ) {
@@ -59,6 +66,7 @@ struct SelectableTextView: UIViewRepresentable {
             maximumNumberOfLines: maximumNumberOfLines,
             wrapsLines: wrapsLines,
             linkColor: linkColor,
+            selfSizingWidthRange: selfSizingWidthRange,
             selectionCoordinator: selectionCoordinator,
             selectionSegment: selectionSegment
         )
@@ -72,6 +80,7 @@ struct SelectableTextView: UIViewRepresentable {
         maximumNumberOfLines: Int = 0,
         wrapsLines: Bool = true,
         linkColor: UIColor = .link,
+        selfSizingWidthRange: ClosedRange<CGFloat>? = nil,
         selectionCoordinator: MarkdownSelectionCoordinator? = nil,
         selectionSegment: MarkdownSelectionSegmentDescriptor? = nil
     ) {
@@ -86,6 +95,7 @@ struct SelectableTextView: UIViewRepresentable {
             maximumNumberOfLines: maximumNumberOfLines,
             wrapsLines: wrapsLines,
             linkColor: linkColor,
+            selfSizingWidthRange: selfSizingWidthRange,
             selectionCoordinator: selectionCoordinator,
             selectionSegment: selectionSegment
         )
@@ -193,19 +203,33 @@ struct SelectableTextView: UIViewRepresentable {
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: SelectableTextViewHostView, context: Context) -> CGSize? {
+        measuredSize(proposalWidth: proposal.width, textView: uiView.mountedTextView)
+    }
+
+    /// Extracted sizing logic so `sizeThatFits` and unit tests share one
+    /// path (`UIViewRepresentableContext` cannot be constructed outside
+    /// SwiftUI).
+    ///
+    /// Self-sizing range (table cells): Markdown tables lay out inside a
+    /// horizontal ScrollView, where width proposals are nil or transient and
+    /// first-pass UIKit bounds are zero — a proposal- or bounds-derived width
+    /// produces a different wrapped height on the first pass than in steady
+    /// state, which is the intermittent half-line/1–2-line clipping. Instead,
+    /// the measurement width is derived deterministically from the content's
+    /// ideal width clamped to the table's column policy, so the first pass
+    /// and every later pass report the same correct height.
+    func measuredSize(proposalWidth: CGFloat?, textView: UITextView) -> CGSize? {
         if !wrapsLines {
             return measureNonWrapping()
         }
 
-        let textView = uiView.mountedTextView
+        if let range = selfSizingWidthRange {
+            let idealWidth = max(1, measureNonWrapping().width)
+            let width = min(max(idealWidth, range.lowerBound), range.upperBound)
+            return CGSize(width: width, height: Self.measuredWrappingHeight(of: textView, at: width))
+        }
 
-        // Inside a horizontal ScrollView the width proposal is nil; fall back
-        // to the last laid-out width so SwiftUI measures at the real column
-        // width instead of intrinsicContentSize (which uses a stale container).
-        let width = proposal.width
-            ?? (textView.bounds.width > 0 ? textView.bounds.width : nil)
-        guard let width, width > 0, width.isFinite else { return nil }
-
+        guard let width = proposalWidth, width > 0, width.isFinite else { return nil }
         return CGSize(width: width, height: Self.measuredWrappingHeight(of: textView, at: width))
     }
 
