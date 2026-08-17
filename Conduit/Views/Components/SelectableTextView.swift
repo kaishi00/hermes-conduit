@@ -209,16 +209,11 @@ struct SelectableTextView: UIViewRepresentable {
         return CGSize(width: width, height: Self.measuredWrappingHeight(of: textView, at: width))
     }
 
-    /// Shared measurement path for `sizeThatFits` and unit tests. Forces the
-    /// text container to the target width before measuring so the result is
-    /// independent of `textView.bounds` (which may be zero or stale during the
-    /// first layout pass inside a horizontal `ScrollView`).
+    /// Shared measurement path for `sizeThatFits` and unit tests. Delegates
+    /// to `UITextView.sizeThatFits` at the target width. On iOS 17+
+    /// (TextKit 2) the proposed width drives wrapping independent of the
+    /// text container's stored size, so no container mutation is needed.
     static func measuredWrappingHeight(of textView: UITextView, at width: CGFloat) -> CGFloat {
-        let container = textView.textContainer
-        let tracksWidth = container.widthTracksTextView
-        container.widthTracksTextView = false
-        container.size = CGSize(width: width, height: CGFloat.greatestFiniteMagnitude)
-        container.widthTracksTextView = tracksWidth
         let measured = textView.sizeThatFits(CGSize(width: width, height: CGFloat.greatestFiniteMagnitude))
         return ceil(measured.height)
     }
