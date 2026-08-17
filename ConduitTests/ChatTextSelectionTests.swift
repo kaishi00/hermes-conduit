@@ -628,17 +628,26 @@ final class ChatTextSelectionTests: XCTestCase {
 
     /// Regression: table cells must wrap at the column width and produce
     /// sufficient height for all wrapped lines. The old maximumNumberOfLines: 4
-    /// would cap at ~4 lines.
+    /// would cap the same text at a much lower height.
     func testTableCellMeasurementAtRealisticWidthProducesSufficientHeight() {
         let font = UIFont.preferredFont(forTextStyle: .footnote)
         let longText = (0..<30).map { "Word\($0)" }.joined(separator: " ")
         let columnWidth: CGFloat = 200
 
-        let measuredHeight = measureCell(text: longText, font: font, at: columnWidth)
-        let fourLineHeight = font.lineHeight * 4
+        let unlimitedHeight = measureCell(text: longText, font: font, at: columnWidth)
 
-        XCTAssertGreaterThan(measuredHeight, fourLineHeight,
-                             "Wrapping table cell must produce height above 4-line cap at \(columnWidth)pt width")
+        // Measure the same text with a 4-line cap to get the actual capped height.
+        let cappedView = SelectableTextView.makeTextView()
+        cappedView.font = font
+        cappedView.textContainer.maximumNumberOfLines = 4
+        cappedView.textContainer.lineBreakMode = .byTruncatingTail
+        cappedView.attributedText = NSAttributedString(string: longText, attributes: [
+            .font: font, .foregroundColor: UIColor.label
+        ])
+        let cappedHeight = SelectableTextView.measuredWrappingHeight(of: cappedView, at: columnWidth)
+
+        XCTAssertGreaterThan(unlimitedHeight, cappedHeight,
+                             "Unlimited table cell must measure taller than the old 4-line capped height")
     }
 
     /// Regression: `measuredWrappingHeight` must use the target width, not the
