@@ -72,11 +72,19 @@ enum DashboardCookiePersistence {
         }
     }
 
-    static func capture(from cookieStore: WKHTTPCookieStore, for url: URL?) async {
+    static func capture(
+        from cookieStore: WKHTTPCookieStore,
+        for url: URL?,
+        shouldPersist: (() -> Bool)? = nil
+    ) async {
         guard let host = url?.host?.lowercased() else { return }
         let cookies = await cookieStore.allCookies().filter { cookie in
             cookieMatchesHost(cookie, host: host)
         }
+        // The cookie-store await above can straddle an invalidation or
+        // disconnect; only the moment of the keychain write decides whether
+        // the durable mirror survives, so consult the guard here.
+        if let shouldPersist, !shouldPersist() { return }
         guard let data = try? JSONEncoder().encode(cookies.map(StoredCookie.init)) else { return }
         KeychainHelper.saveDashboardCookies(data)
     }
@@ -295,13 +303,18 @@ final class DashboardTicketBridge: NSObject {
             staleNavigations.insert(old)
         }
         currentNavigation = nil
-        // Reset the failure verdict synchronously: leaving it set until the
-        // async load task runs lets the next retry observe a stale failure
-        // and reload AGAIN, aborting the load that was just started. (The
-        // login verdict is deliberately NOT reset here — only an
-        // origin-matching landing may change it.) Test simulations re-assert
-        // their landing state so it persists across reloads deterministically.
+        // Reset the landing verdicts synchronously: leaving them set until
+        // the async load task runs lets the next retry observe a stale
+        // failure/login verdict and reload AGAIN, aborting the load that
+        // was just started. Clearing the login verdict here is safe because
+        // a deliberate reload supersedes it — the fresh landing
+        // re-establishes (or clears) it via didFinish. Without this, a
+        // cookie restore slower than the 350ms retry sleep made the login
+        // fast-exit burn every attempt against the stale verdict and
+        // escalate straight to sign-out. (Test simulations re-assert their
+        // landing so it persists across reloads deterministically.)
         isLoadFailed = false
+        didLandOnLogin = false
         applySimulatedLanding()
         rejectPending(with: DashboardTicketBridgeError.notReady)
         Task { [weak self] in
@@ -617,7 +630,10 @@ final class DashboardTicketBridge: NSObject {
         // The fresh load's landing is unknown until its navigation callback;
         // a stale verdict must not leak into its poll window. Reset the
         // verdicts explicitly (nil simulatedLanding in production), then
-        // re-assert any test simulation on purpose.
+        // re-assert any test simulation on purpose. Readiness also flips
+        // off defensively: any caller reaching here with a stale ready flag
+        // must not serve requests against a page that is about to change.
+        isReady = false
         isLoadFailed = false
         didLandOnLogin = false
         applySimulatedLanding()
@@ -654,13 +670,18 @@ extension DashboardTicketBridge: WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        // The load has resolved; identity-based suppression ends here, and
-        // this navigation is no longer stale if its failure callbacks race
-        // the finish (WebKit can deliver a cancelled navigation's error
-        // after a successful commit of the replacement).
-        if let navigation {
-            staleNavigations.remove(navigation)
+        // Reject finishes for navigations a reload has already superseded:
+        // a late didFinish(A) while the fresh load B is in flight would
+        // otherwise process A's landing over B's pending state AND clear
+        // B's identity, disarming the failure-suppression guards below.
+        if let navigation, staleNavigations.remove(navigation) != nil {
+            return
         }
+        if let currentNavigation, let navigation, navigation !== currentNavigation {
+            return
+        }
+        // The tracked load has resolved; identity-based suppression ends
+        // here (page-initiated navigations after a finish process normally).
         currentNavigation = nil
         // A landing with no URL at all is unknown, not "signed out" — treat
         // it as reloadable rather than guessing a login redirect.
@@ -687,11 +708,18 @@ extension DashboardTicketBridge: WKNavigationDelegate {
         didLandOnLogin = landedOnLogin
         if landedOnLogin {
             rejectPending(with: DashboardTicketBridgeError.signInRequired)
-        } else {
+        } else if !isInvalidated {
+            // Late cookie capture after disconnect must not resurrect the
+            // durable mirror AppState just cleared: the write guard runs at
+            // the moment of the keychain save, after the cookie-store await.
             Task { @MainActor in
                 await DashboardCookiePersistence.capture(
                     from: webView.configuration.websiteDataStore.httpCookieStore,
-                    for: expectedURL
+                    for: expectedURL,
+                    shouldPersist: { [weak self] in
+                        guard let self else { return false }
+                        return !self.isInvalidated
+                    }
                 )
             }
         }
@@ -699,10 +727,11 @@ extension DashboardTicketBridge: WKNavigationDelegate {
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         // A failure for a navigation a reload has already replaced (or that
-        // finished) must not fail the fresh load. A nil identity on either
-        // side processes the callback — failures without navigation context
-        // still carry real signal.
-        if let navigation, staleNavigations.contains(navigation) { return }
+        // finished) must not fail the fresh load; remove-on-match keeps the
+        // stale set from retaining superseded navigations. A nil identity on
+        // either side processes the callback — failures without navigation
+        // context still carry real signal.
+        if let navigation, staleNavigations.remove(navigation) != nil { return }
         if let currentNavigation, let navigation, navigation !== currentNavigation { return }
         isReady = false
         isLoadFailed = true
@@ -710,7 +739,7 @@ extension DashboardTicketBridge: WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-        if let navigation, staleNavigations.contains(navigation) { return }
+        if let navigation, staleNavigations.remove(navigation) != nil { return }
         if let currentNavigation, let navigation, navigation !== currentNavigation { return }
         isReady = false
         isLoadFailed = true
