@@ -198,7 +198,25 @@ struct SelectableTextView: UIViewRepresentable {
         }
 
         guard let width = proposal.width, width > 0 else { return nil }
-        let measured = uiView.mountedTextView.sizeThatFits(CGSize(width: width, height: CGFloat.greatestFiniteMagnitude))
+        let textView = uiView.mountedTextView
+
+        // The text container width is set from textView.bounds.width in
+        // configure(), but during the first layout pass (or when the view is
+        // inside a horizontal ScrollView whose content width is unconstrained),
+        // bounds.width may be 0 or stale. Force the container to the proposed
+        // width so UIKit wraps lines at the actual column width, not a
+        // leftover from a previous layout cycle.
+        let previousTracksWidth = textView.textContainer.widthTracksTextView
+        textView.textContainer.widthTracksTextView = false
+        textView.textContainer.size = CGSize(width: width, height: CGFloat.greatestFiniteMagnitude)
+        textView.textContainer.widthTracksTextView = previousTracksWidth
+
+        let measured = textView.sizeThatFits(CGSize(width: width, height: CGFloat.greatestFiniteMagnitude))
+
+        if textView.bounds.width != width {
+            textView.bounds.size.width = width
+        }
+
         return CGSize(width: width, height: ceil(measured.height))
     }
 
