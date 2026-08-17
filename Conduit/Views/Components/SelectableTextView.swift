@@ -197,27 +197,30 @@ struct SelectableTextView: UIViewRepresentable {
             return measureNonWrapping()
         }
 
-        guard let width = proposal.width, width > 0 else { return nil }
         let textView = uiView.mountedTextView
 
-        // The text container width is set from textView.bounds.width in
-        // configure(), but during the first layout pass (or when the view is
-        // inside a horizontal ScrollView whose content width is unconstrained),
-        // bounds.width may be 0 or stale. Force the container to the proposed
-        // width so UIKit wraps lines at the actual column width, not a
-        // leftover from a previous layout cycle.
-        let previousTracksWidth = textView.textContainer.widthTracksTextView
-        textView.textContainer.widthTracksTextView = false
-        textView.textContainer.size = CGSize(width: width, height: CGFloat.greatestFiniteMagnitude)
-        textView.textContainer.widthTracksTextView = previousTracksWidth
+        // Inside a horizontal ScrollView the width proposal is nil; fall back
+        // to the last laid-out width so SwiftUI measures at the real column
+        // width instead of intrinsicContentSize (which uses a stale container).
+        let width = proposal.width
+            ?? (textView.bounds.width > 0 ? textView.bounds.width : nil)
+        guard let width, width > 0, width.isFinite else { return nil }
 
+        return CGSize(width: width, height: Self.measuredWrappingHeight(of: textView, at: width))
+    }
+
+    /// Shared measurement path for `sizeThatFits` and unit tests. Forces the
+    /// text container to the target width before measuring so the result is
+    /// independent of `textView.bounds` (which may be zero or stale during the
+    /// first layout pass inside a horizontal `ScrollView`).
+    static func measuredWrappingHeight(of textView: UITextView, at width: CGFloat) -> CGFloat {
+        let container = textView.textContainer
+        let tracksWidth = container.widthTracksTextView
+        container.widthTracksTextView = false
+        container.size = CGSize(width: width, height: CGFloat.greatestFiniteMagnitude)
+        container.widthTracksTextView = tracksWidth
         let measured = textView.sizeThatFits(CGSize(width: width, height: CGFloat.greatestFiniteMagnitude))
-
-        if textView.bounds.width != width {
-            textView.bounds.size.width = width
-        }
-
-        return CGSize(width: width, height: ceil(measured.height))
+        return ceil(measured.height)
     }
 
     private func configure(_ textView: UITextView) {

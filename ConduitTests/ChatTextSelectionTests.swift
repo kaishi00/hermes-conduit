@@ -598,41 +598,40 @@ final class ChatTextSelectionTests: XCTestCase {
 
     // MARK: - Markdown table cell measurement regression
 
-    /// Helper: configures a mounted UITextView the same way SelectableTextView
-    /// does, then measures at a given width. Bypasses UIViewRepresentable
-    /// Context (which is inaccessible outside SwiftUI) while exercising the
-    /// exact same UIKit measurement path.
-    private func measureTextView(
+    /// Helper: creates a UITextView in the state `configure()` leaves it —
+    /// text container sized from `textView.bounds.width` (which is zero or
+    /// stale on the first layout pass). Measures via the shared
+    /// `SelectableTextView.measuredWrappingHeight` so the tests exercise
+    /// the same code path `sizeThatFits` uses in production.
+    private func measureCell(
         text: String,
         font: UIFont = .preferredFont(forTextStyle: .footnote),
-        maximumNumberOfLines: Int = 0,
         at width: CGFloat
-    ) -> (textView: UITextView, measuredHeight: CGFloat) {
+    ) -> CGFloat {
         let textView = SelectableTextView.makeTextView()
         textView.font = font
         textView.textColor = .label
         textView.textContainer.widthTracksTextView = true
-        textView.textContainer.maximumNumberOfLines = maximumNumberOfLines
-        textView.textContainer.lineBreakMode = maximumNumberOfLines > 0
-            ? .byTruncatingTail : .byWordWrapping
 
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.lineSpacing = 0
-        let styled = NSAttributedString(string: text, attributes: [
+        textView.attributedText = NSAttributedString(string: text, attributes: [
             .font: font,
             .foregroundColor: UIColor.label,
             .paragraphStyle: paragraphStyle
         ])
-        textView.attributedText = styled
 
-        // Set the text container width to the target column width — this is
-        // what sizeThatFits now does before measuring.
-        textView.textContainer.size = CGSize(width: width, height: CGFloat.greatestFiniteMagnitude)
-        textView.bounds = CGRect(x: 0, y: 0, width: width, height: 0)
-        textView.layoutIfNeeded()
+        // Simulate configure()'s first-pass state: container sized from
+        // bounds.width (which is zero). This is the stale-bounds condition
+        // the fix corrects.
+        textView.textContainer.size = CGSize(
+            width: max(textView.bounds.width, 1),
+            height: CGFloat.greatestFiniteMagnitude
+        )
 
-        let measured = textView.sizeThatFits(CGSize(width: width, height: CGFloat.greatestFiniteMagnitude))
-        return (textView, ceil(measured.height))
+        // measuredWrappingHeight forces the container to `width` before
+        // measuring — this is the actual code under test.
+        return SelectableTextView.measuredWrappingHeight(of: textView, at: width)
     }
 
     /// Regression: table cells must wrap at the column width and produce
@@ -643,22 +642,22 @@ final class ChatTextSelectionTests: XCTestCase {
         let longText = (0..<30).map { "Word\($0)" }.joined(separator: " ")
         let columnWidth: CGFloat = 200
 
-        let (_, measuredHeight) = measureTextView(text: longText, font: font, at: columnWidth)
+        let measuredHeight = measureCell(text: longText, font: font, at: columnWidth)
         let fourLineHeight = font.lineHeight * 4
 
         XCTAssertGreaterThan(measuredHeight, fourLineHeight,
                              "Wrapping table cell must produce height above 4-line cap at \(columnWidth)pt width")
     }
 
-    /// Regression: measurement must use the column width, not a stale
-    /// textView.bounds.width. Before the fix, a view with zero bounds would
-    /// measure at width≈1, producing less than one line of height.
-    func testMeasurementUsesColumnWidthNotStaleBounds() {
+    /// Regression: `measuredWrappingHeight` must use the target width, not the
+    /// stale `textView.bounds.width` that `configure()` set on first layout.
+    /// A wider column should produce ≤ height of a narrower one.
+    func testMeasurementUsesTargetWidthNotStaleBounds() {
         let font = UIFont.preferredFont(forTextStyle: .footnote)
         let text = (0..<20).map { "content \($0)" }.joined(separator: " ")
 
-        let (_, narrowHeight) = measureTextView(text: text, font: font, at: 180)
-        let (_, wideHeight) = measureTextView(text: text, font: font, at: 300)
+        let narrowHeight = measureCell(text: text, font: font, at: 180)
+        let wideHeight = measureCell(text: text, font: font, at: 300)
 
         XCTAssertGreaterThan(narrowHeight, font.lineHeight,
                              "Measurement at 180pt must not collapse below one line")
@@ -674,9 +673,9 @@ final class ChatTextSelectionTests: XCTestCase {
         let font = UIFont.preferredFont(forTextStyle: .footnote)
         let columnWidth: CGFloat = 200
 
-        let (_, shortHeight) = measureTextView(text: "Short", font: font, at: columnWidth)
+        let shortHeight = measureCell(text: "Short", font: font, at: columnWidth)
         let longText = (0..<25).map { "Word \($0)" }.joined(separator: " ")
-        let (_, longHeight) = measureTextView(text: longText, font: font, at: columnWidth)
+        let longHeight = measureCell(text: longText, font: font, at: columnWidth)
 
         XCTAssertGreaterThan(longHeight, shortHeight,
                              "Longer cell content must produce greater height than short content")
@@ -685,11 +684,14 @@ final class ChatTextSelectionTests: XCTestCase {
     }
 
     /// Finite maximumNumberOfLines must still work for callers that intentionally
-    /// request truncation (e.g. RenderCard source preview). This guards against
-    /// a future refactor that removes the limit globally.
+    /// request truncation (e.g. RenderCard source preview). Guard against a
+    /// future refactor that globally removes the limit.
     func testFiniteLineLimitStillTruncates() {
         let font = UIFont.preferredFont(forTextStyle: .footnote)
-        let (textView, _) = measureTextView(text: "capped", font: font, maximumNumberOfLines: 4, at: 200)
+        let textView = SelectableTextView.makeTextView()
+        textView.font = font
+        textView.textContainer.maximumNumberOfLines = 4
+        textView.textContainer.lineBreakMode = .byTruncatingTail
 
         XCTAssertEqual(textView.textContainer.maximumNumberOfLines, 4,
                        "Finite line limit must propagate to the text container")
