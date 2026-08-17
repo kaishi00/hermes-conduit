@@ -923,7 +923,6 @@ private struct MarkdownTable: View {
                     font: isHeader
                         ? UIFont.preferredFont(forTextStyle: .caption1).withTraits(.traitBold)
                         : UIFont.preferredFont(forTextStyle: .footnote),
-                    maximumNumberOfLines: 4,
                     selectionCoordinator: selectionCoordinator,
                     selectionSegment: selectionSegment(row: rowIndex, column: index)
                 )

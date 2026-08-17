@@ -595,4 +595,64 @@ final class ChatTextSelectionTests: XCTestCase {
         XCTAssertEqual(truncatedLines.count, 11, // 10 content lines + 1 indicator line
                        "Truncated output must be exactly maxLines + 1 indicator line")
     }
+
+    // MARK: - Markdown table cell line-limit regression
+
+    /// Regression: MarkdownTable.tableRow previously passed maximumNumberOfLines: 4
+    /// to InlineMarkdown, causing long table cell content to be truncated with no
+    /// way to see the rest. Table cells must use the default unlimited lines so the
+    /// cell expands to its intrinsic height.
+    func testMarkdownTableParserDeliversLongCellContentUntruncated() {
+        let source = """
+        | Item | Details |
+        |---|---|
+        | Long entry | \(String(repeating: "word ", count: 30)) |
+        """
+        let blocks = MarkdownParser.parse(source)
+        let table = blocks.first
+
+        guard case .table(let headers, _, let rows) = table else {
+            return XCTFail("Expected a table block, got \(String(describing: table))")
+        }
+
+        XCTAssertEqual(headers, ["Item", "Details"])
+        XCTAssertEqual(rows.count, 1)
+
+        let longCell = rows[0][1]
+        let expectedWordCount = 30
+        XCTAssertEqual(longCell.split(separator: " ").count, expectedWordCount,
+                       "Long cell must contain the full word count without truncation")
+    }
+
+    /// Regression: the old maximumNumberOfLines: 4 would configure the UIKit text
+    /// container with a 4-line cap. This test verifies that a SelectableTextView
+    /// created with the default maximumNumberOfLines (0 = unlimited) passes
+    /// unlimited lines to the text container, matching the behavior table cells
+    /// now need after the fix.
+    @MainActor
+    func testSelectableTextViewDefaultMaximumNumberOfLinesIsUnlimited() {
+        let view = SelectableTextView(text: "unlimited")
+        let hostView = view.makeUIViewForTests(coordinator: view.makeCoordinator())
+        let textView = hostView.mountedTextView
+
+        XCTAssertEqual(textView.textContainer.maximumNumberOfLines, 0,
+                       "Default maximumNumberOfLines must be 0 (unlimited) so table cells expand")
+        XCTAssertEqual(textView.textContainer.lineBreakMode, .byWordWrapping,
+                       "Unlimited lines must use word wrapping, not truncation")
+    }
+
+    /// Finite maximumNumberOfLines must still work for callers that intentionally
+    /// request truncation (e.g. RenderCard source preview). This guards against
+    /// a future refactor that removes the limit globally.
+    @MainActor
+    func testSelectableTextViewFiniteLineLimitStillTruncates() {
+        let view = SelectableTextView(text: "capped", maximumNumberOfLines: 4)
+        let hostView = view.makeUIViewForTests(coordinator: view.makeCoordinator())
+        let textView = hostView.mountedTextView
+
+        XCTAssertEqual(textView.textContainer.maximumNumberOfLines, 4,
+                       "Finite line limit must propagate to the text container")
+        XCTAssertEqual(textView.textContainer.lineBreakMode, .byTruncatingTail,
+                       "Finite lines must use truncation, not word wrapping")
+    }
 }
