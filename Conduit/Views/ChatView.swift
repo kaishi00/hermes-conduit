@@ -276,6 +276,9 @@ struct ChatView: View {
                         hasPendingRestoration: hasPendingRestoration,
                         hasNotificationHandoff: notificationHandoffPending
                     ) else { return }
+                    ChatViewportTrace.shared.log(
+                        "messages reassert pass follows=\(followsLatest) cache=\(cacheUpdate)"
+                    )
                     DispatchQueue.main.async {
                         guard ChatMessageScrollUpdatePolicy.shouldReassertLatest(
                             after: cacheUpdate,
@@ -416,11 +419,15 @@ struct ChatView: View {
                 }
                 .onChange(of: appState.streamingText) { _, _ in
                     if followsLatest && !hasPendingRestoration {
+                        ChatViewportTrace.shared.log(
+                            "streamingText delta scroll follows=\(followsLatest)"
+                        )
                         proxy.scrollTo(bottomAnchor, anchor: .bottom)
                     }
                 }
                 .onChange(of: appState.isBusy) { _, isBusy in
                     if !isBusy, followsLatest, !hasPendingRestoration {
+                        ChatViewportTrace.shared.log("isBusy-end scroll follows=\(followsLatest)")
                         scrollToLatest(using: proxy)
                     }
                 }
@@ -509,6 +516,9 @@ struct ChatView: View {
             sessionKey: renderedScrollSessionKey ?? activeScrollSessionKey,
             viewportTransitionGeneration: appState.chatViewportTransitionGeneration
         ) else { return }
+        ChatViewportTrace.shared.log(
+            "drag began session=\(String(describing: renderedScrollSessionKey?.sessionID))"
+        )
         scrollOwnerState.invalidateForUserDrag()
         chatDragCompletionToken = nil
         cancelAutomaticRestoration()
@@ -517,6 +527,9 @@ struct ChatView: View {
 
     @MainActor
     private func completeChatDrag(_ completed: ChatDragCompletionToken) async {
+        ChatViewportTrace.shared.log(
+            "drag completion evaluate gen=\(completed.dragGeneration)"
+        )
         await ChatFollowLatestRelatchPolicy.completeDragAfterNextTurn(
             isCurrent: {
                 ChatFollowLatestRelatchPolicy.isCompletionCurrent(
@@ -611,6 +624,9 @@ struct ChatView: View {
                 break
             case .scroll(let destination):
                 guard restorationRequestIsCurrent(request) else { return }
+                ChatViewportTrace.shared.log(
+                    "restoration scroll \(destination) gen=\(request.generation)"
+                )
                 var transaction = Transaction()
                 transaction.animation = nil
                 withTransaction(transaction) {
@@ -625,6 +641,9 @@ struct ChatView: View {
                 }
             case .complete:
                 guard restorationRequestIsCurrent(request) else { return }
+                ChatViewportTrace.shared.log(
+                    "restoration complete gen=\(request.generation)"
+                )
                 appState.completeChatResumeRestoration(generation: request.generation)
                 if destination == .latest {
                     saveChatScrollPosition(for: request.sessionKey)
@@ -632,6 +651,9 @@ struct ChatView: View {
                 return
             case .abandon:
                 guard restorationRequestIsCurrent(request) else { return }
+                ChatViewportTrace.shared.log(
+                    "restoration abandon gen=\(request.generation)"
+                )
                 appState.abandonChatResumeRestoration(generation: request.generation)
                 return
             case .cancelled:
@@ -695,6 +717,9 @@ struct ChatView: View {
         guard !hasPendingRestoration else { return }
         let ownerToken = scrollOwnerState.claimLatest()
         let anchorID = bottomAnchor
+        ChatViewportTrace.shared.log(
+            "scroll latest anchor=\(anchorID) ownerGen=\(ownerToken.generation)"
+        )
         withAnimation(ConduitMotion.response) {
             proxy.scrollTo(anchorID, anchor: .bottom)
         }
@@ -711,6 +736,9 @@ struct ChatView: View {
                 hasPendingRestoration: hasPendingRestoration,
                 isCancelled: Task.isCancelled
             ) else { return }
+            ChatViewportTrace.shared.log(
+                "scroll latest retry anchor=\(retryAnchor) ownerGen=\(ownerToken.generation)"
+            )
             withAnimation(ConduitMotion.response) {
                 proxy.scrollTo(retryAnchor, anchor: .bottom)
             }
@@ -720,6 +748,9 @@ struct ChatView: View {
     private func scrollToTop(using proxy: ScrollViewProxy, request: Int) {
         let ownerToken = scrollOwnerState.claimTop(request: request)
         let anchorID = topAnchor
+        ChatViewportTrace.shared.log(
+            "scroll top anchor=\(anchorID) request=\(request) ownerGen=\(ownerToken.generation)"
+        )
         var transaction = Transaction()
         transaction.animation = nil
         withTransaction(transaction) {
@@ -733,6 +764,9 @@ struct ChatView: View {
                 currentAnchor: topAnchor,
                 isCancelled: Task.isCancelled
             ) else { return }
+            ChatViewportTrace.shared.log(
+                "scroll top retry anchor=\(retryAnchor) request=\(request)"
+            )
             var transaction = Transaction()
             transaction.animation = nil
             withTransaction(transaction) {
@@ -774,6 +808,7 @@ struct ChatView: View {
             shouldFollowLatest: shouldFollowLatest
         ) {
         case .top:
+            ChatViewportTrace.shared.log("handoff complete -> top")
             followsLatest = false
             // The handoff completes once the destination's bottom-marker
             // geometry arrives, but the lazy top anchor may not be laid out
@@ -781,6 +816,7 @@ struct ChatView: View {
             // the top once the anchor materializes.
             scrollToTop(using: proxy, request: appState.chatScrollToTopRequest)
         case .latest:
+            ChatViewportTrace.shared.log("handoff complete -> latest")
             followsLatest = true
             _ = scrollOwnerState.claimLatest()
             var transaction = Transaction()
@@ -789,6 +825,7 @@ struct ChatView: View {
                 proxy.scrollTo(bottomAnchor, anchor: .bottom)
             }
         case .none:
+            ChatViewportTrace.shared.log("handoff complete -> none")
             followsLatest = false
         }
     }
@@ -820,6 +857,7 @@ struct ChatView: View {
             // clears this owner via beginChatDragIfNeeded; this covers the
             // non-drag paths, e.g. short conversations where top ≈ bottom.)
             guard isNearBottom else { return }
+            ChatViewportTrace.shared.log("top owner returned near bottom -> latest")
             scrollOwnerState.claimLatest()
         }
         if ChatFollowLatestRelatchPolicy.shouldRelatch(
@@ -829,6 +867,7 @@ struct ChatView: View {
                 || notificationHandoffPending,
             isDragging: isDraggingChat
         ) {
+            ChatViewportTrace.shared.log("relatch followsLatest near bottom")
             followsLatest = true
         }
     }
