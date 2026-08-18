@@ -1591,3 +1591,309 @@ extension ChatViewportControllerTests {
         XCTAssertEqual(controller.renderedViewportSnapshot()?.snapshot.anchorSourceMessageID, "m2")
     }
 }
+
+// MARK: - Viewport stress scenarios (hardening pass - deterministic, traceable)
+
+extension ChatViewportControllerTests {
+
+    // Helper: assert only bottom commands in effects, all current.
+    private func assertOnlyCurrentBottomCommands(
+        _ effects: [ChatViewportEffect],
+        in controller: ChatViewportController,
+        file: StaticString = #file, line: UInt = #line
+    ) {
+        for effect in effects {
+            if case .scroll(let cmd) = effect {
+                if case .bottom = cmd.destination {} else {
+                    XCTFail("non-bottom command in effects: \(effect)", file: file, line: line)
+                }
+                XCTAssertTrue(controller.isCommandCurrent(cmd), "stale command: \(cmd)", file: file, line: line)
+            }
+        }
+    }
+
+    // Scenario 7: rapid A→B→C switching during active content growth.
+    // No stale session A or B command may survive into C.
+    func testStressRapidSwitchingKillsAllStaleCommands() {
+        var controller = makeController(following: keyA)
+        _ = controller.transcriptChanged(
+            messages: [message("a1", "hello A")], transcriptRevision: 1,
+            viewportTransitionGeneration: 1, isInitialSync: true
+        )
+        let keyC = ChatScrollSessionKey(profile: "p", sessionID: "session-c")
+
+        // A→B: emits bottom for B, generation advanced.
+        let ab = controller.renderedSessionChanged(
+            to: keyB,
+            identity: identity(for: keyB),
+            viaNotification: false,
+            viewportTransitionGeneration: 2
+        )
+        guard case .scroll(let cmdAB) = ab.first(where: {
+            if case .scroll = $0 { return true }; return false
+        }) else { return XCTFail("expected A→B scroll") }
+        XCTAssertTrue(controller.isCommandCurrent(cmdAB))
+
+        // B→C: all A-era and B-era commands die; only C's is current.
+        let bc = controller.renderedSessionChanged(
+            to: keyC,
+            identity: identity(for: keyC),
+            viaNotification: false,
+            viewportTransitionGeneration: 3
+        )
+        XCTAssertFalse(controller.isCommandCurrent(cmdAB), "B-era command must be stale in C")
+        if case .scroll(let cmdBC) = bc.first(where: {
+            if case .scroll = $0 { return true }; return false
+        }) {
+            XCTAssertEqual(cmdBC.destination, .bottom(anchorID: "chat-latest-p-session-c"))
+            XCTAssertTrue(controller.isCommandCurrent(cmdBC))
+        }
+        XCTAssertEqual(controller.renderedSessionKey, keyC)
+        XCTAssertEqual(controller.mode, .followingLatest)
+    }
+
+    // Scenario 1: long continuously streaming response, untouched.
+    // 120 layout ticks at 250ms-equivalent cadence (30 Hz block). Every
+    // growth tick beyond tolerance emits exactly one current bottom command.
+    // Generation never bumps from growth alone. No upward jump.
+    func testStressLongContinuousStreamFollows() {
+        var controller = makeController(following: keyA)
+        let baseBottom: CGFloat = 1000
+        let viewportBottom: CGFloat = 800
+        var totalBottomCommands = 0
+
+        for tick in 1...120 {
+            let bottom = baseBottom + CGFloat(tick * 24)
+            let effects = controller.layoutMetricsChanged(facts: layoutFacts(
+                bottomMarkerMaxY: bottom,
+                viewportMaxY: viewportBottom,
+                scope: controller.renderedScrollScope
+            ))
+            assertOnlyCurrentBottomCommands(effects, in: controller)
+            let commands = scrollCommands(effects)
+            if !commands.isEmpty {
+                totalBottomCommands += 1
+                XCTAssertEqual(commands.count, 1, "tick \(tick): exactly one command")
+                XCTAssertEqual(commands[0].animated, false, "follow-growth must be non-animated")
+            }
+            XCTAssertEqual(controller.mode, .followingLatest, "tick \(tick): must stay following")
+        }
+        XCTAssertTrue(totalBottomCommands > 100, "most growth ticks should produce a follow command")
+    }
+
+    // Scenario 2+3: drag up during stream → browsing (no commands); return
+    // near bottom → relatch; further growth → following again.
+    func testStressDragUpDuringStreamThenReturnToBottom() {
+        var controller = makeController(following: keyA)
+        // Fill layout facts so controller knows the viewport geometry.
+        _ = controller.layoutMetricsChanged(facts: layoutFacts(
+            bottomMarkerMaxY: 1200, viewportMaxY: 800,
+            scope: controller.renderedScrollScope
+        ))
+
+        // Drag up: deliberate user gesture.
+        _ = controller.userDragBegan(sessionKey: keyA, viewportTransitionGeneration: 1)
+        XCTAssertEqual(controller.mode, .browsing)
+
+        // Streaming continues (content grows): no command escapes.
+        for tick in 1...10 {
+            let effects = controller.layoutMetricsChanged(facts: layoutFacts(
+                bottomMarkerMaxY: 1200 + CGFloat(tick * 24),
+                viewportMaxY: 800,
+                scope: controller.renderedScrollScope
+            ))
+            XCTAssertTrue(scrollCommands(effects).isEmpty, "tick \(tick): browsing ignores growth")
+        }
+
+        // End the drag (finger lifts).
+        _ = controller.userDragGestureEnded()
+
+        // Return near the bottom: relatch.
+        _ = controller.layoutMetricsChanged(facts: layoutFacts(
+            bottomMarkerMaxY: 830,
+            viewportMaxY: 800,
+            scope: controller.renderedScrollScope
+        ))
+        XCTAssertEqual(controller.mode, .followingLatest, "relatched near bottom")
+
+        // Resume following growth.
+        let followEffects = controller.layoutMetricsChanged(facts: layoutFacts(
+            bottomMarkerMaxY: 880,
+            viewportMaxY: 800,
+            scope: controller.renderedScrollScope
+        ))
+        XCTAssertFalse(scrollCommands(followEffects).isEmpty, "growth after relatch produces follow commands")
+    }
+
+    // Scenario 4+5: title→top during stream; streaming cannot yank top-owned
+    // viewport; latest button resumes following.
+    func testStressTitleTopDuringStreamThenLatest() {
+        var controller = makeController(following: keyA)
+        _ = controller.layoutMetricsChanged(facts: layoutFacts(
+            bottomMarkerMaxY: 1500, viewportMaxY: 800,
+            scope: controller.renderedScrollScope
+        ))
+
+        // Title → top.
+        let topEffects = controller.explicitTopRequested(request: 7)
+        XCTAssertEqual(controller.mode, .explicitTop(request: 7))
+
+        // Streaming continues: no follow/latest command escapes.
+        for tick in 1...10 {
+            let effects = controller.layoutMetricsChanged(facts: layoutFacts(
+                bottomMarkerMaxY: 1500 + CGFloat(tick * 20),
+                viewportMaxY: 800,
+                scope: controller.renderedScrollScope
+            ))
+            XCTAssertTrue(scrollCommands(effects).isEmpty, "tick \(tick): top-owned ignores growth")
+        }
+
+        // Latest button: forces follow-latest.
+        let latestEffects = controller.explicitLatestRequested()
+        XCTAssertEqual(controller.mode, .followingLatest)
+        XCTAssertEqual(scrollCommands(latestEffects).count, 1)
+        XCTAssertEqual(scrollCommands(latestEffects)[0].animated, true)
+        XCTAssertTrue(controller.isCommandCurrent(scrollCommands(latestEffects)[0]))
+    }
+
+    // Scenario 6: rapid A→B→C switching during an active drag.
+    // Drag lifecycle lives in controller so it follows the session; no stale
+    // drag completion can fire for the wrong session.
+    func testStressRapidSwitchingDuringDrag() {
+        var controller = makeController(following: keyA)
+        _ = controller.userDragBegan(sessionKey: keyA, viewportTransitionGeneration: 1)
+        XCTAssertEqual(controller.mode, .browsing)
+
+        // A→B while dragging: non-equivalent key invalidates the drag
+        // internally (port of the old handler's keysAreEquivalent guard).
+        let keyC = ChatScrollSessionKey(profile: "p", sessionID: "session-c")
+        let ab = controller.renderedSessionChanged(
+            to: keyB,
+            identity: identity(for: keyB),
+            viaNotification: false,
+            viewportTransitionGeneration: 2
+        )
+        XCTAssertEqual(controller.mode, .browsing, "drag continues through switch")
+        // No restoration pending, so no cancelAutomaticRestoration.
+
+        // B→C: another non-equivalent switch; still browsing.
+        let bc = controller.renderedSessionChanged(
+            to: keyC,
+            identity: identity(for: keyC),
+            viaNotification: false,
+            viewportTransitionGeneration: 3
+        )
+        XCTAssertEqual(controller.mode, .browsing)
+
+        // End gesture near bottom: drag was invalidated by the switch, so
+        // no drag completion fires — but the gesture-ended event sets
+        // dragGestureActive = false, allowing geometry relatch.
+        _ = controller.userDragGestureEnded()
+        XCTAssertNil(controller.pendingDragEvaluation, "invalidated gesture has no evaluation")
+
+        // Near-bottom tick: relatch to followingLatest on C.
+        _ = controller.layoutMetricsChanged(facts: layoutFacts(
+            bottomMarkerMaxY: 810, viewportMaxY: 800,
+            scope: controller.renderedScrollScope
+        ))
+        XCTAssertEqual(controller.mode, .followingLatest, "relatched on C after drag gesture ended")
+        let followEffects = controller.layoutMetricsChanged(facts: layoutFacts(
+            bottomMarkerMaxY: 806, viewportMaxY: 800,
+            scope: controller.renderedScrollScope
+        ))
+        assertOnlyCurrentBottomCommands(followEffects, in: controller)
+    }
+
+    // Scenario 8: large Markdown table/code response growth while following.
+    // Height jumps of 120pt (table expansion) are within tolerance for follow.
+    func testStressTableExpansionGrowthFollows() {
+        var controller = makeController(following: keyA)
+        let jumps: [CGFloat] = [200, 320, 440, 560, 680, 800]
+        for (i, jump) in jumps.enumerated() {
+            let effects = controller.layoutMetricsChanged(facts: layoutFacts(
+                bottomMarkerMaxY: 800 + jump,
+                viewportMaxY: 800,
+                scope: controller.renderedScrollScope
+            ))
+            assertOnlyCurrentBottomCommands(effects, in: controller)
+            let commands = scrollCommands(effects)
+            XCTAssertEqual(commands.count, 1, "table jump \(i): follow command issued")
+            XCTAssertEqual(commands[0].animated, false, "table follow non-animated")
+        }
+    }
+
+    // Scenario 9: notification handoff while another transcript visible.
+    // Destination arrives after a delay; nothing old leaks through.
+    func testStressNotificationHandoffDuringActivity() {
+        var controller = makeController(following: keyA)
+        _ = controller.layoutMetricsChanged(facts: layoutFacts(
+            bottomMarkerMaxY: 1200, viewportMaxY: 800,
+            scope: controller.renderedScrollScope
+        ))
+
+        // Notification arrives.
+        let handoff = controller.notificationHandoffBegan(destination: keyB)
+        XCTAssertEqual(controller.mode, .transitioning)
+        XCTAssertTrue(cancelEffects(handoff))
+
+        // Content growth while transitioning: inert.
+        for tick in 1...5 {
+            let effects = controller.layoutMetricsChanged(facts: layoutFacts(
+                bottomMarkerMaxY: 1200 + CGFloat(tick * 20),
+                viewportMaxY: 800,
+                scope: controller.renderedScrollScope
+            ))
+            XCTAssertTrue(scrollCommands(effects).isEmpty, "tick \(tick): transitioning ignores growth")
+        }
+
+        // Measurement arrives.
+        _ = controller.notificationHandoffLayoutMeasured()
+        XCTAssertTrue(controller.notificationHandoffAwaitingLayout == false)
+
+        // Destination ready.
+        let ready = controller.notificationHandoffDestinationReady(activeKey: keyB)
+        XCTAssertEqual(controller.mode, .followingLatest)
+        XCTAssertEqual(scrollCommands(ready).count, 1)
+        XCTAssertEqual(scrollCommands(ready)[0].destination, .bottom(anchorID: "chat-latest-p-session-b"))
+
+        // Post-handoff growth follows B normally.
+        let postEffects = controller.layoutMetricsChanged(facts: layoutFacts(
+            bottomMarkerMaxY: 806,
+            viewportMaxY: 800,
+            scope: controller.renderedScrollScope
+        ))
+        assertOnlyCurrentBottomCommands(postEffects, in: controller)
+    }
+
+    // Scenario 10 + invariant: every mode transition always maintains
+    // exactly one current generation — no two commands from different
+    // generations can both validate.
+    func testStressInvariantSingleCurrentGeneration() {
+        var controller = makeController(following: keyA)
+        var allCommands: [ChatViewportCommand] = []
+
+        // Collect commands from a realistic scenario sequence.
+        allCommands += scrollCommands(controller.layoutMetricsChanged(
+            facts: layoutFacts(bottomMarkerMaxY: 806, viewportMaxY: 800,
+                              scope: controller.renderedScrollScope)))
+        allCommands += scrollCommands(controller.explicitTopRequested(request: 1))
+        allCommands += scrollCommands(controller.explicitLatestRequested())
+        _ = controller.userDragBegan(sessionKey: keyA, viewportTransitionGeneration: 1)
+        allCommands += scrollCommands(controller.explicitLatestRequested())
+        _ = controller.renderedSessionChanged(
+            to: keyB, identity: identity(for: keyB),
+            viaNotification: false, viewportTransitionGeneration: 2)
+        allCommands += scrollCommands(controller.explicitLatestRequested())
+
+        // Exactly one command from the latest batch should be current.
+        let currentCount = allCommands.filter { controller.isCommandCurrent($0) }.count
+        XCTAssertEqual(currentCount, 1, "exactly one command must be current at any time")
+
+        // Verify no stale command has the current generation.
+        let generation = controller.generation
+        for cmd in allCommands where cmd.generation != generation {
+            XCTAssertFalse(controller.isCommandCurrent(cmd),
+                           "command gen \(cmd.generation) must be stale (current: \(generation))")
+        }
+    }
+}
