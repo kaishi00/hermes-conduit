@@ -9,7 +9,7 @@ enum ConnectionURLPolicyError: LocalizedError, Equatable {
         case .invalidURL:
             return "Enter a valid dashboard URL."
         case .insecureTransport:
-            return "Remote dashboards must use HTTPS; HTTP is allowed only for localhost and Tailscale tailnet hosts."
+            return "Remote dashboards must use HTTPS; HTTP is allowed only for local networks (localhost, private LAN, and Tailscale)."
         }
     }
 }
@@ -143,7 +143,7 @@ enum ConnectionURLPolicy {
 
     private static func isInsecureTransportAllowed(_ value: String) -> Bool {
         let host = value.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
-        return isLoopbackHost(host) || isTailscaleHost(host)
+        return isLoopbackHost(host) || isPrivateLANHost(host) || isTailscaleHost(host)
     }
 
     private static func isLoopbackHost(_ value: String) -> Bool {
@@ -158,9 +158,31 @@ enum ConnectionURLPolicy {
         // Tailscale CGNAT range: 100.64.0.0/10 (100.64.0.0 – 100.127.255.255)
         // Require a well-formed IPv4 address to prevent label-based bypasses
         // like 100.64.attacker.example being accepted.
-        let octets = host.split(separator: ".").compactMap { Int($0) }
-        guard octets.count == 4,
-              octets.allSatisfy({ (0...255).contains($0) }) else { return false }
+        guard let octets = ipv4Octets(host) else { return false }
         return octets[0] == 100 && octets[1] >= 64 && octets[1] <= 127
+    }
+
+    private static func isPrivateLANHost(_ value: String) -> Bool {
+        // RFC1918 private ranges: 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
+        guard let octets = ipv4Octets(value) else { return false }
+        switch octets[0] {
+        case 10:
+            return true
+        case 172:
+            return (16...31).contains(octets[1])
+        case 192:
+            return octets[1] == 168
+        default:
+            return false
+        }
+    }
+
+    private static func ipv4Octets(_ value: String) -> [Int]? {
+        let components = value.split(separator: ".", omittingEmptySubsequences: false)
+        guard components.count == 4 else { return nil }
+        let octets = components.compactMap { Int($0) }
+        guard octets.count == 4,
+              octets.allSatisfy({ (0...255).contains($0) }) else { return nil }
+        return octets
     }
 }
