@@ -18,8 +18,6 @@ struct ChatView: View {
     @State private var renderedScrollTargets = ChatRenderedScrollTargets()
     @State private var viewportSnapshotProviderID = UUID()
     @State private var viewport = ChatViewportController()
-    // Legacy owner tokens for the isBusy scroll path (Task 6 removes it).
-    @State private var scrollOwnerState = ChatScrollOwnerState()
     @GestureState private var isDraggingChat = false
 
     private var renderedScrollSessionKey: ChatScrollSessionKey? { viewport.renderedSessionKey }
@@ -28,9 +26,7 @@ struct ChatView: View {
 
     private var scrollViewportMinY: CGFloat? { scrollViewportFrame?.minY }
 
-    /// Single source of follow-latest truth: the controller's mode. Legacy
-    /// writers go through `setLegacyFollowsLatest` until Tasks 4-6 migrate
-    /// them; there is no independent followsLatest state anymore.
+    /// Single source of follow-latest truth: the controller's mode.
     private var followsLatest: Bool { viewport.isFollowingLatest }
 
     private var activeScrollSessionKey: ChatScrollSessionKey? {
@@ -450,20 +446,6 @@ struct ChatView: View {
                     )
                 }
             }
-            .onChange(of: appState.streamingText) { _, _ in
-                if followsLatest && !hasPendingRestoration {
-                    ChatViewportTrace.shared.log(
-                        "streamingText delta scroll follows=\(followsLatest)"
-                    )
-                    proxy.scrollTo(bottomAnchor, anchor: .bottom)
-                }
-            }
-            .onChange(of: appState.isBusy) { _, isBusy in
-                if !isBusy, followsLatest, !hasPendingRestoration {
-                    ChatViewportTrace.shared.log("isBusy-end scroll follows=\(followsLatest)")
-                    scrollToLatest(using: proxy)
-                }
-            }
     }
 
     private func saveChatScrollPosition(for preferredKey: ChatScrollSessionKey? = nil) {
@@ -550,71 +532,6 @@ struct ChatView: View {
         }
     }
 
-    // LEGACY (Tasks 4-6 migrate their callers to controller effects; these
-    // disappear once session-change, messages-reassert, isBusy, and handoff
-    // paths are routed through the controller).
-    private func scrollToLatest(using proxy: ScrollViewProxy) {
-        guard !hasPendingRestoration else { return }
-        let ownerToken = scrollOwnerState.claimLatest()
-        let anchorID = bottomAnchor
-        ChatViewportTrace.shared.log(
-            "scroll latest anchor=\(anchorID) ownerGen=\(ownerToken.generation)"
-        )
-        withAnimation(ConduitMotion.response) {
-            proxy.scrollTo(anchorID, anchor: .bottom)
-        }
-        // Retry after a short delay: proxy.scrollTo is a silent no-op if the
-        // bottom anchor row isn't materialized yet (LazyVStack on a long
-        // transcript). A single delayed retry covers the common case where
-        // messages arrive on the same main-actor turn.
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(150))
-            guard let retryAnchor = scrollOwnerState.latestRetryAnchor(
-                for: ownerToken,
-                currentAnchor: bottomAnchor,
-                followsLatest: followsLatest,
-                hasPendingRestoration: hasPendingRestoration,
-                isCancelled: Task.isCancelled
-            ) else { return }
-            ChatViewportTrace.shared.log(
-                "scroll latest retry anchor=\(retryAnchor) ownerGen=\(ownerToken.generation)"
-            )
-            withAnimation(ConduitMotion.response) {
-                proxy.scrollTo(retryAnchor, anchor: .bottom)
-            }
-        }
-    }
-
-    private func scrollToTop(using proxy: ScrollViewProxy, request: Int) {
-        let ownerToken = scrollOwnerState.claimTop(request: request)
-        let anchorID = topAnchor
-        ChatViewportTrace.shared.log(
-            "scroll top anchor=\(anchorID) request=\(request) ownerGen=\(ownerToken.generation)"
-        )
-        var transaction = Transaction()
-        transaction.animation = nil
-        withTransaction(transaction) {
-            proxy.scrollTo(anchorID, anchor: .top)
-        }
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(150))
-            guard let retryAnchor = scrollOwnerState.topRetryAnchor(
-                for: ownerToken,
-                currentRequest: appState.chatScrollToTopRequest,
-                currentAnchor: topAnchor,
-                isCancelled: Task.isCancelled
-            ) else { return }
-            ChatViewportTrace.shared.log(
-                "scroll top retry anchor=\(retryAnchor) request=\(request)"
-            )
-            var transaction = Transaction()
-            transaction.animation = nil
-            withTransaction(transaction) {
-                proxy.scrollTo(retryAnchor, anchor: .top)
-            }
-        }
-    }
-
     /// A notification handoff completes only after the destination transcript
     /// has emitted its own geometry. This is a layout fact rather than a
     /// timer, so a long lazy transcript cannot inherit the old conversation's
@@ -664,17 +581,6 @@ struct ChatView: View {
             viewportMaxY: scrollViewportMaxY,
             rowFrames: frames,
             renderedScope: scope
-        )
-    }
-
-    /// Transitional bridge for not-yet-migrated paths that used to assign
-    /// `followsLatest`. Callers: restoration loop (Task 5), notification
-    /// handoff branches (Task 4), session/profile change (Task 4). This
-    /// helper must be gone by Task 7.
-    private func setLegacyFollowsLatest(_ following: Bool, using proxy: ScrollViewProxy) {
-        performViewportEffects(
-            viewport.legacySetFollowingLatest(following),
-            using: proxy
         )
     }
 

@@ -1322,3 +1322,76 @@ extension ChatViewportControllerTests {
         XCTAssertEqual(commands[0].destination, .bottom(anchorID: "chat-latest-p-session-a"))
     }
 }
+
+// MARK: - Streaming growth regression (Task 6)
+
+extension ChatViewportControllerTests {
+
+    // The ephemeral streaming bubble replacing a settled message row is a
+    // rendering-identity change; a browsing viewport must not move.
+    func testStreamingBubbleReplacementToSettledMessageDoesNotJumpBrowsing() {
+        var controller = makeController(following: keyA)
+        let original = [message("m1", "streamed answer")]
+        _ = controller.transcriptChanged(
+            messages: original, transcriptRevision: 1,
+            viewportTransitionGeneration: 1, isInitialSync: true
+        )
+        _ = controller.userDragBegan(sessionKey: keyA, viewportTransitionGeneration: 1)
+        _ = controller.userDragGestureEnded()
+        XCTAssertEqual(controller.mode, .browsing)
+        let semanticBefore = controller.targets.first?.semanticID
+
+        // Same content, new rendering identity (projection replacement).
+        let replaced = [ChatMessage(
+            id: "m1-settled",
+            role: .assistant,
+            content: "streamed answer",
+            timestamp: "2026-01-01T00:00:00Z"
+        )]
+        let effects = controller.transcriptChanged(
+            messages: replaced, transcriptRevision: 2,
+            viewportTransitionGeneration: 1
+        )
+        XCTAssertTrue(scrollCommands(effects).isEmpty, "browsing must not move")
+        XCTAssertEqual(controller.targets.first?.semanticID, semanticBefore,
+                       "semantic anchor survives the projection change")
+    }
+
+    // While following, a rendering-only replacement reasserts latest exactly
+    // once (one animated command), and layout ticks within tolerance after
+    // the reassert issue nothing further.
+    func testRenderingOnlyReplacementWhileFollowingReassertsLatestExactlyOnce() {
+        var controller = makeController(following: keyA)
+        let original = [message("m1", "streamed answer")]
+        _ = controller.transcriptChanged(
+            messages: original, transcriptRevision: 1,
+            viewportTransitionGeneration: 1, isInitialSync: true
+        )
+        let replaced = [ChatMessage(
+            id: "m1-settled",
+            role: .assistant,
+            content: "streamed answer",
+            timestamp: "2026-01-01T00:00:00Z"
+        )]
+        let effects = controller.transcriptChanged(
+            messages: replaced, transcriptRevision: 2,
+            viewportTransitionGeneration: 1
+        )
+        let commands = scrollCommands(effects)
+        XCTAssertEqual(commands.count, 1, "exactly one reassert command")
+        XCTAssertEqual(commands[0].animated, true)
+
+        // Settled layout: pinned at the bottom, no drift, no further
+        // commands from either layout ticks or repeated transcript syncs.
+        _ = controller.layoutMetricsChanged(facts: layoutFacts(
+            bottomMarkerMaxY: 800,
+            viewportMaxY: 800,
+            scope: controller.renderedScrollScope
+        ))
+        let settled = controller.transcriptChanged(
+            messages: replaced, transcriptRevision: 2,
+            viewportTransitionGeneration: 1
+        )
+        XCTAssertTrue(scrollCommands(settled).isEmpty)
+    }
+}
