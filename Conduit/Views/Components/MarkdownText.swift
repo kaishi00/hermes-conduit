@@ -1632,15 +1632,20 @@ enum MarkdownParser {
         let lines = source.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
         var visibleLines: [String] = []
         var definitions: [String] = []
-        // Fenced code and math blocks are raw content — the same regions the
-        // block walker below consumes wholesale — so a definition-looking line
-        // inside them must stay put.
         var openFence: String?
         var mathClose: String?
 
         for line in lines {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
 
+            // Fenced code and math blocks are raw content — the same regions
+            // the block walker below consumes wholesale — so a
+            // definition-looking line inside them must stay put. One known
+            // divergence: a fence opener inside a blockquote ("> ```") reads
+            // as a quote line to the walker but opens a fence here, so a
+            // definition-looking line in that region is collected while the
+            // walker renders the region as prose. Quote-nested fences are not
+            // a construct this renderer supports; accepted as an edge case.
             if let close = mathClose {
                 visibleLines.append(line)
                 if trimmed == close { mathClose = nil }
@@ -1671,9 +1676,11 @@ enum MarkdownParser {
 
         let visibleSource = visibleLines.joined(separator: "\n")
         let blocks = parseBlocks(visibleLines, recognizesGatewayMedia: recognizesGatewayMedia)
-        // Preserve the original fallback (non-empty source must render), but
-        // against the stripped body so a definitions-only message doesn't
-        // resurface its definitions as a visible paragraph.
+        // Defensive safety net carried over from the original parse(): if the
+        // walker ever produces nothing for non-whitespace input, surface the
+        // stripped body rather than rendering an empty message. Definitions
+        // were already removed from visibleSource, so they cannot resurface
+        // here even in that fallback.
         let finalBlocks = blocks.isEmpty && !visibleSource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? [.paragraph(visibleSource)]
             : blocks

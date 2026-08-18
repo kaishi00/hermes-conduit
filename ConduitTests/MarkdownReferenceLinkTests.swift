@@ -195,7 +195,7 @@ final class MarkdownReferenceLinkTests: XCTestCase {
         XCTAssertTrue(codeSource.contains("[in-code]: https://example.com/not-a-definition"))
     }
 
-    func testParseDocumentLeavesDefinitionsInsideMathBlocks() {
+    func testParseDocumentLeavesDefinitionInsideMathBlocks() {
         let source = """
         Before [x][in-math].
 
@@ -217,6 +217,50 @@ final class MarkdownReferenceLinkTests: XCTestCase {
             return XCTFail("Expected a math block, got \(document.blocks[1])")
         }
         XCTAssertTrue(mathSource.contains("[in-math]: https://example.com/not-a-definition"))
+    }
+
+    func testParseDocumentLeavesDefinitionsInsideUnclosedFence() {
+        // A streaming message often ends mid-fence; everything after an
+        // unclosed opener is code content, so a definition-looking line there
+        // must be neither collected nor made visible.
+        let source = """
+        See [x][docs].
+
+        ```swift
+        let line = "[docs]: https://example.com/in-fence"
+        """
+        let document = MarkdownParser.parseDocument(source, recognizesGatewayMedia: false)
+
+        XCTAssertFalse(
+            document.references.containsDefinitions,
+            "A definition-looking line inside an unclosed fence is code content"
+        )
+        guard case .code(let language, let codeSource) = document.blocks.last else {
+            return XCTFail("Expected a trailing code block, got \(document.blocks)")
+        }
+        XCTAssertEqual(language, "swift")
+        XCTAssertTrue(codeSource.contains("[docs]: https://example.com/in-fence"))
+    }
+
+    func testParseDocumentLeavesDefinitionLookingLineInsideListItem() {
+        let source = """
+        - See [docs].
+        - [id]: https://example.com/not-a-definition
+
+        [id]: https://example.com/real
+        """
+        let document = MarkdownParser.parseDocument(source, recognizesGatewayMedia: false)
+
+        XCTAssertEqual(
+            document.references.definitionsMarkdown,
+            "[id]: https://example.com/real",
+            "A definition-looking list item is item content, not a definition line"
+        )
+        guard case .unorderedList(let items) = document.blocks.first else {
+            return XCTFail("Expected an unordered list, got \(document.blocks)")
+        }
+        XCTAssertEqual(items.count, 2)
+        XCTAssertTrue(items[1].contains("[id]: https://example.com/not-a-definition"))
     }
 
     func testParseDocumentDoesNotSwallowFootnoteMarkers() {
@@ -443,7 +487,7 @@ final class MarkdownReferenceLinkTests: XCTestCase {
         let source = """
         | Kind | Detail |
         |---|---|
-        | inline | [inline](https://example.com/inline) |
+        | plain | [inline](https://example.com/inline) |
         | broken | [unresolved][missing] |
 
         [real]: https://example.com/real
@@ -455,12 +499,29 @@ final class MarkdownReferenceLinkTests: XCTestCase {
         host.view.setNeedsLayout()
         host.view.layoutIfNeeded()
 
-        let cellStrings = allSubviews(of: host.view)
-            .compactMap { $0 as? UITextView }
-            .map { $0.attributedText.string }
-        XCTAssertTrue(cellStrings.contains(where: { $0 == "inline" }))
-        XCTAssertTrue(cellStrings.contains(where: { $0.contains("[unresolved][missing]") }),
-                      "Unresolved reference must stay literal, got \(cellStrings)")
+        let cellTextViews = allSubviews(of: host.view).compactMap { $0 as? UITextView }
+
+        let inlineCell = try XCTUnwrap(
+            cellTextViews.first { $0.attributedText.string == "inline" },
+            "The inline-link cell must render standalone"
+        )
+        let inlineLink = try XCTUnwrap(
+            inlineCell.attributedText.attribute(.link, at: 0, effectiveRange: nil) as? URL
+        )
+        XCTAssertEqual(inlineLink.absoluteString, "https://example.com/inline")
+
+        let unresolvedCell = try XCTUnwrap(
+            cellTextViews.first { $0.attributedText.string.contains("[unresolved][missing]") },
+            "Unresolved reference must stay literal"
+        )
+        for offset in 0..<unresolvedCell.attributedText.length {
+            XCTAssertNil(
+                unresolvedCell.attributedText.attribute(.link, at: offset, effectiveRange: nil) as? URL,
+                "No link may be invented for an unresolved reference"
+            )
+        }
+
+        let cellStrings = cellTextViews.map { $0.attributedText.string }
         XCTAssertFalse(cellStrings.contains(where: { $0.contains("[real]:") }),
                        "The definition must not be visible anywhere in the rendered message")
     }
