@@ -215,18 +215,35 @@ struct ChatRenderedScrollContent: Equatable {
     let scope: ChatRenderedScrollScope
 }
 
+/// Global-space frame of one rendered stable message row, scoped to the
+/// rendered scroll scope that produced it. Only rows SwiftUI actually laid
+/// out report frames; this is how the viewport controller learns which
+/// stable row intersects the viewport without .scrollPosition.
+struct ChatRenderedRowFrame: Equatable {
+    let id: String        // ChatMessageScrollTarget.id == message.id
+    let minY: CGFloat
+    let maxY: CGFloat
+    let scope: ChatRenderedScrollScope
+}
+
 /// A preference payload emitted only by targets SwiftUI has instantiated.
 /// The cache deliberately cannot populate this value: lazy offscreen rows
 /// become ready only when their own geometry participates in the layout pass.
 struct ChatRenderedScrollTargets: Equatable {
     private(set) var rowsByScope: [ChatRenderedScrollScope: Set<String>] = [:]
     private(set) var bottomsByScope: [ChatRenderedScrollScope: Set<String>] = [:]
+    private(set) var framesByScope: [ChatRenderedScrollScope: [String: CGRect]] = [:]
 
     static func row(
         semanticID: String,
-        scope: ChatRenderedScrollScope
+        scope: ChatRenderedScrollScope,
+        frame: CGRect? = nil
     ) -> ChatRenderedScrollTargets {
-        ChatRenderedScrollTargets(rowsByScope: [scope: [semanticID]])
+        var targets = ChatRenderedScrollTargets(rowsByScope: [scope: [semanticID]])
+        if let frame {
+            targets.framesByScope = [scope: [semanticID: frame]]
+        }
+        return targets
     }
 
     static func bottom(
@@ -247,6 +264,9 @@ struct ChatRenderedScrollTargets: Equatable {
         for (scope, bottoms) in nextValue.bottomsByScope {
             value.bottomsByScope[scope, default: []].formUnion(bottoms)
         }
+        for (scope, frames) in nextValue.framesByScope {
+            value.framesByScope[scope, default: [:]].merge(frames) { _, new in new }
+        }
         // Prune: keep only scopes from the latest preference value plus
         // a small overlap window. Each message update creates a new scope
         // (different revision numbers), so without pruning the dictionaries
@@ -262,15 +282,24 @@ struct ChatRenderedScrollTargets: Equatable {
         bottomsByScope[scope]?.contains(anchorID) == true
     }
 
+    /// Global frames of rendered stable rows for a scope (rows that reported
+    /// geometry this pass; offscreen lazy rows are absent).
+    func rowFrames(in scope: ChatRenderedScrollScope) -> [String: CGRect] {
+        framesByScope[scope] ?? [:]
+    }
+
     /// Remove scopes that are no longer in the latest preference value.
     /// This prevents unbounded accumulation across message updates without
     /// relying on ordering — we simply keep only scopes present in the
     /// current frame.
     mutating func retainLatestScopes(from latest: ChatRenderedScrollTargets) {
-        let activeScopes = Set(latest.rowsByScope.keys).union(latest.bottomsByScope.keys)
+        let activeScopes = Set(latest.rowsByScope.keys)
+            .union(latest.bottomsByScope.keys)
+            .union(latest.framesByScope.keys)
         guard !activeScopes.isEmpty else { return }
         rowsByScope = rowsByScope.filter { activeScopes.contains($0.key) }
         bottomsByScope = bottomsByScope.filter { activeScopes.contains($0.key) }
+        framesByScope = framesByScope.filter { activeScopes.contains($0.key) }
     }
 }
 
