@@ -85,6 +85,11 @@ struct MarkdownText: View {
                 .modifier(MarkdownSelectionHost(coordinator: selectionCoordinator))
             }
         }
+        // Reference definitions ride the environment so every InlineMarkdown
+        // below — however deeply nested in tables, quotes, or callouts — sees
+        // the same message-level context without threading it through each
+        // container view. Scoped to this MarkdownText subtree only.
+        .environment(\.markdownReferences, rendering.references)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
@@ -170,10 +175,14 @@ private final class MarkdownSelectionHighlightView: UIView {
 /// the blocks need the full block-view path). A class so NSCache can hold it.
 private final class MarkdownRendering {
     let blocks: [MarkdownBlock]
+    /// The message's link reference definitions; block views need them to
+    /// resolve reference-style links when re-parsing each fragment.
+    let references: MarkdownReferenceContext
     let selectableText: NSAttributedString?
 
-    init(blocks: [MarkdownBlock], selectableText: NSAttributedString?) {
+    init(blocks: [MarkdownBlock], references: MarkdownReferenceContext, selectableText: NSAttributedString?) {
         self.blocks = blocks
+        self.references = references
         self.selectableText = selectableText
     }
 }
@@ -225,11 +234,13 @@ private enum MarkdownRenderCache {
         ].joined(separator: "|") as NSString
 
         if let cached = cache.object(forKey: key) { return cached }
-        let blocks = MarkdownParser.parse(source, recognizesGatewayMedia: recognizesGatewayMedia)
+        let document = MarkdownParser.parseDocument(source, recognizesGatewayMedia: recognizesGatewayMedia)
         let rendering = MarkdownRendering(
-            blocks: blocks,
+            blocks: document.blocks,
+            references: document.references,
             selectableText: MarkdownSelectionFormatter.attributedText(
-                for: blocks,
+                for: document.blocks,
+                references: document.references,
                 foregroundStyle: foregroundStyle,
                 usesAccentSurface: usesAccentSurface,
                 newestCharacterOpacities: []
@@ -251,7 +262,37 @@ private enum MarkdownRenderCache {
     }
 }
 
-enum MarkdownBlock {
+/// The message-wide link reference definitions (`[id]: url`) collected while
+/// parsing a chat message. Each block fragment is re-parsed together with
+/// these definitions so Foundation's Markdown parser — not this app — resolves
+/// reference-style links, labels, and titles.
+struct MarkdownReferenceContext: Equatable {
+    /// The original definition lines, newline-joined. Retained verbatim so
+    /// Foundation interprets destination/title semantics (case-insensitive
+    /// labels, collapsed/shortcut forms, escapes) instead of this app doing it.
+    let definitionsMarkdown: String
+
+    static let empty = MarkdownReferenceContext(definitionsMarkdown: "")
+
+    var containsDefinitions: Bool { !definitionsMarkdown.isEmpty }
+
+    /// Fragment + definitions parse as one document: the definition block is
+    /// block-level syntax that produces nothing visible, so fragments without
+    /// references render exactly as they would alone.
+    func markdownForParsing(_ fragment: String) -> String {
+        guard containsDefinitions else { return fragment }
+        return fragment + "\n\n" + definitionsMarkdown
+    }
+}
+
+/// A parsed chat message: its visible blocks plus the reference definitions
+/// that were removed from the visible body before block parsing.
+struct MarkdownParsedDocument {
+    let blocks: [MarkdownBlock]
+    let references: MarkdownReferenceContext
+}
+
+enum MarkdownBlock: Equatable {
     case heading(level: Int, text: String)
     case paragraph(String)
     case quote([MarkdownQuoteLine])
@@ -266,7 +307,7 @@ enum MarkdownBlock {
     case divider
 }
 
-struct MarkdownQuoteLine {
+struct MarkdownQuoteLine: Equatable {
     let depth: Int
     let text: String
 }
@@ -274,6 +315,7 @@ struct MarkdownQuoteLine {
 enum MarkdownSelectionFormatter {
     static func attributedText(
         for blocks: [MarkdownBlock],
+        references: MarkdownReferenceContext = .empty,
         foregroundStyle: Color,
         usesAccentSurface: Bool,
         newestCharacterOpacities: [Double]
@@ -288,6 +330,7 @@ enum MarkdownSelectionFormatter {
         for (index, block) in blocks.enumerated() {
             guard let segment = segment(
                 for: block,
+                references: references,
                 bodyFont: bodyFont,
                 textColor: textColor,
                 linkColor: linkColor,
@@ -315,6 +358,7 @@ enum MarkdownSelectionFormatter {
 
     private static func segment(
         for block: MarkdownBlock,
+        references: MarkdownReferenceContext,
         bodyFont: UIFont,
         textColor: UIColor,
         linkColor: UIColor,
@@ -325,18 +369,20 @@ enum MarkdownSelectionFormatter {
         case .heading(let level, let text):
             return inline(
                 text,
+                references: references,
                 font: headingFont(level),
                 textColor: textColor,
                 linkColor: linkColor
             )
 
         case .paragraph(let text):
-            return inline(text, font: bodyFont, textColor: textColor, linkColor: linkColor)
+            return inline(text, references: references, font: bodyFont, textColor: textColor, linkColor: linkColor)
 
         case .unorderedList(let items):
             return list(
                 items,
                 ordered: false,
+                references: references,
                 bodyFont: bodyFont,
                 textColor: textColor,
                 linkColor: linkColor,
@@ -347,6 +393,7 @@ enum MarkdownSelectionFormatter {
             return list(
                 items,
                 ordered: true,
+                references: references,
                 bodyFont: bodyFont,
                 textColor: textColor,
                 linkColor: linkColor,
@@ -372,7 +419,7 @@ enum MarkdownSelectionFormatter {
                         .foregroundColor: quoteColor
                     ]
                 ))
-                result.append(inline(line.text, font: quoteFont, textColor: quoteColor, linkColor: linkColor))
+                result.append(inline(line.text, references: references, font: quoteFont, textColor: quoteColor, linkColor: linkColor))
             }
             return result
 
@@ -384,6 +431,7 @@ enum MarkdownSelectionFormatter {
     private static func list(
         _ items: [String],
         ordered: Bool,
+        references: MarkdownReferenceContext,
         bodyFont: UIFont,
         textColor: UIColor,
         linkColor: UIColor,
@@ -413,6 +461,7 @@ enum MarkdownSelectionFormatter {
             ))
             result.append(inline(
                 task?.text ?? item,
+                references: references,
                 font: bodyFont,
                 textColor: textColor,
                 linkColor: linkColor
@@ -423,12 +472,13 @@ enum MarkdownSelectionFormatter {
 
     private static func inline(
         _ source: String,
+        references: MarkdownReferenceContext,
         font: UIFont,
         textColor: UIColor,
         linkColor: UIColor
     ) -> NSAttributedString {
         let attributed = (try? AttributedString(
-            markdown: source,
+            markdown: references.markdownForParsing(source),
             options: .init(interpretedSyntax: .full)
         )) ?? AttributedString(source)
         return SelectableTextView.bridge(attributed, defaultFont: font, defaultColor: textColor, linkColor: linkColor)
@@ -654,6 +704,21 @@ private struct MarkdownBlockView: View {
     }
 }
 
+/// Message-scoped link reference definitions for the block-view hierarchy.
+/// `MarkdownText` injects its parsed context; every `InlineMarkdown` in the
+/// subtree reads it. The default keeps `InlineMarkdown` renderable in
+/// isolation (no references), which matches pre-reference behavior.
+private struct MarkdownReferencesKey: EnvironmentKey {
+    static let defaultValue = MarkdownReferenceContext.empty
+}
+
+private extension EnvironmentValues {
+    var markdownReferences: MarkdownReferenceContext {
+        get { self[MarkdownReferencesKey.self] }
+        set { self[MarkdownReferencesKey.self] = newValue }
+    }
+}
+
 private struct InlineMarkdown: View {
     let source: String
     let foregroundStyle: Color
@@ -665,10 +730,15 @@ private struct InlineMarkdown: View {
     var selectionCoordinator: MarkdownSelectionCoordinator?
     var selectionSegment: MarkdownSelectionSegmentDescriptor?
     var trailingCharacterOpacities: [Double] = []
+    @Environment(\.markdownReferences) private var references
 
     private var attributed: AttributedString {
+        // Re-append the message's definitions so Foundation resolves
+        // reference-style links for this fragment too. The definition block
+        // is invisible under `.full`; if parsing fails, fall back to the bare
+        // fragment so definitions never surface as text.
         var attributed = (try? AttributedString(
-            markdown: source,
+            markdown: references.markdownForParsing(source),
             options: .init(interpretedSyntax: .full)
         )) ?? AttributedString(source)
 
@@ -1546,8 +1616,74 @@ enum MarkupHTML {
 }
 
 enum MarkdownParser {
+    /// Compatibility wrapper for callers that only need the visible blocks.
     static func parse(_ source: String, recognizesGatewayMedia: Bool = false) -> [MarkdownBlock] {
+        parseDocument(source, recognizesGatewayMedia: recognizesGatewayMedia).blocks
+    }
+
+    /// Splits a message into its visible blocks and its link reference
+    /// definitions. Definitions (`[id]: url`) are block-level Markdown that a
+    /// fragment-by-fragment renderer never sees — without this pass they end
+    /// up as visible paragraph text and every `[text][id]` use stays literal.
+    /// Definition lines are removed here (leaving a blank line behind so
+    /// neighboring paragraphs don't merge) and re-fed to Foundation with each
+    /// fragment at render time; see `MarkdownReferenceContext`.
+    static func parseDocument(_ source: String, recognizesGatewayMedia: Bool = false) -> MarkdownParsedDocument {
         let lines = source.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
+        var visibleLines: [String] = []
+        var definitions: [String] = []
+        // Fenced code and math blocks are raw content — the same regions the
+        // block walker below consumes wholesale — so a definition-looking line
+        // inside them must stay put.
+        var openFence: String?
+        var mathClose: String?
+
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+
+            if let close = mathClose {
+                visibleLines.append(line)
+                if trimmed == close { mathClose = nil }
+                continue
+            }
+            if let fence = openFence {
+                visibleLines.append(line)
+                if trimmed.hasPrefix(fence) { openFence = nil }
+                continue
+            }
+            if let fence = fenceStart(trimmed) {
+                openFence = fence
+                visibleLines.append(line)
+                continue
+            }
+            if let close = mathBlockOpening(trimmed) {
+                mathClose = close
+                visibleLines.append(line)
+                continue
+            }
+            if let definition = referenceDefinition(trimmed) {
+                definitions.append(definition)
+                visibleLines.append("")
+                continue
+            }
+            visibleLines.append(line)
+        }
+
+        let visibleSource = visibleLines.joined(separator: "\n")
+        let blocks = parseBlocks(visibleLines, recognizesGatewayMedia: recognizesGatewayMedia)
+        // Preserve the original fallback (non-empty source must render), but
+        // against the stripped body so a definitions-only message doesn't
+        // resurface its definitions as a visible paragraph.
+        let finalBlocks = blocks.isEmpty && !visibleSource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? [.paragraph(visibleSource)]
+            : blocks
+        return MarkdownParsedDocument(
+            blocks: finalBlocks,
+            references: MarkdownReferenceContext(definitionsMarkdown: definitions.joined(separator: "\n"))
+        )
+    }
+
+    private static func parseBlocks(_ lines: [String], recognizesGatewayMedia: Bool) -> [MarkdownBlock] {
         var blocks: [MarkdownBlock] = []
         var index = 0
 
@@ -1638,7 +1774,7 @@ enum MarkdownParser {
             }
             blocks.append(.paragraph(paragraph.joined(separator: "\n")))
         }
-        return blocks.isEmpty && !source.isEmpty ? [.paragraph(source)] : blocks
+        return blocks
     }
 
     static func taskItem(_ value: String) -> (complete: Bool, text: String)? {
@@ -1654,6 +1790,21 @@ enum MarkdownParser {
     }
 
     private static func fenceStart(_ value: String) -> String? { value.hasPrefix("```") ? "```" : (value.hasPrefix("~~~") ? "~~~" : nil) }
+
+    /// Recognizes the supported single-line subset of CommonMark link
+    /// reference definitions: `[label]: destination` with an optional
+    /// `"…"`, `'…'`, or `(…)` title and an optional `<…>` destination.
+    /// Labels containing brackets and footnote-style `[^…]` markers are out
+    /// of scope and return nil (they stay visible text). Definitions with
+    /// title continuation lines are deliberately unsupported; this renderer
+    /// documents and tests the single-line forms only.
+    private static func referenceDefinition(_ value: String) -> String? {
+        guard let range = value.range(
+            of: #"^\[([^\[\]\^][^\[\]]*)\]:[ \t]+(<[^>]+>|[^\s<][^\s]*)(?:[ \t]+("[^"]*"|'[^']*'|\([^)]*\)))?[ \t]*$"#,
+            options: .regularExpression
+        ) else { return nil }
+        return String(value[range])
+    }
     private static func mathBlockOpening(_ value: String) -> String? { value == "$$" ? "$$" : (value == "\\[" ? "\\]" : nil) }
     private static func singleLineMath(_ value: String) -> String? {
         guard value.hasPrefix("$$"), value.hasSuffix("$$"), value.count > 4 else { return nil }
