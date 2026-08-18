@@ -1133,7 +1133,9 @@ extension ChatViewportControllerTests {
         let target = controller.targets.first!
         let request = snapshotRequest(anchor: target.semanticID, for: keyA)
         _ = controller.restorationRequested(request)
-        let scope = restorationScope(for: request, in: controller)!
+        guard let scope = restorationScope(for: request, in: controller) else {
+            return XCTFail("expected a scope")
+        }
         let content = ChatRenderedScrollContent(scope: scope)
 
         // Scroll first (previous tick), then a different rendered row must
@@ -1181,7 +1183,9 @@ extension ChatViewportControllerTests {
         var controller = makeController(following: keyA)
         let request = restoreRequest(for: keyA)  // .latest destination
         _ = controller.restorationRequested(request)
-        let scope = restorationScope(for: request, in: controller)!
+        guard let scope = restorationScope(for: request, in: controller) else {
+            return XCTFail("expected a scope")
+        }
         let content = ChatRenderedScrollContent(scope: scope)
 
         _ = controller.restorationTick(
@@ -1303,9 +1307,12 @@ extension ChatViewportControllerTests {
         // The controller re-resolved against the refreshed targets; a
         // following tick (matching scope) scrolls to latest, not the dead
         // anchor.
+        guard let currentCacheRevision = controller.renderedScrollScope?.cacheRevision else {
+            return XCTFail("expected a scope")
+        }
         let scope2 = ChatRenderedScrollScope(
             sessionKey: keyA,
-            cacheRevision: controller.renderedScrollScope!.cacheRevision,
+            cacheRevision: currentCacheRevision,
             restorationGeneration: request.generation,
             transcriptRevision: 2,
             viewportTransitionGeneration: 1
@@ -1560,6 +1567,9 @@ extension ChatViewportControllerTests {
         let scope = controller.renderedScrollScope!
 
         // All three rendered; m1 is the top stable row.
+        guard let scope = controller.renderedScrollScope else {
+            return XCTFail("expected a scope")
+        }
         _ = controller.layoutMetricsChanged(facts: layoutFacts(
             bottomMarkerMaxY: 900,
             viewportMinY: 100,
@@ -1633,6 +1643,7 @@ extension ChatViewportControllerTests {
             if case .scroll = $0 { return true }; return false
         }) else { return XCTFail("expected A→B scroll") }
         XCTAssertTrue(controller.isCommandCurrent(cmdAB))
+        XCTAssertEqual(cmdAB.destination, .bottom(anchorID: "chat-latest-p-session-b"))
 
         // B→C: all A-era and B-era commands die; only C's is current.
         let bc = controller.renderedSessionChanged(
@@ -1642,12 +1653,11 @@ extension ChatViewportControllerTests {
             viewportTransitionGeneration: 3
         )
         XCTAssertFalse(controller.isCommandCurrent(cmdAB), "B-era command must be stale in C")
-        if case .scroll(let cmdBC) = bc.first(where: {
+        guard case .scroll(let cmdBC) = bc.first(where: {
             if case .scroll = $0 { return true }; return false
-        }) {
-            XCTAssertEqual(cmdBC.destination, .bottom(anchorID: "chat-latest-p-session-c"))
-            XCTAssertTrue(controller.isCommandCurrent(cmdBC))
-        }
+        }) else { return XCTFail("expected B→C scroll") }
+        XCTAssertEqual(cmdBC.destination, .bottom(anchorID: "chat-latest-p-session-c"))
+        XCTAssertTrue(controller.isCommandCurrent(cmdBC))
         XCTAssertEqual(controller.renderedSessionKey, keyC)
         XCTAssertEqual(controller.mode, .followingLatest)
     }
@@ -1734,9 +1744,15 @@ extension ChatViewportControllerTests {
             scope: controller.renderedScrollScope
         ))
 
-        // Title → top.
+        // Title → top: cancels restoration + scrolls to top.
         let topEffects = controller.explicitTopRequested(request: 7)
         XCTAssertEqual(controller.mode, .explicitTop(request: 7))
+        XCTAssertTrue(cancelEffects(topEffects))
+        let topCommands = scrollCommands(topEffects)
+        XCTAssertEqual(topCommands.count, 1)
+        XCTAssertEqual(topCommands[0].destination,
+                       .top(anchorID: "chat-top-p-session-a", request: 7))
+        XCTAssertEqual(topCommands[0].animated, false)
 
         // Streaming continues: no follow/latest command escapes.
         for tick in 1...10 {
@@ -1774,7 +1790,7 @@ extension ChatViewportControllerTests {
             viewportTransitionGeneration: 2
         )
         XCTAssertEqual(controller.mode, .browsing, "drag continues through switch")
-        // No restoration pending, so no cancelAutomaticRestoration.
+        XCTAssertFalse(cancelEffects(ab), "no restoration pending to cancel")
 
         // B→C: another non-equivalent switch; still browsing.
         let bc = controller.renderedSessionChanged(
@@ -1784,6 +1800,7 @@ extension ChatViewportControllerTests {
             viewportTransitionGeneration: 3
         )
         XCTAssertEqual(controller.mode, .browsing)
+        XCTAssertFalse(cancelEffects(bc))
 
         // End gesture near bottom: drag was invalidated by the switch, so
         // no drag completion fires — but the gesture-ended event sets
@@ -1895,5 +1912,129 @@ extension ChatViewportControllerTests {
             XCTAssertFalse(controller.isCommandCurrent(cmd),
                            "command gen \(cmd.generation) must be stale (current: \(generation))")
         }
+    }
+}
+
+// MARK: - Restoration session equivalence (identity contract consistency)
+
+extension ChatViewportControllerTests {
+
+    // The stored alias is the rendered key; the request carries the runtime
+    // alias. identity.areEquivalent says they match. Admission must pass,
+    // the scope gate must accept, and restoration must complete normally.
+    func testRestorationAcceptsEquivalentRuntimeAliasAndCompletesNormally() {
+        let storedKey = ChatScrollSessionKey(profile: "p", sessionID: "stored-a")
+        let runtimeKey = ChatScrollSessionKey(profile: "p", sessionID: "runtime-a")
+        let aliasIdentity = aliasedIdentity(storedKey, runtimeKey)
+
+        // Controller rendered under stored-a.
+        var controller = ChatViewportController()
+        _ = controller.renderedSessionChanged(
+            to: storedKey,
+            identity: aliasIdentity,
+            viaNotification: false,
+            viewportTransitionGeneration: 1
+        )
+        let messages = [message("m1", "one")]
+        _ = controller.transcriptChanged(
+            messages: messages, transcriptRevision: 1,
+            viewportTransitionGeneration: 1, isInitialSync: true
+        )
+        let target = controller.targets.first!
+
+        // Request published under runtime-a (the equivalent alias).
+        let request = ChatResumeRestorationRequest(
+            generation: 42,
+            sessionKey: runtimeKey,
+            destination: .snapshot(ChatScrollSnapshot(
+                anchorMessageID: target.semanticID,
+                followsLatest: false,
+                anchorMetadata: target.restorationMetadata,
+                anchorSourceMessageID: "m1"
+            ))
+        )
+        let adoptEffects = controller.restorationRequested(request)
+        XCTAssertTrue(controller.restorationIsActive, "request adopted")
+        XCTAssertEqual(controller.mode, .restoring)
+        XCTAssertFalse(adoptEffects.contains(.abandonRestoration(generation: 42)))
+
+        // Matching-scope tick: rendered scope is under stored-a, request
+        // is runtime-a — equivalence makes the scope gate pass.
+        guard let scope = controller.renderedScrollScope else {
+            return XCTFail("expected a rendered scope")
+        }
+        let content = ChatRenderedScrollContent(scope: scope)
+        let scrollTick = controller.restorationTick(
+            messages: messages,
+            transcriptRevision: 1,
+            viewportTransitionGeneration: 1,
+            renderedContent: content,
+            installedTargets: ChatRenderedScrollTargets(),
+            topVisibleID: nil,
+            isNearBottom: false
+        )
+        let commands = scrollCommands(scrollTick)
+        XCTAssertEqual(commands.count, 1, "equivalence must let the scope gate pass")
+        XCTAssertEqual(commands[0].destination, .message(id: target.id))
+
+        // Install the target and confirm: restoration completes normally.
+        var installed = ChatRenderedScrollTargets()
+        ChatRenderedScrollTargets.reduce(
+            value: &installed,
+            nextValue: ChatRenderedScrollTargets.row(semanticID: target.id, scope: scope)
+        )
+        let completeTick = controller.restorationTick(
+            messages: messages, transcriptRevision: 1, viewportTransitionGeneration: 1,
+            renderedContent: content,
+            installedTargets: installed,
+            topVisibleID: target.id, isNearBottom: false
+        )
+        XCTAssertEqual(completeTick, [.completeRestoration(generation: 42)])
+        XCTAssertFalse(controller.restorationIsActive)
+        XCTAssertEqual(controller.mode, .browsing,
+                       "non-latest snapshot completion stays browsing")
+    }
+
+    // The inverse: rendered key and request key are NOT equivalent.
+    // Admission must reject immediately; restoration cannot adopt or scroll.
+    func testRestorationRejectsNonEquivalentKeyImmediately() {
+        let storedB = ChatScrollSessionKey(profile: "p", sessionID: "stored-b")
+        let runtimeA = ChatScrollSessionKey(profile: "p", sessionID: "runtime-a")
+
+        // Controller rendered under stored-b with identity that only knows
+        // stored-b (no alias overlap with runtime-a).
+        var controller = ChatViewportController()
+        _ = controller.renderedSessionChanged(
+            to: storedB,
+            identity: identity(for: storedB),
+            viaNotification: false,
+            viewportTransitionGeneration: 1
+        )
+
+        // Request published under runtime-a — not equivalent to stored-b.
+        let request = ChatResumeRestorationRequest(
+            generation: 99,
+            sessionKey: runtimeA,
+            destination: .latest
+        )
+        let effects = controller.restorationRequested(request)
+
+        XCTAssertEqual(effects, [.abandonRestoration(generation: 99)])
+        XCTAssertFalse(controller.restorationIsActive)
+        XCTAssertEqual(controller.mode, .followingLatest,
+                       "non-equivalent rejection must not change mode")
+
+        // A subsequent tick must not issue any scroll — no restoration state.
+        guard let scope = controller.renderedScrollScope else {
+            return XCTFail("expected a rendered scope")
+        }
+        let tickEffects = controller.restorationTick(
+            messages: [], transcriptRevision: 0, viewportTransitionGeneration: 1,
+            renderedContent: ChatRenderedScrollContent(scope: scope),
+            installedTargets: ChatRenderedScrollTargets(),
+            topVisibleID: nil, isNearBottom: false
+        )
+        XCTAssertTrue(tickEffects.isEmpty,
+                      "no restoration state means the tick is a no-op")
     }
 }

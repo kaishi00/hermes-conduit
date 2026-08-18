@@ -563,13 +563,21 @@ struct ChatViewportController: Equatable {
             }
         }
 
+        // Equivalence-based session match: the rendered scope's key might be a
+        // runtime alias of the request's canonical key (or vice versa). The
+        // admission check in restorationRequested already uses
+        // identity.areEquivalent — the poll must agree on the same semantics.
+        let scopeMatches = renderedContent.map {
+            identity.areEquivalent($0.scope.sessionKey, state.request.sessionKey)
+        } ?? false
         let action = state.nextAction(
             renderedContent: renderedContent,
             installedTargets: installedTargets,
             cacheRevision: targetCache.renderingRevision,
             transcriptRevision: transcriptRevision,
             topVisibleID: topVisibleID,
-            isNearBottom: isNearBottom
+            isNearBottom: isNearBottom,
+            sessionMatches: scopeMatches
         )
         restoration = state
         switch action {
@@ -834,20 +842,26 @@ struct RestorationState: Equatable {
         case cancelled
     }
 
+    /// `sessionMatches` is computed by the controller using
+    /// identity.areEquivalent so that runtime/stored/canonical aliases all
+    /// pass the scope gate — matching the admission check in
+    /// restorationRequested. RestorationState itself stays pure and
+    /// unaware of ChatScrollSessionIdentity.
     mutating func nextAction(
         renderedContent: ChatRenderedScrollContent?,
         installedTargets: ChatRenderedScrollTargets,
         cacheRevision: UInt64,
         transcriptRevision: UInt64,
         topVisibleID: String?,
-        isNearBottom: Bool
+        isNearBottom: Bool,
+        sessionMatches: Bool = true
     ) -> Action {
         guard !isCancelled else { return .cancelled }
         checkCount += 1
 
         guard let renderedContent,
               renderedContent.scope.restorationGeneration == request.generation,
-              renderedContent.scope.sessionKey == request.sessionKey,
+              sessionMatches,
               renderedContent.scope.cacheRevision == cacheRevision,
               renderedContent.scope.transcriptRevision == transcriptRevision else {
             return checkCount > Self.maximumChecks ? .abandon : .wait
