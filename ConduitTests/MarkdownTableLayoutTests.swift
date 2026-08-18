@@ -298,7 +298,9 @@ final class MarkdownTableLayoutTests: XCTestCase {
         let columnDriverB = try cell(containing: "col-two-driver")
         let headerA = try cell(containing: "ColA")
         let headerB = try cell(containing: "ColB")
-        let shortA = try cell(containing: "aaa")
+        // Exact match: the substring "aaa" also occurs in "aaaa-column-one-driver".
+        let shortA = try XCTUnwrap(cells.first { $0.attributedText.string == "aaa" },
+                                   "The lone short column-A cell must be findable by exact text")
         let shortB2 = try XCTUnwrap(cells.first { $0.attributedText.string == "b" },
                                     "The lone short column-B cell must be findable by exact text")
 
@@ -400,9 +402,12 @@ final class MarkdownTableLayoutTests: XCTestCase {
             XCTAssertEqual(style.alignment, expected, "Cell '\(marker)' must carry \(expected) paragraph alignment")
         }
 
-        // Geometry: every laid-out line's glyph rect must sit at the aligned
-        // position within the cell. Uses the layout manager's per-line glyph
-        // bounding rects (container line fragments are always full width).
+        // Geometry smoke check: every laid-out line's glyph rect sits at the
+        // aligned position. Accessing `layoutManager` switches this test view
+        // into TextKit-1 compatibility mode, so this measures compat layout —
+        // an end-to-end sanity signal, not a TextKit-2-faithful measurement.
+        // The paragraph-style assertions above are the production contract;
+        // don't grow this block.
         func assertLines(_ view: UITextView, aligned: NSTextAlignment, marker: String) throws {
             let layoutManager = view.layoutManager
             let glyphRange = layoutManager.glyphRange(for: view.textContainer)

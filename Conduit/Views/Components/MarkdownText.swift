@@ -1151,12 +1151,13 @@ private struct MarkdownTable: View {
             }
             .frame(height: 0)
 
+            let widths = columnWidths
             ScrollView(.horizontal, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
-                    tableRow(headers, rowIndex: 0, isHeader: true)
+                    tableRow(headers, rowIndex: 0, isHeader: true, widths: widths)
                     ForEach(Array(rows.enumerated()), id: \.offset) { rowOffset, row in
                         Divider().overlay(usesAccentSurface ? Color.white.opacity(0.22) : Color.secondary.opacity(0.18))
-                        tableRow(row, rowIndex: rowOffset + 1, isHeader: false)
+                        tableRow(row, rowIndex: rowOffset + 1, isHeader: false, widths: widths)
                     }
                 }
                 .background(
@@ -1171,9 +1172,8 @@ private struct MarkdownTable: View {
         }
     }
 
-    private func tableRow(_ cells: [String], rowIndex: Int, isHeader: Bool) -> some View {
-        let widths = columnWidths
-        return HStack(spacing: 0) {
+    private func tableRow(_ cells: [String], rowIndex: Int, isHeader: Bool, widths: [CGFloat]) -> some View {
+        HStack(spacing: 0) {
             ForEach(Array(cells.enumerated()), id: \.offset) { index, cell in
                 let width = widths.indices.contains(index)
                     ? widths[index]
