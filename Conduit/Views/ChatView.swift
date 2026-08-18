@@ -296,8 +296,7 @@ struct ChatView: View {
             }
             .task(id: appState.chatResumeRestorationRequest?.generation) {
                 guard let request = appState.chatResumeRestorationRequest else { return }
-                invalidateChatDrag(using: proxy)
-                await applyChatResumeRestoration(request, using: proxy)
+                await runViewportRestoration(request, using: proxy)
             }
             .onPreferenceChange(ChatBottomMarkerPreferenceKey.self) { value in
                 bottomMarkerMaxY = value
@@ -519,137 +518,36 @@ struct ChatView: View {
         performViewportEffects(viewport.abandonDrag(), using: proxy)
     }
 
+    /// Controller-driven restoration: the .task restarts whenever the
+    /// published request generation changes; each tick feeds the controller
+    /// current observations and executes its effects. Cancellation comes
+    /// from task identity (generation change / view teardown) or the
+    /// system-cancel onChange; identity drift cancels via the session-change
+    /// event. All retries are bounded inside the controller.
     @MainActor
-    private func applyChatResumeRestoration(
+    private func runViewportRestoration(
         _ request: ChatResumeRestorationRequest,
         using proxy: ScrollViewProxy
     ) async {
-        guard restorationRequestIsCurrent(request) else {
-            // If the generation is still current but identity drifted,
-            // abandon so pendingRestoration doesn't get stuck forever.
-            if appState.chatResumeRestorationRequest?.generation == request.generation {
-                appState.abandonChatResumeRestoration(generation: request.generation)
-            }
-            return
-        }
         performViewportEffects(viewport.restorationRequested(request), using: proxy)
-
-        let destination = restorationDestination(
-            for: request,
-            targets: viewport.targets
-        )
-        var restoration = ChatResumeRenderRestorationState(
-            generation: request.generation,
-            sessionKey: request.sessionKey,
-            destination: destination
-        )
-
-        while restorationRequestIsCurrent(request) {
-            restoration.updateDestination(
-                restorationDestination(for: request, targets: viewport.targets)
-            )
-
-            switch restoration.nextAction(
+        while !Task.isCancelled, viewport.restorationIsActive {
+            let effects = viewport.restorationTick(
+                messages: appState.messages,
+                transcriptRevision: appState.chatTranscriptRevision,
+                viewportTransitionGeneration: appState.chatViewportTransitionGeneration,
                 renderedContent: renderedScrollContent,
                 installedTargets: renderedScrollTargets,
-                cacheRevision: viewport.renderedScrollScope?.cacheRevision ?? 0,
-                transcriptRevision: appState.chatTranscriptRevision,
                 topVisibleID: viewport.stableTopMessageID,
                 isNearBottom: viewport.isNearBottom
-            ) {
-            case .wait:
-                break
-            case .scroll(let destination):
-                guard restorationRequestIsCurrent(request) else { return }
-                ChatViewportTrace.shared.log(
-                    "restoration scroll \(destination) gen=\(request.generation)"
-                )
-                var transaction = Transaction()
-                transaction.animation = nil
-                withTransaction(transaction) {
-                    switch destination {
-                    case .latest:
-                        proxy.scrollTo(bottomAnchor, anchor: .bottom)
-                    case .anchor(let anchor):
-                        proxy.scrollTo(anchor, anchor: .top)
-                    }
-                }
-            case .complete:
-                guard restorationRequestIsCurrent(request) else { return }
-                ChatViewportTrace.shared.log(
-                    "restoration complete gen=\(request.generation)"
-                )
-                appState.completeChatResumeRestoration(generation: request.generation)
-                performViewportEffects(viewport.restorationSystemCancelled(), using: proxy)
-                setLegacyFollowsLatest(destination == .latest, using: proxy)
-                if destination == .latest {
-                    saveChatScrollPosition(for: request.sessionKey)
-                }
-                return
-            case .abandon:
-                guard restorationRequestIsCurrent(request) else { return }
-                ChatViewportTrace.shared.log(
-                    "restoration abandon gen=\(request.generation)"
-                )
-                appState.abandonChatResumeRestoration(generation: request.generation)
-                performViewportEffects(viewport.restorationSystemCancelled(), using: proxy)
-                setLegacyFollowsLatest(destination == .latest, using: proxy)
-                return
-            case .cancelled:
-                return
-            }
-
+            )
+            performViewportEffects(effects, using: proxy)
+            guard viewport.restorationIsActive else { return }
             do {
                 try await Task.sleep(for: .milliseconds(25))
             } catch {
-                restoration.cancel()
                 return
             }
         }
-
-        // Loop exited because restorationRequestIsCurrent returned false.
-        // If the generation is still current but identity drifted mid-loop,
-        // abandon so pendingRestoration doesn't get stuck forever.
-        if appState.chatResumeRestorationRequest?.generation == request.generation {
-            appState.abandonChatResumeRestoration(generation: request.generation)
-        }
-    }
-
-    private func restorationDestination(
-        for request: ChatResumeRestorationRequest,
-        targets: [ChatMessageScrollTarget]
-    ) -> ChatResumeViewportDestination {
-        switch request.destination {
-        case .latest:
-            return .latest
-        case .snapshot(let snapshot):
-            // The resolver returns semantic anchor IDs, but rows are now
-            // keyed by message.id (.id(target.id)). Resolve the semantic
-            // anchor to its source message.id so the entire restoration
-            // state machine operates in one identity space.
-            let resolved = ChatResumeViewportResolver.destination(
-                for: snapshot,
-                availableTargets: ChatScrollTargetAvailability(targets: targets)
-            )
-            switch resolved {
-            case .latest:
-                return .latest
-            case .anchor(let semanticAnchor):
-                let sourceAnchor = targets.first { $0.semanticID == semanticAnchor }?.id ?? semanticAnchor
-                return .anchor(sourceAnchor)
-            }
-        }
-    }
-
-    private func restorationRequestIsCurrent(
-        _ request: ChatResumeRestorationRequest
-    ) -> Bool {
-        guard !Task.isCancelled,
-              appState.chatResumeRestorationRequest?.generation == request.generation else {
-            return false
-        }
-        let identity = appState.activeChatScrollSessionIdentity
-        return identity.areEquivalent(request.sessionKey, activeScrollSessionKey)
     }
 
     // LEGACY (Tasks 4-6 migrate their callers to controller effects; these

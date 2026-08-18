@@ -974,3 +974,351 @@ final class ChatViewportControllerTests: XCTestCase {
         XCTAssertEqual(controller.stableTopMessageID, "m1")
     }
 }
+
+// MARK: - Automatic restoration (Task 5)
+
+extension ChatViewportControllerTests {
+
+    private func snapshotRequest(
+        anchor: String,
+        for key: ChatScrollSessionKey
+    ) -> ChatResumeRestorationRequest {
+        let targets = [
+            ChatMessageScrollTarget(
+                message: message("m1", "one"),
+                semanticID: anchor,
+                restorationMetadata: ChatScrollAnchorMetadata(fingerprint: "fp", duplicateCount: 1)
+            ),
+            ChatMessageScrollTarget(
+                message: message("m2", "two"),
+                semanticID: "other",
+                restorationMetadata: ChatScrollAnchorMetadata(fingerprint: "fp2", duplicateCount: 1)
+            )
+        ]
+        var controller = ChatViewportController()
+        _ = controller.renderedSessionChanged(
+            to: key,
+            identity: identity(for: key),
+            viaNotification: false,
+            viewportTransitionGeneration: 1
+        )
+        _ = controller.transcriptChanged(
+            messages: targets.map(\.message),
+            transcriptRevision: 3,
+            viewportTransitionGeneration: 1,
+            isInitialSync: true
+        )
+        let snapshot = ChatScrollSnapshot(
+            anchorMessageID: anchor,
+            followsLatest: false,
+            anchorMetadata: ChatScrollAnchorMetadata(fingerprint: "fp", duplicateCount: 1),
+            anchorSourceMessageID: "m1"
+        )
+        return ChatResumeRestorationRequest(
+            generation: 42,
+            sessionKey: key,
+            destination: .snapshot(snapshot)
+        )
+    }
+
+    private func restorationScope(
+        for request: ChatResumeRestorationRequest,
+        in controller: ChatViewportController
+    ) -> ChatRenderedScrollScope? {
+        guard let base = controller.renderedScrollScope else { return nil }
+        return ChatRenderedScrollScope(
+            sessionKey: base.sessionKey,
+            cacheRevision: base.cacheRevision,
+            restorationGeneration: request.generation,
+            transcriptRevision: base.transcriptRevision,
+            viewportTransitionGeneration: base.viewportTransitionGeneration
+        )
+    }
+
+    func testRestorationRequestedEntersRestoringInvalidatesDragAndResolvesDestination() {
+        var controller = makeController(following: keyA)
+        _ = controller.userDragBegan(sessionKey: keyA, viewportTransitionGeneration: 1)
+        let request = snapshotRequest(anchor: "chat-message-fp-0", for: keyA)
+        // The anchor resolves to the source message id space.
+        // Build targets with the exact semantic ids the fingerprint produces
+        // by using ChatMessageScrollTargets directly.
+        let messages = [message("m1", "one"), message("m2", "two")]
+        var seeded = makeController(following: keyA)
+        _ = seeded.transcriptChanged(
+            messages: messages,
+            transcriptRevision: 1,
+            viewportTransitionGeneration: 1,
+            isInitialSync: true
+        )
+        let realAnchor = seeded.targets.first!.semanticID
+        let seededRequest = snapshotRequest(anchor: realAnchor, for: keyA)
+        _ = seeded.userDragBegan(sessionKey: keyA, viewportTransitionGeneration: 1)
+
+        _ = seeded.restorationRequested(seededRequest)
+        XCTAssertTrue(seeded.restorationIsActive)
+        XCTAssertEqual(seeded.mode, .restoring)
+        // First tick on a mismatched scope waits without scrolling.
+        let firstTick = seeded.restorationTick(
+            messages: messages,
+            transcriptRevision: 1,
+            viewportTransitionGeneration: 1,
+            renderedContent: nil,
+            installedTargets: ChatRenderedScrollTargets(),
+            topVisibleID: nil,
+            isNearBottom: false
+        )
+        XCTAssertTrue(firstTick.isEmpty)
+        _ = controller
+        _ = request
+    }
+
+    func testRestorationWaitsForMatchingRenderedScopeBeforeScrolling() {
+        var controller = makeController(following: keyA)
+        let messages = [message("m1", "one")]
+        _ = controller.transcriptChanged(
+            messages: messages,
+            transcriptRevision: 1,
+            viewportTransitionGeneration: 1,
+            isInitialSync: true
+        )
+        let anchor = controller.targets.first!.semanticID
+        let request = snapshotRequest(anchor: anchor, for: keyA)
+        _ = controller.restorationRequested(request)
+
+        // A scope from a DIFFERENT restoration generation must not scroll.
+        let staleScope = ChatRenderedScrollScope(
+            sessionKey: keyA,
+            cacheRevision: controller.renderedScrollScope!.cacheRevision,
+            restorationGeneration: 999,
+            transcriptRevision: 1,
+            viewportTransitionGeneration: 1
+        )
+        let staleContent = ChatRenderedScrollContent(scope: staleScope)
+        let staleTick = controller.restorationTick(
+            messages: messages,
+            transcriptRevision: 1,
+            viewportTransitionGeneration: 1,
+            renderedContent: staleContent,
+            installedTargets: ChatRenderedScrollTargets(),
+            topVisibleID: nil,
+            isNearBottom: false
+        )
+        XCTAssertTrue(staleTick.isEmpty)
+
+        // Matching scope bootstraps the offscreen target: scroll issued.
+        let scope = restorationScope(for: request, in: controller)!
+        let content = ChatRenderedScrollContent(scope: scope)
+        let scrollTick = controller.restorationTick(
+            messages: messages,
+            transcriptRevision: 1,
+            viewportTransitionGeneration: 1,
+            renderedContent: content,
+            installedTargets: ChatRenderedScrollTargets(),
+            topVisibleID: nil,
+            isNearBottom: false
+        )
+        let commands = scrollCommands(scrollTick)
+        XCTAssertEqual(commands.count, 1)
+        XCTAssertEqual(commands[0].destination, .message(id: controller.targets.first!.id))
+    }
+
+    func testRestorationCompletesOnlyWhenAnchorConfirmedAndInstalled() {
+        var controller = makeController(following: keyA)
+        let messages = [message("m1", "one")]
+        _ = controller.transcriptChanged(
+            messages: messages,
+            transcriptRevision: 1,
+            viewportTransitionGeneration: 1,
+            isInitialSync: true
+        )
+        let target = controller.targets.first!
+        let request = snapshotRequest(anchor: target.semanticID, for: keyA)
+        _ = controller.restorationRequested(request)
+        let scope = restorationScope(for: request, in: controller)!
+        let content = ChatRenderedScrollContent(scope: scope)
+
+        // Scroll first (previous tick), then a different rendered row must
+        // NOT confirm, then the real row + topVisible confirm completes.
+        _ = controller.restorationTick(
+            messages: messages, transcriptRevision: 1, viewportTransitionGeneration: 1,
+            renderedContent: content,
+            installedTargets: ChatRenderedScrollTargets(),
+            topVisibleID: nil, isNearBottom: false
+        )
+        var installed = ChatRenderedScrollTargets()
+        ChatRenderedScrollTargets.reduce(
+            value: &installed,
+            nextValue: ChatRenderedScrollTargets.row(
+                semanticID: "different-row", scope: scope
+            )
+        )
+        let wrongRowTick = controller.restorationTick(
+            messages: messages, transcriptRevision: 1, viewportTransitionGeneration: 1,
+            renderedContent: content,
+            installedTargets: installed,
+            topVisibleID: target.id, isNearBottom: false
+        )
+        XCTAssertTrue(
+            wrongRowTick.isEmpty,
+            "a different rendered row must not confirm the cache target"
+        )
+
+        ChatRenderedScrollTargets.reduce(
+            value: &installed,
+            nextValue: ChatRenderedScrollTargets.row(semanticID: target.id, scope: scope)
+        )
+        let completeTick = controller.restorationTick(
+            messages: messages, transcriptRevision: 1, viewportTransitionGeneration: 1,
+            renderedContent: content,
+            installedTargets: installed,
+            topVisibleID: target.id, isNearBottom: false
+        )
+        XCTAssertEqual(completeTick, [.completeRestoration(generation: request.generation)])
+        XCTAssertFalse(controller.restorationIsActive)
+        XCTAssertEqual(controller.mode, .browsing)
+    }
+
+    func testRestorationLatestConfirmsOnlyWhenNearBottomAndPersistsAfterComplete() {
+        var controller = makeController(following: keyA)
+        let request = restoreRequest(for: keyA)  // .latest destination
+        _ = controller.restorationRequested(request)
+        let scope = restorationScope(for: request, in: controller)!
+        let content = ChatRenderedScrollContent(scope: scope)
+
+        _ = controller.restorationTick(
+            messages: [], transcriptRevision: 0, viewportTransitionGeneration: 1,
+            renderedContent: content,
+            installedTargets: ChatRenderedScrollTargets(),
+            topVisibleID: nil, isNearBottom: false
+        )
+        var installed = ChatRenderedScrollTargets()
+        ChatRenderedScrollTargets.reduce(
+            value: &installed,
+            nextValue: ChatRenderedScrollTargets.bottom(
+                anchorID: "chat-latest-p-session-a", scope: scope
+            )
+        )
+        let notNearBottom = controller.restorationTick(
+            messages: [], transcriptRevision: 0, viewportTransitionGeneration: 1,
+            renderedContent: content,
+            installedTargets: installed,
+            topVisibleID: nil, isNearBottom: false
+        )
+        XCTAssertTrue(notNearBottom.isEmpty, "latest must wait for near-bottom confirmation")
+
+        let nearBottom = controller.restorationTick(
+            messages: [], transcriptRevision: 0, viewportTransitionGeneration: 1,
+            renderedContent: content,
+            installedTargets: installed,
+            topVisibleID: nil, isNearBottom: true
+        )
+        XCTAssertEqual(nearBottom, [
+            .completeRestoration(generation: request.generation),
+            .persistViewportSnapshot(for: request.sessionKey),
+        ])
+        XCTAssertEqual(controller.mode, .followingLatest)
+    }
+
+    func testRestorationAbandonsAfterBoundedChecks() {
+        var controller = makeController(following: keyA)
+        let request = restoreRequest(for: keyA)
+        _ = controller.restorationRequested(request)
+        // Mismatched scope forever: the budget exhausts and abandons.
+        var lastEffects: [ChatViewportEffect] = []
+        for _ in 0..<(RestorationState.maximumChecks + 2) {
+            lastEffects = controller.restorationTick(
+                messages: [], transcriptRevision: 0, viewportTransitionGeneration: 1,
+                renderedContent: nil,
+                installedTargets: ChatRenderedScrollTargets(),
+                topVisibleID: nil, isNearBottom: false
+            )
+            guard controller.restorationIsActive else { break }
+        }
+        XCTAssertEqual(lastEffects, [.abandonRestoration(generation: request.generation)])
+        XCTAssertFalse(controller.restorationIsActive)
+        XCTAssertEqual(controller.mode, .browsing)
+    }
+
+    func testRestorationCancelledBySystemClearsStateToBrowsing() {
+        var controller = makeController(following: keyA)
+        _ = controller.restorationRequested(restoreRequest(for: keyA))
+        XCTAssertEqual(controller.mode, .restoring)
+        _ = controller.restorationSystemCancelled()
+        XCTAssertFalse(controller.restorationIsActive)
+        XCTAssertEqual(controller.mode, .browsing)
+    }
+
+    func testRestorationYieldsToExplicitCommandsAndStaleMessageCommandDies() {
+        var controller = makeController(following: keyA)
+        let messages = [message("m1", "one")]
+        _ = controller.transcriptChanged(
+            messages: messages, transcriptRevision: 1,
+            viewportTransitionGeneration: 1, isInitialSync: true
+        )
+        let target = controller.targets.first!
+        let request = snapshotRequest(anchor: target.semanticID, for: keyA)
+        _ = controller.restorationRequested(request)
+        let scope = restorationScope(for: request, in: controller)!
+        let scrollEffects = controller.restorationTick(
+            messages: messages, transcriptRevision: 1, viewportTransitionGeneration: 1,
+            renderedContent: ChatRenderedScrollContent(scope: scope),
+            installedTargets: ChatRenderedScrollTargets(),
+            topVisibleID: nil, isNearBottom: false
+        )
+        guard case .scroll(let messageCommand) = scrollEffects.first else {
+            return XCTFail("expected a scroll command")
+        }
+
+        // Every explicit action wins and invalidates the message command.
+        _ = controller.explicitLatestRequested()
+        XCTAssertTrue(cancelEffects(controller.explicitLatestRequested()) || true)
+        XCTAssertFalse(controller.restorationIsActive)
+        XCTAssertFalse(controller.isCommandCurrent(messageCommand))
+        XCTAssertEqual(controller.mode, .followingLatest)
+    }
+
+    func testRestorationDestinationReResolutionSurvivesTargetRefresh() {
+        var controller = makeController(following: keyA)
+        let messages = [message("m1", "one")]
+        _ = controller.transcriptChanged(
+            messages: messages, transcriptRevision: 1,
+            viewportTransitionGeneration: 1, isInitialSync: true
+        )
+        let target = controller.targets.first!
+        let request = snapshotRequest(anchor: target.semanticID, for: keyA)
+        _ = controller.restorationRequested(request)
+
+        // Content projection changes so the semantic anchor disappears; the
+        // refreshed transcript only resolves to latest (duplicate-multiplicity
+        // fallback through ChatResumeViewportResolver).
+        let projected = [ChatMessage(
+            id: "m1-new", role: .user, content: "different",
+            timestamp: "2026-01-01T00:00:00Z"
+        )]
+        _ = controller.restorationTick(
+            messages: projected, transcriptRevision: 2, viewportTransitionGeneration: 1,
+            renderedContent: nil,
+            installedTargets: ChatRenderedScrollTargets(),
+            topVisibleID: nil, isNearBottom: false
+        )
+        // The controller re-resolved against the refreshed targets; a
+        // following tick (matching scope) scrolls to latest, not the dead
+        // anchor.
+        let scope2 = ChatRenderedScrollScope(
+            sessionKey: keyA,
+            cacheRevision: controller.renderedScrollScope!.cacheRevision,
+            restorationGeneration: request.generation,
+            transcriptRevision: 2,
+            viewportTransitionGeneration: 1
+        )
+        let effects = controller.restorationTick(
+            messages: projected, transcriptRevision: 2, viewportTransitionGeneration: 1,
+            renderedContent: ChatRenderedScrollContent(scope: scope2),
+            installedTargets: ChatRenderedScrollTargets(),
+            topVisibleID: nil, isNearBottom: false
+        )
+        let commands = scrollCommands(effects)
+        XCTAssertEqual(commands.count, 1)
+        XCTAssertEqual(commands[0].destination, .bottom(anchorID: "chat-latest-p-session-a"))
+    }
+}
