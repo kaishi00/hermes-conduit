@@ -1617,6 +1617,8 @@ enum MarkupHTML {
 
 enum MarkdownParser {
     /// Compatibility wrapper for callers that only need the visible blocks.
+    /// Reference definitions are already stripped from them; call
+    /// `parseDocument` when the render context needs those definitions.
     static func parse(_ source: String, recognizesGatewayMedia: Bool = false) -> [MarkdownBlock] {
         parseDocument(source, recognizesGatewayMedia: recognizesGatewayMedia).blocks
     }
@@ -1666,7 +1668,7 @@ enum MarkdownParser {
                 visibleLines.append(line)
                 continue
             }
-            if let definition = referenceDefinition(trimmed) {
+            if isDefinitionIndent(line), let definition = referenceDefinition(trimmed) {
                 definitions.append(definition)
                 visibleLines.append("")
                 continue
@@ -1797,6 +1799,19 @@ enum MarkdownParser {
     }
 
     private static func fenceStart(_ value: String) -> String? { value.hasPrefix("```") ? "```" : (value.hasPrefix("~~~") ? "~~~" : nil) }
+
+    /// CommonMark allows a definition at most three spaces of indentation;
+    /// anything deeper is indented-code content that Foundation keeps as
+    /// visible paragraph text, so it must not be collected here.
+    private static func isDefinitionIndent(_ line: String) -> Bool {
+        var spaces = 0
+        for character in line {
+            if character == " " { spaces += 1 }
+            else if character == "\t" { return false }
+            else { break }
+        }
+        return spaces <= 3
+    }
 
     /// Recognizes the supported single-line subset of CommonMark link
     /// reference definitions: `[label]: destination` with an optional

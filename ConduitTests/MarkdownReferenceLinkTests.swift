@@ -263,6 +263,57 @@ final class MarkdownReferenceLinkTests: XCTestCase {
         XCTAssertTrue(items[1].contains("[id]: https://example.com/not-a-definition"))
     }
 
+    func testParseDocumentLeavesDeeplyIndentedDefinitionLookingLineVisible() {
+        // CommonMark: 4+ spaces of indentation is indented code content, not a
+        // definition — and Foundation keeps such a line visible as paragraph
+        // text, so stripping it here would silently delete user content.
+        let source = "before\n    [id]: https://example.com\nafter"
+        let document = MarkdownParser.parseDocument(source, recognizesGatewayMedia: false)
+
+        XCTAssertFalse(document.references.containsDefinitions)
+        XCTAssertEqual(
+            document.blocks,
+            [.paragraph("before\n    [id]: https://example.com\nafter")]
+        )
+    }
+
+    func testParseDocumentCollectsModestlyIndentedDefinition() {
+        // Up to three spaces of indentation is still a definition in
+        // CommonMark (e.g. aligned under a list item).
+        let source = """
+        See [docs][id].
+
+          [id]: https://example.com/indented
+        """
+        let document = MarkdownParser.parseDocument(source, recognizesGatewayMedia: false)
+
+        XCTAssertEqual(document.references.definitionsMarkdown, "[id]: https://example.com/indented")
+        XCTAssertEqual(document.blocks, [.paragraph("See [docs][id].")])
+    }
+
+    func testParseDocumentCollectsDefinitionInsideDirectiveBody() {
+        // Definitions are collected from anywhere in the message, callout and
+        // column bodies included. Left in place, Foundation would render such
+        // a line as visible trailing paragraph text with the reference use
+        // unresolved (definitions cannot interrupt a paragraph), so stripping
+        // is also the better-looking outcome, not just the resolving one.
+        let source = """
+        ::: note
+        Read [docs][d].
+        [d]: https://example.com/from-callout
+        :::
+        """
+        let document = MarkdownParser.parseDocument(source, recognizesGatewayMedia: false)
+
+        XCTAssertEqual(
+            document.references.definitionsMarkdown,
+            "[d]: https://example.com/from-callout"
+        )
+        // The definition's blank-line substitute leaves a trailing newline in
+        // the joined callout body — invisible under .full parsing.
+        XCTAssertEqual(document.blocks, [.callout(kind: "note", text: "Read [docs][d].\n")])
+    }
+
     func testParseDocumentDoesNotSwallowFootnoteMarkers() {
         let source = "Text with a footnote[^1].\n\n[^1]: https://example.com/footnote"
         let document = MarkdownParser.parseDocument(source, recognizesGatewayMedia: false)
