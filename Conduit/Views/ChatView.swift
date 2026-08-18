@@ -12,23 +12,21 @@ import ImageIO
 struct ChatView: View {
     @EnvironmentObject var appState: AppState
     @State private var bottomMarkerMaxY: CGFloat?
-    @State private var scrollViewportMaxY: CGFloat?
-    @State private var followsLatest = true
-    @State private var topVisibleChatID: String?
-    @State private var chatMessageScrollTargetCache = ChatMessageScrollTargetCache()
-    @State private var renderedScrollSessionKey: ChatScrollSessionKey?
+    @State private var scrollViewportFrame: CGRect?
     @State private var renderedScrollContent: ChatRenderedScrollContent?
     @State private var renderedScrollTargets = ChatRenderedScrollTargets()
-    @State private var renderedTranscriptRevision: UInt64 = 0
-    @State private var renderedViewportTransitionGeneration: UInt64 = 0
     @State private var viewportSnapshotProviderID = UUID()
-    @State private var scrollOwnerState = ChatScrollOwnerState()
+    @State private var viewport = ChatViewportController()
     @GestureState private var isDraggingChat = false
-    @State private var chatDragLifecycle = ChatDragLifecycleState()
-    @State private var chatDragCompletionToken: ChatDragCompletionToken?
-    @State private var notificationHandoffPending = false
-    @State private var notificationHandoffSessionKey: ChatScrollSessionKey?
-    @State private var notificationHandoffHasMeasuredLayout = false
+
+    private var renderedScrollSessionKey: ChatScrollSessionKey? { viewport.renderedSessionKey }
+
+    private var scrollViewportMaxY: CGFloat? { scrollViewportFrame?.maxY }
+
+    private var scrollViewportMinY: CGFloat? { scrollViewportFrame?.minY }
+
+    /// Single source of follow-latest truth: the controller's mode.
+    private var followsLatest: Bool { viewport.isFollowingLatest }
 
     private var activeScrollSessionKey: ChatScrollSessionKey? {
         if let canonical = appState.activeChatScrollSessionIdentity.canonicalSessionKey {
@@ -59,6 +57,10 @@ struct ChatView: View {
         )
     }
 
+    private var chatMessageScrollTargets: [ChatMessageScrollTarget] {
+        viewport.targets
+    }
+
     private var bottomAnchor: String {
         let scope = activeOrFallbackScrollSessionKey
         return "chat-latest-\(scope.profile)-\(scope.sessionID)"
@@ -73,375 +75,32 @@ struct ChatView: View {
         appState.chatResumeRestorationRequest != nil
     }
 
+    /// Latest global frames of rendered stable rows for the current scope.
+    /// Only message rows report frames (streaming/typing/markers never do),
+    /// so ephemeral identifiers cannot enter stable-top observation.
+    private var renderedRowFrames: [String: CGRect] {
+        guard let scope = renderedScrollScope else { return [:] }
+        return renderedScrollTargets.rowFrames(in: scope)
+    }
+
     private var renderedScrollScope: ChatRenderedScrollScope? {
-        renderedScrollSessionKey.map {
-            ChatRenderedScrollScope(
-                sessionKey: $0,
-                cacheRevision: chatMessageScrollTargetCache.renderingRevision,
-                restorationGeneration: appState.chatResumeRestorationRequest?.generation,
-                transcriptRevision: renderedTranscriptRevision,
-                viewportTransitionGeneration: renderedViewportTransitionGeneration
-            )
-        }
+        viewport.renderedScrollScope
     }
 
     var body: some View {
         VStack(spacing: 0) {
             // Message list
             ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(spacing: 18) {
-                        Color.clear
-                            .frame(height: 1)
-                            .id(topAnchor)
-
-                        if appState.messages.isEmpty {
-                            EmptyChatState().padding(.top, 60)
-                        }
-
-                        ForEach(chatMessageScrollTargetCache.targets) { target in
-                            MessageBubble(message: target.message)
-                                .id(target.id)
-                                .background {
-                                    GeometryReader { _ in
-                                        Color.clear.preference(
-                                            key: ChatRenderedScrollTargetsPreferenceKey.self,
-                                            value: renderedScrollScope.map {
-                                                ChatRenderedScrollTargets.row(
-                                                    semanticID: target.id,
-                                                    scope: $0
-                                                )
-                                            } ?? ChatRenderedScrollTargets()
-                                        )
-                                    }
-                                }
-                        }
-
-                        if !appState.streamingText.isEmpty {
-                            StreamingBubble(
-                                text: appState.streamingText,
-                                active: appState.isBusy
-                            )
-                            .id("streaming")
-                        }
-
-                        if appState.isBusy && appState.streamingText.isEmpty {
-                            TypingIndicator().id("typing")
-                        }
-
-                        // Keep the scroll target in the lazy layout itself.
-                        // A notification can replace the entire transcript at
-                        // once; a sibling target can otherwise be measured
-                        // against stale content while LazyVStack catches up.
-                        Color.clear
-                            .frame(height: 1)
-                            .padding(.bottom, 126)
-                            .id(bottomAnchor)
-                            .background {
-                                GeometryReader { _ in
-                                    Color.clear.preference(
-                                        key: ChatRenderedScrollTargetsPreferenceKey.self,
-                                        value: renderedScrollScope.map {
-                                            ChatRenderedScrollTargets.bottom(
-                                                anchorID: bottomAnchor,
-                                                scope: $0
-                                            )
-                                        } ?? ChatRenderedScrollTargets()
-                                    )
-                                }
-                            }
-                    }
-                    .scrollTargetLayout()
-                    .padding(.horizontal, 18)
-                    .padding(.top, 18)
-                    .background {
-                        // Measure the lazy stack itself, not its final child.
-                        // SwiftUI can unload that child after the user scrolls
-                        // away, leaving the old "at bottom" value stuck and
-                        // suppressing the scroll-to-latest button.
-                        GeometryReader { geometry in
-                            Color.clear
-                                .preference(
-                                    key: ChatBottomMarkerPreferenceKey.self,
-                                    value: geometry.frame(in: .global).maxY
-                                )
-                                .preference(
-                                    key: ChatRenderedScrollContentPreferenceKey.self,
-                                    value: renderedScrollScope.map(ChatRenderedScrollContent.init(scope:))
-                                )
-                        }
-                    }
-                }
-                .scrollDismissesKeyboard(.interactively)
-                .scrollPosition(id: $topVisibleChatID, anchor: .top)
-                .onTapGesture {
-                    UIApplication.shared.sendAction(
-                        #selector(UIResponder.resignFirstResponder),
-                        to: nil,
-                        from: nil,
-                        for: nil
-                    )
-                }
-                .background {
-                    GeometryReader { geometry in
-                        Color.clear.preference(
-                            key: ChatViewportBottomPreferenceKey.self,
-                            value: geometry.frame(in: .global).maxY
+                sessionObservers(
+                    proxy: proxy,
+                    content: transcriptObservers(
+                        proxy: proxy,
+                        content: lifecycleObservers(
+                            proxy: proxy,
+                            content: chatScrollView(proxy: proxy)
                         )
-                    }
-                }
-                .onAppear {
-                    renderedScrollSessionKey = activeScrollSessionKey
-                    chatMessageScrollTargetCache.update(for: appState.messages)
-                    renderedTranscriptRevision = appState.chatTranscriptRevision
-                    renderedViewportTransitionGeneration = appState.chatViewportTransitionGeneration
-                    let followsLatestState = $followsLatest
-                    let topVisibleChatIDState = $topVisibleChatID
-                    let targetCacheState = $chatMessageScrollTargetCache
-                    let renderedSessionKeyState = $renderedScrollSessionKey
-                    appState.installChatViewportSnapshotProvider(
-                        id: viewportSnapshotProviderID,
-                        capture: {
-                            guard let sessionKey = renderedSessionKeyState.wrappedValue else {
-                                return nil
-                            }
-                            let followsLatest = followsLatestState.wrappedValue
-                            guard let snapshot = ChatTitleScrollViewportSnapshot.make(
-                                followsLatest: followsLatest,
-                                topVisibleID: topVisibleChatIDState.wrappedValue,
-                                topAnchorID: ChatTitleScrollAnchor.id(for: sessionKey),
-                                targets: targetCacheState.wrappedValue.targets
-                            ) else {
-                                return nil
-                            }
-                            return ChatRenderedViewportSnapshot(
-                                sessionKey: sessionKey,
-                                snapshot: snapshot
-                            )
-                        }
                     )
-                }
-                .onDisappear {
-                    abandonChatDrag()
-                    appState.removeChatViewportSnapshotProvider(id: viewportSnapshotProviderID)
-                }
-                .task(id: appState.chatResumeRestorationRequest?.generation) {
-                    guard let request = appState.chatResumeRestorationRequest else { return }
-                    invalidateChatDrag()
-                    await applyChatResumeRestoration(request, using: proxy)
-                }
-                .task(id: chatDragCompletionToken) {
-                    guard let completed = chatDragCompletionToken else { return }
-                    await completeChatDrag(completed)
-                }
-                .onPreferenceChange(ChatBottomMarkerPreferenceKey.self) { value in
-                    updateBottomMarker(value)
-                    recordNotificationHandoffLayout()
-                    finishNotificationHandoffIfReady(using: proxy)
-                }
-                .onPreferenceChange(ChatViewportBottomPreferenceKey.self) { value in
-                    updateViewportBottom(value)
-                    recordNotificationHandoffLayout()
-                    finishNotificationHandoffIfReady(using: proxy)
-                }
-                .onPreferenceChange(ChatRenderedScrollContentPreferenceKey.self) { value in
-                    renderedScrollContent = value
-                    guard let value else { return }
-                    appState.chatViewportLayoutDidSettle(
-                        sessionKey: value.scope.sessionKey,
-                        transitionGeneration: value.scope.viewportTransitionGeneration,
-                        transcriptRevision: value.scope.transcriptRevision,
-                        renderRevision: value.scope.cacheRevision,
-                        receivedScopedPreference: true
-                    )
-                }
-                .onPreferenceChange(ChatRenderedScrollTargetsPreferenceKey.self) { value in
-                    renderedScrollTargets = value
-                }
-                .onChange(of: isDraggingChat) { wasDragging, isDragging in
-                    guard wasDragging, !isDragging else { return }
-                    chatDragCompletionToken = chatDragLifecycle.finish()
-                }
-                .onChange(of: appState.messages) { _, newMessages in
-                    let cacheUpdate = chatMessageScrollTargetCache.update(for: newMessages)
-                    renderedTranscriptRevision = appState.chatTranscriptRevision
-                    renderedViewportTransitionGeneration = appState.chatViewportTransitionGeneration
-                    guard !appState.isOpeningNotificationSession else {
-                        notificationHandoffPending = true
-                        return
-                    }
-                    guard ChatMessageScrollUpdatePolicy.shouldReassertLatest(
-                        after: cacheUpdate,
-                        followsLatest: followsLatest,
-                        hasPendingRestoration: hasPendingRestoration,
-                        hasNotificationHandoff: notificationHandoffPending
-                    ) else { return }
-                    DispatchQueue.main.async {
-                        guard ChatMessageScrollUpdatePolicy.shouldReassertLatest(
-                            after: cacheUpdate,
-                            followsLatest: followsLatest,
-                            hasPendingRestoration: appState.chatResumeRestorationRequest != nil,
-                            hasNotificationHandoff: appState.isOpeningNotificationSession
-                                || notificationHandoffPending
-                        ) else { return }
-                        scrollToLatest(using: proxy)
-                    }
-                }
-                .onChange(of: appState.chatTranscriptRevision) { _, revision in
-                    if chatMessageScrollTargetCache.targets.map(\.message) != appState.messages {
-                        chatMessageScrollTargetCache.update(for: appState.messages)
-                    }
-                    renderedTranscriptRevision = revision
-                    renderedViewportTransitionGeneration = appState.chatViewportTransitionGeneration
-                }
-                .onChange(of: topVisibleChatID) { _, _ in
-                    // Persist the browsing position while the old transcript
-                    // is still rendered. A session switch clears messages in
-                    // the same main-actor turn, so waiting until the switch
-                    // callback would leave us with no anchor to save.
-                    saveChatScrollPosition(for: renderedScrollSessionKey)
-                }
-                .onChange(of: followsLatest) { _, _ in
-                    saveChatScrollPosition(for: renderedScrollSessionKey)
-                }
-                .onChange(of: appState.chatScrollRequest) { _, _ in
-                    invalidateChatDrag()
-                    cancelAutomaticRestoration()
-                    followsLatest = true
-                    scrollToLatest(using: proxy)
-                }
-                .onChange(of: appState.chatScrollToTopRequest) { _, request in
-                    invalidateChatDrag()
-                    cancelAutomaticRestoration()
-                    followsLatest = false
-                    scrollToTop(using: proxy, request: request)
-                }
-                .onChange(of: appState.activeSessionId) { oldSessionID, newSessionID in
-                    guard !appState.isOpeningNotificationSession else {
-                        invalidateChatDrag()
-                        scrollOwnerState.invalidateForSessionTransition()
-                        cancelAutomaticRestoration()
-                        notificationHandoffPending = true
-                        notificationHandoffSessionKey = activeScrollSessionKey
-                        notificationHandoffHasMeasuredLayout = false
-                        renderedScrollSessionKey = activeScrollSessionKey
-                        if followsLatest {
-                            renderedViewportTransitionGeneration = appState.chatViewportTransitionGeneration
-                        }
-                        return
-                    }
-                    let identity = appState.activeChatScrollSessionIdentity
-                    let oldKey = renderedScrollSessionKey ?? identity.key(for: oldSessionID)
-                    let newKey = activeScrollSessionKey
-                    if let request = appState.chatResumeRestorationRequest,
-                       !identity.areEquivalent(request.sessionKey, newKey) {
-                        cancelAutomaticRestoration()
-                    }
-                    let keysAreEquivalent = identity.areEquivalent(oldKey, newKey)
-                    if !keysAreEquivalent {
-                        invalidateChatDrag()
-                        scrollOwnerState.invalidateForSessionTransition()
-                    }
-                    renderedScrollSessionKey = newKey
-                    if followsLatest {
-                        renderedViewportTransitionGeneration = appState.chatViewportTransitionGeneration
-                    }
-                    guard !keysAreEquivalent else { return }
-                    topVisibleChatID = nil
-                    let shouldFollowLatest = ChatFollowLatestRelatchPolicy
-                        .shouldFollowLatestAfterTransition(isDragging: isDraggingChat)
-                    followsLatest = shouldFollowLatest
-                    if shouldFollowLatest {
-                        scrollToLatest(using: proxy)
-                    }
-                }
-                .onChange(of: appState.activeProfile) { _, _ in
-                    invalidateChatDrag()
-                    scrollOwnerState.invalidateForSessionTransition()
-                    let oldKey = renderedScrollSessionKey
-                    let newKey = activeScrollSessionKey
-                    if let request = appState.chatResumeRestorationRequest,
-                       request.sessionKey != newKey {
-                        cancelAutomaticRestoration()
-                    }
-                    topVisibleChatID = nil
-                    chatMessageScrollTargetCache = ChatMessageScrollTargetCache()
-                    chatMessageScrollTargetCache.update(for: appState.messages)
-                    renderedTranscriptRevision = appState.chatTranscriptRevision
-                    renderedScrollSessionKey = newKey
-                    if followsLatest {
-                        renderedViewportTransitionGeneration = appState.chatViewportTransitionGeneration
-                    }
-                    guard !appState.isOpeningNotificationSession else {
-                        notificationHandoffPending = true
-                        notificationHandoffSessionKey = newKey
-                        notificationHandoffHasMeasuredLayout = false
-                        followsLatest = false
-                        return
-                    }
-                    guard oldKey != newKey else { return }
-                    let shouldFollowLatest = ChatFollowLatestRelatchPolicy
-                        .shouldFollowLatestAfterTransition(isDragging: isDraggingChat)
-                    followsLatest = shouldFollowLatest
-                    if shouldFollowLatest {
-                        scrollToLatest(using: proxy)
-                    }
-                }
-                .onChange(of: appState.activeChatScrollSessionIdentity) { _, _ in
-                    guard !appState.isOpeningNotificationSession else { return }
-                    if let activeScrollSessionKey,
-                       appState.activeChatScrollSessionIdentity.areEquivalent(
-                           renderedScrollSessionKey,
-                           activeScrollSessionKey
-                    ) {
-                        renderedScrollSessionKey = activeScrollSessionKey
-                    }
-                }
-                .onChange(of: appState.isOpeningNotificationSession) { _, isOpening in
-                    if isOpening {
-                        invalidateChatDrag()
-                        scrollOwnerState.invalidateForSessionTransition()
-                        cancelAutomaticRestoration()
-                        notificationHandoffPending = true
-                        notificationHandoffSessionKey = nil
-                        notificationHandoffHasMeasuredLayout = false
-                        followsLatest = false
-                    } else {
-                        if notificationHandoffPending, notificationHandoffSessionKey == nil {
-                            notificationHandoffSessionKey = activeScrollSessionKey
-                            notificationHandoffHasMeasuredLayout = bottomMarkerMaxY != nil && scrollViewportMaxY != nil
-                        }
-                        finishNotificationHandoffIfReady(using: proxy)
-                    }
-                }
-                .onChange(of: appState.streamingText) { _, _ in
-                    if followsLatest && !hasPendingRestoration {
-                        proxy.scrollTo(bottomAnchor, anchor: .bottom)
-                    }
-                }
-                .onChange(of: appState.isBusy) { _, isBusy in
-                    if !isBusy, followsLatest, !hasPendingRestoration {
-                        scrollToLatest(using: proxy)
-                    }
-                }
-                .simultaneousGesture(chatDragGesture)
-                .overlay(alignment: .bottomTrailing) {
-                    if !followsLatest && !isNearBottom {
-                        Button {
-                            cancelAutomaticRestoration()
-                            followsLatest = true
-                            scrollToLatest(using: proxy)
-                        } label: {
-                            Image(systemName: "arrow.down")
-                                .font(.system(size: 15, weight: .bold))
-                                .frame(width: 44, height: 44)
-                        }
-                        .conduitGlassControl(cornerRadius: 22, tint: .conduitAccent.opacity(0.14))
-                        .accessibilityLabel("Scroll to latest message")
-                        .padding(.trailing, 18)
-                        .padding(.bottom, 14)
-                    }
-                }
+                )
             }
 
             // Composer + control bar
@@ -469,9 +128,336 @@ struct ChatView: View {
         }
     }
 
+    // MARK: - Scroll construction (layered so the type-checker can cope)
+
+    private func chatScrollView(proxy: ScrollViewProxy) -> some View {
+        ScrollView {
+            LazyVStack(spacing: 18) {
+                Color.clear
+                    .frame(height: 1)
+                    .id(topAnchor)
+
+                if appState.messages.isEmpty {
+                    EmptyChatState().padding(.top, 60)
+                }
+
+                ForEach(chatMessageScrollTargets) { target in
+                    MessageBubble(message: target.message)
+                        .id(target.id)
+                        .background {
+                            GeometryReader { geometry in
+                                Color.clear.preference(
+                                    key: ChatRenderedScrollTargetsPreferenceKey.self,
+                                    value: renderedScrollScope.map {
+                                        ChatRenderedScrollTargets.row(
+                                            semanticID: target.id,
+                                            scope: $0,
+                                            frame: geometry.frame(in: .global)
+                                        )
+                                    } ?? ChatRenderedScrollTargets()
+                                )
+                            }
+                        }
+                }
+
+                if !appState.streamingText.isEmpty {
+                    StreamingBubble(
+                        text: appState.streamingText,
+                        active: appState.isBusy
+                    )
+                    .id("streaming")
+                }
+
+                if appState.isBusy && appState.streamingText.isEmpty {
+                    TypingIndicator().id("typing")
+                }
+
+                // Keep the scroll target in the lazy layout itself.
+                // A notification can replace the entire transcript at
+                // once; a sibling target can otherwise be measured
+                // against stale content while LazyVStack catches up.
+                Color.clear
+                    .frame(height: 1)
+                    .padding(.bottom, 126)
+                    .id(bottomAnchor)
+                    .background {
+                        GeometryReader { _ in
+                            Color.clear.preference(
+                                key: ChatRenderedScrollTargetsPreferenceKey.self,
+                                value: renderedScrollScope.map {
+                                    ChatRenderedScrollTargets.bottom(
+                                        anchorID: bottomAnchor,
+                                        scope: $0
+                                    )
+                                } ?? ChatRenderedScrollTargets()
+                            )
+                        }
+                    }
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 18)
+            .background {
+                // Measure the lazy stack itself, not its final child.
+                // SwiftUI can unload that child after the user scrolls
+                // away, leaving the old "at bottom" value stuck and
+                // suppressing the scroll-to-latest button.
+                GeometryReader { geometry in
+                    Color.clear
+                        .preference(
+                            key: ChatBottomMarkerPreferenceKey.self,
+                            value: geometry.frame(in: .global).maxY
+                        )
+                        .preference(
+                            key: ChatRenderedScrollContentPreferenceKey.self,
+                            value: renderedScrollScope.map(ChatRenderedScrollContent.init(scope:))
+                        )
+                }
+            }
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .onTapGesture {
+            UIApplication.shared.sendAction(
+                #selector(UIResponder.resignFirstResponder),
+                to: nil,
+                from: nil,
+                for: nil
+            )
+        }
+        .background {
+            GeometryReader { geometry in
+                Color.clear.preference(
+                    key: ChatViewportFramePreferenceKey.self,
+                    value: geometry.frame(in: .global)
+                )
+            }
+        }
+        .simultaneousGesture(chatDragGesture(proxy: proxy))
+        .overlay(alignment: .bottomTrailing) {
+            if !followsLatest && !isNearBottom {
+                Button {
+                    ChatViewportTrace.shared.log("event explicitLatest (button)")
+                    performViewportEffects(
+                        viewport.explicitLatestRequested(),
+                        using: proxy
+                    )
+                } label: {
+                    Image(systemName: "arrow.down")
+                        .font(.system(size: 15, weight: .bold))
+                        .frame(width: 44, height: 44)
+                }
+                .conduitGlassControl(cornerRadius: 22, tint: .conduitAccent.opacity(0.14))
+                .accessibilityLabel("Scroll to latest message")
+                .padding(.trailing, 18)
+                .padding(.bottom, 14)
+            }
+        }
+    }
+
+    private func lifecycleObservers(proxy: ScrollViewProxy, content: some View) -> some View {
+        content
+            .onAppear {
+                performViewportEffects(
+                    viewport.renderedSessionChanged(
+                        to: activeScrollSessionKey,
+                        identity: appState.activeChatScrollSessionIdentity,
+                        viaNotification: false,
+                        viewportTransitionGeneration: appState.chatViewportTransitionGeneration
+                    ),
+                    using: proxy
+                )
+                performViewportEffects(
+                    viewport.transcriptChanged(
+                        messages: appState.messages,
+                        transcriptRevision: appState.chatTranscriptRevision,
+                        viewportTransitionGeneration: appState.chatViewportTransitionGeneration,
+                        isInitialSync: true
+                    ),
+                    using: proxy
+                )
+                appState.installChatViewportSnapshotProvider(
+                    id: viewportSnapshotProviderID,
+                    capture: {
+                        // @State reads through the captured view struct see
+                        // current values (State storage is a reference box).
+                        self.viewport.renderedViewportSnapshot()
+                    }
+                )
+            }
+            .onDisappear {
+                performViewportEffects(viewport.viewDisappeared(), using: proxy)
+                appState.removeChatViewportSnapshotProvider(id: viewportSnapshotProviderID)
+            }
+            .task(id: appState.chatResumeRestorationRequest?.generation) {
+                guard let request = appState.chatResumeRestorationRequest else { return }
+                await runViewportRestoration(request, using: proxy)
+            }
+            .onPreferenceChange(ChatBottomMarkerPreferenceKey.self) { value in
+                bottomMarkerMaxY = value
+                // Facts first: the handoff readiness decision reads the
+                // controller's geometry copy, so it must see this tick.
+                performViewportEffects(
+                    viewport.layoutMetricsChanged(facts: currentLayoutFacts()),
+                    using: proxy
+                )
+                recordNotificationHandoffLayout()
+                finishNotificationHandoffIfReady(using: proxy)
+            }
+            .onPreferenceChange(ChatViewportFramePreferenceKey.self) { value in
+                scrollViewportFrame = value
+                performViewportEffects(
+                    viewport.layoutMetricsChanged(facts: currentLayoutFacts()),
+                    using: proxy
+                )
+                recordNotificationHandoffLayout()
+                finishNotificationHandoffIfReady(using: proxy)
+            }
+            .onPreferenceChange(ChatRenderedScrollContentPreferenceKey.self) { value in
+                renderedScrollContent = value
+                guard let value else { return }
+                appState.chatViewportLayoutDidSettle(
+                    sessionKey: value.scope.sessionKey,
+                    transitionGeneration: value.scope.viewportTransitionGeneration,
+                    transcriptRevision: value.scope.transcriptRevision,
+                    renderRevision: value.scope.cacheRevision,
+                    receivedScopedPreference: true
+                )
+            }
+            .onPreferenceChange(ChatRenderedScrollTargetsPreferenceKey.self) { value in
+                renderedScrollTargets = value
+                performViewportEffects(
+                    viewport.layoutMetricsChanged(facts: currentLayoutFacts()),
+                    using: proxy
+                )
+            }
+            .onChange(of: isDraggingChat) { wasDragging, isDragging in
+                guard wasDragging, !isDragging else { return }
+                performViewportEffects(viewport.userDragGestureEnded(), using: proxy)
+            }
+    }
+
+    private func transcriptObservers(proxy: ScrollViewProxy, content: some View) -> some View {
+        content
+            .onChange(of: appState.messages) { _, _ in
+                performViewportEffects(
+                    viewport.transcriptChanged(
+                        messages: appState.messages,
+                        transcriptRevision: appState.chatTranscriptRevision,
+                        viewportTransitionGeneration: appState.chatViewportTransitionGeneration,
+                        activeSessionKey: activeScrollSessionKey,
+                        isOpeningNotificationSession: appState.isOpeningNotificationSession
+                    ),
+                    using: proxy
+                )
+            }
+            .onChange(of: appState.chatTranscriptRevision) { _, _ in
+                performViewportEffects(
+                    viewport.transcriptChanged(
+                        messages: appState.messages,
+                        transcriptRevision: appState.chatTranscriptRevision,
+                        viewportTransitionGeneration: appState.chatViewportTransitionGeneration,
+                        activeSessionKey: activeScrollSessionKey,
+                        isOpeningNotificationSession: appState.isOpeningNotificationSession
+                    ),
+                    using: proxy
+                )
+            }
+            .onChange(of: appState.chatResumeRestorationRequest) { oldRequest, newRequest in
+                guard oldRequest != nil, newRequest == nil else { return }
+                // The published request disappeared on the AppState side
+                // (completed/abandoned/cancelled elsewhere).
+                performViewportEffects(
+                    viewport.restorationSystemCancelled(),
+                    using: proxy
+                )
+            }
+            .onChange(of: followsLatest) { _, _ in
+                saveChatScrollPosition(for: renderedScrollSessionKey)
+            }
+    }
+
+    private func sessionObservers(proxy: ScrollViewProxy, content: some View) -> some View {
+        content
+            .onChange(of: appState.chatScrollRequest) { _, _ in
+                ChatViewportTrace.shared.log("event explicitLatest (send pulse)")
+                performViewportEffects(viewport.explicitLatestRequested(), using: proxy)
+            }
+            .onChange(of: appState.chatScrollToTopRequest) { _, request in
+                ChatViewportTrace.shared.log("event explicitTop request=\(request)")
+                performViewportEffects(
+                    viewport.explicitTopRequested(request: request),
+                    using: proxy
+                )
+            }
+            .onChange(of: appState.activeSessionId) { _, _ in
+                ChatViewportTrace.shared.log(
+                    "event sessionChanged viaNotification=\(appState.isOpeningNotificationSession)"
+                )
+                performViewportEffects(
+                    viewport.renderedSessionChanged(
+                        to: activeScrollSessionKey,
+                        identity: appState.activeChatScrollSessionIdentity,
+                        viaNotification: appState.isOpeningNotificationSession,
+                        viewportTransitionGeneration: appState.chatViewportTransitionGeneration
+                    ),
+                    using: proxy
+                )
+            }
+            .onChange(of: appState.activeProfile) { _, _ in
+                ChatViewportTrace.shared.log(
+                    "event profileChanged viaNotification=\(appState.isOpeningNotificationSession)"
+                )
+                // Mirror-only transcript sync: the session-change event below
+                // owns the single follow scroll for a real switch, so a
+                // profile change cannot emit a duplicate latest command.
+                performViewportEffects(
+                    viewport.transcriptChanged(
+                        messages: appState.messages,
+                        transcriptRevision: appState.chatTranscriptRevision,
+                        viewportTransitionGeneration: appState.chatViewportTransitionGeneration,
+                        isInitialSync: true,
+                        activeSessionKey: activeScrollSessionKey,
+                        isOpeningNotificationSession: appState.isOpeningNotificationSession
+                    ),
+                    using: proxy
+                )
+                performViewportEffects(
+                    viewport.renderedSessionChanged(
+                        to: activeScrollSessionKey,
+                        identity: appState.activeChatScrollSessionIdentity,
+                        viaNotification: appState.isOpeningNotificationSession,
+                        viewportTransitionGeneration: appState.chatViewportTransitionGeneration
+                    ),
+                    using: proxy
+                )
+            }
+            .onChange(of: appState.activeChatScrollSessionIdentity) { _, _ in
+                performViewportEffects(
+                    viewport.activeIdentityRefreshed(
+                        identity: appState.activeChatScrollSessionIdentity,
+                        key: activeScrollSessionKey
+                    ),
+                    using: proxy
+                )
+            }
+            .onChange(of: appState.isOpeningNotificationSession) { _, isOpening in
+                if isOpening {
+                    ChatViewportTrace.shared.log("event notificationHandoffBegan")
+                    performViewportEffects(
+                        viewport.notificationHandoffBegan(destination: nil),
+                        using: proxy
+                    )
+                } else {
+                    performViewportEffects(
+                        viewport.notificationHandoffDestinationReady(activeKey: activeScrollSessionKey),
+                        using: proxy
+                    )
+                }
+            }
+    }
+
     private func saveChatScrollPosition(for preferredKey: ChatScrollSessionKey? = nil) {
         let currentKey = preferredKey ?? renderedScrollSessionKey ?? activeScrollSessionKey
-        guard let sessionKey = ChatFollowLatestRelatchPolicy.persistenceSessionKey(
+        guard let sessionKey = ChatViewportPersistenceSupport.persistenceSessionKey(
             currentKey: currentKey,
             identity: appState.activeChatScrollSessionIdentity
         ) else { return }
@@ -480,356 +466,218 @@ struct ChatView: View {
     }
 
     private func currentChatViewportSnapshot() -> ChatScrollSnapshot? {
-        ChatTitleScrollViewportSnapshot.make(
-            followsLatest: followsLatest,
-            topVisibleID: topVisibleChatID,
-            topAnchorID: renderedTopAnchor,
-            targets: chatMessageScrollTargetCache.targets
-        )
+        viewport.renderedViewportSnapshot()?.snapshot
     }
 
     private func cancelAutomaticRestoration() {
         appState.cancelChatResumeRestoration()
     }
 
-    private var chatDragGesture: some Gesture {
+    private func chatDragGesture(proxy: ScrollViewProxy) -> some Gesture {
         DragGesture(minimumDistance: 3)
             .updating($isDraggingChat) { _, isDragging, _ in
                 isDragging = true
             }
             .onChanged { _ in
-                beginChatDragIfNeeded()
+                beginChatDragIfNeeded(using: proxy)
             }
     }
 
-    private func beginChatDragIfNeeded() {
-        // Only a deliberate user drag opts out of stream following. Capturing
-        // here preserves the session and transition that owned the gesture.
-        guard chatDragLifecycle.begin(
-            sessionKey: renderedScrollSessionKey ?? activeScrollSessionKey,
-            viewportTransitionGeneration: appState.chatViewportTransitionGeneration
-        ) else { return }
-        scrollOwnerState.invalidateForUserDrag()
-        chatDragCompletionToken = nil
-        cancelAutomaticRestoration()
-        followsLatest = false
-    }
-
-    @MainActor
-    private func completeChatDrag(_ completed: ChatDragCompletionToken) async {
-        await ChatFollowLatestRelatchPolicy.completeDragAfterNextTurn(
-            isCurrent: {
-                ChatFollowLatestRelatchPolicy.isCompletionCurrent(
-                    completed: completed,
-                    current: currentChatDragCompletionToken,
-                    identity: appState.activeChatScrollSessionIdentity,
-                    isDragging: isDraggingChat,
-                    hasPendingRestoration: hasPendingRestoration,
-                    hasNotificationHandoff: appState.isOpeningNotificationSession
-                        || notificationHandoffPending
-                )
-            },
-            relatch: { relatchFollowsLatestIfSettled() },
-            persist: {
-                saveChatScrollPosition(for: currentChatDragCompletionToken.sessionKey)
-                appState.flushChatResumeViewport()
-            }
-        )
-        guard !Task.isCancelled,
-              chatDragCompletionToken == completed else { return }
-        chatDragCompletionToken = nil
-    }
-
-    private var currentChatDragCompletionToken: ChatDragCompletionToken {
-        chatDragLifecycle.currentToken(
-            sessionKey: renderedScrollSessionKey ?? activeScrollSessionKey,
-            viewportTransitionGeneration: appState.chatViewportTransitionGeneration
+    private func beginChatDragIfNeeded(using proxy: ScrollViewProxy) {
+        // Only a deliberate user drag opts out of stream following; the
+        // controller captures the session and transition that owned the
+        // gesture and owns the completion lineage.
+        performViewportEffects(
+            viewport.userDragBegan(
+                sessionKey: renderedScrollSessionKey ?? activeScrollSessionKey,
+                viewportTransitionGeneration: appState.chatViewportTransitionGeneration
+            ),
+            using: proxy
         )
     }
 
-    private func invalidateChatDrag() {
-        chatDragLifecycle.invalidate(hasActiveGesture: isDraggingChat)
-        chatDragCompletionToken = nil
+    private func invalidateChatDrag(using proxy: ScrollViewProxy) {
+        performViewportEffects(
+            viewport.invalidateDrag(hasActiveGesture: isDraggingChat),
+            using: proxy
+        )
     }
 
-    private func abandonChatDrag() {
-        chatDragLifecycle.abandon()
-        chatDragCompletionToken = nil
+    private func abandonChatDrag(using proxy: ScrollViewProxy) {
+        performViewportEffects(viewport.abandonDrag(), using: proxy)
     }
 
+    /// Controller-driven restoration: the .task restarts whenever the
+    /// published request generation changes; each tick feeds the controller
+    /// current observations and executes its effects. Cancellation comes
+    /// from task identity (generation change / view teardown) or the
+    /// system-cancel onChange; identity drift cancels via the session-change
+    /// event. All retries are bounded inside the controller.
     @MainActor
-    private func applyChatResumeRestoration(
+    private func runViewportRestoration(
         _ request: ChatResumeRestorationRequest,
         using proxy: ScrollViewProxy
     ) async {
-        guard restorationRequestIsCurrent(request) else {
-            // If the generation is still current but identity drifted,
-            // abandon so pendingRestoration doesn't get stuck forever.
-            if appState.chatResumeRestorationRequest?.generation == request.generation {
-                appState.abandonChatResumeRestoration(generation: request.generation)
-            }
-            return
-        }
-        if chatMessageScrollTargetCache.targets.map(\.message) != appState.messages {
-            chatMessageScrollTargetCache.update(for: appState.messages)
-            renderedTranscriptRevision = appState.chatTranscriptRevision
-        }
-
-        var destination = restorationDestination(
-            for: request,
-            targets: chatMessageScrollTargetCache.targets
-        )
-        followsLatest = destination == .latest
-        var restoration = ChatResumeRenderRestorationState(
-            generation: request.generation,
-            sessionKey: request.sessionKey,
-            destination: destination
-        )
-
-        while restorationRequestIsCurrent(request) {
-            if chatMessageScrollTargetCache.targets.map(\.message) != appState.messages {
-                chatMessageScrollTargetCache.update(for: appState.messages)
-                renderedTranscriptRevision = appState.chatTranscriptRevision
-            }
-            destination = restorationDestination(
-                for: request,
-                targets: chatMessageScrollTargetCache.targets
-            )
-            restoration.updateDestination(destination)
-
-            switch restoration.nextAction(
+        performViewportEffects(viewport.restorationRequested(request), using: proxy)
+        while !Task.isCancelled, viewport.restorationIsActive {
+            let effects = viewport.restorationTick(
+                messages: appState.messages,
+                transcriptRevision: appState.chatTranscriptRevision,
+                viewportTransitionGeneration: appState.chatViewportTransitionGeneration,
                 renderedContent: renderedScrollContent,
                 installedTargets: renderedScrollTargets,
-                cacheRevision: chatMessageScrollTargetCache.renderingRevision,
-                transcriptRevision: appState.chatTranscriptRevision,
-                topVisibleID: topVisibleChatID,
-                isNearBottom: bottomMarkerMaxY != nil
-                    && scrollViewportMaxY != nil
-                    && isNearBottom
-            ) {
-            case .wait:
-                break
-            case .scroll(let destination):
-                guard restorationRequestIsCurrent(request) else { return }
-                var transaction = Transaction()
-                transaction.animation = nil
-                withTransaction(transaction) {
-                    switch destination {
-                    case .latest:
-                        followsLatest = true
-                        proxy.scrollTo(bottomAnchor, anchor: .bottom)
-                    case .anchor(let anchor):
-                        followsLatest = false
-                        proxy.scrollTo(anchor, anchor: .top)
-                    }
-                }
-            case .complete:
-                guard restorationRequestIsCurrent(request) else { return }
-                appState.completeChatResumeRestoration(generation: request.generation)
-                if destination == .latest {
-                    saveChatScrollPosition(for: request.sessionKey)
-                }
-                return
-            case .abandon:
-                guard restorationRequestIsCurrent(request) else { return }
-                appState.abandonChatResumeRestoration(generation: request.generation)
-                return
-            case .cancelled:
-                return
-            }
-
+                topVisibleID: viewport.stableTopMessageID,
+                isNearBottom: viewport.isNearBottom
+            )
+            performViewportEffects(effects, using: proxy)
+            guard viewport.restorationIsActive else { return }
             do {
                 try await Task.sleep(for: .milliseconds(25))
             } catch {
-                restoration.cancel()
                 return
-            }
-        }
-
-        // Loop exited because restorationRequestIsCurrent returned false.
-        // If the generation is still current but identity drifted mid-loop,
-        // abandon so pendingRestoration doesn't get stuck forever.
-        if appState.chatResumeRestorationRequest?.generation == request.generation {
-            appState.abandonChatResumeRestoration(generation: request.generation)
-        }
-    }
-
-    private func restorationDestination(
-        for request: ChatResumeRestorationRequest,
-        targets: [ChatMessageScrollTarget]
-    ) -> ChatResumeViewportDestination {
-        switch request.destination {
-        case .latest:
-            return .latest
-        case .snapshot(let snapshot):
-            // The resolver returns semantic anchor IDs, but rows are now
-            // keyed by message.id (.id(target.id)). Resolve the semantic
-            // anchor to its source message.id so the entire restoration
-            // state machine operates in one identity space.
-            let resolved = ChatResumeViewportResolver.destination(
-                for: snapshot,
-                availableTargets: ChatScrollTargetAvailability(targets: targets)
-            )
-            switch resolved {
-            case .latest:
-                return .latest
-            case .anchor(let semanticAnchor):
-                let sourceAnchor = targets.first { $0.semanticID == semanticAnchor }?.id ?? semanticAnchor
-                return .anchor(sourceAnchor)
-            }
-        }
-    }
-
-    private func restorationRequestIsCurrent(
-        _ request: ChatResumeRestorationRequest
-    ) -> Bool {
-        guard !Task.isCancelled,
-              appState.chatResumeRestorationRequest?.generation == request.generation else {
-            return false
-        }
-        let identity = appState.activeChatScrollSessionIdentity
-        return identity.areEquivalent(request.sessionKey, activeScrollSessionKey)
-    }
-
-    private func scrollToLatest(using proxy: ScrollViewProxy) {
-        guard !hasPendingRestoration else { return }
-        let ownerToken = scrollOwnerState.claimLatest()
-        let anchorID = bottomAnchor
-        withAnimation(ConduitMotion.response) {
-            proxy.scrollTo(anchorID, anchor: .bottom)
-        }
-        // Retry after a short delay: proxy.scrollTo is a silent no-op if the
-        // bottom anchor row isn't materialized yet (LazyVStack on a long
-        // transcript). A single delayed retry covers the common case where
-        // messages arrive on the same main-actor turn.
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(150))
-            guard let retryAnchor = scrollOwnerState.latestRetryAnchor(
-                for: ownerToken,
-                currentAnchor: bottomAnchor,
-                followsLatest: followsLatest,
-                hasPendingRestoration: hasPendingRestoration,
-                isCancelled: Task.isCancelled
-            ) else { return }
-            withAnimation(ConduitMotion.response) {
-                proxy.scrollTo(retryAnchor, anchor: .bottom)
-            }
-        }
-    }
-
-    private func scrollToTop(using proxy: ScrollViewProxy, request: Int) {
-        let ownerToken = scrollOwnerState.claimTop(request: request)
-        let anchorID = topAnchor
-        var transaction = Transaction()
-        transaction.animation = nil
-        withTransaction(transaction) {
-            proxy.scrollTo(anchorID, anchor: .top)
-        }
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(150))
-            guard let retryAnchor = scrollOwnerState.topRetryAnchor(
-                for: ownerToken,
-                currentRequest: appState.chatScrollToTopRequest,
-                currentAnchor: topAnchor,
-                isCancelled: Task.isCancelled
-            ) else { return }
-            var transaction = Transaction()
-            transaction.animation = nil
-            withTransaction(transaction) {
-                proxy.scrollTo(retryAnchor, anchor: .top)
             }
         }
     }
 
     /// A notification handoff completes only after the destination transcript
-    /// has emitted its own geometry. This is a layout fact rather than a timer,
-    /// so a long lazy transcript cannot inherit the old conversation's offset.
+    /// has emitted its own geometry. This is a layout fact rather than a
+    /// timer, so a long lazy transcript cannot inherit the old conversation's
+    /// offset. The controller owns the handoff state; these helpers feed it
+    /// facts and ask for the completion decision.
     private func recordNotificationHandoffLayout() {
-        guard notificationHandoffPending,
+        guard viewport.notificationHandoffAwaitingLayout,
+              let handoffKey = viewport.notificationHandoff?.sessionKey,
               appState.activeChatScrollSessionIdentity.areEquivalent(
-                notificationHandoffSessionKey,
+                handoffKey,
                 activeScrollSessionKey
               ),
               bottomMarkerMaxY != nil,
               scrollViewportMaxY != nil else { return }
-        notificationHandoffHasMeasuredLayout = true
+        _ = viewport.notificationHandoffLayoutMeasured()
     }
 
     private func finishNotificationHandoffIfReady(using proxy: ScrollViewProxy) {
-        guard notificationHandoffPending,
-              !appState.isOpeningNotificationSession,
-              appState.activeChatScrollSessionIdentity.areEquivalent(
-                notificationHandoffSessionKey,
-                activeScrollSessionKey
-              ),
-              notificationHandoffHasMeasuredLayout else { return }
-        notificationHandoffPending = false
-        notificationHandoffSessionKey = nil
-        cancelAutomaticRestoration()
-        let shouldFollowLatest = ChatFollowLatestRelatchPolicy
-            .shouldFollowLatestAfterTransition(isDragging: isDraggingChat)
-        switch scrollOwnerState.handoffCompletionAction(
-            currentTopRequest: appState.chatScrollToTopRequest,
-            currentTopAnchor: topAnchor,
-            shouldFollowLatest: shouldFollowLatest
-        ) {
-        case .top:
-            followsLatest = false
-            // The handoff completes once the destination's bottom-marker
-            // geometry arrives, but the lazy top anchor may not be laid out
-            // yet. Use the retry-capable path so the viewport still lands at
-            // the top once the anchor materializes.
-            scrollToTop(using: proxy, request: appState.chatScrollToTopRequest)
-        case .latest:
-            followsLatest = true
-            _ = scrollOwnerState.claimLatest()
-            var transaction = Transaction()
-            transaction.animation = nil
-            withTransaction(transaction) {
-                proxy.scrollTo(bottomAnchor, anchor: .bottom)
+        guard !appState.isOpeningNotificationSession else { return }
+        performViewportEffects(
+            viewport.notificationHandoffDestinationReady(activeKey: activeScrollSessionKey),
+            using: proxy
+        )
+    }
+
+    // MARK: - Viewport controller wiring
+
+    private func currentLayoutFacts() -> ChatViewportLayoutFacts {
+        let scope = renderedScrollScope
+        let frames = renderedRowFrames.map { id, frame in
+            ChatRenderedRowFrame(
+                id: id,
+                minY: frame.minY,
+                maxY: frame.maxY,
+                scope: scope ?? ChatRenderedScrollScope(
+                    sessionKey: activeOrFallbackScrollSessionKey,
+                    cacheRevision: 0,
+                    restorationGeneration: nil,
+                    transcriptRevision: 0,
+                    viewportTransitionGeneration: 0
+                )
+            )
+        }
+        return ChatViewportLayoutFacts(
+            bottomMarkerMaxY: bottomMarkerMaxY,
+            viewportMinY: scrollViewportMinY,
+            viewportMaxY: scrollViewportMaxY,
+            rowFrames: frames,
+            renderedScope: scope
+        )
+    }
+
+    /// The ONLY boundary that executes viewport effects. `runScroll` is the
+    /// only place in ChatView that calls ScrollViewProxy.scrollTo.
+    @MainActor
+    private func performViewportEffects(
+        _ effects: [ChatViewportEffect],
+        using proxy: ScrollViewProxy
+    ) {
+        for effect in effects {
+            performViewportEffect(effect, using: proxy)
+        }
+    }
+
+    @MainActor
+    private func performViewportEffect(
+        _ effect: ChatViewportEffect,
+        using proxy: ScrollViewProxy
+    ) {
+        switch effect {
+        case .scroll(let command):
+            executeViewportScrollCommand(command, using: proxy)
+        case .cancelAutomaticRestoration:
+            appState.cancelChatResumeRestoration()
+        case .persistViewportSnapshot(let key):
+            saveChatScrollPosition(for: key)
+        case .flushViewportPersistence:
+            appState.flushChatResumeViewport()
+        case .completeRestoration(let generation):
+            appState.completeChatResumeRestoration(generation: generation)
+        case .abandonRestoration(let generation):
+            appState.abandonChatResumeRestoration(generation: generation)
+        case .scheduleDragEvaluation(let token):
+            Task { @MainActor in
+                await ChatViewportPersistenceSupport.waitForNextMainActorTurn()
+                guard !Task.isCancelled else { return }
+                ChatViewportTrace.shared.log(
+                    "drag completion evaluate gen=\(token.dragGeneration)"
+                )
+                performViewportEffects(
+                    viewport.evaluateDragCompletion(
+                        token,
+                        viewportTransitionGeneration: appState.chatViewportTransitionGeneration
+                    ),
+                    using: proxy
+                )
             }
-        case .none:
-            followsLatest = false
         }
     }
 
-    private func updateBottomMarker(_ value: CGFloat?) {
-        bottomMarkerMaxY = value
-        relatchFollowsLatestIfSettled()
-    }
-
-    private func updateViewportBottom(_ value: CGFloat?) {
-        scrollViewportMaxY = value
-        relatchFollowsLatestIfSettled()
-    }
-
-    /// Geometry callbacks fire on every content-growth and scroll tick, so
-    /// they must not re-latch while the user's finger is still down: the drag
-    /// sets `followsLatest = false`, but until the finger travels past the
-    /// near-bottom window each streamed delta would yank the scroll back to
-    /// the bottom, fighting the drag.
-    private func relatchFollowsLatestIfSettled() {
-        if scrollOwnerState.hasActiveTopOwner(
-            currentRequest: appState.chatScrollToTopRequest
-        ) {
-            // A title tap pins the viewport near the top so the user can read
-            // back up the thread without streamed deltas yanking them to the
-            // bottom. Once they return near the bottom, hand ownership back to
-            // "latest" so auto-follow of new messages resumes instead of staying
-            // suppressed for the rest of the session. (A finger drag already
-            // clears this owner via beginChatDragIfNeeded; this covers the
-            // non-drag paths, e.g. short conversations where top ≈ bottom.)
-            guard isNearBottom else { return }
-            scrollOwnerState.claimLatest()
+    @MainActor
+    private func executeViewportScrollCommand(
+        _ command: ChatViewportCommand,
+        using proxy: ScrollViewProxy
+    ) {
+        // Immediate execution: the controller issued this command in the
+        // current turn, so it is current by construction. Only the delayed
+        // retry re-validates below.
+        runViewportScroll(command, using: proxy)
+        guard case .delayed(let milliseconds) = command.retry else { return }
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(milliseconds))
+            guard !Task.isCancelled, viewport.isCommandCurrent(command) else { return }
+            ChatViewportTrace.shared.log(
+                "scroll retry \(command.destination) gen=\(command.generation)"
+            )
+            runViewportScroll(command, using: proxy)
         }
-        if ChatFollowLatestRelatchPolicy.shouldRelatch(
-            isNearBottom: isNearBottom,
-            hasPendingRestoration: hasPendingRestoration,
-            hasNotificationHandoff: appState.isOpeningNotificationSession
-                || notificationHandoffPending,
-            isDragging: isDraggingChat
-        ) {
-            followsLatest = true
+    }
+
+    @MainActor
+    private func runViewportScroll(
+        _ command: ChatViewportCommand,
+        using proxy: ScrollViewProxy
+    ) {
+        ChatViewportTrace.shared.log(
+            "scroll \(command.destination) gen=\(command.generation) animated=\(command.animated)"
+        )
+        var transaction = Transaction()
+        transaction.animation = command.animated ? ConduitMotion.response : nil
+        withTransaction(transaction) {
+            switch command.destination {
+            case .bottom(let anchorID):
+                proxy.scrollTo(anchorID, anchor: .bottom)
+            case .top(let anchorID, _):
+                proxy.scrollTo(anchorID, anchor: .top)
+            case .message(let id):
+                proxy.scrollTo(id, anchor: .top)
+            }
         }
     }
 }
@@ -837,105 +685,6 @@ struct ChatView: View {
 enum ChatTitleScrollAnchor {
     static func id(for sessionKey: ChatScrollSessionKey) -> String {
         "chat-top-\(sessionKey.profile)-\(sessionKey.sessionID)"
-    }
-}
-
-enum ChatScrollOwner: Equatable {
-    case latest
-    case explicitTop(request: Int)
-    case userDrag
-    case sessionTransition
-}
-
-struct ChatScrollOwnerToken: Equatable {
-    let generation: UInt64
-    let owner: ChatScrollOwner
-}
-
-enum ChatHandoffCompletionAction: Equatable {
-    case top(anchorID: String)
-    case latest
-    case none
-}
-
-struct ChatScrollOwnerState: Equatable {
-    private(set) var generation: UInt64 = 0
-    private(set) var owner: ChatScrollOwner = .latest
-
-    @discardableResult
-    mutating func claimLatest() -> ChatScrollOwnerToken {
-        advance(to: .latest)
-    }
-
-    @discardableResult
-    mutating func claimTop(request: Int) -> ChatScrollOwnerToken {
-        advance(to: .explicitTop(request: request))
-    }
-
-    mutating func invalidateForUserDrag() {
-        advance(to: .userDrag)
-    }
-
-    mutating func invalidateForSessionTransition() {
-        advance(to: .sessionTransition)
-    }
-
-    func hasActiveTopOwner(currentRequest: Int) -> Bool {
-        guard case .explicitTop(let request) = owner else { return false }
-        return request == currentRequest
-    }
-
-    func topRetryAnchor(
-        for token: ChatScrollOwnerToken,
-        currentRequest: Int,
-        currentAnchor: String,
-        isCancelled: Bool
-    ) -> String? {
-        guard !isCancelled,
-              token == currentToken,
-              hasActiveTopOwner(currentRequest: currentRequest) else {
-            return nil
-        }
-        return currentAnchor
-    }
-
-    func latestRetryAnchor(
-        for token: ChatScrollOwnerToken,
-        currentAnchor: String,
-        followsLatest: Bool,
-        hasPendingRestoration: Bool,
-        isCancelled: Bool
-    ) -> String? {
-        guard !isCancelled,
-              token == currentToken,
-              owner == .latest,
-              followsLatest,
-              !hasPendingRestoration else {
-            return nil
-        }
-        return currentAnchor
-    }
-
-    func handoffCompletionAction(
-        currentTopRequest: Int,
-        currentTopAnchor: String,
-        shouldFollowLatest: Bool
-    ) -> ChatHandoffCompletionAction {
-        if hasActiveTopOwner(currentRequest: currentTopRequest) {
-            return .top(anchorID: currentTopAnchor)
-        }
-        return shouldFollowLatest ? .latest : .none
-    }
-
-    private var currentToken: ChatScrollOwnerToken {
-        ChatScrollOwnerToken(generation: generation, owner: owner)
-    }
-
-    @discardableResult
-    private mutating func advance(to nextOwner: ChatScrollOwner) -> ChatScrollOwnerToken {
-        generation &+= 1
-        owner = nextOwner
-        return currentToken
     }
 }
 
@@ -986,9 +735,9 @@ private struct ChatBottomMarkerPreferenceKey: PreferenceKey {
     }
 }
 
-private struct ChatViewportBottomPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat? = nil
-    static func reduce(value: inout CGFloat?, nextValue: () -> CGFloat?) {
+private struct ChatViewportFramePreferenceKey: PreferenceKey {
+    static var defaultValue: CGRect? = nil
+    static func reduce(value: inout CGRect?, nextValue: () -> CGRect?) {
         value = nextValue() ?? value
     }
 }
