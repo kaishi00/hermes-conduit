@@ -1036,12 +1036,6 @@ extension ChatViewportControllerTests {
     }
 
     func testRestorationRequestedEntersRestoringInvalidatesDragAndResolvesDestination() {
-        var controller = makeController(following: keyA)
-        _ = controller.userDragBegan(sessionKey: keyA, viewportTransitionGeneration: 1)
-        let request = snapshotRequest(anchor: "chat-message-fp-0", for: keyA)
-        // The anchor resolves to the source message id space.
-        // Build targets with the exact semantic ids the fingerprint produces
-        // by using ChatMessageScrollTargets directly.
         let messages = [message("m1", "one"), message("m2", "two")]
         var seeded = makeController(following: keyA)
         _ = seeded.transcriptChanged(
@@ -1050,26 +1044,31 @@ extension ChatViewportControllerTests {
             viewportTransitionGeneration: 1,
             isInitialSync: true
         )
+        // Snapshot anchored at the semantic id resolves to the SOURCE
+        // message id space inside the restoration state machine.
         let realAnchor = seeded.targets.first!.semanticID
-        let seededRequest = snapshotRequest(anchor: realAnchor, for: keyA)
+        let request = snapshotRequest(anchor: realAnchor, for: keyA)
         _ = seeded.userDragBegan(sessionKey: keyA, viewportTransitionGeneration: 1)
 
-        _ = seeded.restorationRequested(seededRequest)
+        _ = seeded.restorationRequested(request)
         XCTAssertTrue(seeded.restorationIsActive)
         XCTAssertEqual(seeded.mode, .restoring)
-        // First tick on a mismatched scope waits without scrolling.
-        let firstTick = seeded.restorationTick(
+
+        // A matching-scope tick scrolls to the SOURCE message id (m1), not
+        // the semantic anchor string.
+        let scope = restorationScope(for: request, in: seeded)!
+        let effects = seeded.restorationTick(
             messages: messages,
             transcriptRevision: 1,
             viewportTransitionGeneration: 1,
-            renderedContent: nil,
+            renderedContent: ChatRenderedScrollContent(scope: scope),
             installedTargets: ChatRenderedScrollTargets(),
             topVisibleID: nil,
             isNearBottom: false
         )
-        XCTAssertTrue(firstTick.isEmpty)
-        _ = controller
-        _ = request
+        let commands = scrollCommands(effects)
+        XCTAssertEqual(commands.count, 1)
+        XCTAssertEqual(commands[0].destination, .message(id: "m1"))
     }
 
     func testRestorationWaitsForMatchingRenderedScopeBeforeScrolling() {
@@ -1270,8 +1269,8 @@ extension ChatViewportControllerTests {
         }
 
         // Every explicit action wins and invalidates the message command.
-        _ = controller.explicitLatestRequested()
-        XCTAssertTrue(cancelEffects(controller.explicitLatestRequested()) || true)
+        let explicitEffects = controller.explicitLatestRequested()
+        XCTAssertTrue(cancelEffects(explicitEffects), "explicit latest cancels restoration")
         XCTAssertFalse(controller.restorationIsActive)
         XCTAssertFalse(controller.isCommandCurrent(messageCommand))
         XCTAssertEqual(controller.mode, .followingLatest)

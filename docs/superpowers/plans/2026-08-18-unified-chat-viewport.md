@@ -89,7 +89,9 @@ final class ChatViewportTrace {
     }
 
     func dump() -> String {
-        entries.map { String(format: "%.3f %@", $0.time, $1) }.joined(separator: "\n")
+        entries.map { entry in
+            String(format: "%.3f %@", entry.time, entry.text)
+        }.joined(separator: "\n")
     }
 
     func reset() { entries.removeAll() }

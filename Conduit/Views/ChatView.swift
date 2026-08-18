@@ -293,21 +293,23 @@ struct ChatView: View {
             }
             .onPreferenceChange(ChatBottomMarkerPreferenceKey.self) { value in
                 bottomMarkerMaxY = value
-                recordNotificationHandoffLayout()
-                finishNotificationHandoffIfReady(using: proxy)
+                // Facts first: the handoff readiness decision reads the
+                // controller's geometry copy, so it must see this tick.
                 performViewportEffects(
                     viewport.layoutMetricsChanged(facts: currentLayoutFacts()),
                     using: proxy
                 )
+                recordNotificationHandoffLayout()
+                finishNotificationHandoffIfReady(using: proxy)
             }
             .onPreferenceChange(ChatViewportFramePreferenceKey.self) { value in
                 scrollViewportFrame = value
-                recordNotificationHandoffLayout()
-                finishNotificationHandoffIfReady(using: proxy)
                 performViewportEffects(
                     viewport.layoutMetricsChanged(facts: currentLayoutFacts()),
                     using: proxy
                 )
+                recordNotificationHandoffLayout()
+                finishNotificationHandoffIfReady(using: proxy)
             }
             .onPreferenceChange(ChatRenderedScrollContentPreferenceKey.self) { value in
                 renderedScrollContent = value

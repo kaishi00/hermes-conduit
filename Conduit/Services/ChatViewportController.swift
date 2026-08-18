@@ -465,8 +465,11 @@ struct ChatViewportController: Equatable {
         if pending.sessionKey == nil {
             pending.sessionKey = activeKey
             // Old code inferred measured-ness from current geometry when the
-            // key was adopted at flag-clear time.
+            // key was adopted at flag-clear time, and persisted the adoption
+            // even when readiness failed — keep that so a later tick builds
+            // on the adopted key instead of re-deriving it.
             pending.hasMeasuredLayout = bottomMarkerMaxY != nil && viewportMaxY != nil
+            notificationHandoff = pending
         }
         guard pending.hasMeasuredLayout else { return [] }
         notificationHandoff = nil
