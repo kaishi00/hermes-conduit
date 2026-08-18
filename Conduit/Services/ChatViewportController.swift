@@ -51,7 +51,7 @@ struct ChatViewportLayoutFacts: Equatable {
 }
 
 struct ChatViewportHandoffState: Equatable {
-    let sessionKey: ChatScrollSessionKey?
+    var sessionKey: ChatScrollSessionKey?
     var hasMeasuredLayout = false
 
     init(sessionKey: ChatScrollSessionKey?, hasMeasuredLayout: Bool = false) {
@@ -158,6 +158,10 @@ struct ChatViewportController: Equatable {
             if notificationHandoff == nil {
                 notificationHandoff = ChatViewportHandoffState(sessionKey: key)
                 effects.append(contentsOf: beginHandoffOwnership())
+            } else if notificationHandoff?.sessionKey == nil {
+                // The opening flag arrived before the destination session
+                // did; adopt it now.
+                notificationHandoff?.sessionKey = key
             }
             renderedSessionKey = key
             if wasFollowing {
@@ -236,12 +240,14 @@ struct ChatViewportController: Equatable {
     mutating func transcriptChanged(
         messages: [ChatMessage],
         transcriptRevision: UInt64,
-        viewportTransitionGeneration: UInt64
+        viewportTransitionGeneration: UInt64,
+        isInitialSync: Bool = false
     ) -> [ChatViewportEffect] {
         let update = targetCache.update(for: messages)
         renderedTranscriptRevision = transcriptRevision
         mirroredViewportTransitionGeneration = viewportTransitionGeneration
-        guard update != .unchanged,
+        guard !isInitialSync,
+              update != .unchanged,
               mode == .followingLatest,
               restoration == nil,
               notificationHandoff == nil else { return [] }
@@ -451,15 +457,19 @@ struct ChatViewportController: Equatable {
         activeKey: ChatScrollSessionKey?
     ) -> [ChatViewportEffect] {
         guard var pending = notificationHandoff else { return [] }
+        // Key mismatch or unmeasured destination: keep the handoff pending —
+        // the old code retried on every subsequent geometry tick rather than
+        // dropping the handoff.
         let destinationKey = pending.sessionKey ?? activeKey
-        notificationHandoff = nil
         guard identity.areEquivalent(destinationKey, activeKey) else { return [] }
-        if !pending.hasMeasuredLayout {
+        if pending.sessionKey == nil {
+            pending.sessionKey = activeKey
             // Old code inferred measured-ness from current geometry when the
             // key was adopted at flag-clear time.
             pending.hasMeasuredLayout = bottomMarkerMaxY != nil && viewportMaxY != nil
         }
         guard pending.hasMeasuredLayout else { return [] }
+        notificationHandoff = nil
 
         generation &+= 1
         if case .explicitTop(let request) = mode {
