@@ -12,7 +12,7 @@ import ImageIO
 struct ChatView: View {
     @EnvironmentObject var appState: AppState
     @State private var bottomMarkerMaxY: CGFloat?
-    @State private var scrollViewportMaxY: CGFloat?
+    @State private var scrollViewportFrame: CGRect?
     @State private var followsLatest = true
     @State private var topVisibleChatID: String?
     @State private var chatMessageScrollTargetCache = ChatMessageScrollTargetCache()
@@ -29,6 +29,10 @@ struct ChatView: View {
     @State private var notificationHandoffPending = false
     @State private var notificationHandoffSessionKey: ChatScrollSessionKey?
     @State private var notificationHandoffHasMeasuredLayout = false
+
+    private var scrollViewportMaxY: CGFloat? { scrollViewportFrame?.maxY }
+
+    private var scrollViewportMinY: CGFloat? { scrollViewportFrame?.minY }
 
     private var activeScrollSessionKey: ChatScrollSessionKey? {
         if let canonical = appState.activeChatScrollSessionIdentity.canonicalSessionKey {
@@ -73,6 +77,28 @@ struct ChatView: View {
         appState.chatResumeRestorationRequest != nil
     }
 
+    /// Latest global frames of rendered stable rows for the current scope.
+    /// Only message rows report frames (streaming/typing/markers never do),
+    /// so ephemeral identifiers cannot enter stable-top observation.
+    private var renderedRowFrames: [String: CGRect] {
+        guard let scope = renderedScrollScope else { return [:] }
+        return renderedScrollTargets.rowFrames(in: scope)
+    }
+
+    /// First stable message row intersecting the viewport, in target order —
+    /// the row-geometry replacement for reading `topVisibleChatID`.
+    private var stableTopMessageID: String? {
+        guard let viewportMinY = scrollViewportMinY,
+              let viewportMaxY = scrollViewportMaxY else { return nil }
+        for target in chatMessageScrollTargetCache.targets {
+            guard let frame = renderedRowFrames[target.id] else { continue }
+            if frame.maxY > viewportMinY && frame.minY < viewportMaxY {
+                return target.id
+            }
+        }
+        return nil
+    }
+
     private var renderedScrollScope: ChatRenderedScrollScope? {
         renderedScrollSessionKey.map {
             ChatRenderedScrollScope(
@@ -103,13 +129,14 @@ struct ChatView: View {
                             MessageBubble(message: target.message)
                                 .id(target.id)
                                 .background {
-                                    GeometryReader { _ in
+                                    GeometryReader { geometry in
                                         Color.clear.preference(
                                             key: ChatRenderedScrollTargetsPreferenceKey.self,
                                             value: renderedScrollScope.map {
                                                 ChatRenderedScrollTargets.row(
                                                     semanticID: target.id,
-                                                    scope: $0
+                                                    scope: $0,
+                                                    frame: geometry.frame(in: .global)
                                                 )
                                             } ?? ChatRenderedScrollTargets()
                                         )
@@ -185,8 +212,8 @@ struct ChatView: View {
                 .background {
                     GeometryReader { geometry in
                         Color.clear.preference(
-                            key: ChatViewportBottomPreferenceKey.self,
-                            value: geometry.frame(in: .global).maxY
+                            key: ChatViewportFramePreferenceKey.self,
+                            value: geometry.frame(in: .global)
                         )
                     }
                 }
@@ -195,22 +222,20 @@ struct ChatView: View {
                     chatMessageScrollTargetCache.update(for: appState.messages)
                     renderedTranscriptRevision = appState.chatTranscriptRevision
                     renderedViewportTransitionGeneration = appState.chatViewportTransitionGeneration
-                    let followsLatestState = $followsLatest
-                    let topVisibleChatIDState = $topVisibleChatID
-                    let targetCacheState = $chatMessageScrollTargetCache
-                    let renderedSessionKeyState = $renderedScrollSessionKey
                     appState.installChatViewportSnapshotProvider(
                         id: viewportSnapshotProviderID,
                         capture: {
-                            guard let sessionKey = renderedSessionKeyState.wrappedValue else {
+                            // @State reads through the captured view struct see
+                            // current values (State storage is a reference
+                            // box), matching the previous binding captures.
+                            guard let sessionKey = self.renderedScrollSessionKey else {
                                 return nil
                             }
-                            let followsLatest = followsLatestState.wrappedValue
                             guard let snapshot = ChatTitleScrollViewportSnapshot.make(
-                                followsLatest: followsLatest,
-                                topVisibleID: topVisibleChatIDState.wrappedValue,
+                                followsLatest: self.followsLatest,
+                                topVisibleID: self.stableTopMessageID,
                                 topAnchorID: ChatTitleScrollAnchor.id(for: sessionKey),
-                                targets: targetCacheState.wrappedValue.targets
+                                targets: self.chatMessageScrollTargetCache.targets
                             ) else {
                                 return nil
                             }
@@ -239,8 +264,9 @@ struct ChatView: View {
                     recordNotificationHandoffLayout()
                     finishNotificationHandoffIfReady(using: proxy)
                 }
-                .onPreferenceChange(ChatViewportBottomPreferenceKey.self) { value in
-                    updateViewportBottom(value)
+                .onPreferenceChange(ChatViewportFramePreferenceKey.self) { value in
+                    scrollViewportFrame = value
+                    updateViewportBottom(value?.maxY)
                     recordNotificationHandoffLayout()
                     finishNotificationHandoffIfReady(using: proxy)
                 }
@@ -297,7 +323,7 @@ struct ChatView: View {
                     renderedTranscriptRevision = revision
                     renderedViewportTransitionGeneration = appState.chatViewportTransitionGeneration
                 }
-                .onChange(of: topVisibleChatID) { _, _ in
+                .onChange(of: stableTopMessageID) { _, _ in
                     // Persist the browsing position while the old transcript
                     // is still rendered. A session switch clears messages in
                     // the same main-actor turn, so waiting until the switch
@@ -489,7 +515,7 @@ struct ChatView: View {
     private func currentChatViewportSnapshot() -> ChatScrollSnapshot? {
         ChatTitleScrollViewportSnapshot.make(
             followsLatest: followsLatest,
-            topVisibleID: topVisibleChatID,
+            topVisibleID: stableTopMessageID,
             topAnchorID: renderedTopAnchor,
             targets: chatMessageScrollTargetCache.targets
         )
@@ -615,7 +641,7 @@ struct ChatView: View {
                 installedTargets: renderedScrollTargets,
                 cacheRevision: chatMessageScrollTargetCache.renderingRevision,
                 transcriptRevision: appState.chatTranscriptRevision,
-                topVisibleID: topVisibleChatID,
+                topVisibleID: stableTopMessageID,
                 isNearBottom: bottomMarkerMaxY != nil
                     && scrollViewportMaxY != nil
                     && isNearBottom
@@ -836,7 +862,9 @@ struct ChatView: View {
     }
 
     private func updateViewportBottom(_ value: CGFloat?) {
-        scrollViewportMaxY = value
+        // scrollViewportMinY/MaxY are derived from scrollViewportFrame; the
+        // relatch pass only needs the bottom edge, which the caller already
+        // stored into the frame state.
         relatchFollowsLatestIfSettled()
     }
 
@@ -1025,9 +1053,9 @@ private struct ChatBottomMarkerPreferenceKey: PreferenceKey {
     }
 }
 
-private struct ChatViewportBottomPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat? = nil
-    static func reduce(value: inout CGFloat?, nextValue: () -> CGFloat?) {
+private struct ChatViewportFramePreferenceKey: PreferenceKey {
+    static var defaultValue: CGRect? = nil
+    static func reduce(value: inout CGRect?, nextValue: () -> CGRect?) {
         value = nextValue() ?? value
     }
 }
