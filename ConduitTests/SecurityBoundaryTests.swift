@@ -51,6 +51,30 @@ final class SecurityBoundaryTests: XCTestCase {
         XCTAssertFalse(ConnectionURLPolicy.isAllowedTransport(URL(string: "http://100.64.1")))
     }
 
+    func testPrivateLANHTTPIsAllowed() {
+        XCTAssertTrue(ConnectionURLPolicy.isAllowedTransport(URL(string: "http://192.168.1.42:9119")))
+        XCTAssertEqual(
+            try? ConnectionURLPolicy.normalizedBaseURL("http://192.168.1.42:9119/"),
+            "http://192.168.1.42:9119"
+        )
+        XCTAssertTrue(ConnectionURLPolicy.isAllowedTransport(URL(string: "http://10.0.0.1")))
+        XCTAssertTrue(ConnectionURLPolicy.isAllowedTransport(URL(string: "http://172.16.0.1")))
+        XCTAssertTrue(ConnectionURLPolicy.isAllowedTransport(URL(string: "http://172.31.255.254")))
+        XCTAssertTrue(ConnectionURLPolicy.isAllowedTransport(URL(string: "http://192.168.255.254")))
+        XCTAssertFalse(ConnectionURLPolicy.isAllowedTransport(URL(string: "http://172.15.255.255")))
+        XCTAssertFalse(ConnectionURLPolicy.isAllowedTransport(URL(string: "http://172.32.0.1")))
+        XCTAssertFalse(ConnectionURLPolicy.isAllowedTransport(URL(string: "http://192.167.0.1")))
+        XCTAssertFalse(ConnectionURLPolicy.isAllowedTransport(URL(string: "http://192.168.1.999")))
+        XCTAssertFalse(ConnectionURLPolicy.isAllowedTransport(URL(string: "http://192.168.attacker.1")))
+    }
+
+    func testInsecureTransportErrorExplainsAllowedLocalNetworks() {
+        XCTAssertEqual(
+            ConnectionURLPolicyError.insecureTransport.errorDescription,
+            "Remote dashboards must use HTTPS; HTTP is allowed only for local networks (localhost, private LAN, and Tailscale)."
+        )
+    }
+
     func testCGNATOctetBoundaryRejectsInvalidValues() {
         // Octet > 255 is not a valid IPv4 octet
         XCTAssertFalse(ConnectionURLPolicy.isAllowedTransport(URL(string: "http://100.64.256.1")))
