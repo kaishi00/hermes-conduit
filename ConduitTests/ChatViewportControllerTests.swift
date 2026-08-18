@@ -1394,3 +1394,200 @@ extension ChatViewportControllerTests {
         XCTAssertTrue(scrollCommands(settled).isEmpty)
     }
 }
+
+// MARK: - Hardening pass regressions (PR #80 review round 2)
+
+extension ChatViewportControllerTests {
+
+    // Fix 1: a published restoration for A can be overtaken by a session
+    // switch to B before the SwiftUI .task adopts it.
+    func testStaleRestorationRequestAfterSessionSwitchIsRejectedImmediately() {
+        var controller = makeController(following: keyB)
+        let staleRequest = restoreRequest(for: keyA)
+
+        let effects = controller.restorationRequested(staleRequest)
+
+        // Abandoned through the existing AppState contract, immediately —
+        // no 80-check wait, no adoption.
+        XCTAssertEqual(effects, [.abandonRestoration(generation: staleRequest.generation)])
+        XCTAssertFalse(controller.restorationIsActive)
+        // B keeps normal follow-latest capability.
+        XCTAssertEqual(controller.mode, .followingLatest)
+        XCTAssertTrue(scrollCommands(effects).isEmpty)
+
+        // The stale request can never issue a scroll afterwards: subsequent
+        // ticks have no restoration state to act on, and a bottom command
+        // issued for B remains current (B's follow is unimpaired).
+        let followEffects = controller.layoutMetricsChanged(facts: layoutFacts(
+            bottomMarkerMaxY: 806,
+            viewportMaxY: 800,
+            scope: controller.renderedScrollScope
+        ))
+        XCTAssertEqual(scrollCommands(followEffects).count, 1)
+        XCTAssertEqual(
+            scrollCommands(followEffects)[0].destination,
+            .bottom(anchorID: "chat-latest-p-session-b")
+        )
+    }
+
+    func testFreshRestorationRequestForRenderedSessionStillAdopted() {
+        var controller = makeController(following: keyA)
+        _ = controller.restorationRequested(restoreRequest(for: keyA))
+        XCTAssertTrue(controller.restorationIsActive)
+        XCTAssertEqual(controller.mode, .restoring)
+    }
+
+    // Fix 2: abandoning a drag on view disappearance must clear the gesture
+    // fact, or relatch/follow stays suppressed forever (no gesture-ended
+    // event ever arrives for an abandoned gesture).
+    func testViewDisappearanceDuringActiveDragDoesNotSuppressRelatchForever() {
+        var controller = makeController(following: keyA)
+        _ = controller.userDragBegan(sessionKey: keyA, viewportTransitionGeneration: 1)
+        XCTAssertEqual(controller.mode, .browsing)
+
+        _ = controller.viewDisappeared()
+
+        // Reappeared; a later geometry tick near the bottom relatches.
+        let effects = controller.layoutMetricsChanged(facts: layoutFacts(
+            bottomMarkerMaxY: 810,
+            viewportMaxY: 800,
+            scope: controller.renderedScrollScope
+        ))
+        XCTAssertEqual(controller.mode, .followingLatest)
+        XCTAssertTrue(scrollCommands(effects).isEmpty, "relatch must not scroll")
+    }
+
+    // Fix 3: a layout tick cannot hand top ownership back to latest while a
+    // drag is still active (title tapped mid-drag, finger never lifted).
+    func testLayoutTickCannotReturnExplicitTopToLatestWhileDragging() {
+        var controller = makeController(following: keyA)
+        _ = controller.userDragBegan(sessionKey: keyA, viewportTransitionGeneration: 1)
+        XCTAssertEqual(controller.mode, .browsing)
+
+        // Title tap claimed top while the finger stayed down.
+        _ = controller.explicitTopRequested(request: 2)
+        XCTAssertEqual(controller.mode, .explicitTop(request: 2))
+
+        _ = controller.layoutMetricsChanged(facts: layoutFacts(
+            bottomMarkerMaxY: 810,
+            viewportMaxY: 800,
+            scope: controller.renderedScrollScope
+        ))
+        XCTAssertEqual(
+            controller.mode,
+            .explicitTop(request: 2),
+            "top ownership must not hand back to latest mid-drag"
+        )
+
+        // After the finger lifts (gesture invalidated by the explicit top,
+        // so no completion) and a tick passes near the bottom, hand-back
+        // proceeds normally.
+        _ = controller.userDragGestureEnded()
+        _ = controller.layoutMetricsChanged(facts: layoutFacts(
+            bottomMarkerMaxY: 810,
+            viewportMaxY: 800,
+            scope: controller.renderedScrollScope
+        ))
+        XCTAssertEqual(controller.mode, .followingLatest)
+    }
+
+    // Fix 4a: a transcript change that lands BEFORE the handoff observer
+    // fires stays inert because suppression reads AppState synchronously.
+    func testTranscriptChangeBeforeHandoffEventDoesNotEmitOldSessionScroll() {
+        var controller = makeController(following: keyA)
+        let effects = controller.transcriptChanged(
+            messages: [message("m1", "hello")],
+            transcriptRevision: 2,
+            viewportTransitionGeneration: 1,
+            isOpeningNotificationSession: true
+        )
+        XCTAssertTrue(scrollCommands(effects).isEmpty)
+        // Mirrors still updated (handoff path relies on fresh revisions).
+        XCTAssertEqual(controller.renderedScrollScope?.transcriptRevision, 2)
+    }
+
+    // Fix 4b: the reassert anchor follows the session key supplied at event
+    // time even when the controller's mirror lags the session observer.
+    func testTranscriptReassertUsesCurrentSessionAnchorDespiteMirrorLag() {
+        var controller = makeController(following: keyA)
+        let effects = controller.transcriptChanged(
+            messages: [message("m1", "hello")],
+            transcriptRevision: 2,
+            viewportTransitionGeneration: 1,
+            activeSessionKey: keyB
+        )
+        let commands = scrollCommands(effects)
+        XCTAssertEqual(commands.count, 1)
+        XCTAssertEqual(commands[0].destination, .bottom(anchorID: "chat-latest-p-session-b"))
+        XCTAssertTrue(controller.isCommandCurrent(commands[0]))
+    }
+
+    // Fix 4c: profile-switch shape — mirror-only transcript sync followed by
+    // the session-change event emits exactly ONE scroll, not two.
+    func testProfileSwitchShapeEmitsExactlyOneLatestCommand() {
+        var controller = makeController(following: keyA)
+        let profileKey = ChatScrollSessionKey(profile: "other", sessionID: "session-a")
+
+        let mirrorOnly = controller.transcriptChanged(
+            messages: [message("m1", "hello")],
+            transcriptRevision: 2,
+            viewportTransitionGeneration: 3,
+            isInitialSync: true,
+            activeSessionKey: profileKey
+        )
+        XCTAssertTrue(scrollCommands(mirrorOnly).isEmpty)
+
+        let switchEffects = controller.renderedSessionChanged(
+            to: profileKey,
+            identity: identity(for: profileKey),
+            viaNotification: false,
+            viewportTransitionGeneration: 3
+        )
+        XCTAssertEqual(scrollCommands(switchEffects).count, 1)
+    }
+
+    // Fix 5: an unloaded row stops reporting frames; the next facts event
+    // must not keep it as the stable top / persisted anchor.
+    func testUnloadedRowCannotRemainPersistedTopVisibleAnchor() {
+        var controller = makeController(following: keyA)
+        _ = controller.transcriptChanged(
+            messages: [message("m1", "one"), message("m2", "two"), message("m3", "three")],
+            transcriptRevision: 1,
+            viewportTransitionGeneration: 1,
+            isInitialSync: true
+        )
+        _ = controller.userDragBegan(sessionKey: keyA, viewportTransitionGeneration: 1)
+        let scope = controller.renderedScrollScope!
+
+        // All three rendered; m1 is the top stable row.
+        _ = controller.layoutMetricsChanged(facts: layoutFacts(
+            bottomMarkerMaxY: 900,
+            viewportMinY: 100,
+            viewportMaxY: 800,
+            rowFrames: [
+                ChatRenderedRowFrame(id: "m1", minY: 40, maxY: 140, scope: scope),
+                ChatRenderedRowFrame(id: "m2", minY: 160, maxY: 400, scope: scope),
+                ChatRenderedRowFrame(id: "m3", minY: 420, maxY: 700, scope: scope),
+            ],
+            scope: scope
+        ))
+        XCTAssertEqual(controller.stableTopMessageID, "m1")
+        XCTAssertEqual(controller.renderedViewportSnapshot()?.snapshot.anchorSourceMessageID, "m1")
+
+        // m1 scrolled far up and LazyVStack unloaded it: only m2/m3 report
+        // frames this pass. The anchor must move to m2 — m1's frozen frame
+        // cannot keep it pinned.
+        _ = controller.layoutMetricsChanged(facts: layoutFacts(
+            bottomMarkerMaxY: 900,
+            viewportMinY: 100,
+            viewportMaxY: 800,
+            rowFrames: [
+                ChatRenderedRowFrame(id: "m2", minY: 120, maxY: 360, scope: scope),
+                ChatRenderedRowFrame(id: "m3", minY: 380, maxY: 660, scope: scope),
+            ],
+            scope: scope
+        ))
+        XCTAssertEqual(controller.stableTopMessageID, "m2")
+        XCTAssertEqual(controller.renderedViewportSnapshot()?.snapshot.anchorSourceMessageID, "m2")
+    }
+}

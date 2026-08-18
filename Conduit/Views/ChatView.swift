@@ -342,7 +342,9 @@ struct ChatView: View {
                     viewport.transcriptChanged(
                         messages: appState.messages,
                         transcriptRevision: appState.chatTranscriptRevision,
-                        viewportTransitionGeneration: appState.chatViewportTransitionGeneration
+                        viewportTransitionGeneration: appState.chatViewportTransitionGeneration,
+                        activeSessionKey: activeScrollSessionKey,
+                        isOpeningNotificationSession: appState.isOpeningNotificationSession
                     ),
                     using: proxy
                 )
@@ -352,7 +354,9 @@ struct ChatView: View {
                     viewport.transcriptChanged(
                         messages: appState.messages,
                         transcriptRevision: appState.chatTranscriptRevision,
-                        viewportTransitionGeneration: appState.chatViewportTransitionGeneration
+                        viewportTransitionGeneration: appState.chatViewportTransitionGeneration,
+                        activeSessionKey: activeScrollSessionKey,
+                        isOpeningNotificationSession: appState.isOpeningNotificationSession
                     ),
                     using: proxy
                 )
@@ -402,11 +406,17 @@ struct ChatView: View {
                 ChatViewportTrace.shared.log(
                     "event profileChanged viaNotification=\(appState.isOpeningNotificationSession)"
                 )
+                // Mirror-only transcript sync: the session-change event below
+                // owns the single follow scroll for a real switch, so a
+                // profile change cannot emit a duplicate latest command.
                 performViewportEffects(
                     viewport.transcriptChanged(
                         messages: appState.messages,
                         transcriptRevision: appState.chatTranscriptRevision,
-                        viewportTransitionGeneration: appState.chatViewportTransitionGeneration
+                        viewportTransitionGeneration: appState.chatViewportTransitionGeneration,
+                        isInitialSync: true,
+                        activeSessionKey: activeScrollSessionKey,
+                        isOpeningNotificationSession: appState.isOpeningNotificationSession
                     ),
                     using: proxy
                 )

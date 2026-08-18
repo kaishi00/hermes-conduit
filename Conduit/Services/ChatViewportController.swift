@@ -237,12 +237,22 @@ struct ChatViewportController: Equatable {
     /// Ports the old onChange(messages) reassert policy: cache + revision
     /// mirrors always update; the animated latest reassert fires only while
     /// following with no restoration/handoff in flight.
+    /// `activeSessionKey` and `isOpeningNotificationSession` are read
+    /// synchronously from AppState at event time so suppression does not
+    /// depend on which SwiftUI onChange observer happens to fire first: a
+    /// transcript change that lands before the handoff/session observer
+    /// still sees the handoff underway and stays inert.
     mutating func transcriptChanged(
         messages: [ChatMessage],
         transcriptRevision: UInt64,
         viewportTransitionGeneration: UInt64,
-        isInitialSync: Bool = false
+        isInitialSync: Bool = false,
+        activeSessionKey: ChatScrollSessionKey? = nil,
+        isOpeningNotificationSession: Bool = false
     ) -> [ChatViewportEffect] {
+        if let activeSessionKey {
+            self.activeSessionKey = activeSessionKey
+        }
         let update = targetCache.update(for: messages)
         renderedTranscriptRevision = transcriptRevision
         mirroredViewportTransitionGeneration = viewportTransitionGeneration
@@ -250,7 +260,8 @@ struct ChatViewportController: Equatable {
               update != .unchanged,
               mode == .followingLatest,
               restoration == nil,
-              notificationHandoff == nil else { return [] }
+              notificationHandoff == nil,
+              !isOpeningNotificationSession else { return [] }
         return [.scroll(latestCommand(animated: true))]
     }
 
@@ -276,7 +287,7 @@ struct ChatViewportController: Equatable {
         }
 
         var relatchedThisTick = false
-        if case .explicitTop = mode, isNearBottom {
+        if case .explicitTop = mode, isNearBottom, !dragGestureActive {
             // A title tap pins the viewport near the top; once the user
             // returns near the bottom, hand ownership back to latest so
             // auto-follow resumes.
@@ -389,9 +400,12 @@ struct ChatViewportController: Equatable {
         return []
     }
 
-    /// Ports abandonChatDrag (view reappeared).
+    /// Ports abandonChatDrag (view reappeared). The gesture fact dies with
+    /// the lifecycle: a stale true would suppress relatch/follow forever
+    /// since no userDragGestureEnded ever arrives for an abandoned gesture.
     mutating func abandonDrag() -> [ChatViewportEffect] {
         drag.abandon()
+        dragGestureActive = false
         pendingDragEvaluation = nil
         generation &+= 1
         return []
@@ -497,6 +511,14 @@ struct ChatViewportController: Equatable {
     mutating func restorationRequested(
         _ request: ChatResumeRestorationRequest
     ) -> [ChatViewportEffect] {
+        // A published restoration can be overtaken by a session switch
+        // before the SwiftUI .task adopts it. A stale request must never
+        // claim the viewport — abandon it through the existing AppState
+        // contract immediately instead of waiting for the check budget.
+        let currentKey = renderedSessionKey ?? activeSessionKey
+        guard identity.areEquivalent(request.sessionKey, currentKey) else {
+            return [.abandonRestoration(generation: request.generation)]
+        }
         effectsForExplicitOwnershipChange()
         restoration = RestorationState(
             request: request,

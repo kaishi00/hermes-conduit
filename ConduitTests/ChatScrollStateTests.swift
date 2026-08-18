@@ -804,3 +804,57 @@ final class ChatScrollStateTests: XCTestCase {
     }
 
 }
+
+// MARK: - Rendered row-frame preference (hardening pass)
+
+extension ChatScrollStateTests {
+    // Each preference pass restarts from defaultValue, so a row that stopped
+    // emitting (LazyVStack unloaded it) disappears from the reduced value —
+    // its last-known frame cannot linger into later passes.
+    func testRowFramePreferencePassDropsRowsThatStopEmitting() {
+        let scope = ChatRenderedScrollScope(
+            sessionKey: ChatScrollSessionKey(profile: "p", sessionID: "s"),
+            cacheRevision: 1,
+            restorationGeneration: nil,
+            transcriptRevision: 1,
+            viewportTransitionGeneration: 1
+        )
+
+        // Pass 1: two rows report.
+        var pass1 = ChatRenderedScrollTargets()
+        ChatRenderedScrollTargets.reduce(
+            value: &pass1,
+            nextValue: ChatRenderedScrollTargets.row(
+                semanticID: "m1", scope: scope, frame: CGRect(x: 0, y: 40, width: 300, height: 100)
+            )
+        )
+        ChatRenderedScrollTargets.reduce(
+            value: &pass1,
+            nextValue: ChatRenderedScrollTargets.row(
+                semanticID: "m2", scope: scope, frame: CGRect(x: 0, y: 160, width: 300, height: 240)
+            )
+        )
+        XCTAssertEqual(Set(pass1.rowFrames(in: scope).keys), ["m1", "m2"])
+
+        // Pass 2 (fresh accumulator, as SwiftUI restarts from defaultValue):
+        // only m2 still exists. m1's frame is gone.
+        var pass2 = ChatRenderedScrollTargets()
+        ChatRenderedScrollTargets.reduce(
+            value: &pass2,
+            nextValue: ChatRenderedScrollTargets.row(
+                semanticID: "m2", scope: scope, frame: CGRect(x: 0, y: 120, width: 300, height: 240)
+            )
+        )
+        XCTAssertEqual(Array(pass2.rowFrames(in: scope).keys), ["m2"])
+
+        // A re-emitted row replaces its previous frame (latest wins).
+        var pass3 = pass2
+        ChatRenderedScrollTargets.reduce(
+            value: &pass3,
+            nextValue: ChatRenderedScrollTargets.row(
+                semanticID: "m2", scope: scope, frame: CGRect(x: 0, y: 999, width: 300, height: 240)
+            )
+        )
+        XCTAssertEqual(pass3.rowFrames(in: scope)["m2"]?.minY, 999)
+    }
+}
