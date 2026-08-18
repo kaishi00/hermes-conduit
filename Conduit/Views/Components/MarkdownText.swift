@@ -960,12 +960,22 @@ private struct MarkdownColumns: View {
 }
 
 /// Table-wide column layout: one width per column shared by the header and
-/// every row, so vertical dividers align across rows. Each column width is
-/// the largest ideal (unwrapped) text width among its cells — header
-/// included — clamped to the table's 112–220pt column policy; wider content
-/// wraps within the shared width instead of widening one row's cell.
+/// every row, so vertical dividers align across rows. Each column's width
+/// is the largest ideal (unwrapped) text width among its cells — header
+/// included — capped at `maxColumnContentWidth`. When the capped columns
+/// fit the chat width the table fits too (narrow columns stay narrow, wide
+/// ones keep their earned space); when they overflow, columns above the
+/// shrink floor give up width proportionally to their excess and wrap, and
+/// a table that still overflows at the floor keeps horizontal scrolling.
 enum MarkdownTableLayout {
-    static let columnWidthRange: ClosedRange<CGFloat> = 112...220
+    /// Widest a column's text may be before it wraps.
+    static let maxColumnContentWidth: CGFloat = 220
+    /// Narrowest a column shrinks to when the table must compress; columns
+    /// whose ideal is already below this keep their ideal width.
+    static let shrinkFloorContentWidth: CGFloat = 64
+    static let cellHorizontalPadding: CGFloat = 10
+    static let dividerWidth: CGFloat = 1
+    static let borderAllowance: CGFloat = 2
 
     private static let cache: NSCache<NSString, NSArray> = {
         let cache = NSCache<NSString, NSArray>()
@@ -975,14 +985,18 @@ enum MarkdownTableLayout {
     }()
 
     @MainActor
-    static func columnWidths(headers: [String], rows: [[String]]) -> [CGFloat] {
+    static func columnWidths(headers: [String], rows: [[String]], availableWidth: CGFloat) -> [CGFloat] {
         let columnCount = max(headers.count, rows.map(\.count).max() ?? 0)
         guard columnCount > 0 else { return [] }
 
         // Fonts resolve against the current Dynamic Type size, so the widths
-        // key on the content category just like MarkdownRenderCache.
+        // key on the content category just like MarkdownRenderCache, and on
+        // the viewport width that feeds the fit-or-shrink decision.
         let key = (
-            [UIApplication.shared.preferredContentSizeCategory.rawValue]
+            [
+                UIApplication.shared.preferredContentSizeCategory.rawValue,
+                String(format: "%.1f", availableWidth)
+            ]
                 + headers
                 + rows.flatMap { $0.isEmpty ? ["<empty-row>"] : $0 }
         ).joined(separator: "\u{1F}") as NSString
@@ -992,22 +1006,55 @@ enum MarkdownTableLayout {
         let headerFont = UIFont.preferredFont(forTextStyle: .caption1).withTraits(.traitBold)
         let bodyFont = UIFont.preferredFont(forTextStyle: .footnote)
 
-        var widths = [CGFloat](repeating: columnWidthRange.lowerBound, count: columnCount)
+        var ideals = [CGFloat](repeating: 0, count: columnCount)
         for (index, header) in headers.enumerated() {
-            widths[index] = max(widths[index], clampedColumnWidth(idealWidth(of: header, font: headerFont)))
+            ideals[index] = max(ideals[index], idealWidth(of: header, font: headerFont))
         }
         for row in rows {
             for (index, cell) in row.enumerated() where index < columnCount {
-                widths[index] = max(widths[index], clampedColumnWidth(idealWidth(of: cell, font: bodyFont)))
+                ideals[index] = max(ideals[index], idealWidth(of: cell, font: bodyFont))
             }
         }
 
+        let widths = resolveColumnContentWidths(ideals: ideals, availableWidth: availableWidth)
         cache.setObject(widths as NSArray, forKey: key, cost: key.length)
         return widths
     }
 
-    private static func clampedColumnWidth(_ width: CGFloat) -> CGFloat {
-        min(max(width, columnWidthRange.lowerBound), columnWidthRange.upperBound)
+    /// Pure distribution step so the policy is directly unit-testable.
+    /// A non-positive available width means the viewport is not yet known
+    /// (first layout pass): fall back to the cap-and-scroll layout, which is
+    /// deterministic and re-resolves once the real width arrives.
+    static func resolveColumnContentWidths(ideals: [CGFloat], availableWidth: CGFloat) -> [CGFloat] {
+        guard !ideals.isEmpty else { return [] }
+        let capped = ideals.map { min($0, maxColumnContentWidth) }
+        guard availableWidth > 0 else { return halfPointRounded(capped) }
+
+        // Cell padding, dividers, and the table border consume viewport width
+        // exactly once, before any column sees it.
+        let overhead = CGFloat(capped.count) * cellHorizontalPadding * 2
+            + CGFloat(capped.count - 1) * dividerWidth
+            + borderAllowance
+        let available = max(0, availableWidth - overhead)
+
+        let total = capped.reduce(0, +)
+        if total <= available { return halfPointRounded(capped) }
+
+        let shrinkable = capped.reduce(0) { $0 + max($1 - shrinkFloorContentWidth, 0) }
+        let deficit = total - available
+        if deficit >= shrinkable {
+            // Everything compressible is at the floor; columns that were
+            // already narrower keep their ideal. The table scrolls.
+            return halfPointRounded(capped.map { $0 > shrinkFloorContentWidth ? shrinkFloorContentWidth : $0 })
+        }
+        // Shrink proportionally to the excess above the floor: wide columns
+        // contribute more, narrow ones may not shrink at all.
+        let factor = deficit / shrinkable
+        return halfPointRounded(capped.map { $0 - max($0 - shrinkFloorContentWidth, 0) * factor })
+    }
+
+    private static func halfPointRounded(_ widths: [CGFloat]) -> [CGFloat] {
+        widths.map { ($0 * 2).rounded() / 2 }
     }
 
     /// Measures the ideal (single-fragment) width of a cell the same way the
@@ -1051,26 +1098,41 @@ private struct MarkdownTable: View {
     let blockIndex: Int
     let selectionSegments: [MarkdownSelectionSegmentDescriptor]
 
+    /// The chat's proposed width for this block, read by a zero-height
+    /// probe above the scroll view. Zero means "unknown yet" (first pass);
+    /// the layout then falls back to cap-and-scroll and re-resolves a frame
+    /// later, once the width is known.
+    @State private var availableWidth: CGFloat = 0
+
     private var columnWidths: [CGFloat] {
-        MarkdownTableLayout.columnWidths(headers: headers, rows: rows)
+        MarkdownTableLayout.columnWidths(headers: headers, rows: rows, availableWidth: availableWidth)
     }
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 0) {
-                tableRow(headers, rowIndex: 0, isHeader: true)
-                ForEach(Array(rows.enumerated()), id: \.offset) { rowOffset, row in
-                    Divider().overlay(usesAccentSurface ? Color.white.opacity(0.22) : Color.secondary.opacity(0.18))
-                    tableRow(row, rowIndex: rowOffset + 1, isHeader: false)
-                }
+        VStack(spacing: 0) {
+            GeometryReader { proxy in
+                Color.clear
+                    .onAppear { availableWidth = proxy.size.width }
+                    .onChange(of: proxy.size.width) { _, width in availableWidth = width }
             }
-            .background(
-                usesAccentSurface ? Color.black.opacity(0.13) : Color.primary.opacity(0.035),
-                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(usesAccentSurface ? Color.white.opacity(0.26) : Color.secondary.opacity(0.20), lineWidth: 1)
+            .frame(height: 0)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 0) {
+                    tableRow(headers, rowIndex: 0, isHeader: true)
+                    ForEach(Array(rows.enumerated()), id: \.offset) { rowOffset, row in
+                        Divider().overlay(usesAccentSurface ? Color.white.opacity(0.22) : Color.secondary.opacity(0.18))
+                        tableRow(row, rowIndex: rowOffset + 1, isHeader: false)
+                    }
+                }
+                .background(
+                    usesAccentSurface ? Color.black.opacity(0.13) : Color.primary.opacity(0.035),
+                    in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(usesAccentSurface ? Color.white.opacity(0.26) : Color.secondary.opacity(0.20), lineWidth: 1)
+                }
             }
         }
     }
@@ -1081,7 +1143,7 @@ private struct MarkdownTable: View {
             ForEach(Array(cells.enumerated()), id: \.offset) { index, cell in
                 let width = widths.indices.contains(index)
                     ? widths[index]
-                    : MarkdownTableLayout.columnWidthRange.lowerBound
+                    : MarkdownTableLayout.shrinkFloorContentWidth
                 InlineMarkdown(
                     source: cell,
                     foregroundStyle: foregroundStyle,

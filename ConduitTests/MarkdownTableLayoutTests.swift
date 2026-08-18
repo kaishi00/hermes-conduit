@@ -4,7 +4,85 @@ import SwiftUI
 @testable import Conduit
 
 final class MarkdownTableLayoutTests: XCTestCase {
-    // MARK: - Table-wide column widths (unit)
+    // MARK: - Responsive width policy (pure distribution step)
+
+    /// When the capped columns fit the available width, each column keeps its
+    /// ideal width — genuinely narrow columns stay narrow.
+    func testResolveKeepsIdealWidthsWhenTableFits() {
+        let widths = MarkdownTableLayout.resolveColumnContentWidths(
+            ideals: [140, 125, 30],
+            availableWidth: 390
+        )
+        XCTAssertEqual(widths, [140, 125, 30])
+    }
+
+    /// Over-long content caps at the max column width and wraps there.
+    func testResolveCapsWideColumns() {
+        let widths = MarkdownTableLayout.resolveColumnContentWidths(
+            ideals: [900],
+            availableWidth: 390
+        )
+        XCTAssertEqual(widths, [MarkdownTableLayout.maxColumnContentWidth])
+    }
+
+    /// Overflowing tables shrink columns proportionally to their excess above
+    /// the floor; wide columns give up more, narrow ones may not shrink.
+    func testResolveShrinksProportionallyToExcess() {
+        // overhead for 3 columns = 3×20 + 2×1 + 2 = 64 → available 236
+        // total 295, deficit 59; shrinkable = 76 + 61 + 0 = 137 → factor ≈ 0.43
+        let widths = MarkdownTableLayout.resolveColumnContentWidths(
+            ideals: [140, 125, 30],
+            availableWidth: 300
+        )
+        // Wide columns shrank; the already-narrow column is untouched.
+        XCTAssertLessThan(widths[0], 140)
+        XCTAssertLessThan(widths[1], 125)
+        XCTAssertEqual(widths[2], 30, "Columns below the floor must not shrink")
+        XCTAssertGreaterThan(widths[0], widths[1], "Wider columns keep proportionally more space")
+        // Sum fits the available content width (allow half-point rounding).
+        let overhead: CGFloat = 3 * 20 + 2 * 1 + 2
+        XCTAssertLessThanOrEqual(widths.reduce(0, +), 300 - overhead + 1.5)
+    }
+
+    /// A genuinely wide table: everything compressible hits the floor and the
+    /// table keeps horizontal scrolling rather than crushing to nothing.
+    func testResolveFallsToFloorAndScrollsWhenDeficitExceedsShrinkable() {
+        let widths = MarkdownTableLayout.resolveColumnContentWidths(
+            ideals: [500, 500, 500, 500, 500],
+            availableWidth: 390
+        )
+        XCTAssertEqual(widths, [64, 64, 64, 64, 64])
+        XCTAssertEqual(widths[0], MarkdownTableLayout.shrinkFloorContentWidth)
+        let overhead: CGFloat = 5 * 20 + 4 * 1 + 2
+        XCTAssertGreaterThan(widths.reduce(0, +) + overhead, 390,
+                             "At the floor the table still overflows and must scroll")
+    }
+
+    /// Unknown viewport (first layout pass): deterministic cap-and-scroll
+    /// layout until the real width arrives.
+    func testResolveWithUnknownWidthUsesCappedWidths() {
+        let widths = MarkdownTableLayout.resolveColumnContentWidths(
+            ideals: [900, 30],
+            availableWidth: 0
+        )
+        XCTAssertEqual(widths, [MarkdownTableLayout.maxColumnContentWidth, 30])
+    }
+
+    /// Dynamic Type proxy: larger text metrics grow the ideal widths, and the
+    /// resolved layout recomputes (fit → shrink as the same content gets
+    /// wider relative to the viewport).
+    func testResolveRecomputesWhenContentMetricsGrow() {
+        let ideals: [CGFloat] = [100, 80]
+        let scaled = ideals.map { $0 * 1.4 } // larger Dynamic Type → wider text
+
+        XCTAssertEqual(MarkdownTableLayout.resolveColumnContentWidths(ideals: ideals, availableWidth: 320), [100, 80])
+        let resolvedScaled = MarkdownTableLayout.resolveColumnContentWidths(ideals: scaled, availableWidth: 250)
+        // Same viewport, wider content: the columns now compress instead of fitting.
+        XCTAssertLessThan(resolvedScaled[0], scaled[0])
+        XCTAssertLessThan(resolvedScaled[1], scaled[1])
+    }
+
+    // MARK: - Table-wide shared widths from real content
 
     /// One width per column, driven by the longest cell anywhere in that
     /// column — header included — so rows with the longest value in
@@ -12,7 +90,7 @@ final class MarkdownTableLayoutTests: XCTestCase {
     @MainActor
     func testColumnWidthsAreSharedAcrossRowsAndHeaderParticipates() {
         let headers = ["A", "B", "C"]
-        // Drivers sized to land mid-range (no clamp): each column's longest
+        // Drivers sized to land mid-range (no cap): each column's longest
         // value lives in a different row.
         let rows = [
             ["short", "column-two-driver-here", "ok"],
@@ -20,41 +98,102 @@ final class MarkdownTableLayoutTests: XCTestCase {
             ["tiny", "", "x"],
         ]
 
-        let widths = MarkdownTableLayout.columnWidths(headers: headers, rows: rows)
+        let widths = MarkdownTableLayout.columnWidths(headers: headers, rows: rows, availableWidth: 390)
 
         XCTAssertEqual(widths.count, 3)
-        for width in widths {
-            XCTAssertTrue(MarkdownTableLayout.columnWidthRange.contains(width),
-                          "Column width \(width) must stay inside the table column policy")
-        }
         // Content-informed, not equal-width: A's longest value is longer than
-        // B's, which is longer than C's clamp floor.
+        // B's, which is longer than C's tiny value — and the tiny column is
+        // allowed to stay genuinely narrow.
         XCTAssertGreaterThan(widths[0], widths[1])
         XCTAssertGreaterThan(widths[1], widths[2])
+        XCTAssertLessThan(widths[2], MarkdownTableLayout.shrinkFloorContentWidth,
+                          "A tiny column must not be forced to the old 112pt floor")
+        for width in widths {
+            XCTAssertLessThanOrEqual(width, MarkdownTableLayout.maxColumnContentWidth)
+        }
     }
 
+    // MARK: - Rendered fixtures (full MarkdownText view chain)
+
+    /// QA fixture: three tiny columns fit an iPhone viewport with no
+    /// horizontal overflow.
     @MainActor
-    func testColumnWidthsClampToPolicyBounds() {
-        let narrow = MarkdownTableLayout.columnWidths(
-            headers: ["a", "b"],
-            rows: [["x", ""]]
-        )
-        XCTAssertTrue(narrow.allSatisfy { $0 == MarkdownTableLayout.columnWidthRange.lowerBound },
-                      "Short/empty columns clamp to the minimum column width")
+    func testTinyThreeColumnTableFitsViewportWithoutHorizontalScrolling() throws {
+        let source = """
+        | A | B | C |
+        |---|---|---|
+        | 1 | 2 | 3 |
+        """
+        let (host, window) = renderedTableHost(source: source)
+        defer { window.isHidden = true }
 
-        let wide = MarkdownTableLayout.columnWidths(
-            headers: ["a"],
-            rows: [[String(repeating: "very-long-value ", count: 30)]]
-        )
-        XCTAssertEqual(wide[0], MarkdownTableLayout.columnWidthRange.upperBound,
-                       "Over-long content clamps to the max width and wraps there")
+        let cells = allTextViews(in: host.view)
+        XCTAssertEqual(cells.count, 6, "3 headers + 1 row × 3 columns")
+
+        // No cell is anywhere near the old 112pt floor.
+        XCTAssertTrue(cells.allSatisfy { $0.bounds.width < MarkdownTableLayout.shrinkFloorContentWidth + 20 },
+                      "Tiny columns must stay narrow")
+
+        // The table fits: the horizontal scroll view has no overflow.
+        let scrollViews = allTextViewsDeep(in: host.view).compactMap { $0 as? UIScrollView }
+        let tableScroll = try XCTUnwrap(scrollViews.first)
+        XCTAssertLessThanOrEqual(tableScroll.contentSize.width, tableScroll.bounds.width + 0.5,
+                                 "A tiny table must not need horizontal scrolling")
     }
 
-    // MARK: - Shared widths + wrap + scroll through the real view chain
+    /// QA fixture: a genuinely narrow status column beside a long description
+    /// column — status stays narrow, description gets the wide share, and the
+    /// table fits without scrolling.
+    @MainActor
+    func testNarrowStatusColumnBesideLongDescriptionColumnFits() throws {
+        let source = """
+        | Status | Description |
+        |---|---|
+        | OK | \(String(repeating: "a long description of the thing ", count: 3)) |
+        | Retry | short |
+        """
+        let (host, window) = renderedTableHost(source: source)
+        defer { window.isHidden = true }
 
-    /// Renders a real table and asserts every cell in a column — header,
-    /// long driver cells, short cells, and an empty cell — has the same
-    /// rendered width, which is what keeps dividers aligned down the table.
+        let cells = allTextViews(in: host.view)
+        let statusCell = try XCTUnwrap(cells.first { $0.attributedText.string == "Retry" })
+        let descriptionCell = try XCTUnwrap(cells.first { $0.attributedText.string.contains("a long description") })
+        let descriptionHeader = try XCTUnwrap(cells.first { $0.attributedText.string == "Description" })
+
+        XCTAssertLessThan(statusCell.bounds.width, MarkdownTableLayout.shrinkFloorContentWidth + 10,
+                          "The narrow status column must stay narrow")
+        XCTAssertGreaterThan(descriptionCell.bounds.width, statusCell.bounds.width * 2,
+                             "The long description column gets proportionally more space")
+        XCTAssertEqual(descriptionCell.bounds.width, descriptionHeader.bounds.width, accuracy: 0.5)
+        XCTAssertLessThanOrEqual(descriptionCell.bounds.width, MarkdownTableLayout.maxColumnContentWidth)
+
+        let scrollViews = allTextViewsDeep(in: host.view).compactMap { $0 as? UIScrollView }
+        let tableScroll = try XCTUnwrap(scrollViews.first)
+        XCTAssertLessThanOrEqual(tableScroll.contentSize.width, tableScroll.bounds.width + 0.5,
+                                 "This table fits the viewport and must not scroll horizontally")
+    }
+
+    /// QA fixture: a genuinely wide table still scrolls horizontally.
+    @MainActor
+    func testWideTableRemainsHorizontallyScrollable() throws {
+        let source = """
+        | One | Two | Three | Four | Five |
+        |---|---|---|---|---|
+        | \(String(repeating: "first-column ", count: 6)) | \(String(repeating: "second-column ", count: 6)) | \(String(repeating: "third-column ", count: 6)) | \(String(repeating: "fourth-column ", count: 6)) | \(String(repeating: "fifth-column ", count: 6)) |
+        """
+        let (host, window) = renderedTableHost(source: source)
+        defer { window.isHidden = true }
+
+        let scrollViews = allTextViewsDeep(in: host.view).compactMap { $0 as? UIScrollView }
+        XCTAssertTrue(
+            scrollViews.contains { $0.contentSize.width > $0.bounds.width + 10 },
+            "A table wider than the viewport must be backed by a horizontally scrollable UIScrollView"
+        )
+    }
+
+    /// Shared column widths through the real chain: every cell in a column —
+    /// header, long driver cells, short cells, and an empty cell — renders at
+    /// the same width, keeping dividers aligned down the table.
     @MainActor
     func testRenderedTableSharesColumnWidthsAcrossRowsIncludingEmptyCells() throws {
         let source = """
@@ -65,12 +204,11 @@ final class MarkdownTableLayoutTests: XCTestCase {
         | a |  | c |
         """
         let (host, window) = renderedTableHost(source: source)
+        defer { window.isHidden = true }
 
         let cells = allTextViews(in: host.view)
         XCTAssertEqual(cells.count, 12, "3 headers + 3 rows × 3 columns")
 
-        // Map marker → view. Markers identify every non-empty cell; the empty
-        // cell is found by elimination.
         func cell(containing marker: String) throws -> UITextView {
             for candidate in cells where candidate.attributedText.string.contains(marker) {
                 return candidate
@@ -115,8 +253,6 @@ final class MarkdownTableLayoutTests: XCTestCase {
         XCTAssertTrue(cells.allSatisfy { cell in
             cell.gestureRecognizers?.contains { $0 is MarkdownSelectionObserverGestureRecognizer } == true
         }, "Table cells must keep the cross-block selection observer attached")
-
-        window.isHidden = true
     }
 
     /// A long cell wraps at its shared column width and stays fully visible
@@ -131,6 +267,7 @@ final class MarkdownTableLayoutTests: XCTestCase {
         | Also short | tiny |
         """
         let (host, window) = renderedTableHost(source: source)
+        defer { window.isHidden = true }
 
         let cells = allTextViews(in: host.view)
         let longCell = try XCTUnwrap(cells.first { $0.attributedText.string.contains("Word29") })
@@ -148,31 +285,7 @@ final class MarkdownTableLayoutTests: XCTestCase {
         let fullWrapHeight = SelectableTextView.measuredWrappingHeight(of: reference, at: longCell.bounds.width)
         XCTAssertGreaterThanOrEqual(longCell.bounds.height + 1, fullWrapHeight,
                                     "Long cell must show every wrapped line at the shared column width")
-
-        window.isHidden = true
     }
-
-    /// Wide tables stay horizontally scrollable: the table's backing scroll
-    /// view content must exceed the viewport when columns run wide.
-    @MainActor
-    func testWideTableRemainsHorizontallyScrollable() throws {
-        let source = """
-        | One | Two | Three | Four | Five |
-        |---|---|---|---|---|
-        | \(String(repeating: "first-column ", count: 6)) | \(String(repeating: "second-column ", count: 6)) | \(String(repeating: "third-column ", count: 6)) | \(String(repeating: "fourth-column ", count: 6)) | \(String(repeating: "fifth-column ", count: 6)) |
-        """
-        let (host, window) = renderedTableHost(source: source)
-
-        let scrollViews = allTextViewsDeep(in: host.view).compactMap { $0 as? UIScrollView }
-        XCTAssertTrue(
-            scrollViews.contains { $0.contentSize.width > $0.bounds.width + 10 },
-            "A table wider than the viewport must be backed by a horizontally scrollable UIScrollView"
-        )
-
-        window.isHidden = true
-    }
-
-    // MARK: - Alignment reaches the text layout
 
     /// `:---`, `:---:`, and `---:` must produce leading, centered, and
     /// trailing paragraph alignment on the real cell text views, and the
@@ -246,12 +359,21 @@ final class MarkdownTableLayoutTests: XCTestCase {
 
     // MARK: - Helpers
 
+    /// Hosts the markdown and lets the width probe settle: the probe's state
+    /// update lands a frame after the first layout pass, so pump the runloop
+    /// and lay out again before asserting geometry.
     @MainActor
     private func renderedTableHost(source: String) -> (UIHostingController<MarkdownText>, UIWindow) {
         let host = UIHostingController(rootView: MarkdownText(source: source))
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
         window.rootViewController = host
         window.isHidden = false
+        host.view.setNeedsLayout()
+        host.view.layoutIfNeeded()
+
+        let settled = XCTestExpectation(description: "width probe settles")
+        DispatchQueue.main.async { settled.fulfill() }
+        wait(for: [settled], timeout: 2)
         host.view.setNeedsLayout()
         host.view.layoutIfNeeded()
         return (host, window)
