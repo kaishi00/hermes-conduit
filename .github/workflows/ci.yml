@@ -18,9 +18,12 @@ jobs:
   test:
     name: Build & Test
     runs-on: macos-26
-    # A wedged simulator can hang a test invocation for hours (the default
-    # step timeout is 360 minutes). Healthy runs finish well under 15
-    # minutes; cap the job so a wedge surfaces as a bounded failure.
+    # Outer emergency limit only — wedge detection lives in
+    # scripts/ci-run-tests.sh (per-attempt wall-clock budget of 16 min).
+    # Worst case: ~4 min setup + 2 × (≤3 min bootstatus-bounded reset +
+    # 16 min budget + ~25 s kill/diagnostics) ≈ 43 min, so a bounded run
+    # fits; this cap exists for the residual cases the budget cannot reach
+    # (e.g. a wedged CoreSimulatorService blocking simctl itself).
     timeout-minutes: 45
 
     steps:
@@ -66,65 +69,15 @@ jobs:
           echo "SIMULATOR=$SIMULATOR" >> "$GITHUB_ENV"
 
       - name: Run tests
-        run: |
-          # If the full suite fails, reset the simulator and retry the full
-          # suite once. A genuine double failure still fails CI. Attempt 2
-          # runs the entire suite (not just UI tests) because attempt 1 can
-          # fail in a unit test; a UI-only retry would mask that failure.
-          #
-          # NOTE: GitHub Actions runs `bash -eo pipefail {0}` by default.
-          # We wrap the piped xcodebuild|xcpretty invocation in an `if`
-          # block so that an expected nonzero exit code is intentionally
-          # handled by the loop instead of killed by errexit.  (Running
-          # `set +e` would also work but the `if` scopes the failure
-          # cleanly and makes the intent obvious.)
-          set -uo pipefail
-          for attempt in 1 2; do
-            if [ "$attempt" -eq 1 ]; then
-              BUNDLE=TestResults.xcresult
-            else
-              BUNDLE=TestResults-retry.xcresult
-              # A wedged simulator is the one failure mode in-test retries
-              # cannot clear; restart the device so the retry starts clean.
-              xcrun simctl shutdown "$SIMULATOR" || true
-              sleep 3
-              xcrun simctl boot "$SIMULATOR" || true
-              # Wait for a complete boot before handing the device to
-              # xcodebuild; a half-booted simulator wedges UI tests.
-              xcrun simctl bootstatus "$SIMULATOR" -b -t 180 || true
-            fi
-            echo "::group::Test attempt $attempt"
-            rm -rf "$BUNDLE"
-            status=0
-            if xcodebuild test \
-              -project Conduit.xcodeproj \
-              -scheme Conduit \
-              -destination "platform=iOS Simulator,id=$SIMULATOR" \
-              -configuration Debug \
-              -resultBundlePath "$BUNDLE" \
-              CODE_SIGN_IDENTITY="" \
-              CODE_SIGNING_REQUIRED=NO \
-              CODE_SIGNING_ALLOWED=NO \
-              DEVELOPMENT_TEAM="" \
-              PROVISIONING_PROFILE_SPECIFIER="" \
-              | xcpretty --color; then
-              status=0
-            else
-              # Preserve both pipeline statuses: xcodebuild may succeed
-              # while xcpretty fails (or vice versa). Fail/retry if
-              # either command fails.
-              ps=("${PIPESTATUS[@]}")
-              status=$(( ps[0] != 0 ? ps[0] : ps[1] ))
-            fi
-            echo "::endgroup::"
-            if [ "$status" -eq 0 ]; then
-              echo "tests passed on attempt $attempt"
-              exit 0
-            fi
-            echo "tests failed on attempt $attempt (exit status $status)"
-          done
-          echo "both test attempts failed"
-          exit 1
+        # scripts/ci-run-tests.sh owns the retry loop. Each attempt gets its
+        # own wall-clock budget (default 16 min; healthy runs take 7-13) so a
+        # hung test or wedged simulator is killed and retried instead of
+        # stalling until the 45-min job timeout — which remains the outer
+        # emergency limit, not the wedge-detection mechanism. The script also
+        # boots the simulator before every attempt, streams raw xcodebuild
+        # output into this step's log, and leaves per-attempt logs + any
+        # partial .xcresult bundles for the upload step below.
+        run: bash scripts/ci-run-tests.sh
 
       - name: Upload test results on failure
         if: failure()
@@ -134,4 +87,5 @@ jobs:
           path: |
             TestResults.xcresult
             TestResults-retry.xcresult
+            ci-logs/
           if-no-files-found: ignore

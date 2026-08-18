@@ -6,7 +6,7 @@ final class HermesClientTests: XCTestCase {
 
     // MARK: - rpc() guard
 
-    func testRPCGuardRejectsBeforeHandshake() async {
+    func testRPCGuardRejectsBeforeHandshake() async throws {
         // The handshake is held open (we never call transport.open), so the
         // socket is installed but `isConnected` is still false. `rpc()`'s
         // `isConnected` requirement must reject the call — the pre-fix
@@ -19,7 +19,7 @@ final class HermesClientTests: XCTestCase {
         let client = makeClient(transport: transport)
 
         let connectTask = Task { try? await client.connect() }
-        await reachedResume.wait()  // connect() has installed + resumed the socket and is now suspended in the handshake
+        try await reachedResume.wait("connect() to resume the socket (handshake pending)")  // connect() has installed + resumed the socket and is now suspended in the handshake
 
         do {
             try await client.healthCheck()
@@ -31,12 +31,12 @@ final class HermesClientTests: XCTestCase {
         }
 
         client.disconnect()  // resumes the suspended handshake so connect() unwinds
-        _ = await connectTask.value
+        try await awaitCompletion(of: connectTask, "connect() to unwind after disconnect()")
     }
 
     // MARK: - receive-failure teardown
 
-    func testReceiveFailureOnOwningSocketTearsDown() async {
+    func testReceiveFailureOnOwningSocketTearsDown() async throws {
         let transport = FakeTransport()
         let socket = FakeSocket()
         let receivePending = Gate()
@@ -48,9 +48,9 @@ final class HermesClientTests: XCTestCase {
 
         let connectTask = Task { try? await client.connect() }
         transport.open(socket)
-        _ = await connectTask.value
+        try await awaitCompletion(of: connectTask, "connect() to complete after the handshake")
         XCTAssertTrue(client.isConnected)
-        await receivePending.wait()  // the receive loop is now suspended in socket.receive()
+        try await receivePending.wait("the receive loop to suspend in socket.receive()")  // the receive loop is now suspended in socket.receive()
 
         socket.failReceive(URLError(.networkConnectionLost))
         await flushMainActor()       // let the catch run
@@ -60,7 +60,7 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
-    func testSupersededReceiveLoopDoesNotClobberNewConnection() async {
+    func testSupersededReceiveLoopDoesNotClobberNewConnection() async throws {
         let transport = FakeTransport()
         let socketA = FakeSocket()
         let aReceivePending = Gate()
@@ -72,9 +72,9 @@ final class HermesClientTests: XCTestCase {
 
         let connectA = Task { try? await client.connect() }
         transport.open(socketA)
-        _ = await connectA.value
+        try await awaitCompletion(of: connectA, "connect A to complete after the handshake")
         XCTAssertTrue(client.isConnected)
-        await aReceivePending.wait()  // A's receive loop is suspended in socket.receive()
+        try await aReceivePending.wait("socket A's receive loop to suspend in socket.receive()")  // A's receive loop is suspended in socket.receive()
 
         // Same-instance reconnect (the latent scenario this PR hardens):
         // connect() tears down socketA → A's receive() errors → A's late catch
@@ -83,7 +83,7 @@ final class HermesClientTests: XCTestCase {
         transport.nextSocket = { socketB }
         let connectB = Task { try? await client.connect() }
         transport.open(socketB)
-        _ = await connectB.value
+        try await awaitCompletion(of: connectB, "connect B to complete after the handshake")
         await flushMainActor()  // let A's superseded catch run
 
         XCTAssertTrue(socketA.cancelled, "Reconnect should cancel the superseded socket")
@@ -92,7 +92,7 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
-    func testSupersededLoopDropsStaleFrame() async {
+    func testSupersededLoopDropsStaleFrame() async throws {
         // The success path of receiveLoop is identity-guarded too: a frame
         // delivered to a superseded socket must not reach handleMessage.
         let transport = FakeTransport()
@@ -107,8 +107,8 @@ final class HermesClientTests: XCTestCase {
 
         let connectA = Task { try? await client.connect() }
         transport.open(socketA)
-        _ = await connectA.value
-        await aReceivePending.wait()
+        try await awaitCompletion(of: connectA, "connect A to complete after the handshake")
+        try await aReceivePending.wait("socket A's receive loop to suspend in socket.receive()")
 
         // Reconnect to B, then deliver a frame to the old socket A. The guard
         // must drop it (onEvent not fired for A's stale frame).
@@ -116,7 +116,7 @@ final class HermesClientTests: XCTestCase {
         transport.nextSocket = { socketB }
         let connectB = Task { try? await client.connect() }
         transport.open(socketB)
-        _ = await connectB.value
+        try await awaitCompletion(of: connectB, "connect B to complete after the handshake")
 
         socketA.deliver(someEventJSON())
         await flushMainActor()
@@ -127,7 +127,7 @@ final class HermesClientTests: XCTestCase {
 
     // MARK: - connect() teardown of the prior connection
 
-    func testConnectInvalidatesPriorTransport() async {
+    func testConnectInvalidatesPriorTransport() async throws {
         let transport = FakeTransport()
         let socketA = FakeSocket()
         transport.nextSocket = { socketA }
@@ -135,21 +135,21 @@ final class HermesClientTests: XCTestCase {
 
         let connectA = Task { try? await client.connect() }
         transport.open(socketA)
-        _ = await connectA.value
+        try await awaitCompletion(of: connectA, "connect A to complete after the handshake")
         XCTAssertFalse(transport.invalidated)
 
         let socketB = FakeSocket()
         transport.nextSocket = { socketB }
         let connectB = Task { try? await client.connect() }
         transport.open(socketB)
-        _ = await connectB.value
+        try await awaitCompletion(of: connectB, "connect B to complete after the handshake")
 
         XCTAssertTrue(transport.invalidated, "Reconnect must invalidate the prior transport/session")
         XCTAssertEqual(transport.socketsMade.count, 2)
         client.disconnect()
     }
 
-    func testConcurrentConnectSupersedesPriorWithoutHanging() async {
+    func testConcurrentConnectSupersedesPriorWithoutHanging() async throws {
         // A second connect() while the first is still mid-handshake must resume
         // the first's open continuation (via the teardown, mirroring disconnect),
         // so the first connect() throws instead of hanging forever.
@@ -161,16 +161,17 @@ final class HermesClientTests: XCTestCase {
         let client = makeClient(transport: transport)
 
         let connectA = Task { try? await client.connect() }
-        await aResumed.wait()  // connectA has installed A and is suspended in the handshake (A is never opened)
+        try await aResumed.wait("connect A to resume its socket (handshake pending)")  // connectA has installed A and is suspended in the handshake (A is never opened)
 
         let socketB = FakeSocket()
         transport.nextSocket = { socketB }
         let connectB = Task { try? await client.connect() }
         transport.open(socketB)
-        _ = await connectB.value
+        try await awaitCompletion(of: connectB, "connect B to complete after the handshake")
 
-        // If the continuation were leaked this await would hang and time out.
-        _ = await connectA.value
+        // If the continuation were leaked this would time out (boundedly) and
+        // fail the test instead of hanging the run.
+        try await awaitCompletion(of: connectA, "superseded connect A to unwind after connect B")
         XCTAssertTrue(client.isConnected)
         client.disconnect()
     }
@@ -188,6 +189,28 @@ final class HermesClientTests: XCTestCase {
         for _ in 0..<10 { await Task.yield() }
     }
 
+    /// Bounded wait for a spawned task to finish — the task-side counterpart
+    /// of `Gate.wait`. A `connect()` that never unwinds fails the test naming
+    /// `phase` instead of suspending forever on `task.value`. If the deadline
+    /// fires, the watcher is left leaked on `task.value` by design: checked
+    /// continuations ignore cancellation, and the test process is on its way
+    /// to a failure report anyway.
+    private func awaitCompletion<T>(
+        of task: Task<T, Never>,
+        _ phase: String,
+        timeout: TimeInterval = 10,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async throws {
+        let finished = Gate()
+        let watcher = Task<Void, Never>.detached(priority: .userInitiated) {
+            _ = await task.value
+            finished.signal()
+        }
+        defer { watcher.cancel() }
+        try await finished.wait(phase, timeout: timeout, file: file, line: line)
+    }
+
     /// A gateway stream-event frame (`message.start`) that StreamEventParser
     /// accepts, so `deliver` genuinely exercises the receive success path —
     /// without the identity guard this would fire `onEvent`.
@@ -201,22 +224,79 @@ final class HermesClientTests: XCTestCase {
 // MARK: - Test doubles
 
 /// Single-use gate that survives a `signal()` arriving before `wait()` (the
-/// flag is sticky). All access is on the MainActor, so no locking is needed.
-private final class Gate {
+/// flag is sticky). `wait` is bounded: XCTest has no per-test timeout for
+/// async tests, so a missed signal would suspend the test forever and wedge
+/// xcodebuild until the CI job-level kill. A missed signal must instead fail
+/// the test naming the phase it was waiting for.
+///
+/// NSLock rather than MainActor confinement because the deadline timer runs
+/// detached from any actor; whoever takes the continuation under the lock
+/// resumes it exactly once, which makes the signal/timeout race safe.
+private final class Gate: @unchecked Sendable {
+    private let lock = NSLock()
     private var signalled = false
-    private var continuation: CheckedContinuation<Void, Never>?
+    /// Resumed with `true` when the deadline wins the race.
+    private var continuation: CheckedContinuation<Bool, Never>?
 
     func signal() {
-        guard !signalled else { return }
+        lock.lock()
         signalled = true
-        continuation?.resume()
-        continuation = nil
+        let continuation = self.continuation
+        self.continuation = nil
+        lock.unlock()
+        continuation?.resume(returning: false)
     }
 
-    func wait() async {
-        if signalled { return }
-        await withCheckedContinuation { continuation = $0 }
+    func wait(
+        _ phase: String,
+        timeout: TimeInterval = 10,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async throws {
+        let timedOut = await withCheckedContinuation { continuation in
+            lock.lock()
+            if signalled {
+                lock.unlock()
+                continuation.resume(returning: false)
+                return
+            }
+            self.continuation = continuation
+            lock.unlock()
+
+            // Detached so the deadline fires even if the actor the awaited
+            // work runs on never gets scheduled again.
+            Task<Void, Never>.detached(priority: .userInitiated) { [weak self] in
+                try? await Task.sleep(for: .seconds(timeout))
+                self?.fireDeadline()
+            }
+        }
+        if timedOut {
+            XCTFail("Timed out after \(timeout)s waiting for \(phase)", file: file, line: line)
+            throw TestSyncTimedOut(phase: phase)
+        }
     }
+
+    /// Deadline half of the signal/timeout race. Whoever takes the
+    /// continuation under the lock resumes it; the loser sees nil, making the
+    /// race exactly-once. Synchronous (no awaits) so the NSLock critical
+    /// sections stay out of async contexts.
+    private func fireDeadline() {
+        lock.lock()
+        let continuation = self.continuation
+        self.continuation = nil
+        let signalled = self.signalled
+        lock.unlock()
+        if !signalled {
+            continuation?.resume(returning: true)
+        }
+    }
+}
+
+/// Thrown by the bounded wait helpers after the failure has been recorded;
+/// aborts the test method so a wedged phase does not cascade into misleading
+/// downstream assertion failures.
+private struct TestSyncTimedOut: Error {
+    let phase: String
 }
 
 /// Controllable HermesWebSocket. `receive()` suspends until the test delivers a
