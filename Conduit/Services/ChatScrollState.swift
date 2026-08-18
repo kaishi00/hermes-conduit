@@ -21,118 +21,17 @@ enum ChatMessageScrollTargetCacheUpdate: Equatable {
     case semanticsChanged
 }
 
-enum ChatMessageScrollUpdatePolicy {
-    static func shouldReassertLatest(
-        after update: ChatMessageScrollTargetCacheUpdate,
-        followsLatest: Bool,
-        hasPendingRestoration: Bool,
-        hasNotificationHandoff: Bool
-    ) -> Bool {
-        update != .unchanged
-            && followsLatest
-            && !hasPendingRestoration
-            && !hasNotificationHandoff
-    }
-}
-
 struct ChatDragCompletionToken: Hashable {
     let dragGeneration: UInt64
     let sessionKey: ChatScrollSessionKey?
     let viewportTransitionGeneration: UInt64
 }
 
-struct ChatDragLifecycleState: Equatable {
-    private(set) var generation: UInt64 = 0
-    private var activeCompletion: ChatDragCompletionToken?
-    private var activeGestureInvalidated = false
-
-    mutating func begin(
-        sessionKey: ChatScrollSessionKey?,
-        viewportTransitionGeneration: UInt64
-    ) -> Bool {
-        guard activeCompletion == nil, !activeGestureInvalidated else { return false }
-        generation &+= 1
-        activeCompletion = ChatDragCompletionToken(
-            dragGeneration: generation,
-            sessionKey: sessionKey,
-            viewportTransitionGeneration: viewportTransitionGeneration
-        )
-        return true
-    }
-
-    mutating func invalidate(hasActiveGesture: Bool) {
-        generation &+= 1
-        if hasActiveGesture || activeCompletion != nil {
-            activeGestureInvalidated = true
-        }
-    }
-
-    mutating func abandon() {
-        generation &+= 1
-        activeCompletion = nil
-        activeGestureInvalidated = false
-    }
-
-    mutating func finish() -> ChatDragCompletionToken? {
-        defer {
-            activeCompletion = nil
-            activeGestureInvalidated = false
-        }
-        guard !activeGestureInvalidated else { return nil }
-        return activeCompletion
-    }
-
-    func currentToken(
-        sessionKey: ChatScrollSessionKey?,
-        viewportTransitionGeneration: UInt64
-    ) -> ChatDragCompletionToken {
-        ChatDragCompletionToken(
-            dragGeneration: generation,
-            sessionKey: sessionKey,
-            viewportTransitionGeneration: viewportTransitionGeneration
-        )
-    }
-}
-
-enum ChatFollowLatestRelatchPolicy {
-    static func shouldRelatch(
-        isNearBottom: Bool,
-        hasPendingRestoration: Bool,
-        hasNotificationHandoff: Bool,
-        isDragging: Bool
-    ) -> Bool {
-        isNearBottom
-            && !hasPendingRestoration
-            && !hasNotificationHandoff
-            && !isDragging
-    }
-
-    static func shouldFollowLatestAfterTransition(isDragging: Bool) -> Bool {
-        !isDragging
-    }
-
-    static func isCompletionCurrent(
-        completed: ChatDragCompletionToken,
-        current: ChatDragCompletionToken,
-        identity: ChatScrollSessionIdentity,
-        isDragging: Bool,
-        hasPendingRestoration: Bool,
-        hasNotificationHandoff: Bool
-    ) -> Bool {
-        // A new chat can acquire its first server session ID without replacing
-        // the viewport. The transition generation distinguishes that identity
-        // resolution from an actual transcript transition.
-        let sameSession = completed.sessionKey == nil
-            || completed.sessionKey == current.sessionKey
-            || identity.areEquivalent(completed.sessionKey, current.sessionKey)
-        return completed.dragGeneration == current.dragGeneration
-            && completed.viewportTransitionGeneration == current.viewportTransitionGeneration
-            && sameSession
-            && !isDragging
-            && !hasPendingRestoration
-            && !hasNotificationHandoff
-    }
-
+/// Support helpers retained from the pre-controller policies: canonical
+/// persistence-key resolution and the main-actor-turn yield used by the
+/// drag-evaluation executor. Everything else lives in
+/// ChatViewportController now.
+enum ChatViewportPersistenceSupport {
     static func persistenceSessionKey(
         currentKey: ChatScrollSessionKey?,
         identity: ChatScrollSessionIdentity
@@ -151,24 +50,6 @@ enum ChatFollowLatestRelatchPolicy {
                 continuation.resume()
             }
         }
-    }
-
-    /// Defers completion until the next main-actor turn. A newer drag or
-    /// transcript transition invalidates the work via `isCurrent`; otherwise
-    /// persistence runs after the relatch decision.
-    @MainActor
-    static func completeDragAfterNextTurn(
-        suspend: @MainActor () async -> Void = {
-            await ChatFollowLatestRelatchPolicy.waitForNextMainActorTurn()
-        },
-        isCurrent: @MainActor () -> Bool,
-        relatch: @MainActor () -> Void,
-        persist: @MainActor () -> Void
-    ) async {
-        await suspend()
-        guard !Task.isCancelled, isCurrent() else { return }
-        relatch()
-        persist()
     }
 }
 
@@ -300,121 +181,6 @@ struct ChatRenderedScrollTargets: Equatable {
         rowsByScope = rowsByScope.filter { activeScopes.contains($0.key) }
         bottomsByScope = bottomsByScope.filter { activeScopes.contains($0.key) }
         framesByScope = framesByScope.filter { activeScopes.contains($0.key) }
-    }
-}
-
-enum ChatResumeRenderRestorationAction: Equatable {
-    case wait
-    case scroll(ChatResumeViewportDestination)
-    case complete
-    case abandon
-    case cancelled
-}
-
-/// A deterministic policy for the view-owned part of restoration. SwiftUI
-/// supplies actual layout observations; the policy never treats a derived
-/// message cache as proof that ScrollViewReader has installed its targets.
-struct ChatResumeRenderRestorationState {
-    let generation: UInt64
-    let sessionKey: ChatScrollSessionKey
-    private(set) var destination: ChatResumeViewportDestination
-    private let maximumChecks: Int
-    private let retryInterval: Int
-    private var checkCount = 0
-    private var lastScrollCheck: Int?
-    private var isCancelled = false
-
-    init(
-        generation: UInt64,
-        sessionKey: ChatScrollSessionKey,
-        destination: ChatResumeViewportDestination,
-        maximumChecks: Int = 80,
-        retryInterval: Int = 4
-    ) {
-        self.generation = generation
-        self.sessionKey = sessionKey
-        self.destination = destination
-        self.maximumChecks = max(maximumChecks, 1)
-        self.retryInterval = max(retryInterval, 1)
-    }
-
-    mutating func updateDestination(_ destination: ChatResumeViewportDestination) {
-        guard self.destination != destination else { return }
-        self.destination = destination
-        lastScrollCheck = nil
-    }
-
-    mutating func cancel() {
-        isCancelled = true
-    }
-
-    mutating func nextAction(
-        renderedContent: ChatRenderedScrollContent?,
-        installedTargets: ChatRenderedScrollTargets,
-        cacheRevision: UInt64,
-        transcriptRevision: UInt64,
-        topVisibleID: String?,
-        isNearBottom: Bool
-    ) -> ChatResumeRenderRestorationAction {
-        guard !isCancelled else { return .cancelled }
-        checkCount += 1
-
-        guard let renderedContent,
-              renderedContent.scope.restorationGeneration == generation,
-              renderedContent.scope.sessionKey == sessionKey,
-              renderedContent.scope.cacheRevision == cacheRevision,
-              renderedContent.scope.transcriptRevision == transcriptRevision else {
-            return checkCount > maximumChecks ? .abandon : .wait
-        }
-
-        if lastScrollCheck != nil,
-           targetIsInstalled(in: installedTargets, scope: renderedContent.scope),
-           destinationIsConfirmed(
-            topVisibleID: topVisibleID,
-            isNearBottom: isNearBottom
-        ) {
-            return .complete
-        }
-
-        guard checkCount <= maximumChecks else { return .abandon }
-
-        if lastScrollCheck.map({ checkCount - $0 >= retryInterval }) ?? true {
-            lastScrollCheck = checkCount
-            return .scroll(destination)
-        }
-
-        return .wait
-    }
-
-    private func targetIsInstalled(
-        in installedTargets: ChatRenderedScrollTargets,
-        scope: ChatRenderedScrollScope
-    ) -> Bool {
-        switch destination {
-        case .latest:
-            return installedTargets.contains(
-                bottom: bottomAnchorID(for: scope.sessionKey),
-                in: scope
-            )
-        case .anchor(let anchor):
-            return installedTargets.contains(row: anchor, in: scope)
-        }
-    }
-
-    private func bottomAnchorID(for sessionKey: ChatScrollSessionKey) -> String {
-        "chat-latest-\(sessionKey.profile)-\(sessionKey.sessionID)"
-    }
-
-    private func destinationIsConfirmed(
-        topVisibleID: String?,
-        isNearBottom: Bool
-    ) -> Bool {
-        switch destination {
-        case .latest:
-            return isNearBottom
-        case .anchor(let anchor):
-            return topVisibleID == anchor
-        }
     }
 }
 

@@ -101,3 +101,31 @@ plan; `ChatViewportTrace` records the decision trail for those runs.
 - The 126pt bottom padding anchor, `ChatTitleScrollAnchor` id scheme, and
   bottom-anchor id scheme (`chat-latest-<profile>-<sessionID>`) are kept —
   restoration matching and persisted-snapshot compatibility depend on them.
+
+## 6. Old-test → new-test mapping (Task 7 replacements)
+
+| Deleted test | Replacement (ChatViewportControllerTests unless noted) |
+|---|---|
+| ChatScrollStateTests.testFollowLatestRelatchRequiresSettledNearBottomViewport | testLayoutTickRelatchSuppressedByPendingRestorationHandoffOrDrag |
+| ChatScrollStateTests.testDragCompletionRequiresCurrentGestureViewportAndSession | testEvaluateStaleDragCompletionDoesNothing |
+| ChatScrollStateTests.testTranscriptTransitionKeepsFollowDisabledForActiveDrag | testSessionSwitchToUnrelatedKeyClaimsFollowingLatestAndScrollsUnlessDragging + testLayoutTickRelatchSuppressedByPendingRestorationHandoffOrDrag |
+| ChatScrollStateTests.testDragLifecycle* (5 tests) + testIdleDragInvalidationDoesNotBlockNextGesture | testDuplicateDragChangedCallbacksBeginOnlyOnce, testDragInvalidateWithActiveGestureSuppressesNextBeginUntilFinish, testInvalidateWithoutGestureCancelsPendingCompletion, testAbandonDragAllowsFreshGestureAfterViewReappears, testUserDragGestureEndedSchedulesEvaluation, testViewDisappearedAbandonsDrag |
+| ChatScrollStateTests.testDragCompletion* (4 async tests) | testEvaluateDragCompletion* family (decision semantics; the next-main-actor-turn sequencing lives in the executor's scheduleDragEvaluation) |
+| ChatScrollStateTests.testRestorationWaitsForMatchingRenderedTargetAndGeometryConfirmation | testRestorationWaitsForMatchingRenderedScopeBeforeScrolling |
+| ChatScrollStateTests.testCancellingRenderRestorationStopsWithoutScrollingOrCompleting | testRestorationCancelledBySystemClearsStateToBrowsing |
+| ChatScrollStateTests.testMatchingScrollPositionCannotCompleteBeforeActualRowRegistration | testRestorationCompletesOnlyWhenAnchorConfirmedAndInstalled |
+| ChatScrollStateTests.testLatestRestorationRequiresMatchingBottomLayoutAndNearBottomConfirmation | testRestorationLatestConfirmsOnlyWhenNearBottomAndPersistsAfterComplete |
+| ChatScrollStateTests.testRenderRestorationTimesOutWithoutAnActuallyRegisteredTarget | testRestorationAbandonsAfterBoundedChecks |
+| ChatScrollStateTests.testEqualCountProjectionReplacementReassertsLatestAfterCacheUpdate | testTranscriptChangeWhileFollowingReassertsLatestAnimated + testRenderingOnlyReplacementWhileFollowingReassertsLatestExactlyOnce |
+| ChatScrollStateTests.testLatestReassertionYieldsToPendingRestoration / …NotificationHandoff | testTranscriptChangeWhileBrowsingOrRestoringOrHandoffNeverScrolls |
+| ChatTitleScrollTests.testTopScrollRetryRequiresCurrentRequestAndOwnerToken | testExplicitTopClaimsTopOwnershipNonAnimated + testCommandCurrencyValidatesGenerationSessionAndMode |
+| ChatTitleScrollTests.testExplicitTopOwnerSurvivesHandoffReadinessAndUsesCurrentAnchor | testNotificationHandoffDestinationReadyWithActiveTopOwnerScrollsToTop |
+| ChatTitleScrollTests.testTopRetryIsSupersededByLaterOwnerGeneration | testExplicitTopThenExplicitLatestSupersedesTop + testCommandCurrencyValidatesGenerationSessionAndMode |
+| ChatTitleScrollTests.testHandoffFallsBackToExistingLatestPolicyWithoutExplicitTopOwner | testNotificationHandoffDestinationReadyWithoutTopOwnerFollowsLatestNonAnimated + testNotificationHandoffDestinationReadyWhileDraggingStaysBrowsingNoScroll |
+| ChatViewportCharacterizationTests (all 10) | deleted — superseded by the 45 controller tests (the documented view-level gaps closed by testLayoutTick* tests) |
+
+Kept unchanged: ChatScrollStateTests semantic-anchor/identity/resolver/target-cache
+families (27 tests), testDragCompletionPersistsUsingCanonicalSessionIdentity
+(now targeting ChatViewportPersistenceSupport.persistenceSessionKey — same
+assertions), ChatTitleScrollTests monotonic-pulse/scoped-anchor/synthetic-anchor
+tests, and all resume suites (Coordinator/Policy/Store/AppStateChatResume).

@@ -13,7 +13,6 @@ struct ChatView: View {
     @EnvironmentObject var appState: AppState
     @State private var bottomMarkerMaxY: CGFloat?
     @State private var scrollViewportFrame: CGRect?
-    @State private var topVisibleChatID: String?
     @State private var renderedScrollContent: ChatRenderedScrollContent?
     @State private var renderedScrollTargets = ChatRenderedScrollTargets()
     @State private var viewportSnapshotProviderID = UUID()
@@ -195,7 +194,6 @@ struct ChatView: View {
                         }
                     }
             }
-            .scrollTargetLayout()
             .padding(.horizontal, 18)
             .padding(.top, 18)
             .background {
@@ -217,7 +215,6 @@ struct ChatView: View {
             }
         }
         .scrollDismissesKeyboard(.interactively)
-        .scrollPosition(id: $topVisibleChatID, anchor: .top)
         .onTapGesture {
             UIApplication.shared.sendAction(
                 #selector(UIResponder.resignFirstResponder),
@@ -389,7 +386,6 @@ struct ChatView: View {
                 ChatViewportTrace.shared.log(
                     "event sessionChanged viaNotification=\(appState.isOpeningNotificationSession)"
                 )
-                topVisibleChatID = nil
                 performViewportEffects(
                     viewport.renderedSessionChanged(
                         to: activeScrollSessionKey,
@@ -404,7 +400,6 @@ struct ChatView: View {
                 ChatViewportTrace.shared.log(
                     "event profileChanged viaNotification=\(appState.isOpeningNotificationSession)"
                 )
-                topVisibleChatID = nil
                 performViewportEffects(
                     viewport.transcriptChanged(
                         messages: appState.messages,
@@ -450,7 +445,7 @@ struct ChatView: View {
 
     private func saveChatScrollPosition(for preferredKey: ChatScrollSessionKey? = nil) {
         let currentKey = preferredKey ?? renderedScrollSessionKey ?? activeScrollSessionKey
-        guard let sessionKey = ChatFollowLatestRelatchPolicy.persistenceSessionKey(
+        guard let sessionKey = ChatViewportPersistenceSupport.persistenceSessionKey(
             currentKey: currentKey,
             identity: appState.activeChatScrollSessionIdentity
         ) else { return }
@@ -616,7 +611,7 @@ struct ChatView: View {
             appState.abandonChatResumeRestoration(generation: generation)
         case .scheduleDragEvaluation(let token):
             Task { @MainActor in
-                await ChatFollowLatestRelatchPolicy.waitForNextMainActorTurn()
+                await ChatViewportPersistenceSupport.waitForNextMainActorTurn()
                 guard !Task.isCancelled else { return }
                 ChatViewportTrace.shared.log(
                     "drag completion evaluate gen=\(token.dragGeneration)"
@@ -678,105 +673,6 @@ struct ChatView: View {
 enum ChatTitleScrollAnchor {
     static func id(for sessionKey: ChatScrollSessionKey) -> String {
         "chat-top-\(sessionKey.profile)-\(sessionKey.sessionID)"
-    }
-}
-
-enum ChatScrollOwner: Equatable {
-    case latest
-    case explicitTop(request: Int)
-    case userDrag
-    case sessionTransition
-}
-
-struct ChatScrollOwnerToken: Equatable {
-    let generation: UInt64
-    let owner: ChatScrollOwner
-}
-
-enum ChatHandoffCompletionAction: Equatable {
-    case top(anchorID: String)
-    case latest
-    case none
-}
-
-struct ChatScrollOwnerState: Equatable {
-    private(set) var generation: UInt64 = 0
-    private(set) var owner: ChatScrollOwner = .latest
-
-    @discardableResult
-    mutating func claimLatest() -> ChatScrollOwnerToken {
-        advance(to: .latest)
-    }
-
-    @discardableResult
-    mutating func claimTop(request: Int) -> ChatScrollOwnerToken {
-        advance(to: .explicitTop(request: request))
-    }
-
-    mutating func invalidateForUserDrag() {
-        advance(to: .userDrag)
-    }
-
-    mutating func invalidateForSessionTransition() {
-        advance(to: .sessionTransition)
-    }
-
-    func hasActiveTopOwner(currentRequest: Int) -> Bool {
-        guard case .explicitTop(let request) = owner else { return false }
-        return request == currentRequest
-    }
-
-    func topRetryAnchor(
-        for token: ChatScrollOwnerToken,
-        currentRequest: Int,
-        currentAnchor: String,
-        isCancelled: Bool
-    ) -> String? {
-        guard !isCancelled,
-              token == currentToken,
-              hasActiveTopOwner(currentRequest: currentRequest) else {
-            return nil
-        }
-        return currentAnchor
-    }
-
-    func latestRetryAnchor(
-        for token: ChatScrollOwnerToken,
-        currentAnchor: String,
-        followsLatest: Bool,
-        hasPendingRestoration: Bool,
-        isCancelled: Bool
-    ) -> String? {
-        guard !isCancelled,
-              token == currentToken,
-              owner == .latest,
-              followsLatest,
-              !hasPendingRestoration else {
-            return nil
-        }
-        return currentAnchor
-    }
-
-    func handoffCompletionAction(
-        currentTopRequest: Int,
-        currentTopAnchor: String,
-        shouldFollowLatest: Bool
-    ) -> ChatHandoffCompletionAction {
-        if hasActiveTopOwner(currentRequest: currentTopRequest) {
-            return .top(anchorID: currentTopAnchor)
-        }
-        return shouldFollowLatest ? .latest : .none
-    }
-
-    private var currentToken: ChatScrollOwnerToken {
-        ChatScrollOwnerToken(generation: generation, owner: owner)
-    }
-
-    @discardableResult
-    private mutating func advance(to nextOwner: ChatScrollOwner) -> ChatScrollOwnerToken {
-        generation &+= 1
-        owner = nextOwner
-        return currentToken
     }
 }
 
