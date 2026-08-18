@@ -854,7 +854,7 @@ struct RestorationState: Equatable {
         transcriptRevision: UInt64,
         topVisibleID: String?,
         isNearBottom: Bool,
-        sessionMatches: Bool = true
+        sessionMatches: Bool
     ) -> Action {
         guard !isCancelled else { return .cancelled }
         checkCount += 1

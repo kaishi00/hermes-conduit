@@ -915,7 +915,9 @@ final class ChatViewportControllerTests: XCTestCase {
             transcriptRevision: 2,
             viewportTransitionGeneration: 1
         )
-        let scope = controller.renderedScrollScope!
+        guard let scope = controller.renderedScrollScope else {
+            return XCTFail("expected a scope")
+        }
         _ = controller.layoutMetricsChanged(facts: layoutFacts(
             bottomMarkerMaxY: 900,
             viewportMinY: 100,
@@ -945,7 +947,9 @@ final class ChatViewportControllerTests: XCTestCase {
             transcriptRevision: 1,
             viewportTransitionGeneration: 1
         )
-        let scope = controller.renderedScrollScope!
+        guard let scope = controller.renderedScrollScope else {
+            return XCTFail("expected a scope")
+        }
         // Only m2 and m3 rendered (lazy); m2 intersects the top edge.
         _ = controller.layoutMetricsChanged(facts: layoutFacts(
             bottomMarkerMaxY: 900,
@@ -1046,7 +1050,10 @@ extension ChatViewportControllerTests {
         )
         // Snapshot anchored at the semantic id resolves to the SOURCE
         // message id space inside the restoration state machine.
-        let realAnchor = seeded.targets.first!.semanticID
+        guard let realTarget = seeded.targets.first else {
+            return XCTFail("expected a target")
+        }
+        let realAnchor = realTarget.semanticID
         let request = snapshotRequest(anchor: realAnchor, for: keyA)
         _ = seeded.userDragBegan(sessionKey: keyA, viewportTransitionGeneration: 1)
 
@@ -1080,14 +1087,17 @@ extension ChatViewportControllerTests {
             viewportTransitionGeneration: 1,
             isInitialSync: true
         )
-        let anchor = controller.targets.first!.semanticID
+        guard let target = controller.targets.first else {
+            return XCTFail("expected a target")
+        }
+        let anchor = target.semanticID
         let request = snapshotRequest(anchor: anchor, for: keyA)
         _ = controller.restorationRequested(request)
 
         // A scope from a DIFFERENT restoration generation must not scroll.
         let staleScope = ChatRenderedScrollScope(
             sessionKey: keyA,
-            cacheRevision: controller.renderedScrollScope!.cacheRevision,
+            cacheRevision: controller.renderedScrollScope?.cacheRevision ?? 0,
             restorationGeneration: 999,
             transcriptRevision: 1,
             viewportTransitionGeneration: 1
@@ -1118,7 +1128,7 @@ extension ChatViewportControllerTests {
         )
         let commands = scrollCommands(scrollTick)
         XCTAssertEqual(commands.count, 1)
-        XCTAssertEqual(commands[0].destination, .message(id: controller.targets.first!.id))
+        XCTAssertEqual(commands[0].destination, .message(id: controller.targets.first?.id ?? "missing"))
     }
 
     func testRestorationCompletesOnlyWhenAnchorConfirmedAndInstalled() {
@@ -1130,7 +1140,9 @@ extension ChatViewportControllerTests {
             viewportTransitionGeneration: 1,
             isInitialSync: true
         )
-        let target = controller.targets.first!
+        guard let target = controller.targets.first else {
+            return XCTFail("expected a target")
+        }
         let request = snapshotRequest(anchor: target.semanticID, for: keyA)
         _ = controller.restorationRequested(request)
         guard let scope = restorationScope(for: request, in: controller) else {
@@ -1258,7 +1270,9 @@ extension ChatViewportControllerTests {
             messages: messages, transcriptRevision: 1,
             viewportTransitionGeneration: 1, isInitialSync: true
         )
-        let target = controller.targets.first!
+        guard let target = controller.targets.first else {
+            return XCTFail("expected a target")
+        }
         let request = snapshotRequest(anchor: target.semanticID, for: keyA)
         _ = controller.restorationRequested(request)
         let scope = restorationScope(for: request, in: controller)!
@@ -1287,7 +1301,9 @@ extension ChatViewportControllerTests {
             messages: messages, transcriptRevision: 1,
             viewportTransitionGeneration: 1, isInitialSync: true
         )
-        let target = controller.targets.first!
+        guard let target = controller.targets.first else {
+            return XCTFail("expected a target")
+        }
         let request = snapshotRequest(anchor: target.semanticID, for: keyA)
         _ = controller.restorationRequested(request)
 
@@ -1564,7 +1580,6 @@ extension ChatViewportControllerTests {
             isInitialSync: true
         )
         _ = controller.userDragBegan(sessionKey: keyA, viewportTransitionGeneration: 1)
-        let scope = controller.renderedScrollScope!
 
         // All three rendered; m1 is the top stable row.
         guard let scope = controller.renderedScrollScope else {
@@ -1940,7 +1955,9 @@ extension ChatViewportControllerTests {
             messages: messages, transcriptRevision: 1,
             viewportTransitionGeneration: 1, isInitialSync: true
         )
-        let target = controller.targets.first!
+        guard let target = controller.targets.first else {
+            return XCTFail("expected a target")
+        }
 
         // Request published under runtime-a (the equivalent alias).
         let request = ChatResumeRestorationRequest(
