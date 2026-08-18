@@ -111,6 +111,7 @@ struct SettingsSnapshot: Identifiable {
     let theme: ThemePreference
     let busyInputMode: BusyInputMode
     let chatResumeBehavior: ChatResumeBehavior
+    let chatReturnSurface: ChatReturnSurface
     let displayPreferences: ProfileDisplayPreferences
     let cloudflareAccess: CloudflareAccessCredentials?
 }
@@ -456,6 +457,7 @@ struct SettingsView: View {
     let saveTheme: (ThemePreference) -> Void
     let persistBusyInputMode: (BusyInputMode) async -> Bool
     let persistChatResumeBehavior: (ChatResumeBehavior) -> Void
+    let persistChatReturnSurface: (ChatReturnSurface) -> Void
     let loadProfileSettings: ([String]) async -> [String: ProfileSettingValue]
     let persistProfileSetting: (String, ProfileSettingValue) async -> Bool
     let loadProfileConfigOptions: () async -> ProfileConfigOptions
@@ -499,6 +501,8 @@ struct SettingsView: View {
                 persistBusyInputMode: persistBusyInputMode,
                 chatResumeBehavior: snapshot.chatResumeBehavior,
                 persistChatResumeBehavior: persistChatResumeBehavior,
+                chatReturnSurface: snapshot.chatReturnSurface,
+                persistChatReturnSurface: persistChatReturnSurface,
                 load: loadProfileSettings,
                 save: persistProfileSetting,
                 loadOptions: loadProfileConfigOptions
@@ -703,6 +707,8 @@ private struct ChatSettingsDetail: View {
     let persistBusyInputMode: (BusyInputMode) async -> Bool
     let chatResumeBehavior: ChatResumeBehavior
     let persistChatResumeBehavior: (ChatResumeBehavior) -> Void
+    let chatReturnSurface: ChatReturnSurface
+    let persistChatReturnSurface: (ChatReturnSurface) -> Void
     let load: ([String]) async -> [String: ProfileSettingValue]
     let save: (String, ProfileSettingValue) async -> Bool
     let loadOptions: () async -> ProfileConfigOptions
@@ -721,7 +727,9 @@ private struct ChatSettingsDetail: View {
                 VStack(spacing: 14) {
                     ChatReturnBehaviorSettings(
                         initialBehavior: chatResumeBehavior,
-                        persist: persistChatResumeBehavior
+                        persistBehavior: persistChatResumeBehavior,
+                        initialSurface: chatReturnSurface,
+                        persistSurface: persistChatReturnSurface
                     )
                     ResponseBehaviorSettings(initialMode: busyInputMode, save: persistBusyInputMode)
                 }
@@ -766,15 +774,21 @@ private struct DeviceHapticsSettings: View {
 }
 
 private struct ChatReturnBehaviorSettings: View {
-    let persist: (ChatResumeBehavior) -> Void
+    let persistBehavior: (ChatResumeBehavior) -> Void
+    let persistSurface: (ChatReturnSurface) -> Void
     @State private var behavior: ChatResumeBehavior
+    @State private var surface: ChatReturnSurface
 
     init(
         initialBehavior: ChatResumeBehavior,
-        persist: @escaping (ChatResumeBehavior) -> Void
+        persistBehavior: @escaping (ChatResumeBehavior) -> Void,
+        initialSurface: ChatReturnSurface,
+        persistSurface: @escaping (ChatReturnSurface) -> Void
     ) {
-        self.persist = persist
+        self.persistBehavior = persistBehavior
+        self.persistSurface = persistSurface
         _behavior = State(initialValue: initialBehavior)
+        _surface = State(initialValue: initialSurface)
     }
 
     var body: some View {
@@ -783,22 +797,47 @@ private struct ChatReturnBehaviorSettings: View {
             symbol: "arrow.uturn.backward.circle",
             tint: .conduitAccent
         ) {
-            Text("Stored only on this device, not in your Hermes profile. Choose whether Conduit preserves your exact reading position or follows the newest conversation.")
+            Text("Stored only on this device, not in your Hermes profile. Choose which surface Conduit opens to and whether it preserves your exact reading position or follows the newest conversation.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
-            Picker("When returning to Conduit", selection: Binding(get: { behavior }, set: choose)) {
-                Text("Continue").tag(ChatResumeBehavior.continueWhereLeftOff)
-                Text("Latest").tag(ChatResumeBehavior.latestActivity)
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Open to")
+                    .font(.subheadline.weight(.semibold))
+                Picker("Open to", selection: Binding(get: { surface }, set: chooseSurface)) {
+                    ForEach(ChatReturnSurface.allCases, id: \.self) { choice in
+                        Text(choice.title).tag(choice)
+                    }
+                }
+                .pickerStyle(.segmented)
+                if surface == .sessions {
+                    Text("Used if you dismiss the session list without choosing another conversation.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
             }
-            .pickerStyle(.segmented)
-            .accessibilityHint("Stored only on this device, not in your Hermes profile.")
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Conversation")
+                    .font(.subheadline.weight(.semibold))
+                Picker("Conversation", selection: Binding(get: { behavior }, set: chooseBehavior)) {
+                    Text("Continue").tag(ChatResumeBehavior.continueWhereLeftOff)
+                    Text("Latest").tag(ChatResumeBehavior.latestActivity)
+                }
+                .pickerStyle(.segmented)
+                .accessibilityHint("Used if you dismiss the session list without choosing another conversation.")
+            }
         }
     }
 
-    private func choose(_ next: ChatResumeBehavior) {
+    private func chooseBehavior(_ next: ChatResumeBehavior) {
         guard next != behavior else { return }
         behavior = next
-        persist(next)
+        persistBehavior(next)
+    }
+
+    private func chooseSurface(_ next: ChatReturnSurface) {
+        guard next != surface else { return }
+        surface = next
+        persistSurface(next)
     }
 }
 private struct ResponseBehaviorSettings: View {

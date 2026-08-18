@@ -40,6 +40,7 @@ struct MainView: View {
     @EnvironmentObject var appState: AppState
     @State private var settingsPresentation: SettingsSnapshot?
     @State private var shouldPresentSettingsAfterSidebarDismissal = false
+    @State private var consumedReturnSurfaceRequest: UInt64 = 0
 
     var body: some View {
         NavigationStack {
@@ -148,6 +149,7 @@ struct MainView: View {
                 .presentationDragIndicator(.visible)
         }
         .sheet(item: $settingsPresentation, onDismiss: {
+            appState.isSettingsSheetPresented = false
             Task { await appState.refreshVoiceCapabilities() }
         }) { snapshot in
             SettingsView(
@@ -155,6 +157,7 @@ struct MainView: View {
                 saveTheme: { appState.themePreference = $0 },
                 persistBusyInputMode: { mode in await appState.setBusyInputMode(mode) },
                 persistChatResumeBehavior: { appState.setChatResumeBehavior($0) },
+                persistChatReturnSurface: { appState.setChatReturnSurface($0) },
                 loadProfileSettings: { keys in await appState.loadProfileSettings(keys: keys) },
                 persistProfileSetting: { key, value in await appState.setProfileSetting(key, value: value) },
                 loadProfileConfigOptions: { await appState.loadProfileConfigOptions() },
@@ -174,12 +177,35 @@ struct MainView: View {
         .task(id: voiceCapabilityRefreshKey) {
             await appState.refreshVoiceCapabilities()
         }
+        // Cold launch: MainView first becoming the authenticated surface is
+        // the qualifying return. Issue via the guarded AppState hook (a
+        // scene-activation request may already be pending), then consume.
+        .task {
+            appState.requestPreferredReturnSurface()
+            presentPreferredReturnSurfaceIfNeeded()
+        }
+        .onChange(of: appState.preferredReturnSurfaceRequest) { _, _ in
+            presentPreferredReturnSurfaceIfNeeded()
+        }
     }
 
     private func presentSettingsAfterSidebarDismissal() {
         guard shouldPresentSettingsAfterSidebarDismissal else { return }
         shouldPresentSettingsAfterSidebarDismissal = false
+        appState.isSettingsSheetPresented = true
         settingsPresentation = appState.makeSettingsSnapshot()
+    }
+
+    /// Presents the sessions drawer for a preferred-return-surface request.
+    /// Consumes at most once per issued request; suppressed when explicit
+    /// navigation or another modal owns the surface at presentation time.
+    private func presentPreferredReturnSurfaceIfNeeded() {
+        guard appState.preferredReturnSurfaceRequest > consumedReturnSurfaceRequest else { return }
+        consumedReturnSurfaceRequest = appState.preferredReturnSurfaceRequest
+        guard !appState.isOpeningNotificationSession else { return }
+        guard !appState.isModalSheetPresented else { return }
+        guard !appState.showSidebar else { return }
+        appState.showSidebar = true
     }
 
     private var voiceCapabilityRefreshKey: String {

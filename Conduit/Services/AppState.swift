@@ -372,6 +372,13 @@ final class AppState: ObservableObject {
     @Published private(set) var activeSessionTitle = "New conversation"
     @Published private(set) var isChatRefreshing = false
     @Published private(set) var chatResumeBehavior: ChatResumeBehavior = .continueWhereLeftOff
+    @Published private(set) var chatReturnSurface: ChatReturnSurface = .conversation
+    /// One-shot request for MainView to present the sessions drawer as the
+    /// preferred return surface. MainView consumes the latest value once per
+    /// increment; the request is only issued for qualifying returns (cold
+    /// launch or a real background → active transition) when the preference
+    /// is `.sessions` and no explicit navigation or modal owns the surface.
+    @Published private(set) var preferredReturnSurfaceRequest: UInt64 = 0
     @Published private(set) var chatResumeRestorationRequest: ChatResumeRestorationRequest?
     @Published private(set) var chatViewportTransitionGeneration: UInt64 = 0
     /// Keeps the current transcript visible while a notification destination is
@@ -474,6 +481,9 @@ final class AppState: ObservableObject {
     @Published var showGatewaySheet = false
     @Published var showAgentsSheet = false
     @Published var showVoiceSheet = false
+    /// Mirrors MainView's Settings sheet item so return-surface decisions can
+    /// tell whether Settings owns the surface across a background/foreground cycle.
+    @Published var isSettingsSheetPresented = false
     @Published var errorMessage: String?
     @Published var showLogin = true
     @Published private(set) var composerPrefillText = ""
@@ -581,6 +591,10 @@ final class AppState: ObservableObject {
     private var responseHaptics = ResponseHapticState()
     private var scenePhaseTask: Task<Void, Never>?
     private var scenePhaseAttemptID: UUID?
+    /// Armed only by a real .background phase. Ordinary inactive → active
+    /// transitions (Control Center, incoming-call banner) must not be treated
+    /// as reopening the app, so they never arm the preferred return surface.
+    private var hasEnteredBackgroundScenePhase = false
     private var explicitSessionOpenTask: Task<Bool, Never>?
     private var explicitSessionOpenRequestID: UUID?
     private var activeAutomaticChatResumeWork: ChatResumeAutomaticWorkToken?
@@ -784,6 +798,9 @@ final class AppState: ObservableObject {
     // MARK: - Persistence
 
     private let defaults: UserDefaults
+    /// Kept outside ChatResumeStore on purpose: the return surface is a
+    /// presentation preference, not part of the resume schema.
+    static let chatReturnSurfaceKey = "conduit.chatReturnSurface.v1"
     private let activeSessionTitlesByProfileKey = "conduit.activeSessionTitlesByProfile.v1"
     private let pinnedSessionIDsByProfileKey = "conduit.pinnedSessionIdsByProfile.v1"
     private let activeProfileKey = "conduit.activeProfile"
@@ -874,6 +891,8 @@ final class AppState: ObservableObject {
             ?? defaults.string(forKey: "conduit.dashboardURL")
                 .flatMap(Self.normalizedChatResumeServerIdentity)
         chatResumeBehavior = self.chatResumeCoordinator.behavior
+        chatReturnSurface = defaults.string(forKey: Self.chatReturnSurfaceKey)
+            .flatMap(ChatReturnSurface.init(rawValue:)) ?? .conversation
         defaultProfileName = ProfileAppearanceStore.loadDefaultName()
         profileAvatarURLs = ProfileAppearanceStore.loadAvatarURLs()
         appIconChoice = UIApplication.shared.alternateIconName == AppIconChoice.light.alternateIconName ? .light : .dark
@@ -1015,6 +1034,33 @@ final class AppState: ObservableObject {
         recoverySequence.preserveTransportAfterAutomaticIntentCancellation()
         chatResumeBehavior = chatResumeCoordinator.behavior
         chatResumeRestorationRequest = nil
+    }
+
+    /// True when any presented sheet owns the surface other than the sessions
+    /// drawer itself. Explicit navigation and existing modals take precedence
+    /// over the preferred return surface.
+    var isModalSheetPresented: Bool {
+        showModelPicker || showContextSheet || showWorkspaceSheet || showGatewaySheet
+            || showAgentsSheet || showVoiceSheet || isSettingsSheetPresented
+    }
+
+    /// Persisted separately from the resume store: this only changes which
+    /// surface is presented first on a qualifying return, and deliberately
+    /// issues no presentation request — the next qualifying return picks it up.
+    func setChatReturnSurface(_ surface: ChatReturnSurface) {
+        guard surface != chatReturnSurface else { return }
+        chatReturnSurface = surface
+        defaults.set(surface.rawValue, forKey: Self.chatReturnSurfaceKey)
+    }
+
+    /// Issues a one-shot preferred-return-surface request. Suppressed when a
+    /// notification destination is being opened or a modal sheet already owns
+    /// the surface; MainView re-checks at presentation time as a backstop.
+    func requestPreferredReturnSurface() {
+        guard chatReturnSurface == .sessions else { return }
+        guard !isOpeningNotificationSession else { return }
+        guard !isModalSheetPresented else { return }
+        preferredReturnSurfaceRequest &+= 1
     }
 
     func recordChatViewport(_ snapshot: ChatScrollSnapshot, for key: ChatScrollSessionKey) {
@@ -1523,6 +1569,7 @@ final class AppState: ObservableObject {
             theme: themePreference,
             busyInputMode: busyInputMode,
             chatResumeBehavior: chatResumeBehavior,
+            chatReturnSurface: chatReturnSurface,
             displayPreferences: displayPreferences,
             cloudflareAccess: KeychainHelper.loadCloudflareAccess(for: connection?.baseUrl)
         )
@@ -3701,6 +3748,14 @@ final class AppState: ObservableObject {
         case .active:
             isSceneActive = true
             voiceConversationController.setForegroundActive(true)
+            // Issue before the transport work below: MainView presents the
+            // drawer while the automatic resume sync restores the chat
+            // underneath, and explicit navigation still wins via the
+            // suppression guards on both sides.
+            if hasEnteredBackgroundScenePhase {
+                hasEnteredBackgroundScenePhase = false
+                requestPreferredReturnSurface()
+            }
             guard connection != nil else { return nil }
             cancelScenePhaseAttempt()
             // Publish the foreground reconciliation boundary synchronously.
@@ -3759,6 +3814,7 @@ final class AppState: ObservableObject {
 
         case .background:
             isSceneActive = false
+            hasEnteredBackgroundScenePhase = true
             voiceConversationController.setForegroundActive(false)
             showVoiceSheet = false
             // Drop any armed reconnect timer as well: in-flight cycles abort
