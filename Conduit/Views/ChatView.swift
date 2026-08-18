@@ -13,7 +13,6 @@ struct ChatView: View {
     @EnvironmentObject var appState: AppState
     @State private var bottomMarkerMaxY: CGFloat?
     @State private var scrollViewportFrame: CGRect?
-    @State private var followsLatest = true
     @State private var topVisibleChatID: String?
     @State private var chatMessageScrollTargetCache = ChatMessageScrollTargetCache()
     @State private var renderedScrollSessionKey: ChatScrollSessionKey?
@@ -22,10 +21,11 @@ struct ChatView: View {
     @State private var renderedTranscriptRevision: UInt64 = 0
     @State private var renderedViewportTransitionGeneration: UInt64 = 0
     @State private var viewportSnapshotProviderID = UUID()
+    @State private var viewport = ChatViewportController()
+    // Legacy owner tokens for paths not yet migrated (session transitions,
+    // notification handoff finish); Tasks 4-7 remove them.
     @State private var scrollOwnerState = ChatScrollOwnerState()
     @GestureState private var isDraggingChat = false
-    @State private var chatDragLifecycle = ChatDragLifecycleState()
-    @State private var chatDragCompletionToken: ChatDragCompletionToken?
     @State private var notificationHandoffPending = false
     @State private var notificationHandoffSessionKey: ChatScrollSessionKey?
     @State private var notificationHandoffHasMeasuredLayout = false
@@ -33,6 +33,11 @@ struct ChatView: View {
     private var scrollViewportMaxY: CGFloat? { scrollViewportFrame?.maxY }
 
     private var scrollViewportMinY: CGFloat? { scrollViewportFrame?.minY }
+
+    /// Single source of follow-latest truth: the controller's mode. Legacy
+    /// writers go through `setLegacyFollowsLatest` until Tasks 4-6 migrate
+    /// them; there is no independent followsLatest state anymore.
+    private var followsLatest: Bool { viewport.isFollowingLatest }
 
     private var activeScrollSessionKey: ChatScrollSessionKey? {
         if let canonical = appState.activeChatScrollSessionIdentity.canonicalSessionKey {
@@ -247,28 +252,31 @@ struct ChatView: View {
                     )
                 }
                 .onDisappear {
-                    abandonChatDrag()
+                    performViewportEffects(viewport.viewDisappeared(), using: proxy)
                     appState.removeChatViewportSnapshotProvider(id: viewportSnapshotProviderID)
                 }
                 .task(id: appState.chatResumeRestorationRequest?.generation) {
                     guard let request = appState.chatResumeRestorationRequest else { return }
-                    invalidateChatDrag()
+                    invalidateChatDrag(using: proxy)
                     await applyChatResumeRestoration(request, using: proxy)
                 }
-                .task(id: chatDragCompletionToken) {
-                    guard let completed = chatDragCompletionToken else { return }
-                    await completeChatDrag(completed)
-                }
                 .onPreferenceChange(ChatBottomMarkerPreferenceKey.self) { value in
-                    updateBottomMarker(value)
+                    bottomMarkerMaxY = value
                     recordNotificationHandoffLayout()
                     finishNotificationHandoffIfReady(using: proxy)
+                    performViewportEffects(
+                        viewport.layoutMetricsChanged(facts: currentLayoutFacts()),
+                        using: proxy
+                    )
                 }
                 .onPreferenceChange(ChatViewportFramePreferenceKey.self) { value in
                     scrollViewportFrame = value
-                    updateViewportBottom(value?.maxY)
                     recordNotificationHandoffLayout()
                     finishNotificationHandoffIfReady(using: proxy)
+                    performViewportEffects(
+                        viewport.layoutMetricsChanged(facts: currentLayoutFacts()),
+                        using: proxy
+                    )
                 }
                 .onPreferenceChange(ChatRenderedScrollContentPreferenceKey.self) { value in
                     renderedScrollContent = value
@@ -283,10 +291,14 @@ struct ChatView: View {
                 }
                 .onPreferenceChange(ChatRenderedScrollTargetsPreferenceKey.self) { value in
                     renderedScrollTargets = value
+                    performViewportEffects(
+                        viewport.layoutMetricsChanged(facts: currentLayoutFacts()),
+                        using: proxy
+                    )
                 }
                 .onChange(of: isDraggingChat) { wasDragging, isDragging in
                     guard wasDragging, !isDragging else { return }
-                    chatDragCompletionToken = chatDragLifecycle.finish()
+                    performViewportEffects(viewport.userDragGestureEnded(), using: proxy)
                 }
                 .onChange(of: appState.messages) { _, newMessages in
                     let cacheUpdate = chatMessageScrollTargetCache.update(for: newMessages)
@@ -334,20 +346,16 @@ struct ChatView: View {
                     saveChatScrollPosition(for: renderedScrollSessionKey)
                 }
                 .onChange(of: appState.chatScrollRequest) { _, _ in
-                    invalidateChatDrag()
-                    cancelAutomaticRestoration()
-                    followsLatest = true
-                    scrollToLatest(using: proxy)
+                    ChatViewportTrace.shared.log("event explicitLatest (send pulse)")
+                    performViewportEffects(viewport.explicitLatestRequested(), using: proxy)
                 }
                 .onChange(of: appState.chatScrollToTopRequest) { _, request in
-                    invalidateChatDrag()
-                    cancelAutomaticRestoration()
-                    followsLatest = false
-                    scrollToTop(using: proxy, request: request)
+                    ChatViewportTrace.shared.log("event explicitTop request=\(request)")
+                    performViewportEffects(viewport.explicitTopRequested(request: request), using: proxy)
                 }
                 .onChange(of: appState.activeSessionId) { oldSessionID, newSessionID in
                     guard !appState.isOpeningNotificationSession else {
-                        invalidateChatDrag()
+                        invalidateChatDrag(using: proxy)
                         scrollOwnerState.invalidateForSessionTransition()
                         cancelAutomaticRestoration()
                         notificationHandoffPending = true
@@ -368,7 +376,7 @@ struct ChatView: View {
                     }
                     let keysAreEquivalent = identity.areEquivalent(oldKey, newKey)
                     if !keysAreEquivalent {
-                        invalidateChatDrag()
+                        invalidateChatDrag(using: proxy)
                         scrollOwnerState.invalidateForSessionTransition()
                     }
                     renderedScrollSessionKey = newKey
@@ -379,13 +387,13 @@ struct ChatView: View {
                     topVisibleChatID = nil
                     let shouldFollowLatest = ChatFollowLatestRelatchPolicy
                         .shouldFollowLatestAfterTransition(isDragging: isDraggingChat)
-                    followsLatest = shouldFollowLatest
+                    setLegacyFollowsLatest(shouldFollowLatest, using: proxy)
                     if shouldFollowLatest {
                         scrollToLatest(using: proxy)
                     }
                 }
                 .onChange(of: appState.activeProfile) { _, _ in
-                    invalidateChatDrag()
+                    invalidateChatDrag(using: proxy)
                     scrollOwnerState.invalidateForSessionTransition()
                     let oldKey = renderedScrollSessionKey
                     let newKey = activeScrollSessionKey
@@ -405,13 +413,13 @@ struct ChatView: View {
                         notificationHandoffPending = true
                         notificationHandoffSessionKey = newKey
                         notificationHandoffHasMeasuredLayout = false
-                        followsLatest = false
+                        setLegacyFollowsLatest(false, using: proxy)
                         return
                     }
                     guard oldKey != newKey else { return }
                     let shouldFollowLatest = ChatFollowLatestRelatchPolicy
                         .shouldFollowLatestAfterTransition(isDragging: isDraggingChat)
-                    followsLatest = shouldFollowLatest
+                    setLegacyFollowsLatest(shouldFollowLatest, using: proxy)
                     if shouldFollowLatest {
                         scrollToLatest(using: proxy)
                     }
@@ -428,13 +436,13 @@ struct ChatView: View {
                 }
                 .onChange(of: appState.isOpeningNotificationSession) { _, isOpening in
                     if isOpening {
-                        invalidateChatDrag()
+                        invalidateChatDrag(using: proxy)
                         scrollOwnerState.invalidateForSessionTransition()
                         cancelAutomaticRestoration()
                         notificationHandoffPending = true
                         notificationHandoffSessionKey = nil
                         notificationHandoffHasMeasuredLayout = false
-                        followsLatest = false
+                        setLegacyFollowsLatest(false, using: proxy)
                     } else {
                         if notificationHandoffPending, notificationHandoffSessionKey == nil {
                             notificationHandoffSessionKey = activeScrollSessionKey
@@ -457,13 +465,15 @@ struct ChatView: View {
                         scrollToLatest(using: proxy)
                     }
                 }
-                .simultaneousGesture(chatDragGesture)
+                .simultaneousGesture(chatDragGesture(proxy: proxy))
                 .overlay(alignment: .bottomTrailing) {
                     if !followsLatest && !isNearBottom {
                         Button {
-                            cancelAutomaticRestoration()
-                            followsLatest = true
-                            scrollToLatest(using: proxy)
+                            ChatViewportTrace.shared.log("event explicitLatest (button)")
+                            performViewportEffects(
+                                viewport.explicitLatestRequested(),
+                                using: proxy
+                            )
                         } label: {
                             Image(systemName: "arrow.down")
                                 .font(.system(size: 15, weight: .bold))
@@ -525,75 +535,38 @@ struct ChatView: View {
         appState.cancelChatResumeRestoration()
     }
 
-    private var chatDragGesture: some Gesture {
+    private func chatDragGesture(proxy: ScrollViewProxy) -> some Gesture {
         DragGesture(minimumDistance: 3)
             .updating($isDraggingChat) { _, isDragging, _ in
                 isDragging = true
             }
             .onChanged { _ in
-                beginChatDragIfNeeded()
+                beginChatDragIfNeeded(using: proxy)
             }
     }
 
-    private func beginChatDragIfNeeded() {
-        // Only a deliberate user drag opts out of stream following. Capturing
-        // here preserves the session and transition that owned the gesture.
-        guard chatDragLifecycle.begin(
-            sessionKey: renderedScrollSessionKey ?? activeScrollSessionKey,
-            viewportTransitionGeneration: appState.chatViewportTransitionGeneration
-        ) else { return }
-        ChatViewportTrace.shared.log(
-            "drag began session=\(String(describing: renderedScrollSessionKey?.sessionID))"
-        )
-        scrollOwnerState.invalidateForUserDrag()
-        chatDragCompletionToken = nil
-        cancelAutomaticRestoration()
-        followsLatest = false
-    }
-
-    @MainActor
-    private func completeChatDrag(_ completed: ChatDragCompletionToken) async {
-        ChatViewportTrace.shared.log(
-            "drag completion evaluate gen=\(completed.dragGeneration)"
-        )
-        await ChatFollowLatestRelatchPolicy.completeDragAfterNextTurn(
-            isCurrent: {
-                ChatFollowLatestRelatchPolicy.isCompletionCurrent(
-                    completed: completed,
-                    current: currentChatDragCompletionToken,
-                    identity: appState.activeChatScrollSessionIdentity,
-                    isDragging: isDraggingChat,
-                    hasPendingRestoration: hasPendingRestoration,
-                    hasNotificationHandoff: appState.isOpeningNotificationSession
-                        || notificationHandoffPending
-                )
-            },
-            relatch: { relatchFollowsLatestIfSettled() },
-            persist: {
-                saveChatScrollPosition(for: currentChatDragCompletionToken.sessionKey)
-                appState.flushChatResumeViewport()
-            }
-        )
-        guard !Task.isCancelled,
-              chatDragCompletionToken == completed else { return }
-        chatDragCompletionToken = nil
-    }
-
-    private var currentChatDragCompletionToken: ChatDragCompletionToken {
-        chatDragLifecycle.currentToken(
-            sessionKey: renderedScrollSessionKey ?? activeScrollSessionKey,
-            viewportTransitionGeneration: appState.chatViewportTransitionGeneration
+    private func beginChatDragIfNeeded(using proxy: ScrollViewProxy) {
+        // Only a deliberate user drag opts out of stream following; the
+        // controller captures the session and transition that owned the
+        // gesture and owns the completion lineage.
+        performViewportEffects(
+            viewport.userDragBegan(
+                sessionKey: renderedScrollSessionKey ?? activeScrollSessionKey,
+                viewportTransitionGeneration: appState.chatViewportTransitionGeneration
+            ),
+            using: proxy
         )
     }
 
-    private func invalidateChatDrag() {
-        chatDragLifecycle.invalidate(hasActiveGesture: isDraggingChat)
-        chatDragCompletionToken = nil
+    private func invalidateChatDrag(using proxy: ScrollViewProxy) {
+        performViewportEffects(
+            viewport.invalidateDrag(hasActiveGesture: isDraggingChat),
+            using: proxy
+        )
     }
 
-    private func abandonChatDrag() {
-        chatDragLifecycle.abandon()
-        chatDragCompletionToken = nil
+    private func abandonChatDrag(using proxy: ScrollViewProxy) {
+        performViewportEffects(viewport.abandonDrag(), using: proxy)
     }
 
     @MainActor
@@ -618,7 +591,7 @@ struct ChatView: View {
             for: request,
             targets: chatMessageScrollTargetCache.targets
         )
-        followsLatest = destination == .latest
+        setLegacyFollowsLatest(destination == .latest, using: proxy)
         var restoration = ChatResumeRenderRestorationState(
             generation: request.generation,
             sessionKey: request.sessionKey,
@@ -658,10 +631,10 @@ struct ChatView: View {
                 withTransaction(transaction) {
                     switch destination {
                     case .latest:
-                        followsLatest = true
+                        setLegacyFollowsLatest(true, using: proxy)
                         proxy.scrollTo(bottomAnchor, anchor: .bottom)
                     case .anchor(let anchor):
-                        followsLatest = false
+                        setLegacyFollowsLatest(false, using: proxy)
                         proxy.scrollTo(anchor, anchor: .top)
                     }
                 }
@@ -739,6 +712,9 @@ struct ChatView: View {
         return identity.areEquivalent(request.sessionKey, activeScrollSessionKey)
     }
 
+    // LEGACY (Tasks 4-6 migrate their callers to controller effects; these
+    // disappear once session-change, messages-reassert, isBusy, and handoff
+    // paths are routed through the controller).
     private func scrollToLatest(using proxy: ScrollViewProxy) {
         guard !hasPendingRestoration else { return }
         let ownerToken = scrollOwnerState.claimLatest()
@@ -826,77 +802,158 @@ struct ChatView: View {
         notificationHandoffPending = false
         notificationHandoffSessionKey = nil
         cancelAutomaticRestoration()
-        let shouldFollowLatest = ChatFollowLatestRelatchPolicy
-            .shouldFollowLatestAfterTransition(isDragging: isDraggingChat)
-        switch scrollOwnerState.handoffCompletionAction(
-            currentTopRequest: appState.chatScrollToTopRequest,
-            currentTopAnchor: topAnchor,
-            shouldFollowLatest: shouldFollowLatest
-        ) {
-        case .top:
+        if case .explicitTop = viewport.mode {
             ChatViewportTrace.shared.log("handoff complete -> top")
-            followsLatest = false
+            setLegacyFollowsLatest(false, using: proxy)
             // The handoff completes once the destination's bottom-marker
             // geometry arrives, but the lazy top anchor may not be laid out
             // yet. Use the retry-capable path so the viewport still lands at
             // the top once the anchor materializes.
             scrollToTop(using: proxy, request: appState.chatScrollToTopRequest)
-        case .latest:
+            return
+        }
+        let shouldFollowLatest = ChatFollowLatestRelatchPolicy
+            .shouldFollowLatestAfterTransition(isDragging: isDraggingChat)
+        if shouldFollowLatest {
             ChatViewportTrace.shared.log("handoff complete -> latest")
-            followsLatest = true
+            setLegacyFollowsLatest(true, using: proxy)
             _ = scrollOwnerState.claimLatest()
             var transaction = Transaction()
             transaction.animation = nil
             withTransaction(transaction) {
                 proxy.scrollTo(bottomAnchor, anchor: .bottom)
             }
-        case .none:
+        } else {
             ChatViewportTrace.shared.log("handoff complete -> none")
-            followsLatest = false
+            setLegacyFollowsLatest(false, using: proxy)
         }
     }
 
-    private func updateBottomMarker(_ value: CGFloat?) {
-        bottomMarkerMaxY = value
-        relatchFollowsLatestIfSettled()
-    }
+    // MARK: - Viewport controller wiring
 
-    private func updateViewportBottom(_ value: CGFloat?) {
-        // scrollViewportMinY/MaxY are derived from scrollViewportFrame; the
-        // relatch pass only needs the bottom edge, which the caller already
-        // stored into the frame state.
-        relatchFollowsLatestIfSettled()
-    }
-
-    /// Geometry callbacks fire on every content-growth and scroll tick, so
-    /// they must not re-latch while the user's finger is still down: the drag
-    /// sets `followsLatest = false`, but until the finger travels past the
-    /// near-bottom window each streamed delta would yank the scroll back to
-    /// the bottom, fighting the drag.
-    private func relatchFollowsLatestIfSettled() {
-        if scrollOwnerState.hasActiveTopOwner(
-            currentRequest: appState.chatScrollToTopRequest
-        ) {
-            // A title tap pins the viewport near the top so the user can read
-            // back up the thread without streamed deltas yanking them to the
-            // bottom. Once they return near the bottom, hand ownership back to
-            // "latest" so auto-follow of new messages resumes instead of staying
-            // suppressed for the rest of the session. (A finger drag already
-            // clears this owner via beginChatDragIfNeeded; this covers the
-            // non-drag paths, e.g. short conversations where top ≈ bottom.)
-            guard isNearBottom else { return }
-            ChatViewportTrace.shared.log("top owner returned near bottom -> latest")
-            scrollOwnerState.claimLatest()
+    private func currentLayoutFacts() -> ChatViewportLayoutFacts {
+        let scope = renderedScrollScope
+        let frames = renderedRowFrames.map { id, frame in
+            ChatRenderedRowFrame(
+                id: id,
+                minY: frame.minY,
+                maxY: frame.maxY,
+                scope: scope ?? ChatRenderedScrollScope(
+                    sessionKey: activeOrFallbackScrollSessionKey,
+                    cacheRevision: 0,
+                    restorationGeneration: nil,
+                    transcriptRevision: 0,
+                    viewportTransitionGeneration: 0
+                )
+            )
         }
-        if ChatFollowLatestRelatchPolicy.shouldRelatch(
-            isNearBottom: isNearBottom,
-            hasPendingRestoration: hasPendingRestoration,
-            hasNotificationHandoff: appState.isOpeningNotificationSession
-                || notificationHandoffPending,
-            isDragging: isDraggingChat
-        ) {
-            ChatViewportTrace.shared.log("relatch followsLatest near bottom")
-            followsLatest = true
+        return ChatViewportLayoutFacts(
+            bottomMarkerMaxY: bottomMarkerMaxY,
+            viewportMinY: scrollViewportMinY,
+            viewportMaxY: scrollViewportMaxY,
+            rowFrames: frames,
+            renderedScope: scope
+        )
+    }
+
+    /// Transitional bridge for not-yet-migrated paths that used to assign
+    /// `followsLatest`. Callers: restoration loop (Task 5), notification
+    /// handoff branches (Task 4), session/profile change (Task 4). This
+    /// helper must be gone by Task 7.
+    private func setLegacyFollowsLatest(_ following: Bool, using proxy: ScrollViewProxy) {
+        performViewportEffects(
+            viewport.legacySetFollowingLatest(following),
+            using: proxy
+        )
+    }
+
+    /// The ONLY boundary that executes viewport effects. `runScroll` is the
+    /// only place in ChatView that calls ScrollViewProxy.scrollTo.
+    @MainActor
+    private func performViewportEffects(
+        _ effects: [ChatViewportEffect],
+        using proxy: ScrollViewProxy
+    ) {
+        for effect in effects {
+            performViewportEffect(effect, using: proxy)
+        }
+    }
+
+    @MainActor
+    private func performViewportEffect(
+        _ effect: ChatViewportEffect,
+        using proxy: ScrollViewProxy
+    ) {
+        switch effect {
+        case .scroll(let command):
+            executeViewportScrollCommand(command, using: proxy)
+        case .cancelAutomaticRestoration:
+            appState.cancelChatResumeRestoration()
+        case .persistViewportSnapshot(let key):
+            saveChatScrollPosition(for: key)
+        case .flushViewportPersistence:
+            appState.flushChatResumeViewport()
+        case .completeRestoration(let generation):
+            appState.completeChatResumeRestoration(generation: generation)
+        case .abandonRestoration(let generation):
+            appState.abandonChatResumeRestoration(generation: generation)
+        case .scheduleDragEvaluation(let token):
+            Task { @MainActor in
+                await ChatFollowLatestRelatchPolicy.waitForNextMainActorTurn()
+                guard !Task.isCancelled else { return }
+                ChatViewportTrace.shared.log(
+                    "drag completion evaluate gen=\(token.dragGeneration)"
+                )
+                performViewportEffects(
+                    viewport.evaluateDragCompletion(
+                        token,
+                        viewportTransitionGeneration: appState.chatViewportTransitionGeneration
+                    ),
+                    using: proxy
+                )
+            }
+        }
+    }
+
+    @MainActor
+    private func executeViewportScrollCommand(
+        _ command: ChatViewportCommand,
+        using proxy: ScrollViewProxy
+    ) {
+        // Immediate execution: the controller issued this command in the
+        // current turn, so it is current by construction. Only the delayed
+        // retry re-validates below.
+        runViewportScroll(command, using: proxy)
+        guard case .delayed(let milliseconds) = command.retry else { return }
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(milliseconds))
+            guard !Task.isCancelled, viewport.isCommandCurrent(command) else { return }
+            ChatViewportTrace.shared.log(
+                "scroll retry \(command.destination) gen=\(command.generation)"
+            )
+            runViewportScroll(command, using: proxy)
+        }
+    }
+
+    @MainActor
+    private func runViewportScroll(
+        _ command: ChatViewportCommand,
+        using proxy: ScrollViewProxy
+    ) {
+        ChatViewportTrace.shared.log(
+            "scroll \(command.destination) gen=\(command.generation) animated=\(command.animated)"
+        )
+        var transaction = Transaction()
+        transaction.animation = command.animated ? ConduitMotion.response : nil
+        withTransaction(transaction) {
+            switch command.destination {
+            case .bottom(let anchorID):
+                proxy.scrollTo(anchorID, anchor: .bottom)
+            case .top(let anchorID, _):
+                proxy.scrollTo(anchorID, anchor: .top)
+            case .message(let id):
+                proxy.scrollTo(id, anchor: .top)
+            }
         }
     }
 }

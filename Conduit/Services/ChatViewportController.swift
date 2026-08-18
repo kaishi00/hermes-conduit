@@ -577,6 +577,20 @@ struct ChatViewportController: Equatable {
         }
     }
 
+    /// Transitional bridge for not-yet-migrated view paths that used to
+    /// assign `followsLatest` directly. Mirrors the old assignment without
+    /// claiming the ownership generation. Deleted once Tasks 4-6 finish.
+    mutating func legacySetFollowingLatest(_ following: Bool) -> [ChatViewportEffect] {
+        if following {
+            if mode != .restoring {
+                mode = .followingLatest
+            }
+        } else if mode == .followingLatest {
+            mode = .browsing
+        }
+        return []
+    }
+
     // MARK: - View lifecycle
 
     mutating func viewDisappeared() -> [ChatViewportEffect] {
