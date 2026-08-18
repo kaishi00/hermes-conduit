@@ -15,6 +15,10 @@ struct SelectableTextView: UIViewRepresentable {
     let maximumNumberOfLines: Int
     let wrapsLines: Bool
     let linkColor: UIColor
+    /// Paragraph-style alignment applied to laid-out text, so it governs
+    /// every wrapped line (Markdown table `:---:`/`---:` cells). `.natural`
+    /// preserves the default for all other callers.
+    let textAlignment: NSTextAlignment
     /// When set, the view self-sizes at a deterministic width derived from
     /// its content and this range (used by Markdown table cells), ignoring
     /// layout proposals. See `measuredSize(proposalWidth:textView:)`.
@@ -30,6 +34,7 @@ struct SelectableTextView: UIViewRepresentable {
         maximumNumberOfLines: Int = 0,
         wrapsLines: Bool = true,
         linkColor: UIColor = .link,
+        textAlignment: NSTextAlignment = .natural,
         selfSizingWidthRange: ClosedRange<CGFloat>? = nil,
         selectionCoordinator: MarkdownSelectionCoordinator? = nil,
         selectionSegment: MarkdownSelectionSegmentDescriptor? = nil
@@ -41,6 +46,7 @@ struct SelectableTextView: UIViewRepresentable {
         self.maximumNumberOfLines = maximumNumberOfLines
         self.wrapsLines = wrapsLines
         self.linkColor = linkColor
+        self.textAlignment = textAlignment
         self.selfSizingWidthRange = selfSizingWidthRange
         self.selectionCoordinator = selectionCoordinator
         self.selectionSegment = selectionSegment
@@ -54,6 +60,7 @@ struct SelectableTextView: UIViewRepresentable {
         maximumNumberOfLines: Int = 0,
         wrapsLines: Bool = true,
         linkColor: UIColor = .link,
+        textAlignment: NSTextAlignment = .natural,
         selfSizingWidthRange: ClosedRange<CGFloat>? = nil,
         selectionCoordinator: MarkdownSelectionCoordinator? = nil,
         selectionSegment: MarkdownSelectionSegmentDescriptor? = nil
@@ -66,6 +73,7 @@ struct SelectableTextView: UIViewRepresentable {
             maximumNumberOfLines: maximumNumberOfLines,
             wrapsLines: wrapsLines,
             linkColor: linkColor,
+            textAlignment: textAlignment,
             selfSizingWidthRange: selfSizingWidthRange,
             selectionCoordinator: selectionCoordinator,
             selectionSegment: selectionSegment
@@ -80,6 +88,7 @@ struct SelectableTextView: UIViewRepresentable {
         maximumNumberOfLines: Int = 0,
         wrapsLines: Bool = true,
         linkColor: UIColor = .link,
+        textAlignment: NSTextAlignment = .natural,
         selfSizingWidthRange: ClosedRange<CGFloat>? = nil,
         selectionCoordinator: MarkdownSelectionCoordinator? = nil,
         selectionSegment: MarkdownSelectionSegmentDescriptor? = nil
@@ -95,6 +104,7 @@ struct SelectableTextView: UIViewRepresentable {
             maximumNumberOfLines: maximumNumberOfLines,
             wrapsLines: wrapsLines,
             linkColor: linkColor,
+            textAlignment: textAlignment,
             selfSizingWidthRange: selfSizingWidthRange,
             selectionCoordinator: selectionCoordinator,
             selectionSegment: selectionSegment
@@ -260,6 +270,7 @@ struct SelectableTextView: UIViewRepresentable {
 
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.lineSpacing = lineSpacing
+        paragraphStyle.alignment = textAlignment
 
         // Single-pass styling: preserve per-run font and foregroundColor from
         // attributedText, fill only missing attributes with the configured

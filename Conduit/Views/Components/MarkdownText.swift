@@ -534,11 +534,13 @@ private extension MarkdownBlock {
 enum MarkdownTableAlignment {
     case leading, center, trailing
 
-    var swiftUI: Alignment {
+    /// Carried into the cell text's paragraph style so alignment governs
+    /// every wrapped line, not just the position of a full-width wrapper.
+    var nsText: NSTextAlignment {
         switch self {
-        case .leading: .leading
+        case .leading: .natural
         case .center: .center
-        case .trailing: .trailing
+        case .trailing: .right
         }
     }
 }
@@ -726,6 +728,7 @@ private struct InlineMarkdown: View {
     var font: UIFont = .preferredFont(forTextStyle: .body)
     var lineSpacing: CGFloat = 0
     var maximumNumberOfLines: Int = 0
+    var textAlignment: NSTextAlignment = .natural
     var selfSizingWidthRange: ClosedRange<CGFloat>? = nil
     var selectionCoordinator: MarkdownSelectionCoordinator?
     var selectionSegment: MarkdownSelectionSegmentDescriptor?
@@ -760,6 +763,7 @@ private struct InlineMarkdown: View {
             lineSpacing: lineSpacing,
             maximumNumberOfLines: maximumNumberOfLines,
             linkColor: usesAccentSurface ? .white : .link,
+            textAlignment: textAlignment,
             selfSizingWidthRange: selfSizingWidthRange,
             selectionCoordinator: selectionCoordinator,
             selectionSegment: selectionSegment
@@ -955,6 +959,88 @@ private struct MarkdownColumns: View {
     }
 }
 
+/// Table-wide column layout: one width per column shared by the header and
+/// every row, so vertical dividers align across rows. Each column width is
+/// the largest ideal (unwrapped) text width among its cells — header
+/// included — clamped to the table's 112–220pt column policy; wider content
+/// wraps within the shared width instead of widening one row's cell.
+enum MarkdownTableLayout {
+    static let columnWidthRange: ClosedRange<CGFloat> = 112...220
+
+    private static let cache: NSCache<NSString, NSArray> = {
+        let cache = NSCache<NSString, NSArray>()
+        cache.countLimit = 64
+        cache.totalCostLimit = 4 * 1024 * 1024
+        return cache
+    }()
+
+    @MainActor
+    static func columnWidths(headers: [String], rows: [[String]]) -> [CGFloat] {
+        let columnCount = max(headers.count, rows.map(\.count).max() ?? 0)
+        guard columnCount > 0 else { return [] }
+
+        // Fonts resolve against the current Dynamic Type size, so the widths
+        // key on the content category just like MarkdownRenderCache.
+        let key = (
+            [UIApplication.shared.preferredContentSizeCategory.rawValue]
+                + headers
+                + rows.flatMap { $0.isEmpty ? ["<empty-row>"] : $0 }
+        ).joined(separator: "\u{1F}") as NSString
+
+        if let cached = cache.object(forKey: key) as? [CGFloat] { return cached }
+
+        let headerFont = UIFont.preferredFont(forTextStyle: .caption1).withTraits(.traitBold)
+        let bodyFont = UIFont.preferredFont(forTextStyle: .footnote)
+
+        var widths = [CGFloat](repeating: columnWidthRange.lowerBound, count: columnCount)
+        for (index, header) in headers.enumerated() {
+            widths[index] = max(widths[index], clampedColumnWidth(idealWidth(of: header, font: headerFont)))
+        }
+        for row in rows {
+            for (index, cell) in row.enumerated() where index < columnCount {
+                widths[index] = max(widths[index], clampedColumnWidth(idealWidth(of: cell, font: bodyFont)))
+            }
+        }
+
+        cache.setObject(widths as NSArray, forKey: key, cost: key.length)
+        return widths
+    }
+
+    private static func clampedColumnWidth(_ width: CGFloat) -> CGFloat {
+        min(max(width, columnWidthRange.lowerBound), columnWidthRange.upperBound)
+    }
+
+    /// Measures the ideal (single-fragment) width of a cell the same way the
+    /// cell's own text view measures itself — InlineMarkdown's attributed
+    /// string bridged with the cell font — so the shared column widths and
+    /// the rendered wrapping agree.
+    private static func idealWidth(of source: String, font: UIFont) -> CGFloat {
+        let attributed = (try? AttributedString(
+            markdown: source,
+            options: .init(interpretedSyntax: .full)
+        )) ?? AttributedString(source)
+        let bridged = NSMutableAttributedString(
+            attributedString: SelectableTextView.bridge(
+                attributed, defaultFont: font, defaultColor: .label, linkColor: .link
+            )
+        )
+        let fullRange = NSRange(location: 0, length: bridged.length)
+        if fullRange.length > 0 {
+            bridged.addAttribute(
+                .paragraphStyle,
+                value: NSMutableParagraphStyle(),
+                range: fullRange
+            )
+        }
+        let measured = bridged.boundingRect(
+            with: CGSize(width: 100_000, height: CGFloat.greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            context: nil
+        )
+        return ceil(measured.width)
+    }
+}
+
 private struct MarkdownTable: View {
     let headers: [String]
     let alignments: [MarkdownTableAlignment]
@@ -964,6 +1050,10 @@ private struct MarkdownTable: View {
     let selectionCoordinator: MarkdownSelectionCoordinator?
     let blockIndex: Int
     let selectionSegments: [MarkdownSelectionSegmentDescriptor]
+
+    private var columnWidths: [CGFloat] {
+        MarkdownTableLayout.columnWidths(headers: headers, rows: rows)
+    }
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -986,8 +1076,12 @@ private struct MarkdownTable: View {
     }
 
     private func tableRow(_ cells: [String], rowIndex: Int, isHeader: Bool) -> some View {
-        HStack(spacing: 0) {
+        let widths = columnWidths
+        return HStack(spacing: 0) {
             ForEach(Array(cells.enumerated()), id: \.offset) { index, cell in
+                let width = widths.indices.contains(index)
+                    ? widths[index]
+                    : MarkdownTableLayout.columnWidthRange.lowerBound
                 InlineMarkdown(
                     source: cell,
                     foregroundStyle: foregroundStyle,
@@ -995,13 +1089,16 @@ private struct MarkdownTable: View {
                     font: isHeader
                         ? UIFont.preferredFont(forTextStyle: .caption1).withTraits(.traitBold)
                         : UIFont.preferredFont(forTextStyle: .footnote),
-                    // Match the frame clamp below so the measured wrapping
-                    // width is deterministic from the first layout pass.
-                    selfSizingWidthRange: 112...220,
+                    textAlignment: alignment(at: index).nsText,
+                    // The exact shared column width — a single-value range keeps
+                    // the cell's measured/committed height deterministic from the
+                    // first layout pass, and .frame(width:) below pins the
+                    // displayed width so every row's dividers align.
+                    selfSizingWidthRange: width...width,
                     selectionCoordinator: selectionCoordinator,
                     selectionSegment: selectionSegment(row: rowIndex, column: index)
                 )
-                    .frame(minWidth: 112, maxWidth: 220, alignment: alignment(at: index).swiftUI)
+                    .frame(width: width)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 9)
                 if index < cells.count - 1 {
