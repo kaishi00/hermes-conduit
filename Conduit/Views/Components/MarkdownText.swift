@@ -721,21 +721,18 @@ private extension EnvironmentValues {
     }
 }
 
-private struct InlineMarkdown: View {
-    let source: String
-    let foregroundStyle: Color
-    let usesAccentSurface: Bool
-    var font: UIFont = .preferredFont(forTextStyle: .body)
-    var lineSpacing: CGFloat = 0
-    var maximumNumberOfLines: Int = 0
-    var textAlignment: NSTextAlignment = .natural
-    var selfSizingWidthRange: ClosedRange<CGFloat>? = nil
-    var selectionCoordinator: MarkdownSelectionCoordinator?
-    var selectionSegment: MarkdownSelectionSegmentDescriptor?
-    var trailingCharacterOpacities: [Double] = []
-    @Environment(\.markdownReferences) private var references
-
-    private var attributed: AttributedString {
+/// The single inline-attributed-string construction shared by
+/// `InlineMarkdown` rendering and `MarkdownTableLayout` width measurement,
+/// so a table column is always measured at exactly the content its cells
+/// render — reference-style links resolve to their labels in both paths,
+/// and any future inline-syntax change updates measurement with it.
+enum InlineMarkdownContent {
+    static func attributed(
+        source: String,
+        references: MarkdownReferenceContext,
+        foregroundStyle: Color = .primary,
+        trailingCharacterOpacities: [Double] = []
+    ) -> AttributedString {
         // Re-append the message's definitions so Foundation resolves
         // reference-style links for this fragment too. The definition block
         // is invisible under `.full`; if parsing fails, fall back to the bare
@@ -753,6 +750,30 @@ private struct InlineMarkdown: View {
             endIndex = startIndex
         }
         return attributed
+    }
+}
+
+private struct InlineMarkdown: View {
+    let source: String
+    let foregroundStyle: Color
+    let usesAccentSurface: Bool
+    var font: UIFont = .preferredFont(forTextStyle: .body)
+    var lineSpacing: CGFloat = 0
+    var maximumNumberOfLines: Int = 0
+    var textAlignment: NSTextAlignment = .natural
+    var selfSizingWidthRange: ClosedRange<CGFloat>? = nil
+    var selectionCoordinator: MarkdownSelectionCoordinator?
+    var selectionSegment: MarkdownSelectionSegmentDescriptor?
+    var trailingCharacterOpacities: [Double] = []
+    @Environment(\.markdownReferences) private var references
+
+    private var attributed: AttributedString {
+        InlineMarkdownContent.attributed(
+            source: source,
+            references: references,
+            foregroundStyle: foregroundStyle,
+            trailingCharacterOpacities: trailingCharacterOpacities
+        )
     }
 
     var body: some View {
@@ -985,17 +1006,24 @@ enum MarkdownTableLayout {
     }()
 
     @MainActor
-    static func columnWidths(headers: [String], rows: [[String]], availableWidth: CGFloat) -> [CGFloat] {
+    static func columnWidths(
+        headers: [String],
+        rows: [[String]],
+        availableWidth: CGFloat,
+        references: MarkdownReferenceContext = .empty
+    ) -> [CGFloat] {
         let columnCount = max(headers.count, rows.map(\.count).max() ?? 0)
         guard columnCount > 0 else { return [] }
 
         // Fonts resolve against the current Dynamic Type size, so the widths
-        // key on the content category just like MarkdownRenderCache, and on
-        // the viewport width that feeds the fit-or-shrink decision.
+        // key on the content category just like MarkdownRenderCache, on the
+        // viewport width that feeds the fit-or-shrink decision, and on the
+        // reference definitions (they change how cell source measures).
         let key = (
             [
                 UIApplication.shared.preferredContentSizeCategory.rawValue,
-                String(format: "%.1f", availableWidth)
+                String(format: "%.1f", availableWidth),
+                references.definitionsMarkdown
             ]
                 + headers
                 + rows.flatMap { $0.isEmpty ? ["<empty-row>"] : $0 }
@@ -1008,11 +1036,11 @@ enum MarkdownTableLayout {
 
         var ideals = [CGFloat](repeating: 0, count: columnCount)
         for (index, header) in headers.enumerated() {
-            ideals[index] = max(ideals[index], idealWidth(of: header, font: headerFont))
+            ideals[index] = max(ideals[index], idealWidth(of: header, font: headerFont, references: references))
         }
         for row in rows {
             for (index, cell) in row.enumerated() where index < columnCount {
-                ideals[index] = max(ideals[index], idealWidth(of: cell, font: bodyFont))
+                ideals[index] = max(ideals[index], idealWidth(of: cell, font: bodyFont, references: references))
             }
         }
 
@@ -1057,18 +1085,18 @@ enum MarkdownTableLayout {
         widths.map { ($0 * 2).rounded() / 2 }
     }
 
-    /// Measures the ideal (single-fragment) width of a cell the same way the
-    /// cell's own text view measures itself — InlineMarkdown's attributed
-    /// string bridged with the cell font — so the shared column widths and
-    /// the rendered wrapping agree.
-    private static func idealWidth(of source: String, font: UIFont) -> CGFloat {
-        let attributed = (try? AttributedString(
-            markdown: source,
-            options: .init(interpretedSyntax: .full)
-        )) ?? AttributedString(source)
+    /// Measures the ideal (single-fragment) width of a cell from the exact
+    /// attributed content InlineMarkdown renders (`InlineMarkdownContent`
+    /// bridged with the cell font), so the shared column widths and the
+    /// rendered wrapping agree — including message-level reference links,
+    /// which measure as their resolved labels.
+    private static func idealWidth(of source: String, font: UIFont, references: MarkdownReferenceContext) -> CGFloat {
         let bridged = NSMutableAttributedString(
             attributedString: SelectableTextView.bridge(
-                attributed, defaultFont: font, defaultColor: .label, linkColor: .link
+                InlineMarkdownContent.attributed(source: source, references: references),
+                defaultFont: font,
+                defaultColor: .label,
+                linkColor: .link
             )
         )
         let fullRange = NSRange(location: 0, length: bridged.length)
@@ -1103,9 +1131,15 @@ private struct MarkdownTable: View {
     /// the layout then falls back to cap-and-scroll and re-resolves a frame
     /// later, once the width is known.
     @State private var availableWidth: CGFloat = 0
+    @Environment(\.markdownReferences) private var references
 
     private var columnWidths: [CGFloat] {
-        MarkdownTableLayout.columnWidths(headers: headers, rows: rows, availableWidth: availableWidth)
+        MarkdownTableLayout.columnWidths(
+            headers: headers,
+            rows: rows,
+            availableWidth: availableWidth,
+            references: references
+        )
     }
 
     var body: some View {

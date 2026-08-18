@@ -113,6 +113,45 @@ final class MarkdownTableLayoutTests: XCTestCase {
         }
     }
 
+    /// Regression: a reference-style link cell must be measured at its
+    /// resolved label, not the raw `[label][id]` syntax. The message's
+    /// reference definitions thread into column-width measurement through
+    /// the same attributed-string construction InlineMarkdown renders.
+    @MainActor
+    func testReferenceStyleLinkCellMeasuresAtResolvedLabelWidth() {
+        // Two columns: the parser's table delimiter requires at least two.
+        let source = """
+        | Docs | Note |
+        |---|---|
+        | [Handbook][1] | x |
+
+        [1]: https://example.com/handbook
+        """
+        let document = MarkdownParser.parseDocument(source)
+        guard case .table(let headers, _, let rows)? = document.blocks.first else {
+            return XCTFail("Expected a table block")
+        }
+        XCTAssertTrue(document.references.containsDefinitions,
+                      "The definition must be extracted into the reference context")
+
+        let resolved = MarkdownTableLayout.columnWidths(
+            headers: headers, rows: rows, availableWidth: 390, references: document.references
+        )
+        let literal = MarkdownTableLayout.columnWidths(
+            headers: ["Docs"], rows: [["Handbook"]], availableWidth: 390
+        )
+        XCTAssertEqual(resolved[0], literal[0], accuracy: 2,
+                       "Column width must match the resolved label's width")
+
+        // Without the context (the pre-fix measurement), the raw syntax is
+        // visibly wider than the label.
+        let raw = MarkdownTableLayout.columnWidths(
+            headers: headers, rows: rows, availableWidth: 390, references: .empty
+        )
+        XCTAssertLessThan(resolved[0], raw[0] - 5,
+                          "Raw [label][id] measurement must be wider than the resolved label")
+    }
+
     // MARK: - Rendered fixtures (full MarkdownText view chain)
 
     /// QA fixture: three tiny columns fit an iPhone viewport with no
@@ -171,6 +210,45 @@ final class MarkdownTableLayoutTests: XCTestCase {
         let tableScroll = try XCTUnwrap(scrollViews.first)
         XCTAssertLessThanOrEqual(tableScroll.contentSize.width, tableScroll.bounds.width + 0.5,
                                  "This table fits the viewport and must not scroll horizontally")
+    }
+
+    /// Regression, rendered: through the full MarkdownText chain, a
+    /// reference-style link cell renders its resolved label as a link, and
+    /// the column is sized to the label — identical to a table whose cell
+    /// contains the label literally.
+    @MainActor
+    func testRenderedReferenceLinkTableSizesColumnAtLabelWidth() throws {
+        let withLink = """
+        | Name | Docs |
+        |---|---|
+        | Alpha | [Handbook][1] |
+
+        [1]: https://example.com/handbook
+        """
+        let literal = """
+        | Name | Docs |
+        |---|---|
+        | Alpha | Handbook |
+        """
+        let (linkHost, linkWindow) = renderedTableHost(source: withLink)
+        let (literalHost, literalWindow) = renderedTableHost(source: literal)
+        defer { linkWindow.isHidden = true; literalWindow.isHidden = true }
+
+        let linkCell = try XCTUnwrap(
+            allTextViews(in: linkHost.view).first { $0.attributedText.string == "Handbook" },
+            "The reference link must render as its resolved label"
+        )
+        let link = try XCTUnwrap(
+            linkCell.attributedText.attribute(.link, at: 0, effectiveRange: nil) as? URL,
+            "The resolved label must carry the definition's URL"
+        )
+        XCTAssertEqual(link.absoluteString, "https://example.com/handbook")
+
+        let literalCell = try XCTUnwrap(
+            allTextViews(in: literalHost.view).first { $0.attributedText.string == "Handbook" }
+        )
+        XCTAssertEqual(linkCell.bounds.width, literalCell.bounds.width, accuracy: 1,
+                       "The link column must be sized to the resolved label, not the raw [label][id] syntax")
     }
 
     /// QA fixture: a genuinely wide table still scrolls horizontally.
