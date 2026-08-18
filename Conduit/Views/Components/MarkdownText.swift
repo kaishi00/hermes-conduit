@@ -1637,7 +1637,9 @@ enum MarkdownParser {
         var openFence: String?
         var mathClose: String?
 
-        for line in lines {
+        var index = 0
+        while index < lines.count {
+            let line = lines[index]
             let trimmed = line.trimmingCharacters(in: .whitespaces)
 
             // Fenced code and math blocks are raw content — the same regions
@@ -1651,29 +1653,36 @@ enum MarkdownParser {
             if let close = mathClose {
                 visibleLines.append(line)
                 if trimmed == close { mathClose = nil }
+                index += 1
                 continue
             }
             if let fence = openFence {
                 visibleLines.append(line)
                 if trimmed.hasPrefix(fence) { openFence = nil }
+                index += 1
                 continue
             }
             if let fence = fenceStart(trimmed) {
                 openFence = fence
                 visibleLines.append(line)
+                index += 1
                 continue
             }
             if let close = mathBlockOpening(trimmed) {
                 mathClose = close
                 visibleLines.append(line)
+                index += 1
                 continue
             }
-            if isDefinitionIndent(line), let definition = referenceDefinition(trimmed) {
-                definitions.append(definition)
-                visibleLines.append("")
+            if isDefinitionIndent(line), let definition = referenceDefinition(trimmed),
+               let span = consumedDefinitionSpan(definition, following: lines, at: index) {
+                definitions.append(span.markdown)
+                for _ in 0..<span.lineCount { visibleLines.append("") }
+                index += span.lineCount
                 continue
             }
             visibleLines.append(line)
+            index += 1
         }
 
         let visibleSource = visibleLines.joined(separator: "\n")
@@ -1826,6 +1835,45 @@ enum MarkdownParser {
             options: .regularExpression
         ) else { return nil }
         return String(value[range])
+    }
+
+    /// Foundation is the authority on valid definitions; the regex above is
+    /// only a pre-filter. A regex match Foundation renders as text — e.g. a
+    /// destination with an unbalanced `)` — must stay visible in place:
+    /// stripping it here would delete it from its position and then
+    /// duplicate it after every block when the collected definitions are
+    /// re-appended to each fragment. A definition's title may also continue
+    /// on the following line; fold a title-shaped next line in only when
+    /// Foundation consumes the pair invisibly, so it cannot surface as a
+    /// stray paragraph. The shape check keeps block openers (fences, math,
+    /// directives) out of the fold even when a bare opener would parse empty.
+    private static func consumedDefinitionSpan(
+        _ definition: String,
+        following lines: [String],
+        at index: Int
+    ) -> (markdown: String, lineCount: Int)? {
+        func isConsumedInvisibly(_ markdown: String) -> Bool {
+            (try? AttributedString(
+                markdown: markdown,
+                options: .init(interpretedSyntax: .full)
+            ))?.characters.isEmpty == true
+        }
+
+        let next = index + 1 < lines.count
+            ? lines[index + 1].trimmingCharacters(in: .whitespaces)
+            : ""
+        if isTitleContinuation(next), isConsumedInvisibly(definition + "\n" + next) {
+            return (definition + "\n" + next, 2)
+        }
+        return isConsumedInvisibly(definition) ? (definition, 1) : nil
+    }
+
+    private static func isTitleContinuation(_ value: String) -> Bool {
+        guard value.count >= 2, let first = value.first, let last = value.last else { return false }
+        switch (first, last) {
+        case ("\"", "\""), ("'", "'"), ("(", ")"): return true
+        default: return false
+        }
     }
     private static func mathBlockOpening(_ value: String) -> String? { value == "$$" ? "$$" : (value == "\\[" ? "\\]" : nil) }
     private static func singleLineMath(_ value: String) -> String? {

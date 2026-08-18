@@ -314,6 +314,99 @@ final class MarkdownReferenceLinkTests: XCTestCase {
         XCTAssertEqual(document.blocks, [.callout(kind: "note", text: "Read [docs][d].\n")])
     }
 
+    func testParseDocumentLeavesFoundationRejectedDefinitionVisibleInPlace() {
+        // The destination's trailing ")" is unbalanced, so Foundation treats
+        // the line as text, not a definition. It must stay visible exactly
+        // once, in its original position — collecting it would delete it here
+        // and duplicate it after every block when definitions are re-appended
+        // to each fragment.
+        let source = """
+        Alpha.
+
+        [x]: http://example.com/foo)
+
+        Beta.
+        """
+        let document = MarkdownParser.parseDocument(source, recognizesGatewayMedia: false)
+
+        XCTAssertFalse(document.references.containsDefinitions)
+        XCTAssertEqual(
+            document.blocks,
+            [
+                .paragraph("Alpha."),
+                .paragraph("[x]: http://example.com/foo)"),
+                .paragraph("Beta.")
+            ]
+        )
+    }
+
+    func testParseDocumentCollectsBalancedParenDestination() {
+        let source = """
+        See [x][ref].
+
+        [ref]: https://example.com/a(b)c
+        """
+        let document = MarkdownParser.parseDocument(source, recognizesGatewayMedia: false)
+
+        XCTAssertEqual(
+            document.references.definitionsMarkdown,
+            "[ref]: https://example.com/a(b)c",
+            "Balanced parentheses are a valid destination; Foundation accepts them"
+        )
+        XCTAssertEqual(document.blocks, [.paragraph("See [x][ref].")])
+    }
+
+    func testParseDocumentFoldsTitleContinuationLineIntoDefinition() {
+        // CommonMark allows the definition title on the following line;
+        // Foundation consumes the two-line construct invisibly. The title
+        // line must not survive as a stray visible paragraph.
+        let source = """
+        See [ref][].
+
+        [ref]: /url
+            "The Title"
+        """
+        let document = MarkdownParser.parseDocument(source, recognizesGatewayMedia: false)
+
+        XCTAssertEqual(
+            document.references.definitionsMarkdown,
+            "[ref]: /url\n\"The Title\""
+        )
+        XCTAssertEqual(document.blocks, [.paragraph("See [ref][].")])
+    }
+
+    func testParseDocumentDoesNotFoldProseFollowingDefinition() {
+        // Prose that is not title-shaped must stay visible where it is. (A
+        // *quoted* line after a definition would be a CommonMark title
+        // continuation — Foundation consumes it, and the fold follows.)
+        let source = """
+        See [ref][].
+
+        [ref]: /url
+        Plain prose line
+        """
+        let document = MarkdownParser.parseDocument(source, recognizesGatewayMedia: false)
+
+        XCTAssertEqual(document.references.definitionsMarkdown, "[ref]: /url")
+        XCTAssertEqual(
+            document.blocks,
+            [.paragraph("See [ref][]."), .paragraph("Plain prose line")]
+        )
+    }
+
+    func testParseDocumentDefinitionsOnlyMessageRendersNoBlocks() {
+        let document = MarkdownParser.parseDocument(
+            "[a]: https://example.com/a\n[b]: https://example.com/b",
+            recognizesGatewayMedia: false
+        )
+
+        XCTAssertTrue(document.blocks.isEmpty, "Definitions alone are not visible content")
+        XCTAssertEqual(
+            document.references.definitionsMarkdown,
+            "[a]: https://example.com/a\n[b]: https://example.com/b"
+        )
+    }
+
     func testParseDocumentDoesNotSwallowFootnoteMarkers() {
         let source = "Text with a footnote[^1].\n\n[^1]: https://example.com/footnote"
         let document = MarkdownParser.parseDocument(source, recognizesGatewayMedia: false)
