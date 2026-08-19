@@ -7932,8 +7932,9 @@ final class AppState: ObservableObject {
     /// the live dashboard bridge — a gateway built against an invalidated or
     /// rotated bridge (re-login, profile switch) is rebuilt instead.
     private var readAloudGatewayIsCurrent: Bool {
-        guard let gateway = messageReadAloudController.gateway else { return false }
-        return gateway.profile == activeProfile && readAloudGatewayBridge === dashboardTicketBridge
+        guard let gateway = messageReadAloudController.gateway,
+              let bridge = dashboardTicketBridge else { return false }
+        return gateway.profile == activeProfile && readAloudGatewayBridge === bridge
     }
 
     private func assignReadAloudGateway() {
