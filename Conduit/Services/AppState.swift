@@ -510,6 +510,18 @@ final class AppState: ObservableObject {
             await self?.interruptForVoice()
         }
     )
+    /// Manual per-message read aloud for completed assistant responses.
+    /// TTS-only: independent of the voice conversation and of STT.
+    lazy var messageReadAloudController = MessageReadAloudController(
+        reportError: { [weak self] message in
+            self?.errorMessage = message
+        }
+    )
+    /// The bridge instance the read aloud gateway was built against. The
+    /// gateway captures its bridge at init, so a gateway outliving its bridge
+    /// (disconnect, re-login, bridge rotation) is dead and must be rebuilt
+    /// rather than kept.
+    private var readAloudGatewayBridge: DashboardTicketBridge?
 
     // MARK: - Cron
 
@@ -1942,6 +1954,11 @@ final class AppState: ObservableObject {
         dashboardTicketBridge?.invalidate()
         dashboardTicketBridge = nil
         voiceConversationController.stop()
+        messageReadAloudController.stop()
+        // The bridge is invalidated above; a gateway built against it can
+        // never open a stream again, so it must not survive the re-login.
+        messageReadAloudController.setGateway(nil)
+        readAloudGatewayBridge = nil
         showVoiceSheet = false
         voiceCapabilitySnapshot = .unavailable
         isVoiceEnabled = false
@@ -2063,6 +2080,11 @@ final class AppState: ObservableObject {
         connection = nil
         dashboardTicketBridge?.invalidate()
         dashboardTicketBridge = nil
+        // A forced sign-out kills the bridge mid-playback; stop the read
+        // aloud and drop its gateway the same way Disconnect does.
+        messageReadAloudController.stop()
+        messageReadAloudController.setGateway(nil)
+        readAloudGatewayBridge = nil
         projects = []
         supportsProjects = false
         projectsLoading = false
@@ -3817,6 +3839,7 @@ final class AppState: ObservableObject {
         case .active:
             isSceneActive = true
             voiceConversationController.setForegroundActive(true)
+            messageReadAloudController.setForegroundActive(true)
             // Consume the background arming even while signed out, so a
             // background → active cycle on the login screen doesn't surface
             // a stale request after the user signs back in.
@@ -3889,6 +3912,7 @@ final class AppState: ObservableObject {
             isSceneActive = false
             hasEnteredBackgroundScenePhase = true
             voiceConversationController.setForegroundActive(false)
+            messageReadAloudController.setForegroundActive(false)
             showVoiceSheet = false
             // Drop any armed reconnect timer as well: in-flight cycles abort
             // at their next transportContinuation checkpoint, and foreground
@@ -3917,6 +3941,7 @@ final class AppState: ObservableObject {
             cancelScenePhaseAttempt()
             chatResumeCoordinator.freezeViewport()
             voiceConversationController.setForegroundActive(false)
+            messageReadAloudController.setForegroundActive(false)
             return nil
 
         @unknown default:
@@ -6039,6 +6064,9 @@ final class AppState: ObservableObject {
             return false
         }
         guard !isProfileSwitching else { return false }
+        // A profile change replaces the voice gateway; any in-flight read
+        // aloud belongs to the outgoing profile.
+        messageReadAloudController.stop()
         let transitionGeneration: UInt64
         if let viewportTransitionGeneration {
             guard chatViewportTransitionIsCurrent(
@@ -7805,12 +7833,58 @@ final class AppState: ObservableObject {
 
     var canStartVoiceConversation: Bool { voiceUnavailableReason == nil }
 
+    /// TTS-only availability for read aloud: a connected gateway with voice
+    /// enabled and a ready speech provider. Deliberately does not require
+    /// transcription, mic permission, or Apple Speech — a profile with TTS
+    /// but no STT must still be able to read responses aloud.
+    var readAloudUnavailableReason: String? {
+        // Opening a stream needs the dashboard bridge; while it is absent
+        // (mid sign-out, before the connection lands) disable the button
+        // instead of failing at tap time. Mirrors makeVoiceGateway().
+        guard dashboardTicketBridge != nil, connection != nil else {
+            return "Read aloud needs a connected Hermes gateway."
+        }
+        return MessageReadAloudController.unavailableReason(
+            isConnected: isConnected,
+            isVoiceEnabled: isVoiceEnabled,
+            snapshot: voiceCapabilitySnapshot
+        )
+    }
+
+    /// Chat bubble entry point for manual read aloud. Toggling the active
+    /// message stops it without touching the gateway; starting a different
+    /// message takes over from whatever is playing.
+    func toggleReadAloud(message: ChatMessage) {
+        if messageReadAloudController.isActiveMessage(message.id) {
+            messageReadAloudController.stop()
+            return
+        }
+        guard !message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        if let reason = readAloudUnavailableReason {
+            errorMessage = reason
+            return
+        }
+        // The capability refresh keeps the gateway current; this covers the
+        // gap before the next refresh has run — including right after a
+        // profile switch or re-login, when a stale gateway may still be set.
+        if !readAloudGatewayIsCurrent {
+            assignReadAloudGateway()
+        }
+        // Mutual exclusion (reverse of openVoiceConversation / runVoiceTTSTest):
+        // the voice conversation and read aloud each own their own playback
+        // instance, so a speech test or conversation still speaking must stop
+        // before the manual stream opens — otherwise both engines play at once.
+        voiceConversationController.stop()
+        messageReadAloudController.toggle(messageID: message.id, content: message.content)
+    }
+
     func refreshVoiceCapabilities() async {
         let profile = activeProfile
         guard isConnected, let bridge = dashboardTicketBridge else {
             voiceCapabilitySnapshot = .unavailable
             isVoiceEnabled = false
             voiceConversationController.setGateway(nil)
+            refreshReadAloudGateway()
             return
         }
         installVoiceAssistantObserverIfNeeded()
@@ -7824,6 +7898,7 @@ final class AppState: ObservableObject {
         voiceTranscriptionMode = preferences.resolvedTranscriptionMode
         voiceConversationController.setProfilePreferences(preferences)
         refreshVoiceControllerGateway()
+        refreshReadAloudGateway()
     }
 
     @discardableResult
@@ -7832,6 +7907,7 @@ final class AppState: ObservableObject {
         defaults.set(enabled, forKey: voiceEnabledPreferenceKey(profile: activeProfile))
         isVoiceEnabled = enabled
         refreshVoiceControllerGateway()
+        refreshReadAloudGateway()
         if !enabled {
             voiceConversationController.stop()
             showVoiceSheet = false
@@ -7868,12 +7944,16 @@ final class AppState: ObservableObject {
         voiceTranscriptionMode = mode
         voiceConversationController.setProfilePreferences(preferences)
         refreshVoiceControllerGateway()
+        refreshReadAloudGateway()
         return true
     }
 
     @discardableResult
     func openVoiceConversation(_ intent: PendingVoiceIntent) async -> Bool {
         guard isConnected else { return false }
+        // Mutual exclusion: the voice conversation owns playback while its
+        // sheet is open, so a read aloud started before must not continue.
+        messageReadAloudController.stop()
         if showVoiceSheet { closeVoiceConversation() }
         if let rawProfile = intent.profile {
             let requestedProfile = rawProfile.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -7954,6 +8034,12 @@ final class AppState: ObservableObject {
         guard let gateway = makeVoiceGateway() else {
             return .failure("Conduit could not connect this test to the selected profile.")
         }
+        // The speech test speaks through the voice controller's own playback
+        // instance (the same AVSpeech infrastructure read aloud uses, but a
+        // separate instance), so the test and a still-playing message would
+        // otherwise both produce audio. AppState enforces mutual exclusion in
+        // both directions; toggleReadAloud stops this controller in turn.
+        messageReadAloudController.stop()
         voiceConversationController.setGateway(gateway)
         return await voiceConversationController.runSpeechTest(
             text: "Conduit voice is ready for this profile."
@@ -7981,6 +8067,49 @@ final class AppState: ObservableObject {
         voiceConversationController.setGateway(
             isVoiceEnabled && selectedTranscriptionIsAvailable ? makeVoiceGateway() : nil
         )
+    }
+
+    /// Keeps the read aloud gateway in step with capability refreshes without
+    /// churning a live instance: swapping the gateway mid-playback would stop
+    /// the message. A kept gateway must still match the active profile AND
+    /// the live dashboard bridge — a gateway built against an invalidated or
+    /// rotated bridge (re-login, profile switch) is rebuilt instead.
+    private var readAloudGatewayIsCurrent: Bool {
+        guard let gateway = messageReadAloudController.gateway,
+              let bridge = dashboardTicketBridge else { return false }
+        return gateway.profile == activeProfile && readAloudGatewayBridge === bridge
+    }
+
+    private func assignReadAloudGateway() {
+        messageReadAloudController.setGateway(makeVoiceGateway())
+        readAloudGatewayBridge = dashboardTicketBridge
+    }
+
+    private func refreshReadAloudGateway() {
+        if readAloudUnavailableReason != nil {
+            messageReadAloudController.setGateway(nil)
+            readAloudGatewayBridge = nil
+            return
+        }
+        guard !readAloudGatewayIsCurrent else { return }
+        assignReadAloudGateway()
+    }
+
+    /// Test-only: installs the post-connect voice capability state (bridge,
+    /// snapshot, preference) without a dashboard round trip, so the read
+    /// aloud / voice conversation mutual exclusion can be exercised with
+    /// mock controllers. `readAloudGatewayBridge` is set to the same bridge
+    /// so a mock read aloud gateway installed on the controller counts as
+    /// current and is not replaced by a real one at tap time.
+    func installVoiceCapabilityStateForTesting(
+        bridge: DashboardTicketBridge,
+        snapshot: VoiceCapabilitySnapshot,
+        isVoiceEnabled: Bool
+    ) {
+        dashboardTicketBridge = bridge
+        readAloudGatewayBridge = bridge
+        voiceCapabilitySnapshot = snapshot
+        self.isVoiceEnabled = isVoiceEnabled
     }
 
     private func loadVoiceProfilePreferences(profile: String) -> VoiceProfilePreferences {

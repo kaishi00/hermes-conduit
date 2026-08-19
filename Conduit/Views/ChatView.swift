@@ -773,7 +773,10 @@ struct MessageBubble: View {
         case .user:
             UserBubble(message: message)
         case .assistant:
-            AssistantBubble(message: message)
+            AssistantBubble(
+                message: message,
+                readAloudController: appState.messageReadAloudController
+            )
         case .reasoning:
             ThinkingCard(message: message)
         case .tool:
@@ -797,7 +800,10 @@ struct MessageBubble: View {
                 SystemBubble(message: message)
             }
         case .partial:
-            AssistantBubble(message: message)
+            AssistantBubble(
+                message: message,
+                readAloudController: appState.messageReadAloudController
+            )
         }
     }
 }
@@ -1055,7 +1061,13 @@ private struct UserDocumentAttachmentChip: View {
 struct AssistantBubble: View {
     let message: ChatMessage
     @EnvironmentObject var appState: AppState
+    @ObservedObject private var readAloudController: MessageReadAloudController
     @State private var copied = false
+
+    init(message: ChatMessage, readAloudController: MessageReadAloudController) {
+        self.message = message
+        self.readAloudController = readAloudController
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -1117,10 +1129,45 @@ struct AssistantBubble: View {
                 .disabled(appState.isBusy || appState.isBranchingChat)
                 .opacity(appState.isBusy || appState.isBranchingChat ? 0.45 : 1)
                 .accessibilityLabel("Branch from this response")
+
+                if message.role == .assistant {
+                    Button {
+                        if readAloudIsActive {
+                            Haptics.medium()
+                        } else {
+                            Haptics.light()
+                        }
+                        appState.toggleReadAloud(message: message)
+                    } label: {
+                        Group {
+                            if case .preparing(let id) = readAloudController.state, id == message.id {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else {
+                                Image(systemName: readAloudIsActive ? "stop.fill" : "speaker.wave.2")
+                            }
+                        }
+                        .font(.subheadline.weight(.semibold))
+                        .frame(width: 34, height: 34)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(readAloudIsActive ? Color.conduitAccent : Color.secondary)
+                    .disabled(readAloudUnavailable && !readAloudIsActive)
+                    .opacity(readAloudUnavailable && !readAloudIsActive ? 0.45 : 1)
+                    .accessibilityLabel(readAloudIsActive ? "Stop reading response" : "Read response aloud")
+                }
             }
             .padding(.top, 2)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var readAloudIsActive: Bool {
+        readAloudController.isActiveMessage(message.id)
+    }
+
+    private var readAloudUnavailable: Bool {
+        appState.readAloudUnavailableReason != nil
     }
 
     private func copyResponse() {
