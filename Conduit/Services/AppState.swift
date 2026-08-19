@@ -7838,7 +7838,13 @@ final class AppState: ObservableObject {
     /// transcription, mic permission, or Apple Speech — a profile with TTS
     /// but no STT must still be able to read responses aloud.
     var readAloudUnavailableReason: String? {
-        MessageReadAloudController.unavailableReason(
+        // Opening a stream needs the dashboard bridge; while it is absent
+        // (mid sign-out, before the connection lands) disable the button
+        // instead of failing at tap time. Mirrors makeVoiceGateway().
+        guard dashboardTicketBridge != nil, connection != nil else {
+            return "Read aloud needs a connected Hermes gateway."
+        }
+        return MessageReadAloudController.unavailableReason(
             isConnected: isConnected,
             isVoiceEnabled: isVoiceEnabled,
             snapshot: voiceCapabilitySnapshot

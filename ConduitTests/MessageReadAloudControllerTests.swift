@@ -286,6 +286,22 @@ final class MessageReadAloudControllerTests: XCTestCase {
         XCTAssertEqual(controller.state, .idle, "A different message can start after a playback failure")
     }
 
+    func testPCMEnqueueFailureStopsAndFails() async {
+        let playback = MockReadAloudPlayback()
+        playback.enqueueError = ReadAloudTestError(description: "Enqueue failed")
+        let gateway = MockReadAloudGateway(emitsPCM: true)
+        var reported: [String] = []
+        let controller = makeController(playback: playback, gateway: gateway) { reported.append($0) }
+
+        controller.toggle(messageID: "message-a", content: "Broken queue")
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(controller.state, .failed(messageID: "message-a", message: "Enqueue failed"))
+        XCTAssertEqual(reported, ["Enqueue failed"])
+        XCTAssertFalse(playback.isPlaying, "A failed enqueue must settle the engine")
+        XCTAssertEqual(gateway.streams.last?.cancelCount, 1)
+    }
+
     func testEmptyContentDoesNotStartOrStopPlayback() async {
         let playback = MockReadAloudPlayback()
         let gateway = MockReadAloudGateway(emitsPCM: true)
@@ -305,6 +321,11 @@ final class MessageReadAloudControllerTests: XCTestCase {
         try? await Task.sleep(nanoseconds: 50_000_000)
         XCTAssertEqual(controller.state, .playing(messageID: "message-b"), "An unreadable message must not interrupt active playback")
         XCTAssertEqual(gateway.openCount, 1)
+
+        // Release the paused mock stream so the test doesn't end with a
+        // suspended append continuation.
+        controller.stop()
+        XCTAssertEqual(controller.state, .idle)
     }
 
     func testRepeatedStopsAreHarmless() async {
