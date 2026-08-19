@@ -809,6 +809,7 @@ private struct ChatReturnBehaviorSettings: View {
                     }
                 }
                 .pickerStyle(.segmented)
+                .accessibilityHint("Used if you dismiss the session list without choosing another conversation.")
                 if surface == .sessions {
                     Text("Used if you dismiss the session list without choosing another conversation.")
                         .font(.footnote)
@@ -823,7 +824,7 @@ private struct ChatReturnBehaviorSettings: View {
                     Text("Latest").tag(ChatResumeBehavior.latestActivity)
                 }
                 .pickerStyle(.segmented)
-                .accessibilityHint("Used if you dismiss the session list without choosing another conversation.")
+                .accessibilityHint("Choose whether Conduit preserves your exact reading position or follows the newest conversation.")
             }
         }
     }

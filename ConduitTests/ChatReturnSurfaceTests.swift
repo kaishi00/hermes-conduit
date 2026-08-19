@@ -27,9 +27,44 @@ final class ChatReturnSurfaceTests: XCTestCase {
 
     func testSessionsPreferenceOnBackgroundToActiveRequestsDrawer() {
         let harness = makeHarness(surface: .sessions)
+        harness.appState.connection = HermesConnection(
+            baseUrl: "https://one.example",
+            ticket: "ticket"
+        )
 
         harness.appState.handleScenePhase(.background)
         harness.appState.handleScenePhase(.active)
+
+        XCTAssertEqual(harness.appState.preferredReturnSurfaceRequest, 1)
+    }
+
+    func testBackgroundToActiveWhileSignedOutDoesNotLeakIntoNextSignIn() {
+        let harness = makeHarness(surface: .sessions)
+
+        // A background → active cycle on the login screen must consume the
+        // arming without issuing: signing back in is not a qualifying return.
+        harness.appState.handleScenePhase(.background)
+        harness.appState.handleScenePhase(.active)
+        XCTAssertEqual(harness.appState.preferredReturnSurfaceRequest, 0)
+
+        harness.appState.connection = HermesConnection(
+            baseUrl: "https://one.example",
+            ticket: "ticket"
+        )
+        harness.appState.handleScenePhase(.active)
+        XCTAssertEqual(harness.appState.preferredReturnSurfaceRequest, 0)
+
+        // The next genuine authenticated return does request the drawer.
+        harness.appState.handleScenePhase(.background)
+        harness.appState.handleScenePhase(.active)
+        XCTAssertEqual(harness.appState.preferredReturnSurfaceRequest, 1)
+    }
+
+    func testColdLaunchRequestFiresOnlyOncePerProcess() {
+        let harness = makeHarness(surface: .sessions)
+
+        harness.appState.requestPreferredReturnSurfaceForColdLaunch()
+        harness.appState.requestPreferredReturnSurfaceForColdLaunch()
 
         XCTAssertEqual(harness.appState.preferredReturnSurfaceRequest, 1)
     }
@@ -70,6 +105,10 @@ final class ChatReturnSurfaceTests: XCTestCase {
             saved.id
         )
 
+        harness.appState.connection = HermesConnection(
+            baseUrl: "https://one.example",
+            ticket: "ticket"
+        )
         harness.appState.handleScenePhase(.background)
         harness.appState.handleScenePhase(.active)
         XCTAssertEqual(harness.appState.preferredReturnSurfaceRequest, 1)
@@ -80,8 +119,8 @@ final class ChatReturnSurfaceTests: XCTestCase {
         let olderChat = session("stored-old-chat")
         let newestChat = session("stored-new-chat")
         let cronEntry = session("stored-cron", source: .cron)
-        // Latest-activity ignores the remembered ID and targets the newest
-        // chat conversation, not the cron entry or the saved older chat.
+        // Latest-activity ignores the remembered ID and picks the first chat
+        // entry of the automatic-return catalog, which is newest-first.
         harness.coordinator.rememberSessionID(olderChat.id, for: "default")
         harness.appState.sessions = [newestChat, cronEntry, olderChat]
         harness.appState.activeSessionId = newestChat.id
@@ -100,6 +139,10 @@ final class ChatReturnSurfaceTests: XCTestCase {
             newestChat.id
         )
 
+        harness.appState.connection = HermesConnection(
+            baseUrl: "https://one.example",
+            ticket: "ticket"
+        )
         harness.appState.handleScenePhase(.background)
         harness.appState.handleScenePhase(.active)
         XCTAssertEqual(harness.appState.preferredReturnSurfaceRequest, 1)
@@ -155,6 +198,10 @@ final class ChatReturnSurfaceTests: XCTestCase {
 
     func testActiveModalSheetsSuppressReturnSurfaceRequest() {
         let harness = makeHarness(surface: .sessions)
+        harness.appState.connection = HermesConnection(
+            baseUrl: "https://one.example",
+            ticket: "ticket"
+        )
 
         harness.appState.showModelPicker = true
         harness.appState.handleScenePhase(.background)
@@ -174,7 +221,7 @@ final class ChatReturnSurfaceTests: XCTestCase {
         XCTAssertEqual(harness.appState.preferredReturnSurfaceRequest, 1)
     }
 
-    func testSelectingSessionFromReturnSurfaceDrawerClosesDrawer() async {
+    func testSelectingSessionFromDrawerUsesNormalOpenFlowAndStaysClosed() async {
         let harness = makeHarness(
             surface: .sessions,
             lifecycleOperations: ChatResumeLifecycleOperations(
@@ -198,8 +245,9 @@ final class ChatReturnSurfaceTests: XCTestCase {
         harness.appState.activeSessionId = target.id
         harness.appState.showSidebar = true
 
-        // Mirrors the SidebarView row action: the drawer dismisses itself,
-        // then the existing explicit session-open flow runs.
+        // Mirrors the SidebarView row action: the drawer dismisses itself
+        // (existing view behavior), then the existing explicit session-open
+        // flow runs and must not re-open the drawer.
         harness.appState.showSidebar = false
         let opened = await harness.appState.requestOpenSession(target.id).value
 
@@ -355,7 +403,8 @@ private extension ChatReturnSurfaceTests {
             chatResumeCoordinator: coordinator,
             recoverySequence: ChatResumeRecoverySequence(),
             loadSavedConnection: false,
-            reconnectScheduler: reconnectScheduler,
+            reconnectScheduler: reconnectScheduler
+                ?? ReturnSurfaceReconnectScheduler().schedule(after:operation:),
             chatResumeLifecycleOperations: lifecycleOperations
         )
         return (appState, coordinator, store, defaults, suite)

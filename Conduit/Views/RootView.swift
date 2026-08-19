@@ -178,10 +178,11 @@ struct MainView: View {
             await appState.refreshVoiceCapabilities()
         }
         // Cold launch: MainView first becoming the authenticated surface is
-        // the qualifying return. Issue via the guarded AppState hook (a
-        // scene-activation request may already be pending), then consume.
+        // the qualifying return. The hook fires once per process (re-login
+        // cycles rely on the scene-phase path instead), then any pending
+        // request — including one from scene activation — is consumed.
         .task {
-            appState.requestPreferredReturnSurface()
+            appState.requestPreferredReturnSurfaceForColdLaunch()
             presentPreferredReturnSurfaceIfNeeded()
         }
         .onChange(of: appState.preferredReturnSurfaceRequest) { _, _ in
@@ -197,11 +198,13 @@ struct MainView: View {
     }
 
     /// Presents the sessions drawer for a preferred-return-surface request.
-    /// Consumes at most once per issued request; suppressed when explicit
-    /// navigation or another modal owns the surface at presentation time.
+    /// Consumes at most once per issued request; suppressed when the
+    /// preference has since changed, or when explicit navigation or another
+    /// modal owns the surface at presentation time.
     private func presentPreferredReturnSurfaceIfNeeded() {
         guard appState.preferredReturnSurfaceRequest > consumedReturnSurfaceRequest else { return }
         consumedReturnSurfaceRequest = appState.preferredReturnSurfaceRequest
+        guard appState.chatReturnSurface == .sessions else { return }
         guard !appState.isOpeningNotificationSession else { return }
         guard !appState.isModalSheetPresented else { return }
         guard !appState.showSidebar else { return }

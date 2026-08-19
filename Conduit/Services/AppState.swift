@@ -595,6 +595,7 @@ final class AppState: ObservableObject {
     /// transitions (Control Center, incoming-call banner) must not be treated
     /// as reopening the app, so they never arm the preferred return surface.
     private var hasEnteredBackgroundScenePhase = false
+    private var hasRequestedColdLaunchReturnSurface = false
     private var explicitSessionOpenTask: Task<Bool, Never>?
     private var explicitSessionOpenRequestID: UUID?
     private var activeAutomaticChatResumeWork: ChatResumeAutomaticWorkToken?
@@ -1061,6 +1062,15 @@ final class AppState: ObservableObject {
         guard !isOpeningNotificationSession else { return }
         guard !isModalSheetPresented else { return }
         preferredReturnSurfaceRequest &+= 1
+    }
+
+    /// MainView's first authenticated appearance in this process is the
+    /// cold-launch return. Mid-process re-entries (disconnect → sign back
+    /// in) are not cold launches; they rely on the scene-phase path.
+    func requestPreferredReturnSurfaceForColdLaunch() {
+        guard !hasRequestedColdLaunchReturnSurface else { return }
+        hasRequestedColdLaunchReturnSurface = true
+        requestPreferredReturnSurface()
     }
 
     func recordChatViewport(_ snapshot: ChatScrollSnapshot, for key: ChatScrollSessionKey) {
@@ -3748,15 +3758,19 @@ final class AppState: ObservableObject {
         case .active:
             isSceneActive = true
             voiceConversationController.setForegroundActive(true)
-            // Issue before the transport work below: MainView presents the
-            // drawer while the automatic resume sync restores the chat
-            // underneath, and explicit navigation still wins via the
-            // suppression guards on both sides.
-            if hasEnteredBackgroundScenePhase {
-                hasEnteredBackgroundScenePhase = false
+            // Consume the background arming even while signed out, so a
+            // background → active cycle on the login screen doesn't surface
+            // a stale request after the user signs back in.
+            let didReturnFromBackground = hasEnteredBackgroundScenePhase
+            hasEnteredBackgroundScenePhase = false
+            guard connection != nil else { return nil }
+            // The preferred return surface belongs to the authenticated
+            // app: MainView presents the drawer while the automatic resume
+            // sync restores the chat underneath, and explicit navigation
+            // still wins via the suppression guards on both sides.
+            if didReturnFromBackground {
                 requestPreferredReturnSurface()
             }
-            guard connection != nil else { return nil }
             cancelScenePhaseAttempt()
             // Publish the foreground reconciliation boundary synchronously.
             // ChatView may receive the same scene transition before the health
