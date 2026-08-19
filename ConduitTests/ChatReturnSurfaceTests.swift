@@ -134,6 +134,66 @@ final class ChatReturnSurfaceTests: XCTestCase {
         XCTAssertEqual(harness.appState.preferredReturnSurfaceRequest, 0)
     }
 
+    func testClaimedRequestCannotBeReclaimedAfterMainViewRecreation() {
+        let harness = makeHarness(surface: .sessions)
+
+        harness.appState.requestPreferredReturnSurface()
+        XCTAssertTrue(harness.appState.claimPreferredReturnSurfacePresentation())
+
+        // A recreated MainView (sign-out → sign-in) starts with no view
+        // state; the AppState-side watermark must keep the consumed request
+        // consumed so the drawer cannot appear without a qualifying return.
+        XCTAssertFalse(harness.appState.claimPreferredReturnSurfacePresentation())
+    }
+
+    func testRequestDeferredByPendingNavigationIsDroppedOnceRouteWins() {
+        let harness = makeHarness(surface: .sessions)
+        harness.appState.connection = HermesConnection(
+            baseUrl: "https://one.example",
+            ticket: "ticket"
+        )
+
+        // Issued before the notification tap arrived: the request exists,
+        // and the payload lands before MainView presents.
+        harness.appState.requestPreferredReturnSurface()
+        XCTAssertEqual(harness.appState.preferredReturnSurfaceRequest, 1)
+        let service = PushNotificationService.shared
+        defer { if let target = service.pendingTarget { service.clearPendingTarget(target) } }
+        service.receiveNotificationPayload([
+            "conduit": ["session_id": "runtime-1", "type": "response_ready"] as [String: Any]
+        ])
+
+        // The claim defers without consuming while the destination is pending.
+        XCTAssertFalse(harness.appState.claimPreferredReturnSurfacePresentation())
+
+        // The route completed; the explicit navigation fully won that
+        // qualifying return — the deferred request is dropped, not presented.
+        if let target = service.pendingTarget { service.clearPendingTarget(target) }
+        XCTAssertFalse(harness.appState.claimPreferredReturnSurfacePresentation())
+
+        // A later qualifying return issues a fresh request that claims once.
+        harness.appState.handleScenePhase(.background)
+        harness.appState.handleScenePhase(.active)
+        XCTAssertTrue(harness.appState.claimPreferredReturnSurfacePresentation())
+        XCTAssertFalse(harness.appState.claimPreferredReturnSurfacePresentation())
+    }
+
+    func testPrecedenceLoserConsumesAndDropsRequest() {
+        let harness = makeHarness(surface: .sessions)
+        harness.appState.connection = HermesConnection(
+            baseUrl: "https://one.example",
+            ticket: "ticket"
+        )
+        harness.appState.requestPreferredReturnSurface()
+
+        // A modal owning the surface consumes-and-drops the request; closing
+        // the modal must not resurrect the drawer for that return.
+        harness.appState.showModelPicker = true
+        XCTAssertFalse(harness.appState.claimPreferredReturnSurfacePresentation())
+        harness.appState.showModelPicker = false
+        XCTAssertFalse(harness.appState.claimPreferredReturnSurfacePresentation())
+    }
+
     func testInactiveToActiveAloneDoesNotRequestDrawer() {
         let harness = makeHarness(surface: .sessions)
         harness.appState.connection = HermesConnection(

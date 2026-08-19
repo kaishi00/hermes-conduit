@@ -40,7 +40,6 @@ struct MainView: View {
     @EnvironmentObject var appState: AppState
     @State private var settingsPresentation: SettingsSnapshot?
     @State private var shouldPresentSettingsAfterSidebarDismissal = false
-    @State private var consumedReturnSurfaceRequest: UInt64 = 0
 
     var body: some View {
         NavigationStack {
@@ -198,18 +197,11 @@ struct MainView: View {
     }
 
     /// Presents the sessions drawer for a preferred-return-surface request.
-    /// A pending explicit navigation defers without consuming, so the request
-    /// survives if the route is dropped before routing starts; once past that
-    /// point the request is consumed once, and suppressed — dropped for this
-    /// return — when the preference changed, navigation is in flight, or
-    /// another modal owns the surface.
+    /// Consumption semantics (defer-while-pending, claim-once-per-request,
+    /// drop on precedence losers) live in AppState so they survive MainView
+    /// teardown; this layer only owns the actual sheet presentation.
     private func presentPreferredReturnSurfaceIfNeeded() {
-        guard appState.preferredReturnSurfaceRequest > consumedReturnSurfaceRequest else { return }
-        guard !appState.hasPendingExplicitNavigation else { return }
-        consumedReturnSurfaceRequest = appState.preferredReturnSurfaceRequest
-        guard appState.chatReturnSurface == .sessions else { return }
-        guard !appState.isOpeningNotificationSession else { return }
-        guard !appState.isModalSheetPresented else { return }
+        guard appState.claimPreferredReturnSurfacePresentation() else { return }
         guard !appState.showSidebar else { return }
         appState.showSidebar = true
     }

@@ -596,6 +596,11 @@ final class AppState: ObservableObject {
     /// as reopening the app, so they never arm the preferred return surface.
     private var hasEnteredBackgroundScenePhase = false
     private var hasRequestedColdLaunchReturnSurface = false
+    /// Presentation watermark for the preferred return surface: how far
+    /// through `preferredReturnSurfaceRequest` MainView has consumed, kept
+    /// here (not in view state) so it survives MainView teardown on sign-out.
+    private var consumedReturnSurfaceRequest: UInt64 = 0
+    private var deferredReturnSurfaceRequest: UInt64?
     private var explicitSessionOpenTask: Task<Bool, Never>?
     private var explicitSessionOpenRequestID: UUID?
     private var activeAutomaticChatResumeWork: ChatResumeAutomaticWorkToken?
@@ -1084,6 +1089,35 @@ final class AppState: ObservableObject {
         guard !hasRequestedColdLaunchReturnSurface else { return }
         hasRequestedColdLaunchReturnSurface = true
         requestPreferredReturnSurface()
+    }
+
+    /// Claims the pending preferred-return-surface request for presentation.
+    /// Returns true exactly once per issued request — the watermark lives in
+    /// AppState, so a MainView recreated after sign-out/sign-in can never
+    /// re-present an already-claimed request.
+    ///
+    /// Consumption semantics: while explicit navigation is pending the claim
+    /// defers without consuming; the next unblocked claim of the same request
+    /// then drops it, because the explicit route fully won that qualifying
+    /// return. In-flight notification opens, modals, and preference changes
+    /// consume-and-drop immediately (established precedence losers).
+    func claimPreferredReturnSurfacePresentation() -> Bool {
+        let current = preferredReturnSurfaceRequest
+        guard current > consumedReturnSurfaceRequest else { return false }
+        if hasPendingExplicitNavigation {
+            deferredReturnSurfaceRequest = current
+            return false
+        }
+        defer { deferredReturnSurfaceRequest = nil }
+        if deferredReturnSurfaceRequest == current {
+            consumedReturnSurfaceRequest = current
+            return false
+        }
+        consumedReturnSurfaceRequest = current
+        guard chatReturnSurface == .sessions,
+              !isOpeningNotificationSession,
+              !isModalSheetPresented else { return false }
+        return true
     }
 
     func recordChatViewport(_ snapshot: ChatScrollSnapshot, for key: ChatScrollSessionKey) {
