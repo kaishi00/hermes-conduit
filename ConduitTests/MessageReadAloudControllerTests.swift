@@ -256,6 +256,7 @@ final class MessageReadAloudControllerTests: XCTestCase {
         XCTAssertEqual(controller.state, .failed(messageID: "message-a", message: "Speech provider exploded"))
         XCTAssertEqual(reported, ["Speech provider exploded"])
         XCTAssertFalse(playback.isPlaying)
+        XCTAssertEqual(gateway.streams.count, 0, "A failed open must not leave a recorded stream")
 
         gateway.openError = nil
         controller.toggle(messageID: "message-a", content: "Broken")
@@ -620,8 +621,8 @@ private final class MockReadAloudGateway: VoiceGatewayService {
             onPCM16: onPCM16,
             onEncodedAudio: onEncodedAudio
         )
-        streams.append(stream)
         if let openError { throw openError }
+        streams.append(stream)
         guard !blocksOpen else {
             return try await withCheckedThrowingContinuation { continuation in
                 openContinuation = continuation
