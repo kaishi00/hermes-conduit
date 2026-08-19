@@ -889,6 +889,255 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertEqual(messages[0].rawContent, original)
     }
 
+    // MARK: - Persisted context-compaction summaries
+
+    func testPersistedCompactionSummaryFlaggedByMetadataIsOmitted() {
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(81),
+                "role": .string("user"),
+                "_compressed_summary": .bool(true),
+                "content": .string("[CONTEXT COMPACTION 12:04 — 48% of window used]")
+            ]),
+            // The flag may survive only inside the record's metadata object
+            // after a persistence round-trip.
+            .object([
+                "id": .number(82),
+                "role": .string("user"),
+                "metadata": .object(["_compressed_summary": .bool(true)]),
+                "content": .string("Summary of the session so far without the top-level flag")
+            ])
+        ])
+
+        XCTAssertTrue(messages.isEmpty)
+    }
+
+    func testPersistedCompactionSummaryRecognizedByCurrentPrefixWithoutMetadata() {
+        // Large on purpose: the prefix detector must decide from a bounded
+        // head without copying a summary-sized payload.
+        let largeSummary = "[CONTEXT COMPACTION 12:04 — 48% of window used]\n"
+            + String(repeating: "The user asked about the deploy pipeline and a config bug was fixed. ", count: 20_000)
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(83),
+                "role": .string("user"),
+                "content": .string(largeSummary)
+            ])
+        ])
+
+        XCTAssertTrue(messages.isEmpty)
+    }
+
+    func testPersistedLegacyContextSummaryPrefixIsOmitted() {
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(84),
+                "role": .string("user"),
+                "content": .string("[CONTEXT SUMMARY]: Earlier the user asked about the deploy pipeline.")
+            ])
+        ])
+
+        XCTAssertTrue(messages.isEmpty)
+    }
+
+    func testPersistedCompactionSummaryIsOmittedRegardlessOfRole() {
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(85),
+                "role": .string("assistant"),
+                "_compressed_summary": .bool(true),
+                "content": .string("Summary of everything the assistant did so far in this session.")
+            ])
+        ])
+
+        XCTAssertTrue(messages.isEmpty)
+    }
+
+    func testMergedPriorContextRecordKeepsOnlyGenuineUserContent() {
+        let genuine = "This is the user's real message."
+        let merged = "[PRIOR CONTEXT — for reference only; not a new message]\n\n"
+            + genuine
+            + "\n\n[END OF PRIOR CONTEXT — COMPACTION SUMMARY BELOW]\n\n"
+            + "[CONTEXT COMPACTION 12:04]\n"
+            + String(repeating: "Summary of the prior turns. ", count: 1_000)
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(86),
+                "role": .string("user"),
+                "content": .string(merged)
+            ])
+        ])
+
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages[0].role, .user)
+        XCTAssertEqual(messages[0].content, genuine)
+        XCTAssertFalse(messages[0].content.contains("PRIOR CONTEXT"))
+        XCTAssertFalse(messages[0].content.contains("COMPACTION"))
+    }
+
+    func testMergedCompactionRecordWithoutGenuineContentIsOmitted() {
+        let merged = "[PRIOR CONTEXT — for reference only; not a new message]\n\n"
+            + "[END OF PRIOR CONTEXT — COMPACTION SUMMARY BELOW]\n\n"
+            + "[CONTEXT SUMMARY]: Everything before this point.\n"
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(87),
+                "role": .string("user"),
+                "content": .string(merged)
+            ])
+        ])
+
+        XCTAssertTrue(messages.isEmpty)
+    }
+
+    func testMergedRecordWhosePrefixIsItselfASummaryIsOmitted() {
+        // Double compaction: the row above the delimiter is an older summary,
+        // not a genuine prompt. Splitting at the delimiter alone would keep
+        // the older summary as a visible bubble.
+        let merged = "[CONTEXT COMPACTION 12:04]\n"
+            + String(repeating: "Prior summary of the session. ", count: 2_000)
+            + "\n\n[END OF PRIOR CONTEXT — COMPACTION SUMMARY BELOW]\n\n"
+            + "[CONTEXT COMPACTION 12:05]\n"
+            + String(repeating: "Newer summary of the session. ", count: 2_000)
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(91),
+                "role": .string("user"),
+                "content": .string(merged)
+            ])
+        ])
+
+        XCTAssertTrue(messages.isEmpty)
+    }
+
+    func testMergedRecordKeepsGenuineContentEvenWhenFlagged() {
+        // The flag marks the row as carrying a summary, not as lacking a
+        // genuine prompt; the merged split still owns it.
+        let genuine = "Rebuild the release after the config change."
+        let merged = "[PRIOR CONTEXT — for reference only; not a new message]\n\n"
+            + genuine
+            + "\n\n[END OF PRIOR CONTEXT — COMPACTION SUMMARY BELOW]\n\n"
+            + "[CONTEXT COMPACTION 12:04]\nSummary follows."
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(92),
+                "role": .string("user"),
+                "_compressed_summary": .bool(true),
+                "content": .string(merged)
+            ])
+        ])
+
+        XCTAssertEqual(messages.map(\.content), [genuine])
+    }
+
+    func testBareDelimiterRecordWithEmptyPrefixIsOmitted() {
+        let merged = "\n\n[END OF PRIOR CONTEXT — COMPACTION SUMMARY BELOW]\n\n"
+            + "[CONTEXT SUMMARY]: Everything before this point.\n"
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(93),
+                "role": .string("user"),
+                "content": .string(merged)
+            ])
+        ])
+
+        XCTAssertTrue(messages.isEmpty)
+    }
+
+    func testDelimiterRecordWithoutWrapperKeepsGenuineContent() {
+        // The wrapper header is optional; the delimiter alone marks the merge.
+        let genuine = "Please rerun the migration tests."
+        let merged = genuine
+            + "\n\n[END OF PRIOR CONTEXT — COMPACTION SUMMARY BELOW]\n\n"
+            + "[CONTEXT COMPACTION 12:04]\nSummary follows."
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(95),
+                "role": .string("user"),
+                "content": .string(merged)
+            ])
+        ])
+
+        XCTAssertEqual(messages.map(\.content), [genuine])
+    }
+
+    func testQuotedWrapperInsideGenuineContentIsPreserved() {
+        // The wrapper is only stripped as a leading header; a copy the user
+        // quoted mid-message belongs to their message.
+        let genuine = "The transcript marker looks like this:\n"
+            + "[PRIOR CONTEXT — for reference only; not a new message]\n"
+            + "and then my question follows."
+        let merged = genuine
+            + "\n\n[END OF PRIOR CONTEXT — COMPACTION SUMMARY BELOW]\n\n"
+            + "[CONTEXT COMPACTION 12:04]\nSummary follows."
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(96),
+                "role": .string("user"),
+                "content": .string(merged)
+            ])
+        ])
+
+        XCTAssertEqual(messages.map(\.content), [genuine])
+    }
+
+    func testToolResultContainingCompactionDelimiterIsNotTruncated() {
+        // Compaction artifacts ride conversational roles; a tool output that
+        // merely prints the delimiter text must keep its full content.
+        let output = "grep results:\n[END OF PRIOR CONTEXT — COMPACTION SUMMARY BELOW]\nmatched 3 lines"
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(94),
+                "role": .string("tool"),
+                "tool_call_id": .string("call-9"),
+                "tool_name": .string("run_grep"),
+                "content": .string(output)
+            ])
+        ])
+
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages[0].role, .tool)
+        XCTAssertEqual(messages[0].tool?.output, output)
+    }
+
+    func testOrdinaryCompactionDiscussionIsNotHidden() {
+        let content = "Can you explain how context compaction works?"
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(88),
+                "role": .string("user"),
+                "content": .string(content)
+            ])
+        ])
+
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages[0].role, .user)
+        XCTAssertEqual(messages[0].content, content)
+    }
+
+    func testLargePersistedCompactionSummaryNeverReachesChatMessages() {
+        // A multi-megabyte summary must be dropped during normalization, not
+        // handed to the Markdown/UI rendering pipeline as a user bubble.
+        let hugeSummary = "[CONTEXT COMPACTION 12:04]\n"
+            + String(repeating: "The session covered implementation details and open questions. ", count: 30_000)
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(89),
+                "role": .string("user"),
+                "_compressed_summary": .bool(true),
+                "content": .string(hugeSummary)
+            ]),
+            .object([
+                "id": .number(90),
+                "role": .string("assistant"),
+                "content": .string("Still here after the summary was dropped.")
+            ])
+        ])
+
+        XCTAssertEqual(messages.map(\.role), [.assistant])
+        XCTAssertEqual(messages.first?.content, "Still here after the summary was dropped.")
+    }
+
     func testInterruptedIdenticalCorrectionDoesNotCreateASecondUserBubble() {
         let messages = MessageNormalizer.normalizeMessages([
             .object([
