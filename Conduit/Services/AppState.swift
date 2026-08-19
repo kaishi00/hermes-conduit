@@ -372,6 +372,13 @@ final class AppState: ObservableObject {
     @Published private(set) var activeSessionTitle = "New conversation"
     @Published private(set) var isChatRefreshing = false
     @Published private(set) var chatResumeBehavior: ChatResumeBehavior = .continueWhereLeftOff
+    @Published private(set) var chatReturnSurface: ChatReturnSurface = .conversation
+    /// One-shot request for MainView to present the sessions drawer as the
+    /// preferred return surface. MainView consumes the latest value once per
+    /// increment; the request is only issued for qualifying returns (cold
+    /// launch or a real background → active transition) when the preference
+    /// is `.sessions` and no explicit navigation or modal owns the surface.
+    @Published private(set) var preferredReturnSurfaceRequest: UInt64 = 0
     @Published private(set) var chatResumeRestorationRequest: ChatResumeRestorationRequest?
     @Published private(set) var chatViewportTransitionGeneration: UInt64 = 0
     /// Keeps the current transcript visible while a notification destination is
@@ -474,6 +481,9 @@ final class AppState: ObservableObject {
     @Published var showGatewaySheet = false
     @Published var showAgentsSheet = false
     @Published var showVoiceSheet = false
+    /// Mirrors MainView's Settings sheet item so return-surface decisions can
+    /// tell whether Settings owns the surface across a background/foreground cycle.
+    @Published var isSettingsSheetPresented = false
     @Published var errorMessage: String?
     @Published var showLogin = true
     @Published private(set) var composerPrefillText = ""
@@ -593,6 +603,16 @@ final class AppState: ObservableObject {
     private var responseHaptics = ResponseHapticState()
     private var scenePhaseTask: Task<Void, Never>?
     private var scenePhaseAttemptID: UUID?
+    /// Armed only by a real .background phase. Ordinary inactive → active
+    /// transitions (Control Center, incoming-call banner) must not be treated
+    /// as reopening the app, so they never arm the preferred return surface.
+    private var hasEnteredBackgroundScenePhase = false
+    private var hasRequestedColdLaunchReturnSurface = false
+    /// Presentation watermark for the preferred return surface: how far
+    /// through `preferredReturnSurfaceRequest` MainView has consumed, kept
+    /// here (not in view state) so it survives MainView teardown on sign-out.
+    private var consumedReturnSurfaceRequest: UInt64 = 0
+    private var deferredReturnSurfaceRequest: UInt64?
     private var explicitSessionOpenTask: Task<Bool, Never>?
     private var explicitSessionOpenRequestID: UUID?
     private var activeAutomaticChatResumeWork: ChatResumeAutomaticWorkToken?
@@ -796,6 +816,9 @@ final class AppState: ObservableObject {
     // MARK: - Persistence
 
     private let defaults: UserDefaults
+    /// Kept outside ChatResumeStore on purpose: the return surface is a
+    /// presentation preference, not part of the resume schema.
+    static let chatReturnSurfaceKey = "conduit.chatReturnSurface.v1"
     private let activeSessionTitlesByProfileKey = "conduit.activeSessionTitlesByProfile.v1"
     private let pinnedSessionIDsByProfileKey = "conduit.pinnedSessionIdsByProfile.v1"
     private let activeProfileKey = "conduit.activeProfile"
@@ -886,6 +909,8 @@ final class AppState: ObservableObject {
             ?? defaults.string(forKey: "conduit.dashboardURL")
                 .flatMap(Self.normalizedChatResumeServerIdentity)
         chatResumeBehavior = self.chatResumeCoordinator.behavior
+        chatReturnSurface = defaults.string(forKey: Self.chatReturnSurfaceKey)
+            .flatMap(ChatReturnSurface.init(rawValue:)) ?? .conversation
         defaultProfileName = ProfileAppearanceStore.loadDefaultName()
         profileAvatarURLs = ProfileAppearanceStore.loadAvatarURLs()
         appIconChoice = UIApplication.shared.alternateIconName == AppIconChoice.light.alternateIconName ? .light : .dark
@@ -1027,6 +1052,94 @@ final class AppState: ObservableObject {
         recoverySequence.preserveTransportAfterAutomaticIntentCancellation()
         chatResumeBehavior = chatResumeCoordinator.behavior
         chatResumeRestorationRequest = nil
+    }
+
+    /// True when any presented sheet owns the surface other than the sessions
+    /// drawer itself. Explicit navigation and existing modals take precedence
+    /// over the preferred return surface.
+    var isModalSheetPresented: Bool {
+        showModelPicker || showContextSheet || showWorkspaceSheet || showGatewaySheet
+            || showAgentsSheet || showVoiceSheet || isSettingsSheetPresented
+    }
+
+    /// True when an explicit destination exists but has not been routed yet
+    /// (a notification tap or voice intent recorded before the app was
+    /// connected). Routing services own this fact; only the read lives here,
+    /// mirroring how syncSession already defers to a pending notification
+    /// target. Explicit navigation outranks the preferred return surface from
+    /// the moment the destination exists, not just once routing starts.
+    var hasPendingExplicitNavigation: Bool {
+        PushNotificationService.shared.pendingTarget != nil
+            || PendingVoiceIntentStore.shared.hasPendingIntent
+    }
+
+    /// Persisted separately from the resume store: this only changes which
+    /// surface is presented first on a qualifying return, and deliberately
+    /// issues no presentation request — the next qualifying return picks it up.
+    func setChatReturnSurface(_ surface: ChatReturnSurface) {
+        guard surface != chatReturnSurface else { return }
+        chatReturnSurface = surface
+        defaults.set(surface.rawValue, forKey: Self.chatReturnSurfaceKey)
+    }
+
+    /// Issues a one-shot preferred-return-surface request. Suppressed while
+    /// an explicit destination is pending or being opened, or when a modal
+    /// sheet already owns the surface; MainView re-checks at presentation
+    /// time as a backstop.
+    func requestPreferredReturnSurface() {
+        guard chatReturnSurface == .sessions else { return }
+        guard !hasPendingExplicitNavigation else { return }
+        guard !isOpeningNotificationSession else { return }
+        guard !isModalSheetPresented else { return }
+        preferredReturnSurfaceRequest &+= 1
+    }
+
+    /// MainView's first authenticated appearance in this process is the
+    /// cold-launch return. Mid-process re-entries (disconnect → sign back
+    /// in) are not cold launches; they rely on the scene-phase path.
+    func requestPreferredReturnSurfaceForColdLaunch() {
+        guard !hasRequestedColdLaunchReturnSurface else { return }
+        hasRequestedColdLaunchReturnSurface = true
+        requestPreferredReturnSurface()
+    }
+
+    /// Auth teardown (sign-out) is not a qualifying return. Retire any
+    /// outstanding preferred-return request at the boundary — claimed,
+    /// unclaimed, or deferred — so a MainView recreated on the next sign-in
+    /// can never present a stale request. The monotonic counter is left
+    /// untouched; only the consumed watermark advances.
+    private func retireOutstandingPreferredReturnSurfaceRequests() {
+        consumedReturnSurfaceRequest = max(consumedReturnSurfaceRequest, preferredReturnSurfaceRequest)
+        deferredReturnSurfaceRequest = nil
+    }
+
+    /// Claims the pending preferred-return-surface request for presentation.
+    /// Returns true exactly once per issued request — the watermark lives in
+    /// AppState, so a MainView recreated after sign-out/sign-in can never
+    /// re-present an already-claimed request.
+    ///
+    /// Consumption semantics: while explicit navigation is pending the claim
+    /// defers without consuming; the next unblocked claim of the same request
+    /// then drops it, because the explicit route fully won that qualifying
+    /// return. In-flight notification opens, modals, and preference changes
+    /// consume-and-drop immediately (established precedence losers).
+    func claimPreferredReturnSurfacePresentation() -> Bool {
+        let current = preferredReturnSurfaceRequest
+        guard current > consumedReturnSurfaceRequest else { return false }
+        if hasPendingExplicitNavigation {
+            deferredReturnSurfaceRequest = current
+            return false
+        }
+        defer { deferredReturnSurfaceRequest = nil }
+        if deferredReturnSurfaceRequest == current {
+            consumedReturnSurfaceRequest = current
+            return false
+        }
+        consumedReturnSurfaceRequest = current
+        guard chatReturnSurface == .sessions,
+              !isOpeningNotificationSession,
+              !isModalSheetPresented else { return false }
+        return true
     }
 
     func recordChatViewport(_ snapshot: ChatScrollSnapshot, for key: ChatScrollSessionKey) {
@@ -1535,6 +1648,7 @@ final class AppState: ObservableObject {
             theme: themePreference,
             busyInputMode: busyInputMode,
             chatResumeBehavior: chatResumeBehavior,
+            chatReturnSurface: chatReturnSurface,
             displayPreferences: displayPreferences,
             cloudflareAccess: KeychainHelper.loadCloudflareAccess(for: connection?.baseUrl)
         )
@@ -1850,6 +1964,7 @@ final class AppState: ObservableObject {
         isVoiceEnabled = false
         voiceTranscriptionMode = .hermes
         appleSpeechAvailability = AppleOnDeviceSpeechTranscriber.currentAvailability()
+        retireOutstandingPreferredReturnSurfaceRequests()
         showLogin = true
         sessions = []
         archivedSessions = []
@@ -1975,6 +2090,7 @@ final class AppState: ObservableObject {
         projectsLoading = false
         KeychainHelper.clearConnection()
         turnState = .idle
+        retireOutstandingPreferredReturnSurfaceRequests()
         showLogin = true
         errorMessage = message
     }
@@ -3724,7 +3840,19 @@ final class AppState: ObservableObject {
             isSceneActive = true
             voiceConversationController.setForegroundActive(true)
             messageReadAloudController.setForegroundActive(true)
+            // Consume the background arming even while signed out, so a
+            // background → active cycle on the login screen doesn't surface
+            // a stale request after the user signs back in.
+            let didReturnFromBackground = hasEnteredBackgroundScenePhase
+            hasEnteredBackgroundScenePhase = false
             guard connection != nil else { return nil }
+            // The preferred return surface belongs to the authenticated
+            // app: MainView presents the drawer while the automatic resume
+            // sync restores the chat underneath, and explicit navigation
+            // still wins via the suppression guards on both sides.
+            if didReturnFromBackground {
+                requestPreferredReturnSurface()
+            }
             cancelScenePhaseAttempt()
             // Publish the foreground reconciliation boundary synchronously.
             // ChatView may receive the same scene transition before the health
@@ -3782,6 +3910,7 @@ final class AppState: ObservableObject {
 
         case .background:
             isSceneActive = false
+            hasEnteredBackgroundScenePhase = true
             voiceConversationController.setForegroundActive(false)
             messageReadAloudController.setForegroundActive(false)
             showVoiceSheet = false

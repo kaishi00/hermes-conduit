@@ -148,6 +148,7 @@ struct MainView: View {
                 .presentationDragIndicator(.visible)
         }
         .sheet(item: $settingsPresentation, onDismiss: {
+            appState.isSettingsSheetPresented = false
             Task { await appState.refreshVoiceCapabilities() }
         }) { snapshot in
             SettingsView(
@@ -155,6 +156,7 @@ struct MainView: View {
                 saveTheme: { appState.themePreference = $0 },
                 persistBusyInputMode: { mode in await appState.setBusyInputMode(mode) },
                 persistChatResumeBehavior: { appState.setChatResumeBehavior($0) },
+                persistChatReturnSurface: { appState.setChatReturnSurface($0) },
                 loadProfileSettings: { keys in await appState.loadProfileSettings(keys: keys) },
                 persistProfileSetting: { key, value in await appState.setProfileSetting(key, value: value) },
                 loadProfileConfigOptions: { await appState.loadProfileConfigOptions() },
@@ -174,12 +176,34 @@ struct MainView: View {
         .task(id: voiceCapabilityRefreshKey) {
             await appState.refreshVoiceCapabilities()
         }
+        // Cold launch: MainView first becoming the authenticated surface is
+        // the qualifying return. The hook fires once per process (re-login
+        // cycles rely on the scene-phase path instead), then any pending
+        // request — including one from scene activation — is consumed.
+        .task {
+            appState.requestPreferredReturnSurfaceForColdLaunch()
+            presentPreferredReturnSurfaceIfNeeded()
+        }
+        .onChange(of: appState.preferredReturnSurfaceRequest) { _, _ in
+            presentPreferredReturnSurfaceIfNeeded()
+        }
     }
 
     private func presentSettingsAfterSidebarDismissal() {
         guard shouldPresentSettingsAfterSidebarDismissal else { return }
         shouldPresentSettingsAfterSidebarDismissal = false
+        appState.isSettingsSheetPresented = true
         settingsPresentation = appState.makeSettingsSnapshot()
+    }
+
+    /// Presents the sessions drawer for a preferred-return-surface request.
+    /// Consumption semantics (defer-while-pending, claim-once-per-request,
+    /// drop on precedence losers) live in AppState so they survive MainView
+    /// teardown; this layer only owns the actual sheet presentation.
+    private func presentPreferredReturnSurfaceIfNeeded() {
+        guard appState.claimPreferredReturnSurfacePresentation() else { return }
+        guard !appState.showSidebar else { return }
+        appState.showSidebar = true
     }
 
     private var voiceCapabilityRefreshKey: String {

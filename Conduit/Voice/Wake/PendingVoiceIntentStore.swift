@@ -13,6 +13,11 @@ final class PendingVoiceIntentStore: ObservableObject {
     @Published private(set) var revision: UInt64 = 0
     private var pending: PendingVoiceIntent?
 
+    /// True while an enqueued intent has not been routed. The store owns this
+    /// fact; presentation decisions (e.g. the preferred return surface) read
+    /// it rather than duplicating routing logic.
+    var hasPendingIntent: Bool { pending != nil }
+
     func enqueue(_ intent: PendingVoiceIntent) {
         // One voice sheet can only honor one launch request. The newest source
         // is intentional: it reflects the user's latest explicit action.
