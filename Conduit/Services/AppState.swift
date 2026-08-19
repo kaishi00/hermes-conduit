@@ -7508,7 +7508,7 @@ final class AppState: ObservableObject {
         hasScheduledReasoningPublish = true
         let cardID = activeReasoningMessageId
 
-        reasoningPublishTask = Task { [weak self] in
+        reasoningPublishTask = Task { @MainActor [weak self] in
             do {
                 // Reasoning updates mutate the published transcript, which is
                 // heavier than the streaming-text projection: an expanded
