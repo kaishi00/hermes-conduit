@@ -1138,6 +1138,45 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertEqual(messages.first?.content, "Still here after the summary was dropped.")
     }
 
+    func testLargeStandalonePrefixSummaryIsDroppedByPrefixAlone() {
+        // No flag and no merged delimiter anywhere: classification must rest
+        // on the prefix alone, without the full-payload delimiter search.
+        let hugeSummary = "[CONTEXT COMPACTION 12:04 — 48% of window used]\n"
+            + String(repeating: "Turn summary with no merged marker in the body. ", count: 100_000)
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(97),
+                "role": .string("user"),
+                "content": .string(hugeSummary)
+            ]),
+            .object([
+                "id": .number(98),
+                "role": .string("assistant"),
+                "content": .string("Neighbor row survives.")
+            ])
+        ])
+
+        XCTAssertEqual(messages.map(\.content), ["Neighbor row survives."])
+    }
+
+    func testCompactionPrefixHelperClassifiesFromABoundedHead() {
+        // Multi-megabyte payloads must be classifiable from their head
+        // without trimming or copying the whole string.
+        let hugeTail = String(repeating: "Summary detail line. ", count: 250_000)
+
+        XCTAssertTrue(MessageNormalizer.hasCompactionSummaryPrefix(
+            "[CONTEXT COMPACTION 12:04]\n" + hugeTail + "\n  \n"
+        ))
+        XCTAssertTrue(MessageNormalizer.hasCompactionSummaryPrefix(
+            "\n\t  [context summary]: legacy opening\n" + hugeTail
+        ))
+        XCTAssertFalse(MessageNormalizer.hasCompactionSummaryPrefix(
+            "Can you explain how context compaction works?\n" + hugeTail
+        ))
+        XCTAssertFalse(MessageNormalizer.hasCompactionSummaryPrefix("   \n\t"))
+        XCTAssertFalse(MessageNormalizer.hasCompactionSummaryPrefix(""))
+    }
+
     func testInterruptedIdenticalCorrectionDoesNotCreateASecondUserBubble() {
         let messages = MessageNormalizer.normalizeMessages([
             .object([

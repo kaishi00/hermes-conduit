@@ -1627,9 +1627,16 @@ enum MessageNormalizer {
     ) -> String? {
         if isToolResult { return content }
 
+        // Standalone summaries announce themselves within the first bytes.
+        // Dropping them here skips the merged-delimiter search, which would
+        // otherwise walk a potentially multi-megabyte payload end-to-end.
+        if hasCompactionSummaryPrefix(content) { return nil }
+
         if let range = content.range(of: compactionSummaryDelimiter) {
             // Merged row: the genuine prompt sits before the delimiter behind
             // an optional wrapper header; the summary suffix is never shown.
+            // The flag does not preempt this branch — it marks the record as
+            // carrying a summary, not as lacking a genuine prompt.
             var visible = String(content[..<range.lowerBound])
             // Strip the wrapper only as a leading header — a copy the user
             // quoted mid-message belongs to their message.
@@ -1647,10 +1654,8 @@ enum MessageNormalizer {
 
         let flaggedAsSummary = obj["_compressed_summary"]?.boolValue == true
             || obj["metadata"]?.objectValue?["_compressed_summary"]?.boolValue == true
-        if flaggedAsSummary || hasCompactionSummaryPrefix(content) {
-            return nil
-        }
-        return content
+        // Flagged with no merged form is pure bookkeeping.
+        return flaggedAsSummary ? nil : content
     }
 
     private static let compactionSummaryDelimiter =
@@ -1664,10 +1669,15 @@ enum MessageNormalizer {
     /// recognizable text. Match case-insensitively like the other Hermes
     /// bracketed notices, anchored at the start of the content so ordinary
     /// discussion of "context compaction" is never mistaken for a summary.
-    /// Only a short head is lowercased — the payload being tested can be a
-    /// multi-megabyte summary that must not be copied before being dropped.
-    private static func hasCompactionSummaryPrefix(_ content: String) -> Bool {
-        let head = content.trimmingCharacters(in: .whitespacesAndNewlines).prefix(32).lowercased()
+    /// Classification reads only a bounded head: leading whitespace is
+    /// skipped by index and only the next 32 characters are compared, so a
+    /// multi-megabyte summary is never copied or tail-scanned to classify it.
+    static func hasCompactionSummaryPrefix(_ content: String) -> Bool {
+        var headStart = content.startIndex
+        while headStart < content.endIndex, content[headStart].isWhitespace {
+            headStart = content.index(after: headStart)
+        }
+        let head = content[headStart...].prefix(32).lowercased()
         return head.hasPrefix("[context compaction")
             || head.hasPrefix("[context summary]:")
     }
