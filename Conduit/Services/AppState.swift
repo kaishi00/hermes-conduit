@@ -7870,6 +7870,11 @@ final class AppState: ObservableObject {
         if !readAloudGatewayIsCurrent {
             assignReadAloudGateway()
         }
+        // Mutual exclusion (reverse of openVoiceConversation / runVoiceTTSTest):
+        // the voice conversation and read aloud each own their own playback
+        // instance, so a speech test or conversation still speaking must stop
+        // before the manual stream opens — otherwise both engines play at once.
+        voiceConversationController.stop()
         messageReadAloudController.toggle(messageID: message.id, content: message.content)
     }
 
@@ -8029,8 +8034,11 @@ final class AppState: ObservableObject {
         guard let gateway = makeVoiceGateway() else {
             return .failure("Conduit could not connect this test to the selected profile.")
         }
-        // The live TTS test shares the playback engine with read aloud; the
-        // test must not fight a message that is still being read.
+        // The speech test speaks through the voice controller's own playback
+        // instance (the same AVSpeech infrastructure read aloud uses, but a
+        // separate instance), so the test and a still-playing message would
+        // otherwise both produce audio. AppState enforces mutual exclusion in
+        // both directions; toggleReadAloud stops this controller in turn.
         messageReadAloudController.stop()
         voiceConversationController.setGateway(gateway)
         return await voiceConversationController.runSpeechTest(
@@ -8085,6 +8093,23 @@ final class AppState: ObservableObject {
         }
         guard !readAloudGatewayIsCurrent else { return }
         assignReadAloudGateway()
+    }
+
+    /// Test-only: installs the post-connect voice capability state (bridge,
+    /// snapshot, preference) without a dashboard round trip, so the read
+    /// aloud / voice conversation mutual exclusion can be exercised with
+    /// mock controllers. `readAloudGatewayBridge` is set to the same bridge
+    /// so a mock read aloud gateway installed on the controller counts as
+    /// current and is not replaced by a real one at tap time.
+    func installVoiceCapabilityStateForTesting(
+        bridge: DashboardTicketBridge,
+        snapshot: VoiceCapabilitySnapshot,
+        isVoiceEnabled: Bool
+    ) {
+        dashboardTicketBridge = bridge
+        readAloudGatewayBridge = bridge
+        voiceCapabilitySnapshot = snapshot
+        self.isVoiceEnabled = isVoiceEnabled
     }
 
     private func loadVoiceProfilePreferences(profile: String) -> VoiceProfilePreferences {
