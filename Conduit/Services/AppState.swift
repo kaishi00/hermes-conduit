@@ -1091,6 +1091,16 @@ final class AppState: ObservableObject {
         requestPreferredReturnSurface()
     }
 
+    /// Auth teardown (sign-out) is not a qualifying return. Retire any
+    /// outstanding preferred-return request at the boundary — claimed,
+    /// unclaimed, or deferred — so a MainView recreated on the next sign-in
+    /// can never present a stale request. The monotonic counter is left
+    /// untouched; only the consumed watermark advances.
+    private func retireOutstandingPreferredReturnSurfaceRequests() {
+        consumedReturnSurfaceRequest = max(consumedReturnSurfaceRequest, preferredReturnSurfaceRequest)
+        deferredReturnSurfaceRequest = nil
+    }
+
     /// Claims the pending preferred-return-surface request for presentation.
     /// Returns true exactly once per issued request — the watermark lives in
     /// AppState, so a MainView recreated after sign-out/sign-in can never
@@ -1937,6 +1947,7 @@ final class AppState: ObservableObject {
         isVoiceEnabled = false
         voiceTranscriptionMode = .hermes
         appleSpeechAvailability = AppleOnDeviceSpeechTranscriber.currentAvailability()
+        retireOutstandingPreferredReturnSurfaceRequests()
         showLogin = true
         sessions = []
         archivedSessions = []
@@ -2057,6 +2068,7 @@ final class AppState: ObservableObject {
         projectsLoading = false
         KeychainHelper.clearConnection()
         turnState = .idle
+        retireOutstandingPreferredReturnSurfaceRequests()
         showLogin = true
         errorMessage = message
     }

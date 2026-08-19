@@ -194,6 +194,64 @@ final class ChatReturnSurfaceTests: XCTestCase {
         XCTAssertFalse(harness.appState.claimPreferredReturnSurfacePresentation())
     }
 
+    func testTeardownRetiresUnclaimedRequestBeforeForegroundReLogin() {
+        let harness = makeHarness(surface: .sessions)
+        harness.appState.connection = HermesConnection(
+            baseUrl: "https://one.example",
+            ticket: "ticket"
+        )
+
+        // A qualifying return issues request 1; before MainView claims it,
+        // the user disconnects — the actual teardown API — tearing MainView
+        // down while the app stays foregrounded.
+        harness.appState.handleScenePhase(.background)
+        harness.appState.handleScenePhase(.active)
+        XCTAssertEqual(harness.appState.preferredReturnSurfaceRequest, 1)
+
+        harness.appState.disconnect()
+
+        // Foregrounded sign-in recreates MainView; the stale unclaimed
+        // request must not present — re-login is not a qualifying return.
+        XCTAssertFalse(harness.appState.claimPreferredReturnSurfacePresentation())
+
+        // Retirement advances the watermark without resetting the counter:
+        // the next genuine background → active issues a fresh request that
+        // still claims exactly once.
+        harness.appState.connection = HermesConnection(
+            baseUrl: "https://one.example",
+            ticket: "ticket"
+        )
+        harness.appState.handleScenePhase(.background)
+        harness.appState.handleScenePhase(.active)
+        XCTAssertEqual(harness.appState.preferredReturnSurfaceRequest, 2)
+        XCTAssertTrue(harness.appState.claimPreferredReturnSurfacePresentation())
+        XCTAssertFalse(harness.appState.claimPreferredReturnSurfacePresentation())
+    }
+
+    func testTeardownRetiresDeferredRequest() {
+        let harness = makeHarness(surface: .sessions)
+        harness.appState.connection = HermesConnection(
+            baseUrl: "https://one.example",
+            ticket: "ticket"
+        )
+        harness.appState.requestPreferredReturnSurface()
+
+        // The request is deferred by a pending notification destination.
+        let service = PushNotificationService.shared
+        defer { if let target = service.pendingTarget { service.clearPendingTarget(target) } }
+        service.receiveNotificationPayload([
+            "conduit": ["session_id": "runtime-1", "type": "response_ready"] as [String: Any]
+        ])
+        XCTAssertFalse(harness.appState.claimPreferredReturnSurfacePresentation())
+
+        // The user disconnects while the route is still pending, then signs
+        // back in foregrounded after the destination cleared: the deferred
+        // request must be retired, not presented.
+        harness.appState.disconnect()
+        if let target = service.pendingTarget { service.clearPendingTarget(target) }
+        XCTAssertFalse(harness.appState.claimPreferredReturnSurfacePresentation())
+    }
+
     func testInactiveToActiveAloneDoesNotRequestDrawer() {
         let harness = makeHarness(surface: .sessions)
         harness.appState.connection = HermesConnection(
