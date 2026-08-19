@@ -5,6 +5,13 @@ import XCTest
 final class ChatReturnSurfaceTests: XCTestCase {
     func testDefaultConversationPreferenceIssuesNoReturnSurfaceRequest() {
         let harness = makeHarness()
+        // Authenticated so the scene path reaches the preference guard —
+        // the assertion must depend on the .conversation default, not on the
+        // signed-out early return.
+        harness.appState.connection = HermesConnection(
+            baseUrl: "https://one.example",
+            ticket: "ticket"
+        )
 
         XCTAssertEqual(harness.appState.chatReturnSurface, .conversation)
         harness.appState.handleScenePhase(.background)
@@ -20,7 +27,7 @@ final class ChatReturnSurfaceTests: XCTestCase {
         // Cold launch reads the persisted preference, and MainView's
         // first-appearance task issues the one-shot request.
         XCTAssertEqual(harness.appState.chatReturnSurface, .sessions)
-        harness.appState.requestPreferredReturnSurface()
+        harness.appState.requestPreferredReturnSurfaceForColdLaunch()
 
         XCTAssertEqual(harness.appState.preferredReturnSurfaceRequest, 1)
     }
@@ -71,6 +78,10 @@ final class ChatReturnSurfaceTests: XCTestCase {
 
     func testInactiveToActiveAloneDoesNotRequestDrawer() {
         let harness = makeHarness(surface: .sessions)
+        harness.appState.connection = HermesConnection(
+            baseUrl: "https://one.example",
+            ticket: "ticket"
+        )
 
         harness.appState.handleScenePhase(.inactive)
         harness.appState.handleScenePhase(.active)
