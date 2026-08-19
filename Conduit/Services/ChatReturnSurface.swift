@@ -7,7 +7,7 @@ import Foundation
 /// conversation is active underneath. Choosing `.sessions` still performs
 /// the normal chat resume behind the drawer; dismissing the drawer without
 /// picking another conversation reveals the restored chat.
-enum ChatReturnSurface: String, CaseIterable {
+enum ChatReturnSurface: String, CaseIterable, Hashable {
     case conversation
     case sessions
 
