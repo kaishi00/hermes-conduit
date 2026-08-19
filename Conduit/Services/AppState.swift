@@ -465,13 +465,19 @@ final class AppState: ObservableObject {
                 streamingPublishTask?.cancel()
                 streamingPublishTask = nil
                 hasScheduledStreamingPublish = false
-            } else if !streamingBuffer.isEmpty {
-                lastStreamingPublishBurst = max(
-                    streamingBuffer.count - streamingText.count,
-                    0
-                )
-                lastStreamingPublishDate = Date()
-                streamingText = streamingBuffer
+                reasoningPublishTask?.cancel()
+                reasoningPublishTask = nil
+                hasScheduledReasoningPublish = false
+            } else {
+                if !streamingBuffer.isEmpty {
+                    lastStreamingPublishBurst = max(
+                        streamingBuffer.count - streamingText.count,
+                        0
+                    )
+                    lastStreamingPublishDate = Date()
+                    streamingText = streamingBuffer
+                }
+                flushReasoningPublish()
             }
         }
     }
@@ -585,6 +591,13 @@ final class AppState: ObservableObject {
     private var activeAssistantMessageId: String?
     private var activeReasoningMessageId: String?
     private var receivedReasoningForCurrentTurn = false
+    /// Authoritative merged reasoning for the live thinking card. Raw deltas
+    /// merge into this buffer immediately; the published transcript is only
+    /// republished at a coalesced cadence so an expanded ThinkingCard cannot
+    /// monopolize main-actor layout work during a live reasoning stream.
+    private var reasoningBuffer = ""
+    private var reasoningPublishTask: Task<Void, Never>?
+    private var hasScheduledReasoningPublish = false
     private var streamingBuffer = ""
     /// Gateway deltas can arrive much faster than SwiftUI can lay out a chat
     /// transcript. Keep the authoritative buffer intact, but publish at a
@@ -1540,6 +1553,7 @@ final class AppState: ObservableObject {
         activeSessionTitle = "New conversation"
         messages = []
         clearStreamingText()
+        resetReasoningStream()
         activeSessionTitlesByProfile = [:]
         pinnedSessionIDsByProfile = [:]
         pinnedSessionIDs = []
@@ -1978,6 +1992,7 @@ final class AppState: ObservableObject {
         messages = []
         setActiveSessionState(id: nil, title: "New conversation")
         clearStreamingText()
+        resetReasoningStream()
         turnState = .idle
         defaults.removeObject(forKey: activeSessionTitlesByProfileKey)
         defaults.removeObject(forKey: pinnedSessionIDsByProfileKey)
@@ -2833,7 +2848,7 @@ final class AppState: ObservableObject {
             noteChatViewportTranscriptReplacement()
             clearStreamingText()
             activeAssistantMessageId = nil
-            activeReasoningMessageId = nil
+            resetReasoningStream()
             receivedReasoningForCurrentTurn = false
             turnState = .idle
             errorMessage = nil
@@ -3031,7 +3046,7 @@ final class AppState: ObservableObject {
             streamingText = recoveredText
         }
         activeAssistantMessageId = nil
-        activeReasoningMessageId = nil
+        resetReasoningStream()
         receivedReasoningForCurrentTurn = false
         applyRuntime(
             result.snapshot,
@@ -4272,7 +4287,7 @@ final class AppState: ObservableObject {
         messages = []
         clearStreamingText()
         activeAssistantMessageId = nil
-        activeReasoningMessageId = nil
+        resetReasoningStream()
         receivedReasoningForCurrentTurn = false
         turnState = .idle
         finishChatViewportTransition(generation: transitionGeneration)
@@ -4351,7 +4366,7 @@ final class AppState: ObservableObject {
         messages = []
         clearStreamingText()
         activeAssistantMessageId = nil
-        activeReasoningMessageId = nil
+        resetReasoningStream()
         updateActiveSessionTitle(for: sessionId)
         let reconciled = await reconcile(
             sessionId: sessionId,
@@ -7223,7 +7238,10 @@ final class AppState: ObservableObject {
         switch event {
         case .messageStart:
             finalizePendingStreamingCompletion()
-            activeReasoningMessageId = nil
+            // A new turn ends any live reasoning card; flush first so the
+            // previous segment keeps its exact buffered text.
+            flushReasoningPublish()
+            resetReasoningStream()
             receivedReasoningForCurrentTurn = false
             setRunning(true)
             notifyVoiceAssistant(.started(sessionID: streamSessionId))
@@ -7251,15 +7269,17 @@ final class AppState: ObservableObject {
             notifyVoiceAssistant(.completed(sessionID: streamSessionId, content: content))
 
         case .messageError(_, let message):
+            flushReasoningPublish()
+            resetReasoningStream()
             clearStreamingText()
-            activeReasoningMessageId = nil
             errorMessage = message
             setRunning(false)
             notifyVoiceAssistant(.failed(sessionID: streamSessionId, message: message))
 
         case .messageInterrupted:
+            flushReasoningPublish()
+            resetReasoningStream()
             clearStreamingText()
-            activeReasoningMessageId = nil
             setRunning(false)
             notifyVoiceAssistant(.interrupted(sessionID: streamSessionId))
 
@@ -7291,7 +7311,10 @@ final class AppState: ObservableObject {
 
         case .toolStart(_, let name, let input):
             if name.lowercased() == "clarify" { break }
-            activeReasoningMessageId = nil
+            // The tool card must land after a complete reasoning card; flush
+            // the coalesced buffer before the boundary reorders the transcript.
+            flushReasoningPublish()
+            resetReasoningStream()
             flushStreamingPartial()
             messages.append(ChatMessage(
                 id: "tool-start-\(Date().timeIntervalSince1970)",
@@ -7303,7 +7326,8 @@ final class AppState: ObservableObject {
 
         case .toolComplete(_, let name, let output):
             if name.lowercased() == "clarify" { break }
-            activeReasoningMessageId = nil
+            flushReasoningPublish()
+            resetReasoningStream()
             // Update the matching running tool card in place instead of
             // appending a duplicate. This keeps input + output together in
             // one chronological entry, matching how the HTTP API returns
@@ -7454,27 +7478,85 @@ final class AppState: ObservableObject {
 
     /// A reasoning delta belongs exactly where Hermes emitted it. Gateways can
     /// send either deltas or repeated cumulative snapshots, so merge both into
-    /// one live card rather than creating duplicate thinking boxes.
+    /// one live card rather than creating duplicate thinking boxes. The first
+    /// delta of a segment mounts the card immediately so the thinking box
+    /// appears promptly; every later delta coalesces through
+    /// `reasoningBuffer` and republishes at display cadence.
     private func appendReasoning(_ text: String) {
         guard !text.isEmpty else { return }
-        if let id = activeReasoningMessageId,
-           let index = messages.firstIndex(where: { $0.id == id }) {
-            messages[index].content = mergedReasoning(
-                existing: messages[index].content,
-                incoming: text
-            )
+        reasoningBuffer = mergedReasoning(
+            existing: reasoningBuffer,
+            incoming: text
+        )
+        guard activeReasoningMessageId != nil else {
+            let id = "reasoning-\(Date().timeIntervalSince1970)"
+            messages.append(ChatMessage(
+                id: id,
+                role: .reasoning,
+                content: reasoningBuffer,
+                timestamp: Self.localTimestamp(),
+                author: activeProfile
+            ))
+            activeReasoningMessageId = id
             return
         }
+        scheduleReasoningPublish()
+    }
 
-        let id = "reasoning-\(Date().timeIntervalSince1970)"
-        messages.append(ChatMessage(
-            id: id,
-            role: .reasoning,
-            content: text,
-            timestamp: Self.localTimestamp(),
-            author: activeProfile
-        ))
-        activeReasoningMessageId = id
+    private func scheduleReasoningPublish() {
+        guard !showSidebar, !hasScheduledReasoningPublish else { return }
+        hasScheduledReasoningPublish = true
+        let cardID = activeReasoningMessageId
+
+        reasoningPublishTask = Task { [weak self] in
+            do {
+                // Reasoning updates mutate the published transcript, which is
+                // heavier than the streaming-text projection: an expanded
+                // ThinkingCard restyles its attributed text and remeasures a
+                // growing height on every commit. ~20 fps keeps the stream
+                // readable while leaving the main actor free between layout
+                // passes.
+                try await Task.sleep(for: .milliseconds(50))
+            } catch {
+                return
+            }
+
+            guard !Task.isCancelled, let self else { return }
+            self.hasScheduledReasoningPublish = false
+            self.reasoningPublishTask = nil
+            self.publishReasoningBuffer(liveCardID: cardID)
+        }
+    }
+
+    /// Stale publish tasks are structurally inert: once a boundary or session
+    /// switch has ended the live card, the captured id no longer matches, so
+    /// nothing can mutate a finalized or replaced transcript.
+    private func publishReasoningBuffer(liveCardID: String?) {
+        guard let liveCardID, liveCardID == activeReasoningMessageId,
+              let index = messages.firstIndex(where: { $0.id == liveCardID }),
+              messages[index].content != reasoningBuffer else { return }
+        messages[index].content = reasoningBuffer
+    }
+
+    /// Publish any coalesced reasoning immediately so the live card is exact
+    /// before a semantic boundary (completion, tool, error, interruption,
+    /// next turn) reads or reorders the transcript.
+    private func flushReasoningPublish() {
+        reasoningPublishTask?.cancel()
+        reasoningPublishTask = nil
+        hasScheduledReasoningPublish = false
+        publishReasoningBuffer(liveCardID: activeReasoningMessageId)
+    }
+
+    /// Drop all live reasoning state without publishing. The transcript is
+    /// being replaced (session open/resume/new conversation), so the old card
+    /// must not receive further updates — including from an in-flight publish.
+    private func resetReasoningStream() {
+        reasoningPublishTask?.cancel()
+        reasoningPublishTask = nil
+        hasScheduledReasoningPublish = false
+        reasoningBuffer = ""
+        activeReasoningMessageId = nil
     }
 
     private func mergedReasoning(existing: String, incoming: String) -> String {
@@ -8183,6 +8265,9 @@ final class AppState: ObservableObject {
         content: String?,
         reasoning: String?
     ) {
+        // messageComplete is a semantic boundary: the thinking card must show
+        // its full buffered reasoning immediately, not one cadence later.
+        flushReasoningPublish()
         streamingCompletionTask?.cancel()
         streamingPublishTask?.cancel()
         streamingPublishTask = nil
@@ -8258,6 +8343,9 @@ final class AppState: ObservableObject {
         finalContent: String,
         reasoning: String?
     ) {
+        // Reasoning that raced the drain window must not be discarded when
+        // the pending completion finalizes.
+        flushReasoningPublish()
         removeAllPartials()
         // Some gateways repeat the full trace in completion after already
         // emitting reasoning events. Use it only when streaming supplied no
@@ -8289,7 +8377,7 @@ final class AppState: ObservableObject {
 
         clearStreamingText()
         activeAssistantMessageId = nil
-        activeReasoningMessageId = nil
+        resetReasoningStream()
         receivedReasoningForCurrentTurn = false
         setRunning(false)
         // Cancel any pending coalesced flush and write immediately — the
