@@ -402,6 +402,79 @@ final class AppStateReasoningStreamTests: XCTestCase {
         )
     }
 
+    func testToolBoundaryDoesNotEraseTurnReasoningFlagAtCompletion() {
+        let state = makeAppState()
+        installActiveSession(state, id: "stored-a")
+
+        feedReasoning(["pre-tool reasoning"], sessionId: "stored-a", state: state)
+        state.handleStreamEvent(
+            .toolStart(sessionId: "stored-a", toolName: "read_file", toolInput: nil)
+        )
+        state.handleStreamEvent(
+            .toolComplete(sessionId: "stored-a", toolName: "read_file", toolOutput: "result")
+        )
+        state.handleStreamEvent(
+            .messageComplete(
+                sessionId: "stored-a",
+                messageId: "assistant-1",
+                content: "Final answer",
+                reasoning: "full completion trace"
+            )
+        )
+        // Force the drained completion synchronously.
+        state.handleStreamEvent(.messageStart(sessionId: "stored-a"))
+
+        // A tool boundary ends the reasoning SEGMENT, not the turn: reasoning
+        // streamed before the tool still counts as this turn's reasoning, so
+        // the completion-carried trace must not mount a duplicate card.
+        let cards = reasoningCards(in: state)
+        XCTAssertEqual(cards.count, 1)
+        XCTAssertEqual(cards.first?.content, "pre-tool reasoning")
+
+        guard let reasoningIndex = state.messages.firstIndex(where: { $0.role == .reasoning }),
+              let toolIndex = state.messages.firstIndex(where: { $0.role == .tool }),
+              let assistantIndex = state.messages.firstIndex(where: { $0.id == "assistant-1" })
+        else {
+            return XCTFail("Expected reasoning, tool, and assistant messages")
+        }
+        XCTAssertLessThan(reasoningIndex, toolIndex)
+        XCTAssertLessThan(toolIndex, assistantIndex)
+        XCTAssertEqual(state.messages[assistantIndex].content, "Final answer")
+        XCTAssertEqual(state.messages[toolIndex].tool?.status, .complete)
+    }
+
+    func testMultiSegmentTurnKeepsBothSegmentsAndSkipsCompletionTrace() {
+        let state = makeAppState()
+        installActiveSession(state, id: "stored-a")
+
+        // Two reasoning segments separated by tools inside ONE turn. Both
+        // segment cards must survive to completion, and the completion-carried
+        // trace must not append a third.
+        feedReasoning(["first segment "], sessionId: "stored-a", state: state)
+        state.handleStreamEvent(
+            .toolStart(sessionId: "stored-a", toolName: "read_file", toolInput: nil)
+        )
+        feedReasoning(["second segment"], sessionId: "stored-a", state: state)
+        state.handleStreamEvent(
+            .toolComplete(sessionId: "stored-a", toolName: "read_file", toolOutput: "result")
+        )
+        state.handleStreamEvent(
+            .messageComplete(
+                sessionId: "stored-a",
+                messageId: "assistant-1",
+                content: "Final answer",
+                reasoning: "full completion trace"
+            )
+        )
+        state.handleStreamEvent(.messageStart(sessionId: "stored-a"))
+
+        let cards = reasoningCards(in: state)
+        XCTAssertEqual(cards.count, 2)
+        XCTAssertEqual(cards.first?.content, "first segment ")
+        XCTAssertEqual(cards.last?.content, "second segment")
+        XCTAssertEqual(state.messages.last?.id, "assistant-1")
+    }
+
     func testSessionSwitchDiscardsPendingReasoningPublishForNewSession() async {
         let replacementMessages = [
             ChatMessage(id: "new-1", role: .assistant, content: "Other session", timestamp: "1")
@@ -461,6 +534,12 @@ final class AppStateReasoningStreamTests: XCTestCase {
         // Even a forced flush of any surviving pending state must not
         // reproduce the old session's reasoning inside the new transcript.
         forceFlushPendingReasoning(on: state)
+        XCTAssertTrue(reasoningCards(in: state).isEmpty)
+        XCTAssertEqual(state.messages, replacementMessages)
+
+        // Five 50 ms cadence periods: proves that after the session switch no
+        // stale publish (guarded or not) can mutate the replacement transcript.
+        try? await Task.sleep(for: .milliseconds(250))
         XCTAssertTrue(reasoningCards(in: state).isEmpty)
         XCTAssertEqual(state.messages, replacementMessages)
     }

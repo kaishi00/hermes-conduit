@@ -1553,7 +1553,7 @@ final class AppState: ObservableObject {
         activeSessionTitle = "New conversation"
         messages = []
         clearStreamingText()
-        resetReasoningStream()
+        resetReasoningTurn()
         activeSessionTitlesByProfile = [:]
         pinnedSessionIDsByProfile = [:]
         pinnedSessionIDs = []
@@ -1992,7 +1992,7 @@ final class AppState: ObservableObject {
         messages = []
         setActiveSessionState(id: nil, title: "New conversation")
         clearStreamingText()
-        resetReasoningStream()
+        resetReasoningTurn()
         turnState = .idle
         defaults.removeObject(forKey: activeSessionTitlesByProfileKey)
         defaults.removeObject(forKey: pinnedSessionIDsByProfileKey)
@@ -2848,7 +2848,7 @@ final class AppState: ObservableObject {
             noteChatViewportTranscriptReplacement()
             clearStreamingText()
             activeAssistantMessageId = nil
-            resetReasoningStream()
+            resetReasoningTurn()
             turnState = .idle
             errorMessage = nil
             // A fresh conversation has no per-session override and no
@@ -3045,7 +3045,7 @@ final class AppState: ObservableObject {
             streamingText = recoveredText
         }
         activeAssistantMessageId = nil
-        resetReasoningStream()
+        resetReasoningTurn()
         applyRuntime(
             result.snapshot,
             for: result.sessionId
@@ -4285,7 +4285,7 @@ final class AppState: ObservableObject {
         messages = []
         clearStreamingText()
         activeAssistantMessageId = nil
-        resetReasoningStream()
+        resetReasoningTurn()
         turnState = .idle
         finishChatViewportTransition(generation: transitionGeneration)
     }
@@ -4363,7 +4363,7 @@ final class AppState: ObservableObject {
         messages = []
         clearStreamingText()
         activeAssistantMessageId = nil
-        resetReasoningStream()
+        resetReasoningTurn()
         updateActiveSessionTitle(for: sessionId)
         let reconciled = await reconcile(
             sessionId: sessionId,
@@ -7238,7 +7238,7 @@ final class AppState: ObservableObject {
             // A new turn ends any live reasoning card; flush first so the
             // previous segment keeps its exact buffered text.
             flushReasoningPublish()
-            resetReasoningStream()
+            resetReasoningTurn()
             setRunning(true)
             notifyVoiceAssistant(.started(sessionID: streamSessionId))
 
@@ -7266,7 +7266,7 @@ final class AppState: ObservableObject {
 
         case .messageError(_, let message):
             flushReasoningPublish()
-            resetReasoningStream()
+            resetReasoningTurn()
             clearStreamingText()
             errorMessage = message
             setRunning(false)
@@ -7274,7 +7274,7 @@ final class AppState: ObservableObject {
 
         case .messageInterrupted:
             flushReasoningPublish()
-            resetReasoningStream()
+            resetReasoningTurn()
             clearStreamingText()
             setRunning(false)
             notifyVoiceAssistant(.interrupted(sessionID: streamSessionId))
@@ -7309,8 +7309,10 @@ final class AppState: ObservableObject {
             if name.lowercased() == "clarify" { break }
             // The tool card must land after a complete reasoning card; flush
             // the coalesced buffer before the boundary reorders the transcript.
+            // A tool ends the reasoning SEGMENT only — the turn flag survives
+            // so completion-carried reasoning cannot duplicate this segment.
             flushReasoningPublish()
-            resetReasoningStream()
+            resetReasoningSegment()
             flushStreamingPartial()
             messages.append(ChatMessage(
                 id: "tool-start-\(Date().timeIntervalSince1970)",
@@ -7323,7 +7325,7 @@ final class AppState: ObservableObject {
         case .toolComplete(_, let name, let output):
             if name.lowercased() == "clarify" { break }
             flushReasoningPublish()
-            resetReasoningStream()
+            resetReasoningSegment()
             // Update the matching running tool card in place instead of
             // appending a duplicate. This keeps input + output together in
             // one chronological entry, matching how the HTTP API returns
@@ -7544,17 +7546,26 @@ final class AppState: ObservableObject {
         publishReasoningBuffer(liveCardID: activeReasoningMessageId)
     }
 
-    /// Restore the ENTIRE per-turn reasoning state machine to its initial
-    /// condition. The transcript is being replaced (session open/resume/new
-    /// conversation/disconnect), so the old card must not receive further
-    /// updates — including from an in-flight publish — and the next turn's
-    /// completion-carried reasoning must not look already-streamed.
-    private func resetReasoningStream() {
+    /// End the active reasoning SEGMENT without publishing. Used at tool
+    /// boundaries: the tool card ends the current thinking card, but the
+    /// assistant TURN continues — reasoning may resume in a fresh segment, and
+    /// reasoning already streamed this turn still counts at completion.
+    private func resetReasoningSegment() {
         reasoningPublishTask?.cancel()
         reasoningPublishTask = nil
         hasScheduledReasoningPublish = false
         reasoningBuffer = ""
         activeReasoningMessageId = nil
+    }
+
+    /// Restore the ENTIRE per-turn reasoning state machine to its initial
+    /// condition. Used when the turn or transcript itself is being replaced
+    /// (message boundaries, completion, disconnect, session switch): the old
+    /// card must not receive further updates — including from an in-flight
+    /// publish — and the next turn's completion-carried reasoning must not
+    /// look already-streamed.
+    private func resetReasoningTurn() {
+        resetReasoningSegment()
         receivedReasoningForCurrentTurn = false
     }
 
@@ -8376,7 +8387,7 @@ final class AppState: ObservableObject {
 
         clearStreamingText()
         activeAssistantMessageId = nil
-        resetReasoningStream()
+        resetReasoningTurn()
         setRunning(false)
         // Cancel any pending coalesced flush and write immediately — the
         // turn is complete so all messages are in their final state.
