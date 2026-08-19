@@ -89,6 +89,27 @@ final class AppStateReasoningStreamTests: XCTestCase {
         XCTAssertEqual(reasoningCards(in: state).first?.content, expectedTotal)
     }
 
+    func testScheduledReasoningPublishFiresWithoutForcedFlush() async throws {
+        let state = makeAppState()
+        installActiveSession(state, id: "stored-a")
+
+        feedReasoning(
+            ["coalesced chunk one ", "coalesced chunk two"],
+            sessionId: "stored-a",
+            state: state
+        )
+        XCTAssertEqual(reasoningCards(in: state).first?.content, "coalesced chunk one ")
+
+        // The scheduled 50 ms publish must land on its own — no sidebar
+        // force-flush, no boundary event. The wait only needs to clear the
+        // cadence interval, so generous slack keeps it stable on CI runners.
+        try await Task.sleep(for: .milliseconds(500))
+        XCTAssertEqual(
+            reasoningCards(in: state).first?.content,
+            "coalesced chunk one coalesced chunk two"
+        )
+    }
+
     func testReasoningCardIdentityIsStableAcrossCoalescedPublications() {
         let state = makeAppState()
         installActiveSession(state, id: "stored-a")
