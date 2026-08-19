@@ -1045,6 +1045,17 @@ final class AppState: ObservableObject {
             || showAgentsSheet || showVoiceSheet || isSettingsSheetPresented
     }
 
+    /// True when an explicit destination exists but has not been routed yet
+    /// (a notification tap or voice intent recorded before the app was
+    /// connected). Routing services own this fact; only the read lives here,
+    /// mirroring how syncSession already defers to a pending notification
+    /// target. Explicit navigation outranks the preferred return surface from
+    /// the moment the destination exists, not just once routing starts.
+    var hasPendingExplicitNavigation: Bool {
+        PushNotificationService.shared.pendingTarget != nil
+            || PendingVoiceIntentStore.shared.hasPendingIntent
+    }
+
     /// Persisted separately from the resume store: this only changes which
     /// surface is presented first on a qualifying return, and deliberately
     /// issues no presentation request — the next qualifying return picks it up.
@@ -1054,11 +1065,13 @@ final class AppState: ObservableObject {
         defaults.set(surface.rawValue, forKey: Self.chatReturnSurfaceKey)
     }
 
-    /// Issues a one-shot preferred-return-surface request. Suppressed when a
-    /// notification destination is being opened or a modal sheet already owns
-    /// the surface; MainView re-checks at presentation time as a backstop.
+    /// Issues a one-shot preferred-return-surface request. Suppressed while
+    /// an explicit destination is pending or being opened, or when a modal
+    /// sheet already owns the surface; MainView re-checks at presentation
+    /// time as a backstop.
     func requestPreferredReturnSurface() {
         guard chatReturnSurface == .sessions else { return }
+        guard !hasPendingExplicitNavigation else { return }
         guard !isOpeningNotificationSession else { return }
         guard !isModalSheetPresented else { return }
         preferredReturnSurfaceRequest &+= 1

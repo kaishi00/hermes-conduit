@@ -809,7 +809,11 @@ private struct ChatReturnBehaviorSettings: View {
                     }
                 }
                 .pickerStyle(.segmented)
-                .accessibilityHint("Used if you dismiss the session list without choosing another conversation.")
+                .accessibilityHint(
+                    surface == .sessions
+                        ? "Conduit opens to the session list. Used if you dismiss it without choosing another conversation."
+                        : "Conduit opens to your conversation."
+                )
                 if surface == .sessions {
                     Text("Used if you dismiss the session list without choosing another conversation.")
                         .font(.footnote)

@@ -198,11 +198,14 @@ struct MainView: View {
     }
 
     /// Presents the sessions drawer for a preferred-return-surface request.
-    /// Consumes at most once per issued request; suppressed when the
-    /// preference has since changed, or when explicit navigation or another
-    /// modal owns the surface at presentation time.
+    /// A pending explicit navigation defers without consuming, so the request
+    /// survives if the route is dropped before routing starts; once past that
+    /// point the request is consumed once, and suppressed — dropped for this
+    /// return — when the preference changed, navigation is in flight, or
+    /// another modal owns the surface.
     private func presentPreferredReturnSurfaceIfNeeded() {
         guard appState.preferredReturnSurfaceRequest > consumedReturnSurfaceRequest else { return }
+        guard !appState.hasPendingExplicitNavigation else { return }
         consumedReturnSurfaceRequest = appState.preferredReturnSurfaceRequest
         guard appState.chatReturnSurface == .sessions else { return }
         guard !appState.isOpeningNotificationSession else { return }

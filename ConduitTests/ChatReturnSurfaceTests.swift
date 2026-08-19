@@ -3,6 +3,17 @@ import XCTest
 
 @MainActor
 final class ChatReturnSurfaceTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        // The return-surface decision reads the routing singletons; make
+        // every test start from a clean explicit-navigation state regardless
+        // of ordering or cross-class leftovers.
+        if let target = PushNotificationService.shared.pendingTarget {
+            PushNotificationService.shared.clearPendingTarget(target)
+        }
+        PendingVoiceIntentStore.shared.clear()
+    }
+
     func testDefaultConversationPreferenceIssuesNoReturnSurfaceRequest() {
         let harness = makeHarness()
         // Authenticated so the scene path reaches the preference guard —
@@ -74,6 +85,53 @@ final class ChatReturnSurfaceTests: XCTestCase {
         harness.appState.requestPreferredReturnSurfaceForColdLaunch()
 
         XCTAssertEqual(harness.appState.preferredReturnSurfaceRequest, 1)
+    }
+
+    func testColdLaunchWithPendingNotificationSuppressesReturnSurfaceRequest() {
+        let service = PushNotificationService.shared
+        defer { if let target = service.pendingTarget { service.clearPendingTarget(target) } }
+        service.receiveNotificationPayload([
+            "conduit": ["session_id": "runtime-1", "type": "response_ready"] as [String: Any]
+        ])
+
+        let harness = makeHarness(surface: .sessions)
+        XCTAssertTrue(harness.appState.hasPendingExplicitNavigation)
+
+        // Cold launch from a notification tap: the destination is recorded
+        // before the UI exists, so the preferred surface must not issue or
+        // flash while routing waits for the connection.
+        harness.appState.requestPreferredReturnSurfaceForColdLaunch()
+        XCTAssertEqual(harness.appState.preferredReturnSurfaceRequest, 0)
+
+        // A background → active cycle during the same wait is equally
+        // suppressed: the pending destination outranks the preference.
+        harness.appState.connection = HermesConnection(
+            baseUrl: "https://one.example",
+            ticket: "ticket"
+        )
+        harness.appState.handleScenePhase(.background)
+        harness.appState.handleScenePhase(.active)
+        XCTAssertEqual(harness.appState.preferredReturnSurfaceRequest, 0)
+
+        // After the route completes nothing retro-fires: the explicit
+        // navigation fully won that qualifying return.
+        if let target = service.pendingTarget { service.clearPendingTarget(target) }
+        XCTAssertFalse(harness.appState.hasPendingExplicitNavigation)
+        XCTAssertEqual(harness.appState.preferredReturnSurfaceRequest, 0)
+    }
+
+    func testColdLaunchWithPendingVoiceIntentSuppressesReturnSurfaceRequest() {
+        let store = PendingVoiceIntentStore.shared
+        defer { store.clear() }
+        store.enqueue(
+            PendingVoiceIntent(profile: "default", startsFreshConversation: true, source: .siri)
+        )
+
+        let harness = makeHarness(surface: .sessions)
+        XCTAssertTrue(harness.appState.hasPendingExplicitNavigation)
+
+        harness.appState.requestPreferredReturnSurfaceForColdLaunch()
+        XCTAssertEqual(harness.appState.preferredReturnSurfaceRequest, 0)
     }
 
     func testInactiveToActiveAloneDoesNotRequestDrawer() {
