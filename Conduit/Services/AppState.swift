@@ -2849,7 +2849,6 @@ final class AppState: ObservableObject {
             clearStreamingText()
             activeAssistantMessageId = nil
             resetReasoningStream()
-            receivedReasoningForCurrentTurn = false
             turnState = .idle
             errorMessage = nil
             // A fresh conversation has no per-session override and no
@@ -3047,7 +3046,6 @@ final class AppState: ObservableObject {
         }
         activeAssistantMessageId = nil
         resetReasoningStream()
-        receivedReasoningForCurrentTurn = false
         applyRuntime(
             result.snapshot,
             for: result.sessionId
@@ -4288,7 +4286,6 @@ final class AppState: ObservableObject {
         clearStreamingText()
         activeAssistantMessageId = nil
         resetReasoningStream()
-        receivedReasoningForCurrentTurn = false
         turnState = .idle
         finishChatViewportTransition(generation: transitionGeneration)
     }
@@ -7242,7 +7239,6 @@ final class AppState: ObservableObject {
             // previous segment keeps its exact buffered text.
             flushReasoningPublish()
             resetReasoningStream()
-            receivedReasoningForCurrentTurn = false
             setRunning(true)
             notifyVoiceAssistant(.started(sessionID: streamSessionId))
 
@@ -7548,15 +7544,18 @@ final class AppState: ObservableObject {
         publishReasoningBuffer(liveCardID: activeReasoningMessageId)
     }
 
-    /// Drop all live reasoning state without publishing. The transcript is
-    /// being replaced (session open/resume/new conversation), so the old card
-    /// must not receive further updates — including from an in-flight publish.
+    /// Restore the ENTIRE per-turn reasoning state machine to its initial
+    /// condition. The transcript is being replaced (session open/resume/new
+    /// conversation/disconnect), so the old card must not receive further
+    /// updates — including from an in-flight publish — and the next turn's
+    /// completion-carried reasoning must not look already-streamed.
     private func resetReasoningStream() {
         reasoningPublishTask?.cancel()
         reasoningPublishTask = nil
         hasScheduledReasoningPublish = false
         reasoningBuffer = ""
         activeReasoningMessageId = nil
+        receivedReasoningForCurrentTurn = false
     }
 
     private func mergedReasoning(existing: String, incoming: String) -> String {
@@ -8378,7 +8377,6 @@ final class AppState: ObservableObject {
         clearStreamingText()
         activeAssistantMessageId = nil
         resetReasoningStream()
-        receivedReasoningForCurrentTurn = false
         setRunning(false)
         // Cancel any pending coalesced flush and write immediately — the
         // turn is complete so all messages are in their final state.

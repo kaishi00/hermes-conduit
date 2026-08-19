@@ -367,6 +367,41 @@ final class AppStateReasoningStreamTests: XCTestCase {
         )
     }
 
+    func testCompletionOnlyReasoningSurvivesFullReasoningStateReset() {
+        let state = makeAppState()
+        installActiveSession(state, id: "stored-a")
+
+        // Turn one streamed reasoning: receivedReasoningForCurrentTurn == true.
+        feedReasoning(["prior turn reasoning "], sessionId: "stored-a", state: state)
+        XCTAssertEqual(reasoningCards(in: state).count, 1)
+
+        // A full state reset (disconnect) must restore the ENTIRE per-turn
+        // reasoning state machine — a stale turn flag would make the next
+        // session's completion-carried reasoning look already-streamed and
+        // silently discard it.
+        state.disconnect()
+        installActiveSession(state, id: "stored-b")
+
+        state.handleStreamEvent(
+            .messageComplete(
+                sessionId: "stored-b",
+                messageId: "assistant-b",
+                content: "Answer",
+                reasoning: "completion-only reasoning"
+            )
+        )
+        // Force the drained completion synchronously.
+        state.handleStreamEvent(.messageStart(sessionId: "stored-b"))
+
+        let cards = reasoningCards(in: state)
+        XCTAssertEqual(cards.count, 1)
+        XCTAssertEqual(cards.first?.content, "completion-only reasoning")
+        XCTAssertFalse(
+            state.messages.contains { $0.content.contains("prior turn") },
+            "Session A reasoning must not leak into session B's transcript"
+        )
+    }
+
     func testSessionSwitchDiscardsPendingReasoningPublishForNewSession() async {
         let replacementMessages = [
             ChatMessage(id: "new-1", role: .assistant, content: "Other session", timestamp: "1")
