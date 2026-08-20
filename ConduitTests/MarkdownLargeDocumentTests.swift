@@ -574,6 +574,21 @@ final class MarkdownLargeDocumentTests: XCTestCase {
         XCTAssertEqual(promoted, total - tailWindow)
     }
 
+    func testScannerHandlesCRLFInput() {
+        // CRLF deltas ride the \r on the line content; blank boundaries and
+        // exact close markers ($$, :::) must still be recognized.
+        let crlf = "intro\r\n\r\n$$\r\nx = 1\r\n$$\r\n\r\ndone\r\n"
+        var scanner = MarkdownStableBoundaryScanner()
+        let boundaries = scanner.append(crlf)
+        XCTAssertEqual(boundaries.count, 2, "blank CRLF lines must yield boundaries (before math and after it)")
+        XCTAssertFalse(scanner.isInOpenConstruct, "$$ must close on CRLF input")
+
+        var directive = MarkdownStableBoundaryScanner()
+        _ = directive.append("text\r\n\r\n::: note\r\nbody\r\n:::\r\n\r\nafter\r\n")
+        XCTAssertFalse(directive.isInOpenConstruct, "::: must close on CRLF input")
+        XCTAssertNotNil(directive.lastSafeBoundary)
+    }
+
     func testScannerMathCloseMarkersArePaired() {
         // A $$ block containing a lone \] line must stay open until $$.
         var scanner = MarkdownStableBoundaryScanner()

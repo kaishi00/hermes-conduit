@@ -279,33 +279,59 @@ struct MarkdownStableBoundaryScanner {
 
         // A buffered partial continues with the delta's first line.
         if !pendingLine.isEmpty {
-            if let newline = remainder.firstIndex(of: "\n") {
-                pendingLine += remainder[..<newline]
-                consumeCompleteLine(pendingLine, boundaries: &newBoundaries)
+            if let separator = Self.firstLineSeparator(in: remainder) {
+                pendingLine += remainder[..<separator.index]
+                consumeCompleteLine(pendingLine, separatorBytes: separator.byteLength, boundaries: &newBoundaries)
                 pendingLine = ""
-                remainder = remainder[remainder.index(after: newline)...]
+                remainder = remainder[remainder.index(after: separator.index)...]
             } else {
                 pendingLine += remainder
                 return newBoundaries
             }
         }
 
-        while let newline = remainder.firstIndex(of: "\n") {
-            consumeCompleteLine(String(remainder[..<newline]), boundaries: &newBoundaries)
-            remainder = remainder[remainder.index(after: newline)...]
+        while let separator = Self.firstLineSeparator(in: remainder) {
+            consumeCompleteLine(
+                String(remainder[..<separator.index]),
+                separatorBytes: separator.byteLength,
+                boundaries: &newBoundaries
+            )
+            remainder = remainder[remainder.index(after: separator.index)...]
         }
         pendingLine += remainder
         return newBoundaries
     }
 
-    private mutating func consumeCompleteLine(_ line: String, boundaries: inout [Int]) {
-        let lineBytes = line.utf8.count + 1 // including the newline
-        updateState(for: line.trimmingCharacters(in: .whitespaces))
+    /// Swift treats "\r\n" as a single grapheme, so a plain
+    /// `firstIndex(of: "\n")` finds nothing in CRLF text and the whole
+    /// document reads as one line. A line separator here is the "\n"
+    /// grapheme (1 UTF-8 byte) or the "\r\n" grapheme (2 bytes); a lone
+    /// "\r" is not a separator, matching `parseDocument`'s CRLF-only
+    /// normalization.
+    private static func firstLineSeparator(in text: Substring) -> (index: Substring.Index, byteLength: Int)? {
+        var index = text.startIndex
+        while index < text.endIndex {
+            let character = text[index]
+            if character == "\n" { return (index, 1) }
+            if character == "\r\n" { return (index, 2) }
+            index = text.index(after: index)
+        }
+        return nil
+    }
+
+    private mutating func consumeCompleteLine(_ line: String, separatorBytes: Int, boundaries: inout [Int]) {
+        let lineBytes = line.utf8.count + separatorBytes // including the separator
+        // CRLF input (parseDocument normalizes it, so upstream can deliver
+        // it): the \r rides the line content, and .whitespaces trimming
+        // does not remove it — strip it for state/blank checks while the
+        // byte accounting above keeps counting it.
+        let normalized = line.hasSuffix("\r") ? String(line.dropLast()) : line
+        updateState(for: normalized.trimmingCharacters(in: .whitespaces))
 
         // A blank line outside every construct ends a block: everything
         // after this line is a fresh block, so the split point moves to the
         // next line's start. Consecutive blank lines keep moving it.
-        if line.trimmingCharacters(in: .whitespaces).isEmpty,
+        if normalized.trimmingCharacters(in: .whitespaces).isEmpty,
            fenceMarker == nil, mathClose == nil, !inDirective {
             let boundary = consumedOffset + lineBytes
             lastSafeBoundary = boundary
@@ -323,8 +349,9 @@ struct MarkdownStableBoundaryScanner {
         guard !pendingLine.isEmpty else { return }
         let line = pendingLine
         pendingLine = ""
-        updateState(for: line.trimmingCharacters(in: .whitespaces))
-        if line.trimmingCharacters(in: .whitespaces).isEmpty,
+        let normalized = line.hasSuffix("\r") ? String(line.dropLast()) : line
+        updateState(for: normalized.trimmingCharacters(in: .whitespaces))
+        if normalized.trimmingCharacters(in: .whitespaces).isEmpty,
            fenceMarker == nil, mathClose == nil, !inDirective {
             // Match append()'s arithmetic: the boundary sits after the
             // (virtual) newline of the blank line.
