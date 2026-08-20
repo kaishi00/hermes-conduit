@@ -63,6 +63,15 @@ struct StreamingText: View {
     @State private var largeStableChunks: [String] = []
     /// Incremental safe-boundary scanner over `largeAccumulated`.
     @State private var largeScanner = MarkdownStableBoundaryScanner()
+    /// Ascending safe-boundary offsets still ahead of the promoted prefix.
+    /// Keeping the history (not just the latest boundary) lets promotion
+    /// pick the latest boundary inside its bounded window when the newest
+    /// boundaries sit beyond the window — e.g. reveal still inside a fence
+    /// while the scanner has already processed past it. Pruned to the
+    /// promoted prefix and hard-capped so adversarial blank-line floods
+    /// cannot grow it unboundedly.
+    @State private var largeBoundaries: [Int] = []
+    private static let maximumRetainedBoundaries = 4_096
 
     private let timer = Timer.publish(every: 1.0 / 30.0, on: .main, in: .common).autoconnect()
     private let fadeDuration = 0.18
@@ -266,7 +275,7 @@ struct StreamingText: View {
         largeScanner = MarkdownStableBoundaryScanner()
         // The scanner needs the full history to know fence state from any
         // later promotion point onward.
-        _ = largeScanner.append(fullText)
+        largeBoundaries = largeScanner.append(fullText)
         isLargeStream = true
         targetCharacters = []
         visibleCharacters = []
@@ -289,6 +298,7 @@ struct StreamingText: View {
 
         let delta = String(newText.dropFirst(largeAccumulatedChars))
         guard !delta.isEmpty else { return }
+
         largeAccumulated = newText
         largeAccumulatedChars += delta.count
         // String.Index is only valid for the instance it was created from;
@@ -305,7 +315,10 @@ struct StreamingText: View {
             revealAllLargeImmediately()
             return
         }
-        _ = largeScanner.append(delta)
+        largeBoundaries.append(contentsOf: largeScanner.append(delta))
+        if largeBoundaries.count > Self.maximumRetainedBoundaries {
+            largeBoundaries.removeFirst(largeBoundaries.count - Self.maximumRetainedBoundaries)
+        }
 
         if reduceMotion {
             // Everything already arrived is shown instantly; per-tick reveal
@@ -368,7 +381,8 @@ struct StreamingText: View {
             promotedBytes: largePromotedBytes,
             revealedBytes: largeRevealedBytes,
             tailWindowBytes: Self.largeTailWindowBytes,
-            lastSafeBoundary: largeScanner.lastSafeBoundary
+            boundaries: largeBoundaries,
+            constructIntervals: largeScanner.constructIntervals
         ) {
             // Index conversion is linear in the accumulated string, but
             // promotions happen only every few KB of growth, so this stays
@@ -383,6 +397,7 @@ struct StreamingText: View {
 
             largeStableChunks.append(String(largeAccumulated[start..<end]))
             largePromotedBytes = next
+            largeBoundaries.removeAll { $0 <= next }
         }
     }
 

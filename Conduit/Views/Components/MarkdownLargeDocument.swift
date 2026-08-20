@@ -43,6 +43,31 @@ enum MarkdownLargeDocumentPolicy {
     /// Lines per rendered slice of a large code block; bounds each slice's
     /// TextKit layout height (~800 lines ≈ 13K pt) and highlighting pass.
     static let codeSliceLineCount = 800
+    // --- Hardening additions (adversarial shapes) ---
+    /// Byte ceilings for code presentation: a block with a few very long
+    /// lines (minified JS, base64 blobs) must bound work by bytes as well
+    /// as by line count.
+    static let codePreviewLineCount = 200
+    static let codePreviewBytes = 16_000
+    static let codeSliceBytes = 64_000
+    /// Hard maximum for one promoted streaming stable chunk. Kept far below
+    /// the document threshold so a stable chunk can never route back into
+    /// the large-document renderer, and so the MarkdownText render of a
+    /// chunk is bounded regardless of how far ahead safe boundaries sit.
+    static let maxStreamChunkBytes = 2 * chunkTargetBytes
+    /// Tables at/above this estimated size use the paged presentation
+    /// (bounded column measurement on a sampled prefix + row batches).
+    static let largeTableBytes = 32_000
+    /// Textual rich blocks (callouts, columns) above this size reproject
+    /// their bodies into bounded inner text pieces.
+    static let largeTextBlockBytes = chunkTargetBytes
+    /// Math and Mermaid sources above this size drop the render action (the
+    /// renderers are not chunkable); the source stays previewable/copyable.
+    static let mathGuardBytes = 100_000
+    static let mermaidGuardBytes = 100_000
+    /// Byte budget for the per-chunk subset of message-wide reference
+    /// definitions appended at parse time (see MarkdownReferenceResolver).
+    static let referenceSubsetBudgetBytes = 8_000
 
     static func isLargeDocument(_ source: String) -> Bool {
         source.utf8.count >= documentThresholdBytes
@@ -68,6 +93,132 @@ enum MarkdownLargeDocumentPolicy {
 enum MarkdownLargeChunk: Equatable {
     case flow(blocks: [MarkdownBlock])
     case block(MarkdownBlock, originalIndex: Int)
+}
+
+/// Pure slicer for large code blocks: contiguous source slices bounded by
+/// BOTH a line ceiling and a UTF-8 byte ceiling. Concatenating the slices
+/// reproduces the original source exactly (giant lines are cut at
+/// whole-character boundaries with nothing inserted), which keeps Copy and
+/// round-trip tests trivially sound.
+enum MarkdownCodeSlicer {
+    static func slice(_ source: String, maxLines: Int, maxBytes: Int) -> [String] {
+        guard !source.isEmpty else { return [] }
+        var slices: [String] = []
+        var sliceStart = source.startIndex
+        var lineStart = source.startIndex
+        var lines = 0
+        var bytes = 0
+        var index = source.startIndex
+
+        func flush(through end: String.Index) {
+            guard sliceStart < end else { return }
+            slices.append(String(source[sliceStart..<end]))
+            sliceStart = end
+            lines = 0
+            bytes = 0
+        }
+
+        func emitGiantLinePieces(_ range: Range<String.Index>) {
+            var pieceStart = range.lowerBound
+            var pieceBytes = 0
+            var walk = range.lowerBound
+            while walk < range.upperBound {
+                pieceBytes += String(source[walk]).utf8.count
+                if pieceBytes >= maxBytes {
+                    let cut = source.index(after: walk)
+                    slices.append(String(source[pieceStart..<cut]))
+                    pieceStart = cut
+                    pieceBytes = 0
+                }
+                walk = source.index(after: walk)
+            }
+            if pieceStart < range.upperBound {
+                slices.append(String(source[pieceStart..<range.upperBound]))
+            }
+        }
+
+        while index < source.endIndex {
+            if source[index] == "\n" {
+                let lineEnd = source.index(after: index) // includes the newline
+                let lineBytes = source[lineStart..<lineEnd].utf8.count
+                if lineBytes > maxBytes {
+                    // A single line larger than the whole slice budget: emit
+                    // it as its own grapheme-aligned pieces.
+                    flush(through: lineStart)
+                    emitGiantLinePieces(lineStart..<lineEnd)
+                    sliceStart = lineEnd
+                    lines = 0
+                    bytes = 0
+                } else {
+                    if lines + 1 > maxLines || bytes + lineBytes > maxBytes {
+                        flush(through: lineStart)
+                    }
+                    lines += 1
+                    bytes += lineBytes
+                }
+                lineStart = lineEnd
+                index = lineEnd
+                continue
+            }
+            index = source.index(after: index)
+        }
+
+        if lineStart < source.endIndex {
+            let lineBytes = source[lineStart...].utf8.count
+            if lineBytes > maxBytes {
+                flush(through: lineStart)
+                emitGiantLinePieces(lineStart..<source.endIndex)
+                return slices
+            }
+            if lines + 1 > maxLines || bytes + lineBytes > maxBytes {
+                flush(through: lineStart)
+            }
+        }
+        flush(through: source.endIndex)
+        return slices
+    }
+}
+
+/// Incremental inline-marker balance for flow-text splitting. A cut is
+/// "safe" when no inline construct visibly spans it: even backtick count
+/// (inline code), zero open bracket depth (links/images/labels), and even
+/// asterisk/underscore/tilde parity (emphasis/strikethrough). Escaped
+/// characters (\*) do not count. This is deliberately a heuristic — it can
+/// only choose between cut points, never alter text — and a pathological
+/// unbalanceable window falls back to the plain target cut (rendered inline
+/// markers may then appear literal in that one piece).
+struct MarkdownInlineBalance {
+    private var backticks = 0
+    private var bracketDepth = 0
+    private var asterisks = 0
+    private var underscores = 0
+    private var tildes = 0
+    private var escaped = false
+
+    mutating func consume(_ character: Character) {
+        if escaped {
+            escaped = false
+            return
+        }
+        switch character {
+        case "\\": escaped = true
+        case "`": backticks += 1
+        case "[": bracketDepth += 1
+        case "]": bracketDepth = max(0, bracketDepth - 1)
+        case "*": asterisks += 1
+        case "_": underscores += 1
+        case "~": tildes += 1
+        default: break
+        }
+    }
+
+    var isBalanced: Bool {
+        bracketDepth == 0
+            && backticks % 2 == 0
+            && asterisks % 2 == 0
+            && underscores % 2 == 0
+            && tildes % 2 == 0
+    }
 }
 
 /// Groups a parsed document's blocks into bounded chunks. Pure and cheap:
@@ -115,14 +266,20 @@ enum MarkdownLargeChunkPlanner {
     /// quote lines, or word boundaries inside a paragraph/heading) so every
     /// piece stays within the chunk target. Heading text is small by nature
     /// but shares the paragraph fallback for completeness.
+    ///
+    /// Ordered lists: only the FIRST chunk of a split list keeps the real
+    /// `.orderedList` rendering; continuation groups render as paragraphs
+    /// with the ordinal baked into the text ("7. …") so numbering never
+    /// restarts at 1. The baked-number styling differs from the styled list
+    /// marker — a pathological-only formatting tradeoff.
     private static func splitOversized(block: MarkdownBlock) -> [MarkdownLargeChunk] {
         switch block {
         case .unorderedList(let items):
-            return groupItems(items) { .unorderedList($0) }
+            return splitListItems(items, ordered: false)
         case .orderedList(let items):
-            return groupItems(items) { .orderedList($0) }
+            return splitListItems(items, ordered: true)
         case .quote(let lines):
-            return groupItems(lines) { .quote($0) }
+            return splitQuoteLines(lines)
         case .heading(let level, let text):
             return splitText(text) { .heading(level: level, text: $0) }
         case .paragraph(let text):
@@ -132,32 +289,111 @@ enum MarkdownLargeChunkPlanner {
         }
     }
 
-    private static func groupItems<T>(_ items: [T], make: ([T]) -> MarkdownBlock) -> [MarkdownLargeChunk] {
-        func itemBytes(_ item: T) -> Int {
-            if let string = item as? String { return string.utf8.count }
-            if let line = item as? MarkdownQuoteLine { return line.text.utf8.count }
-            return 0
-        }
+    private static func splitListItems(_ items: [String], ordered: Bool) -> [MarkdownLargeChunk] {
+        let target = MarkdownLargeDocumentPolicy.chunkTargetBytes
         var chunks: [MarkdownLargeChunk] = []
-        var group: [T] = []
+        var group: [String] = []
+        var groupStartIndex = 0
         var groupBytes = 0
-        for item in items {
-            let bytes = itemBytes(item) + 32 // marker/separator allowance
-            if groupBytes + bytes > MarkdownLargeDocumentPolicy.chunkTargetBytes, !group.isEmpty {
-                chunks.append(.flow(blocks: [make(group)]))
-                group = []
-                groupBytes = 0
+        var emittedFirstGroup = false
+
+        func flush() {
+            guard !group.isEmpty else { return }
+            if ordered && emittedFirstGroup {
+                // Continuation of an ordered list: bake the real ordinals.
+                let paragraphs = group.enumerated().map { offset, item in
+                    MarkdownBlock.paragraph("\(groupStartIndex + offset + 1). \(taskStripped(item))")
+                }
+                chunks.append(.flow(blocks: paragraphs))
+            } else {
+                chunks.append(.flow(blocks: [ordered ? .orderedList(group) : .unorderedList(group)]))
+                emittedFirstGroup = true
+            }
+            group = []
+            groupBytes = 0
+        }
+
+        for (index, item) in items.enumerated() {
+            let bytes = item.utf8.count + 32 // marker/separator allowance
+            if bytes > target {
+                // One pathologically huge item: its first piece keeps the
+                // list semantics (or the baked ordinal); continuations are
+                // plain paragraphs.
+                flush()
+                groupStartIndex = index + 1
+                let task = MarkdownParser.taskItem(item)
+                let baseText = task?.text ?? item
+                let prefix = ordered ? "\(index + 1). " : ""
+                let taskMarker = task.map { $0.complete ? "[x] " : "[ ] " } ?? ""
+                let marked = taskMarker + baseText
+                // Uniform paragraph presentation for oversized items and
+                // their continuations keeps the pieces visually coherent
+                // (the ordinal or task marker is baked into the text).
+                chunks.append(contentsOf: splitText(marked) { piece in
+                    .paragraph(prefix + piece)
+                })
+                continue
+            }
+            if groupBytes + bytes > target, !group.isEmpty {
+                flush()
+                groupStartIndex = index
             }
             group.append(item)
             groupBytes += bytes
         }
-        if !group.isEmpty { chunks.append(.flow(blocks: [make(group)])) }
+        flush()
+        return chunks
+    }
+
+    private static func taskStripped(_ item: String) -> String {
+        MarkdownParser.taskItem(item)?.text ?? item
+    }
+
+    private static func splitQuoteLines(_ lines: [MarkdownQuoteLine]) -> [MarkdownLargeChunk] {
+        let target = MarkdownLargeDocumentPolicy.chunkTargetBytes
+        var chunks: [MarkdownLargeChunk] = []
+        var group: [MarkdownQuoteLine] = []
+        var groupBytes = 0
+
+        func flush() {
+            guard !group.isEmpty else { return }
+            chunks.append(.flow(blocks: [.quote(group)]))
+            group = []
+            groupBytes = 0
+        }
+
+        for line in lines {
+            let bytes = line.text.utf8.count + 8
+            if bytes > target {
+                // A pathologically huge quote line splits into several
+                // same-depth quote lines — quote chrome and depth semantics
+                // are preserved for every piece.
+                flush()
+                chunks.append(contentsOf: splitText(line.text) { piece in
+                    .quote([MarkdownQuoteLine(depth: line.depth, text: piece)])
+                })
+                continue
+            }
+            if groupBytes + bytes > target, !group.isEmpty {
+                flush()
+            }
+            group.append(line)
+            groupBytes += bytes
+        }
+        flush()
         return chunks
     }
 
     /// Word-boundary text split into ~chunkTargetBytes pieces. Each piece
     /// renders as its own paragraph; soft wrapping makes consecutive pieces
     /// read as one flowing body with a little extra paragraph spacing.
+    ///
+    /// Cut selection prefers the latest whitespace boundary whose prefix
+    /// has balanced inline markers (code spans, links, emphasis), so a
+    /// `**bold**`/`` `code` ``/`[link](…)` construct is not visibly broken
+    /// across pieces. A window with no balanced candidate falls back to the
+    /// plain whitespace cut — pathological inline soup may then show literal
+    /// markers at one seam, never altered text.
     static func splitText(_ text: String, make: (String) -> MarkdownBlock) -> [MarkdownLargeChunk] {
         guard text.utf8.count > MarkdownLargeDocumentPolicy.chunkTargetBytes else {
             return [.flow(blocks: [make(text)])]
@@ -165,18 +401,41 @@ enum MarkdownLargeChunkPlanner {
         var chunks: [MarkdownLargeChunk] = []
         var pieceStart = text.startIndex
         var pieceBytes = 0
-        var lastBoundary = text.startIndex
+        var lastWhitespace: String.Index?
+        var lastBalanced: String.Index?
+        var balance = MarkdownInlineBalance()
         var index = text.startIndex
         while index < text.endIndex {
             let character = text[index]
-            if character == " " || character == "\n" { lastBoundary = index }
+            balance.consume(character)
+            if character == " " || character == "\n" {
+                lastWhitespace = index
+                if balance.isBalanced {
+                    lastBalanced = text.index(after: index)
+                }
+            }
             pieceBytes += String(character).utf8.count
             if pieceBytes >= MarkdownLargeDocumentPolicy.chunkTargetBytes {
-                let cut = lastBoundary > pieceStart ? text.index(after: lastBoundary) : index
+                let cut: String.Index
+                if let balanced = lastBalanced, balanced > pieceStart, balanced <= text.index(after: index) {
+                    cut = balanced
+                } else if let boundary = lastWhitespace, boundary > pieceStart {
+                    cut = text.index(after: boundary)
+                } else {
+                    cut = text.index(after: index)
+                }
                 chunks.append(.flow(blocks: [make(String(text[pieceStart..<cut]))]))
                 pieceStart = cut
                 pieceBytes = 0
-                lastBoundary = cut
+                lastWhitespace = nil
+                lastBalanced = nil
+                // A balanced cut leaves the remainder marker-free, so the
+                // balance state legitimately restarts with the new piece;
+                // rewind so characters between the cut and the triggering
+                // index are consumed by the new piece's own accounting.
+                balance = MarkdownInlineBalance()
+                index = cut
+                continue
             }
             index = text.index(after: index)
         }
@@ -207,35 +466,146 @@ extension MarkdownBlock {
     }
 }
 
-/// Pure decision step of the large-stream projection: given how much has
-/// been promoted, revealed, and the latest safe boundary, returns the next
-/// byte offset to promote up to (or nil when nothing should move). Kept
-/// side-effect-free so the promotion policy is directly unit-testable.
+/// Pure decision step of the large-stream projection. Returns the next byte
+/// offset to promote up to (or nil when nothing should move). Side-effect
+/// free so the policy is directly unit-testable.
+///
+/// Selection seeks the LATEST safe boundary inside a bounded window
+/// `[promoted + minChunk, min(promoted + maxChunk, stableTarget)]` — never
+/// the globally latest boundary, which could sit hundreds of KB ahead and
+/// produce a huge stable chunk that re-enters whole-document rendering.
+///
+/// With no boundary in the window:
+/// - if the stable target sits inside a known construct span (fence/math/
+///   directive), promotion WAITS — a hard cut must never split a construct;
+/// - otherwise the text is genuinely unstructured prose and a bounded,
+///   grapheme-aligned hard cut advances one piece.
 enum LargeStreamPromotion {
     static func nextPromotionBoundary(
         promotedBytes: Int,
         revealedBytes: Int,
         tailWindowBytes: Int = MarkdownLargeDocumentPolicy.chunkTargetBytes,
-        chunkTargetBytes: Int = MarkdownLargeDocumentPolicy.chunkTargetBytes,
-        lastSafeBoundary: Int?
+        minChunkBytes: Int = MarkdownLargeDocumentPolicy.chunkTargetBytes,
+        maxChunkBytes: Int = MarkdownLargeDocumentPolicy.maxStreamChunkBytes,
+        boundaries: [Int],
+        constructIntervals: [(start: Int, end: Int?)] = []
     ) -> Int? {
         // Only revealed content well past the live tail window is stable.
         let stableTarget = revealedBytes - tailWindowBytes
-        guard stableTarget - promotedBytes > chunkTargetBytes else { return nil }
+        guard stableTarget - promotedBytes > minChunkBytes else { return nil }
 
-        // Prefer a safe boundary (never inside a fence/math/directive).
-        let minimumNext = promotedBytes + chunkTargetBytes
-        if let boundary = lastSafeBoundary, boundary >= minimumNext, boundary <= stableTarget {
+        let minimumNext = promotedBytes + minChunkBytes
+        let windowEnd = min(promotedBytes + maxChunkBytes, stableTarget)
+
+        // Latest safe boundary inside the bounded window.
+        if let boundary = boundaries.last(where: { $0 >= minimumNext && $0 <= windowEnd }) {
             return boundary
         }
-        // No safe boundary in reach — a giant unbroken paragraph — so
-        // hard-cut one bounded piece, mirroring the planner's oversized-
-        // block split, but only once the unpromoted region is clearly past
-        // the tail window.
-        if stableTarget - promotedBytes >= 2 * chunkTargetBytes {
-            return min(stableTarget, promotedBytes + 2 * chunkTargetBytes)
+
+        // Structural guard: never hard-cut through a construct that
+        // contains the stable target. Promotion waits for a real boundary;
+        // if the construct never closes, the tail itself eventually crosses
+        // the large-document threshold and renders through the bounded
+        // collapsed presentation instead.
+        let insideConstruct = constructIntervals.contains { interval in
+            let end = interval.end ?? Int.max
+            return stableTarget > interval.start && stableTarget < end
+        }
+        if insideConstruct { return nil }
+
+        // Unstructured prose: bounded hard-cut fallback.
+        if stableTarget - promotedBytes >= 2 * minChunkBytes {
+            return min(stableTarget, promotedBytes + 2 * minChunkBytes)
         }
         return nil
+    }
+}
+
+/// Per-chunk subsetting of message-wide reference definitions. Large-mode
+/// chunks must not append an arbitrarily large global definition block to
+/// every Foundation parse; the one-time off-main preparation computes, for
+/// each chunk, the definitions whose labels that chunk's text actually
+/// references (Foundation stays the semantic resolver — unused definitions
+/// render invisibly under `.full`, exactly the property PR #75 relies on).
+enum MarkdownReferenceResolver {
+    struct Definition: Equatable {
+        let label: String
+        let markdown: String
+    }
+
+    /// Splits a definitions context into individual definition lines with
+    /// their labels (the same single-line subset `parseDocument` collects).
+    static func definitions(from context: MarkdownReferenceContext) -> [Definition] {
+        guard context.containsDefinitions else { return [] }
+        return context.definitionsMarkdown
+            .components(separatedBy: "\n")
+            .compactMap { line in
+                guard let range = line.range(of: #"^\[([^\[\]\^][^\[\]]*)\]:"#, options: .regularExpression) else {
+                    return nil
+                }
+                // The whole-match range covers "[label]:" — strip the
+                // brackets and colon, keeping only the label.
+                let label = String(line[range].dropFirst().dropLast(2))
+                guard !label.isEmpty else { return nil }
+                return Definition(label: label.lowercased(), markdown: line)
+            }
+    }
+
+    /// Labels referenced by a chunk's text, in any of the Foundation forms
+    /// (`[text][label]`, `[label][]`, shortcut `[label]`). Over-inclusion is
+    /// harmless (unused definitions are invisible); under-inclusion would
+    /// break links, so the scan is deliberately generous.
+    static func referencedLabels(in text: String) -> Set<String> {
+        var labels = Set<String>()
+        var index = text.startIndex
+        while index < text.endIndex {
+            guard text[index] == "[" else {
+                index = text.index(after: index)
+                continue
+            }
+            // Collect one single-level bracket group. Nested brackets or a
+            // newline inside disqualify it from every reference form.
+            var walk = text.index(after: index)
+            var inner: [Character] = []
+            var closed = false
+            while walk < text.endIndex {
+                let character = text[walk]
+                if character == "]" { closed = true; break }
+                if character == "[" || character == "\n" { break }
+                inner.append(character)
+                walk = text.index(after: walk)
+            }
+            if closed, !inner.isEmpty, inner.first != "^" {
+                labels.insert(String(inner).lowercased())
+                index = text.index(after: walk)
+            } else {
+                index = text.index(after: index)
+            }
+        }
+        return labels
+    }
+
+    /// The bounded per-chunk definition context: only definitions whose
+    /// labels appear in `text`, capped at `budgetBytes` (a pathological
+    /// chunk referencing everything still parses against a bounded block;
+    /// links beyond the budget degrade to literal text in that one chunk).
+    static func subset(
+        for text: String,
+        definitions: [Definition],
+        budgetBytes: Int = MarkdownLargeDocumentPolicy.referenceSubsetBudgetBytes
+    ) -> MarkdownReferenceContext {
+        guard !definitions.isEmpty else { return .empty }
+        let used = referencedLabels(in: text)
+        guard !used.isEmpty else { return .empty }
+        var selected: [String] = []
+        var bytes = 0
+        for definition in definitions where used.contains(definition.label) {
+            if bytes + definition.markdown.utf8.count + 1 > budgetBytes { break }
+            selected.append(definition.markdown)
+            bytes += definition.markdown.utf8.count + 1
+        }
+        guard !selected.isEmpty else { return .empty }
+        return MarkdownReferenceContext(definitionsMarkdown: selected.joined(separator: "\n"))
     }
 }
 
@@ -267,6 +637,12 @@ struct MarkdownStableBoundaryScanner {
     /// the end of everything consumed — callers avoid promoting a prefix
     /// that ends mid-construct.
     var isInOpenConstruct: Bool { fenceMarker != nil || mathClose != nil || inDirective }
+
+    /// Absolute byte spans of every fenced/math/directive construct seen so
+    /// far (an open construct has a nil end). The streaming promotion policy
+    /// refuses to hard-cut through a span that contains the current stable
+    /// target. One interval per construct — bounded by construct count.
+    private(set) var constructIntervals: [(start: Int, end: Int?)] = []
 
     /// Feeds an append-only delta and returns any newly discovered safe
     /// boundary offsets (absolute, UTF-8). The delta's complete lines are
@@ -326,7 +702,14 @@ struct MarkdownStableBoundaryScanner {
         // does not remove it — strip it for state/blank checks while the
         // byte accounting above keeps counting it.
         let normalized = line.hasSuffix("\r") ? String(line.dropLast()) : line
-        updateState(for: normalized.trimmingCharacters(in: .whitespaces))
+        let wasInConstruct = fenceMarker != nil || mathClose != nil || inDirective
+        let lineStartOffset = consumedOffset
+        updateStateForLine(normalized.trimmingCharacters(in: .whitespaces), lineStartOffset: lineStartOffset, lineBytes: lineBytes)
+        let isInConstruct = fenceMarker != nil || mathClose != nil || inDirective
+        if wasInConstruct && !isInConstruct, !constructIntervals.isEmpty {
+            constructIntervals[constructIntervals.count - 1].end = consumedOffset + lineBytes
+        }
+        _ = boundaries
 
         // A blank line outside every construct ends a block: everything
         // after this line is a fresh block, so the split point moves to the
@@ -350,7 +733,15 @@ struct MarkdownStableBoundaryScanner {
         let line = pendingLine
         pendingLine = ""
         let normalized = line.hasSuffix("\r") ? String(line.dropLast()) : line
-        updateState(for: normalized.trimmingCharacters(in: .whitespaces))
+        let wasInConstruct = fenceMarker != nil || mathClose != nil || inDirective
+        updateStateForLine(
+            normalized.trimmingCharacters(in: .whitespaces),
+            lineStartOffset: consumedOffset,
+            lineBytes: line.utf8.count
+        )
+        if wasInConstruct && !(fenceMarker != nil || mathClose != nil || inDirective), !constructIntervals.isEmpty {
+            constructIntervals[constructIntervals.count - 1].end = consumedOffset + line.utf8.count
+        }
         if normalized.trimmingCharacters(in: .whitespaces).isEmpty,
            fenceMarker == nil, mathClose == nil, !inDirective {
             // Match append()'s arithmetic: the boundary sits after the
@@ -360,7 +751,7 @@ struct MarkdownStableBoundaryScanner {
         consumedOffset += line.utf8.count
     }
 
-    private mutating func updateState(for trimmedLine: String) {
+    private mutating func updateStateForLine(_ trimmedLine: String, lineStartOffset: Int, lineBytes: Int) {
         if let marker = fenceMarker {
             if trimmedLine.hasPrefix(marker) {
                 fenceMarker = nil
@@ -375,14 +766,23 @@ struct MarkdownStableBoundaryScanner {
             if trimmedLine == ":::" { inDirective = false }
             return
         }
-        if trimmedLine.hasPrefix("```") { fenceMarker = "```" }
-        else if trimmedLine.hasPrefix("~~~") { fenceMarker = "~~~" }
-        else if trimmedLine == "$$" { mathClose = "$$" }
-        else if trimmedLine == "\\[" { mathClose = "\\]" }
-        else if trimmedLine.hasPrefix(":::") {
+        if trimmedLine.hasPrefix("```") {
+            fenceMarker = "```"
+            constructIntervals.append((start: lineStartOffset, end: nil))
+        } else if trimmedLine.hasPrefix("~~~") {
+            fenceMarker = "~~~"
+            constructIntervals.append((start: lineStartOffset, end: nil))
+        } else if trimmedLine == "$$" {
+            mathClose = "$$"
+            constructIntervals.append((start: lineStartOffset, end: nil))
+        } else if trimmedLine == "\\[" {
+            mathClose = "\\]"
+            constructIntervals.append((start: lineStartOffset, end: nil))
+        } else if trimmedLine.hasPrefix(":::") {
             let name = trimmedLine.dropFirst(3).trimmingCharacters(in: .whitespaces).lowercased()
             if ["note", "info", "tip", "hint", "warning", "caution", "danger", "error", "important", "columns"].contains(name) {
                 inDirective = true
+                constructIntervals.append((start: lineStartOffset, end: nil))
             }
         }
     }

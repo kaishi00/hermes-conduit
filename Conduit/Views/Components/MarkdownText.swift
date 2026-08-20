@@ -1191,6 +1191,42 @@ private struct MarkdownTable: View {
     }
 
     private func tableRow(_ cells: [String], rowIndex: Int, isHeader: Bool, widths: [CGFloat]) -> some View {
+        MarkdownTableRowView(
+            cells: cells,
+            isHeader: isHeader,
+            widths: widths,
+            alignments: alignments,
+            foregroundStyle: foregroundStyle,
+            usesAccentSurface: usesAccentSurface,
+            selectionCoordinator: selectionCoordinator,
+            segmentFor: { selectionSegment(row: rowIndex, column: $0) }
+        )
+    }
+
+    private func alignment(at index: Int) -> MarkdownTableAlignment {
+        alignments.indices.contains(index) ? alignments[index] : .leading
+    }
+
+    private func selectionSegment(row: Int, column: Int) -> MarkdownSelectionSegmentDescriptor? {
+        let id = "block-\(blockIndex)-table-r\(row)-c\(column)"
+        return selectionSegments.first { $0.id == id }
+    }
+}
+
+/// The table row rendering shared by `MarkdownTable` and the paged
+/// `LargeMarkdownTable` so dividers, fonts, alignment, selection, and the
+/// deterministic single-width sizing behave identically in both paths.
+struct MarkdownTableRowView: View {
+    let cells: [String]
+    let isHeader: Bool
+    let widths: [CGFloat]
+    let alignments: [MarkdownTableAlignment]
+    let foregroundStyle: Color
+    let usesAccentSurface: Bool
+    let selectionCoordinator: MarkdownSelectionCoordinator?
+    let segmentFor: (Int) -> MarkdownSelectionSegmentDescriptor?
+
+    var body: some View {
         HStack(spacing: 0) {
             ForEach(Array(cells.enumerated()), id: \.offset) { index, cell in
                 let width = widths.indices.contains(index)
@@ -1203,14 +1239,14 @@ private struct MarkdownTable: View {
                     font: isHeader
                         ? UIFont.preferredFont(forTextStyle: .caption1).withTraits(.traitBold)
                         : UIFont.preferredFont(forTextStyle: .footnote),
-                    textAlignment: alignment(at: index).nsText,
+                    textAlignment: alignments.indices.contains(index) ? alignments[index].nsText : .natural,
                     // The exact shared column width — a single-value range keeps
                     // the cell's measured/committed height deterministic from the
                     // first layout pass, and .frame(width:) below pins the
                     // displayed width so every row's dividers align.
                     selfSizingWidthRange: width...width,
                     selectionCoordinator: selectionCoordinator,
-                    selectionSegment: selectionSegment(row: rowIndex, column: index)
+                    selectionSegment: segmentFor(index)
                 )
                     .frame(width: width)
                     .padding(.horizontal, 10)
@@ -1221,14 +1257,148 @@ private struct MarkdownTable: View {
             }
         }
     }
+}
 
-    private func alignment(at index: Int) -> MarkdownTableAlignment {
-        alignments.indices.contains(index) ? alignments[index] : .leading
+/// Paged presentation for very large tables: column widths are computed
+/// once from a bounded sample of leading rows (measuring every cell of a
+/// 1 MB table would itself be unbounded work), and rows mount in explicit
+/// batches — never all at once. Cell selection ids keep the ordinary
+/// `block-N-table-rX-cY` shape, so coordinator selection behaves like any
+/// other table.
+struct LargeMarkdownTable: View {
+    let headers: [String]
+    let alignments: [MarkdownTableAlignment]
+    let rows: [[String]]
+    let foregroundStyle: Color
+    let usesAccentSurface: Bool
+    let selectionCoordinator: MarkdownSelectionCoordinator?
+    let blockIndex: Int
+    let selectionSegments: [MarkdownSelectionSegmentDescriptor]
+
+    @State private var renderedRowCount = LargeMarkdownTable.initialRowBatch
+    @Environment(\.markdownReferences) private var references
+
+    /// Rows whose cells feed the shared width measurement. Widths computed
+    /// from a bounded prefix can differ from whole-table widths for wildly
+    /// varying columns — a documented pathological-only tradeoff that keeps
+    /// the expensive measurement bounded.
+    static let widthSampleRows = 100
+    static let initialRowBatch = 25
+    static let rowBatch = 100
+
+    private var columnWidths: [CGFloat] {
+        MarkdownTableLayout.columnWidths(
+            headers: headers,
+            rows: Array(rows.prefix(Self.widthSampleRows)),
+            availableWidth: 0,
+            references: references
+        )
     }
 
-    private func selectionSegment(row: Int, column: Int) -> MarkdownSelectionSegmentDescriptor? {
+    private func segmentDescriptor(row: Int, column: Int) -> MarkdownSelectionSegmentDescriptor? {
         let id = "block-\(blockIndex)-table-r\(row)-c\(column)"
         return selectionSegments.first { $0.id == id }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 0) {
+                    MarkdownTableRowView(
+                        cells: headers,
+                        isHeader: true,
+                        widths: columnWidths,
+                        alignments: alignments,
+                        foregroundStyle: foregroundStyle,
+                        usesAccentSurface: usesAccentSurface,
+                        selectionCoordinator: selectionCoordinator,
+                        segmentFor: { segmentDescriptor(row: 0, column: $0) }
+                    )
+                    ForEach(0..<renderedRowCount, id: \.self) { rowOffset in
+                        Divider().overlay(usesAccentSurface ? Color.white.opacity(0.22) : Color.secondary.opacity(0.18))
+                        MarkdownTableRowView(
+                            cells: rows[rowOffset],
+                            isHeader: false,
+                            widths: columnWidths,
+                            alignments: alignments,
+                            foregroundStyle: foregroundStyle,
+                            usesAccentSurface: usesAccentSurface,
+                            selectionCoordinator: selectionCoordinator,
+                            segmentFor: { segmentDescriptor(row: rowOffset + 1, column: $0) }
+                        )
+                    }
+                }
+                .background(
+                    usesAccentSurface ? Color.black.opacity(0.13) : Color.primary.opacity(0.035),
+                    in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(usesAccentSurface ? Color.white.opacity(0.26) : Color.secondary.opacity(0.20), lineWidth: 1)
+                }
+            }
+            if renderedRowCount < rows.count {
+                Button {
+                    renderedRowCount = min(renderedRowCount + Self.rowBatch, rows.count)
+                } label: {
+                    Label("Show \(min(Self.rowBatch, rows.count - renderedRowCount)) more rows (\(rows.count - renderedRowCount) of \(rows.count) left)", systemImage: "chevron.down")
+                        .font(.caption.weight(.semibold))
+                }
+                .tint(usesAccentSurface ? .white : .conduitAccent)
+                .padding(.vertical, 8)
+            }
+        }
+    }
+}
+
+/// Fallback card for oversized math/Mermaid sources: the dedicated
+/// renderers are not chunkable, so past the guard size the presentation is
+/// a bounded source preview plus Copy (the render action is dropped).
+struct GuardedSourceCard: View {
+    let title: String
+    let icon: String
+    let source: String
+    let guardBytes: Int
+
+    @State private var copied = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label(title, systemImage: icon)
+                    .font(.caption2.monospaced().weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text("Too large to render")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            SelectableTextView(
+                text: String(source.prefix(2_000)),
+                font: .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1).pointSize, weight: .regular),
+                textColor: .label,
+                maximumNumberOfLines: 5
+            )
+            Button {
+                UIPasteboard.general.string = source
+                Haptics.light()
+                copied = true
+                Task {
+                    try? await Task.sleep(for: .seconds(1.4))
+                    guard !Task.isCancelled else { return }
+                    copied = false
+                }
+            } label: {
+                Label(copied ? "Copied" : "Copy full source", systemImage: copied ? "checkmark" : "doc.on.doc")
+                    .font(.caption.weight(.semibold))
+            }
+            .tint(.conduitAccent)
+        }
+        .padding(12)
+        .background(Color.primary.opacity(0.055), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 13, style: .continuous).strokeBorder(Color.secondary.opacity(0.20), lineWidth: 1)
+        }
     }
 }
 

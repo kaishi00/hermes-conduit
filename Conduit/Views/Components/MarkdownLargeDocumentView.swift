@@ -151,7 +151,13 @@ private struct LargeDocumentBanner: View {
 /// against a stale pass populating a changed message.
 struct LargeMarkdownPreparedDocument {
     let chunks: [MarkdownLargeChunk]
+    /// The message-wide context (used by rich-block subviews that read the
+    /// environment default); per-chunk subsets live in `referencesByChunk`.
     let references: MarkdownReferenceContext
+    /// Bounded per-chunk reference-definition subsets, so an 8 KB chunk
+    /// never drags an arbitrarily large global definition block into its
+    /// Foundation parse (see MarkdownReferenceResolver).
+    let referencesByChunk: [MarkdownReferenceContext]
     /// Selection descriptors in document order — one synthetic descriptor
     /// per flow chunk, the ordinary per-block descriptors (original `block-N`
     /// ids included) for rich blocks — so cross-chunk selection works
@@ -162,12 +168,14 @@ struct LargeMarkdownPreparedDocument {
     let descriptorsByChunk: [[MarkdownSelectionSegmentDescriptor]]
     let sourceIdentity: String
 
-    /// Pure string work — no UIKit — so it runs off the MainActor.
-    /// (`MarkdownParser.parseDocument` is a plain static over value types;
-    /// its Foundation `AttributedString(markdown:)` probes are thread-safe.)
-    static func prepare(_ source: String) -> LargeMarkdownPreparedDocument {
+    /// String work only — no UIKit — so it runs off the MainActor as a
+    /// cooperative child of the caller's task (cancellation stops the pass
+    /// between stages instead of wasting a megabyte parse after a switch).
+    static func prepare(_ source: String) async -> LargeMarkdownPreparedDocument? {
         let document = MarkdownParser.parseDocument(source)
+        guard !Task.isCancelled else { return nil }
         let chunks = MarkdownLargeChunkPlanner.chunks(for: document.blocks)
+        guard !Task.isCancelled else { return nil }
 
         // Slice the ordinary per-block plan by original block index so rich
         // chunks get exactly the descriptors (and `block-N` ids) their
@@ -209,10 +217,22 @@ struct LargeMarkdownPreparedDocument {
                 all.append(contentsOf: slice)
             }
         }
+        guard !Task.isCancelled else { return nil }
+
+        // Per-chunk reference subsets from the chunk's own text.
+        let definitions = MarkdownReferenceResolver.definitions(from: document.references)
+        var referencesByChunk: [MarkdownReferenceContext] = []
+        referencesByChunk.reserveCapacity(chunks.count)
+        for chunk in chunks {
+            referencesByChunk.append(
+                MarkdownReferenceResolver.subset(for: chunk.flattenedText, definitions: definitions)
+            )
+        }
 
         return LargeMarkdownPreparedDocument(
             chunks: chunks,
             references: document.references,
+            referencesByChunk: referencesByChunk,
             segmentDescriptors: all,
             descriptorsByChunk: descriptorsByChunk,
             sourceIdentity: Self.identity(of: source)
@@ -224,11 +244,46 @@ struct LargeMarkdownPreparedDocument {
     }
 }
 
+/// Text projection of a chunk used for reference-label scanning — every
+/// fragment of the chunk that Foundation will parse with the definitions
+/// appended.
+extension MarkdownLargeChunk {
+    var flattenedText: String {
+        switch self {
+        case .flow(let blocks):
+            return blocks.map(\.flattenedText).joined(separator: "\n")
+        case .block(let block, _):
+            return block.flattenedText
+        }
+    }
+}
+
+extension MarkdownBlock {
+    /// All text fragments of the block that inline parsing will see.
+    var flattenedText: String {
+        switch self {
+        case .heading(_, let text), .paragraph(let text): return text
+        case .quote(let lines): return lines.map(\.text).joined(separator: "\n")
+        case .unorderedList(let items), .orderedList(let items): return items.joined(separator: "\n")
+        case .table(let headers, _, let rows):
+            return ([headers] + rows).map { $0.joined(separator: " ") }.joined(separator: "\n")
+        case .code(_, let source): return source
+        case .callout(_, let text): return text
+        case .columns(let columns): return columns.joined(separator: "\n")
+        case .math(let source): return source
+        case .image(let url, let alt): return "\(alt) \(url)"
+        case .divider: return ""
+        }
+    }
+}
+
 // MARK: - Expanded document
 
-/// Expanded body: parse off-main, render chunks progressively. Chunks
-/// materialize in batches as the user scrolls — a monotonic window that
-/// only grows downward, so scroll position never jumps.
+/// Expanded body: prepare off-main, then render chunks progressively. The
+/// initial batch mounts immediately; every further batch requires an
+/// explicit Continue action — a plain VStack fires onAppear on insertion
+/// rather than on visibility, so any automatic growth would cascade through
+/// hundreds of chunks without the user ever scrolling.
 struct LargeMarkdownExpandedView: View {
     let source: String
     let foregroundStyle: Color
@@ -239,22 +294,12 @@ struct LargeMarkdownExpandedView: View {
     @State private var prepared: LargeMarkdownPreparedDocument?
     /// How many chunks are materialized in the view hierarchy.
     @State private var renderedChunkCount = LargeMarkdownExpandedView.initialChunkBatch
-    /// Re-entrancy guard: at most one window extension per runloop turn.
-    /// Without it, a batch of simultaneous onAppear calls (a plain VStack
-    /// fires onAppear on insertion, not visibility) cascades into mounting
-    /// every chunk of a many-thousand-chunk document in one layout pass.
-    @State private var isExtendingWindow = false
 
     /// First synchronous batch: enough to fill a screen at typical chunk
     /// heights while keeping per-chunk work in single-digit milliseconds.
     static let initialChunkBatch = 12
-    private static let chunkBatch = 12
-    /// Hard ceiling on simultaneously mounted chunks. Documents made of
-    /// pathological tiny blocks (a mini-table after every sentence) can
-    /// produce thousands of chunks; past the ceiling the footer becomes a
-    /// Continue control, so the mounted-view count is bounded by
-    /// construction rather than by how fast a layout pass fires onAppear.
-    private static let maximumMountedChunks = 480
+    /// Chunks added per explicit Continue action.
+    static let continueChunkBatch = 25
 
     private var sourceIdentity: String { LargeMarkdownPreparedDocument.identity(of: source) }
 
@@ -263,9 +308,6 @@ struct LargeMarkdownExpandedView: View {
             if let prepared {
                 ForEach(0..<renderedChunkCount, id: \.self) { index in
                     chunkView(prepared, chunk: prepared.chunks[index], index: index)
-                        .onAppear {
-                            extendWindowIfNecessary(lastAppearedIndex: index, total: prepared.chunks.count)
-                        }
                 }
                 if renderedChunkCount < prepared.chunks.count {
                     progressFooter(remaining: prepared.chunks.count - renderedChunkCount)
@@ -278,19 +320,16 @@ struct LargeMarkdownExpandedView: View {
         .environment(\.markdownReferences, prepared?.references ?? .empty)
         .modifier(MarkdownSelectionHost(coordinator: selectionCoordinator))
         .task(id: sourceIdentity) {
-            // Structural parsing is pure string work — measured 192 ms at
-            // 1 MB — so it runs off the MainActor; nothing UIKit happens
-            // until the per-chunk attributed builds below.
-            let currentSource = source
-            let plan = await Task.detached(priority: .userInitiated) {
-                LargeMarkdownPreparedDocument.prepare(currentSource)
-            }.value
+            // Nonisolated async → runs on the global executor (a structured
+            // child of this task, so cancellation stops the parse instead of
+            // merely discarding its result).
+            guard let plan = await LargeMarkdownPreparedDocument.prepare(source) else { return }
             guard !Task.isCancelled, plan.sourceIdentity == sourceIdentity else { return }
             withAnimation(.easeInOut(duration: 0.15)) {
                 prepared = plan
                 // Clamped: a large document can legitimately produce fewer
-                // chunks than one batch (a handful of giant rich blocks),
-                // and chunkView indexes prepared.chunks directly.
+                // chunks than one batch, and chunkView indexes
+                // prepared.chunks directly.
                 renderedChunkCount = min(Self.initialChunkBatch, plan.chunks.count)
             }
         }
@@ -312,105 +351,142 @@ struct LargeMarkdownExpandedView: View {
 
     @ViewBuilder
     private func chunkView(_ prepared: LargeMarkdownPreparedDocument, chunk: MarkdownLargeChunk, index: Int) -> some View {
-        switch chunk {
-        case .flow(let blocks):
-            LargeFlowChunkView(
-                blocks: blocks,
-                references: prepared.references,
+        Group {
+            switch chunk {
+            case .flow(let blocks):
+                LargeFlowChunkView(
+                    blocks: blocks,
+                    references: prepared.referencesByChunk[index],
+                    foregroundStyle: foregroundStyle,
+                    usesAccentSurface: usesAccentSurface,
+                    selectionCoordinator: selectionCoordinator,
+                    selectionSegment: prepared.descriptorsByChunk[index].first
+                )
+            case .block(let block, let originalIndex):
+                largeBlockView(
+                    block,
+                    originalIndex: originalIndex,
+                    index: index,
+                    prepared: prepared
+                )
+            }
+        }
+        .id("\(prepared.sourceIdentity)-\(index)")
+    }
+
+    /// Rich-block routing: ordinary blocks reuse the ordinary renderer;
+    /// oversized ones get bounded specialized presentations.
+    @ViewBuilder
+    private func largeBlockView(
+        _ block: MarkdownBlock,
+        originalIndex: Int,
+        index: Int,
+        prepared: LargeMarkdownPreparedDocument
+    ) -> some View {
+        switch block {
+        case .table(let headers, let alignments, let rows)
+            where block.estimatedSourceBytes >= MarkdownLargeDocumentPolicy.largeTableBytes:
+            LargeMarkdownTable(
+                headers: headers,
+                alignments: alignments,
+                rows: rows,
+                foregroundStyle: foregroundStyle,
+                usesAccentSurface: usesAccentSurface,
+                selectionCoordinator: selectionCoordinator,
+                blockIndex: originalIndex,
+                selectionSegments: prepared.descriptorsByChunk[index]
+            )
+        case .callout(let kind, let text)
+            where text.utf8.count > MarkdownLargeDocumentPolicy.largeTextBlockBytes:
+            LargeMarkdownCallout(
+                kind: kind,
+                text: text,
                 foregroundStyle: foregroundStyle,
                 usesAccentSurface: usesAccentSurface,
                 selectionCoordinator: selectionCoordinator,
                 selectionSegment: prepared.descriptorsByChunk[index].first
             )
-            .id("\(prepared.sourceIdentity)-\(index)")
-        case .block(let block, let originalIndex):
-            // Rich blocks reuse the ordinary block renderer — same views,
-            // same selection ids — except oversized code, which gets the
-            // sliced / async-highlighted presentation.
-            if case .code(let language, let code) = block,
-               MarkdownLanguage.normalized(language) != "mermaid",
-               MarkdownLargeDocumentPolicy.isLargeCodeBlock(code) {
-                LargeCodeBlockView(
-                    source: code,
-                    language: language,
-                    usesAccentSurface: usesAccentSurface
-                )
-                .id("\(prepared.sourceIdentity)-\(index)")
-            } else {
-                MarkdownBlockView(
-                    block: block,
-                    blockIndex: originalIndex,
-                    foregroundStyle: foregroundStyle,
-                    usesAccentSurface: usesAccentSurface,
-                    gatewayMediaDataURL: gatewayMediaDataURL,
-                    selectionCoordinator: selectionCoordinator,
-                    selectionSegments: prepared.descriptorsByChunk[index],
-                    newestCharacterOpacities: []
-                )
-                .id("\(prepared.sourceIdentity)-\(index)")
-            }
+        case .columns(let columns)
+            where block.estimatedSourceBytes > MarkdownLargeDocumentPolicy.largeTextBlockBytes:
+            LargeMarkdownColumns(
+                columns: columns,
+                foregroundStyle: foregroundStyle,
+                usesAccentSurface: usesAccentSurface,
+                selectionCoordinator: selectionCoordinator,
+                selectionSegments: prepared.descriptorsByChunk[index]
+            )
+        case .math(let source) where source.utf8.count > MarkdownLargeDocumentPolicy.mathGuardBytes:
+            GuardedSourceCard(
+                title: "LaTeX",
+                icon: "function",
+                source: source,
+                guardBytes: MarkdownLargeDocumentPolicy.mathGuardBytes
+            )
+        case .code(let language, let code)
+            where MarkdownLanguage.normalized(language) == "mermaid"
+                && code.utf8.count > MarkdownLargeDocumentPolicy.mermaidGuardBytes:
+            GuardedSourceCard(
+                title: "Mermaid",
+                icon: "point.3.connected.trianglepath.dotted",
+                source: code,
+                guardBytes: MarkdownLargeDocumentPolicy.mermaidGuardBytes
+            )
+        case .code(let language, let code)
+            where MarkdownLanguage.normalized(language) != "mermaid"
+                && MarkdownLargeDocumentPolicy.isLargeCodeBlock(code):
+            LargeCodeBlockView(
+                source: code,
+                language: language,
+                usesAccentSurface: usesAccentSurface
+            )
+        default:
+            // Ordinary rich blocks reuse the ordinary renderer with their
+            // chunk-local reference subset injected.
+            MarkdownBlockView(
+                block: block,
+                blockIndex: originalIndex,
+                foregroundStyle: foregroundStyle,
+                usesAccentSurface: usesAccentSurface,
+                gatewayMediaDataURL: gatewayMediaDataURL,
+                selectionCoordinator: selectionCoordinator,
+                selectionSegments: prepared.descriptorsByChunk[index],
+                newestCharacterOpacities: []
+            )
+            .environment(\.markdownReferences, prepared.referencesByChunk[index])
         }
-    }
-
-    /// Window growth: only the last mounted chunk triggers an extension,
-    /// only one batch per runloop turn, and never past the mounted cap —
-    /// see `maximumMountedChunks`.
-    private func extendWindowIfNecessary(lastAppearedIndex: Int, total: Int) {
-        guard
-            lastAppearedIndex == renderedChunkCount - 1,
-            renderedChunkCount < total,
-            renderedChunkCount < Self.maximumMountedChunks,
-            !isExtendingWindow
-        else { return }
-        isExtendingWindow = true
-        Task { @MainActor in
-            renderedChunkCount = Self.nextWindowCount(current: renderedChunkCount, total: total)
-            isExtendingWindow = false
-        }
-    }
-
-    /// Next mounted-chunk count: one batch more, clamped to the document's
-    /// chunk count (the remaining chunks past the cap can be fewer than one
-    /// batch, and chunkView indexes prepared.chunks directly).
-    static func nextWindowCount(current: Int, total: Int) -> Int {
-        min(current + chunkBatch, total)
     }
 
     /// Total chunk count read through @State: dynamic, so a button action
-    /// firing twice before SwiftUI rebuilds still sees the live value
-    /// (a body-time capture could be stale and overflow the array).
+    /// firing twice before SwiftUI rebuilds still sees the live value.
     private var preparedChunkTotal: Int {
         prepared?.chunks.count ?? 0
     }
 
     @ViewBuilder
     private func progressFooter(remaining: Int) -> some View {
-        if renderedChunkCount >= Self.maximumMountedChunks {
-            Button {
-                // Clamped: the remaining chunks past the cap can be fewer
-                // than one batch, and chunkView indexes prepared.chunks
-                // directly.
-                renderedChunkCount = Self.nextWindowCount(
-                    current: renderedChunkCount,
-                    total: preparedChunkTotal
-                )
-            } label: {
-                Label("Continue reading (\(remaining) sections left)", systemImage: "chevron.down")
-                    .font(.footnote.weight(.semibold))
-            }
-            .tint(usesAccentSurface ? .white : .conduitAccent)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.vertical, 4)
-        } else {
-            HStack(spacing: 8) {
-                ProgressView().controlSize(.small)
-                Text("Rendering…")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.vertical, 4)
+        Button {
+            // Clamped to the real total: chunkView indexes prepared.chunks
+            // directly, and the remaining chunks can be fewer than a batch.
+            renderedChunkCount = Self.nextWindowCount(
+                current: renderedChunkCount,
+                total: preparedChunkTotal
+            )
+        } label: {
+            Label(
+                "Continue reading (\(remaining) sections left)",
+                systemImage: "chevron.down"
+            )
+            .font(.footnote.weight(.semibold))
         }
+        .tint(usesAccentSurface ? .white : .conduitAccent)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 4)
+    }
+
+    /// Next mounted-chunk count: one batch more, clamped to the document's
+    /// chunk count.
+    static func nextWindowCount(current: Int, total: Int) -> Int {
+        min(current + continueChunkBatch, total)
     }
 }
 
@@ -429,13 +505,16 @@ private struct LargeDocumentPreparingView: View {
 
 // MARK: - Flow chunks
 
-/// Memoizes a flow chunk's attributed string so window growth and unrelated
-/// body re-evaluations never re-run the Foundation parses. Rebuilds when the
-/// Dynamic Type category changes (fonts bake into the string); the category
-/// is an explicit parameter so the invalidation policy is unit-testable.
+/// Memoizes a flow chunk's attributed string so unrelated body
+/// re-evaluations never re-run the Foundation parses. The memo identity is
+/// explicit: Dynamic Type category (fonts bake into the string) and the
+/// accent-surface flag (colors bake in). The chunk's blocks/references are
+/// fixed per prepared plan — a changed source means a new identity and new
+/// chunk views, so those inputs cannot change for a surviving box.
 final class LargeFlowChunkBox {
     private var cachedText: NSAttributedString?
     private var cachedCategory: UIContentSizeCategory?
+    private var cachedUsesAccentSurface: Bool?
 
     @MainActor
     func attributedText(
@@ -445,7 +524,11 @@ final class LargeFlowChunkBox {
         usesAccentSurface: Bool,
         contentCategory: UIContentSizeCategory = UIApplication.shared.preferredContentSizeCategory
     ) -> NSAttributedString? {
-        if let cachedText, cachedCategory == contentCategory { return cachedText }
+        if let cachedText,
+           cachedCategory == contentCategory,
+           cachedUsesAccentSurface == usesAccentSurface {
+            return cachedText
+        }
         let text = MarkdownSelectionFormatter.attributedText(
             for: blocks,
             references: references,
@@ -455,6 +538,7 @@ final class LargeFlowChunkBox {
         )
         cachedText = text
         cachedCategory = contentCategory
+        cachedUsesAccentSurface = usesAccentSurface
         return text
     }
 }
@@ -462,8 +546,10 @@ final class LargeFlowChunkBox {
 /// One bounded flow chunk: a single selectable attributed string (the same
 /// formatter the ordinary fast path uses) registered with the shared
 /// coordinator under its chunk descriptor. Selection is native within the
-/// chunk and coordinator-driven across chunks.
-private struct LargeFlowChunkView: View {
+/// chunk and coordinator-driven across chunks. The Dynamic Type category
+/// arrives from the SwiftUI environment so text-size changes rebuild the
+/// memoized string.
+struct LargeFlowChunkView: View {
     let blocks: [MarkdownBlock]
     let references: MarkdownReferenceContext
     let foregroundStyle: Color
@@ -471,8 +557,10 @@ private struct LargeFlowChunkView: View {
     let selectionCoordinator: MarkdownSelectionCoordinator?
     let selectionSegment: MarkdownSelectionSegmentDescriptor?
 
+    @Environment(\.sizeCategory) private var sizeCategory
+
     /// Per-view memo box: identity comes from the enclosing ForEach index
-    /// (keyed by source identity), so it survives window growth and dies
+    /// (keyed by source identity), so it survives re-evaluations and dies
     /// with the chunk when the source changes.
     @State private var box = LargeFlowChunkBox()
 
@@ -481,7 +569,8 @@ private struct LargeFlowChunkView: View {
             blocks: blocks,
             references: references,
             foregroundStyle: foregroundStyle,
-            usesAccentSurface: usesAccentSurface
+            usesAccentSurface: usesAccentSurface,
+            contentCategory: UIContentSizeCategory(sizeCategory)
         ) {
             SelectableTextView(
                 attributedText: attributed,
@@ -501,13 +590,115 @@ private struct LargeFlowChunkView: View {
     }
 }
 
+// MARK: - Large textual rich blocks
+
+/// A callout whose body exceeds the text-block budget, reprojected into
+/// bounded inner pieces (each ≤ the chunk target) rendered inside the same
+/// callout chrome. Every piece is selectable and Copy Response still uses
+/// the complete message.
+private struct LargeMarkdownCallout: View {
+    let kind: String
+    let text: String
+    let foregroundStyle: Color
+    let usesAccentSurface: Bool
+    let selectionCoordinator: MarkdownSelectionCoordinator?
+    let selectionSegment: MarkdownSelectionSegmentDescriptor?
+
+    private var detail: (title: String, icon: String, color: Color) {
+        switch kind.lowercased() {
+        case "tip", "hint": ("Tip", "lightbulb.fill", .green)
+        case "warning", "caution": ("Warning", "exclamationmark.triangle.fill", .orange)
+        case "danger", "error": ("Important", "exclamationmark.octagon.fill", .red)
+        case "important": ("Important", "exclamationmark.circle.fill", .purple)
+        default: ("Note", "info.circle.fill", .blue)
+        }
+    }
+
+    var body: some View {
+        // The pieces are flow text below the document threshold; rendering
+        // each through the ordinary MarkdownText path reuses its cache and
+        // selection machinery instead of a second inline implementation.
+        let pieces = MarkdownLargeChunkPlanner.splitText(text) { .paragraph($0) }
+        VStack(alignment: .leading, spacing: 6) {
+            Label(detail.title, systemImage: detail.icon)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(detail.color)
+            ForEach(Array(pieces.enumerated()), id: \.offset) { _, piece in
+                if case .flow(let blocks) = piece {
+                    LargeFlowChunkView(
+                        blocks: blocks,
+                        references: .empty,
+                        foregroundStyle: foregroundStyle,
+                        usesAccentSurface: usesAccentSurface,
+                        selectionCoordinator: nil,
+                        selectionSegment: nil
+                    )
+                }
+            }
+        }
+        .padding(12)
+        .background(detail.color.opacity(0.10), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .strokeBorder(detail.color.opacity(0.28), lineWidth: 1)
+        }
+    }
+}
+
+/// Columns whose combined size exceeds the text-block budget, reprojected
+/// per column into bounded pieces. The HStack chrome is preserved; each
+/// piece renders through the ordinary small path.
+private struct LargeMarkdownColumns: View {
+    let columns: [String]
+    let foregroundStyle: Color
+    let usesAccentSurface: Bool
+    let selectionCoordinator: MarkdownSelectionCoordinator?
+    let selectionSegments: [MarkdownSelectionSegmentDescriptor]
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 0) {
+            ForEach(Array(columns.enumerated()), id: \.offset) { index, column in
+                let pieces = MarkdownLargeChunkPlanner.splitText(column) { .paragraph($0) }
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(Array(pieces.enumerated()), id: \.offset) { _, piece in
+                        if case .flow(let blocks) = piece {
+                            LargeFlowChunkView(
+                                blocks: blocks,
+                                references: .empty,
+                                foregroundStyle: foregroundStyle,
+                                usesAccentSurface: usesAccentSurface,
+                                selectionCoordinator: selectionCoordinator,
+                                selectionSegment: nil
+                            )
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
+                if index < columns.count - 1 {
+                    Divider().overlay(usesAccentSurface ? Color.white.opacity(0.24) : Color.secondary.opacity(0.20))
+                }
+            }
+        }
+        .background(
+            usesAccentSurface ? Color.black.opacity(0.13) : Color.primary.opacity(0.04),
+            in: RoundedRectangle(cornerRadius: 13, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .strokeBorder(usesAccentSurface ? Color.white.opacity(0.26) : Color.secondary.opacity(0.20), lineWidth: 1)
+        }
+    }
+}
+
 // MARK: - Large code blocks
 
 /// Code at or above `codeBlockThresholdBytes` (highlighting measured 67 ms
-/// at 50 KB and 1.5 s at 1 MB): a bounded line preview first; expanded, the
-/// source renders in line slices whose highlighting happens off the
-/// MainActor (tokenization is pure Foundation) and swaps in per slice. Copy
-/// always uses the complete source.
+/// at 50 KB and 1.5 s at 1 MB): a bounded preview first; expanded, the
+/// source renders as slices bounded by BOTH a line ceiling and a UTF-8 byte
+/// ceiling (a 1 MB single-line blob is as pathological as 25 K normal
+/// lines), with highlighting computed off the MainActor and swapped in per
+/// slice. Copy always uses the complete source.
 struct LargeCodeBlockView: View {
     let source: String
     let language: String
@@ -517,12 +708,10 @@ struct LargeCodeBlockView: View {
     @State private var copied = false
     @State private var slices: [String]?
     /// (hasMoreLines, lineCount) computed once off-main; whole-block scans
-    /// must not run per body evaluation (the Copy state toggle re-evaluates).
+    /// must not run per body evaluation.
     @State private var lineStats: (hasMore: Bool, count: Int)?
 
     private var normalizedLanguage: String { MarkdownLanguage.normalized(language) }
-
-    private static let previewLineCount = 200
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -538,12 +727,21 @@ struct LargeCodeBlockView: View {
                             )
                         }
                     } else {
-                        LargeCodeSliceView(
-                            source: Self.previewSource(of: source),
-                            language: normalizedLanguage,
-                            usesAccentSurface: usesAccentSurface,
-                            maximumNumberOfLines: Self.previewLineCount
-                        )
+                        // The preview renders ONE bounded slice — up to
+                        // `codePreviewLineCount` lines AND `codePreviewBytes`
+                        // bytes; a 1 MB single-line blob previews as its
+                        // first 16 KB piece.
+                        ForEach(Array(MarkdownCodeSlicer.slice(
+                            source,
+                            maxLines: MarkdownLargeDocumentPolicy.codePreviewLineCount,
+                            maxBytes: MarkdownLargeDocumentPolicy.codePreviewBytes
+                        ).prefix(1).enumerated()), id: \.offset) { _, piece in
+                            LargeCodeSliceView(
+                                source: piece,
+                                language: normalizedLanguage,
+                                usesAccentSurface: usesAccentSurface
+                            )
+                        }
                         if lineStats?.hasMore == true {
                             Button {
                                 withAnimation(.easeInOut(duration: 0.15)) { expanded = true }
@@ -571,35 +769,29 @@ struct LargeCodeBlockView: View {
                 )
         }
         .task(id: "stats-\(source.utf8.count)") {
-            // One-time whole-block scans (line counting), off the MainActor.
+            // One-time whole-block scans, off the MainActor and cancellation
+            // cooperative with this view's lifecycle.
             guard lineStats == nil else { return }
             let currentSource = source
-            let previewBudget = Self.previewLineCount
-            let stats = await Task.detached(priority: .userInitiated) { () -> (Bool, Int) in
-                var newlines = 0
-                var index = currentSource.startIndex
-                while index < currentSource.endIndex {
-                    if currentSource[index] == "\n" { newlines += 1 }
-                    index = currentSource.index(after: index)
-                }
-                // The preview shows at most `previewLineCount` lines.
-                return (newlines >= previewBudget, newlines + 1)
-            }.value
+            let stats = await MarkdownCodeSlicer.lineStats(
+                source: currentSource,
+                previewLineBudget: MarkdownLargeDocumentPolicy.codePreviewLineCount,
+                previewByteBudget: MarkdownLargeDocumentPolicy.codePreviewBytes
+            )
             guard !Task.isCancelled else { return }
             lineStats = stats
         }
         .task(id: expanded ? "full-\(source.utf8.count)" : "preview") {
             guard expanded, slices == nil else { return }
-            // Line splitting is pure; a 1 MB block measured tens of ms, so
-            // keep it off the MainActor too.
             let currentSource = source
-            let lineCount = MarkdownLargeDocumentPolicy.codeSliceLineCount
-            let result = await Task.detached(priority: .userInitiated) {
-                currentSource.split(separator: "\n", omittingEmptySubsequences: false)
-                    .chunks(lineCount)
-                    .map { $0.joined(separator: "\n") }
-            }.value
-            guard !Task.isCancelled, expanded else { return }
+            let maxLines = MarkdownLargeDocumentPolicy.codeSliceLineCount
+            let maxBytes = MarkdownLargeDocumentPolicy.codeSliceBytes
+            let result = await MarkdownCodeSlicer.sliceAsync(
+                currentSource,
+                maxLines: maxLines,
+                maxBytes: maxBytes
+            )
+            guard !Task.isCancelled, expanded, let result else { return }
             slices = result
         }
     }
@@ -629,37 +821,6 @@ struct LargeCodeBlockView: View {
         .padding(.vertical, 8)
         .background(usesAccentSurface ? Color.black.opacity(0.28) : Color.primary.opacity(0.055))
     }
-
-    /// First N lines of the source: a bounded scan, never a full split.
-    static func previewSource(of source: String) -> String {
-        var lineCount = 0
-        var index = source.startIndex
-        while index < source.endIndex {
-            if source[index] == "\n" {
-                lineCount += 1
-                if lineCount >= previewLineCount {
-                    return String(source[..<index])
-                }
-            }
-            index = source.index(after: index)
-        }
-        return source
-    }
-
-}
-
-private extension Array where Element == Substring {
-    func chunks(_ size: Int) -> [[Element]] {
-        guard size > 0, !isEmpty else { return [] }
-        var result: [[Element]] = []
-        var start = startIndex
-        while start < endIndex {
-            let end = index(start, offsetBy: size, limitedBy: endIndex) ?? endIndex
-            result.append(Array(self[start..<end]))
-            start = end
-        }
-        return result
-    }
 }
 
 /// One bounded slice of a large code block: plain monospaced text
@@ -672,13 +833,14 @@ private struct LargeCodeSliceView: View {
     var maximumNumberOfLines: Int = 0
 
     @State private var highlighted: NSAttributedString?
+    @Environment(\.sizeCategory) private var sizeCategory
 
     private var font: UIFont {
         .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .footnote).pointSize, weight: .regular)
     }
 
     private var sliceIdentity: String {
-        "\(source.hashValue)-\(UIApplication.shared.preferredContentSizeCategory.rawValue)"
+        "\(source.hashValue)-\(sizeCategory)"
     }
 
     var body: some View {
@@ -713,9 +875,10 @@ private struct LargeCodeSliceView: View {
             // against the live property is what actually drops stale
             // results when the view was re-created mid-pass.
             let passIdentity = sliceIdentity
-            let highlightedResult = await Task.detached(priority: .userInitiated) {
-                SyntaxHighlighter.highlight(currentSource, language: currentLanguage)
-            }.value
+            let highlightedResult = await SyntaxHighlighter.highlightAsync(
+                currentSource,
+                language: currentLanguage
+            )
             guard !Task.isCancelled, sliceIdentity == passIdentity else { return }
             self.highlighted = SelectableTextView.bridge(
                 highlightedResult,
@@ -724,5 +887,44 @@ private struct LargeCodeSliceView: View {
                 linkColor: .link
             )
         }
+    }
+}
+
+// MARK: - Off-main helpers
+
+extension MarkdownCodeSlicer {
+    /// Cancellation-cooperative slicing for the expanded presentation: runs
+    /// off the MainActor as a structured child of the caller and returns
+    /// nil when cancelled mid-walk.
+    static func sliceAsync(_ source: String, maxLines: Int, maxBytes: Int) async -> [String]? {
+        await Task.yield()
+        guard !Task.isCancelled else { return nil }
+        // The synchronous walk over a megabyte is tens of milliseconds —
+        // bounded — so a start-check plus the yield is proportionate; the
+        // result is discarded anyway if the caller was cancelled.
+        return slice(source, maxLines: maxLines, maxBytes: maxBytes)
+    }
+
+    /// One-time line statistics for the preview affordance. `hasMore` is
+    /// true when either ceiling (lines or bytes) leaves content unpreviewed.
+    static func lineStats(source: String, previewLineBudget: Int, previewByteBudget: Int) async -> (hasMore: Bool, count: Int) {
+        await Task.yield()
+        var newlines = 0
+        var index = source.startIndex
+        while index < source.endIndex {
+            if source[index] == "\n" { newlines += 1 }
+            index = source.index(after: index)
+        }
+        let hasMore = newlines >= previewLineBudget || source.utf8.count > previewByteBudget
+        return (hasMore, newlines + 1)
+    }
+}
+
+extension SyntaxHighlighter {
+    /// Off-main, cancellation-checked entry for large-slice highlighting.
+    static func highlightAsync(_ source: String, language: String) async -> AttributedString {
+        await Task.yield()
+        guard !Task.isCancelled else { return AttributedString(source) }
+        return highlight(source, language: language)
     }
 }
