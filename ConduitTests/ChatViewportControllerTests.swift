@@ -2054,4 +2054,40 @@ extension ChatViewportControllerTests {
         XCTAssertTrue(tickEffects.isEmpty,
                       "no restoration state means the tick is a no-op")
     }
+
+    // MARK: - Duplicate transcript-change regression
+
+    func testSingleTranscriptMutationCausesOneTranscriptChangedCall() {
+        var controller = makeController(following: keyA)
+        let msgs = [message("m1", "hello")]
+
+        TranscriptPerf.reset()
+        _ = controller.transcriptChanged(
+            messages: msgs,
+            transcriptRevision: 1,
+            viewportTransitionGeneration: 1
+        )
+        XCTAssertEqual(TranscriptPerf.transcriptChangedCalls, 1,
+                       "one mutation must cause exactly one transcriptChanged call")
+    }
+
+    func testDuplicateTranscriptChangedIsIdempotent() {
+        var controller = makeController(following: keyA)
+        let msgs = [message("m1", "hello")]
+
+        // First call: semantic change
+        let first = controller.transcriptChanged(
+            messages: msgs,
+            transcriptRevision: 1,
+            viewportTransitionGeneration: 1
+        )
+        // Second call with identical messages: should be .unchanged
+        let second = controller.transcriptChanged(
+            messages: msgs,
+            transcriptRevision: 1,
+            viewportTransitionGeneration: 1
+        )
+        XCTAssertNotEqual(first, [], "first call should produce effects")
+        XCTAssertEqual(second, [], "duplicate call with same messages must be no-op")
+    }
 }

@@ -25,3 +25,5 @@ Package.resolved
 *.p8
 *.p12
 *.mobileprovision
+TestResults*.xcresult
+ci-logs/

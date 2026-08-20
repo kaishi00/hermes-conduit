@@ -349,18 +349,6 @@ struct ChatView: View {
                     using: proxy
                 )
             }
-            .onChange(of: appState.chatTranscriptRevision) { _, _ in
-                performViewportEffects(
-                    viewport.transcriptChanged(
-                        messages: appState.messages,
-                        transcriptRevision: appState.chatTranscriptRevision,
-                        viewportTransitionGeneration: appState.chatViewportTransitionGeneration,
-                        activeSessionKey: activeScrollSessionKey,
-                        isOpeningNotificationSession: appState.isOpeningNotificationSession
-                    ),
-                    using: proxy
-                )
-            }
             .onChange(of: appState.chatResumeRestorationRequest) { oldRequest, newRequest in
                 guard oldRequest != nil, newRequest == nil else { return }
                 // The published request disappeared on the AppState side
