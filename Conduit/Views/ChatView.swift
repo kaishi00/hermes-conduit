@@ -80,10 +80,11 @@ struct ChatView: View {
         appState.chatResumeRestorationRequest != nil
     }
 
-    /// Latest global frames of rendered stable rows for the current scope.
-    /// Only message rows report frames (streaming/typing/markers never do),
-    /// so ephemeral identifiers cannot enter stable-top observation.
-    private var renderedRowFrames: [String: CGRect] {
+    /// Latest global frames + transcript order of rendered stable rows for
+    /// the current scope. Only message rows report frames (streaming/typing/
+    /// markers never do), so ephemeral identifiers cannot enter stable-top
+    /// observation.
+    private var renderedRowFrames: [String: ChatRenderedRowGeometry] {
         guard let scope = renderedScrollScope else { return [:] }
         return renderedScrollTargets.rowFrames(in: scope)
     }
@@ -146,7 +147,7 @@ struct ChatView: View {
                     EmptyChatState().padding(.top, 60)
                 }
 
-                ForEach(chatMessageScrollTargets) { target in
+                ForEach(Array(chatMessageScrollTargets.enumerated()), id: \.element.id) { index, target in
                     MessageBubble(message: target.message, gatewayResolver: gatewayMediaResolver)
                         .id(target.id)
                         .background {
@@ -157,7 +158,8 @@ struct ChatView: View {
                                         ChatRenderedScrollTargets.row(
                                             semanticID: target.id,
                                             scope: $0,
-                                            frame: geometry.frame(in: .global)
+                                            frame: geometry.frame(in: .global),
+                                            order: index
                                         )
                                     } ?? ChatRenderedScrollTargets()
                                 )
@@ -571,11 +573,12 @@ struct ChatView: View {
 
     private func currentLayoutFacts() -> ChatViewportLayoutFacts {
         let scope = renderedScrollScope
-        let frames = renderedRowFrames.map { id, frame in
+        let frames = renderedRowFrames.map { id, geometry in
             ChatRenderedRowFrame(
                 id: id,
-                minY: frame.minY,
-                maxY: frame.maxY,
+                minY: geometry.frame.minY,
+                maxY: geometry.frame.maxY,
+                order: geometry.order,
                 scope: scope ?? ChatRenderedScrollScope(
                     sessionKey: activeOrFallbackScrollSessionKey,
                     cacheRevision: 0,

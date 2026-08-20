@@ -101,12 +101,23 @@ struct ChatRenderedScrollContent: Equatable {
 /// Global-space frame of one rendered stable message row, scoped to the
 /// rendered scroll scope that produced it. Only rows SwiftUI actually laid
 /// out report frames; this is how the viewport controller learns which
-/// stable row intersects the viewport without .scrollPosition.
+/// stable row intersects the viewport without .scrollPosition. `order` is
+/// the row's position in the transcript target list, so consumers can pick
+/// the semantic first visible row from the rendered subset alone — no scan
+/// of the full transcript.
 struct ChatRenderedRowFrame: Equatable {
     let id: String        // ChatMessageScrollTarget.id == message.id
     let minY: CGFloat
     let maxY: CGFloat
+    let order: Int
     let scope: ChatRenderedScrollScope
+}
+
+/// Frame + transcript order carried per rendered row inside the
+/// preference payload dictionaries.
+struct ChatRenderedRowGeometry: Equatable {
+    let frame: CGRect
+    let order: Int
 }
 
 /// A preference payload emitted only by targets SwiftUI has instantiated.
@@ -115,16 +126,17 @@ struct ChatRenderedRowFrame: Equatable {
 struct ChatRenderedScrollTargets: Equatable {
     private(set) var rowsByScope: [ChatRenderedScrollScope: Set<String>] = [:]
     private(set) var bottomsByScope: [ChatRenderedScrollScope: Set<String>] = [:]
-    private(set) var framesByScope: [ChatRenderedScrollScope: [String: CGRect]] = [:]
+    private(set) var framesByScope: [ChatRenderedScrollScope: [String: ChatRenderedRowGeometry]] = [:]
 
     static func row(
         semanticID: String,
         scope: ChatRenderedScrollScope,
-        frame: CGRect? = nil
+        frame: CGRect? = nil,
+        order: Int = 0
     ) -> ChatRenderedScrollTargets {
         var targets = ChatRenderedScrollTargets(rowsByScope: [scope: [semanticID]])
         if let frame {
-            targets.framesByScope = [scope: [semanticID: frame]]
+            targets.framesByScope = [scope: [semanticID: ChatRenderedRowGeometry(frame: frame, order: order)]]
         }
         return targets
     }
@@ -165,9 +177,9 @@ struct ChatRenderedScrollTargets: Equatable {
         bottomsByScope[scope]?.contains(anchorID) == true
     }
 
-    /// Global frames of rendered stable rows for a scope (rows that reported
-    /// geometry this pass; offscreen lazy rows are absent).
-    func rowFrames(in scope: ChatRenderedScrollScope) -> [String: CGRect] {
+    /// Global frames + transcript order of rendered stable rows for a scope
+    /// (rows that reported geometry this pass; offscreen lazy rows are absent).
+    func rowFrames(in scope: ChatRenderedScrollScope) -> [String: ChatRenderedRowGeometry] {
         framesByScope[scope] ?? [:]
     }
 
