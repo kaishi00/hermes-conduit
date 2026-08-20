@@ -172,8 +172,18 @@ struct SelectableTextView: UIViewRepresentable {
             replacementTextView.attributedText = uiView.mountedTextView.attributedText
             replacementTextView.selectedRange = uiView.mountedTextView.selectedRange
             uiView.setMountedTextView(replacementTextView)
-            // The mounted text view instance changed: metrics derived from it
-            // must not be served from cache.
+            // The mounted text view instance changed. The replacement only
+            // inherits attributedText/selection — font, colors, line limits,
+            // wrapping, container sizing, and link attributes are applied by
+            // `configure` alone, so the presentation gate must not skip it:
+            // clear the applied presentation (and cached metrics derived
+            // from the previous instance) so the gate below configures this
+            // fresh view exactly once. Attributed content is still preserved:
+            // configure's isEqual guard skips replacement when the copied
+            // text already matches, so a selection-only swap does not
+            // regenerate content.
+            coordinator.appliedPresentation = nil
+            coordinator.cachedMeasurement = nil
             coordinator.presentationGeneration &+= 1
         }
 

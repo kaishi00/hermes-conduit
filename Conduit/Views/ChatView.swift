@@ -17,11 +17,6 @@ struct ChatView: View {
     @State private var renderedScrollTargets = ChatRenderedScrollTargets()
     @State private var viewportSnapshotProviderID = UUID()
     @State private var viewport = ChatViewportController()
-    /// Stable gateway-media resolver for settled row content. Recreated
-    /// only when the active profile changes; rows compare it by identity
-    /// inside their Equatable gates, so ordinary AppState publishes never
-    /// invalidate settled Markdown through it.
-    @State private var gatewayMediaResolver: GatewayMediaDataURLResolver?
     @GestureState private var isDraggingChat = false
 
     private var renderedScrollSessionKey: ChatScrollSessionKey? { viewport.renderedSessionKey }
@@ -148,7 +143,7 @@ struct ChatView: View {
                 }
 
                 ForEach(Array(chatMessageScrollTargets.enumerated()), id: \.element.id) { index, target in
-                    MessageBubble(message: target.message, gatewayResolver: gatewayMediaResolver)
+                    MessageBubble(message: target.message, gatewayResolver: appState.gatewayMediaResolver)
                         .id(target.id)
                         .background {
                             GeometryReader { geometry in
@@ -263,12 +258,6 @@ struct ChatView: View {
     private func lifecycleObservers(proxy: ScrollViewProxy, content: some View) -> some View {
         content
             .onAppear {
-                if gatewayMediaResolver == nil {
-                    gatewayMediaResolver = GatewayMediaDataURLResolver(
-                        appState: appState,
-                        profile: appState.activeProfile
-                    )
-                }
                 performViewportEffects(
                     viewport.renderedSessionChanged(
                         to: activeScrollSessionKey,
@@ -403,11 +392,7 @@ struct ChatView: View {
                     using: proxy
                 )
             }
-            .onChange(of: appState.activeProfile) { _, newProfile in
-                gatewayMediaResolver = GatewayMediaDataURLResolver(
-                    appState: appState,
-                    profile: newProfile
-                )
+            .onChange(of: appState.activeProfile) { _, _ in
                 ChatViewportTrace.shared.log(
                     "event profileChanged viaNotification=\(appState.isOpeningNotificationSession)"
                 )
@@ -826,12 +811,17 @@ struct MessageBubble: View {
 struct UserBubble: View {
     let message: ChatMessage
     let gatewayResolver: GatewayMediaDataURLResolver?
+    @Environment(\.sizeCategory) private var sizeCategory
 
     var body: some View {
         HStack {
             Spacer(minLength: 40)
             VStack(alignment: .trailing, spacing: 4) {
-                UserMessageContent(message: message, gatewayResolver: gatewayResolver)
+                UserMessageContent(
+                    message: message,
+                    gatewayResolver: gatewayResolver,
+                    sizeCategory: sizeCategory
+                )
                     .equatable()
 
                 MessageTimestampLabel(timestamp: message.timestamp)
@@ -848,11 +838,13 @@ struct UserBubble: View {
 private struct UserMessageContent: View, Equatable {
     let message: ChatMessage
     let gatewayResolver: GatewayMediaDataURLResolver?
-    @Environment(\.sizeCategory) private var sizeCategory
+    /// Explicit Dynamic Type input — see SettledAssistantMessageContent.
+    let sizeCategory: ContentSizeCategory
 
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.message == rhs.message
             && lhs.gatewayResolver === rhs.gatewayResolver
+            && lhs.sizeCategory == rhs.sizeCategory
     }
 
     var body: some View {
@@ -1093,13 +1085,21 @@ struct SettledAssistantMessageContent: View, Equatable {
     let displayName: String
     let avatarURL: URL?
     let gatewayResolver: GatewayMediaDataURLResolver?
-    @Environment(\.sizeCategory) private var sizeCategory
+    /// Explicit Dynamic Type input (read by the shell): equality describes
+    /// every visual input, so a category change re-opens the gate and
+    /// re-renders with fresh fonts (the Markdown render cache keys on the
+    /// content size category). Other presentation traits the subtree
+    /// consumes are render-time adaptive — color scheme resolves through
+    /// UIKit trait collections, layout direction through TextKit — and do
+    /// not require body re-evaluation.
+    let sizeCategory: ContentSizeCategory
 
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.message == rhs.message
             && lhs.displayName == rhs.displayName
             && lhs.avatarURL == rhs.avatarURL
             && lhs.gatewayResolver === rhs.gatewayResolver
+            && lhs.sizeCategory == rhs.sizeCategory
     }
 
     var body: some View {
@@ -1238,6 +1238,7 @@ struct AssistantBubble: View {
     let readAloudController: MessageReadAloudController
     let gatewayResolver: GatewayMediaDataURLResolver?
     @EnvironmentObject var appState: AppState
+    @Environment(\.sizeCategory) private var sizeCategory
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -1245,7 +1246,8 @@ struct AssistantBubble: View {
                 message: message,
                 displayName: appState.profileDisplayName(appState.activeProfile),
                 avatarURL: appState.profileAvatarURL(for: appState.activeProfile),
-                gatewayResolver: gatewayResolver
+                gatewayResolver: gatewayResolver,
+                sizeCategory: sizeCategory
             )
             .equatable()
 
@@ -1435,13 +1437,15 @@ private struct SettledThinkingCardContent: View, Equatable {
     let message: ChatMessage
     let displayName: String
     let avatarURL: URL?
+    /// Explicit Dynamic Type input — see SettledAssistantMessageContent.
+    let sizeCategory: ContentSizeCategory
     @State private var expanded = false
-    @Environment(\.sizeCategory) private var sizeCategory
 
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.message == rhs.message
             && lhs.displayName == rhs.displayName
             && lhs.avatarURL == rhs.avatarURL
+            && lhs.sizeCategory == rhs.sizeCategory
     }
 
     var body: some View {
@@ -1479,13 +1483,15 @@ private struct SettledThinkingCardContent: View, Equatable {
 struct ThinkingCard: View {
     let message: ChatMessage
     @EnvironmentObject var appState: AppState
+    @Environment(\.sizeCategory) private var sizeCategory
 
     var body: some View {
         if appState.displayPreferences.showReasoning, !message.content.isEmpty {
             SettledThinkingCardContent(
                 message: message,
                 displayName: appState.profileDisplayName(appState.activeProfile),
-                avatarURL: appState.profileAvatarURL(for: appState.activeProfile)
+                avatarURL: appState.profileAvatarURL(for: appState.activeProfile),
+                sizeCategory: sizeCategory
             )
             .equatable()
         }
@@ -1550,12 +1556,14 @@ enum MessageTimestampFormatter {
 private struct SettledToolCardContent: View, Equatable {
     let message: ChatMessage
     let expandToolsByDefault: Bool
+    /// Explicit Dynamic Type input — see SettledAssistantMessageContent.
+    let sizeCategory: ContentSizeCategory
     @State private var expanded = false
-    @Environment(\.sizeCategory) private var sizeCategory
 
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.message == rhs.message
             && lhs.expandToolsByDefault == rhs.expandToolsByDefault
+            && lhs.sizeCategory == rhs.sizeCategory
     }
 
     var body: some View {
@@ -1667,12 +1675,14 @@ private struct SettledToolCardContent: View, Equatable {
 struct ToolCard: View {
     let message: ChatMessage
     @EnvironmentObject var appState: AppState
+    @Environment(\.sizeCategory) private var sizeCategory
 
     var body: some View {
         if appState.displayPreferences.showToolProgress, message.tool != nil {
             SettledToolCardContent(
                 message: message,
-                expandToolsByDefault: appState.displayPreferences.expandToolsByDefault
+                expandToolsByDefault: appState.displayPreferences.expandToolsByDefault,
+                sizeCategory: sizeCategory
             )
             .equatable()
         }

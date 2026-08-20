@@ -114,9 +114,10 @@ enum TranscriptPerf {
 
     // MARK: - Private storage
 
-    #if DEBUG
-    private static var storage = Storage()
-
+    /// The Storage TYPE must exist in every configuration so the
+    /// unconditional `read`/`write` helper signatures compile in Release;
+    /// only the stored instance is Debug-only. Release instrumentation is
+    /// therefore zero-cost: reads return 0 and writes are compiled out.
     private struct Storage {
         var settledBubbleBody = 0
         var settledMarkdownBody = 0
@@ -130,12 +131,16 @@ enum TranscriptPerf {
         var lastFingerprintedByteCount = 0
         var stableTopScanTargetCount = 0
     }
+
+    #if DEBUG
+    private static var storage = Storage()
     #endif
 
     private static func read(_ keyPath: KeyPath<Storage, Int>) -> Int {
         #if DEBUG
         return storage[keyPath: keyPath]
         #else
+        _ = keyPath
         return 0
         #endif
     }
@@ -143,6 +148,9 @@ enum TranscriptPerf {
     private static func write(_ keyPath: WritableKeyPath<Storage, Int>, _ value: Int) {
         #if DEBUG
         storage[keyPath: keyPath] = value
+        #else
+        _ = keyPath
+        _ = value
         #endif
     }
 }

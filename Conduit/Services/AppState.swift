@@ -333,6 +333,25 @@ final class AppState: ObservableObject {
     @Published var isConnecting = false
     @Published var profiles: [String] = []
     @Published private(set) var sessionFilterOrder: [SessionSource] = [.chat, .discord, .telegram, .api, .webhook, .other]
+    /// Stable per-profile gateway-media resolver for settled row content.
+    /// Created lazily on first read and reused while the active profile is
+    /// unchanged, so ChatView's first body pass already has a resolver
+    /// identity (no nil → resolver invalidation sweep over the settled
+    /// transcript) and rows' Equatable gates only open on genuine profile
+    /// changes. The resolver holds this AppState weakly, so caching it here
+    /// creates no retain cycle.
+    var gatewayMediaResolver: GatewayMediaDataURLResolver {
+        if let cached = cachedGatewayMediaResolver,
+           cached.profile == activeProfile {
+            return cached.resolver
+        }
+        let resolver = GatewayMediaDataURLResolver(appState: self, profile: activeProfile)
+        cachedGatewayMediaResolver = (activeProfile, resolver)
+        return resolver
+    }
+
+    private var cachedGatewayMediaResolver: (profile: String, resolver: GatewayMediaDataURLResolver)?
+
     @Published private(set) var activeProfile: String = "default" {
         didSet { refreshActiveChatScrollSessionIdentity() }
     }

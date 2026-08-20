@@ -208,9 +208,9 @@ final class ChatMessageScrollTargetCacheIncrementalTests: XCTestCase {
                     message("s\(step)-insert", "body \(next() % 9) inserted"),
                     at: Int(next() % UInt64(messages.count))
                 )
-            case 3: // edit tail
+            case 3: // edit near the tail (clamped to valid indices)
                 if !messages.isEmpty {
-                    let idx = messages.count - 1 - Int(next() % 3)
+                    let idx = max(0, messages.count - 1 - Int(next() % 3))
                     messages[idx] = message(messages[idx].id, "body \(next() % 9) edited")
                 }
             default: // duplicate an existing body

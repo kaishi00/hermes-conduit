@@ -18,9 +18,34 @@ import SwiftUI
 @MainActor
 final class TranscriptPerformanceFixtureTests: XCTestCase {
 
-    private func makeAppState() -> AppState {
-        let defaults = UserDefaults(suiteName: "transcript-perf-fixture")!
-        defaults.removePersistentDomain(forName: "transcript-perf-fixture")
+    /// Retained for the full lifetime of each measurement so the hosted
+    /// hierarchy stays genuinely mounted; torn down explicitly per test.
+    private var testWindow: UIWindow?
+
+    override func setUp() {
+        super.setUp()
+        TranscriptPerf.reset()
+    }
+
+    override func tearDown() {
+        // Detach the window first so dismantle work is triggered, flush the
+        // run loop so it completes within THIS test, then reset counters —
+        // the next test starts from zero with no pending teardown updates.
+        testWindow?.isHidden = true
+        testWindow?.rootViewController = nil
+        RunLoop.current.run(until: Date())
+        testWindow = nil
+        TranscriptPerf.reset()
+        super.tearDown()
+    }
+
+    private func makeAppState() throws -> AppState {
+        let suiteName = "transcript-perf-fixture"
+        let defaults = try XCTUnwrap(
+            UserDefaults(suiteName: suiteName),
+            "test UserDefaults suite must initialize"
+        )
+        defaults.removePersistentDomain(forName: suiteName)
         return AppState(defaults: defaults, loadSavedConnection: false)
     }
 
@@ -122,17 +147,17 @@ final class TranscriptPerformanceFixtureTests: XCTestCase {
 
     // MARK: - Harness
 
-    /// Drains pending SwiftUI updates (including any left over from the
-    /// previous test's host window teardown) so counter windows measure
-    /// only this test's work.
-    private func drainRunLoop() {
+    /// Lets SwiftUI updates that belong to THIS test (e.g. the settle tick
+    /// below) complete before the next counter window opens.
+    private func settleCurrentTestUpdates() {
         RunLoop.current.run(until: Date().addingTimeInterval(0.15))
     }
 
+    /// Hosts the full ChatView in a retained, live window.
     private func mountChat(
         appState: AppState,
         streaming: String
-    ) -> (UIHostingController<AnyView>, UIWindow) {
+    ) -> UIHostingController<AnyView> {
         appState.streamingText = streaming
         let host = UIHostingController(
             rootView: AnyView(ChatView().environmentObject(appState))
@@ -140,10 +165,11 @@ final class TranscriptPerformanceFixtureTests: XCTestCase {
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
         window.rootViewController = host
         window.isHidden = false
+        testWindow = window
         host.view.setNeedsLayout()
         host.view.layoutIfNeeded()
-        drainRunLoop()
-        return (host, window)
+        RunLoop.current.run(until: Date())
+        return host
     }
 
     /// Drives `ticks` streaming publishes at the production ~30 Hz cadence,
@@ -167,10 +193,10 @@ final class TranscriptPerformanceFixtureTests: XCTestCase {
     // MARK: - Fixtures
 
     func testStreamingTicksLeaveSettledMarkdownDormant_MarkdownTranscript() throws {
-        let appState = makeAppState()
+        let appState = try makeAppState()
         appState.messages = Self.markdownTranscript()
 
-        let (host, _) = mountChat(appState: appState, streaming: "Initial streaming frame")
+        let host = mountChat(appState: appState, streaming: "Initial streaming frame")
 
         // Sanity: the settled transcript actually mounted and rendered.
         let settledMarkdownAtRest = TranscriptPerf.settledMarkdownTextBodyEvaluations
@@ -183,7 +209,7 @@ final class TranscriptPerformanceFixtureTests: XCTestCase {
         // additional lazy row as layout adjusts. Steady-state work is what
         // the acceptance criterion bounds, so measure from the second tick.
         streamTicks(1, appState: appState, host: host)
-        drainRunLoop()
+        settleCurrentTestUpdates()
 
         TranscriptPerf.reset()
         streamTicks(10, appState: appState, host: host)
@@ -211,12 +237,12 @@ final class TranscriptPerformanceFixtureTests: XCTestCase {
     }
 
     func testStreamingTicksLeaveSettledMarkdownDormant_PlainTextTranscript() throws {
-        let appState = makeAppState()
+        let appState = try makeAppState()
         appState.messages = Self.plainTextTranscript()
 
-        let (host, _) = mountChat(appState: appState, streaming: "Initial streaming frame")
+        let host = mountChat(appState: appState, streaming: "Initial streaming frame")
         streamTicks(1, appState: appState, host: host)
-        drainRunLoop()
+        settleCurrentTestUpdates()
 
         TranscriptPerf.reset()
         streamTicks(10, appState: appState, host: host)
@@ -228,15 +254,58 @@ final class TranscriptPerformanceFixtureTests: XCTestCase {
         XCTAssertLessThanOrEqual(TranscriptPerf.textKitMeasurementCalls, 30)
     }
 
+    /// First-render gateway resolver (#5): settled Markdown must render
+    /// exactly once on first appearance — no nil → resolver invalidation
+    /// sweep. The resolver identity must be stable for the profile and the
+    /// settled evaluation count must not grow after the initial layout.
+    func testFirstAppearanceRendersSettledMarkdownOnce() throws {
+        let appState = try makeAppState()
+        appState.messages = Self.markdownTranscript()
+
+        // Stable identity per profile, available from the first body pass.
+        let first = appState.gatewayMediaResolver
+        XCTAssertIdentical(
+            appState.gatewayMediaResolver, first,
+            "the resolver must be identity-stable while the profile is unchanged"
+        )
+
+        let host = mountChat(appState: appState, streaming: "Initial frame")
+        // Let lazy mounting fully settle: the first pass mounts the visible
+        // screenful and LazyVStack prefetches neighbor rows on subsequent
+        // turns — each a legitimate FIRST render of a new row, not a
+        // re-render of an existing one.
+        host.view.setNeedsLayout()
+        host.view.layoutIfNeeded()
+        RunLoop.current.run(until: Date())
+        let initialEvaluations = TranscriptPerf.settledMarkdownTextBodyEvaluations
+        XCTAssertGreaterThan(
+            initialEvaluations, 0,
+            "settled Markdown must render on first appearance"
+        )
+
+        // Re-layout and pump with no state change: the count must be stable.
+        // The pre-fix nil → resolver transition re-evaluated every mounted
+        // settled row here (and repopulated the render cache under a new
+        // gateway-recognition key).
+        host.view.setNeedsLayout()
+        host.view.layoutIfNeeded()
+        RunLoop.current.run(until: Date())
+
+        XCTAssertEqual(
+            TranscriptPerf.settledMarkdownTextBodyEvaluations, initialEvaluations,
+            "no second settled render pass may occur after first appearance"
+        )
+    }
+
     /// The settled transcript itself still renders through the normal path
     /// when it genuinely changes: appending a message re-renders exactly the
     /// new content, and the fingerprint bound stays O(append).
     func testGenuineAppendRendersNewMessageAndFingerprintsBounded() throws {
-        let appState = makeAppState()
+        let appState = try makeAppState()
         var messages = Self.markdownTranscript(count: 100)
         appState.messages = messages
 
-        let (host, _) = mountChat(appState: appState, streaming: "")
+        let host = mountChat(appState: appState, streaming: "")
         appState.streamingText = ""  // StreamingBubble unmounts
 
         TranscriptPerf.reset()

@@ -10,6 +10,11 @@ import UIKit
 @MainActor
 final class SelectableTextViewPresentationCacheTests: XCTestCase {
 
+    override func setUp() {
+        super.setUp()
+        TranscriptPerf.reset()
+    }
+
     private func makeView(
         text: String = "A settled paragraph of selectable text.",
         font: UIFont = .preferredFont(forTextStyle: .body),
@@ -33,23 +38,26 @@ final class SelectableTextViewPresentationCacheTests: XCTestCase {
     }
 
     /// 1. Identical presentation + repeated update: no attributed-text rebuild.
+    ///    The per-test reset makes the sanity assertion prove THIS view
+    ///    instance performed the first-apply rebuild.
     func testIdenticalPresentationUpdatePerformsNoTextRebuild() {
         let view = makeView()
         let coordinator = view.makeCoordinator()
-        let host = view.makeUIViewForTests(coordinator: coordinator)
 
-        let rebuildsAfterFirst = TranscriptPerf.selectableTextViewTextRebuilds
+        TranscriptPerf.reset()
+        let host = view.makeUIViewForTests(coordinator: coordinator)
+        XCTAssertEqual(
+            TranscriptPerf.selectableTextViewTextRebuilds, 1,
+            "sanity: the initial mount of this instance performed exactly one rebuild"
+        )
 
         // Identical inputs: the presentation token must short-circuit configure.
         let identical = makeView()
-        let rebuildsBefore = TranscriptPerf.selectableTextViewTextRebuilds
         identical.updateUIViewForTests(host, coordinator: coordinator)
-
         XCTAssertEqual(
-            TranscriptPerf.selectableTextViewTextRebuilds, rebuildsBefore,
+            TranscriptPerf.selectableTextViewTextRebuilds, 1,
             "identical presentation must not rebuild attributed text"
         )
-        XCTAssertGreaterThan(rebuildsAfterFirst, 0, "sanity: first apply did rebuild")
     }
 
     /// 1b. Repeated measurement at the same width avoids TextKit.
@@ -151,10 +159,14 @@ final class SelectableTextViewPresentationCacheTests: XCTestCase {
         )
     }
 
-    /// 5. Selection-coordinator changes still register/unregister correctly
-    ///    without forcing text restyling.
-    func testSelectionChangeRegistersWithoutTextRestyle() {
-        let view = makeView()
+    /// 5. Selection transitions in both directions still register/unregister
+    ///    correctly, do not regenerate attributed content, and fully
+    ///    configure the swapped-in text view (font, colors, line limits,
+    ///    wrapping, container, link attributes — everything `configure`
+    ///    owns, which the copied attributedText alone does not carry).
+    func testSelectionSwapRegistersAndFullyConfiguresReplacementTextView() {
+        // A finite line limit makes configuration loss observable.
+        let view = makeView(text: "A limited settled paragraph.", maximumNumberOfLines: 2)
         let coordinator = view.makeCoordinator()
         let host = view.makeUIViewForTests(coordinator: coordinator)
         XCTAssertFalse(host.isUsingCoordinatedTextView, "plain mount starts uncoordinated")
@@ -164,11 +176,18 @@ final class SelectableTextViewPresentationCacheTests: XCTestCase {
             id: "block-0", order: 0, separatorBefore: ""
         )
         let coordinated = makeView(
+            text: "A limited settled paragraph.",
+            maximumNumberOfLines: 2,
             selectionCoordinator: markdownCoordinator,
             selectionSegment: segment
         )
 
-        let rebuildsBefore = TranscriptPerf.selectableTextViewTextRebuilds
+        // Plain → coordinated. The copied attributedText already carries the
+        // full styling from the previous view's configure pass, so the
+        // isEqual guard needs no re-apply — the fresh view still receives
+        // every view-level setting (font, colors, limits, container, link
+        // attributes) because configure runs unconditionally on it.
+        TranscriptPerf.reset()
         coordinated.updateUIViewForTests(host, coordinator: coordinator)
 
         XCTAssertTrue(
@@ -180,17 +199,80 @@ final class SelectableTextViewPresentationCacheTests: XCTestCase {
             "the selection segment must be registered"
         )
         XCTAssertEqual(
-            TranscriptPerf.selectableTextViewTextRebuilds, rebuildsBefore,
-            "a selection-only change must not rebuild attributed text"
+            TranscriptPerf.selectableTextViewTextRebuilds, 0,
+            "a swap must not regenerate attributed content (copied text is already styled)"
         )
+        XCTAssertEqual(
+            host.mountedTextView.attributedText.string,
+            coordinated.attributedText.string,
+            "a selection-only swap must not regenerate content"
+        )
+        assertFullyConfigured(host.mountedTextView, like: coordinated)
 
-        // Removing the coordinator unregisters and returns to the plain view.
-        let plain = makeView()
+        // Coordinated → plain (same presentation otherwise).
+        TranscriptPerf.reset()
+        let plain = makeView(text: "A limited settled paragraph.", maximumNumberOfLines: 2)
         plain.updateUIViewForTests(host, coordinator: coordinator)
-        XCTAssertFalse(host.isUsingCoordinatedTextView)
+
+        XCTAssertFalse(
+            host.isUsingCoordinatedTextView,
+            "removing coordination must return to the plain text view"
+        )
         XCTAssertFalse(
             markdownCoordinator.isSegmentRegistered(segment.id),
             "the selection segment must be unregistered when coordination ends"
+        )
+        XCTAssertEqual(
+            TranscriptPerf.selectableTextViewTextRebuilds, 0,
+            "the reverse swap must not regenerate attributed content either"
+        )
+        XCTAssertEqual(
+            host.mountedTextView.attributedText.string,
+            plain.attributedText.string,
+            "the reverse swap must not regenerate content"
+        )
+        assertFullyConfigured(host.mountedTextView, like: plain)
+    }
+
+    /// The full set of view-level configuration `configure` applies — every
+    /// item a freshly swapped-in UITextView would otherwise miss.
+    private func assertFullyConfigured(
+        _ textView: UITextView,
+        like view: SelectableTextView,
+        file: StaticString = #file,
+        line: UInt = #line
+    ) {
+        XCTAssertEqual(textView.font, view.font, file: file, line: line)
+        XCTAssertEqual(textView.textColor, view.textColor, file: file, line: line)
+        XCTAssertEqual(
+            textView.textContainer.maximumNumberOfLines,
+            view.maximumNumberOfLines,
+            "line limits must survive the text-view swap", file: file, line: line
+        )
+        XCTAssertTrue(
+            textView.textContainer.widthTracksTextView == view.wrapsLines,
+            "wrapping configuration must survive the swap", file: file, line: line
+        )
+        let expectedBreak: NSLineBreakMode = view.maximumNumberOfLines > 0
+            ? .byTruncatingTail
+            : (view.wrapsLines ? .byWordWrapping : .byClipping)
+        XCTAssertEqual(
+            textView.textContainer.lineBreakMode,
+            expectedBreak,
+            "line-break mode must survive the swap", file: file, line: line
+        )
+        XCTAssertEqual(
+            (textView.linkTextAttributes[.foregroundColor] as? UIColor),
+            view.linkColor,
+            "link attributes must survive the swap", file: file, line: line
+        )
+        let paragraph = textView.attributedText.attribute(
+            .paragraphStyle, at: 0, effectiveRange: nil
+        ) as? NSParagraphStyle
+        XCTAssertEqual(
+            paragraph?.lineSpacing,
+            view.lineSpacing,
+            "paragraph line spacing must survive the swap", file: file, line: line
         )
     }
 

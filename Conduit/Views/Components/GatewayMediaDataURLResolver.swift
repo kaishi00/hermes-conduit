@@ -14,10 +14,17 @@
 //  reference, compare it by identity, and build the per-call closure
 //  inside their own body.
 //
+//  AppState owns the canonical instance (see
+//  `AppState.gatewayMediaResolver`) so ChatView's FIRST body pass already
+//  has a resolver — no nil → resolver invalidation pass over the settled
+//  transcript after appear. The appState reference is weak because the
+//  AppState-cached resolver would otherwise retain its owner in a cycle;
+//  AppState outlives every view that holds the resolver.
+//
 
 @MainActor
 final class GatewayMediaDataURLResolver {
-    private let appState: AppState
+    private weak var appState: AppState?
     let profile: String
 
     init(appState: AppState, profile: String) {
@@ -26,6 +33,7 @@ final class GatewayMediaDataURLResolver {
     }
 
     func dataURL(for path: String) async -> String? {
-        await appState.gatewayMediaDataURL(for: path, profile: profile)
+        guard let appState else { return nil }
+        return await appState.gatewayMediaDataURL(for: path, profile: profile)
     }
 }
