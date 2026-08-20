@@ -1275,8 +1275,32 @@ struct LargeMarkdownTable: View {
     let blockIndex: Int
     let selectionSegments: [MarkdownSelectionSegmentDescriptor]
 
-    @State private var renderedRowCount = LargeMarkdownTable.initialRowBatch
+    @State private var renderedRowCount: Int
     @Environment(\.markdownReferences) private var references
+
+    init(
+        headers: [String],
+        alignments: [MarkdownTableAlignment],
+        rows: [[String]],
+        foregroundStyle: Color,
+        usesAccentSurface: Bool,
+        selectionCoordinator: MarkdownSelectionCoordinator?,
+        blockIndex: Int,
+        selectionSegments: [MarkdownSelectionSegmentDescriptor]
+    ) {
+        self.headers = headers
+        self.alignments = alignments
+        self.rows = rows
+        self.foregroundStyle = foregroundStyle
+        self.usesAccentSurface = usesAccentSurface
+        self.selectionCoordinator = selectionCoordinator
+        self.blockIndex = blockIndex
+        self.selectionSegments = selectionSegments
+        // A table qualifies as large because of total estimated bytes — a
+        // few rows with enormous cells also qualify, so the mounted count
+        // must clamp to the actual row count from the start.
+        _renderedRowCount = State(initialValue: min(LargeMarkdownTable.initialRowBatch, rows.count))
+    }
 
     /// Rows whose cells feed the shared width measurement. Widths computed
     /// from a bounded prefix can differ from whole-table widths for wildly
@@ -1287,12 +1311,21 @@ struct LargeMarkdownTable: View {
     static let rowBatch = 100
 
     private var columnWidths: [CGFloat] {
-        MarkdownTableLayout.columnWidths(
-            headers: headers,
-            rows: Array(rows.prefix(Self.widthSampleRows)),
+        let ceiling = MarkdownLargeDocumentPolicy.tableCellBytes
+        return MarkdownTableLayout.columnWidths(
+            headers: headers.map { MarkdownLargeDocumentPolicy.boundedDisplayText($0, maxBytes: ceiling) },
+            rows: Array(rows.prefix(Self.widthSampleRows)).map {
+                $0.map { MarkdownLargeDocumentPolicy.boundedDisplayText($0, maxBytes: ceiling) }
+            },
             availableWidth: 0,
             references: references
         )
+    }
+
+    /// Cell display text under the pathological-cell ceiling; keeps both
+    /// width measurement and text layout bounded per cell.
+    private func boundedCell(_ text: String) -> String {
+        MarkdownLargeDocumentPolicy.boundedDisplayText(text, maxBytes: MarkdownLargeDocumentPolicy.tableCellBytes)
     }
 
     private func segmentDescriptor(row: Int, column: Int) -> MarkdownSelectionSegmentDescriptor? {
@@ -1301,13 +1334,16 @@ struct LargeMarkdownTable: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
+        // One width computation per body evaluation — every mounted row and
+        // the header share the same resolved (bounded) widths.
+        let widths = columnWidths
+        return VStack(spacing: 0) {
             ScrollView(.horizontal, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
                     MarkdownTableRowView(
-                        cells: headers,
+                        cells: headers.map(boundedCell),
                         isHeader: true,
-                        widths: columnWidths,
+                        widths: widths,
                         alignments: alignments,
                         foregroundStyle: foregroundStyle,
                         usesAccentSurface: usesAccentSurface,
@@ -1317,9 +1353,9 @@ struct LargeMarkdownTable: View {
                     ForEach(0..<renderedRowCount, id: \.self) { rowOffset in
                         Divider().overlay(usesAccentSurface ? Color.white.opacity(0.22) : Color.secondary.opacity(0.18))
                         MarkdownTableRowView(
-                            cells: rows[rowOffset],
+                            cells: rows[rowOffset].map(boundedCell),
                             isHeader: false,
-                            widths: columnWidths,
+                            widths: widths,
                             alignments: alignments,
                             foregroundStyle: foregroundStyle,
                             usesAccentSurface: usesAccentSurface,

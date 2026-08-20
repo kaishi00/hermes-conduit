@@ -1065,11 +1065,17 @@ extension MarkdownLargeDocumentTests {
                 }
             }
         }
-        // Continuation ordinals must continue from where the list chunk
-        // stopped, never restart at 1.
+        // Continuation ordinals MUST exist (the test cannot silently pass
+        // when the planner never bakes any) and must continue from where
+        // the list chunk stopped, never restarting at 1.
+        XCTAssertFalse(bakedOrdinals.isEmpty, "split ordered lists must bake continuation ordinals")
         if let first = bakedOrdinals.first {
             XCTAssertGreaterThan(first, 1, "continuation numbering must not restart at 1")
         }
+        // Ordinals are strictly increasing across continuation chunks (no
+        // duplicates either — sorted-equality alone would accept "2, 2, 3").
+        XCTAssertEqual(bakedOrdinals, Array(Set(bakedOrdinals)).sorted())
+        XCTAssertEqual(bakedOrdinals.count, Set(bakedOrdinals).count, "ordinals must not repeat")
     }
 
     // Case 4: many/large reference definitions -> per-chunk parse input
@@ -1181,7 +1187,7 @@ extension MarkdownLargeDocumentTests {
         // Promote with the stable target inside the recorded interval: the
         // policy must use a boundary BEFORE the fence or wait.
         let fenceStart = interval.start
-        let target = fenceStart + 1_000
+        let target = fenceStart + 9_000 // past promoted+minChunk so the window logic runs
         let inFence = LargeStreamPromotion.nextPromotionBoundary(
             promotedBytes: 0,
             revealedBytes: target + MarkdownLargeDocumentPolicy.chunkTargetBytes,
@@ -1363,6 +1369,427 @@ private struct DynamicTypeProbeView: View {
             selectionCoordinator: nil,
             selectionSegment: nil
         )
+    }
+}
+
+
+// MARK: - Pre-merge hardening battery
+
+extension MarkdownLargeDocumentTests {
+    // Case 1: a large table with only 3 rows (giant cells) must not crash
+    // the initial row window.
+    @MainActor
+    func testLargeTableWithFewGiantRowsDoesNotCrash() {
+        let giantCell = String(repeating: "cell ", count: 8_000) // 40 KB per cell
+        let rows = (0..<3).map { [String(repeating: "a", count: 40), "row \($0) \(giantCell)"] }
+        let table = MarkdownBlock.table(headers: ["A", "B"], alignments: [.leading, .leading], rows: rows)
+        XCTAssertGreaterThanOrEqual(table.estimatedSourceBytes, MarkdownLargeDocumentPolicy.largeTableBytes)
+
+        let host = UIHostingController(
+            rootView: LargeMarkdownTable(
+                headers: ["A", "B"],
+                alignments: [.leading, .leading],
+                rows: rows,
+                foregroundStyle: .primary,
+                usesAccentSurface: false,
+                selectionCoordinator: nil,
+                blockIndex: 0,
+                selectionSegments: []
+            )
+        )
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        host.view.layoutIfNeeded()
+        let deadline = Date().addingTimeInterval(2)
+        while Date() < deadline { pumpForSwiftUICommit(host: host) }
+        let textViews = host.view.recursiveSubviewsForTests.compactMap { $0 as? UITextView }
+        // Header (2 cells) + 3 rows × 2 cells, every cell byte-bounded.
+        XCTAssertLessThanOrEqual(textViews.count, 8, "mounted cells must match the clamped row window")
+        XCTAssertGreaterThan(textViews.count, 0)
+    }
+
+    // Case 2: a single 500 KB cell is bounded for measurement and render.
+    func testGiantTableCellIsBounded() {
+        let giant = String(repeating: "漢", count: 170_000) // ~510 KB
+        let bounded = MarkdownLargeDocumentPolicy.boundedDisplayText(giant, maxBytes: MarkdownLargeDocumentPolicy.tableCellBytes)
+        XCTAssertLessThanOrEqual(bounded.utf8.count, MarkdownLargeDocumentPolicy.tableCellBytes + 4, "grapheme-safe cut at the ceiling + ellipsis marker")
+        XCTAssertTrue(giant.hasPrefix(String(bounded.dropLast(2))), "bounded cell is a grapheme-safe prefix")
+    }
+
+    // Case 3 + 13: a fallback cut that would land inside a CLOSED fence is
+    // refused even though the stable target lies beyond the fence.
+    func testHardCutInsideClosedFenceIsRefused() {
+        let chunk = MarkdownLargeDocumentPolicy.chunkTargetBytes
+        let fenceStart = chunk              // 8 KB
+        let fenceEnd = 4 * chunk            // 32 KB
+        let stableTarget = 7 * chunk        // 56 KB, beyond the fence
+        let revealed = stableTarget + chunk
+
+        let boundary = LargeStreamPromotion.nextPromotionBoundary(
+            promotedBytes: 0,
+            revealedBytes: revealed,
+            tailWindowBytes: chunk,
+            boundaries: [fenceEnd + chunk], // only a boundary beyond the window
+            constructIntervals: [(start: fenceStart, end: fenceEnd)]
+        )
+        // The default fallback cut (16 KB) would land inside the fence —
+        // promotion must wait (nil), never split the construct.
+        XCTAssertNil(boundary)
+
+        // With a usable boundary BEFORE the fence, promotion uses it.
+        let early = LargeStreamPromotion.nextPromotionBoundary(
+            promotedBytes: 0,
+            revealedBytes: revealed,
+            tailWindowBytes: chunk,
+            boundaries: [chunk, fenceEnd + chunk],
+            constructIntervals: [(start: fenceStart, end: fenceEnd)]
+        )
+        XCTAssertEqual(early, chunk)
+
+        // Exhaustive sweep: no accepted cut ever lands strictly inside any
+        // recorded construct.
+        let intervals: [(start: Int, end: Int?)] = [
+            (start: 5 * chunk, end: 9 * chunk),
+            (start: 20 * chunk, end: nil)
+        ]
+        // Fallback hard cuts (no safe boundary available) must never land
+        // inside any recorded construct. Scanner-provided boundaries are
+        // trusted inputs — the scanner never emits one inside a construct.
+        for promoted in stride(from: 0, through: 60 * chunk, by: chunk / 2) {
+            let result = LargeStreamPromotion.nextPromotionBoundary(
+                promotedBytes: promoted,
+                revealedBytes: promoted + 30 * chunk,
+                tailWindowBytes: chunk,
+                boundaries: [],
+                constructIntervals: intervals
+            )
+            if let cut = result {
+                for interval in intervals {
+                    let end = interval.end ?? Int.max
+                    XCTAssertFalse(cut > interval.start && cut < end,
+                                   "cut \(cut) landed inside construct [\(interval.start), \(interval.end ?? -1))")
+                }
+            }
+        }
+    }
+
+    // Case 4: the code preview performs only bounded-prefix work.
+    func testCodePreviewIsBoundedPrefixWork() {
+        let blob = String(repeating: "ab", count: 500_000) // 1 MB single line
+        let preview = MarkdownCodeSlicer.firstSlice(
+            blob,
+            maxLines: MarkdownLargeDocumentPolicy.codePreviewLineCount,
+            maxBytes: MarkdownLargeDocumentPolicy.codePreviewBytes
+        )
+        XCTAssertLessThanOrEqual(preview.utf8.count, MarkdownLargeDocumentPolicy.codePreviewBytes + 8)
+        XCTAssertTrue(blob.hasPrefix(preview))
+
+        // A giant line following normal lines: the result must still be a
+        // PREFIX of the source (everything before it plus a bounded piece
+        // of it), not just the giant line's prefix.
+        let mixed = (0..<10).map { "normal \($0)" }.joined(separator: "\n")
+            + "\n" + String(repeating: "z", count: 200_000) + "\ntrailing"
+        let mixedPreview = MarkdownCodeSlicer.firstSlice(
+            mixed,
+            maxLines: MarkdownLargeDocumentPolicy.codePreviewLineCount,
+            maxBytes: MarkdownLargeDocumentPolicy.codePreviewBytes
+        )
+        XCTAssertTrue(mixed.hasPrefix(mixedPreview), "preview must remain a source prefix when a giant line follows normal lines")
+        XCTAssertTrue(mixedPreview.hasPrefix("normal 0"), "content before the giant line must be included")
+        XCTAssertLessThanOrEqual(mixedPreview.utf8.count, MarkdownLargeDocumentPolicy.codePreviewBytes + 16)
+
+        let tall = (0..<50_000).map { "line \($0)" }.joined(separator: "\n")
+        let tallPreview = MarkdownCodeSlicer.firstSlice(
+            tall,
+            maxLines: MarkdownLargeDocumentPolicy.codePreviewLineCount,
+            maxBytes: MarkdownLargeDocumentPolicy.codePreviewBytes
+        )
+        XCTAssertLessThanOrEqual(
+            tallPreview.components(separatedBy: "\n").count,
+            MarkdownLargeDocumentPolicy.codePreviewLineCount + 1
+        )
+        XCTAssertTrue(tall.hasPrefix(tallPreview))
+    }
+
+    // Cases 5 + 6: body re-evaluation never re-splits giant callouts or
+    // columns (pieces are precomputed during preparation).
+    @MainActor
+    func testSpecializedRichBlockBodiesDoNotResplit() async throws {
+        let giantCalloutBody = String(repeating: "callout prose with ordinary words. ", count: 1_200) // ~42 KB
+        let giantColumn = String(repeating: "column prose continues here. ", count: 1_200)
+        let source = "opening paragraph\n\n::: note\n\(giantCalloutBody)\n:::\n\nfinal paragraph"
+        let columnsSource = "intro\n\n::: columns\n::: column\n\(giantColumn)\n::: column\n\(giantColumn)\n:::"
+
+        MarkdownLargeChunkPlanner.splitTextCallCount = 0
+        guard let prepared = await LargeMarkdownPreparedDocument.prepare(source) else {
+            return XCTFail("preparation failed")
+        }
+        let splitsAfterPrepare = MarkdownLargeChunkPlanner.splitTextCallCount
+        XCTAssertGreaterThan(splitsAfterPrepare, 0, "the giant callout must be split during preparation")
+
+        guard let columnsPrepared = await LargeMarkdownPreparedDocument.prepare(columnsSource) else {
+            return XCTFail("columns preparation failed")
+        }
+        let splitsAfterBoth = MarkdownLargeChunkPlanner.splitTextCallCount
+
+        // Render both expanded views and pump — re-evaluations must not add
+        // a single further split.
+        for plan in [prepared, columnsPrepared] {
+            let host = UIHostingController(
+                rootView: LargeExpandedProbeView(plan: plan)
+            )
+            let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+            window.rootViewController = host
+            window.makeKeyAndVisible()
+            host.view.layoutIfNeeded()
+            let deadline = Date().addingTimeInterval(1.5)
+            while Date() < deadline { pumpForSwiftUICommit(host: host) }
+        }
+        XCTAssertEqual(
+            MarkdownLargeChunkPlanner.splitTextCallCount, splitsAfterBoth,
+            "SwiftUI body re-evaluations must not re-split specialized rich blocks"
+        )
+    }
+
+    // Cases 7 + 8: selection/copy across a specialized block participates
+    // through registered per-piece descriptors in document order.
+    @MainActor
+    func testCopyAcrossSpecializedCalloutPiecesIncludesContent() async throws {
+        let giantCalloutBody = String(repeating: "callout prose with ordinary words. ", count: 1_200)
+        let source = "opening paragraph\n\n::: note\n\(giantCalloutBody)\n:::\n\nfinal paragraph"
+        guard let prepared = await LargeMarkdownPreparedDocument.prepare(source) else {
+            return XCTFail("preparation failed")
+        }
+
+        // The callout chunk's descriptors are per-piece, ordered, and every
+        // id is unique across the whole plan.
+        let calloutChunkIndex = prepared.chunks.firstIndex { chunk in
+            if case .block(let block, _) = chunk { return LargeMarkdownPreparedDocument.isSpecializedCallout(block) }
+            return false
+        }
+        guard let index = calloutChunkIndex else { return XCTFail("callout chunk missing") }
+        let descriptors = prepared.descriptorsByChunk[index]
+        XCTAssertGreaterThan(descriptors.count, 1, "giant callout must have several piece descriptors")
+        XCTAssertEqual(descriptors.map(\.order), descriptors.map(\.order).sorted())
+
+        // Coordinated copy across pieces joins the content in order.
+        let coordinator = MarkdownSelectionCoordinator()
+        coordinator.replaceSegments(prepared.segmentDescriptors, revision: prepared.sourceIdentity)
+        for descriptor in descriptors {
+            let textView = SelectableTextView.makeTextView()
+            textView.attributedText = NSAttributedString(
+                string: "PIECE-\(descriptor.id)-",
+                attributes: [.font: UIFont.preferredFont(forTextStyle: .body)]
+            )
+            coordinator.register(descriptor: descriptor, textView: textView)
+        }
+        let first = try XCTUnwrap(descriptors.first)
+        let last = try XCTUnwrap(descriptors.last)
+        let copied = coordinator.copiedAttributedText(
+            from: MarkdownSelectionEndpoint(segmentID: first.id, offset: 0),
+            to: MarkdownSelectionEndpoint(segmentID: last.id, offset: coordinator.text(for: last.id)?.utf16.count ?? 0)
+        )
+        XCTAssertTrue(copied.string.contains("PIECE-\(first.id)"), "copy must start with the first piece")
+        XCTAssertTrue(copied.string.contains("PIECE-\(last.id)"), "copy must include through the last piece")
+    }
+
+    // Case 9: reference-style links inside oversized callout pieces still
+    // resolve under the bounded per-piece subsets.
+    func testReferenceLinksInsideOversizedCalloutResolve() async throws {
+        let calloutBody = "uses [the guide][ref0] early. " + String(repeating: "ordinary callout prose. ", count: 1_400)
+        let source = "opening\n\n::: note\n\(calloutBody)\n:::\n\n\n[ref0]: https://example.com/guide/0"
+        guard let prepared = await LargeMarkdownPreparedDocument.prepare(source) else {
+            return XCTFail("preparation failed")
+        }
+        guard let index = prepared.chunks.firstIndex(where: { chunk in
+            if case .block(let block, _) = chunk { return LargeMarkdownPreparedDocument.isSpecializedCallout(block) }
+            return false
+        }) else { return XCTFail("callout chunk missing") }
+        guard let content = prepared.specializedByChunk[index] else {
+            return XCTFail("specialized content missing")
+        }
+
+        var resolved = false
+        for (pieceIndex, blocks) in content.pieceBlocks.enumerated() {
+            let subset = content.pieceReferences[pieceIndex]
+            XCTAssertLessThanOrEqual(subset.definitionsMarkdown.utf8.count,
+                                     MarkdownLargeDocumentPolicy.referenceSubsetBudgetBytes)
+            if let attributed = MarkdownSelectionFormatter.attributedText(
+                for: blocks, references: subset, foregroundStyle: .primary,
+                usesAccentSurface: false, newestCharacterOpacities: []
+            ), attributed.length > 0 {
+                var links = 0
+                attributed.enumerateAttribute(.link, in: NSRange(location: 0, length: attributed.length)) { value, _, _ in
+                    if value != nil { links += 1 }
+                }
+                if blocks.map(\.flattenedText).joined().contains("ref0") {
+                    XCTAssertGreaterThan(links, 0, "the piece containing the use must resolve its link")
+                    resolved = true
+                }
+            }
+        }
+        XCTAssertTrue(resolved, "the reference-using piece must exist and resolve")
+    }
+
+    // Case 10: oversized FIRST ordered item then normal items — numbering
+    // must not restart.
+    func testOversizedFirstOrderedItemThenNormalItems() async {
+        let huge = String(repeating: "item prose ", count: 900) // ~10 KB
+        let source = "1. \(huge)\n2. normal one\n3. normal two"
+        let document = MarkdownParser.parseDocument(source)
+        guard case .orderedList(let items)? = document.blocks.first else {
+            return XCTFail("expected ordered list")
+        }
+        let chunks = MarkdownLargeChunkPlanner.chunks(for: [.orderedList(items)])
+        XCTAssertGreaterThan(chunks.count, 1)
+
+        var orderedListBlocks = 0
+        var bakedOrdinals: [Int] = []
+        for chunk in chunks {
+            guard case .flow(let blocks) = chunk else { continue }
+            for block in blocks {
+                if case .orderedList = block { orderedListBlocks += 1 }
+                if case .paragraph(let text) = block,
+                   let ordinal = Int(text.prefix { $0.isNumber }) {
+                    bakedOrdinals.append(ordinal)
+                }
+            }
+        }
+        XCTAssertEqual(orderedListBlocks, 0,
+                       "an oversized FIRST item consumes the list slot; continuations must bake ordinals")
+        XCTAssertFalse(bakedOrdinals.isEmpty, "continuation ordinals must be baked")
+        XCTAssertEqual(bakedOrdinals.first, 1, "the first item keeps its ordinal")
+        XCTAssertTrue(bakedOrdinals.contains(2) && bakedOrdinals.contains(3),
+                      "normal following items continue numbering (got \(bakedOrdinals))")
+    }
+
+    // Case 11: a source swap clears stale prepared content immediately.
+    @MainActor
+    func testSourceSwapClearsStaleContentImmediately() {
+        let state = SourceSwapHostState(
+            source: "oldmarker " + paragraphSoup(targetBytes: 120_000)
+        )
+        let host = UIHostingController(rootView: SourceSwapHostView(state: state))
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        host.view.layoutIfNeeded()
+        let first = Date().addingTimeInterval(5)
+        while Date() < first,
+              !host.view.recursiveSubviewsForTests.contains(where: { ($0 as? UITextView)?.attributedText?.string.contains("oldmarker") == true }) {
+            pumpForSwiftUICommit(host: host)
+        }
+
+        XCTAssertTrue(
+            host.view.recursiveSubviewsForTests.contains { ($0 as? UITextView)?.attributedText?.string.contains("oldmarker") == true },
+            "precondition: the old source must have rendered before the swap"
+        )
+        state.source = "newmarker " + paragraphSoup(targetBytes: 120_000)
+        // One pump after the swap: old content must already be gone, even
+        // before the replacement preparation lands.
+        pumpForSwiftUICommit(host: host)
+        let rendered = host.view.recursiveSubviewsForTests
+            .compactMap { ($0 as? UITextView)?.attributedText?.string ?? nil }
+            .joined()
+        XCTAssertFalse(rendered.contains("oldmarker"), "stale content must not remain visible during preparation")
+    }
+
+    // Case 12: exact CJK/emoji streaming reconstruction — no missing or
+    // duplicated characters across aligned hard cuts.
+    func testStreamingReconstructionExactForCJKAndEmoji() {
+        // Mixed multibyte text with NO blank lines: every promotion is a
+        // grapheme-stepped hard cut.
+        let emoji = "👩‍👩‍👧‍👦"
+        let corpus = String(repeating: "漢字🎉\(emoji)テキスト", count: 9_000)
+        let total = corpus.utf8.count
+        XCTAssertGreaterThan(total, 300_000)
+
+        let chunk = MarkdownLargeDocumentPolicy.chunkTargetBytes
+        var promoted = 0
+        var pieces: [String] = []
+        while let next = LargeStreamPromotion.nextPromotionBoundary(
+            promotedBytes: promoted,
+            revealedBytes: total,
+            tailWindowBytes: chunk,
+            boundaries: [],
+            constructIntervals: []
+        ) {
+            guard let end = StreamingText.alignedIndex(utf8Offset: next, in: corpus) else {
+                return XCTFail("alignment failed at \(next)")
+            }
+            let start: String.Index
+            if promoted == 0 {
+                start = corpus.startIndex
+            } else if let aligned = StreamingText.alignedIndex(utf8Offset: promoted, in: corpus) {
+                start = aligned
+            } else {
+                return XCTFail("start alignment failed at \(promoted)")
+            }
+            pieces.append(String(corpus[start..<end]))
+            // Normalized offset (mirrors StreamingText's bookkeeping).
+            let utf8 = corpus.utf8
+            promoted = utf8.distance(from: utf8.startIndex, to: end.samePosition(in: utf8)!)
+        }
+        guard let tailStart = StreamingText.alignedIndex(utf8Offset: promoted, in: corpus) else {
+            return XCTFail("tail alignment failed at \(promoted)")
+        }
+        let tail = String(corpus[tailStart...])
+
+        XCTAssertEqual(pieces.joined() + tail, corpus,
+                       "promoted chunks plus the live tail must reconstruct the stream exactly")
+        XCTAssertGreaterThan(pieces.count, 10)
+    }
+}
+
+/// Hosts an already-prepared plan without re-running preparation, so tests
+/// can pump re-evaluations deterministically.
+private struct LargeExpandedProbeView: View {
+    let plan: LargeMarkdownPreparedDocument
+
+    var body: some View {
+        LargeMarkdownPreparedPlanHost(plan: plan)
+    }
+}
+
+private struct LargeMarkdownPreparedPlanHost: View {
+    let plan: LargeMarkdownPreparedDocument
+    @StateObject private var selectionCoordinator = MarkdownSelectionCoordinator()
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(0..<plan.chunks.count, id: \.self) { index in
+                SpecializedChunkProbe(plan: plan, index: index, coordinator: selectionCoordinator)
+            }
+        }
+    }
+}
+
+private struct SpecializedChunkProbe: View {
+    let plan: LargeMarkdownPreparedDocument
+    let index: Int
+    let coordinator: MarkdownSelectionCoordinator
+
+    var body: some View {
+        if let content = plan.specializedByChunk[index] {
+            if case .callout = content.kind {
+                LargeMarkdownCallout(
+                    content: content,
+                    calloutKind: content.calloutKind,
+                    foregroundStyle: .primary,
+                    usesAccentSurface: false,
+                    selectionCoordinator: coordinator
+                )
+            } else {
+                LargeMarkdownColumns(
+                    content: content,
+                    columnCount: content.columnCount,
+                    foregroundStyle: .primary,
+                    usesAccentSurface: false,
+                    selectionCoordinator: coordinator
+                )
+            }
+        }
     }
 }
 

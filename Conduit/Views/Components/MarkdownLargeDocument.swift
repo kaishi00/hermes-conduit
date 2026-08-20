@@ -68,6 +68,27 @@ enum MarkdownLargeDocumentPolicy {
     /// Byte budget for the per-chunk subset of message-wide reference
     /// definitions appended at parse time (see MarkdownReferenceResolver).
     static let referenceSubsetBudgetBytes = 8_000
+    /// Per-cell byte ceiling in the paged large-table presentation: one
+    /// 500 KB cell must not become an unbounded InlineMarkdown/TextKit
+    /// operation or an unbounded width-measurement input. The cell renders
+    /// a grapheme-safe bounded prefix; the full content remains in the
+    /// message (Copy Response) — a documented pathological-only tradeoff.
+    static let tableCellBytes = 8_000
+
+    /// Grapheme-safe bounded cell text (or any bounded display text) with
+    /// an explicit truncation marker.
+    static func boundedDisplayText(_ text: String, maxBytes: Int) -> String {
+        guard text.utf8.count > maxBytes else { return text }
+        var bytes = 0
+        var index = text.startIndex
+        while index < text.endIndex {
+            let characterBytes = String(text[index]).utf8.count
+            if bytes + characterBytes > maxBytes { break }
+            bytes += characterBytes
+            index = text.index(after: index)
+        }
+        return String(text[..<index]) + " …"
+    }
 
     static func isLargeDocument(_ source: String) -> Bool {
         source.utf8.count >= documentThresholdBytes
@@ -101,6 +122,69 @@ enum MarkdownLargeChunk: Equatable {
 /// whole-character boundaries with nothing inserted), which keeps Copy and
 /// round-trip tests trivially sound.
 enum MarkdownCodeSlicer {
+    /// The single bounded preview piece: stops scanning as soon as the
+    /// preview line or byte ceiling is reached, never walking or
+    /// materializing the rest of the block. Safe to call from SwiftUI
+    /// `body` for arbitrarily large sources.
+    static func firstSlice(_ source: String, maxLines: Int, maxBytes: Int) -> String {
+        var lines = 0
+        var bytes = 0
+        var index = source.startIndex
+        var lineStart = source.startIndex
+        while index < source.endIndex {
+            if source[index] == "\n" {
+                let lineEnd = source.index(after: index)
+                let lineBytes = source[lineStart..<lineEnd].utf8.count
+                if lineBytes > maxBytes {
+                    // Giant line: everything up to it plus a grapheme-safe
+                    // bounded piece OF it, under the REMAINING byte budget
+                    // so the whole preview stays within the ceiling — and
+                    // always a prefix of the source.
+                    return String(source[..<lineStart])
+                        + boundedPrefix(of: source[lineStart..<lineEnd], maxBytes: maxBytes - bytes)
+                }
+                lines += 1
+                bytes += lineBytes
+                if lines >= maxLines || bytes >= maxBytes {
+                    return String(source[..<lineEnd])
+                }
+                lineStart = lineEnd
+                index = lineEnd
+                continue
+            }
+            // No newline so far: once the accumulated line itself exceeds
+            // the byte ceiling it is a giant line — stop scanning here and
+            // never walk the rest of the block.
+            if index == source.index(before: source.endIndex) {
+                break
+            }
+            index = source.index(after: index)
+            if source.distance(from: lineStart, to: index) >= maxBytes {
+                return String(source[..<lineStart]) + boundedPrefix(of: source[lineStart...], maxBytes: maxBytes - bytes)
+            }
+        }
+        if lineStart < source.endIndex {
+            let lineBytes = source[lineStart...].utf8.count
+            if lineBytes > maxBytes {
+                return String(source[..<lineStart]) + boundedPrefix(of: source[lineStart...], maxBytes: maxBytes - bytes)
+            }
+        }
+        return source
+    }
+
+    private static func boundedPrefix(of range: Substring, maxBytes: Int) -> String {
+        var bytes = 0
+        var index = range.startIndex
+        while index < range.endIndex {
+            bytes += String(range[index]).utf8.count
+            if bytes >= maxBytes {
+                return String(range[..<range.index(after: index)])
+            }
+            index = range.index(after: index)
+        }
+        return String(range)
+    }
+
     static func slice(_ source: String, maxLines: Int, maxBytes: Int) -> [String] {
         guard !source.isEmpty else { return [] }
         var slices: [String] = []
@@ -226,6 +310,29 @@ struct MarkdownInlineBalance {
 /// the grouping is deterministic for a deterministic block list, so the plan
 /// is directly unit-testable.
 enum MarkdownLargeChunkPlanner {
+    #if DEBUG
+    /// Test instrumentation: number of `splitText` invocations. Proves that
+    /// SwiftUI body re-evaluations never re-split pathological text (the
+    /// specialized rich-block pieces are computed once in preparation).
+    /// Lock-guarded end to end: preparation runs off the MainActor while
+    /// tests read/reset from the main thread.
+    private static let splitCountLock = NSLock()
+    private nonisolated(unsafe) static var splitTextCallCountStorage = 0
+
+    nonisolated(unsafe) static var splitTextCallCount: Int {
+        get {
+            splitCountLock.lock()
+            defer { splitCountLock.unlock() }
+            return splitTextCallCountStorage
+        }
+        set {
+            splitCountLock.lock()
+            defer { splitCountLock.unlock() }
+            splitTextCallCountStorage = newValue
+        }
+    }
+    #endif
+
     static func chunks(for blocks: [MarkdownBlock]) -> [MarkdownLargeChunk] {
         var chunks: [MarkdownLargeChunk] = []
         var pending: [MarkdownBlock] = []
@@ -318,8 +425,11 @@ enum MarkdownLargeChunkPlanner {
             if bytes > target {
                 // One pathologically huge item: its first piece keeps the
                 // list semantics (or the baked ordinal); continuations are
-                // plain paragraphs.
+                // plain paragraphs. For ordered lists the oversized item
+                // consumes the "first group" slot so a later normal group
+                // bakes its ordinals instead of restarting at 1.
                 flush()
+                if ordered { emittedFirstGroup = true }
                 groupStartIndex = index + 1
                 let task = MarkdownParser.taskItem(item)
                 let baseText = task?.text ?? item
@@ -395,6 +505,9 @@ enum MarkdownLargeChunkPlanner {
     /// plain whitespace cut — pathological inline soup may then show literal
     /// markers at one seam, never altered text.
     static func splitText(_ text: String, make: (String) -> MarkdownBlock) -> [MarkdownLargeChunk] {
+        #if DEBUG
+        splitTextCallCount += 1
+        #endif
         guard text.utf8.count > MarkdownLargeDocumentPolicy.chunkTargetBytes else {
             return [.flow(blocks: [make(text)])]
         }
@@ -502,20 +615,26 @@ enum LargeStreamPromotion {
             return boundary
         }
 
-        // Structural guard: never hard-cut through a construct that
-        // contains the stable target. Promotion waits for a real boundary;
-        // if the construct never closes, the tail itself eventually crosses
-        // the large-document threshold and renders through the bounded
-        // collapsed presentation instead.
-        let insideConstruct = constructIntervals.contains { interval in
-            let end = interval.end ?? Int.max
-            return stableTarget > interval.start && stableTarget < end
+        // Structural guard: never hard-cut through a construct. BOTH the
+        // stable target and the actual candidate cut offset must sit
+        // outside every recorded construct — a target beyond a fence can
+        // still receive a fallback cut that lands inside it.
+        func isInsideConstruct(_ offset: Int) -> Bool {
+            constructIntervals.contains { interval in
+                let end = interval.end ?? Int.max
+                return offset > interval.start && offset < end
+            }
         }
-        if insideConstruct { return nil }
+        if isInsideConstruct(stableTarget) { return nil }
 
-        // Unstructured prose: bounded hard-cut fallback.
+        // Unstructured prose: bounded hard-cut fallback, still guarded by
+        // the construct check on the candidate itself. Promotion waits for
+        // a real boundary instead; if the construct never closes, the tail
+        // itself eventually crosses the large-document threshold and
+        // renders through the bounded collapsed presentation.
         if stableTarget - promotedBytes >= 2 * minChunkBytes {
-            return min(stableTarget, promotedBytes + 2 * minChunkBytes)
+            let cut = min(stableTarget, promotedBytes + 2 * minChunkBytes)
+            return isInsideConstruct(cut) ? nil : cut
         }
         return nil
     }

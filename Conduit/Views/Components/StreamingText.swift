@@ -395,9 +395,20 @@ struct StreamingText: View {
                 start < end
             else { return }
 
-            largeStableChunks.append(String(largeAccumulated[start..<end]))
-            largePromotedBytes = next
-            largeBoundaries.removeAll { $0 <= next }
+            let slice = String(largeAccumulated[start..<end])
+            largeStableChunks.append(slice)
+            // Store the byte offset of the ACTUAL aligned end index so the
+            // scalar bookkeeping and the rendered boundary describe the
+            // same position; a hard-cut offset that landed inside a
+            // multibyte grapheme steps back, and the difference must not
+            // accumulate across promotions.
+            let utf8 = largeAccumulated.utf8
+            if let alignedEnd = end.samePosition(in: utf8) {
+                largePromotedBytes = utf8.distance(from: utf8.startIndex, to: alignedEnd)
+            } else {
+                largePromotedBytes = next
+            }
+            largeBoundaries.removeAll { $0 <= largePromotedBytes }
         }
     }
 

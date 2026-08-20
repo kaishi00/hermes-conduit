@@ -166,7 +166,31 @@ struct LargeMarkdownPreparedDocument {
     /// Selection descriptors for each chunk (flow chunks carry their single
     /// synthetic descriptor; rich chunks carry their block's descriptors).
     let descriptorsByChunk: [[MarkdownSelectionSegmentDescriptor]]
+    /// Precomputed bounded pieces for specialized rich blocks (oversized
+    /// callouts/columns), keyed by chunk index: the pieces, their per-piece
+    /// bounded reference subsets, and their registered selection
+    /// descriptors — so no pathological text is ever re-split from `body`,
+    /// every piece participates in coordinated selection, and reference
+    /// links keep resolving under the bounded-definition policy.
+    let specializedByChunk: [Int: LargeSpecializedRichContent]
     let sourceIdentity: String
+
+    /// Routing predicates shared by preparation and the expanded view so a
+    /// chunk is specialized in exactly one place.
+    static func isSpecializedCallout(_ block: MarkdownBlock) -> Bool {
+        if case .callout(_, let text) = block {
+            return text.utf8.count > MarkdownLargeDocumentPolicy.largeTextBlockBytes
+        }
+        return false
+    }
+
+    static func isSpecializedColumns(_ block: MarkdownBlock) -> Bool {
+        if case .columns(let columns) = block {
+            let bytes = columns.reduce(0) { $0 + $1.utf8.count + 4 }
+            return bytes > MarkdownLargeDocumentPolicy.largeTextBlockBytes
+        }
+        return false
+    }
 
     /// String work only — no UIKit — so it runs off the MainActor as a
     /// cooperative child of the caller's task (cancellation stops the pass
@@ -189,8 +213,11 @@ struct LargeMarkdownPreparedDocument {
             cursor += count
         }
 
+        let definitions = MarkdownReferenceResolver.definitions(from: document.references)
+
         var descriptorsByChunk: [[MarkdownSelectionSegmentDescriptor]] = []
         var all: [MarkdownSelectionSegmentDescriptor] = []
+        var specializedByChunk: [Int: LargeSpecializedRichContent] = [:]
         for (chunkIndex, chunk) in chunks.enumerated() {
             switch chunk {
             case .flow:
@@ -201,7 +228,82 @@ struct LargeMarkdownPreparedDocument {
                 )
                 descriptorsByChunk.append([descriptor])
                 all.append(descriptor)
-            case .block(_, let originalIndex):
+            case .block(let block, let originalIndex):
+                // Specialized oversized callouts/columns: precompute the
+                // bounded pieces once, with per-piece descriptors that
+                // REPLACE the block's own descriptors so registered ids and
+                // mounted text views always correspond. Continuation pieces
+                // join with an empty separator: the split consumes the
+                // whitespace at the cut, so pieces concatenate to the
+                // original text exactly.
+                if Self.isSpecializedCallout(block), case .callout(let kind, let text) = block {
+                    let pieces = MarkdownLargeChunkPlanner.splitText(text) { .paragraph($0) }
+                    var pieceBlocks: [[MarkdownBlock]] = []
+                    var pieceReferences: [MarkdownReferenceContext] = []
+                    var pieceDescriptors: [MarkdownSelectionSegmentDescriptor] = []
+                    let originalSeparator = blockPlan[blockRanges[originalIndex]].first?.separatorBefore ?? "\n\n"
+                    for (pieceIndex, piece) in pieces.enumerated() {
+                        guard case .flow(let blocks) = piece else { continue }
+                        pieceBlocks.append(blocks)
+                        pieceReferences.append(
+                            MarkdownReferenceResolver.subset(for: blocks.map(\.flattenedText).joined(), definitions: definitions)
+                        )
+                        pieceDescriptors.append(MarkdownSelectionSegmentDescriptor(
+                            id: "lmd-callout-\(chunkIndex)-p\(pieceIndex)",
+                            order: all.count,
+                            separatorBefore: pieceIndex == 0 ? originalSeparator : ""
+                        ))
+                        all.append(pieceDescriptors[pieceDescriptors.count - 1])
+                    }
+                    let content = LargeSpecializedRichContent(
+                        kind: .callout(kind: kind),
+                        pieceBlocks: pieceBlocks,
+                        pieceReferences: pieceReferences,
+                        pieceDescriptors: pieceDescriptors
+                    )
+                    specializedByChunk[chunkIndex] = content
+                    descriptorsByChunk.append(pieceDescriptors)
+                    continue
+                }
+                if Self.isSpecializedColumns(block), case .columns(let columns) = block {
+                    let originalSeparators = blockPlan[blockRanges[originalIndex]].map(\.separatorBefore)
+                    var pieceBlocks: [[MarkdownBlock]] = []
+                    var pieceReferences: [MarkdownReferenceContext] = []
+                    var pieceDescriptors: [MarkdownSelectionSegmentDescriptor] = []
+                    var columnRanges: [Range<Int>] = []
+                    for (columnIndex, column) in columns.enumerated() {
+                        let pieces = MarkdownLargeChunkPlanner.splitText(column) { .paragraph($0) }
+                        let columnSeparator = originalSeparators.indices.contains(columnIndex)
+                            ? originalSeparators[columnIndex]
+                            : (columnIndex == 0 ? "\n\n" : " | ")
+                        let columnStart = pieceBlocks.count
+                        for (pieceIndex, piece) in pieces.enumerated() {
+                            guard case .flow(let blocks) = piece else { continue }
+                            pieceBlocks.append(blocks)
+                            pieceReferences.append(
+                                MarkdownReferenceResolver.subset(for: blocks.map(\.flattenedText).joined(), definitions: definitions)
+                            )
+                            pieceDescriptors.append(MarkdownSelectionSegmentDescriptor(
+                                id: "lmd-columns-\(chunkIndex)-c\(columnIndex)-p\(pieceIndex)",
+                                order: all.count,
+                                separatorBefore: pieceIndex == 0 ? columnSeparator : ""
+                            ))
+                            all.append(pieceDescriptors[pieceDescriptors.count - 1])
+                        }
+                        columnRanges.append(columnStart..<pieceBlocks.count)
+                    }
+                    let content = LargeSpecializedRichContent(
+                        kind: .columns(count: columns.count),
+                        pieceBlocks: pieceBlocks,
+                        pieceReferences: pieceReferences,
+                        pieceDescriptors: pieceDescriptors,
+                        columnPieceRanges: columnRanges
+                    )
+                    specializedByChunk[chunkIndex] = content
+                    descriptorsByChunk.append(pieceDescriptors)
+                    continue
+                }
+
                 let range = blockRanges[originalIndex]
                 // Rebase the slice's order values onto the running global
                 // counter so chunk order and document order agree.
@@ -220,7 +322,6 @@ struct LargeMarkdownPreparedDocument {
         guard !Task.isCancelled else { return nil }
 
         // Per-chunk reference subsets from the chunk's own text.
-        let definitions = MarkdownReferenceResolver.definitions(from: document.references)
         var referencesByChunk: [MarkdownReferenceContext] = []
         referencesByChunk.reserveCapacity(chunks.count)
         for chunk in chunks {
@@ -235,6 +336,7 @@ struct LargeMarkdownPreparedDocument {
             referencesByChunk: referencesByChunk,
             segmentDescriptors: all,
             descriptorsByChunk: descriptorsByChunk,
+            specializedByChunk: specializedByChunk,
             sourceIdentity: Self.identity(of: source)
         )
     }
@@ -274,6 +376,47 @@ extension MarkdownBlock {
         case .image(let url, let alt): return "\(alt) \(url)"
         case .divider: return ""
         }
+    }
+}
+
+/// Precomputed bounded pieces for a specialized rich block (oversized
+/// callout or columns): the piece blocks, per-piece bounded reference
+/// subsets, and per-piece selection descriptors — all computed once during
+/// the off-main preparation, never from `body`.
+struct LargeSpecializedRichContent {
+    enum Kind {
+        case callout(kind: String)
+        case columns(count: Int)
+    }
+    let kind: Kind
+    let pieceBlocks: [[MarkdownBlock]]
+    let pieceReferences: [MarkdownReferenceContext]
+    let pieceDescriptors: [MarkdownSelectionSegmentDescriptor]
+    /// For columns: the flat piece arrays sliced per original column.
+    let columnPieceRanges: [Range<Int>]?
+
+    var calloutKind: String {
+        if case .callout(let kind) = kind { return kind }
+        return "note"
+    }
+
+    var columnCount: Int {
+        if case .columns(let count) = kind { return count }
+        return 1
+    }
+
+    init(
+        kind: Kind,
+        pieceBlocks: [[MarkdownBlock]],
+        pieceReferences: [MarkdownReferenceContext],
+        pieceDescriptors: [MarkdownSelectionSegmentDescriptor],
+        columnPieceRanges: [Range<Int>]? = nil
+    ) {
+        self.kind = kind
+        self.pieceBlocks = pieceBlocks
+        self.pieceReferences = pieceReferences
+        self.pieceDescriptors = pieceDescriptors
+        self.columnPieceRanges = columnPieceRanges
     }
 }
 
@@ -320,6 +463,14 @@ struct LargeMarkdownExpandedView: View {
         .environment(\.markdownReferences, prepared?.references ?? .empty)
         .modifier(MarkdownSelectionHost(coordinator: selectionCoordinator))
         .task(id: sourceIdentity) {
+            // A changed source must not keep displaying the old prepared
+            // document while the replacement prepares: clear state, reset
+            // the window, drop any coordinated selection, show Preparing.
+            if prepared != nil {
+                prepared = nil
+                renderedChunkCount = Self.initialChunkBatch
+                selectionCoordinator.clearSelection()
+            }
             // Nonisolated async → runs on the global executor (a structured
             // child of this task, so cancellation stops the parse instead of
             // merely discarding its result).
@@ -396,25 +547,26 @@ struct LargeMarkdownExpandedView: View {
                 blockIndex: originalIndex,
                 selectionSegments: prepared.descriptorsByChunk[index]
             )
-        case .callout(let kind, let text)
-            where text.utf8.count > MarkdownLargeDocumentPolicy.largeTextBlockBytes:
-            LargeMarkdownCallout(
-                kind: kind,
-                text: text,
-                foregroundStyle: foregroundStyle,
-                usesAccentSurface: usesAccentSurface,
-                selectionCoordinator: selectionCoordinator,
-                selectionSegment: prepared.descriptorsByChunk[index].first
-            )
-        case .columns(let columns)
-            where block.estimatedSourceBytes > MarkdownLargeDocumentPolicy.largeTextBlockBytes:
-            LargeMarkdownColumns(
-                columns: columns,
-                foregroundStyle: foregroundStyle,
-                usesAccentSurface: usesAccentSurface,
-                selectionCoordinator: selectionCoordinator,
-                selectionSegments: prepared.descriptorsByChunk[index]
-            )
+        case .callout where LargeMarkdownPreparedDocument.isSpecializedCallout(block):
+            if let content = prepared.specializedByChunk[index] {
+                LargeMarkdownCallout(
+                    content: content,
+                    calloutKind: content.calloutKind,
+                    foregroundStyle: foregroundStyle,
+                    usesAccentSurface: usesAccentSurface,
+                    selectionCoordinator: selectionCoordinator
+                )
+            }
+        case .columns where LargeMarkdownPreparedDocument.isSpecializedColumns(block):
+            if let content = prepared.specializedByChunk[index] {
+                LargeMarkdownColumns(
+                    content: content,
+                    columnCount: content.columnCount,
+                    foregroundStyle: foregroundStyle,
+                    usesAccentSurface: usesAccentSurface,
+                    selectionCoordinator: selectionCoordinator
+                )
+            }
         case .math(let source) where source.utf8.count > MarkdownLargeDocumentPolicy.mathGuardBytes:
             GuardedSourceCard(
                 title: "LaTeX",
@@ -508,9 +660,15 @@ private struct LargeDocumentPreparingView: View {
 /// Memoizes a flow chunk's attributed string so unrelated body
 /// re-evaluations never re-run the Foundation parses. The memo identity is
 /// explicit: Dynamic Type category (fonts bake into the string) and the
-/// accent-surface flag (colors bake in). The chunk's blocks/references are
-/// fixed per prepared plan — a changed source means a new identity and new
-/// chunk views, so those inputs cannot change for a surviving box.
+/// accent-surface flag (colors bake in).
+///
+/// Invariant for the remaining inputs: `foregroundStyle` is tied 1:1 to
+/// `usesAccentSurface` at every call site (`.primary`/`false` and
+/// `.white`/`true` — the same pairing `MarkdownRenderCache` asserts), and
+/// the per-chunk reference subset is fixed by the prepared plan. A changed
+/// source means a new source identity and therefore new chunk-view ids and
+/// fresh boxes, so neither input can change for a surviving box. Large
+/// structures are never hashed or serialized on body evaluation.
 final class LargeFlowChunkBox {
     private var cachedText: NSAttributedString?
     private var cachedCategory: UIContentSizeCategory?
@@ -596,16 +754,17 @@ struct LargeFlowChunkView: View {
 /// bounded inner pieces (each ≤ the chunk target) rendered inside the same
 /// callout chrome. Every piece is selectable and Copy Response still uses
 /// the complete message.
-private struct LargeMarkdownCallout: View {
-    let kind: String
-    let text: String
+struct LargeMarkdownCallout: View {
+    /// Precomputed pieces — never re-split from `body` (the preparation
+    /// stage owns that work).
+    let content: LargeSpecializedRichContent
+    let calloutKind: String
     let foregroundStyle: Color
     let usesAccentSurface: Bool
     let selectionCoordinator: MarkdownSelectionCoordinator?
-    let selectionSegment: MarkdownSelectionSegmentDescriptor?
 
     private var detail: (title: String, icon: String, color: Color) {
-        switch kind.lowercased() {
+        switch calloutKind.lowercased() {
         case "tip", "hint": ("Tip", "lightbulb.fill", .green)
         case "warning", "caution": ("Warning", "exclamationmark.triangle.fill", .orange)
         case "danger", "error": ("Important", "exclamationmark.octagon.fill", .red)
@@ -615,25 +774,19 @@ private struct LargeMarkdownCallout: View {
     }
 
     var body: some View {
-        // The pieces are flow text below the document threshold; rendering
-        // each through the ordinary MarkdownText path reuses its cache and
-        // selection machinery instead of a second inline implementation.
-        let pieces = MarkdownLargeChunkPlanner.splitText(text) { .paragraph($0) }
         VStack(alignment: .leading, spacing: 6) {
             Label(detail.title, systemImage: detail.icon)
                 .font(.caption.weight(.bold))
                 .foregroundStyle(detail.color)
-            ForEach(Array(pieces.enumerated()), id: \.offset) { _, piece in
-                if case .flow(let blocks) = piece {
-                    LargeFlowChunkView(
-                        blocks: blocks,
-                        references: .empty,
-                        foregroundStyle: foregroundStyle,
-                        usesAccentSurface: usesAccentSurface,
-                        selectionCoordinator: nil,
-                        selectionSegment: nil
-                    )
-                }
+            ForEach(Array(content.pieceBlocks.enumerated()), id: \.offset) { index, blocks in
+                LargeFlowChunkView(
+                    blocks: blocks,
+                    references: content.pieceReferences[index],
+                    foregroundStyle: foregroundStyle,
+                    usesAccentSurface: usesAccentSurface,
+                    selectionCoordinator: selectionCoordinator,
+                    selectionSegment: content.pieceDescriptors[index]
+                )
             }
         }
         .padding(12)
@@ -648,34 +801,37 @@ private struct LargeMarkdownCallout: View {
 /// Columns whose combined size exceeds the text-block budget, reprojected
 /// per column into bounded pieces. The HStack chrome is preserved; each
 /// piece renders through the ordinary small path.
-private struct LargeMarkdownColumns: View {
-    let columns: [String]
+struct LargeMarkdownColumns: View {
+    /// Precomputed column-major pieces — never re-split from `body`.
+    let content: LargeSpecializedRichContent
+    let columnCount: Int
     let foregroundStyle: Color
     let usesAccentSurface: Bool
     let selectionCoordinator: MarkdownSelectionCoordinator?
-    let selectionSegments: [MarkdownSelectionSegmentDescriptor]
 
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
-            ForEach(Array(columns.enumerated()), id: \.offset) { index, column in
-                let pieces = MarkdownLargeChunkPlanner.splitText(column) { .paragraph($0) }
+            ForEach(0..<columnCount, id: \.self) { column in
                 VStack(alignment: .leading, spacing: 6) {
-                    ForEach(Array(pieces.enumerated()), id: \.offset) { _, piece in
-                        if case .flow(let blocks) = piece {
-                            LargeFlowChunkView(
-                                blocks: blocks,
-                                references: .empty,
-                                foregroundStyle: foregroundStyle,
-                                usesAccentSurface: usesAccentSurface,
-                                selectionCoordinator: selectionCoordinator,
-                                selectionSegment: nil
-                            )
-                        }
+                    // The flat prepared pieces are column-major; each column
+                    // renders exactly its own slice.
+                    let pieceRange = content.columnPieceRanges?.indices.contains(column) == true
+                        ? content.columnPieceRanges![column]
+                        : 0..<content.pieceBlocks.count
+                    ForEach(Array(pieceRange), id: \.self) { index in
+                        LargeFlowChunkView(
+                            blocks: content.pieceBlocks[index],
+                            references: content.pieceReferences[index],
+                            foregroundStyle: foregroundStyle,
+                            usesAccentSurface: usesAccentSurface,
+                            selectionCoordinator: selectionCoordinator,
+                            selectionSegment: content.pieceDescriptors[index]
+                        )
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(12)
-                if index < columns.count - 1 {
+                if column < columnCount - 1 {
                     Divider().overlay(usesAccentSurface ? Color.white.opacity(0.24) : Color.secondary.opacity(0.20))
                 }
             }
@@ -727,21 +883,19 @@ struct LargeCodeBlockView: View {
                             )
                         }
                     } else {
-                        // The preview renders ONE bounded slice — up to
+                        // The preview renders ONE bounded piece — up to
                         // `codePreviewLineCount` lines AND `codePreviewBytes`
-                        // bytes; a 1 MB single-line blob previews as its
-                        // first 16 KB piece.
-                        ForEach(Array(MarkdownCodeSlicer.slice(
-                            source,
-                            maxLines: MarkdownLargeDocumentPolicy.codePreviewLineCount,
-                            maxBytes: MarkdownLargeDocumentPolicy.codePreviewBytes
-                        ).prefix(1).enumerated()), id: \.offset) { _, piece in
-                            LargeCodeSliceView(
-                                source: piece,
-                                language: normalizedLanguage,
-                                usesAccentSurface: usesAccentSurface
-                            )
-                        }
+                        // bytes — via the early-exiting preview slicer, so
+                        // `body` never walks the whole block.
+                        LargeCodeSliceView(
+                            source: MarkdownCodeSlicer.firstSlice(
+                                source,
+                                maxLines: MarkdownLargeDocumentPolicy.codePreviewLineCount,
+                                maxBytes: MarkdownLargeDocumentPolicy.codePreviewBytes
+                            ),
+                            language: normalizedLanguage,
+                            usesAccentSurface: usesAccentSurface
+                        )
                         if lineStats?.hasMore == true {
                             Button {
                                 withAnimation(.easeInOut(duration: 0.15)) { expanded = true }
