@@ -9,6 +9,13 @@
 //  steady, adaptive pace and retain individual reveal timestamps, allowing
 //  the Markdown renderer to fade the newest glyphs independently.
 //
+//  Once the accumulated text crosses the large-document threshold, the
+//  component switches to a bounded mode: everything behind the live tail is
+//  promoted into immutable chunks (rendered once through the ordinary
+//  cached path) and only the tail — a window of a few KB — keeps
+//  re-rendering per tick. Without this, a 1 MB stream re-parses and
+//  re-lays-out the whole document at 30 fps (measured 0.8–3.3 s per frame).
+//
 
 import SwiftUI
 
@@ -21,15 +28,73 @@ struct StreamingText: View {
     var gatewayMediaDataURL: ((String) async -> String?)? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    // MARK: Small-stream state (existing behavior)
+
     @State private var targetCharacters: [Character] = []
     @State private var visibleCharacters: [Character] = []
     @State private var revealDates: [Date] = []
     @State private var isAnimating = false
 
+    // MARK: Large-stream state
+    //
+    // Bookkeeping is scalar-first (character/byte counts updated by O(delta)
+    // arithmetic) so a tick never walks the accumulated megabytes; index
+    // math happens only at promotion boundaries, which are rare.
+
+    /// True once the accumulated text has crossed the large-document
+    /// threshold; the component never switches back mid-stream (a message
+    /// only grows while streaming).
+    @State private var isLargeStream = false
+    /// The accumulated target text (append-only while the stream grows).
+    @State private var largeAccumulated = ""
+    /// Character count of `largeAccumulated`, tracked incrementally.
+    @State private var largeAccumulatedChars = 0
+    /// Index into `largeAccumulated` up to which characters are revealed.
+    @State private var largeRevealedEnd: String.Index?
+    /// Character count of the revealed prefix, tracked incrementally.
+    @State private var largeRevealedChars = 0
+    /// UTF-8 offset of the revealed prefix, tracked incrementally.
+    @State private var largeRevealedBytes = 0
+    /// UTF-8 offset of the prefix already promoted into stable chunks.
+    @State private var largePromotedBytes = 0
+    /// Source slices of promoted chunks; each renders once through the
+    /// ordinary (cached) MarkdownText path and never re-parses.
+    @State private var largeStableChunks: [String] = []
+    /// Incremental safe-boundary scanner over `largeAccumulated`.
+    @State private var largeScanner = MarkdownStableBoundaryScanner()
+    /// Ascending safe-boundary offsets still ahead of the promoted prefix.
+    /// Keeping the history (not just the latest boundary) lets promotion
+    /// pick the latest boundary inside its bounded window when the newest
+    /// boundaries sit beyond the window — e.g. reveal still inside a fence
+    /// while the scanner has already processed past it. Pruned to the
+    /// promoted prefix and hard-capped so adversarial blank-line floods
+    /// cannot grow it unboundedly.
+    @State private var largeBoundaries: [Int] = []
+    private static let maximumRetainedBoundaries = 4_096
+
     private let timer = Timer.publish(every: 1.0 / 30.0, on: .main, in: .common).autoconnect()
     private let fadeDuration = 0.18
 
+    /// Tail window: the live region kept out of the stable chunks so it can
+    /// keep re-parsing per tick. Same order as the chunk target, so a tick's
+    /// whole-document work stays bounded by ~2 chunks.
+    private static let largeTailWindowBytes = MarkdownLargeDocumentPolicy.chunkTargetBytes
+
     var body: some View {
+        if isLargeStream {
+            largeBody
+                .onAppear { updateTarget(text) }
+                .onChange(of: text) { _, newText in updateTarget(newText) }
+                .onReceive(timer) { date in largeReveal(at: date) }
+        } else {
+            smallBody
+        }
+    }
+
+    // MARK: Small stream
+
+    private var smallBody: some View {
         TimelineView(
             .animation(
                 minimumInterval: 1.0 / 30.0,
@@ -64,6 +129,20 @@ struct StreamingText: View {
     }
 
     private func updateTarget(_ newText: String) {
+        if isLargeStream {
+            updateLargeTarget(newText)
+            return
+        }
+
+        // Cross into large mode instead of growing the per-character
+        // machinery past the threshold: seed the large state with everything
+        // accumulated so far (revealed wholesale — the animation that
+        // matters is the tail that keeps streaming).
+        if MarkdownLargeDocumentPolicy.isLargeDocument(newText) {
+            enterLargeMode(with: newText)
+            return
+        }
+
         let newTarget = Array(newText)
         if newTarget.count < visibleCharacters.count ||
             !newTarget.starts(with: visibleCharacters) {
@@ -131,5 +210,274 @@ struct StreamingText: View {
             let progress = date.timeIntervalSince(revealDate) / fadeDuration
             return min(max(progress, 0.04), 1)
         }
+    }
+
+    // MARK: Large stream
+
+    private var largeBody: some View {
+        TimelineView(
+            .animation(
+                minimumInterval: 1.0 / 30.0,
+                paused: reduceMotion || !isAnimating
+            )
+        ) { timeline in
+            VStack(alignment: .leading, spacing: 10) {
+                // Chunks and the tail parse in isolation, so reference
+                // definitions elsewhere in the stream do not resolve while
+                // streaming — they render literally until the message
+                // settles, at which point the settled view parses the whole
+                // message and resolves them message-wide.
+                ForEach(Array(largeStableChunks.enumerated()), id: \.offset) { _, chunk in
+                    MarkdownText(
+                        source: chunk,
+                        gatewayMediaDataURL: gatewayMediaDataURL,
+                        isStreaming: false
+                    )
+                }
+                MarkdownText(
+                    source: largeTailSource,
+                    gatewayMediaDataURL: gatewayMediaDataURL,
+                    newestCharacterOpacities: characterOpacities(at: timeline.date),
+                    isStreaming: true
+                )
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .onChange(of: reduceMotion) { _, shouldReduceMotion in
+            if shouldReduceMotion {
+                revealAllLargeImmediately()
+            }
+        }
+    }
+
+    /// The revealed-but-unpromoted window — the only part that re-renders
+    /// per tick. Text beyond the reveal cursor is deliberately NOT rendered
+    /// (character pacing must hold in large mode exactly as in small mode).
+    private var largeTailSource: String {
+        Self.tailSource(
+            accumulated: largeAccumulated,
+            promotedBytes: largePromotedBytes,
+            revealedEnd: largeRevealedEnd
+        ) ?? ""
+    }
+
+    /// (Re)seeds large mode from `fullText`. Used on first crossing and on a
+    /// non-append target (branch swap / regeneration), which resets
+    /// everything — matching the small-mode reset semantics.
+    private func enterLargeMode(with fullText: String) {
+        largeAccumulated = fullText
+        largeAccumulatedChars = fullText.count
+        largeRevealedEnd = fullText.endIndex
+        largeRevealedChars = fullText.count
+        largeRevealedBytes = fullText.utf8.count
+        largePromotedBytes = 0
+        largeStableChunks = []
+        largeScanner = MarkdownStableBoundaryScanner()
+        // The scanner needs the full history to know fence state from any
+        // later promotion point onward.
+        largeBoundaries = largeScanner.append(fullText)
+        isLargeStream = true
+        targetCharacters = []
+        visibleCharacters = []
+        revealDates = []
+
+        if reduceMotion {
+            revealAllLargeImmediately()
+        } else {
+            promoteLargeChunks()
+        }
+    }
+
+    private func updateLargeTarget(_ newText: String) {
+        // A lazily-recreated view (scrolling far away and back), a non-append
+        // target, or a grapheme merging across the append boundary all
+        // reseed from the complete new string (see largeAppendDelta).
+        guard let delta = Self.largeAppendDelta(old: largeAccumulated, new: newText), largeRevealedEnd != nil else {
+            enterLargeMode(with: newText)
+            return
+        }
+
+        guard !delta.isEmpty else { return }
+
+        largeAccumulated = newText
+        largeAccumulatedChars += delta.count
+        // String.Index is only valid for the instance it was created from;
+        // re-derive the reveal cursor in the replaced string from its
+        // tracked UTF-8 offset (whole-character aligned by construction).
+        // If alignment ever failed, reveal everything rather than retain an
+        // index into the discarded string.
+        let utf8 = largeAccumulated.utf8
+        if largeRevealedBytes <= utf8.count,
+           let offsetIndex = utf8.index(utf8.startIndex, offsetBy: largeRevealedBytes, limitedBy: utf8.endIndex),
+           let revealed = String.Index(offsetIndex, within: largeAccumulated) {
+            largeRevealedEnd = revealed
+        } else {
+            revealAllLargeImmediately()
+            return
+        }
+        largeBoundaries.append(contentsOf: largeScanner.append(delta))
+        if largeBoundaries.count > Self.maximumRetainedBoundaries {
+            largeBoundaries.removeFirst(largeBoundaries.count - Self.maximumRetainedBoundaries)
+        }
+
+        if reduceMotion {
+            // Everything already arrived is shown instantly; per-tick reveal
+            // is disabled under reduce motion.
+            largeRevealedEnd = newText.endIndex
+            largeRevealedChars = largeAccumulatedChars
+            largeRevealedBytes = newText.utf8.count
+            revealAllLargeImmediately()
+        }
+    }
+
+    private func largeReveal(at date: Date) {
+        guard !reduceMotion else { return }
+
+        revealDates.removeAll {
+            date.timeIntervalSince($0) >= fadeDuration
+        }
+
+        guard var revealedEnd = largeRevealedEnd else { return }
+        let remaining = largeAccumulatedChars - largeRevealedChars
+        if remaining <= 0 {
+            let shouldAnimate = !revealDates.isEmpty
+            if isAnimating != shouldAnimate { isAnimating = shouldAnimate }
+            if !active {
+                // The stream is finished and fully revealed: drain the
+                // scanner's trailing partial line so a document ending in a
+                // closing fence (without a final newline) still promotes at
+                // real boundaries instead of hard-cutting inside the block.
+                largeScanner.finish()
+            }
+            promoteLargeChunks()
+            return
+        }
+
+        let batchSize = revealBatchSize(for: remaining)
+        let revealCount = min(batchSize, remaining)
+        let baseDate = max(date, revealDates.last ?? date)
+        let stagger = min(0.012, 0.028 / Double(revealCount))
+
+        // Walk only the batch: O(revealCount) per tick regardless of how
+        // large the accumulated document has become. The bounds guard is
+        // defense in depth: correct bookkeeping never reaches it, but the
+        // loop must never trap on inconsistent state — it stops and
+        // reconciles the counters instead.
+        var revealedInBatch = 0
+        for offset in 0..<revealCount {
+            guard revealedEnd < largeAccumulated.endIndex else { break }
+            let current = revealedEnd
+            revealedEnd = largeAccumulated.index(after: revealedEnd)
+            largeRevealedBytes += String(largeAccumulated[current]).utf8.count
+            revealDates.append(baseDate.addingTimeInterval(Double(offset) * stagger))
+            revealedInBatch += 1
+        }
+        largeRevealedEnd = revealedEnd
+        largeRevealedChars += revealedInBatch
+        if revealedInBatch < revealCount, revealedEnd >= largeAccumulated.endIndex {
+            // Reconcile the scalar counters with the clamped cursor.
+            largeRevealedChars = largeAccumulatedChars
+            largeRevealedBytes = largeAccumulated.utf8.count
+        }
+        isAnimating = true
+        promoteLargeChunks()
+    }
+
+    /// Promotes revealed-but-stable content into immutable chunks whenever
+    /// more than the tail window of it has accumulated. Boundary selection
+    /// (safe scanner boundary, with hard-cut fallback for unbroken blocks)
+    /// lives in the pure, unit-tested `LargeStreamPromotion`.
+    private func promoteLargeChunks() {
+        while let next = LargeStreamPromotion.nextPromotionBoundary(
+            promotedBytes: largePromotedBytes,
+            revealedBytes: largeRevealedBytes,
+            tailWindowBytes: Self.largeTailWindowBytes,
+            boundaries: largeBoundaries,
+            constructIntervals: largeScanner.constructIntervals
+        ) {
+            // Index conversion is linear in the accumulated string, but
+            // promotions happen only every few KB of growth, so this stays
+            // amortized O(delta). Hard-cut offsets are pure arithmetic and
+            // can land mid-grapheme (CJK/emoji); step back to the previous
+            // whole-character boundary rather than stalling promotion.
+            guard
+                let start = Self.alignedIndex(utf8Offset: largePromotedBytes, in: largeAccumulated),
+                let end = Self.alignedIndex(utf8Offset: next, in: largeAccumulated),
+                start < end
+            else { return }
+
+            let slice = String(largeAccumulated[start..<end])
+            largeStableChunks.append(slice)
+            // Store the byte offset of the ACTUAL aligned end index so the
+            // scalar bookkeeping and the rendered boundary describe the
+            // same position; a hard-cut offset that landed inside a
+            // multibyte grapheme steps back, and the difference must not
+            // accumulate across promotions.
+            let utf8 = largeAccumulated.utf8
+            if let alignedEnd = end.samePosition(in: utf8) {
+                largePromotedBytes = utf8.distance(from: utf8.startIndex, to: alignedEnd)
+            } else {
+                largePromotedBytes = next
+            }
+            largeBoundaries.removeAll { $0 <= largePromotedBytes }
+        }
+    }
+
+    /// Pure append-delta derivation. Returns nil when the projection must
+    /// reseed from the complete new string: a non-append target (Character
+    /// prefix check failed), or a grapheme that merged across the append
+    /// boundary — a combining mark, ZWJ sequence, variation selector, or
+    /// regional-indicator pair can absorb the old string's final grapheme,
+    /// making the old UTF-8 length a non-boundary in the new string. In
+    /// both cases incremental bookkeeping (cursor, counters, scanner,
+    /// promoted prefix) cannot be nudged; correctness re-establishes every
+    /// invariant together. Byte-based so the derivation never depends on
+    /// Character-count subtleties.
+    static func largeAppendDelta(old: String, new: String) -> String? {
+        guard !old.isEmpty, new.hasPrefix(old) else { return nil }
+        let oldBytes = old.utf8.count
+        let utf8 = new.utf8
+        guard oldBytes <= utf8.count,
+              let boundaryUTF8 = utf8.index(utf8.startIndex, offsetBy: oldBytes, limitedBy: utf8.endIndex),
+              let boundary = String.Index(boundaryUTF8, within: new) else {
+            return nil
+        }
+        return String(new[boundary...])
+    }
+
+    /// Pure slicing step for the live tail: the byte window
+    /// [promotedBytes, revealedEnd). Returns nil when nothing revealed is
+    /// unpromoted (or the view has not seeded yet).
+    static func tailSource(accumulated: String, promotedBytes: Int, revealedEnd: String.Index?) -> String? {
+        guard let revealedEnd else { return nil }
+        guard let start = alignedIndex(utf8Offset: promotedBytes, in: accumulated), start < revealedEnd else {
+            return nil
+        }
+        return String(accumulated[start..<revealedEnd])
+    }
+
+    /// Converts a UTF-8 byte offset to a character-aligned `String.Index`,
+    /// stepping back at most a few bytes when the offset lands inside a
+    /// grapheme's UTF-8 sequence. Nil only for offsets past the end.
+    static func alignedIndex(utf8Offset: Int, in string: String) -> String.Index? {
+        let utf8 = string.utf8
+        var offset = utf8Offset
+        while offset >= 0 {
+            if let byteIndex = utf8.index(utf8.startIndex, offsetBy: offset, limitedBy: utf8.endIndex),
+               let characterIndex = String.Index(byteIndex, within: string) {
+                return characterIndex
+            }
+            offset -= 1
+        }
+        return nil
+    }
+
+    private func revealAllLargeImmediately() {
+        largeRevealedChars = largeAccumulatedChars
+        largeRevealedBytes = largeAccumulated.utf8.count
+        largeRevealedEnd = largeAccumulated.endIndex
+        revealDates = []
+        isAnimating = false
+        promoteLargeChunks()
     }
 }

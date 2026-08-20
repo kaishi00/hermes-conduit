@@ -109,6 +109,30 @@ enum MarkdownSelectionSegmentPlan {
 
         return descriptors
     }
+
+    /// Number of plan descriptors a block contributes. Must mirror
+    /// `descriptors(for:)` exactly — the large-document preparation slices
+    /// the plan per block using these counts, so any drift would misassign
+    /// a block's selection segments.
+    static func segmentCount(of block: MarkdownBlock) -> Int {
+        switch block {
+        case .heading, .paragraph, .callout:
+            return 1
+        case .quote(let lines):
+            if let first = lines.first, MarkdownParser.calloutMarker(first.text) != nil { return 1 }
+            return lines.count
+        case .unorderedList(let items), .orderedList(let items):
+            return items.count
+        case .table(let headers, _, let rows):
+            return ([headers] + rows).reduce(0) { $0 + $1.count }
+        case .columns(let columns):
+            return columns.count
+        case .code(let language, _):
+            return MarkdownLanguage.normalized(language) == "mermaid" ? 0 : 1
+        case .image, .math, .divider:
+            return 0
+        }
+    }
 }
 
 @MainActor
