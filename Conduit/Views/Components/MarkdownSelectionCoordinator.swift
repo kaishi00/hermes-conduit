@@ -233,6 +233,12 @@ final class MarkdownSelectionCoordinator: ObservableObject {
         publishIfVisibleSelectionChanged(from: before)
     }
 
+    /// Whether a segment currently has a mounted text view registered —
+    /// the behavior-level query for registration lifecycle tests.
+    func isSegmentRegistered(_ segmentID: String) -> Bool {
+        recordsByID[segmentID]?.textView != nil
+    }
+
     func register(descriptor: MarkdownSelectionSegmentDescriptor, textView: UITextView) {
         let existingRecord = recordsByID[descriptor.id]
         let registrationChanged = existingRecord?.descriptor != descriptor || existingRecord?.textView !== textView
