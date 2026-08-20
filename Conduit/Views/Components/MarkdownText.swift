@@ -34,6 +34,24 @@ struct MarkdownText: View {
     var isStreaming: Bool = false
 
     var body: some View {
+        // Path fork is centralized here: ordinary messages keep the exact
+        // fast cached path below; pathological ones (see
+        // MarkdownLargeDocumentPolicy) get the bounded presentation so no
+        // stage of parse/format/layout scales with the whole source.
+        if MarkdownLargeDocumentPolicy.isLargeDocument(source) {
+            LargeMarkdownDocumentView(
+                source: source,
+                foregroundStyle: foregroundStyle,
+                usesAccentSurface: usesAccentSurface,
+                gatewayMediaDataURL: gatewayMediaDataURL
+            )
+        } else {
+            normalBody
+        }
+    }
+
+    @ViewBuilder
+    private var normalBody: some View {
         let rendering = MarkdownRenderCache.rendering(
             source: source,
             recognizesGatewayMedia: gatewayMediaDataURL != nil,
@@ -520,7 +538,7 @@ enum MarkdownSelectionFormatter {
     }
 }
 
-private extension MarkdownBlock {
+extension MarkdownBlock {
     var isSelectableFlowBlock: Bool {
         switch self {
         case .heading, .paragraph, .quote, .unorderedList, .orderedList:
@@ -558,7 +576,7 @@ enum MarkdownHeading {
     }
 }
 
-private struct MarkdownBlockView: View {
+struct MarkdownBlockView: View {
     let block: MarkdownBlock
     let blockIndex: Int
     let foregroundStyle: Color
@@ -710,11 +728,11 @@ private struct MarkdownBlockView: View {
 /// `MarkdownText` injects its parsed context; every `InlineMarkdown` in the
 /// subtree reads it. The default keeps `InlineMarkdown` renderable in
 /// isolation (no references), which matches pre-reference behavior.
-private struct MarkdownReferencesKey: EnvironmentKey {
+struct MarkdownReferencesKey: EnvironmentKey {
     static let defaultValue = MarkdownReferenceContext.empty
 }
 
-private extension EnvironmentValues {
+extension EnvironmentValues {
     var markdownReferences: MarkdownReferenceContext {
         get { self[MarkdownReferencesKey.self] }
         set { self[MarkdownReferencesKey.self] = newValue }
@@ -1809,6 +1827,14 @@ enum MarkupHTML {
 }
 
 enum MarkdownParser {
+    #if DEBUG
+    /// Test instrumentation: sizes (utf8 bytes) of every source handed to
+    /// `parseDocument`. Lets regression tests assert that pathological
+    /// streaming/rendering paths never re-parse the whole document per frame
+    /// — a bound on work, not a fragile wall-clock threshold.
+    nonisolated(unsafe) static var parseSourceSizes: [Int] = []
+    #endif
+
     /// Compatibility wrapper for callers that only need the visible blocks.
     /// Reference definitions are already stripped from them; call
     /// `parseDocument` when the render context needs those definitions.
@@ -1824,6 +1850,9 @@ enum MarkdownParser {
     /// neighboring paragraphs don't merge) and re-fed to Foundation with each
     /// fragment at render time; see `MarkdownReferenceContext`.
     static func parseDocument(_ source: String, recognizesGatewayMedia: Bool = false) -> MarkdownParsedDocument {
+        #if DEBUG
+        parseSourceSizes.append(source.utf8.count)
+        #endif
         let lines = source.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
         var visibleLines: [String] = []
         var definitions: [String] = []
@@ -2156,7 +2185,7 @@ private final class HighlightedCode {
     init(_ value: AttributedString) { self.value = value }
 }
 
-private enum SyntaxHighlighter {
+enum SyntaxHighlighter {
     /// Settled code blocks across the transcript re-render at streaming frame
     /// rate; tokenizing is linear but allocation-heavy, so memoize by content.
     ///
