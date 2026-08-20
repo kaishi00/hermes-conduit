@@ -769,6 +769,7 @@ struct MessageBubble: View {
     @EnvironmentObject var appState: AppState
 
     var body: some View {
+        let _ = TranscriptPerf.note(.settledBubbleBody)
         switch message.role {
         case .user:
             UserBubble(message: message)

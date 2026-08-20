@@ -159,6 +159,7 @@ struct SelectableTextView: UIViewRepresentable {
 
     @MainActor
     func updateUIViewForTests(_ uiView: SelectableTextViewHostView, coordinator: Coordinator) {
+        TranscriptPerf.note(.selectableTextViewUpdate)
         coordinator.linkColor = linkColor
         coordinator.selectionCoordinator = selectionCoordinator
         coordinator.selectionSegment = selectionSegment
@@ -248,6 +249,7 @@ struct SelectableTextView: UIViewRepresentable {
     /// (TextKit 2) the proposed width drives wrapping independent of the
     /// text container's stored size, so no container mutation is needed.
     static func measuredWrappingHeight(of textView: UITextView, at width: CGFloat) -> CGFloat {
+        TranscriptPerf.note(.textKitMeasurement)
         let measured = textView.sizeThatFits(CGSize(width: width, height: CGFloat.greatestFiniteMagnitude))
         return ceil(measured.height)
     }
@@ -296,6 +298,7 @@ struct SelectableTextView: UIViewRepresentable {
 
         let selectedRange = textView.selectedRange
         if !textView.attributedText.isEqual(to: styledText) {
+            TranscriptPerf.note(.selectableTextViewTextRebuild)
             textView.attributedText = styledText
             let selectedLocation = min(selectedRange.location, styledText.length)
             let selectedEnd = min(NSMaxRange(selectedRange), styledText.length)

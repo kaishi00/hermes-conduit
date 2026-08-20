@@ -52,6 +52,7 @@ struct MarkdownText: View {
 
     @ViewBuilder
     private var normalBody: some View {
+        let _ = isStreaming ? () : TranscriptPerf.note(.settledMarkdownBody)
         let rendering = MarkdownRenderCache.rendering(
             source: source,
             recognizesGatewayMedia: gatewayMediaDataURL != nil,

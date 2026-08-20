@@ -250,6 +250,7 @@ struct ChatViewportController: Equatable {
         activeSessionKey: ChatScrollSessionKey? = nil,
         isOpeningNotificationSession: Bool = false
     ) -> [ChatViewportEffect] {
+        TranscriptPerf.note(.transcriptChanged)
         if let activeSessionKey {
             self.activeSessionKey = activeSessionKey
         }
@@ -274,6 +275,7 @@ struct ChatViewportController: Equatable {
     mutating func layoutMetricsChanged(
         facts: ChatViewportLayoutFacts
     ) -> [ChatViewportEffect] {
+        TranscriptPerf.note(.layoutMetricsChanged)
         bottomMarkerMaxY = facts.bottomMarkerMaxY
         viewportMinY = facts.viewportMinY
         viewportMaxY = facts.viewportMaxY
@@ -716,6 +718,7 @@ struct ChatViewportController: Equatable {
             return
         }
         let framesByID = Dictionary(rowFrames.map { ($0.id, $0) }) { first, _ in first }
+        TranscriptPerf.stableTopScanTargetCount = targetCache.targets.count
         for target in targetCache.targets {
             guard let frame = framesByID[target.id] else { continue }
             if frame.maxY > viewportMinY && frame.minY < viewportMaxY {

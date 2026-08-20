@@ -61,6 +61,8 @@ struct ChatMessageScrollTargetCache: Equatable {
     @discardableResult
     mutating func update(for messages: [ChatMessage]) -> ChatMessageScrollTargetCacheUpdate {
         let updatedFingerprints = ChatMessageScrollTargets.fingerprints(for: messages)
+        TranscriptPerf.lastFingerprintedMessageCount = messages.count
+        TranscriptPerf.lastFingerprintedByteCount = messages.reduce(0) { $0 + $1.content.utf8.count + ($1.code?.utf8.count ?? 0) }
         if updatedFingerprints == fingerprints, targets.count == messages.count {
             guard targets.map(\.message) != messages else { return .unchanged }
             targets = zip(messages, targets).map { message, target in
