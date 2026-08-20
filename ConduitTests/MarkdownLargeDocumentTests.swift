@@ -1793,6 +1793,214 @@ private struct SpecializedChunkProbe: View {
     }
 }
 
+
+// MARK: - Unicode append-boundary and strict preview-budget battery
+
+extension MarkdownLargeDocumentTests {
+    // Item 1: merge detection in the pure append-delta derivation.
+    func testLargeAppendDeltaDetectsGraphemeMerges() {
+        // Plain append: exact byte-boundary suffix.
+        XCTAssertEqual(StreamingText.largeAppendDelta(old: "abc", new: "abcdef"), "def")
+
+        // Non-append target: reseed.
+        XCTAssertNil(StreamingText.largeAppendDelta(old: "abc", new: "xyz"))
+
+        // Combining mark absorbs the previous grapheme.
+        XCTAssertNil(StreamingText.largeAppendDelta(old: "e", new: "e\u{301}"))
+        XCTAssertNil(StreamingText.largeAppendDelta(old: "word ends with e", new: "word ends with e\u{301}"))
+
+        // ZWJ sequence extends the previous emoji into one grapheme.
+        XCTAssertNil(StreamingText.largeAppendDelta(old: "text 👩", new: "text 👩\u{200D}❤️"))
+
+        // Variation selector extends the previous emoji.
+        XCTAssertNil(StreamingText.largeAppendDelta(old: "flag ⭐", new: "flag ⭐\u{FE0F}"))
+
+        // Regional-indicator pair merges into one flag grapheme.
+        XCTAssertNil(StreamingText.largeAppendDelta(old: "flag 🇺", new: "flag 🇺\u{1F1F8}"))
+
+        // Empty old string: the seeding path owns it; reseed.
+        XCTAssertNil(StreamingText.largeAppendDelta(old: "", new: "first"))
+    }
+
+    // Item 1: full projection across a combining-mark merge — the final
+    // reconstruction equals the complete source exactly.
+    func testStreamingReconstructionAcrossCombiningMarkMerge() {
+        let prefix = String(repeating: "para words here. ", count: 700) + "final e"
+        let merged = prefix + "\u{301}" // the final grapheme becomes é
+        let continuation = "nd of paragraph\n\n" + (0..<60).map { "post-merge paragraph \($0) with words" }.joined(separator: "\n\n")
+        let full = merged + continuation
+
+        // Simulate the projection: seed, merge append (must reseed), then
+        // ordinary appends with promotion.
+        var accumulated = prefix
+        var scanner = MarkdownStableBoundaryScanner()
+        var boundaries: [Int] = []
+        boundaries.append(contentsOf: scanner.append(accumulated))
+
+        // Merge append: the delta derivation refuses it; the projection
+        // reseeds from the complete string.
+        XCTAssertNil(StreamingText.largeAppendDelta(old: accumulated, new: merged))
+        accumulated = merged
+        scanner = MarkdownStableBoundaryScanner()
+        boundaries = scanner.append(accumulated)
+
+        // Ordinary appends continue.
+        for chunkText in [String(continuation.prefix(continuation.utf8.count / 2)), String(continuation.dropFirst(continuation.utf8.count / 2))] {
+            guard let delta = StreamingText.largeAppendDelta(old: accumulated, new: accumulated + chunkText) else {
+                return XCTFail("ordinary append must yield a delta")
+            }
+            accumulated += chunkText
+            boundaries.append(contentsOf: scanner.append(delta))
+            _ = delta
+        }
+
+        // Promote to exhaustion and reconstruct.
+        let total = accumulated.utf8.count
+        var promoted = 0
+        var pieces: [String] = []
+        while let next = LargeStreamPromotion.nextPromotionBoundary(
+            promotedBytes: promoted,
+            revealedBytes: total,
+            tailWindowBytes: MarkdownLargeDocumentPolicy.chunkTargetBytes,
+            boundaries: boundaries,
+            constructIntervals: scanner.constructIntervals
+        ) {
+            guard let end = StreamingText.alignedIndex(utf8Offset: next, in: accumulated) else {
+                return XCTFail("alignment failed at \(next)")
+            }
+            let start: String.Index
+            if promoted == 0 {
+                start = accumulated.startIndex
+            } else if let aligned = StreamingText.alignedIndex(utf8Offset: promoted, in: accumulated) {
+                start = aligned
+            } else {
+                return XCTFail("start alignment failed at \(promoted)")
+            }
+            pieces.append(String(accumulated[start..<end]))
+            let utf8 = accumulated.utf8
+            promoted = utf8.distance(from: utf8.startIndex, to: end.samePosition(in: utf8)!)
+            boundaries.removeAll { $0 <= promoted }
+        }
+        guard let tailStart = StreamingText.alignedIndex(utf8Offset: promoted, in: accumulated) else {
+            return XCTFail("tail alignment failed")
+        }
+        let tail = String(accumulated[tailStart...])
+        XCTAssertEqual(pieces.joined() + tail, accumulated,
+                       "reconstruction after a merge-boundary append must be exact")
+        XCTAssertTrue(accumulated.contains("é"), "the merged grapheme must survive intact")
+    }
+
+    // Item 1: scanner alignment after a merge — a following fence and
+    // paragraphs keep promoting at real boundaries.
+    func testScannerAlignmentAfterMergeBoundary() {
+        let before = String(repeating: "leading prose ", count: 800) + "e"
+        let merged = before + "\u{301}nd"
+        let after = "\n\n```\nlet fenced = 1\nlet more = 2\n```\n\ntrailing paragraph one\n\ntrailing paragraph two\n"
+        let full = merged + after
+
+        var scanner = MarkdownStableBoundaryScanner()
+        _ = scanner.append(full)
+        XCTAssertFalse(scanner.isInOpenConstruct)
+        XCTAssertEqual(scanner.constructIntervals.count, 1, "the fence is one interval")
+        guard let interval = scanner.constructIntervals.first else { return }
+
+        // Promotion from zero with the stable target beyond the fence must
+        // pick a boundary before it (or wait), never inside it.
+        let boundaries = scannerBoundaries(of: full)
+        let target = interval.start + 5_000
+        if let boundary = LargeStreamPromotion.nextPromotionBoundary(
+            promotedBytes: 0,
+            revealedBytes: target + MarkdownLargeDocumentPolicy.chunkTargetBytes,
+            tailWindowBytes: MarkdownLargeDocumentPolicy.chunkTargetBytes,
+            boundaries: boundaries,
+            constructIntervals: scanner.constructIntervals
+        ) {
+            // A boundary before the fence or after it CLOSES is valid; only
+            // the open span [start, end) is forbidden.
+            let fenceEnd = interval.end ?? Int.max
+            XCTAssertTrue(
+                boundary <= interval.start || boundary >= fenceEnd,
+                "boundary \(boundary) must not sit inside the fence [\(interval.start), \(fenceEnd))"
+            )
+        }
+    }
+
+    private func scannerBoundaries(of text: String) -> [Int] {
+        var scanner = MarkdownStableBoundaryScanner()
+        return scanner.append(text)
+    }
+
+    // Item 2, cases 1+2: single-line ASCII and CJK blobs — byte-bounded
+    // output AND byte-bounded inspection work.
+    func testFirstSliceWorkIsByteBoundedForSingleLineBlobs() {
+        let asciiBlob = String(repeating: "a", count: 1_000_000)
+        let asciiPreview = MarkdownCodeSlicer.firstSlice(
+            asciiBlob,
+            maxLines: MarkdownLargeDocumentPolicy.codePreviewLineCount,
+            maxBytes: MarkdownLargeDocumentPolicy.codePreviewBytes
+        )
+        XCTAssertLessThanOrEqual(asciiPreview.utf8.count, MarkdownLargeDocumentPolicy.codePreviewBytes)
+        XCTAssertTrue(asciiBlob.hasPrefix(asciiPreview))
+        XCTAssertLessThanOrEqual(
+            MarkdownCodeSlicer.firstSliceInspectedBytes,
+            MarkdownLargeDocumentPolicy.codePreviewBytes + 1_024,
+            "ASCII blob inspection must stop near the byte ceiling (inspected \(MarkdownCodeSlicer.firstSliceInspectedBytes))"
+        )
+
+        // CJK: 1 Character = 3 UTF-8 bytes; character-count thresholds
+        // would inspect ~3x the budget.
+        let cjkBlob = String(repeating: "漢", count: 400_000)
+        let cjkPreview = MarkdownCodeSlicer.firstSlice(
+            cjkBlob,
+            maxLines: MarkdownLargeDocumentPolicy.codePreviewLineCount,
+            maxBytes: MarkdownLargeDocumentPolicy.codePreviewBytes
+        )
+        XCTAssertLessThanOrEqual(cjkPreview.utf8.count, MarkdownLargeDocumentPolicy.codePreviewBytes)
+        XCTAssertTrue(cjkBlob.hasPrefix(cjkPreview))
+        XCTAssertLessThanOrEqual(
+            MarkdownCodeSlicer.firstSliceInspectedBytes,
+            MarkdownLargeDocumentPolicy.codePreviewBytes + 1_024,
+            "CJK blob inspection must be bounded by bytes, not Characters (inspected \(MarkdownCodeSlicer.firstSliceInspectedBytes))"
+        )
+    }
+
+    // Item 2, case 4: a normal line crossing the remaining budget is not
+    // blindly appended whole.
+    func testFirstSliceNormalLineRespectsRemainingBudget() {
+        let budget = MarkdownLargeDocumentPolicy.codePreviewBytes
+        let fillerLines = (0..<195).map { "line \($0) with ordinary content" }.joined(separator: "\n")
+        // filler ≈ 195 lines ≈ ~7.6 KB; one more ~4 KB line crosses 16 KB.
+        let bigLine = String(repeating: "x", count: 4_000)
+        let source = fillerLines + "\n" + bigLine + "\ntrailing"
+        let preview = MarkdownCodeSlicer.firstSlice(
+            source,
+            maxLines: MarkdownLargeDocumentPolicy.codePreviewLineCount,
+            maxBytes: budget
+        )
+        XCTAssertLessThanOrEqual(preview.utf8.count, budget, "a crossing line must not be appended whole past the ceiling")
+        XCTAssertTrue(source.hasPrefix(preview), "preview remains an exact prefix")
+        XCTAssertTrue(preview.contains("line 194"), "all whole-fitting lines are preserved")
+    }
+
+    // Item 2, case 5: emoji graphemes near the boundary are never split.
+    func testFirstSliceEmojiBoundaryIsGraphemeSafe() {
+        let budget = MarkdownLargeDocumentPolicy.codePreviewBytes
+        // Family emoji = one grapheme of 25 UTF-8 bytes; a byte budget cut
+        // must land between graphemes.
+        let emojiBlob = String(repeating: "👩‍👩‍👧‍👦", count: 60_000)
+        let preview = MarkdownCodeSlicer.firstSlice(
+            emojiBlob,
+            maxLines: MarkdownLargeDocumentPolicy.codePreviewLineCount,
+            maxBytes: budget
+        )
+        XCTAssertLessThanOrEqual(preview.utf8.count, budget)
+        XCTAssertTrue(emojiBlob.hasPrefix(preview))
+        // The cut must not split a grapheme: the preview is a whole number
+        // of family-emoji graphemes (its scalar count is a multiple of 7).
+        XCTAssertEqual(preview.unicodeScalars.count % 7, 0, "grapheme integrity at the cut boundary")
+    }
+}
+
 // MARK: - Test-only projections
 
 extension MarkdownBlock {

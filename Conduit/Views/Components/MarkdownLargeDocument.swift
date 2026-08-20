@@ -126,63 +126,112 @@ enum MarkdownCodeSlicer {
     /// preview line or byte ceiling is reached, never walking or
     /// materializing the rest of the block. Safe to call from SwiftUI
     /// `body` for arbitrarily large sources.
+    #if DEBUG
+    /// Test instrumentation: UTF-8 bytes inspected by `firstSlice`, proving
+    /// preview work is proportional to the configured budget rather than
+    /// to the source length.
+    private static let firstSliceInspectLock = NSLock()
+    private nonisolated(unsafe) static var firstSliceInspectedBytesStorage = 0
+
+    nonisolated(unsafe) static var firstSliceInspectedBytes: Int {
+        get {
+            firstSliceInspectLock.lock()
+            defer { firstSliceInspectLock.unlock() }
+            return firstSliceInspectedBytesStorage
+        }
+        set {
+            firstSliceInspectLock.lock()
+            defer { firstSliceInspectLock.unlock() }
+            firstSliceInspectedBytesStorage = newValue
+        }
+    }
+    #endif
+
+    /// The single bounded preview piece. Contracts, all deterministic:
+    /// - the result is always a prefix of the source;
+    /// - the result's UTF-8 size never exceeds `maxBytes`;
+    /// - at most `maxLines` complete lines are included;
+    /// - the scan inspects O(maxBytes) source bytes — a pathological
+    ///   newline-free block is abandoned as soon as its first line alone
+    ///   exceeds the whole budget, never walked to the end.
     static func firstSlice(_ source: String, maxLines: Int, maxBytes: Int) -> String {
+        #if DEBUG
+        firstSliceInspectedBytes = 0
+        #endif
         var lines = 0
-        var bytes = 0
-        var index = source.startIndex
+        var bytes = 0      // UTF-8 bytes of complete lines included so far
+        var lineBytes = 0  // running UTF-8 bytes of the current line
         var lineStart = source.startIndex
+        var index = source.startIndex
+
+        func inspect(_ count: Int) {
+            #if DEBUG
+            firstSliceInspectedBytes += count
+            #endif
+        }
+
         while index < source.endIndex {
-            if source[index] == "\n" {
+            let character = source[index]
+            inspect(String(character).utf8.count)
+            if character == "\n" {
                 let lineEnd = source.index(after: index)
-                let lineBytes = source[lineStart..<lineEnd].utf8.count
-                if lineBytes > maxBytes {
-                    // Giant line: everything up to it plus a grapheme-safe
-                    // bounded piece OF it, under the REMAINING byte budget
-                    // so the whole preview stays within the ceiling — and
-                    // always a prefix of the source.
+                let totalLineBytes = lineBytes + 1 // including the newline
+                let remaining = maxBytes - bytes
+                if totalLineBytes > remaining {
+                    // Including this line whole would exceed the budget:
+                    // keep everything before it plus a grapheme-safe piece
+                    // of it under the REMAINING budget.
                     return String(source[..<lineStart])
-                        + boundedPrefix(of: source[lineStart..<lineEnd], maxBytes: maxBytes - bytes)
+                        + boundedPrefix(of: source[lineStart..<lineEnd], maxBytes: remaining)
                 }
                 lines += 1
-                bytes += lineBytes
+                bytes += totalLineBytes
                 if lines >= maxLines || bytes >= maxBytes {
                     return String(source[..<lineEnd])
                 }
                 lineStart = lineEnd
                 index = lineEnd
+                lineBytes = 0
                 continue
             }
-            // No newline so far: once the accumulated line itself exceeds
-            // the byte ceiling it is a giant line — stop scanning here and
-            // never walk the rest of the block.
-            if index == source.index(before: source.endIndex) {
-                break
+            lineBytes += String(character).utf8.count
+            if lineBytes > maxBytes {
+                // The current line alone exceeds the entire budget — stop
+                // scanning it (work stays proportional to maxBytes) and
+                // take a bounded piece under the remaining budget.
+                let remaining = maxBytes - bytes
+                return String(source[..<lineStart])
+                    + boundedPrefix(of: source[lineStart...], maxBytes: remaining)
             }
             index = source.index(after: index)
-            if source.distance(from: lineStart, to: index) >= maxBytes {
-                return String(source[..<lineStart]) + boundedPrefix(of: source[lineStart...], maxBytes: maxBytes - bytes)
-            }
         }
+
+        // Trailing partial line (no final newline).
         if lineStart < source.endIndex {
-            let lineBytes = source[lineStart...].utf8.count
-            if lineBytes > maxBytes {
-                return String(source[..<lineStart]) + boundedPrefix(of: source[lineStart...], maxBytes: maxBytes - bytes)
+            let remaining = maxBytes - bytes
+            if lineBytes > remaining {
+                return String(source[..<lineStart])
+                    + boundedPrefix(of: source[lineStart...], maxBytes: remaining)
             }
         }
         return source
     }
 
+    /// Grapheme-safe prefix of `range` whose UTF-8 size never exceeds
+    /// `maxBytes` — a grapheme is only included when it fits (checked
+    /// before inclusion), so the only overshoot is impossible; a budget
+    /// smaller than the first grapheme returns an empty prefix.
     private static func boundedPrefix(of range: Substring, maxBytes: Int) -> String {
+        guard maxBytes > 0 else { return "" }
         var bytes = 0
         var index = range.startIndex
         while index < range.endIndex {
-            bytes += String(range[index]).utf8.count
-            if bytes >= maxBytes {
-                return String(range[..<range.index(after: index)])
-            }
+            let characterBytes = String(range[index]).utf8.count
+            if bytes + characterBytes > maxBytes { break }
+            bytes += characterBytes
             index = range.index(after: index)
         }
-        return String(range)
+        return String(range[..<index])
     }
 
     static func slice(_ source: String, maxLines: Int, maxBytes: Int) -> [String] {

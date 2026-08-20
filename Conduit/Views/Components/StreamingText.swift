@@ -289,14 +289,14 @@ struct StreamingText: View {
     }
 
     private func updateLargeTarget(_ newText: String) {
-        // A lazily-recreated view (scrolling far away and back) reseeds; a
-        // non-append target resets.
-        guard largeRevealedEnd != nil, newText.hasPrefix(largeAccumulated) else {
+        // A lazily-recreated view (scrolling far away and back), a non-append
+        // target, or a grapheme merging across the append boundary all
+        // reseed from the complete new string (see largeAppendDelta).
+        guard let delta = Self.largeAppendDelta(old: largeAccumulated, new: newText), largeRevealedEnd != nil else {
             enterLargeMode(with: newText)
             return
         }
 
-        let delta = String(newText.dropFirst(largeAccumulatedChars))
         guard !delta.isEmpty else { return }
 
         largeAccumulated = newText
@@ -359,15 +359,26 @@ struct StreamingText: View {
         let stagger = min(0.012, 0.028 / Double(revealCount))
 
         // Walk only the batch: O(revealCount) per tick regardless of how
-        // large the accumulated document has become.
+        // large the accumulated document has become. The bounds guard is
+        // defense in depth: correct bookkeeping never reaches it, but the
+        // loop must never trap on inconsistent state — it stops and
+        // reconciles the counters instead.
+        var revealedInBatch = 0
         for offset in 0..<revealCount {
+            guard revealedEnd < largeAccumulated.endIndex else { break }
             let current = revealedEnd
             revealedEnd = largeAccumulated.index(after: revealedEnd)
             largeRevealedBytes += String(largeAccumulated[current]).utf8.count
             revealDates.append(baseDate.addingTimeInterval(Double(offset) * stagger))
+            revealedInBatch += 1
         }
         largeRevealedEnd = revealedEnd
-        largeRevealedChars += revealCount
+        largeRevealedChars += revealedInBatch
+        if revealedInBatch < revealCount, revealedEnd >= largeAccumulated.endIndex {
+            // Reconcile the scalar counters with the clamped cursor.
+            largeRevealedChars = largeAccumulatedChars
+            largeRevealedBytes = largeAccumulated.utf8.count
+        }
         isAnimating = true
         promoteLargeChunks()
     }
@@ -410,6 +421,28 @@ struct StreamingText: View {
             }
             largeBoundaries.removeAll { $0 <= largePromotedBytes }
         }
+    }
+
+    /// Pure append-delta derivation. Returns nil when the projection must
+    /// reseed from the complete new string: a non-append target (Character
+    /// prefix check failed), or a grapheme that merged across the append
+    /// boundary — a combining mark, ZWJ sequence, variation selector, or
+    /// regional-indicator pair can absorb the old string's final grapheme,
+    /// making the old UTF-8 length a non-boundary in the new string. In
+    /// both cases incremental bookkeeping (cursor, counters, scanner,
+    /// promoted prefix) cannot be nudged; correctness re-establishes every
+    /// invariant together. Byte-based so the derivation never depends on
+    /// Character-count subtleties.
+    static func largeAppendDelta(old: String, new: String) -> String? {
+        guard !old.isEmpty, new.hasPrefix(old) else { return nil }
+        let oldBytes = old.utf8.count
+        let utf8 = new.utf8
+        guard oldBytes <= utf8.count,
+              let boundaryUTF8 = utf8.index(utf8.startIndex, offsetBy: oldBytes, limitedBy: utf8.endIndex),
+              let boundary = String.Index(boundaryUTF8, within: new) else {
+            return nil
+        }
+        return String(new[boundary...])
     }
 
     /// Pure slicing step for the live tail: the byte window
