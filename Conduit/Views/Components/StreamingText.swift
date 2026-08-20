@@ -241,11 +241,15 @@ struct StreamingText: View {
         }
     }
 
-    /// The not-yet-promoted remainder of the revealed prefix — the only part
-    /// that re-renders per tick.
+    /// The revealed-but-unpromoted window — the only part that re-renders
+    /// per tick. Text beyond the reveal cursor is deliberately NOT rendered
+    /// (character pacing must hold in large mode exactly as in small mode).
     private var largeTailSource: String {
-        guard let revealedEnd = largeRevealedEnd else { return "" }
-        return String(largeAccumulated[revealedEnd...])
+        Self.tailSource(
+            accumulated: largeAccumulated,
+            promotedBytes: largePromotedBytes,
+            revealedEnd: largeRevealedEnd
+        ) ?? ""
     }
 
     /// (Re)seeds large mode from `fullText`. Used on first crossing and on a
@@ -290,11 +294,16 @@ struct StreamingText: View {
         // String.Index is only valid for the instance it was created from;
         // re-derive the reveal cursor in the replaced string from its
         // tracked UTF-8 offset (whole-character aligned by construction).
+        // If alignment ever failed, reveal everything rather than retain an
+        // index into the discarded string.
         let utf8 = largeAccumulated.utf8
         if largeRevealedBytes <= utf8.count,
            let offsetIndex = utf8.index(utf8.startIndex, offsetBy: largeRevealedBytes, limitedBy: utf8.endIndex),
            let revealed = String.Index(offsetIndex, within: largeAccumulated) {
             largeRevealedEnd = revealed
+        } else {
+            revealAllLargeImmediately()
+            return
         }
         _ = largeScanner.append(delta)
 
@@ -363,19 +372,45 @@ struct StreamingText: View {
         ) {
             // Index conversion is linear in the accumulated string, but
             // promotions happen only every few KB of growth, so this stays
-            // amortized O(delta).
-            let utf8 = largeAccumulated.utf8
+            // amortized O(delta). Hard-cut offsets are pure arithmetic and
+            // can land mid-grapheme (CJK/emoji); step back to the previous
+            // whole-character boundary rather than stalling promotion.
             guard
-                let startUTF8 = utf8.index(utf8.startIndex, offsetBy: largePromotedBytes, limitedBy: utf8.endIndex),
-                let endUTF8 = utf8.index(utf8.startIndex, offsetBy: next, limitedBy: utf8.endIndex),
-                let start = String.Index(startUTF8, within: largeAccumulated),
-                let end = String.Index(endUTF8, within: largeAccumulated),
+                let start = Self.alignedIndex(utf8Offset: largePromotedBytes, in: largeAccumulated),
+                let end = Self.alignedIndex(utf8Offset: next, in: largeAccumulated),
                 start < end
             else { return }
 
             largeStableChunks.append(String(largeAccumulated[start..<end]))
             largePromotedBytes = next
         }
+    }
+
+    /// Pure slicing step for the live tail: the byte window
+    /// [promotedBytes, revealedEnd). Returns nil when nothing revealed is
+    /// unpromoted (or the view has not seeded yet).
+    static func tailSource(accumulated: String, promotedBytes: Int, revealedEnd: String.Index?) -> String? {
+        guard let revealedEnd else { return nil }
+        guard let start = alignedIndex(utf8Offset: promotedBytes, in: accumulated), start < revealedEnd else {
+            return nil
+        }
+        return String(accumulated[start..<revealedEnd])
+    }
+
+    /// Converts a UTF-8 byte offset to a character-aligned `String.Index`,
+    /// stepping back at most a few bytes when the offset lands inside a
+    /// grapheme's UTF-8 sequence. Nil only for offsets past the end.
+    static func alignedIndex(utf8Offset: Int, in string: String) -> String.Index? {
+        let utf8 = string.utf8
+        var offset = utf8Offset
+        while offset >= 0 {
+            if let byteIndex = utf8.index(utf8.startIndex, offsetBy: offset, limitedBy: utf8.endIndex),
+               let characterIndex = String.Index(byteIndex, within: string) {
+                return characterIndex
+            }
+            offset -= 1
+        }
+        return nil
     }
 
     private func revealAllLargeImmediately() {

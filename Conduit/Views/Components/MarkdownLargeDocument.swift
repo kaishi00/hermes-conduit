@@ -258,40 +258,60 @@ struct MarkdownStableBoundaryScanner {
     /// Trailing partial line awaiting its newline.
     private var pendingLine = ""
     private var fenceMarker: String?
-    private var inMath = false
+    /// The close marker the open math region expects (`$$` or `\]`), so a
+    /// block opened with one cannot close on the other.
+    private var mathClose: String?
     private var inDirective = false
 
     /// True when the scanner sits inside a fenced/math/directive region at
     /// the end of everything consumed — callers avoid promoting a prefix
     /// that ends mid-construct.
-    var isInOpenConstruct: Bool { fenceMarker != nil || inMath || inDirective }
+    var isInOpenConstruct: Bool { fenceMarker != nil || mathClose != nil || inDirective }
 
     /// Feeds an append-only delta and returns any newly discovered safe
-    /// boundary offsets (absolute, UTF-8).
+    /// boundary offsets (absolute, UTF-8). The delta's complete lines are
+    /// processed in place — only the trailing partial is buffered — so cost
+    /// is O(delta) with no repeated prefix shifts even for one-shot bulk
+    /// feeds (threshold crossing, branch-swap reseed).
     mutating func append(_ delta: String) -> [Int] {
         var newBoundaries: [Int] = []
-        pendingLine += delta
+        var remainder = delta[...]
 
-        while let newline = pendingLine.firstIndex(of: "\n") {
-            let line = String(pendingLine[..<newline])
-            let lineBytes = line.utf8.count + 1 // including the newline
-
-            updateState(for: line.trimmingCharacters(in: .whitespaces))
-
-            // A blank line outside every construct ends a block: everything
-            // after this line is a fresh block, so the split point moves to
-            // the next line's start. Consecutive blank lines keep moving it.
-            if line.trimmingCharacters(in: .whitespaces).isEmpty,
-               fenceMarker == nil, !inMath, !inDirective {
-                let boundary = consumedOffset + lineBytes
-                lastSafeBoundary = boundary
-                newBoundaries.append(boundary)
+        // A buffered partial continues with the delta's first line.
+        if !pendingLine.isEmpty {
+            if let newline = remainder.firstIndex(of: "\n") {
+                pendingLine += remainder[..<newline]
+                consumeCompleteLine(pendingLine, boundaries: &newBoundaries)
+                pendingLine = ""
+                remainder = remainder[remainder.index(after: newline)...]
+            } else {
+                pendingLine += remainder
+                return newBoundaries
             }
-
-            consumedOffset += lineBytes
-            pendingLine.removeSubrange(..<pendingLine.index(after: newline))
         }
+
+        while let newline = remainder.firstIndex(of: "\n") {
+            consumeCompleteLine(String(remainder[..<newline]), boundaries: &newBoundaries)
+            remainder = remainder[remainder.index(after: newline)...]
+        }
+        pendingLine += remainder
         return newBoundaries
+    }
+
+    private mutating func consumeCompleteLine(_ line: String, boundaries: inout [Int]) {
+        let lineBytes = line.utf8.count + 1 // including the newline
+        updateState(for: line.trimmingCharacters(in: .whitespaces))
+
+        // A blank line outside every construct ends a block: everything
+        // after this line is a fresh block, so the split point moves to the
+        // next line's start. Consecutive blank lines keep moving it.
+        if line.trimmingCharacters(in: .whitespaces).isEmpty,
+           fenceMarker == nil, mathClose == nil, !inDirective {
+            let boundary = consumedOffset + lineBytes
+            lastSafeBoundary = boundary
+            boundaries.append(boundary)
+        }
+        consumedOffset += lineBytes
     }
 
     /// Processes the trailing partial line as if the stream had ended with
@@ -305,7 +325,7 @@ struct MarkdownStableBoundaryScanner {
         pendingLine = ""
         updateState(for: line.trimmingCharacters(in: .whitespaces))
         if line.trimmingCharacters(in: .whitespaces).isEmpty,
-           fenceMarker == nil, !inMath, !inDirective {
+           fenceMarker == nil, mathClose == nil, !inDirective {
             // Match append()'s arithmetic: the boundary sits after the
             // (virtual) newline of the blank line.
             lastSafeBoundary = consumedOffset + line.utf8.count
@@ -320,8 +340,8 @@ struct MarkdownStableBoundaryScanner {
             }
             return
         }
-        if inMath {
-            if trimmedLine == "$$" || trimmedLine == "\\]" { inMath = false }
+        if let close = mathClose {
+            if trimmedLine == close { mathClose = nil }
             return
         }
         if inDirective {
@@ -330,7 +350,8 @@ struct MarkdownStableBoundaryScanner {
         }
         if trimmedLine.hasPrefix("```") { fenceMarker = "```" }
         else if trimmedLine.hasPrefix("~~~") { fenceMarker = "~~~" }
-        else if trimmedLine == "$$" || trimmedLine == "\\[" { inMath = true }
+        else if trimmedLine == "$$" { mathClose = "$$" }
+        else if trimmedLine == "\\[" { mathClose = "\\]" }
         else if trimmedLine.hasPrefix(":::") {
             let name = trimmedLine.dropFirst(3).trimmingCharacters(in: .whitespaces).lowercased()
             if ["note", "info", "tip", "hint", "warning", "caution", "danger", "error", "important", "columns"].contains(name) {

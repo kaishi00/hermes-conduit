@@ -186,7 +186,7 @@ final class MarkdownLargeDocumentTests: XCTestCase {
 
     // MARK: 7. Reference links resolve in large mode
 
-    func testPreparedDocumentCarriesReferenceDefinitions() {
+    func testPreparedDocumentCarriesReferenceDefinitions() throws {
         let source = mixedSoup(targetBytes: 150_000)
         let prepared = LargeMarkdownPreparedDocument.prepare(source)
 
@@ -205,12 +205,12 @@ final class MarkdownLargeDocumentTests: XCTestCase {
             usesAccentSurface: false,
             newestCharacterOpacities: []
         )
-        XCTAssertNotNil(attributed)
-        let hasLink = attributed != nil && (attributed!.attribute(.link, at: 0, effectiveRange: nil) != nil
-            || attributed!.length > 0 && (0..<attributed!.length).contains { offset in
-                attributed!.attribute(.link, at: offset, effectiveRange: nil) != nil
-            })
-        XCTAssertTrue(hasLink, "reference-style link did not resolve in large mode")
+        let unwrapped = try XCTUnwrap(attributed)
+        var linkCount = 0
+        unwrapped.enumerateAttribute(.link, in: NSRange(location: 0, length: unwrapped.length)) { value, _, _ in
+            if value != nil { linkCount += 1 }
+        }
+        XCTAssertGreaterThan(linkCount, 0, "reference-style link did not resolve in large mode")
     }
 
     // MARK: 8. Tables and code blocks stay whole
@@ -240,7 +240,7 @@ final class MarkdownLargeDocumentTests: XCTestCase {
         }
     }
 
-    func testSegmentSlicingMatchesOrdinaryPlan() {
+    func testSegmentSlicingMatchesOrdinaryPlan() throws {
         let source = mixedSoup(targetBytes: 150_000)
         let document = MarkdownParser.parseDocument(source)
         let plan = MarkdownSelectionSegmentPlan.descriptors(for: document.blocks)
@@ -270,7 +270,7 @@ final class MarkdownLargeDocumentTests: XCTestCase {
             switch chunk {
             case .flow:
                 XCTAssertEqual(descriptors.count, 1)
-                XCTAssertEqual(descriptors.first?.id, "lmd-flow-\(chunkIndex)")
+                XCTAssertEqual(try XCTUnwrap(descriptors.first).id, "lmd-flow-\(chunkIndex)")
                 syntheticIDs.insert(descriptors.first!.id)
             case .block(let block, let originalIndex):
                 let expectedCount = MarkdownSelectionSegmentPlan.segmentCount(of: block)
@@ -342,27 +342,23 @@ final class MarkdownLargeDocumentTests: XCTestCase {
 
     // MARK: Streaming: scanner + promotion invariants (scenario 10)
 
-    func testScannerFindsBoundariesOutsideConstructs() {
+    func testScannerFindsBoundariesOutsideConstructs() throws {
         let text = "para one\n\npara two\n\n```python\nx = 1\n\ny = 2\n```\n\nafter fence\n"
         var scanner = MarkdownStableBoundaryScanner()
         let boundaries = scanner.append(text)
 
-        func offset(of marker: String) -> Int {
-            text.utf8.distance(from: text.utf8.startIndex, to: text.utf8.firstRange(of: marker.utf8)!.lowerBound)
+        func offset(of marker: String) throws -> Int {
+            let range = try XCTUnwrap(text.utf8.firstRange(of: marker.utf8))
+            return text.utf8.distance(from: text.utf8.startIndex, to: range.lowerBound)
         }
 
-        let afterParaOne = offset(of: "para two")
-        let afterParaTwo = offset(of: "```python")
-        let afterFence = offset(of: "after fence")
-
-        XCTAssertTrue(boundaries.contains(afterParaOne))
-        XCTAssertTrue(boundaries.contains(afterParaTwo))
-        XCTAssertTrue(boundaries.contains(afterFence))
+        XCTAssertTrue(boundaries.contains(try offset(of: "para two")))
+        XCTAssertTrue(boundaries.contains(try offset(of: "```python")))
+        XCTAssertTrue(boundaries.contains(try offset(of: "after fence")))
 
         // The blank line *inside* the fence must not be a boundary.
-        let insideFence = offset(of: "y = 2")
-        XCTAssertFalse(boundaries.contains(insideFence))
-        XCTAssertEqual(scanner.lastSafeBoundary, afterFence)
+        XCTAssertFalse(boundaries.contains(try offset(of: "y = 2")))
+        XCTAssertEqual(scanner.lastSafeBoundary, try offset(of: "after fence"))
         XCTAssertFalse(scanner.isInOpenConstruct)
     }
 
@@ -456,9 +452,9 @@ final class MarkdownLargeDocumentTests: XCTestCase {
         XCTAssertLessThan(prepared.chunks.count, LargeMarkdownExpandedView.initialChunkBatch,
                           "corpus should produce fewer chunks than one batch")
 
-        // The view-level invariant: the initial window never exceeds the
-        // chunk count.
-        XCTAssertLessThanOrEqual(min(12, prepared.chunks.count), prepared.chunks.count)
+        // The precondition that exercises the view's initial-window clamp:
+        // fewer chunks than one batch.
+        XCTAssertLessThan(prepared.chunks.count, LargeMarkdownExpandedView.initialChunkBatch)
 
         // Render end-to-end to prove no out-of-bounds during layout.
         MarkdownParser.parseSourceSizes = []
@@ -504,6 +500,88 @@ final class MarkdownLargeDocumentTests: XCTestCase {
         XCTAssertTrue(mixed.hasPrefix(mixedPreview))
     }
 
+
+    func testTailWindowExcludesUnrevealedText() {
+        // The live tail is [promotedBytes, revealedEnd): text beyond the
+        // reveal cursor must NOT render (character pacing holds in large
+        // mode), and revealed-but-unpromoted text must not be skipped.
+        let text = "abcdefghij" + String(repeating: "middle ", count: 200) + "TAILMARKER-END"
+        let revealedByteIndex = StreamingText.alignedIndex(utf8Offset: 14, in: text)
+        XCTAssertNotNil(revealedByteIndex)
+
+        let tail = StreamingText.tailSource(
+            accumulated: text,
+            promotedBytes: 4,
+            revealedEnd: revealedByteIndex
+        )
+        let unwrapped = try? XCTUnwrap(tail)
+        XCTAssertNotNil(unwrapped)
+        // Bounded to the revealed-unpromoted window.
+        XCTAssertFalse(unwrapped!.contains("TAILMARKER"), "unrevealed text must not appear in the tail")
+        XCTAssertTrue(unwrapped!.hasPrefix("efgh"), "tail starts right after the promoted prefix")
+
+        // Fully promoted: no tail at all.
+        let fullReveal = StreamingText.tailSource(
+            accumulated: text,
+            promotedBytes: text.utf8.count,
+            revealedEnd: text.endIndex
+        )
+        XCTAssertNil(fullReveal)
+    }
+
+    func testAlignedIndexStepsBackToGraphemeBoundaryForCJK() {
+        // CJK characters are 3 UTF-8 bytes; offsets 1 and 2 land inside the
+        // second character and must step back to its start.
+        let text = "汉汉汉"
+        XCTAssertEqual(StreamingText.alignedIndex(utf8Offset: 0, in: text), text.startIndex)
+        let secondChar = text.index(after: text.startIndex)
+        XCTAssertEqual(StreamingText.alignedIndex(utf8Offset: 1, in: text), text.startIndex, "mid-grapheme steps back")
+        XCTAssertEqual(StreamingText.alignedIndex(utf8Offset: 3, in: text), secondChar)
+        XCTAssertEqual(StreamingText.alignedIndex(utf8Offset: 4, in: text), secondChar, "mid-grapheme steps back")
+    }
+
+    func testPromotionProgressesForUnbrokenCJKText() {
+        // Hard-cut boundaries are pure byte arithmetic and land mid-grapheme
+        // for CJK; the projection must still promote (stepping back) instead
+        // of stalling with an ever-growing tail.
+        let text = String(repeating: "漢字", count: 20_000) // 120 KB, no boundaries at all
+        var scanner = MarkdownStableBoundaryScanner()
+        _ = scanner.append(text)
+        XCTAssertNil(scanner.lastSafeBoundary)
+        XCTAssertFalse(scanner.isInOpenConstruct)
+
+        let tailWindow = MarkdownLargeDocumentPolicy.chunkTargetBytes
+        let total = text.utf8.count
+        var promoted = 0
+        var steps = 0
+        while let next = LargeStreamPromotion.nextPromotionBoundary(
+            promotedBytes: promoted,
+            revealedBytes: total,
+            tailWindowBytes: tailWindow,
+            lastSafeBoundary: scanner.lastSafeBoundary
+        ) {
+            let start = StreamingText.alignedIndex(utf8Offset: promoted, in: text)
+            let end = StreamingText.alignedIndex(utf8Offset: next, in: text)
+            XCTAssertNotNil(start)
+            XCTAssertNotNil(end)
+            if let start, let end {
+                XCTAssertLessThan(start, end, "alignment must never collapse a promotion step")
+            }
+            promoted = next
+            steps += 1
+            if steps > 10_000 { XCTFail("promotion did not terminate"); break }
+        }
+        XCTAssertEqual(promoted, total - tailWindow)
+    }
+
+    func testScannerMathCloseMarkersArePaired() {
+        // A $$ block containing a lone \] line must stay open until $$.
+        var scanner = MarkdownStableBoundaryScanner()
+        _ = scanner.append("intro\n\n$$\nx = 1\n\\]\nstill math\n$$\n\ndone\n")
+        XCTAssertFalse(scanner.isInOpenConstruct)
+        XCTAssertEqual(scanner.lastSafeBoundary, "intro\n\n$$\nx = 1\n\\]\nstill math\n$$\n\n".utf8.count)
+    }
+
     func testScannerFinishDrainsTrailingPartialLine() {
         // A stream ending in a closing fence with no trailing newline must
         // not leave the scanner stuck in an open construct.
@@ -513,11 +591,14 @@ final class MarkdownLargeDocumentTests: XCTestCase {
         scanner.finish()
         XCTAssertFalse(scanner.isInOpenConstruct, "finish must close the construct")
 
-        // A blank trailing partial line yields one more safe boundary.
+        // A blank trailing *partial* line (no newline) yields one more safe
+        // boundary via finish(); append() alone cannot see it.
         var blank = MarkdownStableBoundaryScanner()
-        _ = blank.append("one\n\ntwo\n\n")
+        _ = blank.append("one\n\ntwo\n\n   ")
+        let beforeFinish = blank.lastSafeBoundary
         blank.finish()
         XCTAssertNotNil(blank.lastSafeBoundary)
+        XCTAssertGreaterThan(blank.lastSafeBoundary!, beforeFinish ?? 0)
     }
 
     func testContinueReadingWindowCountNeverOverflows() {

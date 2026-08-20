@@ -516,6 +516,9 @@ struct LargeCodeBlockView: View {
     @State private var expanded = false
     @State private var copied = false
     @State private var slices: [String]?
+    /// (hasMoreLines, lineCount) computed once off-main; whole-block scans
+    /// must not run per body evaluation (the Copy state toggle re-evaluates).
+    @State private var lineStats: (hasMore: Bool, count: Int)?
 
     private var normalizedLanguage: String { MarkdownLanguage.normalized(language) }
 
@@ -541,11 +544,11 @@ struct LargeCodeBlockView: View {
                             usesAccentSurface: usesAccentSurface,
                             maximumNumberOfLines: Self.previewLineCount
                         )
-                        if sourceHasMoreLinesThanPreview {
+                        if lineStats?.hasMore == true {
                             Button {
                                 withAnimation(.easeInOut(duration: 0.15)) { expanded = true }
                             } label: {
-                                Label("Show all \(Self.approximateLineCount(of: source)) lines", systemImage: "chevron.down")
+                                Label("Show all \(lineStats?.count ?? 0) lines", systemImage: "chevron.down")
                                     .font(.caption.weight(.semibold))
                             }
                             .tint(usesAccentSurface ? .white : .conduitAccent)
@@ -566,6 +569,24 @@ struct LargeCodeBlockView: View {
                     usesAccentSurface ? Color.white.opacity(0.28) : Color.secondary.opacity(0.20),
                     lineWidth: 1
                 )
+        }
+        .task(id: "stats-\(source.utf8.count)") {
+            // One-time whole-block scans (line counting), off the MainActor.
+            guard lineStats == nil else { return }
+            let currentSource = source
+            let previewBudget = Self.previewLineCount
+            let stats = await Task.detached(priority: .userInitiated) { () -> (Bool, Int) in
+                var newlines = 0
+                var index = currentSource.startIndex
+                while index < currentSource.endIndex {
+                    if currentSource[index] == "\n" { newlines += 1 }
+                    index = currentSource.index(after: index)
+                }
+                // The preview shows at most `previewLineCount` lines.
+                return (newlines >= previewBudget, newlines + 1)
+            }.value
+            guard !Task.isCancelled else { return }
+            lineStats = stats
         }
         .task(id: expanded ? "full-\(source.utf8.count)" : "preview") {
             guard expanded, slices == nil else { return }
@@ -625,17 +646,6 @@ struct LargeCodeBlockView: View {
         return source
     }
 
-    private var sourceHasMoreLinesThanPreview: Bool {
-        Self.previewSource(of: source).utf8.count < source.utf8.count
-    }
-
-    private static func approximateLineCount(of source: String) -> Int {
-        // Only called once when building the expand button's label; a single
-        // linear newline count over the block.
-        source.reduce(into: 1) { count, character in
-            if character == "\n" { count += 1 }
-        }
-    }
 }
 
 private extension Array where Element == Substring {

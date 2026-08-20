@@ -1831,8 +1831,30 @@ enum MarkdownParser {
     /// Test instrumentation: sizes (utf8 bytes) of every source handed to
     /// `parseDocument`. Lets regression tests assert that pathological
     /// streaming/rendering paths never re-parse the whole document per frame
-    /// — a bound on work, not a fragile wall-clock threshold.
-    nonisolated(unsafe) static var parseSourceSizes: [Int] = []
+    /// — a bound on work, not a fragile wall-clock threshold. Lock-guarded
+    /// because `parseDocument` runs on the MainActor (rendering) and inside
+    /// off-main preparation passes concurrently.
+    private static let parseSizeLock = NSLock()
+    private nonisolated(unsafe) static var parseSizes: [Int] = []
+
+    nonisolated(unsafe) static var parseSourceSizes: [Int] {
+        get {
+            parseSizeLock.lock()
+            defer { parseSizeLock.unlock() }
+            return parseSizes
+        }
+        set {
+            parseSizeLock.lock()
+            defer { parseSizeLock.unlock() }
+            parseSizes = newValue
+        }
+    }
+
+    nonisolated(unsafe) private static func recordParseSize(_ bytes: Int) {
+        parseSizeLock.lock()
+        defer { parseSizeLock.unlock() }
+        parseSizes.append(bytes)
+    }
     #endif
 
     /// Compatibility wrapper for callers that only need the visible blocks.
@@ -1851,7 +1873,7 @@ enum MarkdownParser {
     /// fragment at render time; see `MarkdownReferenceContext`.
     static func parseDocument(_ source: String, recognizesGatewayMedia: Bool = false) -> MarkdownParsedDocument {
         #if DEBUG
-        parseSourceSizes.append(source.utf8.count)
+        recordParseSize(source.utf8.count)
         #endif
         let lines = source.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
         var visibleLines: [String] = []
