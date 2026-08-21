@@ -18,6 +18,11 @@
 #     retry loop exactly like a test failure.
 #   - The simulator is explicitly booted (shutdown → boot → bootstatus) before
 #     EVERY attempt, including the first.
+#   - After a TIMED-OUT attempt the retry erases the dedicated simulator before
+#     rebooting: the deadline kill removes xcodebuild's process group, but
+#     services inside the simulator (e.g. the pasteboard daemon) can stay
+#     wedged in ways a plain reboot does not clear. Ordinary failures keep the
+#     fast shutdown→boot reset.
 #   - Raw xcodebuild logs land in ci-logs/ and stream into the step log; any
 #     partial .xcresult bundles are left on disk for the artifact upload.
 #
@@ -43,13 +48,26 @@ fi
 LOG_DIR="ci-logs"
 mkdir -p "$LOG_DIR"
 
+# Headless CI has no clipboard UI. App-level UIPasteboard access participates
+# in the Mac<->simulator automatic clipboard sync, a recurring hang source on
+# fresh runners (observed as a unit-test suite stalling forever inside its
+# first pasteboard touch). The pasteboard-mutating unit tests only need the
+# device-local pasteboard, so keep Simulator.app out of the path entirely.
+defaults write com.apple.iphonesimulator PasteboardAutomaticSync -bool false
+
 # Boot the simulator to a known-clean state. All failures are tolerated: on a
 # fresh runner the device may already be shut down (or booted), and a wedged
 # device is exactly what this reset is here to clear. bootstatus is bounded
 # by -t; shutdown/boot themselves can in principle stall on a wedged
 # CoreSimulatorService — the job-level timeout is the backstop for that.
 reset_and_boot_simulator() {
+  # $1 = 1 erases the device before booting (used after a timed-out attempt).
+  local erase="${1:-0}"
   xcrun simctl shutdown "$SIMULATOR" >/dev/null 2>&1 || true
+  if [ "$erase" -eq 1 ]; then
+    echo "::warning::previous attempt timed out — erasing simulator $SIMULATOR before retry"
+    xcrun simctl erase "$SIMULATOR" >/dev/null 2>&1 || true
+  fi
   sleep 3
   xcrun simctl boot "$SIMULATOR" 2>/dev/null || true
   # Wait for a complete boot before handing the device to xcodebuild; a
@@ -154,6 +172,7 @@ run_attempt() {
   wait "$runner"
 }
 
+erase_before_retry=0
 for attempt in $(seq 1 "$ATTEMPTS"); do
   if [ "$attempt" -eq 1 ]; then
     bundle="TestResults.xcresult"
@@ -162,9 +181,10 @@ for attempt in $(seq 1 "$ATTEMPTS"); do
   fi
 
   # A wedged or half-booted simulator is the one failure mode in-test retries
-  # cannot clear; reset it before every attempt, including the first.
+  # cannot clear; reset it before every attempt, including the first. After a
+  # timed-out attempt the reset escalates to an erase (see below).
   echo "Booting simulator $SIMULATOR for attempt $attempt"
-  reset_and_boot_simulator
+  reset_and_boot_simulator "$erase_before_retry"
 
   echo "::group::Test attempt $attempt (budget ${ATTEMPT_TIMEOUT_SECS}s)"
   status=0
@@ -176,6 +196,11 @@ for attempt in $(seq 1 "$ATTEMPTS"); do
     exit 0
   fi
   echo "tests failed on attempt $attempt (exit status $status)"
+  # Only a deadline kill (124) escalates the next reset to an erase; ordinary
+  # test failures keep the fast shutdown→boot path.
+  if [ "$status" -eq 124 ]; then
+    erase_before_retry=1
+  fi
 done
 
 echo "all $ATTEMPTS test attempts failed"
