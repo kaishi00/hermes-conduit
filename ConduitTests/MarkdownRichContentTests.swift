@@ -594,6 +594,7 @@ final class MarkdownRichContentHostedTests: XCTestCase {
     /// Retained for the full lifetime of each measurement so the hosted
     /// hierarchy stays genuinely mounted; torn down explicitly per test.
     private var testWindow: UIWindow?
+    private var testHost: UIHostingController<MarkdownText>?
 
     override func setUp() {
         super.setUp()
@@ -607,21 +608,39 @@ final class MarkdownRichContentHostedTests: XCTestCase {
     }
 
     /// Deterministically tears down the current hosted window INSIDE this
-    /// test. A bare zero-length run-loop pass does not let the hosting
-    /// controller's appearance transition complete; dropping the window
-    /// reference mid-transition defers that teardown into whichever suite
-    /// runs next, where each leftover transition logs an unbalanced-
-    /// appearance warning and starves XCTest main-queue waits (CI #384:
+    /// test. Hiding a window and dropping the reference leaves the
+    /// UIHostingController's appearance transition PENDING: the deferred
+    /// work lands in whichever suite runs next, where each leftover
+    /// transition logs an unbalanced-appearance warning and — on a slow
+    /// CI runner processing a whole batch of them — saturates the main
+    /// thread long enough to starve XCTest main-queue waits (CI #384/#385:
     /// MarkdownTableLayoutTests' 2 s "width probe settles" expectation
-    /// timed out under a stack of these). Draining a few real animation
-    /// ticks keeps the whole lifecycle inside this suite. This is
-    /// deterministic synchronization, not a padded delay.
+    /// timed out under a stack of these). The teardown therefore:
+    ///   1. removes the hosted view from the window SYNCHRONOUSLY
+    ///      (forcing the appearance transition to begin now, not later),
+    ///   2. detaches the root view controller, and
+    ///   3. drains the run loop until the hosting view's SwiftUI
+    ///      subview hierarchy is actually dismantled (bounded).
+    /// Draining to an observed completion signal is deterministic
+    /// synchronization, not a padded delay.
     private func dismountCurrentWindow() {
         guard let window = testWindow else { return }
+        let host = testHost
         window.isHidden = true
         window.rootViewController = nil
-        RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        host?.view.removeFromSuperview()
+
+        // Drain until the hosted hierarchy is genuinely dismantled (its
+        // platform subviews are gone) or the bounded budget expires. CI
+        // runners are far slower than a dev Mac, so the budget is
+        /// generous while the early exit keeps fast machines quick.
+        let deadline = Date().addingTimeInterval(1.5)
+        while Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+            if let host, host.view.subviews.isEmpty { break }
+        }
         testWindow = nil
+        testHost = nil
     }
 
     /// Hosts one MarkdownText in a phone-sized window and lets the first
@@ -637,6 +656,7 @@ final class MarkdownRichContentHostedTests: XCTestCase {
         window.rootViewController = host
         window.isHidden = false
         testWindow = window
+        testHost = host
         host.view.setNeedsLayout()
         host.view.layoutIfNeeded()
         RunLoop.current.run(until: Date())
@@ -829,17 +849,30 @@ final class MarkdownRichContentHostedTests: XCTestCase {
         )
     }
 
-    /// Hosted live-tail regression through the REAL reveal button: with
-    /// 60 tables (cut 16 < tail 44 initially), repeated Continue Reading
-    /// taps must only ever ADD mounted blocks — including across the
+    /// Hosted live-tail regression through the REAL reveal action: with
+    /// 30 tables (cut < tail initially), repeated Continue Reading taps
+    /// must only ever ADD mounted blocks — including across the
     /// cut == tail and cut > tail transitions — and the footer must
-    /// disappear exactly when the hidden gap is gone.
+    /// disappear exactly when the hidden gap is gone. Kept small on
+    /// purpose: the fully revealed state is the most expensive teardown
+    /// this suite defers, and CI runners process deferred teardowns far
+    /// slower than a dev Mac (see dismountCurrentWindow).
     func testHostedRevealNeverRetractsTailAndFooterDisappearsWhenRevealed() throws {
-        let source = (0..<60).map { index in
+        let source = (0..<36).map { index in
             "Section \(index) intro paragraph.\n\n"
                 + MarkdownShowcaseFixtures.alignedTable(section: index, rows: 4, columns: 5)
         }.joined(separator: "\n\n")
         let blocks = MarkdownParser.parse(source)
+        let units = MarkdownRichContentPolicy.richUnitsByBlock(blocks)
+        // Precondition: the fixture must start GATED (cut < tail) so the
+        // reveal progression really crosses cut == tail and cut > tail.
+        let initialPlan = MarkdownRichContentPolicy.mountedPlan(
+            unitsByBlock: units,
+            unitBudget: MarkdownRichContentPolicy.eagerRichUnitBudget
+        )
+        guard case .split = initialPlan else {
+            return XCTFail("fixture must start gated: \(initialPlan)")
+        }
 
         _ = mountMarkdown { MarkdownText(source: source) }
 

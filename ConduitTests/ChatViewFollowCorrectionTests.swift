@@ -28,20 +28,35 @@ import XCTest
 @MainActor
 final class ChatViewFollowCorrectionTests: XCTestCase {
     private var testWindow: UIWindow?
+    private var testHost: UIHostingController<AnyView>?
+    /// Retained so teardown can stop any live streaming reveal before
+    /// the hosted window is dismantled.
+    private var testAppState: AppState?
 
     override func tearDown() {
-        // Deterministic teardown INSIDE this suite: a zero-length run-
-        // loop pass leaves the hosting controller's appearance
-        // transition in flight, and the deferred teardown lands in
-        // whichever suite runs next as unbalanced-appearance warnings
-        // that starve XCTest main-queue waits (see CI #384). Drain a
-        // few real animation ticks so the lifecycle completes here.
+        // Deterministic teardown INSIDE this suite. Hiding the window and
+        // dropping references leaves the hosting controller's appearance
+        // transition PENDING and any live streaming reveal RUNNING — the
+        // deferred work lands in whichever suite runs next and, on a slow
+        // CI runner, saturates the main thread enough to starve XCTest
+        // main-queue waits (see CI #384/#385). Instead: stop streaming,
+        // remove the hosted view SYNCHRONOUSLY, and drain until the
+        // hosted hierarchy is actually dismantled (bounded).
+        testAppState?.streamingText = ""
         if let window = testWindow {
+            let host = testHost
             window.isHidden = true
             window.rootViewController = nil
-            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+            host?.view.removeFromSuperview()
+            let deadline = Date().addingTimeInterval(1.5)
+            while Date() < deadline {
+                RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+                if let host, host.view.subviews.isEmpty { break }
+            }
         }
         testWindow = nil
+        testHost = nil
+        testAppState = nil
         ChatViewportTrace.shared.reset()
         super.tearDown()
     }
@@ -66,6 +81,8 @@ final class ChatViewFollowCorrectionTests: XCTestCase {
         window.rootViewController = host
         window.isHidden = false
         testWindow = window
+        testHost = host
+        testAppState = appState
         pump(host)
         return host
     }
@@ -131,17 +148,32 @@ final class ChatViewFollowCorrectionTests: XCTestCase {
     /// real-time settle expires any armed animated retry (150 ms) and the
     /// follow-correction re-arm interval (100 ms) so their landings are not
     /// mistaken for churn.
-    private func drainUntilSettled(_ host: UIHostingController<AnyView>, maxPumps: Int = 40) {
+    /// Time-bounded (not pump-bounded): CI runners drain SwiftUI work far
+    /// slower than a dev Mac, and the early-exit condition keeps fast
+    /// machines quick. Settled means BOTH several consecutive quiet
+    /// turns AND a correction-free real-time window longer than the
+    /// re-arm interval (0.1 s) and animated retry delay (150 ms) — under
+    /// load, a scheduled-but-undrained token can otherwise execute one
+    /// turn after the quiet-count criterion is met and pollute the churn
+    /// measurement.
+    private func drainUntilSettled(
+        _ host: UIHostingController<AnyView>,
+        budget: TimeInterval = 4.0
+    ) {
         RunLoop.current.run(until: Date().addingTimeInterval(0.4))
         var quietTurns = 0
-        for _ in 0..<maxPumps {
+        var lastCorrectionAt = Date()
+        let deadline = Date().addingTimeInterval(budget)
+        while Date() < deadline {
             ChatViewportTrace.shared.reset()
             pump(host, 1)
-            if followCorrectionsDue == 0 {
+            if followCorrectionsDue == 0,
+               Date().timeIntervalSince(lastCorrectionAt) > 0.5 {
                 quietTurns += 1
-                if quietTurns >= 4 { return }
+                if quietTurns >= 6 { return }
             } else {
                 quietTurns = 0
+                if followCorrectionsDue > 0 { lastCorrectionAt = Date() }
             }
         }
     }
@@ -266,7 +298,13 @@ final class ChatViewFollowCorrectionTests: XCTestCase {
             "scrolls must be rate-bounded by the re-arm interval, not callbacks"
         )
 
-        // And once the stream settles: exactly zero churn.
+        // And once the stream settles: exactly zero churn. Settling means
+        // the streaming bubble is GONE (production clears streamingText on
+        // completion) — clearing it also stops the character-paced reveal,
+        // so no delayed reveal growth can leak into the churn window on a
+        // slow runner.
+        appState.streamingText = ""
+        pump(host, 2)
         drainUntilSettled(host)
         ChatViewportTrace.shared.reset()
         pump(host, 5)
