@@ -630,10 +630,15 @@ final class MarkdownRichContentHostedTests: XCTestCase {
         window.rootViewController = nil
         host?.view.removeFromSuperview()
 
-        // Drain until the hosted hierarchy is genuinely dismantled (its
-        // platform subviews are gone) or the bounded budget expires. CI
-        // runners are far slower than a dev Mac, so the budget is
-        /// generous while the early exit keeps fast machines quick.
+        // Completion signal: the hosting view's SwiftUI subviews are
+        // gone. NOTE: controller DEALLOCATION was tried as the signal
+        // and is empirically unsound here — SwiftUI retains the hosting
+        // controller internally well past any reasonable budget, so a
+        // deallocation wait always expires (and an assert on it always
+        // fails) even though the deferred teardown work has long since
+        // completed. Subview dismantling is the observable that tracks
+        // the actual teardown work and completes promptly (verified
+        // locally and on CI).
         let deadline = Date().addingTimeInterval(1.5)
         while Date() < deadline {
             RunLoop.current.run(until: Date().addingTimeInterval(0.05))

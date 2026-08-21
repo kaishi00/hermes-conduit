@@ -40,14 +40,22 @@ final class ChatViewFollowCorrectionTests: XCTestCase {
         // deferred work lands in whichever suite runs next and, on a slow
         // CI runner, saturates the main thread enough to starve XCTest
         // main-queue waits (see CI #384/#385). Instead: stop streaming,
-        // remove the hosted view SYNCHRONOUSLY, and drain until the
-        // hosted hierarchy is actually dismantled (bounded).
+        // remove the hosted view SYNCHRONOUSLY, release every retained
+        // reference, and drain until the hosting controller DEALLOCATES
+        // (bounded — deallocation is the honest completion signal; a
+        // detached UIHostingController keeps its loaded subviews, so
+        // subview emptiness proves nothing).
         testAppState?.streamingText = ""
         if let window = testWindow {
             let host = testHost
             window.isHidden = true
             window.rootViewController = nil
             host?.view.removeFromSuperview()
+            // Completion signal: the hosting view's SwiftUI subviews are
+            // gone (controller deallocation was tried and is empirically
+            // unsound — SwiftUI retains the controller internally well
+            // past any reasonable budget; see the rich-content suite's
+            // dismountCurrentWindow note).
             let deadline = Date().addingTimeInterval(1.5)
             while Date() < deadline {
                 RunLoop.current.run(until: Date().addingTimeInterval(0.05))
@@ -158,7 +166,7 @@ final class ChatViewFollowCorrectionTests: XCTestCase {
     /// measurement.
     private func drainUntilSettled(
         _ host: UIHostingController<AnyView>,
-        budget: TimeInterval = 4.0
+        budget: TimeInterval = 6.0
     ) {
         RunLoop.current.run(until: Date().addingTimeInterval(0.4))
         var quietTurns = 0
@@ -176,6 +184,14 @@ final class ChatViewFollowCorrectionTests: XCTestCase {
                 if followCorrectionsDue > 0 { lastCorrectionAt = Date() }
             }
         }
+        // Budget expiry is a FAILURE, not a quiet pass: the caller is
+        // about to reset the trace and measure a settled-churn window,
+        // and an unfinished deferred correction would pollute that
+        // measurement invisibly. Fail loudly with the trace so the
+        // unsettled state is diagnosable.
+        XCTFail(
+            "ChatView did not settle within \(budget)s — deferred corrections still executing\n\(ChatViewportTrace.shared.dump())"
+        )
     }
 
     // MARK: Tests
