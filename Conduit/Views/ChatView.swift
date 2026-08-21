@@ -17,6 +17,14 @@ struct ChatView: View {
     @State private var renderedScrollTargets = ChatRenderedScrollTargets()
     @State private var viewportSnapshotProviderID = UUID()
     @State private var viewport = ChatViewportController()
+    /// The animated bottom command whose delayed retry is still armed. A
+    /// coalesced follow correction must not execute while this is set: the
+    /// animation is mid-flight toward the bottom, the measured drift is
+    /// transient, and a second scrollTo against the same anchor mid-
+    /// animation churns the lazy realization (observed as settled-row
+    /// re-materialization in the hosted transcript fixture). The retry
+    /// itself guarantees the animated command lands.
+    @State private var armedAnimatedBottomRetry: ChatViewportCommand?
     @GestureState private var isDraggingChat = false
 
     private var renderedScrollSessionKey: ChatScrollSessionKey? { viewport.renderedSessionKey }
@@ -335,6 +343,15 @@ struct ChatView: View {
                 guard wasDragging, !isDragging else { return }
                 performViewportEffects(viewport.userDragGestureEnded(), using: proxy)
             }
+            .onChange(of: viewport.pendingFollowCorrection) { _, pending in
+                // The coalesced follow-correction executor: the controller
+                // scheduled (state changed) from a geometry preference
+                // callback; SwiftUI delivers this observer on the update
+                // turn that change created — after the layout pass, riding
+                // its transaction, at most once per pending token.
+                guard let pending else { return }
+                executePendingFollowCorrection(pending, using: proxy)
+            }
     }
 
     private func transcriptObservers(proxy: ScrollViewProxy, content: some View) -> some View {
@@ -578,7 +595,8 @@ struct ChatView: View {
             viewportMinY: scrollViewportMinY,
             viewportMaxY: scrollViewportMaxY,
             rowFrames: frames,
-            renderedScope: scope
+            renderedScope: scope,
+            timestamp: CFAbsoluteTimeGetCurrent()
         )
     }
 
@@ -627,7 +645,50 @@ struct ChatView: View {
                     using: proxy
                 )
             }
+        case .scheduleFollowCorrection(let token):
+            ChatViewportTrace.shared.log(
+                "follow correction scheduled seq=\(token.sequence) gen=\(token.generation)"
+            )
+            // Executed by the pendingFollowCorrection observer below: the
+            // correction must ride the SwiftUI update turn that the
+            // scheduling state change already created — never its own
+            // MainActor task (a standalone task commits a separate layout
+            // transaction, which re-materializes lazy rows the transcript
+            // fixtures measure), and never synchronously inside the geometry
+            // preference callback that scheduled it (that
+            // scrollTo → layout → preference → scrollTo loop is the
+            // ScrollViewCommitMutation watchdog storm).
+            break
         }
+    }
+
+    /// Executes the coalesced bottom-follow correction on the update turn
+    /// that the controller's pending-correction state change created. This
+    /// is the ONLY place a follow correction scrolls. MainActor-isolated to
+    /// match the neighboring scroll-execution entry points: it mutates
+    /// viewport state, writes the trace ring, and drives ScrollViewProxy.
+    @MainActor
+    private func executePendingFollowCorrection(
+        _ token: ChatFollowCorrectionToken,
+        using proxy: ScrollViewProxy
+    ) {
+        if let armed = armedAnimatedBottomRetry {
+            // An animated bottom command is still in flight with its own
+            // retry armed; a correction now would fight the animation. Drop
+            // this cycle — genuinely new growth schedules a fresh one.
+            ChatViewportTrace.shared.log(
+                "follow correction skipped, animated retry armed gen=\(armed.generation)"
+            )
+            _ = viewport.followCorrectionDue(token)
+            return
+        }
+        ChatViewportTrace.shared.log(
+            "follow correction due gen=\(token.generation)"
+        )
+        performViewportEffects(
+            viewport.followCorrectionDue(token),
+            using: proxy
+        )
     }
 
     @MainActor
@@ -640,8 +701,16 @@ struct ChatView: View {
         // retry re-validates below.
         runViewportScroll(command, using: proxy)
         guard case .delayed(let milliseconds) = command.retry else { return }
+        if case .bottom = command.destination {
+            // Mark the flight window: the retry disarms below, and follow
+            // corrections defer to the animation meanwhile.
+            armedAnimatedBottomRetry = command
+        }
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(milliseconds))
+            if armedAnimatedBottomRetry == command {
+                armedAnimatedBottomRetry = nil
+            }
             guard !Task.isCancelled, viewport.isCommandCurrent(command) else { return }
             ChatViewportTrace.shared.log(
                 "scroll retry \(command.destination) gen=\(command.generation)"

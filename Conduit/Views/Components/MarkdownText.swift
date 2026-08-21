@@ -78,6 +78,26 @@ struct MarkdownText: View {
                     linkColor: usesAccentSurface ? .white : .link
                 )
                 .frame(maxWidth: .infinity, alignment: .leading)
+            } else if rendering.needsRichBounding {
+                // Byte-ordinary but structurally pathological rich content:
+                // identical block rendering behind a bounded mount budget
+                // (see MarkdownRichContent.swift). Plain flow messages can
+                // never reach here — they take the selectableText branch —
+                // and ordinary rich messages stay under the budget. The
+                // decision and the per-block unit vector come from the
+                // cached rendering, so re-evaluations never re-walk the
+                // blocks.
+                RichBudgetedMarkdownBody(
+                    blocks: rendering.blocks,
+                    source: source,
+                    richUnitsByBlock: rendering.richUnitsByBlock,
+                    foregroundStyle: foregroundStyle,
+                    usesAccentSurface: usesAccentSurface,
+                    gatewayMediaDataURL: gatewayMediaDataURL,
+                    selectionCoordinator: selectionCoordinator,
+                    selectionSegments: selectionSegments,
+                    newestCharacterOpacities: newestCharacterOpacities
+                )
             } else {
                 VStack(alignment: .leading, spacing: 10) {
                     ForEach(Array(rendering.blocks.enumerated()), id: \.offset) { index, block in
@@ -192,17 +212,33 @@ private final class MarkdownSelectionHighlightView: UIView {
 
 /// One render's parsed blocks plus the prebuilt selectable string (nil when
 /// the blocks need the full block-view path). A class so NSCache can hold it.
+///
+/// Structural rich-content metadata (the per-block rich-unit vector) is
+/// computed ONCE here, with the parse, and cached with the rendering — the
+/// exact pathological Markdown this bounding exists for used to re-walk
+/// every table's cells on each SwiftUI body re-evaluation just to
+/// rediscover the same budget (see MarkdownRichContentPolicy).
 private final class MarkdownRendering {
     let blocks: [MarkdownBlock]
     /// The message's link reference definitions; block views need them to
     /// resolve reference-style links when re-parsing each fragment.
     let references: MarkdownReferenceContext
     let selectableText: NSAttributedString?
+    /// Per-block rich-layout units (MarkdownRichContentPolicy.richUnits),
+    /// aligned with blocks by index.
+    let richUnitsByBlock: [Int]
+
+    /// Whether this message's aggregate rich complexity exceeds the
+    /// progressive-mount budget.
+    var needsRichBounding: Bool {
+        MarkdownRichContentPolicy.needsBounding(unitsByBlock: richUnitsByBlock)
+    }
 
     init(blocks: [MarkdownBlock], references: MarkdownReferenceContext, selectableText: NSAttributedString?) {
         self.blocks = blocks
         self.references = references
         self.selectableText = selectableText
+        self.richUnitsByBlock = MarkdownRichContentPolicy.richUnitsByBlock(blocks)
     }
 }
 
@@ -645,22 +681,51 @@ struct MarkdownBlockView: View {
             )
 
         case .table(let headers, let alignments, let rows):
-            MarkdownTable(
-                headers: headers,
-                alignments: alignments,
-                rows: rows,
-                foregroundStyle: foregroundStyle,
-                usesAccentSurface: usesAccentSurface,
-                selectionCoordinator: selectionCoordinator,
-                blockIndex: blockIndex,
-                selectionSegments: selectionSegments
-            )
+            // Structural complexity — not whole-message bytes — decides the
+            // presentation: a 45-row table in a 40 KB message mounts the
+            // same thousand TextKit cell views as one in a 400 KB message.
+            // Both paths share MarkdownTableRowView, so appearance and
+            // selection behavior match either way.
+            if MarkdownRichContentPolicy.isComplexTable(headers: headers, rows: rows) {
+                LargeMarkdownTable(
+                    headers: headers,
+                    alignments: alignments,
+                    rows: rows,
+                    foregroundStyle: foregroundStyle,
+                    usesAccentSurface: usesAccentSurface,
+                    selectionCoordinator: selectionCoordinator,
+                    blockIndex: blockIndex,
+                    selectionSegments: selectionSegments
+                )
+            } else {
+                MarkdownTable(
+                    headers: headers,
+                    alignments: alignments,
+                    rows: rows,
+                    foregroundStyle: foregroundStyle,
+                    usesAccentSurface: usesAccentSurface,
+                    selectionCoordinator: selectionCoordinator,
+                    blockIndex: blockIndex,
+                    selectionSegments: selectionSegments
+                )
+            }
 
         case .image(let url, let alt):
             RemoteMarkdownImage(url: url, alt: alt, gatewayMediaDataURL: gatewayMediaDataURL)
 
         case .math(let source):
-            MathBlock(source: source)
+            // The #88 oversized-math guard applies to the block itself,
+            // wherever it renders — never only inside large-document mode.
+            if MarkdownBlockView.mathNeedsGuard(source) {
+                GuardedSourceCard(
+                    title: "LaTeX",
+                    icon: "function",
+                    source: source,
+                    guardBytes: MarkdownLargeDocumentPolicy.mathGuardBytes
+                )
+            } else {
+                MathBlock(source: source)
+            }
 
         case .callout(let kind, let text):
             MarkdownCallout(
@@ -684,9 +749,26 @@ struct MarkdownBlockView: View {
             )
 
         case .code(let language, let source):
-            if MarkdownLanguage.normalized(language) == "mermaid" {
+            switch MarkdownBlockView.codePresentation(language: language, source: source) {
+            case .guardedMermaid:
+                // The #88 Mermaid guard, applied per block: a diagram past
+                // the guard size renders as a copyable bounded card no
+                // matter how small the enclosing message is.
+                GuardedSourceCard(
+                    title: "Mermaid",
+                    icon: "point.3.connected.trianglepath.dotted",
+                    source: source,
+                    guardBytes: MarkdownLargeDocumentPolicy.mermaidGuardBytes
+                )
+            case .mermaid:
                 MermaidBlock(source: source)
-            } else {
+            case .slicedCode:
+                LargeCodeBlockView(
+                    source: source,
+                    language: language,
+                    usesAccentSurface: usesAccentSurface
+                )
+            case .code:
                 ChatCodeBlock(
                     source: source,
                     language: language,
@@ -722,6 +804,41 @@ struct MarkdownBlockView: View {
 
     private func selectionSegment(id: String) -> MarkdownSelectionSegmentDescriptor? {
         selectionSegments.first { $0.id == id }
+    }
+
+    // MARK: Block-local routing (pure, unit-testable)
+
+    /// The bounded presentations a code fence can take. The guards are
+    /// properties of the BLOCK — they apply identically in the ordinary
+    /// path and in large-document mode, which is what makes Mermaid and
+    /// oversized-code safety independent of the whole-message threshold.
+    enum CodePresentation: Equatable {
+        /// Mermaid source beyond the #88 guard: bounded copyable card,
+        /// render action dropped.
+        case guardedMermaid
+        /// Ordinary Mermaid diagram: render-card + on-demand preview.
+        case mermaid
+        /// Code at/above the #88 large-code threshold: bounded preview,
+        /// then line/byte slices with off-main highlighting.
+        case slicedCode
+        /// Ordinary code block.
+        case code
+    }
+
+    static func codePresentation(language: String, source: String) -> CodePresentation {
+        let normalized = MarkdownLanguage.normalized(language)
+        if normalized == "mermaid" {
+            return source.utf8.count > MarkdownLargeDocumentPolicy.mermaidGuardBytes
+                ? .guardedMermaid
+                : .mermaid
+        }
+        return MarkdownLargeDocumentPolicy.isLargeCodeBlock(source) ? .slicedCode : .code
+    }
+
+    /// Oversized math sources drop the render action (#88 guard), applied
+    /// per block rather than per document.
+    static func mathNeedsGuard(_ source: String) -> Bool {
+        source.utf8.count > MarkdownLargeDocumentPolicy.mathGuardBytes
     }
 }
 
@@ -1135,6 +1252,25 @@ enum MarkdownTableLayout {
     }
 }
 
+/// The zero-height width probe shared by BOTH table presentations: the
+/// chat's proposed width for the block, read once per layout width change.
+/// Extracted so the ordinary MarkdownTable and the paged
+/// LargeMarkdownTable resolve columns from the SAME container-width
+/// knowledge — crossing the structural complexity threshold must not
+/// change whether a previously fitting table fits.
+private struct MarkdownTableWidthProbe: View {
+    @Binding var width: CGFloat
+
+    var body: some View {
+        GeometryReader { proxy in
+            Color.clear
+                .onAppear { width = proxy.size.width }
+                .onChange(of: proxy.size.width) { _, newWidth in width = newWidth }
+        }
+        .frame(height: 0)
+    }
+}
+
 private struct MarkdownTable: View {
     let headers: [String]
     let alignments: [MarkdownTableAlignment]
@@ -1163,12 +1299,7 @@ private struct MarkdownTable: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            GeometryReader { proxy in
-                Color.clear
-                    .onAppear { availableWidth = proxy.size.width }
-                    .onChange(of: proxy.size.width) { _, width in availableWidth = width }
-            }
-            .frame(height: 0)
+            MarkdownTableWidthProbe(width: $availableWidth)
 
             let widths = columnWidths
             ScrollView(.horizontal, showsIndicators: false) {
@@ -1277,6 +1408,14 @@ struct LargeMarkdownTable: View {
     let selectionSegments: [MarkdownSelectionSegmentDescriptor]
 
     @State private var renderedRowCount: Int
+    /// The chat's proposed width for this block, read by the SAME zero-height
+    /// probe the ordinary MarkdownTable uses. Crossing the structural
+    /// complexity threshold (rows/cells/bytes) must not change whether a
+    /// previously fitting table fits: with the real container width the
+    /// shared layout engine's fit-or-shrink behavior applies identically in
+    /// both presentations. Zero means "unknown yet" (first pass); the
+    /// cap-and-scroll fallback re-resolves a frame later.
+    @State private var availableWidth: CGFloat = 0
     @Environment(\.markdownReferences) private var references
 
     init(
@@ -1318,7 +1457,7 @@ struct LargeMarkdownTable: View {
             rows: Array(rows.prefix(Self.widthSampleRows)).map {
                 $0.map { MarkdownLargeDocumentPolicy.boundedDisplayText($0, maxBytes: ceiling) }
             },
-            availableWidth: 0,
+            availableWidth: availableWidth,
             references: references
         )
     }
@@ -1339,6 +1478,8 @@ struct LargeMarkdownTable: View {
         // the header share the same resolved (bounded) widths.
         let widths = columnWidths
         return VStack(spacing: 0) {
+            MarkdownTableWidthProbe(width: $availableWidth)
+
             ScrollView(.horizontal, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
                     MarkdownTableRowView(

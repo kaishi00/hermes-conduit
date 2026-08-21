@@ -536,7 +536,10 @@ struct LargeMarkdownExpandedView: View {
     ) -> some View {
         switch block {
         case .table(let headers, let alignments, let rows)
-            where block.estimatedSourceBytes >= MarkdownLargeDocumentPolicy.largeTableBytes:
+            where MarkdownRichContentPolicy.isComplexTable(headers: headers, rows: rows):
+            // Shared structural predicate: a table pages when ITS structure
+            // is expensive (rows/cells/bytes), in large mode exactly as in
+            // the ordinary path (MarkdownBlockView).
             LargeMarkdownTable(
                 headers: headers,
                 alignments: alignments,
@@ -567,33 +570,11 @@ struct LargeMarkdownExpandedView: View {
                     selectionCoordinator: selectionCoordinator
                 )
             }
-        case .math(let source) where source.utf8.count > MarkdownLargeDocumentPolicy.mathGuardBytes:
-            GuardedSourceCard(
-                title: "LaTeX",
-                icon: "function",
-                source: source,
-                guardBytes: MarkdownLargeDocumentPolicy.mathGuardBytes
-            )
-        case .code(let language, let code)
-            where MarkdownLanguage.normalized(language) == "mermaid"
-                && code.utf8.count > MarkdownLargeDocumentPolicy.mermaidGuardBytes:
-            GuardedSourceCard(
-                title: "Mermaid",
-                icon: "point.3.connected.trianglepath.dotted",
-                source: code,
-                guardBytes: MarkdownLargeDocumentPolicy.mermaidGuardBytes
-            )
-        case .code(let language, let code)
-            where MarkdownLanguage.normalized(language) != "mermaid"
-                && MarkdownLargeDocumentPolicy.isLargeCodeBlock(code):
-            LargeCodeBlockView(
-                source: code,
-                language: language,
-                usesAccentSurface: usesAccentSurface
-            )
         default:
             // Ordinary rich blocks reuse the ordinary renderer with their
-            // chunk-local reference subset injected.
+            // chunk-local reference subset injected. The per-block Mermaid/
+            // math/code guards live in MarkdownBlockView now, so they apply
+            // identically here and in the ordinary path.
             MarkdownBlockView(
                 block: block,
                 blockIndex: originalIndex,

@@ -38,6 +38,29 @@ enum ChatViewportEffect: Equatable {
     case completeRestoration(generation: UInt64)
     case abandonRestoration(generation: UInt64)
     case scheduleDragEvaluation(ChatDragCompletionToken)
+    /// One coalesced bottom-follow correction is outstanding; the view
+    /// executes it on a later MainActor turn (see
+    /// ChatViewportController.followCorrectionDue).
+    case scheduleFollowCorrection(ChatFollowCorrectionToken)
+}
+
+/// Identity of one outstanding coalesced follow correction: the ownership
+/// generation, the session it was scheduled under, and a per-schedule
+/// sequence number. A correction that comes due after ownership moved on
+/// (drag, restoration, handoff, session switch) re-validates against this
+/// token and dies silently.
+///
+/// The sequence number makes every scheduled correction Equatable-distinct
+/// even within one ownership generation and session. The view drains
+/// corrections through onChange(of: pendingFollowCorrection); two
+/// consecutive corrections with equal tokens would be observed as
+/// "token A -> token A", which SwiftUI is free to skip — leaving a pending
+/// correction nobody executes. The monotonic counter guarantees the
+/// nil -> token -> nil -> token-prime transitions always differ.
+struct ChatFollowCorrectionToken: Equatable {
+    let generation: UInt64
+    let sessionKey: ChatScrollSessionKey?
+    let sequence: UInt64
 }
 
 struct ChatViewportLayoutFacts: Equatable {
@@ -48,6 +71,16 @@ struct ChatViewportLayoutFacts: Equatable {
     /// across ticks; only rows SwiftUI laid out are present).
     var rowFrames: [ChatRenderedRowFrame]
     var renderedScope: ChatRenderedScrollScope?
+    /// When these facts were measured (view-supplied clock stamp, e.g.
+    /// CFAbsoluteTimeGetCurrent). Pure input like every other fact: tests
+    /// pass synthetic monotonic stamps. Used to rate-limit follow-
+    /// correction RE-ARMING after a correction executed — the correction's
+    /// own scroll shifts every global frame, and a schedule minted from
+    /// that flap (observed 3 ms after execution) is both spurious and
+    /// undrainable: it is born inside the drain handler's layout turn,
+    /// where SwiftUI may never deliver the onChange that would execute it,
+    /// leaving a pending token that silently absorbs all future schedules.
+    var timestamp: TimeInterval = 0
 }
 
 struct ChatViewportHandoffState: Equatable {
@@ -95,6 +128,42 @@ struct ChatViewportController: Equatable {
     private var drag = DragLifecycle()
     private var dragGestureActive = false
     private(set) var pendingDragEvaluation: ChatDragCompletionToken?
+    /// The single outstanding coalesced follow correction, if any (see
+    /// layoutMetricsChanged). At most one exists per unsettled layout
+    /// cycle: geometry ticks arriving while one is pending update the
+    /// recorded facts but never enqueue a second correction.
+    private(set) var pendingFollowCorrection: ChatFollowCorrectionToken?
+    /// Monotonic per-schedule discriminator for follow-correction tokens
+    /// (wraps like every counter in this type, via &+). Only incremented
+    /// when a NEW correction is actually scheduled — duplicate geometry
+    /// ticks while one is pending never mint tokens.
+    private var followCorrectionSequence: UInt64 = 0
+    /// Clock stamp of the most recently recorded layout facts (pure input;
+    /// see ChatViewportLayoutFacts.timestamp).
+    private var latestFactTimestamp: TimeInterval = 0
+    /// Clock stamp of the facts the last executed follow correction scrolled
+    /// against. New corrections may not RE-ARM within
+    /// followCorrectionRearmInterval of an execution: the correction's own
+    /// scroll commit shifts every global frame, and a schedule minted from
+    /// that immediate flap both is spurious and can be undrainable (born
+    /// inside the drain handler's layout turn, SwiftUI may skip the
+    /// onChange delivery — observed live: seq=2 stuck pending forever,
+    /// silently absorbing every later schedule).
+    private var followCorrectionLastExecutionAt: TimeInterval?
+
+    /// Minimum time after a correction executed before another may arm.
+    /// Long enough for the correction's scroll commit to settle global
+    /// frames; short enough that genuine streaming growth (bounded already
+    /// by the 12 pt regrowth floor) is followed promptly.
+    static let followCorrectionRearmInterval: TimeInterval = 0.1
+    /// Content bottom (bottomMarkerMaxY) the last scheduled correction ran
+    /// against. A correction re-arms only when the content bottom has
+    /// MOVED since — a drift that persists with UNCHANGED content (the
+    /// scroll already sits at the anchor's bottom; scrollTo cannot reduce
+    /// the residual) must not re-arm a correction every MainActor turn, or
+    /// the correction itself becomes the layout-churn source it exists to
+    /// prevent.
+    private var followCorrectionContentBottom: CGFloat?
     private(set) var notificationHandoff: ChatViewportHandoffState?
     private(set) var restoration: RestorationState?
 
@@ -173,21 +242,44 @@ struct ChatViewportController: Equatable {
 
         // Cancel a pending restoration that belongs to a different
         // conversation (checked before the equivalence early-return, exactly
-        // like the old handler).
+        // like the old handler). This runs BEFORE the nil→nil guard below:
+        // a session-less re-appear must still clean up a stale restoration
+        // from a previous conversation.
         if let request = restoration?.request,
            !identity.areEquivalent(request.sessionKey, key) {
             restoration = nil
             effects.append(.cancelAutomaticRestoration)
         }
 
+        // A nil → nil "change" is not a session switch — there is no
+        // session on either side. areEquivalent(nil, nil) is false by
+        // definition, so without this guard the first appearance of a
+        // session-less transcript took the full switch path (generation
+        // bump, drag invalidation, animated bottom scroll with a delayed
+        // retry). That in-flight animation crossed the whole transcript and
+        // fought the coalesced follow corrections; a session-less appear
+        // has nothing to switch away from.
+        if renderedSessionKey == nil, key == nil {
+            if wasFollowing {
+                mirroredViewportTransitionGeneration = viewportTransitionGeneration
+            }
+            return effects
+        }
+
         let oldKey = renderedSessionKey
         let keysAreEquivalent = identity.areEquivalent(oldKey, key)
 
         // Adopting the first-ever session key is an adoption, not a switch:
-        // the old view assigned it in onAppear without scrolling.
+        // the old view assigned it in onAppear without scrolling. The
+        // correction-owning session nonetheless CHANGED (nil → key): a
+        // correction scheduled before any session existed must not fire a
+        // command anchored to the newly adopted session.
         let isFirstAdoption = oldKey == nil && key != nil
         if isFirstAdoption {
             renderedSessionKey = key
+            pendingFollowCorrection = nil
+            followCorrectionContentBottom = nil
+        followCorrectionLastExecutionAt = nil
             if wasFollowing {
                 mirroredViewportTransitionGeneration = viewportTransitionGeneration
             }
@@ -197,6 +289,9 @@ struct ChatViewportController: Equatable {
         if !keysAreEquivalent {
             effects.append(contentsOf: invalidateDrag(hasActiveGesture: dragGestureActive))
             generation &+= 1
+            pendingFollowCorrection = nil
+            followCorrectionContentBottom = nil
+        followCorrectionLastExecutionAt = nil
         }
         renderedSessionKey = key
         if wasFollowing {
@@ -263,6 +358,12 @@ struct ChatViewportController: Equatable {
               restoration == nil,
               notificationHandoff == nil,
               !isOpeningNotificationSession else { return [] }
+        // The animated reassert owns the follow for this change (it carries
+        // its own delayed retry); a coalesced correction pending from an
+        // earlier drift tick would only fight the in-flight animation.
+        pendingFollowCorrection = nil
+        followCorrectionContentBottom = nil
+        followCorrectionLastExecutionAt = nil
         return [.scroll(latestCommand(animated: true))]
     }
 
@@ -279,6 +380,7 @@ struct ChatViewportController: Equatable {
         bottomMarkerMaxY = facts.bottomMarkerMaxY
         viewportMinY = facts.viewportMinY
         viewportMaxY = facts.viewportMaxY
+        latestFactTimestamp = facts.timestamp
 
         let previousStableTop = stableTopMessageID
         updateStableTopMessage(rowFrames: facts.rowFrames)
@@ -304,22 +406,189 @@ struct ChatViewportController: Equatable {
             mode = .followingLatest
             relatchedThisTick = true
         }
+        if relatchedThisTick {
+            // Freshly (re)following: the next drift tick must be allowed to
+            // pin the viewport flush even when the content bottom itself has
+            // not moved since the last correction cycle.
+            followCorrectionContentBottom = nil
+        followCorrectionLastExecutionAt = nil
+        }
 
         guard !relatchedThisTick,
               mode == .followingLatest,
               restoration == nil,
               notificationHandoff == nil else { return effects }
 
-        // Follow actual rendered growth: while pinned, the bottom marker
-        // only ever drifts beyond the viewport by layout changes between
-        // main-actor turns. Non-animated and retry-free — the next layout
-        // event is the natural retry for continuous growth.
-        if let bottom = bottomMarkerMaxY,
-           let viewport = viewportMaxY,
-           bottom - viewport > followDriftTolerance {
-            effects.append(.scroll(latestCommand(animated: false, retry: nil)))
+        // Follow actual rendered growth — COALESCED. Geometry preference
+        // callbacks fire many times per layout cycle (bottom marker,
+        // viewport frame, row frames), and this method used to emit a
+        // synchronous scrollTo for EACH drift tick; the scroll itself
+        // perturbs layout, which re-fires the preferences, which scrolled
+        // again — the geometry → scrollTo → geometry feedback that lands
+        // the main thread inside ScrollViewCommitMutation and trips the
+        // 0x8BADF00D scene watchdog when rich content height settles
+        // repeatedly. Now the newest facts are recorded immediately, ONE
+        // correction is scheduled for a later MainActor turn, and
+        // followCorrectionDue re-validates against the latest facts — so
+        // one rendering/layout update produces at most one bottom scroll,
+        // while genuinely new growth (streaming) still gets followed.
+        //
+        // Re-arm also requires MEANINGFUL new growth beyond the last
+        // corrected content bottom. The bottom marker is a global-frame
+        // measurement: the correction's own scroll moves it, streaming
+        // reveal changes it in sub-line steps, and layout refinements flap
+        // it — re-arming on every >0.5pt change reproduced the storm one
+        // MainActor turn apart (measured: 7 scrolls in 44 ms during a
+        // hosted streaming fixture). The regrowth threshold bounds the
+        // correction rate by the CONTENT growth rate, and the settled
+        // bottom is adopted as the new base whenever the viewport sits at
+        // or past it.
+        //
+        // Finally, re-arm is rate-limited after an EXECUTED correction:
+        // the scroll commit shifts every global frame, and a schedule
+        // minted from that flap is born inside the drain handler's layout
+        // turn where SwiftUI may never deliver the onChange that would
+        // execute it — an undrainable pending token that silently absorbs
+        // every future schedule (observed live in the hosted streaming
+        // fixture). The interval lets those frames settle first; genuine
+        // growth re-arms on a later tick.
+        let rearmIntervalElapsed = followCorrectionLastExecutionAt
+            .map { latestFactTimestamp - $0 >= Self.followCorrectionRearmInterval }
+            ?? true
+        if rearmIntervalElapsed,
+           pendingFollowCorrection == nil,
+           let bottom = bottomMarkerMaxY,
+           let viewport = viewportMaxY {
+            switch Self.followCorrectionDecision(
+                bottom: bottom,
+                viewport: viewport,
+                settledFloor: followCorrectionContentBottom,
+                driftTolerance: followDriftTolerance,
+                regrowthTolerance: Self.followCorrectionRegrowthTolerance
+            ) {
+            case .schedule:
+                followCorrectionContentBottom = bottom
+                followCorrectionSequence &+= 1
+                let token = ChatFollowCorrectionToken(
+                    generation: generation,
+                    sessionKey: renderedSessionKey ?? activeSessionKey,
+                    sequence: followCorrectionSequence
+                )
+                pendingFollowCorrection = token
+                effects.append(.scheduleFollowCorrection(token))
+            case .adoptSettledBottom:
+                followCorrectionContentBottom = bottom
+            case .idle:
+                break
+            }
         }
         return effects
+    }
+
+    /// Minimum content-bottom growth beyond the last corrected position
+    /// before another correction cycle may arm. About half a body-text
+    /// line: streaming reveal steps and layout refinements accumulate
+    /// against it instead of re-arming a correction per frame.
+    static let followCorrectionRegrowthTolerance: CGFloat = 12
+
+    /// Pure decision for the coalesced follow-correction re-arm policy.
+    enum FollowCorrectionDecision: Equatable {
+        /// Drift beyond tolerance AND new content beyond the regrowth
+        /// threshold: arm one correction.
+        case schedule
+        /// The viewport sits at/past the recorded content bottom (the last
+        /// scroll landed, or content shrank): adopt this bottom as the new
+        /// measurement base.
+        case adoptSettledBottom
+        /// Nothing to do.
+        case idle
+    }
+
+    static func followCorrectionDecision(
+        bottom: CGFloat,
+        viewport: CGFloat,
+        settledFloor: CGFloat?,
+        driftTolerance: CGFloat,
+        regrowthTolerance: CGFloat
+    ) -> FollowCorrectionDecision {
+        if bottom - viewport > driftTolerance {
+            guard let settledFloor else { return .schedule }
+            // Meaningful GROWTH beyond the last corrected bottom.
+            if bottom > settledFloor + regrowthTolerance { return .schedule }
+            // Meaningful SHRINK below the last corrected bottom (content
+            // collapsed: a table paged, an image failed, rows unmounted)
+            // while drift remains: the stale high floor would ignore future
+            // growth until the bottom climbed back past
+            // floor + regrowthTolerance even though the real baseline moved
+            // down. Rebase by scheduling — the caller records the new
+            // (lower) bottom as the floor and the correction re-pins the
+            // viewport to the collapsed content.
+            if bottom < settledFloor - regrowthTolerance { return .schedule }
+            // Bottom within the flap window of the floor: layout noise from
+            // the correction's own scroll commit. Re-arming here reproduced
+            // the storm one MainActor turn apart.
+            return .idle
+        }
+        // At (or past) the bottom: adopt any lower settled bottom so future
+        // growth is measured from where the content actually sits.
+        if let settledFloor, bottom < settledFloor {
+            return .adoptSettledBottom
+        }
+        return .idle
+    }
+
+    /// Executes the outstanding coalesced follow correction. The view
+    /// schedules this on the next MainActor turn; by then the facts below
+    /// are the newest ones recorded, so a drift that resolved itself
+    /// (animated transcript reassert already landed, user scrolled,
+    /// ownership moved) dies without scrolling, and a correction for an
+    /// ownership generation that is gone dies silently.
+    ///
+    /// Session ownership is validated against the SAME session the emitted
+    /// command would use — activeSessionKey ?? renderedSessionKey, exactly
+    /// what latestCommand anchors to. A correction scheduled for session A
+    /// must never produce a scroll command for session B just because the
+    /// active identity changed between schedule and drain; a mismatched
+    /// (non-equivalent) session kills the correction and clears the
+    /// pending token so it cannot linger. Equivalent spellings of the SAME
+    /// conversation (runtime alias → canonical refresh) still pass, so
+    /// ordinary identity resolution never breaks following.
+    mutating func followCorrectionDue(
+        _ token: ChatFollowCorrectionToken
+    ) -> [ChatViewportEffect] {
+        guard pendingFollowCorrection == token else { return [] }
+        pendingFollowCorrection = nil
+        guard mode == .followingLatest,
+              restoration == nil,
+              notificationHandoff == nil else { return [] }
+        guard tokenOwnsCurrentSession(token) else { return [] }
+        guard let bottom = bottomMarkerMaxY,
+              let viewport = viewportMaxY,
+              bottom - viewport > followDriftTolerance else { return [] }
+        // Stamp the execution so re-arming waits out the scroll commit's
+        // global-frame flap (see layoutMetricsChanged).
+        followCorrectionLastExecutionAt = latestFactTimestamp
+        return [.scroll(latestCommand(animated: false, retry: nil))]
+    }
+
+    /// The session a follow-correction scroll command would anchor to —
+    /// the exact spelling latestCommand uses, so validation and emission
+    /// can never disagree.
+    private var followCorrectionCommandSession: ChatScrollSessionKey? {
+        activeSessionKey ?? renderedSessionKey
+    }
+
+    /// True when a token scheduled under one session may still scroll under
+    /// the current ownership: either both sides are session-less, or the
+    /// token's session is an equivalent spelling of the command session
+    /// (same conversation).
+    private func tokenOwnsCurrentSession(_ token: ChatFollowCorrectionToken) -> Bool {
+        let commandSession = followCorrectionCommandSession
+        guard let tokenSession = token.sessionKey else {
+            return commandSession == nil
+        }
+        guard let commandSession else { return false }
+        return identity.areEquivalent(tokenSession, commandSession)
     }
 
     // MARK: - Drag lifecycle (folded ChatDragLifecycleState)
@@ -337,6 +606,9 @@ struct ChatViewportController: Equatable {
         ) else { return [] }
         generation &+= 1
         pendingDragEvaluation = nil
+        pendingFollowCorrection = nil
+        followCorrectionContentBottom = nil
+        followCorrectionLastExecutionAt = nil
         restoration = nil
         mode = .browsing
         return [.cancelAutomaticRestoration]
@@ -625,7 +897,10 @@ struct ChatViewportController: Equatable {
     // MARK: - View lifecycle
 
     mutating func viewDisappeared() -> [ChatViewportEffect] {
-        abandonDrag()
+        pendingFollowCorrection = nil
+        followCorrectionContentBottom = nil
+        followCorrectionLastExecutionAt = nil
+        return abandonDrag()
     }
 
     // MARK: - Command currency
@@ -664,11 +939,17 @@ struct ChatViewportController: Equatable {
     private mutating func effectsForExplicitOwnershipChange() {
         _ = invalidateDrag(hasActiveGesture: dragGestureActive)
         generation &+= 1
+        pendingFollowCorrection = nil
+        followCorrectionContentBottom = nil
+        followCorrectionLastExecutionAt = nil
     }
 
     private mutating func beginHandoffOwnership() -> [ChatViewportEffect] {
         _ = invalidateDrag(hasActiveGesture: dragGestureActive)
         generation &+= 1
+        pendingFollowCorrection = nil
+        followCorrectionContentBottom = nil
+        followCorrectionLastExecutionAt = nil
         restoration = nil
         return [.cancelAutomaticRestoration]
     }
