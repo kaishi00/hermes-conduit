@@ -75,10 +75,11 @@ struct ChatView: View {
         appState.chatResumeRestorationRequest != nil
     }
 
-    /// Latest global frames of rendered stable rows for the current scope.
-    /// Only message rows report frames (streaming/typing/markers never do),
-    /// so ephemeral identifiers cannot enter stable-top observation.
-    private var renderedRowFrames: [String: CGRect] {
+    /// Latest global frames + transcript order of rendered stable rows for
+    /// the current scope. Only message rows report frames (streaming/typing/
+    /// markers never do), so ephemeral identifiers cannot enter stable-top
+    /// observation.
+    private var renderedRowFrames: [String: ChatRenderedRowGeometry] {
         guard let scope = renderedScrollScope else { return [:] }
         return renderedScrollTargets.rowFrames(in: scope)
     }
@@ -141,8 +142,8 @@ struct ChatView: View {
                     EmptyChatState().padding(.top, 60)
                 }
 
-                ForEach(chatMessageScrollTargets) { target in
-                    MessageBubble(message: target.message)
+                ForEach(Array(chatMessageScrollTargets.enumerated()), id: \.element.id) { index, target in
+                    MessageBubble(message: target.message, gatewayResolver: appState.gatewayMediaResolver)
                         .id(target.id)
                         .background {
                             GeometryReader { geometry in
@@ -152,7 +153,8 @@ struct ChatView: View {
                                         ChatRenderedScrollTargets.row(
                                             semanticID: target.id,
                                             scope: $0,
-                                            frame: geometry.frame(in: .global)
+                                            frame: geometry.frame(in: .global),
+                                            order: index
                                         )
                                     } ?? ChatRenderedScrollTargets()
                                 )
@@ -338,18 +340,6 @@ struct ChatView: View {
     private func transcriptObservers(proxy: ScrollViewProxy, content: some View) -> some View {
         content
             .onChange(of: appState.messages) { _, _ in
-                performViewportEffects(
-                    viewport.transcriptChanged(
-                        messages: appState.messages,
-                        transcriptRevision: appState.chatTranscriptRevision,
-                        viewportTransitionGeneration: appState.chatViewportTransitionGeneration,
-                        activeSessionKey: activeScrollSessionKey,
-                        isOpeningNotificationSession: appState.isOpeningNotificationSession
-                    ),
-                    using: proxy
-                )
-            }
-            .onChange(of: appState.chatTranscriptRevision) { _, _ in
                 performViewportEffects(
                     viewport.transcriptChanged(
                         messages: appState.messages,
@@ -568,11 +558,12 @@ struct ChatView: View {
 
     private func currentLayoutFacts() -> ChatViewportLayoutFacts {
         let scope = renderedScrollScope
-        let frames = renderedRowFrames.map { id, frame in
+        let frames = renderedRowFrames.map { id, geometry in
             ChatRenderedRowFrame(
                 id: id,
-                minY: frame.minY,
-                maxY: frame.maxY,
+                minY: geometry.frame.minY,
+                maxY: geometry.frame.maxY,
+                order: geometry.order,
                 scope: scope ?? ChatRenderedScrollScope(
                     sessionKey: activeOrFallbackScrollSessionKey,
                     cacheRevision: 0,
@@ -764,18 +755,26 @@ private struct ChatRenderedScrollTargetsPreferenceKey: PreferenceKey {
 }
 // MARK: - Message Bubble
 
+/// Routes a transcript row to its presentation. The expensive settled
+/// content of each row type lives behind an Equatable gate (see
+/// SettledAssistantMessageContent and friends) so a streaming publish —
+/// which re-creates every mounted row through this switch — cannot force
+/// settled Markdown presentation to re-evaluate.
 struct MessageBubble: View {
     let message: ChatMessage
+    let gatewayResolver: GatewayMediaDataURLResolver?
     @EnvironmentObject var appState: AppState
 
     var body: some View {
+        let _ = TranscriptPerf.note(.settledBubbleBody)
         switch message.role {
         case .user:
-            UserBubble(message: message)
+            UserBubble(message: message, gatewayResolver: gatewayResolver)
         case .assistant:
             AssistantBubble(
                 message: message,
-                readAloudController: appState.messageReadAloudController
+                readAloudController: appState.messageReadAloudController,
+                gatewayResolver: gatewayResolver
             )
         case .reasoning:
             ThinkingCard(message: message)
@@ -802,7 +801,8 @@ struct MessageBubble: View {
         case .partial:
             AssistantBubble(
                 message: message,
-                readAloudController: appState.messageReadAloudController
+                readAloudController: appState.messageReadAloudController,
+                gatewayResolver: gatewayResolver
             )
         }
     }
@@ -810,12 +810,19 @@ struct MessageBubble: View {
 
 struct UserBubble: View {
     let message: ChatMessage
+    let gatewayResolver: GatewayMediaDataURLResolver?
+    @Environment(\.sizeCategory) private var sizeCategory
 
     var body: some View {
         HStack {
             Spacer(minLength: 40)
             VStack(alignment: .trailing, spacing: 4) {
-                UserMessageContent(message: message)
+                UserMessageContent(
+                    message: message,
+                    gatewayResolver: gatewayResolver,
+                    sizeCategory: sizeCategory
+                )
+                    .equatable()
 
                 MessageTimestampLabel(timestamp: message.timestamp)
                     .frame(maxWidth: .infinity, alignment: .trailing)
@@ -824,8 +831,21 @@ struct UserBubble: View {
     }
 }
 
-private struct UserMessageContent: View {
+/// Settled user-row content: Markdown plus attachment previews. Equatable
+/// over the message and the stable gateway resolver so streaming publishes
+/// cannot re-evaluate it (same contract as
+/// SettledAssistantMessageContent).
+private struct UserMessageContent: View, Equatable {
     let message: ChatMessage
+    let gatewayResolver: GatewayMediaDataURLResolver?
+    /// Explicit Dynamic Type input — see SettledAssistantMessageContent.
+    let sizeCategory: ContentSizeCategory
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.message == rhs.message
+            && lhs.gatewayResolver === rhs.gatewayResolver
+            && lhs.sizeCategory == rhs.sizeCategory
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
@@ -836,7 +856,7 @@ private struct UserMessageContent: View {
             if let attachments = message.attachments {
                 ForEach(attachments) { attachment in
                     if attachment.kind == .image {
-                        UserImageAttachmentPreview(attachment: attachment)
+                        UserImageAttachmentPreview(attachment: attachment, gatewayResolver: gatewayResolver)
                     } else {
                         UserDocumentAttachmentChip(attachment: attachment)
                     }
@@ -864,7 +884,7 @@ private struct UserMessageContent: View {
 
 private struct UserImageAttachmentPreview: View {
     let attachment: Attachment
-    @EnvironmentObject private var appState: AppState
+    let gatewayResolver: GatewayMediaDataURLResolver?
     @State private var gatewayImage: UIImage?
     @State private var gatewayLoadFailed = false
     @State private var localPreview: UIImage?
@@ -964,7 +984,7 @@ private struct UserImageAttachmentPreview: View {
                 .background(Color.white.opacity(0.13), in: Capsule())
             }
         }
-        .task(id: "\(attachment.uri)|\(appState.activeProfile)") {
+        .task(id: "\(attachment.uri)|\(gatewayResolver?.profile ?? "")") {
             // Local file: cache hits are already shown by `body` on the first
             // frame via `cachedLocalImage`, so only misses reach here. Decode
             // off the MainActor so a large photo can't hitch scrolling.
@@ -985,13 +1005,10 @@ private struct UserImageAttachmentPreview: View {
                 // returns above, so a local URI never reaches here — which also
                 // removes the old `localImage == nil` check that decoded local
                 // files on the MainActor before short-circuiting.
-            } else if isGatewayImage {
+            } else if isGatewayImage, let gatewayResolver {
                 gatewayImage = nil
                 gatewayLoadFailed = false
-                guard let dataURL = await appState.gatewayMediaDataURL(
-                    for: attachment.uri,
-                    profile: appState.activeProfile
-                ),
+                guard let dataURL = await gatewayResolver.dataURL(for: attachment.uri),
                 !Task.isCancelled,
                 let image = image(fromDataURL: dataURL) else {
                     guard !Task.isCancelled else { return }
@@ -1058,15 +1075,31 @@ private struct UserDocumentAttachmentChip: View {
     }
 }
 
-struct AssistantBubble: View {
+/// The settled half of an assistant row: identity header, Markdown body,
+/// and code block. Equatable over immutable message presentation inputs so
+/// a streaming publish re-creating this view is a no-op (`.equatable()`
+/// skips body evaluation when inputs compare equal). Dynamic Type changes
+/// still invalidate through the `\.sizeCategory` environment read.
+struct SettledAssistantMessageContent: View, Equatable {
     let message: ChatMessage
-    @EnvironmentObject var appState: AppState
-    @ObservedObject private var readAloudController: MessageReadAloudController
-    @State private var copied = false
+    let displayName: String
+    let avatarURL: URL?
+    let gatewayResolver: GatewayMediaDataURLResolver?
+    /// Explicit Dynamic Type input (read by the shell): equality describes
+    /// every visual input, so a category change re-opens the gate and
+    /// re-renders with fresh fonts (the Markdown render cache keys on the
+    /// content size category). Other presentation traits the subtree
+    /// consumes are render-time adaptive — color scheme resolves through
+    /// UIKit trait collections, layout direction through TextKit — and do
+    /// not require body re-evaluation.
+    let sizeCategory: ContentSizeCategory
 
-    init(message: ChatMessage, readAloudController: MessageReadAloudController) {
-        self.message = message
-        self.readAloudController = readAloudController
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.message == rhs.message
+            && lhs.displayName == rhs.displayName
+            && lhs.avatarURL == rhs.avatarURL
+            && lhs.gatewayResolver === rhs.gatewayResolver
+            && lhs.sizeCategory == rhs.sizeCategory
     }
 
     var body: some View {
@@ -1075,11 +1108,11 @@ struct AssistantBubble: View {
             // the full reading column instead of inheriting the avatar indent.
             HStack(spacing: 8) {
                 ConduitAgentMark(
-                    avatarURL: appState.profileAvatarURL(for: appState.activeProfile),
-                    displayName: appState.profileDisplayName(appState.activeProfile)
+                    avatarURL: avatarURL,
+                    displayName: displayName
                 )
 
-                Text(appState.profileDisplayName(appState.activeProfile))
+                Text(displayName)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
 
@@ -1090,8 +1123,8 @@ struct AssistantBubble: View {
             if !message.content.isEmpty {
                 MarkdownText(
                     source: message.content,
-                    gatewayMediaDataURL: { path in
-                        await appState.gatewayMediaDataURL(for: path, profile: appState.activeProfile)
+                    gatewayMediaDataURL: gatewayResolver.map { resolver in
+                        { path in await resolver.dataURL(for: path) }
                     }
                 )
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -1101,73 +1134,43 @@ struct AssistantBubble: View {
                 ChatCodeBlock(source: code)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-
-            HStack(spacing: 4) {
-                Spacer(minLength: 0)
-
-                Button {
-                    copyResponse()
-                } label: {
-                    Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                        .font(.subheadline.weight(.semibold))
-                        .frame(width: 34, height: 34)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(copied ? Color.conduitAccent : Color.secondary)
-                .accessibilityLabel(copied ? "Response copied" : "Copy response")
-
-                Button {
-                    Haptics.medium()
-                    Task { await appState.branchFromAssistantMessage(message.id) }
-                } label: {
-                    Image(systemName: "arrow.triangle.branch")
-                        .font(.subheadline.weight(.semibold))
-                        .frame(width: 34, height: 34)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .disabled(appState.isBusy || appState.isBranchingChat)
-                .opacity(appState.isBusy || appState.isBranchingChat ? 0.45 : 1)
-                .accessibilityLabel("Branch from this response")
-
-                if message.role == .assistant {
-                    Button {
-                        if readAloudIsActive {
-                            Haptics.medium()
-                        } else {
-                            Haptics.light()
-                        }
-                        appState.toggleReadAloud(message: message)
-                    } label: {
-                        Group {
-                            if case .preparing(let id) = readAloudController.state, id == message.id {
-                                ProgressView()
-                                    .controlSize(.small)
-                            } else {
-                                Image(systemName: readAloudIsActive ? "stop.fill" : "speaker.wave.2")
-                            }
-                        }
-                        .font(.subheadline.weight(.semibold))
-                        .frame(width: 34, height: 34)
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(readAloudIsActive ? Color.conduitAccent : Color.secondary)
-                    .disabled(readAloudUnavailable && !readAloudIsActive)
-                    .opacity(readAloudUnavailable && !readAloudIsActive ? 0.45 : 1)
-                    .accessibilityLabel(readAloudIsActive ? "Stop reading response" : "Read response aloud")
-                }
-            }
-            .padding(.top, 2)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
+}
 
-    private var readAloudIsActive: Bool {
-        readAloudController.isActiveMessage(message.id)
-    }
+/// The dynamic half of an assistant row: copy/branch controls that depend
+/// on busy state, kept small so their per-publish re-evaluation is cheap.
+struct AssistantMessageActions: View {
+    let message: ChatMessage
+    @EnvironmentObject private var appState: AppState
+    @State private var copied = false
 
-    private var readAloudUnavailable: Bool {
-        appState.readAloudUnavailableReason != nil
+    var body: some View {
+        Button {
+            copyResponse()
+        } label: {
+            Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                .font(.subheadline.weight(.semibold))
+                .frame(width: 34, height: 34)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(copied ? Color.conduitAccent : Color.secondary)
+        .accessibilityLabel(copied ? "Response copied" : "Copy response")
+
+        Button {
+            Haptics.medium()
+            Task { await appState.branchFromAssistantMessage(message.id) }
+        } label: {
+            Image(systemName: "arrow.triangle.branch")
+                .font(.subheadline.weight(.semibold))
+                .frame(width: 34, height: 34)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .disabled(appState.isBusy || appState.isBranchingChat)
+        .opacity(appState.isBusy || appState.isBranchingChat ? 0.45 : 1)
+        .accessibilityLabel("Branch from this response")
     }
 
     private func copyResponse() {
@@ -1179,6 +1182,86 @@ struct AssistantBubble: View {
             guard !Task.isCancelled else { return }
             copied = false
         }
+    }
+}
+
+/// The read-aloud control surface. This is deliberately the ONLY part of
+/// an assistant row that observes the shared read-aloud controller, so a
+/// playback state transition re-renders a 34pt button instead of every
+/// response's Markdown in the transcript.
+struct ReadAloudButton: View {
+    let message: ChatMessage
+    @ObservedObject var controller: MessageReadAloudController
+    @EnvironmentObject private var appState: AppState
+
+    private var isActive: Bool {
+        controller.isActiveMessage(message.id)
+    }
+
+    private var unavailable: Bool {
+        appState.readAloudUnavailableReason != nil
+    }
+
+    var body: some View {
+        Button {
+            if isActive {
+                Haptics.medium()
+            } else {
+                Haptics.light()
+            }
+            appState.toggleReadAloud(message: message)
+        } label: {
+            Group {
+                if case .preparing(let id) = controller.state, id == message.id {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Image(systemName: isActive ? "stop.fill" : "speaker.wave.2")
+                }
+            }
+            .font(.subheadline.weight(.semibold))
+            .frame(width: 34, height: 34)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(isActive ? Color.conduitAccent : Color.secondary)
+        .disabled(unavailable && !isActive)
+        .opacity(unavailable && !isActive ? 0.45 : 1)
+        .accessibilityLabel(isActive ? "Stop reading response" : "Read response aloud")
+    }
+}
+
+struct AssistantBubble: View {
+    let message: ChatMessage
+    /// Held as a plain reference (not @ObservedObject): forwarding a
+    /// controller instance must not subscribe this whole bubble to every
+    /// read-aloud state transition. Only ReadAloudButton observes it.
+    let readAloudController: MessageReadAloudController
+    let gatewayResolver: GatewayMediaDataURLResolver?
+    @EnvironmentObject var appState: AppState
+    @Environment(\.sizeCategory) private var sizeCategory
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            SettledAssistantMessageContent(
+                message: message,
+                displayName: appState.profileDisplayName(appState.activeProfile),
+                avatarURL: appState.profileAvatarURL(for: appState.activeProfile),
+                gatewayResolver: gatewayResolver,
+                sizeCategory: sizeCategory
+            )
+            .equatable()
+
+            HStack(spacing: 4) {
+                Spacer(minLength: 0)
+                AssistantMessageActions(message: message)
+
+                if message.role == .assistant {
+                    ReadAloudButton(message: message, controller: readAloudController)
+                }
+            }
+            .padding(.top, 2)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -1347,41 +1430,70 @@ private struct ModelChangeSummaryCard: View {
     }
 }
 
+/// Settled reasoning-row content, gated the same way as assistant/user
+/// content: identical presentation inputs skip body evaluation during
+/// unrelated AppState publishes.
+private struct SettledThinkingCardContent: View, Equatable {
+    let message: ChatMessage
+    let displayName: String
+    let avatarURL: URL?
+    /// Explicit Dynamic Type input — see SettledAssistantMessageContent.
+    let sizeCategory: ContentSizeCategory
+    @State private var expanded = false
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.message == rhs.message
+            && lhs.displayName == rhs.displayName
+            && lhs.avatarURL == rhs.avatarURL
+            && lhs.sizeCategory == rhs.sizeCategory
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            ConduitAgentMark(
+                avatarURL: avatarURL,
+                displayName: displayName
+            )
+
+            DisclosureGroup(isExpanded: $expanded) {
+                SelectableTextView(
+                    text: message.content,
+                    font: .preferredFont(forTextStyle: .callout),
+                    textColor: .secondaryLabel
+                )
+                    .padding(.top, 4)
+            } label: {
+                HStack(spacing: 6) {
+                    Label("Thinking", systemImage: "brain.head.profile")
+                    MessageTimestampLabel(timestamp: message.timestamp)
+                }
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            }
+            .tint(.conduitAccent)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .conduitGlassSurface(cornerRadius: 16, tint: .conduitAccent.opacity(0.06))
+
+            Spacer(minLength: 28)
+        }
+    }
+}
+
 struct ThinkingCard: View {
     let message: ChatMessage
     @EnvironmentObject var appState: AppState
-    @State private var expanded = false
+    @Environment(\.sizeCategory) private var sizeCategory
 
     var body: some View {
         if appState.displayPreferences.showReasoning, !message.content.isEmpty {
-            HStack(alignment: .top, spacing: 10) {
-                ConduitAgentMark(
-                    avatarURL: appState.profileAvatarURL(for: appState.activeProfile),
-                    displayName: appState.profileDisplayName(appState.activeProfile)
-                )
-
-                DisclosureGroup(isExpanded: $expanded) {
-                    SelectableTextView(
-                        text: message.content,
-                        font: .preferredFont(forTextStyle: .callout),
-                        textColor: .secondaryLabel
-                    )
-                        .padding(.top, 4)
-                } label: {
-                    HStack(spacing: 6) {
-                        Label("Thinking", systemImage: "brain.head.profile")
-                        MessageTimestampLabel(timestamp: message.timestamp)
-                    }
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                }
-                .tint(.conduitAccent)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .conduitGlassSurface(cornerRadius: 16, tint: .conduitAccent.opacity(0.06))
-
-                Spacer(minLength: 28)
-            }
+            SettledThinkingCardContent(
+                message: message,
+                displayName: appState.profileDisplayName(appState.activeProfile),
+                avatarURL: appState.profileAvatarURL(for: appState.activeProfile),
+                sizeCategory: sizeCategory
+            )
+            .equatable()
         }
     }
 }
@@ -1439,13 +1551,23 @@ enum MessageTimestampFormatter {
 
 // MARK: - Tool Card
 
-struct ToolCard: View {
+/// Settled tool-row content, gated on the message and expansion default so
+/// streaming publishes skip its SelectableTextView measurement work.
+private struct SettledToolCardContent: View, Equatable {
     let message: ChatMessage
+    let expandToolsByDefault: Bool
+    /// Explicit Dynamic Type input — see SettledAssistantMessageContent.
+    let sizeCategory: ContentSizeCategory
     @State private var expanded = false
-    @EnvironmentObject var appState: AppState
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.message == rhs.message
+            && lhs.expandToolsByDefault == rhs.expandToolsByDefault
+            && lhs.sizeCategory == rhs.sizeCategory
+    }
 
     var body: some View {
-        if appState.displayPreferences.showToolProgress, let tool = message.tool {
+        if let tool = message.tool {
             VStack(alignment: .leading, spacing: 0) {
                 Button {
                     withAnimation(ConduitMotion.response) {
@@ -1504,7 +1626,7 @@ struct ToolCard: View {
                                     .font(.caption2.bold())
                                     .foregroundStyle(.tertiary)
                                 SelectableTextView(
-                                    text: Self.truncateForDisplay(input, maxLines: 500),
+                                    text: ToolCard.truncateForDisplay(input, maxLines: 500),
                                     font: .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1).pointSize, weight: .regular),
                                     textColor: .secondaryLabel,
                                     maximumNumberOfLines: 0
@@ -1518,7 +1640,7 @@ struct ToolCard: View {
                                     .font(.caption2.bold())
                                     .foregroundStyle(.tertiary)
                                 SelectableTextView(
-                                    text: Self.truncateForDisplay(output, maxLines: 500),
+                                    text: ToolCard.truncateForDisplay(output, maxLines: 500),
                                     font: .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1).pointSize, weight: .regular),
                                     textColor: .secondaryLabel,
                                     maximumNumberOfLines: 0
@@ -1534,7 +1656,7 @@ struct ToolCard: View {
             }
             .conduitGlassSurface(cornerRadius: 18, tint: tool.status == .running ? .conduitAccent.opacity(0.10) : .clear)
             .onAppear {
-                if appState.displayPreferences.expandToolsByDefault {
+                if expandToolsByDefault {
                     expanded = true
                 }
             }
@@ -1547,6 +1669,23 @@ struct ToolCard: View {
             .replacingOccurrences(of: "\n", with: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return preview.isEmpty ? nil : preview
+    }
+}
+
+struct ToolCard: View {
+    let message: ChatMessage
+    @EnvironmentObject var appState: AppState
+    @Environment(\.sizeCategory) private var sizeCategory
+
+    var body: some View {
+        if appState.displayPreferences.showToolProgress, message.tool != nil {
+            SettledToolCardContent(
+                message: message,
+                expandToolsByDefault: appState.displayPreferences.expandToolsByDefault,
+                sizeCategory: sizeCategory
+            )
+            .equatable()
+        }
     }
 
     /// Limits tool output rendered in the non-scrolling SelectableTextView to

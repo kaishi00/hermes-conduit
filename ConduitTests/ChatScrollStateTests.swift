@@ -855,6 +855,6 @@ extension ChatScrollStateTests {
                 semanticID: "m2", scope: scope, frame: CGRect(x: 0, y: 999, width: 300, height: 240)
             )
         )
-        XCTAssertEqual(pass3.rowFrames(in: scope)["m2"]?.minY, 999)
+        XCTAssertEqual(pass3.rowFrames(in: scope)["m2"]?.frame.minY, 999)
     }
 }

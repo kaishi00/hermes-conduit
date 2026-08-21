@@ -60,20 +60,78 @@ struct ChatMessageScrollTargetCache: Equatable {
 
     @discardableResult
     mutating func update(for messages: [ChatMessage]) -> ChatMessageScrollTargetCacheUpdate {
-        let updatedFingerprints = ChatMessageScrollTargets.fingerprints(for: messages)
-        if updatedFingerprints == fingerprints, targets.count == messages.count {
-            guard targets.map(\.message) != messages else { return .unchanged }
-            targets = zip(messages, targets).map { message, target in
+        // Longest common prefix of equal messages: plain value compares,
+        // no hashing, no intermediate allocations.
+        var commonPrefix = 0
+        while commonPrefix < targets.count,
+              commonPrefix < messages.count,
+              targets[commonPrefix].message == messages[commonPrefix] {
+            commonPrefix += 1
+        }
+
+        // Identical transcripts: no work at all.
+        if commonPrefix == targets.count, commonPrefix == messages.count {
+            TranscriptPerf.lastFingerprintedMessageCount = 0
+            TranscriptPerf.lastFingerprintedByteCount = 0
+            return .unchanged
+        }
+
+        // Hash only the changed suffix.
+        let suffixStart = commonPrefix
+        let suffixMessages = Array(messages[suffixStart...])
+        let suffixFingerprints = ChatMessageScrollTargets.fingerprints(for: suffixMessages)
+        TranscriptPerf.lastFingerprintedMessageCount = suffixMessages.count
+        TranscriptPerf.lastFingerprintedByteCount = Self.fingerprintedBytes(of: suffixMessages)
+
+        // Same length and identical suffix fingerprints: a rendering-only
+        // replacement (equal semantics, different message objects). Swap the
+        // message values in place; semantic IDs and restoration metadata are
+        // untouched, so duplicate semantics cannot shift.
+        if targets.count == messages.count,
+           suffixFingerprints.elementsEqual(fingerprints[suffixStart...]) {
+            let replacement = zip(suffixMessages, targets[suffixStart...]).map { message, target in
                 ChatMessageScrollTarget(
                     message: message,
                     semanticID: target.semanticID,
                     restorationMetadata: target.restorationMetadata
                 )
             }
+            targets.replaceSubrange(suffixStart..., with: replacement)
             renderingRevision &+= 1
             return .renderingChanged
         }
 
+        // Incremental semantic rebuild of the suffix is safe only when
+        // duplicate-count semantics are provably local to the suffix: no
+        // fingerprint may cross the prefix/suffix boundary in either
+        // direction (old or new), and the suffix itself must be
+        // duplicate-free. Otherwise fall back to a full rebuild — correctness
+        // over exotic incremental cases.
+        let prefixFingerprints = Set(fingerprints[..<suffixStart])
+        let oldSuffixFingerprints = fingerprints[suffixStart...]
+        let canRebuildSuffixIncrementally =
+            suffixFingerprints.allSatisfy { !prefixFingerprints.contains($0) }
+            && oldSuffixFingerprints.allSatisfy { !prefixFingerprints.contains($0) }
+            && Set(suffixFingerprints).count == suffixFingerprints.count
+
+        if canRebuildSuffixIncrementally {
+            let suffixTargets = ChatMessageScrollTargets.make(
+                for: suffixMessages,
+                fingerprints: suffixFingerprints
+            )
+            fingerprints.replaceSubrange(suffixStart..., with: suffixFingerprints)
+            targets.replaceSubrange(suffixStart..., with: suffixTargets)
+            renderingRevision &+= 1
+            return .semanticsChanged
+        }
+
+        // Full rebuild fallback: mutation could affect duplicate-count
+        // semantics anywhere in the transcript.
+        let updatedFingerprints = commonPrefix == 0
+            ? suffixFingerprints
+            : ChatMessageScrollTargets.fingerprints(for: messages)
+        TranscriptPerf.lastFingerprintedMessageCount = messages.count
+        TranscriptPerf.lastFingerprintedByteCount = Self.fingerprintedBytes(of: messages)
         fingerprints = updatedFingerprints
         targets = ChatMessageScrollTargets.make(
             for: messages,
@@ -81,6 +139,10 @@ struct ChatMessageScrollTargetCache: Equatable {
         )
         renderingRevision &+= 1
         return .semanticsChanged
+    }
+
+    private static func fingerprintedBytes(of messages: [ChatMessage]) -> Int {
+        messages.reduce(0) { $0 + $1.content.utf8.count + ($1.code?.utf8.count ?? 0) }
     }
 }
 
@@ -99,12 +161,23 @@ struct ChatRenderedScrollContent: Equatable {
 /// Global-space frame of one rendered stable message row, scoped to the
 /// rendered scroll scope that produced it. Only rows SwiftUI actually laid
 /// out report frames; this is how the viewport controller learns which
-/// stable row intersects the viewport without .scrollPosition.
+/// stable row intersects the viewport without .scrollPosition. `order` is
+/// the row's position in the transcript target list, so consumers can pick
+/// the semantic first visible row from the rendered subset alone — no scan
+/// of the full transcript.
 struct ChatRenderedRowFrame: Equatable {
     let id: String        // ChatMessageScrollTarget.id == message.id
     let minY: CGFloat
     let maxY: CGFloat
+    let order: Int
     let scope: ChatRenderedScrollScope
+}
+
+/// Frame + transcript order carried per rendered row inside the
+/// preference payload dictionaries.
+struct ChatRenderedRowGeometry: Equatable {
+    let frame: CGRect
+    let order: Int
 }
 
 /// A preference payload emitted only by targets SwiftUI has instantiated.
@@ -113,16 +186,17 @@ struct ChatRenderedRowFrame: Equatable {
 struct ChatRenderedScrollTargets: Equatable {
     private(set) var rowsByScope: [ChatRenderedScrollScope: Set<String>] = [:]
     private(set) var bottomsByScope: [ChatRenderedScrollScope: Set<String>] = [:]
-    private(set) var framesByScope: [ChatRenderedScrollScope: [String: CGRect]] = [:]
+    private(set) var framesByScope: [ChatRenderedScrollScope: [String: ChatRenderedRowGeometry]] = [:]
 
     static func row(
         semanticID: String,
         scope: ChatRenderedScrollScope,
-        frame: CGRect? = nil
+        frame: CGRect? = nil,
+        order: Int = 0
     ) -> ChatRenderedScrollTargets {
         var targets = ChatRenderedScrollTargets(rowsByScope: [scope: [semanticID]])
         if let frame {
-            targets.framesByScope = [scope: [semanticID: frame]]
+            targets.framesByScope = [scope: [semanticID: ChatRenderedRowGeometry(frame: frame, order: order)]]
         }
         return targets
     }
@@ -163,9 +237,9 @@ struct ChatRenderedScrollTargets: Equatable {
         bottomsByScope[scope]?.contains(anchorID) == true
     }
 
-    /// Global frames of rendered stable rows for a scope (rows that reported
-    /// geometry this pass; offscreen lazy rows are absent).
-    func rowFrames(in scope: ChatRenderedScrollScope) -> [String: CGRect] {
+    /// Global frames + transcript order of rendered stable rows for a scope
+    /// (rows that reported geometry this pass; offscreen lazy rows are absent).
+    func rowFrames(in scope: ChatRenderedScrollScope) -> [String: ChatRenderedRowGeometry] {
         framesByScope[scope] ?? [:]
     }
 

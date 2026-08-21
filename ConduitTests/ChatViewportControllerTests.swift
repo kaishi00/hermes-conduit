@@ -923,8 +923,8 @@ final class ChatViewportControllerTests: XCTestCase {
             viewportMinY: 100,
             viewportMaxY: 800,
             rowFrames: [
-                ChatRenderedRowFrame(id: "m1", minY: 40, maxY: 140, scope: scope),
-                ChatRenderedRowFrame(id: "m2", minY: 160, maxY: 400, scope: scope),
+                ChatRenderedRowFrame(id: "m1", minY: 40, maxY: 140, order: 0, scope: scope),
+                ChatRenderedRowFrame(id: "m2", minY: 160, maxY: 400, order: 1, scope: scope),
             ],
             scope: scope
         ))
@@ -956,8 +956,8 @@ final class ChatViewportControllerTests: XCTestCase {
             viewportMinY: 100,
             viewportMaxY: 800,
             rowFrames: [
-                ChatRenderedRowFrame(id: "m2", minY: 120, maxY: 300, scope: scope),
-                ChatRenderedRowFrame(id: "m3", minY: 320, maxY: 500, scope: scope),
+                ChatRenderedRowFrame(id: "m2", minY: 120, maxY: 300, order: 1, scope: scope),
+                ChatRenderedRowFrame(id: "m3", minY: 320, maxY: 500, order: 2, scope: scope),
             ],
             scope: scope
         ))
@@ -970,12 +970,57 @@ final class ChatViewportControllerTests: XCTestCase {
             viewportMinY: 100,
             viewportMaxY: 800,
             rowFrames: [
-                ChatRenderedRowFrame(id: "m1", minY: 40, maxY: 140, scope: scope),
-                ChatRenderedRowFrame(id: "m2", minY: 160, maxY: 340, scope: scope),
+                ChatRenderedRowFrame(id: "m1", minY: 40, maxY: 140, order: 0, scope: scope),
+                ChatRenderedRowFrame(id: "m2", minY: 160, maxY: 340, order: 1, scope: scope),
             ],
             scope: scope
         ))
         XCTAssertEqual(controller.stableTopMessageID, "m1")
+    }
+
+    /// Fix 4 regression: with a deep transcript (hundreds of targets) but only
+    /// a handful of rendered frames, stable-top detection must process only
+    /// the rendered frames — deterministic via the stable-top scan counter —
+    /// and still pick the first visible row in transcript order.
+    func testStableTopDetectionScalesWithRenderedRowsNotTranscriptLength() {
+        var controller = makeController(following: keyA)
+        // 500-message transcript.
+        let deepTranscript = (0..<500).map { message("deep-\($0)", "content \($0)") }
+        _ = controller.transcriptChanged(
+            messages: deepTranscript,
+            transcriptRevision: 1,
+            viewportTransitionGeneration: 1
+        )
+        XCTAssertEqual(controller.targets.count, 500)
+        guard let scope = controller.renderedScrollScope else {
+            return XCTFail("expected a scope")
+        }
+
+        // Only three rows actually rendered near the viewport (lazy layout),
+        // reported out of order to prove the min-by-order selection.
+        TranscriptPerf.reset()
+        _ = controller.layoutMetricsChanged(facts: layoutFacts(
+            bottomMarkerMaxY: 900,
+            viewportMinY: 100,
+            viewportMaxY: 800,
+            rowFrames: [
+                ChatRenderedRowFrame(id: "deep-301", minY: 500, maxY: 700, order: 301, scope: scope),
+                ChatRenderedRowFrame(id: "deep-300", minY: 300, maxY: 480, order: 300, scope: scope),
+                ChatRenderedRowFrame(id: "deep-299", minY: 120, maxY: 280, order: 299, scope: scope),
+            ],
+            scope: scope
+        ))
+
+        XCTAssertEqual(controller.stableTopMessageID, "deep-299",
+                       "must pick the lowest-order visible rendered row")
+        XCTAssertEqual(
+            TranscriptPerf.stableTopScanTargetCount, 3,
+            "work must scale with rendered frames, not total transcript length"
+        )
+        XCTAssertNotEqual(
+            TranscriptPerf.stableTopScanTargetCount, controller.targets.count,
+            "the full transcript target list must not be scanned"
+        )
     }
 }
 
@@ -1590,9 +1635,9 @@ extension ChatViewportControllerTests {
             viewportMinY: 100,
             viewportMaxY: 800,
             rowFrames: [
-                ChatRenderedRowFrame(id: "m1", minY: 40, maxY: 140, scope: scope),
-                ChatRenderedRowFrame(id: "m2", minY: 160, maxY: 400, scope: scope),
-                ChatRenderedRowFrame(id: "m3", minY: 420, maxY: 700, scope: scope),
+                ChatRenderedRowFrame(id: "m1", minY: 40, maxY: 140, order: 0, scope: scope),
+                ChatRenderedRowFrame(id: "m2", minY: 160, maxY: 400, order: 1, scope: scope),
+                ChatRenderedRowFrame(id: "m3", minY: 420, maxY: 700, order: 2, scope: scope),
             ],
             scope: scope
         ))
@@ -1607,8 +1652,8 @@ extension ChatViewportControllerTests {
             viewportMinY: 100,
             viewportMaxY: 800,
             rowFrames: [
-                ChatRenderedRowFrame(id: "m2", minY: 120, maxY: 360, scope: scope),
-                ChatRenderedRowFrame(id: "m3", minY: 380, maxY: 660, scope: scope),
+                ChatRenderedRowFrame(id: "m2", minY: 120, maxY: 360, order: 1, scope: scope),
+                ChatRenderedRowFrame(id: "m3", minY: 380, maxY: 660, order: 2, scope: scope),
             ],
             scope: scope
         ))
@@ -2053,5 +2098,41 @@ extension ChatViewportControllerTests {
         )
         XCTAssertTrue(tickEffects.isEmpty,
                       "no restoration state means the tick is a no-op")
+    }
+
+    // MARK: - Duplicate transcript-change regression
+
+    func testSingleTranscriptMutationCausesOneTranscriptChangedCall() {
+        var controller = makeController(following: keyA)
+        let msgs = [message("m1", "hello")]
+
+        TranscriptPerf.reset()
+        _ = controller.transcriptChanged(
+            messages: msgs,
+            transcriptRevision: 1,
+            viewportTransitionGeneration: 1
+        )
+        XCTAssertEqual(TranscriptPerf.transcriptChangedCalls, 1,
+                       "one mutation must cause exactly one transcriptChanged call")
+    }
+
+    func testDuplicateTranscriptChangedIsIdempotent() {
+        var controller = makeController(following: keyA)
+        let msgs = [message("m1", "hello")]
+
+        // First call: semantic change
+        let first = controller.transcriptChanged(
+            messages: msgs,
+            transcriptRevision: 1,
+            viewportTransitionGeneration: 1
+        )
+        // Second call with identical messages: should be .unchanged
+        let second = controller.transcriptChanged(
+            messages: msgs,
+            transcriptRevision: 1,
+            viewportTransitionGeneration: 1
+        )
+        XCTAssertNotEqual(first, [], "first call should produce effects")
+        XCTAssertEqual(second, [], "duplicate call with same messages must be no-op")
     }
 }
