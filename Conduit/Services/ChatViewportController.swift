@@ -250,6 +250,7 @@ struct ChatViewportController: Equatable {
         activeSessionKey: ChatScrollSessionKey? = nil,
         isOpeningNotificationSession: Bool = false
     ) -> [ChatViewportEffect] {
+        TranscriptPerf.note(.transcriptChanged)
         if let activeSessionKey {
             self.activeSessionKey = activeSessionKey
         }
@@ -274,6 +275,7 @@ struct ChatViewportController: Equatable {
     mutating func layoutMetricsChanged(
         facts: ChatViewportLayoutFacts
     ) -> [ChatViewportEffect] {
+        TranscriptPerf.note(.layoutMetricsChanged)
         bottomMarkerMaxY = facts.bottomMarkerMaxY
         viewportMinY = facts.viewportMinY
         viewportMaxY = facts.viewportMaxY
@@ -710,20 +712,21 @@ struct ChatViewportController: Equatable {
         )
     }
 
+    /// Stable-top detection operates purely over the rendered frames the
+    /// layout pass supplied: filter to rows intersecting the viewport, then
+    /// take the smallest transcript order. Work is O(rendered rows) — never
+    /// a scan of the full transcript target list, which in a deep
+    /// conversation is hundreds of entries per geometry tick.
     private mutating func updateStableTopMessage(rowFrames: [ChatRenderedRowFrame]) {
         guard let viewportMinY, let viewportMaxY else {
             stableTopMessageID = nil
             return
         }
-        let framesByID = Dictionary(rowFrames.map { ($0.id, $0) }) { first, _ in first }
-        for target in targetCache.targets {
-            guard let frame = framesByID[target.id] else { continue }
-            if frame.maxY > viewportMinY && frame.minY < viewportMaxY {
-                stableTopMessageID = target.id
-                return
-            }
-        }
-        stableTopMessageID = nil
+        TranscriptPerf.stableTopScanTargetCount = rowFrames.count
+        stableTopMessageID = rowFrames
+            .filter { $0.maxY > viewportMinY && $0.minY < viewportMaxY }
+            .min(by: { $0.order < $1.order })?
+            .id
     }
 
     private func resolveRestorationDestination(

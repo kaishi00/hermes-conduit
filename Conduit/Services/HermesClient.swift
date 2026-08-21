@@ -1438,9 +1438,19 @@ enum MessageNormalizer {
                 ?? obj["message_id"]?.descriptiveStringValue
                 ?? String(index)
 
-            let rawContent = isToolResult
+            let extractedContent = isToolResult
                 ? extractToolOutput(obj)
                 : extractContent(obj["content"] ?? obj["text"] ?? .null)
+            // Compaction bookkeeping is removed before role/system/runtime
+            // normalization so no summary text — standalone or merged onto a
+            // real prompt — can reach a ChatMessage and the renderer.
+            guard let rawContent = visibleContentRemovingCompaction(
+                from: obj,
+                content: extractedContent,
+                isToolResult: isToolResult
+            ) else {
+                continue
+            }
             let modelChange = modelChangeActivity(fromText: rawContent)
             let systemNotice = systemNoticeText(fromText: rawContent)
             if modelChange != nil || systemNotice != nil { role = .system }
@@ -1598,6 +1608,78 @@ enum MessageNormalizer {
     static func isUserCorrectionInterruptionNotice(_ text: String) -> Bool {
         text.trimmingCharacters(in: .whitespacesAndNewlines)
             .caseInsensitiveCompare("[This response was interrupted by a user correction.]") == .orderedSame
+    }
+
+    /// Hermes persists context-compaction summaries as ordinary transcript
+    /// records — usually under a conversational role, and sometimes appended
+    /// to a row that still holds the genuine user prompt. They are
+    /// model-context bookkeeping, not chat messages, and can be large enough
+    /// to stall the Markdown pipeline when mistaken for a visible bubble.
+    /// Returns the content that should remain visible, or nil when the whole
+    /// record is compaction bookkeeping and must not produce a ChatMessage.
+    /// Tool-result rows bypass the filter: compaction artifacts only ride
+    /// conversational roles, while a tool's own output may legitimately print
+    /// the delimiter text.
+    private static func visibleContentRemovingCompaction(
+        from obj: [String: AnyCodable],
+        content: String,
+        isToolResult: Bool
+    ) -> String? {
+        if isToolResult { return content }
+
+        // Standalone summaries announce themselves within the first bytes.
+        // Dropping them here skips the merged-delimiter search, which would
+        // otherwise walk a potentially multi-megabyte payload end-to-end.
+        if hasCompactionSummaryPrefix(content) { return nil }
+
+        if let range = content.range(of: compactionSummaryDelimiter) {
+            // Merged row: the genuine prompt sits before the delimiter behind
+            // an optional wrapper header; the summary suffix is never shown.
+            // The flag does not preempt this branch — it marks the record as
+            // carrying a summary, not as lacking a genuine prompt.
+            var visible = String(content[..<range.lowerBound])
+            // Strip the wrapper only as a leading header — a copy the user
+            // quoted mid-message belongs to their message.
+            if visible.trimmingCharacters(in: .whitespacesAndNewlines)
+                .hasPrefix(priorContextWrapperHeader),
+                let wrapperRange = visible.range(of: priorContextWrapperHeader) {
+                visible.removeSubrange(wrapperRange)
+            }
+            let trimmed = visible.trimmingCharacters(in: .whitespacesAndNewlines)
+            // After a second compaction the retained prefix can itself be an
+            // older summary rather than a genuine prompt.
+            guard !trimmed.isEmpty, !hasCompactionSummaryPrefix(trimmed) else { return nil }
+            return trimmed
+        }
+
+        let flaggedAsSummary = obj["_compressed_summary"]?.boolValue == true
+            || obj["metadata"]?.objectValue?["_compressed_summary"]?.boolValue == true
+        // Flagged with no merged form is pure bookkeeping.
+        return flaggedAsSummary ? nil : content
+    }
+
+    private static let compactionSummaryDelimiter =
+        "[END OF PRIOR CONTEXT — COMPACTION SUMMARY BELOW]"
+
+    private static let priorContextWrapperHeader =
+        "[PRIOR CONTEXT — for reference only; not a new message]"
+
+    /// Hermes emits two generations of compaction headers, and the reload
+    /// path can drop the `_compressed_summary` flag while keeping the
+    /// recognizable text. Match case-insensitively like the other Hermes
+    /// bracketed notices, anchored at the start of the content so ordinary
+    /// discussion of "context compaction" is never mistaken for a summary.
+    /// Classification reads only a bounded head: leading whitespace is
+    /// skipped by index and only the next 32 characters are compared, so a
+    /// multi-megabyte summary is never copied or tail-scanned to classify it.
+    static func hasCompactionSummaryPrefix(_ content: String) -> Bool {
+        var headStart = content.startIndex
+        while headStart < content.endIndex, content[headStart].isWhitespace {
+            headStart = content.index(after: headStart)
+        }
+        let head = content[headStart...].prefix(32).lowercased()
+        return head.hasPrefix("[context compaction")
+            || head.hasPrefix("[context summary]:")
     }
 
     /// Normalizes the gateway's native clarification event. Current Hermes

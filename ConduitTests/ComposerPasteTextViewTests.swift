@@ -8,93 +8,105 @@ import XCTest
 
 @MainActor
 final class ComposerPasteTextViewTests: XCTestCase {
-    private var savedPasteboardItems: [[String: Any]] = []
-
-    override func setUp() {
-        super.setUp()
-        // Snapshot the system pasteboard so tearDown can restore it instead of
-        // clobbering a real clipboard (relevant when the suite runs on a device).
-        savedPasteboardItems = UIPasteboard.general.items
-    }
-
-    override func tearDown() {
-        UIPasteboard.general.items = savedPasteboardItems
-        super.tearDown()
-    }
+    // Tests that mutate UIPasteboard.general wrap their body in
+    // withClearedGeneralPasteboard so they start from a known-empty clipboard
+    // and leave nothing behind. A suite-wide setUp()/tearDown()
+    // used to round-trip UIPasteboard.general.items around every test —
+    // including the purely in-memory NSItemProvider tests below — and the
+    // .items getter is the dangerous half: it materializes whatever the
+    // simulator clipboard holds (content this app did not write), which can
+    // block indefinitely on CI simulators. XCTest logs "Test Case ... started"
+    // before setUp() returns, so the stall presents as a stuck first test
+    // rather than a hung pasteboard read. Writes and clears are safe, so
+    // isolation here uses clears only — never an unsolicited read.
 
     func testPasteboardContainsImageTrueForImagePasteboard() {
-        let view = ImagePasteTextView()
-        UIPasteboard.general.image = Self.fixtureImage()
+        withClearedGeneralPasteboard {
+            let view = ImagePasteTextView()
+            UIPasteboard.general.image = Self.fixtureImage()
 
-        XCTAssertTrue(view.pasteboardContainsImage())
+            XCTAssertTrue(view.pasteboardContainsImage())
+        }
     }
 
     func testPasteboardContainsImageFalseForTextPasteboard() {
-        let view = ImagePasteTextView()
-        UIPasteboard.general.string = "just text"
+        withClearedGeneralPasteboard {
+            let view = ImagePasteTextView()
+            UIPasteboard.general.string = "just text"
 
-        XCTAssertFalse(view.pasteboardContainsImage())
+            XCTAssertFalse(view.pasteboardContainsImage())
+        }
     }
 
     func testCanPerformActionOffersPasteForImagePasteboard() {
-        let view = ImagePasteTextView()
-        view.isEditable = true
-        UIPasteboard.general.image = Self.fixtureImage()
+        withClearedGeneralPasteboard {
+            let view = ImagePasteTextView()
+            view.isEditable = true
+            UIPasteboard.general.image = Self.fixtureImage()
 
-        // Regression: UITextView drops "Paste" for an image-only pasteboard, so
-        // the long-press edit menu only offered system items like "Autofill".
-        // canPerformAction must surface paste: so the existing paste(_:) path
-        // becomes reachable from the menu.
-        XCTAssertTrue(view.canPerformAction(#selector(UIResponder.paste(_:)), withSender: nil))
+            // Regression: UITextView drops "Paste" for an image-only pasteboard, so
+            // the long-press edit menu only offered system items like "Autofill".
+            // canPerformAction must surface paste: so the existing paste(_:) path
+            // becomes reachable from the menu.
+            XCTAssertTrue(view.canPerformAction(#selector(UIResponder.paste(_:)), withSender: nil))
+        }
     }
 
     func testShouldOfferImagePasteTrueForImagePasteboard() {
-        let view = ImagePasteTextView()
-        view.isEditable = true
-        UIPasteboard.general.image = Self.fixtureImage()
+        withClearedGeneralPasteboard {
+            let view = ImagePasteTextView()
+            view.isEditable = true
+            UIPasteboard.general.image = Self.fixtureImage()
 
-        XCTAssertTrue(view.shouldOfferImagePaste())
+            XCTAssertTrue(view.shouldOfferImagePaste())
+        }
     }
 
     func testShouldOfferImagePasteFalseWhenNotEditable() {
-        let view = ImagePasteTextView()
-        view.isEditable = false
-        UIPasteboard.general.image = Self.fixtureImage()
+        withClearedGeneralPasteboard {
+            let view = ImagePasteTextView()
+            view.isEditable = false
+            UIPasteboard.general.image = Self.fixtureImage()
 
-        // A disabled composer must not offer image paste even with an image on
-        // the pasteboard.
-        XCTAssertFalse(view.shouldOfferImagePaste())
+            // A disabled composer must not offer image paste even with an image on
+            // the pasteboard.
+            XCTAssertFalse(view.shouldOfferImagePaste())
+        }
     }
 
     func testShouldOfferImagePasteFalseForTextOnlyPasteboard() {
-        let view = ImagePasteTextView()
-        view.isEditable = true
-        UIPasteboard.general.string = "just text"
+        withClearedGeneralPasteboard {
+            let view = ImagePasteTextView()
+            view.isEditable = true
+            UIPasteboard.general.string = "just text"
 
-        // Text-only content must not be treated as an image paste.
-        XCTAssertFalse(view.shouldOfferImagePaste())
+            // Text-only content must not be treated as an image paste.
+            XCTAssertFalse(view.shouldOfferImagePaste())
+        }
     }
 
     func testPasteSelectorDeliversImageFromPasteboard() async {
         // End-to-end check of the exact path a menu tap now dispatches: the
         // legacy paste(_:) selector reads UIPasteboard.general and fires
         // onPastedImage. This is independent of the canPerformAction gate.
-        let view = ImagePasteTextView()
-        UIPasteboard.general.image = Self.fixtureImage()
+        await withClearedGeneralPasteboard {
+            let view = ImagePasteTextView()
+            UIPasteboard.general.image = Self.fixtureImage()
 
-        let callback = expectation(description: "paste(_:) delivered image")
-        view.onPastedImage = { pastedImage in
-            XCTAssertFalse(pastedImage.data.isEmpty)
-            XCTAssertEqual(pastedImage.typeIdentifier, UTType.png.identifier)
-            callback.fulfill()
+            let callback = expectation(description: "paste(_:) delivered image")
+            view.onPastedImage = { pastedImage in
+                XCTAssertFalse(pastedImage.data.isEmpty)
+                XCTAssertEqual(pastedImage.typeIdentifier, UTType.png.identifier)
+                callback.fulfill()
+            }
+            view.onPastedImageError = { message in
+                XCTFail("paste(_:) should deliver the image, got: \(message)")
+            }
+
+            view.paste(nil as Any?)
+
+            await fulfillment(of: [callback], timeout: 5.0)
         }
-        view.onPastedImageError = { message in
-            XCTFail("paste(_:) should deliver the image, got: \(message)")
-        }
-
-        view.paste(nil as Any?)
-
-        await fulfillment(of: [callback], timeout: 5.0)
     }
 
     func testProgrammaticTextApplicationDoesNotPublishAsUserEditing() {
@@ -390,6 +402,29 @@ final class ComposerPasteTextViewTests: XCTestCase {
             ComposerBar.pastedImageErrorMessage("The image provider failed."),
             "Could not paste image: The image provider failed."
         )
+    }
+
+    /// Clears the general pasteboard, runs `body`, then clears it again.
+    /// Scoped to the tests that actually write to UIPasteboard.general so
+    /// every other test in this suite stays off the global pasteboard service
+    /// entirely. Deliberately performs NO read of `items`: materializing
+    /// existing clipboard content is what wedges CI simulators, while clears
+    /// and writes stay safe. The trailing clear also keeps image payloads from
+    /// leaking into later suites.
+    private func withClearedGeneralPasteboard(_ body: () throws -> Void) rethrows {
+        let pasteboard = UIPasteboard.general
+        pasteboard.items = []
+        defer { pasteboard.items = [] }
+        try body()
+    }
+
+    /// Async counterpart for tests that await while their mutated pasteboard
+    /// content is live (e.g. waiting on a paste callback expectation).
+    private func withClearedGeneralPasteboard(_ body: () async throws -> Void) async rethrows {
+        let pasteboard = UIPasteboard.general
+        pasteboard.items = []
+        defer { pasteboard.items = [] }
+        try await body()
     }
 
     private static func fixtureImage() -> UIImage {
