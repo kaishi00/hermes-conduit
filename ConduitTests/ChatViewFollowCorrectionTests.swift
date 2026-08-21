@@ -30,9 +30,17 @@ final class ChatViewFollowCorrectionTests: XCTestCase {
     private var testWindow: UIWindow?
 
     override func tearDown() {
-        testWindow?.isHidden = true
-        testWindow?.rootViewController = nil
-        RunLoop.current.run(until: Date())
+        // Deterministic teardown INSIDE this suite: a zero-length run-
+        // loop pass leaves the hosting controller's appearance
+        // transition in flight, and the deferred teardown lands in
+        // whichever suite runs next as unbalanced-appearance warnings
+        // that starve XCTest main-queue waits (see CI #384). Drain a
+        // few real animation ticks so the lifecycle completes here.
+        if let window = testWindow {
+            window.isHidden = true
+            window.rootViewController = nil
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
         testWindow = nil
         ChatViewportTrace.shared.reset()
         super.tearDown()

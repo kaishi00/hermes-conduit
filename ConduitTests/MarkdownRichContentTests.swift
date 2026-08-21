@@ -454,6 +454,137 @@ final class MarkdownRichContentPolicyTests: XCTestCase {
         )
         XCTAssertGreaterThan(hidden, 0)
     }
+    /// Review item: mounted-plan union semantics. The live tail must
+    /// stay mounted in EVERY gate state; the ranges must never overlap;
+    /// the footer must exist IFF a strictly positive hidden gap exists.
+    /// Uses the SAME shared plan the production body renders from, so a
+    /// regression here is a regression in the view.
+    func testMountedPlanKeepsTailInEveryGateState() throws {
+        // Uniform 1-unit blocks make every threshold exact:
+        // gateCut = 16 (first index where cumulative > 16),
+        // liveTailStart = count - 16 (clamped so the final block always
+        // stays mounted).
+        func units(_ count: Int) -> [Int] { Array(repeating: 1, count: count) }
+
+        // Case A: cut < tail (60 blocks: cut 16, tail 44) — real gap.
+        XCTAssertEqual(
+            MarkdownRichContentPolicy.mountedPlan(
+                unitsByBlock: units(60),
+                unitBudget: MarkdownRichContentPolicy.eagerRichUnitBudget
+            ),
+            .split(prefixEnd: 16, tailStart: 44),
+            "60 uniform blocks must produce the split plan 0..<16 + 44..<60"
+        )
+        let splitPlan = MarkdownRichContentPolicy.RichMountedPlan.split(prefixEnd: 16, tailStart: 44)
+        XCTAssertEqual(
+            MarkdownRichContentPolicy.mountedIndices(plan: splitPlan, totalBlocks: 60),
+            Array(0..<16) + Array(44..<60)
+        )
+
+        // Case B: cut == tail (32 blocks: cut 16, tail 16) — empty gap
+        // collapses to ONE contiguous range covering the tail.
+        XCTAssertEqual(
+            MarkdownRichContentPolicy.mountedPlan(
+                unitsByBlock: units(32),
+                unitBudget: MarkdownRichContentPolicy.eagerRichUnitBudget
+            ),
+            .contiguous(end: 32),
+            "cut == tail must mount everything once, keeping the tail"
+        )
+
+        // Case C: cut > tail (30 blocks: cut 16, tail 14) — the prefix
+        // has overlapped the tail; still one contiguous range.
+        XCTAssertEqual(
+            MarkdownRichContentPolicy.mountedPlan(
+                unitsByBlock: units(30),
+                unitBudget: MarkdownRichContentPolicy.eagerRichUnitBudget
+            ),
+            .contiguous(end: 30),
+            "cut > tail must mount everything once, never unmounting the tail"
+        )
+
+        // Case D: cut == nil (15 blocks fit the eager budget) — ungated.
+        XCTAssertEqual(
+            MarkdownRichContentPolicy.mountedPlan(
+                unitsByBlock: units(15),
+                unitBudget: MarkdownRichContentPolicy.eagerRichUnitBudget
+            ),
+            .contiguous(end: 15),
+            "an ungated message mounts everything once with no footer"
+        )
+    }
+
+    /// The footer exists IFF a strictly positive hidden gap exists, and
+    /// reveal progression is monotonic: every larger budget mounts a
+    /// superset, the newest block is always included, and no index ever
+    /// appears twice.
+    func testMountedPlanRevealMonotonicityAndNoDuplicates() {
+        let count = 60
+        let unitVector = Array(repeating: 1, count: count)
+        var previous: Set<Int> = []
+        var sawFooter = false
+        var sawFooterless = false
+        var budget = MarkdownRichContentPolicy.eagerRichUnitBudget
+        for _ in 0..<20 {
+            let plan = MarkdownRichContentPolicy.mountedPlan(
+                unitsByBlock: unitVector,
+                unitBudget: budget
+            )
+            let indices = MarkdownRichContentPolicy.mountedIndices(
+                plan: plan,
+                totalBlocks: count
+            )
+            let mounted = Set(indices)
+            XCTAssertEqual(mounted.count, indices.count, "no duplicate mounts")
+            XCTAssertTrue(mounted.isSuperset(of: previous), "reveal only adds blocks")
+            XCTAssertTrue(mounted.contains(count - 1), "the newest block stays mounted")
+            switch plan {
+            case .split(let prefixEnd, let tailStart):
+                XCTAssertGreaterThan(tailStart - prefixEnd, 0, "split implies a real gap")
+                sawFooter = true
+            case .contiguous:
+                sawFooterless = true
+            }
+            previous = mounted
+            if case .contiguous(let end) = plan, end == count { break }
+            budget = MarkdownRichContentPolicy.revealBudget(
+                unitsByBlock: unitVector,
+                currentBudget: budget
+            )
+        }
+        XCTAssertTrue(sawFooter, "the progression must pass through a gated state")
+        XCTAssertTrue(sawFooterless, "the progression must reach a fully revealed state")
+    }
+
+    /// Review item: budgetToInclude bounds. index == count must be
+    /// rejected (the inclusive walk would read past the end); the valid
+    /// final index still computes exactly.
+    func testBudgetToIncludeBoundsContract() {
+        let unitVector = Array(repeating: 4, count: 10)
+
+        // Invalid: one past the end.
+        XCTAssertEqual(
+            MarkdownRichContentPolicy.budgetToInclude(unitsByBlock: unitVector, index: 10),
+            MarkdownRichContentPolicy.eagerRichUnitBudget,
+            "index == count is out of contract and falls back"
+        )
+        // Invalid: zero and negative.
+        XCTAssertEqual(
+            MarkdownRichContentPolicy.budgetToInclude(unitsByBlock: unitVector, index: 0),
+            MarkdownRichContentPolicy.eagerRichUnitBudget
+        )
+        // Valid final index: cumulative 10 × 4 = 40.
+        XCTAssertEqual(
+            MarkdownRichContentPolicy.budgetToInclude(unitsByBlock: unitVector, index: 9),
+            40,
+            "the valid last index still computes the inclusive sum"
+        )
+        // Valid interior index.
+        XCTAssertEqual(
+            MarkdownRichContentPolicy.budgetToInclude(unitsByBlock: unitVector, index: 3),
+            16
+        )
+    }
 }
 
 // MARK: - Hosted rendering tests
@@ -470,19 +601,37 @@ final class MarkdownRichContentHostedTests: XCTestCase {
     }
 
     override func tearDown() {
-        testWindow?.isHidden = true
-        testWindow?.rootViewController = nil
-        RunLoop.current.run(until: Date())
-        testWindow = nil
+        dismountCurrentWindow()
         RichBudgetedMarkdownBody.resetDebugInstrumentation()
         super.tearDown()
     }
 
+    /// Deterministically tears down the current hosted window INSIDE this
+    /// test. A bare zero-length run-loop pass does not let the hosting
+    /// controller's appearance transition complete; dropping the window
+    /// reference mid-transition defers that teardown into whichever suite
+    /// runs next, where each leftover transition logs an unbalanced-
+    /// appearance warning and starves XCTest main-queue waits (CI #384:
+    /// MarkdownTableLayoutTests' 2 s "width probe settles" expectation
+    /// timed out under a stack of these). Draining a few real animation
+    /// ticks keeps the whole lifecycle inside this suite. This is
+    /// deterministic synchronization, not a padded delay.
+    private func dismountCurrentWindow() {
+        guard let window = testWindow else { return }
+        window.isHidden = true
+        window.rootViewController = nil
+        RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        testWindow = nil
+    }
+
     /// Hosts one MarkdownText in a phone-sized window and lets the first
-    /// layout pass (the one the watchdog used to die in) complete.
+    /// layout pass (the one the watchdog used to die in) complete. Any
+    /// previously mounted window is dismounted first so sequential mounts
+    /// never drop a live window mid-transition.
     private func mountMarkdown(
         _ makeView: () -> MarkdownText
     ) -> UIHostingController<MarkdownText> {
+        dismountCurrentWindow()
         let host = UIHostingController(rootView: makeView())
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
         window.rootViewController = host
@@ -492,6 +641,27 @@ final class MarkdownRichContentHostedTests: XCTestCase {
         host.view.layoutIfNeeded()
         RunLoop.current.run(until: Date())
         return host
+    }
+
+    /// Advances the reveal through the production action: the DEBUG-only
+    /// notification inlet on RichBudgetedMarkdownBody invokes the EXACT
+    /// advanceReveal() method the footer button executes (SwiftUI
+    /// Buttons expose neither a UIControl bridge nor a reachable
+    /// accessibility-activation surface to unit tests, so the inlet is
+    /// the faithful deterministic path).
+    private func advanceRevealThroughProductionPath() {
+        NotificationCenter.default.post(
+            name: RichBudgetedMarkdownBody.advanceRevealForTesting,
+            object: nil
+        )
+        // Let the SwiftUI state update commit and re-render, then force
+        // the layout pass so the recorded instrumentation reflects it.
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        if let root = testWindow?.rootViewController?.view {
+            root.setNeedsLayout()
+            root.layoutIfNeeded()
+        }
+        RunLoop.current.run(until: Date())
     }
 
     /// Performance case 4: the <100 KB pathological showcase opens through
@@ -631,4 +801,115 @@ final class MarkdownRichContentHostedTests: XCTestCase {
         walk(root)
         return widest
     }
+    /// Hosted live-tail regression: when the reveal cut starts PAST the
+    /// tail boundary (30 moderate tables: cut 16 > tail 14), the union
+    /// must still mount EVERY block exactly once — the pre-fix body
+    /// dropped the tail entirely in this state (mounted 0..<16 only,
+    /// losing the newest blocks) and showed no path to them.
+    func testHostedCutBeyondTailKeepsNewestBlocksMounted() throws {
+        let source = (0..<30).map { index in
+            "Section \(index) intro paragraph.\n\n"
+                + MarkdownShowcaseFixtures.alignedTable(section: index, rows: 4, columns: 5)
+        }.joined(separator: "\n\n")
+        let blocks = MarkdownParser.parse(source)
+        XCTAssertEqual(blocks.count, 60, "30 paragraphs + 30 tables")
+
+        _ = mountMarkdown { MarkdownText(source: source) }
+
+        let mounted = RichBudgetedMarkdownBody.debugMountedBlockIndices
+        XCTAssertEqual(
+            Set(mounted).count,
+            mounted.count,
+            "no block may be mounted twice when prefix and tail overlap"
+        )
+        XCTAssertEqual(mounted.count, blocks.count, "cut > tail mounts everything once")
+        XCTAssertTrue(
+            mounted.contains(blocks.count - 1),
+            "the newest block must stay mounted when the cut passes the tail"
+        )
+    }
+
+    /// Hosted live-tail regression through the REAL reveal button: with
+    /// 60 tables (cut 16 < tail 44 initially), repeated Continue Reading
+    /// taps must only ever ADD mounted blocks — including across the
+    /// cut == tail and cut > tail transitions — and the footer must
+    /// disappear exactly when the hidden gap is gone.
+    func testHostedRevealNeverRetractsTailAndFooterDisappearsWhenRevealed() throws {
+        let source = (0..<60).map { index in
+            "Section \(index) intro paragraph.\n\n"
+                + MarkdownShowcaseFixtures.alignedTable(section: index, rows: 4, columns: 5)
+        }.joined(separator: "\n\n")
+        let blocks = MarkdownParser.parse(source)
+
+        _ = mountMarkdown { MarkdownText(source: source) }
+
+        var previous = Set(RichBudgetedMarkdownBody.debugMountedBlockIndices)
+        XCTAssertTrue(
+            previous.contains(blocks.count - 1),
+            "the newest block is mounted from the start (live tail)"
+        )
+        // Initially gated: fewer than all blocks mounted, footer present.
+        XCTAssertLessThan(previous.count, blocks.count)
+
+        XCTAssertTrue(
+            RichBudgetedMarkdownBody.debugFooterVisible,
+            "the footer is shown while a hidden gap exists"
+        )
+
+        var taps = 0
+        while previous.count < blocks.count {
+            advanceRevealThroughProductionPath()
+            taps += 1
+            let mounted = Set(RichBudgetedMarkdownBody.debugMountedBlockIndices)
+            XCTAssertEqual(
+                mounted.count,
+                RichBudgetedMarkdownBody.debugMountedBlockIndices.count,
+                "no duplicate mounts across the overlap transition"
+            )
+            XCTAssertTrue(
+                mounted.isSuperset(of: previous),
+                "a reveal tap must never retract mounted content (tap \(taps))"
+            )
+            XCTAssertTrue(
+                mounted.contains(blocks.count - 1),
+                "the newest block stays mounted through every tap"
+            )
+            previous = mounted
+            if taps > 20 { XCTFail("reveal never completes"); break }
+        }
+
+        // Fully revealed: footer is gone and the mounted set is exactly
+        // everything, once.
+        XCTAssertEqual(previous.count, blocks.count)
+        XCTAssertFalse(
+            RichBudgetedMarkdownBody.debugFooterVisible,
+            "the footer must disappear once no hidden gap remains"
+        )
+    }
+
+    /// Hosted: the streaming -> settled transition does not reduce the
+    /// mounted newest content when the gate sits beyond the tail
+    /// boundary — the exact state the pre-fix union computation broke.
+    func testHostedStreamingToSettledBeyondTailKeepsNewestMounted() throws {
+        let source = (0..<30).map { index in
+            "Section \(index) intro paragraph.\n\n"
+                + MarkdownShowcaseFixtures.alignedTable(section: index, rows: 4, columns: 5)
+        }.joined(separator: "\n\n")
+        let blocks = MarkdownParser.parse(source)
+
+        _ = mountMarkdown { MarkdownText(source: source, isStreaming: true) }
+        let streaming = Set(RichBudgetedMarkdownBody.debugMountedBlockIndices)
+
+        _ = mountMarkdown { MarkdownText(source: source) }
+        let settled = Set(RichBudgetedMarkdownBody.debugMountedBlockIndices)
+
+        XCTAssertEqual(
+            settled,
+            streaming,
+            "settling must not reduce the mounted set in the beyond-tail gate state"
+        )
+        XCTAssertEqual(settled.count, blocks.count)
+        XCTAssertTrue(settled.contains(blocks.count - 1))
+    }
+
 }
