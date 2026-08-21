@@ -228,84 +228,95 @@ final class SettledMessageIsolationTests: XCTestCase {
     }
 
     /// Dynamic Type invalidation (#4): a size-category change must re-open
-    /// the settled-content gate, re-evaluate the Markdown body, and deliver
-    /// a changed font to the mounted text view — while an ordinary
-    /// re-creation at the SAME category (streaming-tick shape) stays dormant.
-    func testDynamicTypeChangeReOpensSettledGateAndUpdatesFonts() throws {
+    /// the settled-content gate so the settled Markdown body re-evaluates.
+    ///
+    /// Same-category dormancy (the streaming-tick shape) has dedicated
+    /// coverage in
+    /// testIdenticalRowRecreationSkipsSettledMarkdownPresentation; this test
+    /// exercises only the gate-reopening half.
+    ///
+    /// Structurally deterministic: after each mutation the run loop is
+    /// drained until the asserted condition holds or a bounded deadline
+    /// expires. SwiftUI hosting commits are driven by display links, which
+    /// need real elapsed time — a zero-interval `RunLoop.run(until: Date())`
+    /// tick observes only whatever flushed synchronously and made the
+    /// previous version of this test flaky on slower CI runners (a late
+    /// transaction from the initial mount landed inside the measurement
+    /// window). Actual font delivery cannot be asserted in-process:
+    /// UIFontMetrics resolve against UIApplication's
+    /// preferredContentSizeCategory, which is process-global. The Equatable
+    /// input contract (including sizeCategory) is covered directly by
+    /// testEquatableConformanceComparesMessageAndResolverIdentity.
+    func testDynamicTypeChangeReOpensSettledContentGate() throws {
         let appState = try makeAppState()
         let resolver = GatewayMediaDataURLResolver(appState: appState, profile: "default")
         let message = markdownMessage()
 
-        func row(_ category: ContentSizeCategory) -> AnyView {
-            AnyView(
-                AssistantBubble(
-                    message: message,
-                    readAloudController: appState.messageReadAloudController,
-                    gatewayResolver: resolver
-                )
-                .environmentObject(appState)
-                .environment(\.sizeCategory, category)
+        func harness(_ category: ContentSizeCategory) -> SettledGateHarnessRow {
+            SettledGateHarnessRow(
+                message: message,
+                readAloudController: appState.messageReadAloudController,
+                gatewayResolver: resolver,
+                appState: appState,
+                sizeCategory: category
             )
         }
 
-        let host = UIHostingController(rootView: row(.large))
+        let host = UIHostingController(rootView: harness(.large))
         testWindow = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
         testWindow?.rootViewController = host
         testWindow?.isHidden = false
         host.view.setNeedsLayout()
         host.view.layoutIfNeeded()
-        RunLoop.current.run(until: Date())
+        // Let the initial mount fully settle — including trait-sync follow-up
+        // transactions — before arming the measurement window.
+        drainUntil(2.0) { TranscriptPerf.settledMarkdownTextBodyEvaluations > 0 }
 
-        // Capture the mounted font at the initial category.
-        let fontAtLarge = firstTextViewFont(in: host.view)
-
-        // Same-category re-creation (streaming-tick shape): must stay dormant.
         TranscriptPerf.reset()
-        host.rootView = row(.large)
+        host.rootView = harness(.extraExtraLarge)
         host.view.setNeedsLayout()
         host.view.layoutIfNeeded()
-        RunLoop.current.run(until: Date())
-        XCTAssertEqual(
-            TranscriptPerf.settledMarkdownTextBodyEvaluations, 0,
-            "a same-category re-creation must not wake settled content"
-        )
-
-        // Category change: the gate re-opens and the settled Markdown body
-        // re-evaluates. Downstream font resolution follows UIApplication's
-        // preferredContentSizeCategory (the system setting), which moves
-        // together with the SwiftUI environment value in production but
-        // cannot be changed from inside the test process — so with only the
-        // environment value changed, the re-rendered content is identical
-        // and SelectableTextView is correctly skipped by SwiftUI's own
-        // equality check. The gate mechanics are additionally covered by
-        // testEquatableConformanceComparesMessageAndResolverIdentity.
-        TranscriptPerf.reset()
-        host.rootView = row(.extraExtraLarge)
-        host.view.setNeedsLayout()
-        host.view.layoutIfNeeded()
-        RunLoop.current.run(until: Date())
+        drainUntil(2.0) { TranscriptPerf.settledMarkdownTextBodyEvaluations > 0 }
 
         XCTAssertGreaterThan(
             TranscriptPerf.settledMarkdownTextBodyEvaluations, 0,
-            "a Dynamic Type change must re-evaluate settled content"
+            "a Dynamic Type change must re-open the settled-content gate and re-evaluate settled content"
         )
-        _ = fontAtLarge
     }
 
-    private func firstTextViewFont(in view: UIView) -> UIFont? {
-        var found: UIFont?
-        enumerateSubviews(of: view) { subview in
-            if found == nil, let textView = subview as? UITextView {
-                found = textView.font
-            }
+    /// Drains the run loop in short real intervals until `condition` holds or
+    /// the bounded deadline passes. Display-link-driven SwiftUI commits need
+    /// elapsed time to fire, so draining until the observable state is
+    /// reached is deterministic where a fixed zero-interval tick is not: it
+    /// exits as early as possible and fails only when the state genuinely
+    /// never arrives.
+    private func drainUntil(_ seconds: TimeInterval, _ condition: () -> Bool) {
+        let deadline = Date().addingTimeInterval(seconds)
+        while Date() < deadline {
+            if condition() { return }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.02))
         }
-        return found
     }
+}
 
-    private func enumerateSubviews(of view: UIView, visit: (UIView) -> Void) {
-        for subview in view.subviews {
-            visit(subview)
-            enumerateSubviews(of: subview, visit: visit)
-        }
+/// Concrete hosted root for the Dynamic Type gate test. A stable concrete
+/// type (instead of an erased AnyView) gives UIHostingController direct value
+/// diffing: changing `sizeCategory` is a first-class rootView value change,
+/// and the environment write happens inside `body` exactly once per value.
+private struct SettledGateHarnessRow: View {
+    let message: ChatMessage
+    let readAloudController: MessageReadAloudController
+    let gatewayResolver: GatewayMediaDataURLResolver?
+    let appState: AppState
+    let sizeCategory: ContentSizeCategory
+
+    var body: some View {
+        AssistantBubble(
+            message: message,
+            readAloudController: readAloudController,
+            gatewayResolver: gatewayResolver
+        )
+        .environmentObject(appState)
+        .environment(\.sizeCategory, sizeCategory)
     }
 }
