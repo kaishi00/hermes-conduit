@@ -595,7 +595,8 @@ struct ChatView: View {
             viewportMinY: scrollViewportMinY,
             viewportMaxY: scrollViewportMaxY,
             rowFrames: frames,
-            renderedScope: scope
+            renderedScope: scope,
+            timestamp: CFAbsoluteTimeGetCurrent()
         )
     }
 
@@ -644,7 +645,10 @@ struct ChatView: View {
                     using: proxy
                 )
             }
-        case .scheduleFollowCorrection:
+        case .scheduleFollowCorrection(let token):
+            ChatViewportTrace.shared.log(
+                "follow correction scheduled seq=\(token.sequence) gen=\(token.generation)"
+            )
             // Executed by the pendingFollowCorrection observer below: the
             // correction must ride the SwiftUI update turn that the
             // scheduling state change already created — never its own
@@ -660,7 +664,10 @@ struct ChatView: View {
 
     /// Executes the coalesced bottom-follow correction on the update turn
     /// that the controller's pending-correction state change created. This
-    /// is the ONLY place a follow correction scrolls.
+    /// is the ONLY place a follow correction scrolls. MainActor-isolated to
+    /// match the neighboring scroll-execution entry points: it mutates
+    /// viewport state, writes the trace ring, and drives ScrollViewProxy.
+    @MainActor
     private func executePendingFollowCorrection(
         _ token: ChatFollowCorrectionToken,
         using proxy: ScrollViewProxy

@@ -56,6 +56,12 @@ final class ChatViewportControllerTests: XCTestCase {
         return controller
     }
 
+    /// Synthetic clock for layout facts: every constructed fact advances
+    /// the stamp past the follow-correction re-arm interval, so successive
+    /// calls model successive real ticks (a tick after a drained correction
+    /// may re-arm; an instant-later flap tick may not).
+    private var factClock: TimeInterval = 0
+
     private func layoutFacts(
         bottomMarkerMaxY: CGFloat? = 800,
         viewportMinY: CGFloat? = 100,
@@ -63,12 +69,14 @@ final class ChatViewportControllerTests: XCTestCase {
         rowFrames: [ChatRenderedRowFrame] = [],
         scope: ChatRenderedScrollScope?
     ) -> ChatViewportLayoutFacts {
-        ChatViewportLayoutFacts(
+        factClock += 0.11
+        return ChatViewportLayoutFacts(
             bottomMarkerMaxY: bottomMarkerMaxY,
             viewportMinY: viewportMinY,
             viewportMaxY: viewportMaxY,
             rowFrames: rowFrames,
-            renderedScope: scope
+            renderedScope: scope,
+            timestamp: factClock
         )
     }
 
@@ -2244,7 +2252,7 @@ extension ChatViewportControllerTests {
     /// unsettled layout cycle schedule exactly one correction, and the
     /// correction executes with the NEWEST facts recorded by the later
     /// callbacks.
-    func testOneLayoutCycleProducesAtMostOneCorrectionWithLatestFacts() {
+    func testOneLayoutCycleProducesAtMostOneCorrectionWithLatestFacts() throws {
         var controller = makeController(following: keyA)
 
         // First callback of the cycle (e.g. the bottom-marker preference).
@@ -2252,8 +2260,10 @@ extension ChatViewportControllerTests {
             bottomMarkerMaxY: 900, viewportMaxY: 800,
             scope: controller.renderedScrollScope
         ))
-        let token = scheduledCorrection(in: first)
-        XCTAssertNotNil(token, "drift beyond tolerance schedules a correction")
+        let token = try XCTUnwrap(
+            scheduledCorrection(in: first),
+            "drift beyond tolerance schedules a correction"
+        )
 
         // Later callbacks of the SAME cycle (viewport frame, row frames):
         // facts update, never a second correction.
@@ -2270,7 +2280,7 @@ extension ChatViewportControllerTests {
         XCTAssertEqual(controller.pendingFollowCorrection, token)
 
         // Due: executes against the newest facts (drift 950-800=150).
-        let commands = scrollCommands(controller.followCorrectionDue(token!))
+        let commands = scrollCommands(controller.followCorrectionDue(token))
         XCTAssertEqual(commands.count, 1)
         XCTAssertEqual(commands[0].destination, .bottom(anchorID: "chat-latest-p-session-a"))
         XCTAssertNil(controller.pendingFollowCorrection)
@@ -2382,6 +2392,51 @@ extension ChatViewportControllerTests {
         }
         _ = controller.followCorrectionDue(token)
         XCTAssertTrue(controller.followCorrectionDue(token).isEmpty)
+    }
+
+    /// Review follow-up (observed live in the hosted streaming fixture): a
+    /// correction scheduled from the layout flap of the previous
+    /// correction's OWN scroll commit is born inside the drain handler's
+    /// layout turn, where SwiftUI may never deliver the onChange that would
+    /// execute it — an undrainable pending token that silently absorbs all
+    /// future schedules. Re-arming must therefore wait out the re-arm
+    /// interval after an execution; the next tick after the interval
+    /// schedules normally.
+    func testCorrectionExecutionSuppressesImmediateRearmFromScrollFlap() throws {
+        var controller = makeController(following: keyA)
+        let first = try XCTUnwrap(scheduledCorrection(in: controller.layoutMetricsChanged(
+            facts: layoutFacts(
+                bottomMarkerMaxY: 1000, viewportMaxY: 800,
+                scope: controller.renderedScrollScope
+            )
+        )))
+        XCTAssertFalse(scrollCommands(controller.followCorrectionDue(first)).isEmpty)
+
+        // The scroll commit shifts global frames: the very next instant
+        // tick (same-timestamp flap, e.g. the bottom "moving" by the scroll
+        // delta) must NOT mint a new pending token.
+        var flapFacts = layoutFacts(
+            bottomMarkerMaxY: 960, viewportMaxY: 800,
+            scope: controller.renderedScrollScope
+        )
+        flapFacts.timestamp -= 0.11  // same instant as the execution
+        let flap = controller.layoutMetricsChanged(facts: flapFacts)
+        XCTAssertNil(
+            scheduledCorrection(in: flap),
+            "a schedule minted from the correction's own scroll flap is undrainable"
+        )
+        XCTAssertNil(controller.pendingFollowCorrection)
+
+        // Genuinely later growth (past the interval) schedules normally —
+        // and the token sequence keeps advancing.
+        let later = try XCTUnwrap(scheduledCorrection(in: controller.layoutMetricsChanged(
+            facts: layoutFacts(
+                bottomMarkerMaxY: 1030, viewportMaxY: 800,
+                scope: controller.renderedScrollScope
+            )
+        )))
+        XCTAssertGreaterThan(later.sequence, first.sequence)
+        XCTAssertFalse(scrollCommands(controller.followCorrectionDue(later)).isEmpty)
     }
 
     /// THE residual-drift case from the hosted reproduction: a drift that
@@ -2506,5 +2561,201 @@ extension ChatViewportControllerTests {
             controller.followCorrectionDue(token).isEmpty,
             "the superseded correction can never scroll"
         )
+    }
+
+    /// Review item: unique correction tokens. The view drains corrections
+    /// through onChange(of: pendingFollowCorrection); two consecutive
+    /// corrections in the same ownership generation and session MUST be
+    /// Equatable-distinct, or the nil → A → nil → A sequence is invisible
+    /// to the observer and the second correction never executes.
+    func testConsecutiveCorrectionsSameGenerationAndSessionProduceDistinctTokens() throws {
+        var controller = makeController(following: keyA)
+        let first = try XCTUnwrap(scheduledCorrection(in: controller.layoutMetricsChanged(
+            facts: layoutFacts(
+                bottomMarkerMaxY: 900, viewportMaxY: 800,
+                scope: controller.renderedScrollScope
+            )
+        )))
+        XCTAssertFalse(scrollCommands(controller.followCorrectionDue(first)).isEmpty)
+
+        // Genuinely new growth, SAME generation, SAME session.
+        let second = try XCTUnwrap(scheduledCorrection(in: controller.layoutMetricsChanged(
+            facts: layoutFacts(
+                bottomMarkerMaxY: 950, viewportMaxY: 800,
+                scope: controller.renderedScrollScope
+            )
+        )))
+        XCTAssertEqual(second.generation, first.generation)
+        XCTAssertEqual(second.sessionKey, first.sessionKey)
+        XCTAssertNotEqual(second, first, "consecutive tokens must be Equatable-distinct")
+        XCTAssertGreaterThan(second.sequence, first.sequence)
+
+        // Both tokens can drain (the second one scrolls).
+        XCTAssertFalse(scrollCommands(controller.followCorrectionDue(second)).isEmpty)
+        XCTAssertNil(controller.pendingFollowCorrection)
+    }
+
+    /// Review item: session ownership at drain time. A correction
+    /// scheduled for session A must never emit a scroll command for
+    /// session B just because the active identity changed in between.
+    func testCorrectionForSessionADoesNotScrollForSessionB() throws {
+        var controller = makeController(following: keyA)
+        let token = try XCTUnwrap(scheduledCorrection(in: controller.layoutMetricsChanged(
+            facts: layoutFacts(
+                bottomMarkerMaxY: 900, viewportMaxY: 800,
+                scope: controller.renderedScrollScope
+            )
+        )))
+
+        // The active identity/session moves to B while the rendered key
+        // stays A — exactly the mixture that used to anchor the command to
+        // B's bottom marker.
+        _ = controller.activeIdentityRefreshed(identity: identity(for: keyB), key: keyB)
+        XCTAssertEqual(controller.activeSessionKey, keyB)
+
+        XCTAssertTrue(
+            scrollCommands(controller.followCorrectionDue(token)).isEmpty,
+            "a correction scheduled for A must never scroll for B"
+        )
+        XCTAssertNil(controller.pendingFollowCorrection, "the stale correction is drained, not left pending")
+    }
+
+    /// Review item: ordinary equivalent/canonical identity refreshes — the
+    /// SAME conversation under a canonical spelling — must not break
+    /// following.
+    func testEquivalentIdentityRefreshKeepsCorrectionValid() throws {
+        let runtimeKey = ChatScrollSessionKey(profile: "p", sessionID: "runtime-a")
+        let storedKey = ChatScrollSessionKey(profile: "p", sessionID: "stored-a")
+        var controller = makeController(following: runtimeKey)
+
+        let token = try XCTUnwrap(scheduledCorrection(in: controller.layoutMetricsChanged(
+            facts: layoutFacts(
+                bottomMarkerMaxY: 900, viewportMaxY: 800,
+                scope: controller.renderedScrollScope
+            )
+        )))
+
+        // Canonical refresh: the identity now knows both spellings.
+        _ = controller.activeIdentityRefreshed(
+            identity: aliasedIdentity(storedKey, runtimeKey),
+            key: storedKey
+        )
+
+        let commands = scrollCommands(controller.followCorrectionDue(token))
+        XCTAssertEqual(commands.count, 1, "same-conversation refresh keeps the correction valid")
+        XCTAssertEqual(commands[0].destination, .bottom(anchorID: "chat-latest-p-stored-a"))
+    }
+
+    /// Review item: adopting the first session clears a correction that was
+    /// scheduled before any session existed — the command-owning session
+    /// changed from nil to a real key.
+    func testFirstSessionAdoptionClearsSessionlessPendingCorrection() throws {
+        var controller = ChatViewportController()
+        let token = try XCTUnwrap(scheduledCorrection(in: controller.layoutMetricsChanged(
+            facts: layoutFacts(
+                bottomMarkerMaxY: 900, viewportMaxY: 800,
+                scope: controller.renderedScrollScope
+            )
+        )))
+        XCTAssertNil(token.sessionKey, "scheduled before any session existed")
+
+        _ = controller.renderedSessionChanged(
+            to: keyA,
+            identity: identity(for: keyA),
+            viaNotification: false,
+            viewportTransitionGeneration: 1
+        )
+        XCTAssertNil(controller.pendingFollowCorrection, "adoption invalidates the sessionless correction")
+        XCTAssertTrue(controller.followCorrectionDue(token).isEmpty)
+
+        // Following continues normally for the adopted session.
+        let fresh = try XCTUnwrap(scheduledCorrection(in: controller.layoutMetricsChanged(
+            facts: layoutFacts(
+                bottomMarkerMaxY: 950, viewportMaxY: 800,
+                scope: controller.renderedScrollScope
+            )
+        )))
+        XCTAssertEqual(fresh.sessionKey, keyA)
+        XCTAssertFalse(scrollCommands(controller.followCorrectionDue(fresh)).isEmpty)
+    }
+
+    /// Review item: content shrink rebases the floor. A stale high floor
+    /// must not swallow future growth until the bottom climbs back past it.
+    func testContentShrinkRebasesFloorAndFollowsRegrowth() throws {
+        var controller = makeController(following: keyA)
+
+        // Establish the floor at 1000 via one correction cycle.
+        let first = try XCTUnwrap(scheduledCorrection(in: controller.layoutMetricsChanged(
+            facts: layoutFacts(
+                bottomMarkerMaxY: 1000, viewportMaxY: 800,
+                scope: controller.renderedScrollScope
+            )
+        )))
+        XCTAssertFalse(scrollCommands(controller.followCorrectionDue(first)).isEmpty)
+
+        // Content collapses to 900 while drift remains (viewport 850):
+        // the shrink must re-pin the viewport AND rebase the floor to 900.
+        let shrink = try XCTUnwrap(scheduledCorrection(in: controller.layoutMetricsChanged(
+            facts: layoutFacts(
+                bottomMarkerMaxY: 900, viewportMaxY: 850,
+                scope: controller.renderedScrollScope
+            )
+        )), "meaningful shrink with drift schedules a rebasing correction")
+        XCTAssertFalse(scrollCommands(controller.followCorrectionDue(shrink)).isEmpty)
+
+        // Unchanged residual drift after the rebase: no storm.
+        for _ in 0..<10 {
+            let effects = controller.layoutMetricsChanged(facts: layoutFacts(
+                bottomMarkerMaxY: 900, viewportMaxY: 850,
+                scope: controller.renderedScrollScope
+            ))
+            XCTAssertNil(
+                scheduledCorrection(in: effects),
+                "unchanged bottom must not re-arm after the rebase"
+            )
+        }
+
+        // Modest regrowth from the REBASED floor (915, not 1012) follows.
+        let regrown = try XCTUnwrap(scheduledCorrection(in: controller.layoutMetricsChanged(
+            facts: layoutFacts(
+                bottomMarkerMaxY: 915, viewportMaxY: 850,
+                scope: controller.renderedScrollScope
+            )
+        )), "growth past the rebased floor must re-arm")
+        XCTAssertLessThan(915, 1000, "sanity: the regrowth stays below the stale floor")
+        XCTAssertFalse(scrollCommands(controller.followCorrectionDue(regrown)).isEmpty)
+    }
+
+    /// Review item: nil→nil session events must stay inert WITHOUT
+    /// skipping restoration cleanup. Clearing the session (A → nil) is the
+    /// reachable cleanup path and must still cancel a stale restoration.
+    func testSessionClearingCancelsStaleRestorationAndNilToNilStaysInert() {
+        var controller = makeController(following: keyA)
+        _ = controller.restorationRequested(restoreRequest(for: keyA))
+        XCTAssertTrue(controller.restorationIsActive)
+
+        let cleared = controller.renderedSessionChanged(
+            to: nil,
+            identity: identity(for: nil),
+            viaNotification: false,
+            viewportTransitionGeneration: 2
+        )
+        XCTAssertTrue(
+            cleared.contains(.cancelAutomaticRestoration),
+            "clearing the session cancels a stale restoration"
+        )
+        XCTAssertNil(controller.restoration)
+
+        // A subsequent nil → nil event is fully inert: no generation bump,
+        // no drag invalidation, no scroll.
+        let before = controller.generation
+        let inert = controller.renderedSessionChanged(
+            to: nil,
+            identity: identity(for: nil),
+            viaNotification: false,
+            viewportTransitionGeneration: 3
+        )
+        XCTAssertTrue(inert.isEmpty)
+        XCTAssertEqual(controller.generation, before)
     }
 }

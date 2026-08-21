@@ -28,18 +28,24 @@ import XCTest
 enum MarkdownShowcaseFixtures {
     /// A GFM table with every alignment form, `rows` rows × `columns`
     /// columns. Cell text is ASCII so the byte math stays predictable.
-    static func alignedTable(section: Int, rows: Int, columns: Int) -> String {
+    static func alignedTable(
+        section: Int,
+        rows: Int,
+        columns: Int,
+        cellPadding: Int = 0
+    ) -> String {
         let header = (0..<columns).map { "H\($0)" }.joined(separator: " | ")
         let alignment = (0..<columns).map { c in
             [":---", ":---:", "---:"][c % 3]
         }.joined(separator: " | ")
+        let filler = cellPadding > 0 ? String(repeating: "x", count: cellPadding) : ""
         var lines = [
             "| \(header) |",
             "| \(alignment) |",
         ]
         for r in 0..<rows {
             let cells = (0..<columns)
-                .map { "s\(section)-r\(r)c\($0)" }
+                .map { "s\(section)-r\(r)c\($0)\(filler)" }
                 .joined(separator: " | ")
             lines.append("| \(cells) |")
         }
@@ -304,8 +310,9 @@ final class MarkdownRichContentPolicyTests: XCTestCase {
 
         // The aggregate rich budget engages for the whole response.
         XCTAssertTrue(MarkdownRichContentPolicy.needsBounding(blocks))
+        let units = MarkdownRichContentPolicy.richUnitsByBlock(blocks)
         let cut = MarkdownRichContentPolicy.gateCut(
-            blocks: blocks,
+            unitsByBlock: units,
             unitBudget: MarkdownRichContentPolicy.eagerRichUnitBudget
         )
         XCTAssertNotNil(cut)
@@ -316,8 +323,8 @@ final class MarkdownRichContentPolicyTests: XCTestCase {
         // Reveal batches eventually mount the whole response.
         XCTAssertNil(
             MarkdownRichContentPolicy.gateCut(
-                blocks: blocks,
-                unitBudget: MarkdownRichContentPolicy.totalRichUnits(blocks)
+                unitsByBlock: units,
+                unitBudget: MarkdownRichContentPolicy.totalRichUnits(units)
             )
         )
     }
@@ -325,23 +332,127 @@ final class MarkdownRichContentPolicyTests: XCTestCase {
     func testRevealBatchesProgressivelyCoverTheShowcase() {
         let source = MarkdownShowcaseFixtures.pathologicalShowcase()
         let blocks = MarkdownParser.parse(source)
+        let units = MarkdownRichContentPolicy.richUnitsByBlock(blocks)
 
         var lastCut = 0
         var budget = MarkdownRichContentPolicy.eagerRichUnitBudget
         var cuts: [Int] = []
-        while let cut = MarkdownRichContentPolicy.gateCut(blocks: blocks, unitBudget: budget) {
+        while let cut = MarkdownRichContentPolicy.gateCut(unitsByBlock: units, unitBudget: budget) {
             cuts.append(cut)
             lastCut = cut
-            budget += MarkdownRichContentPolicy.revealUnitBatch
+            budget = MarkdownRichContentPolicy.revealBudget(
+                unitsByBlock: units,
+                currentBudget: budget
+            )
             if cuts.count > 100 { XCTFail("reveal never completes"); break }
         }
         // Monotonically increasing mounts, ending with everything fitting.
         XCTAssertEqual(cuts.sorted(), cuts)
         XCTAssertGreaterThan(lastCut, 0)
         XCTAssertNil(
-            MarkdownRichContentPolicy.gateCut(blocks: blocks, unitBudget: budget),
+            MarkdownRichContentPolicy.gateCut(unitsByBlock: units, unitBudget: budget),
             "the final reveal state mounts every block"
         )
+    }
+
+    /// Item: reveal forward progress. A single gated block can cost more
+    /// than one reveal batch; one tap must still mount at least that block,
+    /// so the UI can never appear stuck.
+    func testRevealTapAdvancesPastBlockCostingMoreThanOneBatch() {
+        // Prefix that fills the eager budget, then ONE hugely expensive
+        // table (46 rows × 8 columns ≈ 6 units? no — make it expensive via
+        // a giant single-table unit cost: many complex tables in sequence
+        // is unrealistic; instead use code bytes, which scale without bound).
+        var blocks: [MarkdownBlock] = []
+        // ~16 units of ordinary tables (5×5 cells ≈ 25/64 → 1 unit each).
+        for index in 0..<16 {
+            blocks.append(.table(
+                headers: ["A", "B", "C", "D", "E"],
+                alignments: [.leading, .center, .trailing, .leading, .center],
+                rows: (0..<4).map { row in (0..<5).map { "r\(row)c\($0)-i\(index)" } }
+            ))
+        }
+        // One block worth many batches: 80_000 × 16 B ≈ 1.28 MB of code
+        // ≈ 160 units — far beyond one 16-unit reveal batch.
+        let giantCode = String(
+            repeating: "let value = 1;\n",
+            count: 80_000
+        )
+        blocks.append(.code(language: "swift", source: giantCode))
+        // More gated content after it, so the gate persists past the jump.
+        for index in 0..<3 {
+            blocks.append(.table(
+                headers: ["A", "B", "C", "D", "E"],
+                alignments: [.leading, .center, .trailing, .leading, .center],
+                rows: (0..<4).map { row in (0..<5).map { "after\(index)-r\(row)c\($0)" } }
+            ))
+        }
+        blocks.append(.divider)
+
+        let units = MarkdownRichContentPolicy.richUnitsByBlock(blocks)
+        XCTAssertGreaterThan(
+            units[16],
+            MarkdownRichContentPolicy.revealUnitBatch,
+            "the gated block must cost more than one reveal batch"
+        )
+
+        let firstCut = MarkdownRichContentPolicy.gateCut(
+            unitsByBlock: units,
+            unitBudget: MarkdownRichContentPolicy.eagerRichUnitBudget
+        )
+        XCTAssertEqual(firstCut, 16, "the gate sits exactly at the expensive block")
+
+        // One tap: the budget must advance far enough to INCLUDE it.
+        let nextBudget = MarkdownRichContentPolicy.revealBudget(
+            unitsByBlock: units,
+            currentBudget: MarkdownRichContentPolicy.eagerRichUnitBudget
+        )
+        let nextCut = MarkdownRichContentPolicy.gateCut(
+            unitsByBlock: units,
+            unitBudget: nextBudget
+        )
+        XCTAssertGreaterThan(
+            nextCut ?? 0,
+            firstCut ?? 0,
+            "one reveal tap must mount at least the expensive block"
+        )
+        // Bounded: the jump covers exactly that block, not the document.
+        XCTAssertEqual(nextCut, firstCut! + 1)
+    }
+
+    /// Item: the live tail is always mounted regardless of the reveal
+    /// budget — that is what keeps streaming content visible and makes the
+    /// streaming → settled transition non-collapsing.
+    func testLiveTailAlwaysMountedRegardlessOfBudget() {
+        let source = MarkdownShowcaseFixtures.pathologicalShowcase()
+        let blocks = MarkdownParser.parse(source)
+        let units = MarkdownRichContentPolicy.richUnitsByBlock(blocks)
+
+        let tail = MarkdownRichContentPolicy.liveTailStart(unitsByBlock: units)
+        XCTAssertGreaterThan(tail, 0, "pathological showcase has a real tail window")
+        // With a zero tail budget the tail is smallest but STILL covers the
+        // final block: the newest content is always mounted, whatever it
+        // costs. (Flow blocks cost nothing, so the zero-budget tail keeps
+        // every trailing zero-unit block and stops at the first rich one.)
+        let zeroTail = MarkdownRichContentPolicy.liveTailStart(unitsByBlock: units, unitBudget: 0)
+        XCTAssertLessThan(zeroTail, blocks.count, "the zero-budget tail still excludes earlier rich blocks")
+        XCTAssertLessThanOrEqual(tail, zeroTail, "a bigger tail budget only ever mounts more blocks")
+        // The hidden gap is what the reveal button accounts for: exactly
+        // the blocks between the mounted prefix and the tail.
+        let hidden = MarkdownRichContentPolicy.hiddenBlockCount(
+            unitsByBlock: units,
+            unitBudget: MarkdownRichContentPolicy.eagerRichUnitBudget
+        )
+        let cut = MarkdownRichContentPolicy.gateCut(
+            unitsByBlock: units,
+            unitBudget: MarkdownRichContentPolicy.eagerRichUnitBudget
+        ) ?? 0
+        XCTAssertEqual(
+            hidden,
+            tail - cut,
+            "hidden blocks are exactly the gap between prefix and tail"
+        )
+        XCTAssertGreaterThan(hidden, 0)
     }
 }
 
@@ -384,30 +495,44 @@ final class MarkdownRichContentHostedTests: XCTestCase {
     }
 
     /// Performance case 4: the <100 KB pathological showcase opens through
-    /// the bounded path — the eagerly mounted block set is the gate's
-    /// bounded prefix, not the whole response.
+    /// the bounded path — the eagerly mounted block set is exactly the
+    /// bounded prefix plus the always-visible live tail, never the whole
+    /// response.
     func testPathologicalShowcaseMountsBoundedBlockSet() throws {
         // Images excluded here: their web-backed fallbacks (WKWebView) add
         // process-level cost unsuitable for a unit-test window; the pure
         // budget tests cover image accounting.
         let source = MarkdownShowcaseFixtures.pathologicalShowcase(includeImages: false)
         let blocks = MarkdownParser.parse(source)
+        let units = MarkdownRichContentPolicy.richUnitsByBlock(blocks)
         XCTAssertFalse(MarkdownLargeDocumentPolicy.isLargeDocument(source))
-        XCTAssertTrue(MarkdownRichContentPolicy.needsBounding(blocks))
+        XCTAssertTrue(MarkdownRichContentPolicy.needsBounding(unitsByBlock: units))
 
         _ = mountMarkdown { MarkdownText(source: source) }
 
+        let cut = try XCTUnwrap(
+            MarkdownRichContentPolicy.gateCut(
+                unitsByBlock: units,
+                unitBudget: MarkdownRichContentPolicy.eagerRichUnitBudget
+            )
+        )
+        let tail = MarkdownRichContentPolicy.liveTailStart(unitsByBlock: units)
+        let expectedMounted = cut + (blocks.count - tail)
         let mounted = RichBudgetedMarkdownBody.debugMountedBlockCount
         XCTAssertEqual(
             mounted,
-            MarkdownRichContentPolicy.gateCut(
-                blocks: blocks,
-                unitBudget: MarkdownRichContentPolicy.eagerRichUnitBudget
-            )!,
-            "the hosted render mounts exactly the gate's bounded prefix"
+            expectedMounted,
+            "the hosted render mounts exactly the bounded prefix plus the live tail"
         )
+        // Bounded: well under the whole pathological response, even though
+        // the newest content stays visible.
         XCTAssertLessThan(mounted, blocks.count)
-        XCTAssertLessThan(mounted, blocks.count / 2)
+        XCTAssertLessThan(mounted, blocks.count * 3 / 5)
+        // The live tail really is the tail: the final block is mounted.
+        XCTAssertTrue(
+            RichBudgetedMarkdownBody.debugMountedBlockIndices.contains(blocks.count - 1),
+            "the newest block (streaming read position) must stay mounted"
+        )
     }
 
     /// Ordinary rich messages keep mounting everything (performance cases
@@ -427,20 +552,83 @@ final class MarkdownRichContentHostedTests: XCTestCase {
         XCTAssertGreaterThan(blocks.count, 5)
     }
 
-    /// While streaming, the gate is bypassed so the live tail can never sit
-    /// behind a reveal button; growth stays incremental per frame
-    /// (performance case 6 companion).
-    func testStreamingShowcaseBypassesTheGate() throws {
+    /// The streaming → settled transition never unmounts visible content:
+    /// the mounted set is derived from block structure and reveal budget
+    /// alone, so a response that was streaming mounts EXACTLY what the
+    /// settled render mounts — no collapse to the initial budget.
+    func testStreamingToSettledKeepsTheMountedSet() throws {
         let source = MarkdownShowcaseFixtures.pathologicalShowcase(sections: 6, includeImages: false)
         let blocks = MarkdownParser.parse(source)
-        XCTAssertTrue(MarkdownRichContentPolicy.needsBounding(blocks))
+        let units = MarkdownRichContentPolicy.richUnitsByBlock(blocks)
+        XCTAssertTrue(MarkdownRichContentPolicy.needsBounding(unitsByBlock: units))
 
         _ = mountMarkdown { MarkdownText(source: source, isStreaming: true) }
+        let streamingIndices = RichBudgetedMarkdownBody.debugMountedBlockIndices
+        XCTAssertFalse(streamingIndices.isEmpty)
+
+        _ = mountMarkdown { MarkdownText(source: source) }
+        let settledIndices = RichBudgetedMarkdownBody.debugMountedBlockIndices
 
         XCTAssertEqual(
-            RichBudgetedMarkdownBody.debugMountedBlockCount,
-            blocks.count,
-            "streaming renders through the ungated body"
+            settledIndices,
+            streamingIndices,
+            "settling must not unmount any block the streaming render showed"
         )
+        // And both are bounded: not the whole pathological response.
+        XCTAssertLessThan(streamingIndices.count, blocks.count)
+    }
+
+    /// Crossing the structural complexity threshold must not change whether
+    /// a fitting table fits: the paged LargeMarkdownTable resolves columns
+    /// from the same real container width as the ordinary MarkdownTable, so
+    /// a table that fits 390 pt keeps fitting (no horizontal scroll), while
+    /// a genuinely wide table still overflows and scrolls.
+    func testPagedTablePreservesViewportFitBehavior() throws {
+        // Complex by row count (46 rows), content whose ideal column widths
+        // exceed the container but SHRINK to fit when the real width is
+        // known. With the pre-fix unknown/zero width these columns capped
+        // instead of shrinking and the table became horizontally scrollable.
+        let fitting = MarkdownShowcaseFixtures.alignedTable(
+            section: 0, rows: 46, columns: 3, cellPadding: 24
+        )
+        _ = mountMarkdown { MarkdownText(source: fitting) }
+        let fittingWidth = try XCTUnwrap(widestLaidOutSubviewWidth())
+        XCTAssertLessThanOrEqual(
+            fittingWidth,
+            392,
+            "a table that fits the 390 pt container must keep fitting when paged"
+        )
+
+        // Genuinely wide table (8 columns of the same cells): must still
+        // overflow into horizontal scrolling.
+        let wide = MarkdownShowcaseFixtures.alignedTable(
+            section: 1, rows: 46, columns: 8, cellPadding: 24
+        )
+        _ = mountMarkdown { MarkdownText(source: wide) }
+        let wideWidth = try XCTUnwrap(widestLaidOutSubviewWidth())
+        XCTAssertGreaterThan(
+            wideWidth,
+            395,
+            "a genuinely wide table must still horizontally scroll"
+        )
+    }
+
+    /// Widest UIView frame in the currently hosted hierarchy — the honest
+    /// signal for "did table content overflow the container", since a
+    /// horizontal ScrollView's own frame always matches the proposal while
+    /// its content views lay out at natural width.
+    private func widestLaidOutSubviewWidth() -> CGFloat? {
+        guard let root = testWindow?.rootViewController?.view else { return nil }
+        var widest: CGFloat?
+        func walk(_ view: UIView) {
+            if view.frame.width > (widest ?? 0) {
+                widest = view.frame.width
+            }
+            for subview in view.subviews {
+                walk(subview)
+            }
+        }
+        walk(root)
+        return widest
     }
 }

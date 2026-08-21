@@ -78,22 +78,25 @@ struct MarkdownText: View {
                     linkColor: usesAccentSurface ? .white : .link
                 )
                 .frame(maxWidth: .infinity, alignment: .leading)
-            } else if MarkdownRichContentPolicy.needsBounding(rendering.blocks) {
+            } else if rendering.needsRichBounding {
                 // Byte-ordinary but structurally pathological rich content:
                 // identical block rendering behind a bounded mount budget
                 // (see MarkdownRichContent.swift). Plain flow messages can
                 // never reach here — they take the selectableText branch —
-                // and ordinary rich messages stay under the budget.
+                // and ordinary rich messages stay under the budget. The
+                // decision and the per-block unit vector come from the
+                // cached rendering, so re-evaluations never re-walk the
+                // blocks.
                 RichBudgetedMarkdownBody(
                     blocks: rendering.blocks,
                     source: source,
+                    richUnitsByBlock: rendering.richUnitsByBlock,
                     foregroundStyle: foregroundStyle,
                     usesAccentSurface: usesAccentSurface,
                     gatewayMediaDataURL: gatewayMediaDataURL,
                     selectionCoordinator: selectionCoordinator,
                     selectionSegments: selectionSegments,
-                    newestCharacterOpacities: newestCharacterOpacities,
-                    isStreaming: isStreaming
+                    newestCharacterOpacities: newestCharacterOpacities
                 )
             } else {
                 VStack(alignment: .leading, spacing: 10) {
@@ -209,17 +212,33 @@ private final class MarkdownSelectionHighlightView: UIView {
 
 /// One render's parsed blocks plus the prebuilt selectable string (nil when
 /// the blocks need the full block-view path). A class so NSCache can hold it.
+///
+/// Structural rich-content metadata (the per-block rich-unit vector) is
+/// computed ONCE here, with the parse, and cached with the rendering — the
+/// exact pathological Markdown this bounding exists for used to re-walk
+/// every table's cells on each SwiftUI body re-evaluation just to
+/// rediscover the same budget (see MarkdownRichContentPolicy).
 private final class MarkdownRendering {
     let blocks: [MarkdownBlock]
     /// The message's link reference definitions; block views need them to
     /// resolve reference-style links when re-parsing each fragment.
     let references: MarkdownReferenceContext
     let selectableText: NSAttributedString?
+    /// Per-block rich-layout units (MarkdownRichContentPolicy.richUnits),
+    /// aligned with blocks by index.
+    let richUnitsByBlock: [Int]
+
+    /// Whether this message's aggregate rich complexity exceeds the
+    /// progressive-mount budget.
+    var needsRichBounding: Bool {
+        MarkdownRichContentPolicy.needsBounding(unitsByBlock: richUnitsByBlock)
+    }
 
     init(blocks: [MarkdownBlock], references: MarkdownReferenceContext, selectableText: NSAttributedString?) {
         self.blocks = blocks
         self.references = references
         self.selectableText = selectableText
+        self.richUnitsByBlock = MarkdownRichContentPolicy.richUnitsByBlock(blocks)
     }
 }
 
@@ -1233,6 +1252,25 @@ enum MarkdownTableLayout {
     }
 }
 
+/// The zero-height width probe shared by BOTH table presentations: the
+/// chat's proposed width for the block, read once per layout width change.
+/// Extracted so the ordinary MarkdownTable and the paged
+/// LargeMarkdownTable resolve columns from the SAME container-width
+/// knowledge — crossing the structural complexity threshold must not
+/// change whether a previously fitting table fits.
+private struct MarkdownTableWidthProbe: View {
+    @Binding var width: CGFloat
+
+    var body: some View {
+        GeometryReader { proxy in
+            Color.clear
+                .onAppear { width = proxy.size.width }
+                .onChange(of: proxy.size.width) { _, newWidth in width = newWidth }
+        }
+        .frame(height: 0)
+    }
+}
+
 private struct MarkdownTable: View {
     let headers: [String]
     let alignments: [MarkdownTableAlignment]
@@ -1261,12 +1299,7 @@ private struct MarkdownTable: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            GeometryReader { proxy in
-                Color.clear
-                    .onAppear { availableWidth = proxy.size.width }
-                    .onChange(of: proxy.size.width) { _, width in availableWidth = width }
-            }
-            .frame(height: 0)
+            MarkdownTableWidthProbe(width: $availableWidth)
 
             let widths = columnWidths
             ScrollView(.horizontal, showsIndicators: false) {
@@ -1375,6 +1408,14 @@ struct LargeMarkdownTable: View {
     let selectionSegments: [MarkdownSelectionSegmentDescriptor]
 
     @State private var renderedRowCount: Int
+    /// The chat's proposed width for this block, read by the SAME zero-height
+    /// probe the ordinary MarkdownTable uses. Crossing the structural
+    /// complexity threshold (rows/cells/bytes) must not change whether a
+    /// previously fitting table fits: with the real container width the
+    /// shared layout engine's fit-or-shrink behavior applies identically in
+    /// both presentations. Zero means "unknown yet" (first pass); the
+    /// cap-and-scroll fallback re-resolves a frame later.
+    @State private var availableWidth: CGFloat = 0
     @Environment(\.markdownReferences) private var references
 
     init(
@@ -1416,7 +1457,7 @@ struct LargeMarkdownTable: View {
             rows: Array(rows.prefix(Self.widthSampleRows)).map {
                 $0.map { MarkdownLargeDocumentPolicy.boundedDisplayText($0, maxBytes: ceiling) }
             },
-            availableWidth: 0,
+            availableWidth: availableWidth,
             references: references
         )
     }
@@ -1437,6 +1478,8 @@ struct LargeMarkdownTable: View {
         // the header share the same resolved (bounded) widths.
         let widths = columnWidths
         return VStack(spacing: 0) {
+            MarkdownTableWidthProbe(width: $availableWidth)
+
             ScrollView(.horizontal, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
                     MarkdownTableRowView(
