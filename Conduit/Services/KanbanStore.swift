@@ -241,6 +241,14 @@ final class KanbanStore: ObservableObject {
         return try await service.fetchTaskLog(id: id, board: loadedBoardSlug ?? effectiveBoardSlug, tailBytes: tailBytes)
     }
 
+    /// Provider/model roster for the per-task override picker. Read-only
+    /// auxiliary data: failures are surfaced to the caller (the picker falls
+    /// back to free-text entry) but never touch board state.
+    func fetchModelOptions() async throws -> [KanbanModelProviderOption] {
+        guard let service else { throw KanbanServiceError.invalidResponse("Kanban is not connected.") }
+        return try await service.fetchModelOptions()
+    }
+
     @discardableResult
     func createTask(
         _ request: KanbanCreateTaskRequest,
