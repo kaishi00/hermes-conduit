@@ -434,11 +434,11 @@ final class KanbanV2Tests: XCTestCase {
         let row = KanbanActivityFormatter.row(
             for: makeEvent(kind: "quantum_sync", payload: ["shard": .string("a"), "level": .number(2)])
         )
-        XCTAssertEqual(row.label, "quantum sync", "unknown kinds become readable words")
+        XCTAssertEqual(row.label, "Quantum Sync", "unknown kinds become readable words")
         XCTAssertEqual(row.detail, "level=2 shard=a", "scalar payload folds into detail; no raw JSON dump, no crash")
 
         let emptyRow = KanbanActivityFormatter.row(for: makeEvent(kind: "mystery"))
-        XCTAssertEqual(emptyRow.label, "mystery")
+        XCTAssertEqual(emptyRow.label, "Mystery")
         XCTAssertNil(emptyRow.detail)
     }
 
@@ -535,6 +535,57 @@ final class KanbanV2Tests: XCTestCase {
         XCTAssertEqual(options.count, 1)
         XCTAssertEqual(options[0].slug, "openai")
         XCTAssertEqual(options[0].models, ["gpt-a", "gpt-b"])
+    }
+
+
+    // MARK: - Review-pass hardening (render cap, walker termination, wire contracts)
+
+    func testRenderTailStaysWithinBudgetEvenWithoutNewlines() {
+        let budget = KanbanWorkerLogScreen.maxRenderedCharacters
+        // Exactly at budget: returned verbatim, no marker.
+        XCTAssertEqual(KanbanWorkerLogScreen.renderTail(String(repeating: "a", count: budget)).count, budget)
+        // One over budget with NO newline anywhere: must still be capped.
+        let rendered = KanbanWorkerLogScreen.renderTail(String(repeating: "x", count: budget + 1))
+        XCTAssertLessThanOrEqual(rendered.count, budget)
+        XCTAssertTrue(rendered.hasPrefix("[older output omitted]"))
+    }
+
+    func testRenderTailResumesAtLineBoundaryWhenAvailable() {
+        let budget = KanbanWorkerLogScreen.maxRenderedCharacters
+        var content = String(repeating: "=", count: budget - 10)
+        content += "\nNEWEST LINE"
+        let rendered = KanbanWorkerLogScreen.renderTail(content)
+        XCTAssertTrue(rendered.hasSuffix("NEWEST LINE"))
+        XCTAssertFalse(rendered.contains("======="), "mid-line prefix is trimmed to the line boundary")
+    }
+
+    func testHostileActionsArrayTerminatesDecoding() throws {
+        // Every element is scalar junk: neither typed decode nor the AnyCodable
+        // consumer has an easy row; the bounded walker must still terminate.
+        let json = "{" +
+            "\"id\":\"t1\",\"title\":\"x\",\"status\":\"blocked\"," +
+            "\"diagnostics\":[{\"kind\":\"k\",\"severity\":\"error\",\"title\":\"T\",\"detail\":\"D\",\"count\":1," +
+            "\"actions\":[1, true, \"text\", null]}]}"
+        let task = try JSONDecoder().decode(KanbanTask.self, from: Data(json.utf8))
+        XCTAssertEqual(task.diagnostics?.first?.actions.count, 0, "scalar junk normalizes to no actions")
+    }
+
+    func testModelOnlyPatchOmitsProviderSoBackendNullsIt() {
+        // Backend contract (kanban_db.set_model_override): a PATCH carrying
+        // model_override without provider_override writes provider=NULL — the
+        // stale provider cannot survive a model-only edit. Conduit matches by
+        // OMITTING the field (never sending "").
+        let serverTask = makeTask(id: "t1", extra: [
+            "model_override": "old-model",
+            "provider_override": "old-provider"
+        ])
+        let patch = TaskModelOverride.patch(
+            from: serverTask,
+            to: TaskModelOverride(model: "new-model")
+        )
+        XCTAssertEqual(patch.modelOverride, "new-model")
+        XCTAssertNil(patch.providerOverride, "omitted on the wire so the backend nulls the stored provider")
+        XCTAssertFalse(patch.clearModelOverride)
     }
 
     // MARK: - Helpers

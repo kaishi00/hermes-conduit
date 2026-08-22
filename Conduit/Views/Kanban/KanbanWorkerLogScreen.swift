@@ -111,14 +111,20 @@ struct KanbanWorkerLogScreen: View {
 
     /// Keeps the NEWEST output when the fetched tail still exceeds the render
     /// budget, prefixing an explicit omission marker instead of freezing the
-    /// phone on a giant string.
+    /// phone on a giant string. The marker is accounted against the budget so
+    /// the returned string NEVER exceeds `maxRenderedCharacters`, newline or
+    /// not.
     static func renderTail(_ content: String) -> String {
         guard content.count > maxRenderedCharacters else { return content }
-        let suffix = String(content.suffix(maxRenderedCharacters))
-        // Avoid starting mid-line.
+        let marker = "[older output omitted]"
+        // Reserve room for the marker up front so no path can exceed budget.
+        // Clamped so even a hypothetical tiny budget cannot underflow.
+        let suffix = String(content.suffix(max(0, maxRenderedCharacters - marker.count)))
+        // Avoid starting mid-line; a tail with no newline at all still stays
+        // within budget because the slice was already sized for it.
         let firstNewline = suffix.firstIndex(of: "\n")
         let trimmed = firstNewline.map { String(suffix[$0...]) } ?? suffix
-        return "[older output omitted]" + trimmed
+        return marker + trimmed
     }
 
     private func load(scrollProxy: ScrollViewProxy? = nil) async {
@@ -128,7 +134,12 @@ struct KanbanWorkerLogScreen: View {
         do {
             // Board context comes pinned from the store's loaded snapshot.
             log = try await store.fetchTaskLog(id: taskID, tailBytes: Self.tailBytes)
+            // One run-loop turn lets SwiftUI lay out the (possibly huge)
+            // monospaced text before we jump to the bottom; bail out if the
+            // screen was dismissed during that window instead of scrolling a
+            // dead proxy.
             try? await Task.sleep(nanoseconds: 120_000_000)
+            guard !Task.isCancelled else { return }
             scrollProxy?.scrollTo("logBottom", anchor: .bottom)
         } catch {
             errorMessage = error.localizedDescription

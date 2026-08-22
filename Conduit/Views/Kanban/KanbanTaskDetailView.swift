@@ -163,7 +163,13 @@ struct KanbanTaskDetailView: View {
             }
             .onChange(of: displayedTaskID) { _, newValue in
                 guard newValue != detail?.task.id else { return }
+                // Identity switch (dependency tap): drop everything the old
+                // identity owned BEFORE the replacement load starts, so the
+                // old poll's completion can neither repopulate collections nor
+                // flash its errors onto the new screen.
                 detail = nil
+                isLoadingDetail = false
+                isSaving = false
                 title = ""
                 taskBody = ""
                 status = "todo"
@@ -731,13 +737,21 @@ struct KanbanTaskDetailView: View {
     private func loadDetail(force: Bool = false) async {
         // A poll never runs underneath an active save/comment write.
         guard force || (!isSaving && !isAddingComment && !isRequeuing), !isLoadingDetail else { return }
+        // Freeze THIS fetch's identity up front. If the operator taps a
+        // dependency mid-flight, every completion below is discarded: no
+        // data, no error text, no baseline churn may cross identities.
+        let expectedID = displayedTaskID
         isLoadingDetail = true
-        defer { isLoadingDetail = false }
+        // A STALE completion must not clear the replacement load's spinner:
+        // only the current identity may release the flag.
+        defer {
+            if displayedTaskID == expectedID { isLoadingDetail = false }
+        }
         do {
-            let loaded = try await store.fetchTaskDetail(id: displayedTaskID)
-            guard loaded.task.id == displayedTaskID || loaded.task.id.isEmpty else {
-                // A stale completion for the PREVIOUS displayed task must be
-                // discarded, not rendered under the new one.
+            let loaded = try await store.fetchTaskDetail(id: expectedID)
+            guard displayedTaskID == expectedID else { return }
+            guard loaded.task.id == expectedID || loaded.task.id.isEmpty else {
+                // Defensive double-check against a server-side id mismatch.
                 return
             }
             let server = loaded.task
@@ -764,7 +778,12 @@ struct KanbanTaskDetailView: View {
             }
             detail = loaded
             refreshErrorMessage = nil
+        } catch is CancellationError {
+            // The poll loop was replaced (identity switch or dismissal); its
+            // cancellation must never render as a user-facing failure.
+            return
         } catch {
+            guard displayedTaskID == expectedID else { return }
             if detail == nil {
                 errorMessage = error.localizedDescription
             } else {

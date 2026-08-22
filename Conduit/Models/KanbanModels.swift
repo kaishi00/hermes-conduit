@@ -127,8 +127,12 @@ struct KanbanDiagnostic: Codable, Equatable {
         } else if var walker = try? container.nestedUnkeyedContainer(forKey: .actions) {
             // Some element was hostile: walk manually, keeping every row we
             // can normalize and consuming the rest so iteration continues.
+            // The counter guarantees termination even against payloads where
+            // both decode attempts fail without advancing the cursor.
             var decoded: [KanbanDiagnosticAction] = []
-            while !walker.isAtEnd {
+            var safetyCounter = 0
+            while !walker.isAtEnd && safetyCounter < 10_000 {
+                safetyCounter += 1
                 if let action = try? walker.decode(KanbanDiagnosticAction.self) {
                     decoded.append(action)
                 } else {
@@ -139,6 +143,8 @@ struct KanbanDiagnostic: Codable, Equatable {
         } else {
             actions = []
         }
+        // Absent/lost count renders as 1 (never "×N"), matching how the
+        // drawer treats single occurrences; 0 would hide real repeats.
         count = container.decodeLossyInt(forKey: .count) ?? 1
         lastSeenAt = container.decodeLossyInt(forKey: .lastSeenAt)
         data = try? container.decodeIfPresent([String: AnyCodable].self, forKey: .data)

@@ -230,15 +230,11 @@ enum KanbanAssigneeSelection: Equatable, Hashable {
         }
     }
 
-    /// Reassign endpoint value: nil/"" unassigns upstream, so Parked maps to
-    /// nil there as well.
-    var reassignProfile: String? {
-        switch self {
-        case .inheritDefault: return nil
-        case .profile(let name): return name
-        case .parked: return nil
-        }
-    }
+    // NOTE: there is deliberately no "reassign value" accessor here. The
+    // reassign ENDPOINT treats nil/"" as UNASSIGN (upstream ReassignBody),
+    // which is NOT interchangeable with the create-time Default resolution.
+    // Mixing those semantics could silently park a task; reassignment takes
+    // an explicit profile name or an explicit unassign, nothing else.
 }
 
 // MARK: - Composer draft
@@ -336,11 +332,9 @@ enum KanbanComposerValidator {
         }
 
         // Blank/duplicate skill entries are dropped by sanitization (upstream
-        // splits a comma list and filters empties); anything surviving with
-        // no content is a programming error worth surfacing.
-        for skill in sanitizedSkills(draft.skills) where skill.isEmpty {
-            throw KanbanDraftValidationError.invalidSkill(skill)
-        }
+        // splits a comma list and filters empties), so there is nothing to
+        // reject per-skill here; makeRequest serializes exactly what this
+        // validation accepts via the same sanitizer.
 
         // Duplicate parent check runs against the RAW draft values so a view
         // bug cannot silently collapse two intended dependencies into one.
@@ -370,18 +364,24 @@ enum KanbanComposerValidator {
     ) throws -> KanbanCreateTaskRequest {
         try validate(draft)
 
+        // Sanitize exactly once and reuse the results so validation and wire
+        // serialization can never disagree about what was accepted.
+        let skills = sanitizedSkills(draft.skills)
+        let parents = sanitizedParents(draft.parents)
+
         let bodyText = draft.body.trimmingCharacters(in: .whitespacesAndNewlines)
         let path = draft.workspacePath.trimmingCharacters(in: .whitespacesAndNewlines)
         var request = KanbanCreateTaskRequest(
             title: draft.trimmedTitle,
-            body: bodyText.isEmpty ? nil : draft.body,
+            // Trimmed for the wire (upstream sends body.trim() || undefined).
+            body: bodyText.isEmpty ? nil : bodyText,
             assignee: draft.assignee.requestValue(resolvedDefaultAssignee: resolvedDefaultAssignee),
             priority: max(0, draft.priority),
             workspaceKind: draft.workspaceKind.rawValue,
             workspacePath: draft.workspaceKind.allowsPathOverride && !path.isEmpty ? path : nil,
-            parents: sanitizedParents(draft.parents),
+            parents: parents,
             triage: false,
-            skills: sanitizedSkills(draft.skills).isEmpty ? nil : sanitizedSkills(draft.skills),
+            skills: skills.isEmpty ? nil : skills,
             goalMode: draft.goalMode,
             // Goal turns only travel when Goal Mode is on (upstream leaves the
             // field nil otherwise).
@@ -481,7 +481,7 @@ enum KanbanActivityFormatter {
             }
             .sorted()
             .joined(separator: " ")
-            let label = event.kind.replacingOccurrences(of: "_", with: " ")
+            let label = event.kind.replacingOccurrences(of: "_", with: " ").capitalized
             return Row(label: label, detail: scalars.isEmpty ? nil : scalars)
         }
     }

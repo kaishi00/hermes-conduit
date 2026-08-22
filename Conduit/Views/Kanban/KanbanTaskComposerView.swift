@@ -233,14 +233,17 @@ struct KanbanTaskComposerView: View {
     private var goalModeRows: some View {
         Toggle("Goal Mode", isOn: $draft.goalMode)
         if draft.goalMode {
+            // Symmetric ladder: Unlimited -> 5 -> 10 -> 15 … and back down to
+            // Unlimited; both directions walk the same rungs.
             Stepper(
                 "Max turns: \(draft.goalMaxTurns.map(String.init) ?? "Unlimited")",
                 onIncrement: {
-                    draft.goalMaxTurns = min(10_000, (draft.goalMaxTurns ?? 10) + 5)
+                    let base = draft.goalMaxTurns ?? 0
+                    draft.goalMaxTurns = min(10_000, base + 5)
                 },
                 onDecrement: {
-                    let current = draft.goalMaxTurns ?? 10
-                    draft.goalMaxTurns = current <= 1 ? nil : max(1, current - 5)
+                    guard let current = draft.goalMaxTurns else { return }
+                    draft.goalMaxTurns = current <= 5 ? nil : current - 5
                 }
             )
             .accessibilityHint("Bounds how long the Goal Mode worker may loop")
@@ -301,8 +304,13 @@ struct KanbanTaskComposerView: View {
     }
 
     private func parentTitle(for id: String) -> String {
-        let title = store.board?.columns.flatMap(\.tasks).first(where: { $0.id == id })?.title
-        return title?.isEmpty == false ? title! : KanbanShortID.of(id)
+        guard let title = store.board?.columns.flatMap(\.tasks).first(where: { $0.id == id })?.title,
+              !title.isEmpty else {
+            // Parent left the snapshot (or was filtered); the short ID stays
+            // a stable, honest label until the next board load.
+            return KanbanShortID.of(id)
+        }
+        return title
     }
 
     private var laneSection: some View {
@@ -369,7 +377,9 @@ struct KanbanTaskComposerView: View {
         }
         // Double-submission guard: the saving flag disables re-entry while the
         // request is in flight, and `didCreate` flips the button to Done.
-        .disabled(draft.trimmedTitle.isEmpty && !didCreate || isSaving)
+        // Parentheses make the intended grouping explicit:
+        // (empty title AND not-yet-created) OR saving right now.
+        .disabled((draft.trimmedTitle.isEmpty && !didCreate) || isSaving)
     }
 
     private func seedWorkspaceFromBoard() {
@@ -377,7 +387,10 @@ struct KanbanTaskComposerView: View {
         guard let metadata = boardMetadata else { return }
         // Derive the initial editor value from the board's REAL configured
         // default (desktop parity), falling back to scratch only when the
-        // board carries no default workspace kind.
+        // board carries no default workspace kind. Deliberately ONCE: after
+        // this first seed the selection belongs to the operator — silently
+        // rewriting it because board metadata refreshed mid-composition
+        // would discard an explicit choice.
         draft.workspaceKind = KanbanWorkspaceKind.initialKind(boardDefault: metadata.defaultWorkspaceKind)
         didSeedWorkspaceFromBoard = true
     }

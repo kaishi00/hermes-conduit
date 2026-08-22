@@ -422,6 +422,16 @@ private struct KanbanCardView: View {
                                 Label(status.displayName, systemImage: status.systemImage)
                             }
                         }
+                        // The CURRENT lane stays visible but inert, matching
+                        // desktop StatusMenu (name === status || !locked): a
+                        // non-control child renders as a disabled Menu row.
+                        HStack {
+                            Label(presentation.displayName, systemImage: presentation.systemImage)
+                            Spacer()
+                            Image(systemName: "checkmark")
+                        }
+                        .foregroundStyle(.secondary)
+                        .accessibilityHint("Current lane")
                     }
                     Section {
                         Button {
