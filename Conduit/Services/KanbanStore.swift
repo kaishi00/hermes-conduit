@@ -48,6 +48,8 @@ final class KanbanStore: ObservableObject {
         serverIdentity: String = ""
     ) {
         guard let requester else {
+            loadGeneration &+= 1
+            isLoading = false
             service = nil
             requesterID = nil
             board = nil
@@ -63,6 +65,10 @@ final class KanbanStore: ObservableObject {
             return
         }
 
+        // Invalidate any cancelled load from the previous bridge/profile. Its
+        // response must not repopulate this store after the profile changes.
+        loadGeneration &+= 1
+        isLoading = false
         self.service = KanbanService(requester: requester, profile: normalizedProfile)
         requesterID = identity
         self.profile = normalizedProfile
