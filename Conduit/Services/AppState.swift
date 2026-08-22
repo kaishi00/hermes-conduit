@@ -8659,6 +8659,33 @@ enum CapabilityLoadPolicy {
     static func shouldPresentRows(snapshotProfile: String?, activeProfile: String) -> Bool {
         snapshotProfile == activeProfile
     }
+
+    /// Final rendering boundary for the Capabilities screen. Foreign or absent
+    /// snapshots can never resolve to a row-bearing state - toggles must never
+    /// appear under a profile they do not belong to.
+    enum PresentationState: Equatable {
+        case loading
+        case failure(String)
+        case emptySuccess
+        case list(banner: String?)
+    }
+
+    static func resolvePresentation(
+        snapshotProfile: String?,
+        activeProfile: String,
+        isLoading: Bool,
+        loadError: String?,
+        hasRows: Bool
+    ) -> PresentationState {
+        guard shouldPresentRows(snapshotProfile: snapshotProfile, activeProfile: activeProfile) else {
+            // Foreign/no snapshot: even a settled foreign error belongs to the
+            // other profile, so show loading until THIS profile settles.
+            return .loading
+        }
+        if hasRows { return .list(banner: loadError) }
+        if let loadError { return .failure(loadError) }
+        return .emptySuccess
+    }
 }
 
 enum AttachmentHelper {
