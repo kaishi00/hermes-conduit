@@ -431,7 +431,7 @@ private struct LegacySettingsView: View {
 // MARK: - Settings home and detail routes
 
 private enum SettingsDestination: Hashable {
-    case profile, model, chat, voice, workspace, memory, gateway, appearance, notifications, about
+    case profile, model, chat, voice, workspace, memory, capabilities, gateway, appearance, notifications, about
 }
 
 private enum ProfileSettingControl {
@@ -551,6 +551,8 @@ struct SettingsView: View {
                 loadModels: loadProfileModelDefaults,
                 fields: Self.memoryFields
             )
+        case .capabilities:
+            CapabilitiesView()
         case .gateway:
             GatewaySettingsDetail(snapshot: snapshot, reconnect: reconnect, disconnect: disconnect, close: { dismiss() }, saveCloudflareAccess: appState.saveCloudflareAccess, removeCloudflareAccess: appState.removeCloudflareAccess)
         case .appearance:
@@ -602,6 +604,7 @@ private struct SettingsHome: View {
                         settingsLink(.voice, icon: "mic.and.signal.meter", title: "Voice", detail: "Speech providers, credentials, and device opt-in")
                         settingsLink(.workspace, icon: "folder", title: "Workspace & safety", detail: "Working directory, approvals, and privacy")
                         settingsLink(.memory, icon: "brain.head.profile", title: "Memory & delegation", detail: "Memory, compression, and child agents")
+                        settingsLink(.capabilities, icon: "puzzlepiece.extension", title: "Capabilities", detail: "Skills, toolsets, and categories")
                     }
                     homeSection("Connection", tint: .conduitAura) {
                         settingsLink(.gateway, icon: "radio", title: "Gateway", detail: snapshot.server ?? "Not connected")
