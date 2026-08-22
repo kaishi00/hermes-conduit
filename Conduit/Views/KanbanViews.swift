@@ -1,5 +1,10 @@
 import SwiftUI
 
+enum KanbanPollingPolicy {
+    static let boardIntervalNanoseconds: UInt64 = 8_000_000_000
+    static let detailIntervalNanoseconds: UInt64 = 4_000_000_000
+}
+
 struct KanbanView: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var store = KanbanStore()
@@ -13,6 +18,14 @@ struct KanbanView: View {
         appState.dashboardTicketBridge.map { ObjectIdentifier($0) }
     }
 
+    private var configurationKey: String {
+        "\(String(describing: bridgeIdentity))|\(appState.dashboardTicketBridge?.baseURL ?? "")|\(appState.activeProfile)"
+    }
+
+    private var pollingKey: String {
+        "\(configurationKey)|archived=\(includeArchived)"
+    }
+
     private var visibleColumns: [KanbanColumn] {
         guard let board = store.board else { return [] }
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -24,6 +37,7 @@ struct KanbanView: View {
                 tasks: column.tasks.filter {
                     $0.title.localizedCaseInsensitiveContains(query)
                         || $0.body?.localizedCaseInsensitiveContains(query) == true
+                        || $0.latestSummary?.localizedCaseInsensitiveContains(query) == true
                         || $0.assignee?.localizedCaseInsensitiveContains(query) == true
                 }
             )
@@ -75,17 +89,28 @@ struct KanbanView: View {
                     }
                     .refreshable { await store.refresh(includeArchived: includeArchived) }
                     .overlay(alignment: .topTrailing) {
-                        if let errorMessage = store.errorMessage {
-                            Text(errorMessage)
+                        VStack(alignment: .trailing, spacing: 6) {
+                            if let mutationError = store.mutationErrorMessage {
+                                HStack(spacing: 6) {
+                                    Text(mutationError)
+                                    Button { store.clearMutationError() } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                    }
+                                    .buttonStyle(.plain)
+                                }
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(.red)
                                 .padding(8)
                                 .background(.ultraThinMaterial, in: Capsule())
-                                .padding(.top, 4)
+                            } else if let refreshError = store.errorMessage {
+                                Text("Refresh failed: \(refreshError)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .padding(8)
+                                    .background(.ultraThinMaterial, in: Capsule())
+                            }
                         }
-                    }
-                    .onChange(of: includeArchived) { _, newValue in
-                        Task { await store.refresh(includeArchived: newValue) }
+                        .padding(.top, 4)
                     }
                 }
             } else {
@@ -108,9 +133,23 @@ struct KanbanView: View {
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }
-        .task(id: bridgeIdentity) {
-            store.configure(requester: appState.dashboardTicketBridge)
+        .task(id: pollingKey) {
+            selectedTask = nil
+            store.configure(
+                requester: appState.dashboardTicketBridge,
+                profile: appState.activeProfile,
+                serverIdentity: appState.dashboardTicketBridge?.baseURL ?? ""
+            )
             await store.reload(includeArchived: includeArchived)
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(nanoseconds: KanbanPollingPolicy.boardIntervalNanoseconds)
+                } catch {
+                    break
+                }
+                guard !Task.isCancelled else { break }
+                await store.poll(includeArchived: includeArchived)
+            }
         }
     }
 
@@ -160,7 +199,7 @@ struct KanbanView: View {
                     .frame(width: 36, height: 36)
             }
             .conduitGlassControl(cornerRadius: 14)
-            .disabled(store.isLoading)
+            .disabled(store.isLoading || store.isMutating)
             .accessibilityLabel("Refresh Kanban board")
 
             Button {
@@ -171,7 +210,7 @@ struct KanbanView: View {
                     .frame(width: 36, height: 36)
             }
             .conduitGlassControl(cornerRadius: 14, tint: .conduitAccent.opacity(0.12))
-            .disabled(store.board == nil)
+            .disabled(store.board == nil || store.isMutating)
             .accessibilityLabel("New Kanban task")
         }
 
@@ -203,7 +242,7 @@ struct KanbanView: View {
         do {
             _ = try await store.updateTask(id: task.id, patch: KanbanTaskPatch(status: status), includeArchived: includeArchived)
         } catch {
-            // The board remains visible; the store surfaces the mutation error.
+            store.showMutationError(error)
         }
     }
 
@@ -211,7 +250,7 @@ struct KanbanView: View {
         do {
             try await store.deleteTask(id: task.id, includeArchived: includeArchived)
         } catch {
-            // The board remains visible; the store surfaces the mutation error.
+            store.showMutationError(error)
         }
     }
 }
@@ -238,13 +277,15 @@ private struct KanbanColumnView: View {
                     .font(.caption.monospacedDigit().weight(.semibold))
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 0)
-                Button { onAddTask(column.name) } label: {
-                    Image(systemName: "plus")
-                        .font(.caption.weight(.bold))
+                if presentation.isTaskCreatable {
+                    Button { onAddTask(column.name) } label: {
+                        Image(systemName: "plus")
+                            .font(.caption.weight(.bold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("Add task to " + presentation.displayName)
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .accessibilityLabel("Add task to " + presentation.displayName)
             }
 
             ScrollView(.vertical, showsIndicators: false) {
@@ -279,9 +320,7 @@ private struct KanbanCardView: View {
     }
 
     private var statusOptions: [KanbanStatusPresentation] {
-        KanbanStatusPresentation.knownStatuses
-            .filter { $0 != "running" }
-            .map(KanbanStatusPresentation.forStatus)
+        KanbanStatusPresentation.manuallySelectableStatuses
     }
 
     var body: some View {
@@ -317,13 +356,13 @@ private struct KanbanCardView: View {
                 .buttonStyle(.plain)
             }
 
-            if let body = task.body, !body.isEmpty {
-                Text(body)
+            if let summary = task.latestSummary, !summary.isEmpty {
+                Text(summary)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(3)
-            } else if let summary = task.latestSummary, !summary.isEmpty {
-                Text(summary)
+            } else if let body = task.body, !body.isEmpty {
+                Text(body)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(3)
@@ -370,6 +409,7 @@ struct KanbanTaskEditorView: View {
     @State private var assignee = ""
     @State private var priority = 0
     @State private var isSaving = false
+    @State private var didCreate = false
     @State private var errorMessage: String?
 
     private var statusPresentation: KanbanStatusPresentation {
@@ -418,15 +458,19 @@ struct KanbanTaskEditorView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button(didCreate ? "Close" : "Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
-                        Task { await save() }
+                        if didCreate {
+                            dismiss()
+                        } else {
+                            Task { await save() }
+                        }
                     } label: {
-                        if isSaving { ProgressView() } else { Text("Create") }
+                        if isSaving { ProgressView() } else { Text(didCreate ? "Done" : "Create") }
                     }
-                    .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSaving)
+                    .disabled((title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !didCreate) || isSaving)
                 }
             }
         }
@@ -434,26 +478,27 @@ struct KanbanTaskEditorView: View {
 
     private func save() async {
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedTitle.isEmpty else { return }
+        guard !trimmedTitle.isEmpty, statusPresentation.isTaskCreatable else { return }
         isSaving = true
         errorMessage = nil
         defer { isSaving = false }
         do {
-            let created = try await store.createTask(
+            _ = try await store.createTask(
                 KanbanCreateTaskRequest(
                     title: trimmedTitle,
                     body: taskBody.isEmpty ? nil : taskBody,
                     assignee: assignee.isEmpty ? nil : assignee,
                     priority: priority,
                     triage: initialStatus == "triage"
-                )
+                ),
+                initialStatus: initialStatus
             )
-            if initialStatus != "todo", let id = created?.id, !id.isEmpty {
-                _ = try await store.updateTask(id: id, patch: KanbanTaskPatch(status: initialStatus))
-            }
             dismiss()
         } catch {
             errorMessage = error.localizedDescription
+            if let kanbanError = error as? KanbanServiceError, case .taskCreatedButMoveFailed = kanbanError {
+                didCreate = true
+            }
         }
     }
 }
@@ -469,8 +514,10 @@ struct KanbanTaskDetailView: View {
     @State private var comment = ""
     @State private var isSaving = false
     @State private var isAddingComment = false
+    @State private var isLoadingDetail = false
     @State private var showDeleteConfirmation = false
     @State private var errorMessage: String?
+    @State private var refreshErrorMessage: String?
 
     init(task: KanbanTask) {
         initialTask = task
@@ -484,9 +531,9 @@ struct KanbanTaskDetailView: View {
     }
 
     private var statusOptions: [KanbanStatusPresentation] {
-        var values = KanbanStatusPresentation.knownStatuses.map(KanbanStatusPresentation.forStatus)
+        var values = KanbanStatusPresentation.manuallySelectableStatuses
         if !values.contains(where: { $0.rawValue == status }) {
-            values.append(KanbanStatusPresentation.forStatus(status))
+            values.insert(KanbanStatusPresentation.forStatus(status), at: 0)
         }
         return values
     }
@@ -499,6 +546,12 @@ struct KanbanTaskDetailView: View {
                     metadataSection
                     commentsSection
                     runsSection
+                    if let refreshErrorMessage {
+                        Text("Refresh failed: \(refreshErrorMessage)")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                     if let errorMessage {
                         Text(errorMessage)
                             .font(.footnote)
@@ -525,7 +578,16 @@ struct KanbanTaskDetailView: View {
                     }
                 }
             }
-            .task { await loadDetail() }
+            .task(id: initialTask.id) {
+                while !Task.isCancelled {
+                    await loadDetail()
+                    do {
+                        try await Task.sleep(nanoseconds: KanbanPollingPolicy.detailIntervalNanoseconds)
+                    } catch {
+                        break
+                    }
+                }
+            }
             .alert("Delete this task?", isPresented: $showDeleteConfirmation) {
                 Button("Delete", role: .destructive) { Task { await deleteTask() } }
                 Button("Cancel", role: .cancel) {}
@@ -548,6 +610,7 @@ struct KanbanTaskDetailView: View {
                 ForEach(statusOptions) { value in
                     Label(value.displayName, systemImage: value.systemImage)
                         .tag(value.rawValue)
+                        .disabled(!value.isManuallySelectable)
                 }
             }
             .pickerStyle(.menu)
@@ -655,15 +718,23 @@ struct KanbanTaskDetailView: View {
         }
     }
 
-    private func loadDetail() async {
+    private func loadDetail(force: Bool = false) async {
+        guard force || (!isSaving && !isAddingComment), !isLoadingDetail else { return }
+        isLoadingDetail = true
+        defer { isLoadingDetail = false }
         do {
             let loaded = try await store.fetchTaskDetail(id: initialTask.id)
             detail = loaded
             title = loaded.task.title
             taskBody = loaded.task.body ?? ""
             status = loaded.task.status
+            refreshErrorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            if detail == nil {
+                errorMessage = error.localizedDescription
+            } else {
+                refreshErrorMessage = error.localizedDescription
+            }
         }
     }
 
@@ -673,14 +744,20 @@ struct KanbanTaskDetailView: View {
         var patch = KanbanTaskPatch()
         if trimmedTitle != current.title { patch.title = trimmedTitle }
         if taskBody != (current.body ?? "") { patch.body = taskBody }
-        if status != current.status { patch.status = status }
+        if status != current.status {
+            guard KanbanStatusPresentation.canSelectManually(status) else {
+                errorMessage = KanbanServiceError.invalidManualStatus(status).localizedDescription
+                return
+            }
+            patch.status = status
+        }
         guard !patch.isEmpty else { return }
         isSaving = true
         errorMessage = nil
         defer { isSaving = false }
         do {
             _ = try await store.updateTask(id: current.id, patch: patch)
-            await loadDetail()
+            await loadDetail(force: true)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -695,7 +772,7 @@ struct KanbanTaskDetailView: View {
         do {
             try await store.addComment(taskID: currentTask.id, body: text)
             comment = ""
-            await loadDetail()
+            await loadDetail(force: true)
         } catch {
             errorMessage = error.localizedDescription
         }

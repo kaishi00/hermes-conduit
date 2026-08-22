@@ -16,11 +16,24 @@ extension DashboardTicketBridge: DashboardJSONRequester {}
 enum KanbanServiceError: LocalizedError, Equatable {
     case invalidResponse(String)
     case emptyTaskID
+    case invalidManualStatus(String)
+    case taskCreatedButMoveFailed(taskID: String?, targetStatus: String, reason: String)
+    case mutationInProgress
 
     var errorDescription: String? {
         switch self {
         case .invalidResponse(let message): return message
         case .emptyTaskID: return "Hermes returned a Kanban task without an ID."
+        case .invalidManualStatus(let status):
+            if status == "running" {
+                return "Hermes controls Running; use the dispatcher/claim path instead of setting it manually."
+            }
+            return "Hermes does not allow \(status) as a manual Kanban destination."
+        case .taskCreatedButMoveFailed(let taskID, let targetStatus, let reason):
+            let identifier = taskID.map { " (task \($0))" } ?? ""
+            return "The task was created\(identifier), but Hermes could not move it to \(targetStatus). It was not duplicated; close this form and refresh the board. \(reason)"
+        case .mutationInProgress:
+            return "Another Kanban change is still being saved."
         }
     }
 }
@@ -28,22 +41,26 @@ enum KanbanServiceError: LocalizedError, Equatable {
 /// Typed client for the authenticated Hermes dashboard Kanban plugin.
 /// This depends on the existing dashboard request bridge rather than HermesClient.
 /// Board selection is always sent as a local board query and never changes the
-/// server-wide current-board pointer.
+/// server-wide current-board pointer. Profile scoping is kept here so views do
+/// not need to know dashboard routing details.
 @MainActor
 final class KanbanService {
     private let requester: any DashboardJSONRequester
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
+    private let profile: String
     private static let namespace = "/api/plugins/kanban"
+    private var pendingDispatcherNudge: Task<Void, Never>?
 
-    init(requester: any DashboardJSONRequester) {
+    init(requester: any DashboardJSONRequester, profile: String = "default") {
         self.requester = requester
+        self.profile = profile
         decoder = JSONDecoder()
         encoder = JSONEncoder()
     }
 
     func fetchBoards() async throws -> KanbanBoardsResponse {
-        try await decode(KanbanBoardsResponse.self, path: Self.namespace + "/boards")
+        try await decode(KanbanBoardsResponse.self, path: scoped(Self.namespace + "/boards"))
     }
 
     func fetchBoard(slug: String?, includeArchived: Bool) async throws -> KanbanBoard {
@@ -72,17 +89,17 @@ final class KanbanService {
     }
 
     func fetchProfiles() async throws -> [KanbanProfile] {
-        let response = try await decode(KanbanProfilesResponse.self, path: Self.namespace + "/profiles")
+        let response = try await decode(KanbanProfilesResponse.self, path: scoped(Self.namespace + "/profiles"))
         return response.profiles
     }
 
     func fetchProjects() async throws -> [KanbanProject] {
-        let response = try await decode(KanbanProjectsResponse.self, path: Self.namespace + "/projects")
+        let response = try await decode(KanbanProjectsResponse.self, path: scoped(Self.namespace + "/projects"))
         return response.projects
     }
 
     func fetchOrchestration() async throws -> KanbanOrchestrationSettings {
-        try await decode(KanbanOrchestrationSettings.self, path: Self.namespace + "/orchestration")
+        try await decode(KanbanOrchestrationSettings.self, path: scoped(Self.namespace + "/orchestration"))
     }
 
     func createTask(_ requestBody: KanbanCreateTaskRequest, board: String?) async throws -> KanbanCreateTaskResponse {
@@ -143,6 +160,34 @@ final class KanbanService {
         )
     }
 
+    /// Best-effort quick path for the backend dispatcher. The short delay
+    /// coalesces rapid writes while keeping the nudge inside the Kanban layer.
+    /// Its result is deliberately ignored: a successful mutation remains a
+    /// success even when no dispatcher is available.
+    func nudgeDispatcher(board: String?) async {
+        if let pendingDispatcherNudge {
+            await pendingDispatcherNudge.value
+            return
+        }
+
+        let task = Task { [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: 75_000_000)
+                guard let self else { return }
+                _ = try? await self.request(
+                    path: self.withBoard(Self.namespace + "/dispatch", slug: board),
+                    method: "POST",
+                    body: nil
+                )
+            } catch {
+                // Dispatch is an acceleration hint, never a mutation dependency.
+            }
+        }
+        pendingDispatcherNudge = task
+        await task.value
+        pendingDispatcherNudge = nil
+    }
+
     func createBoard(slug: String, name: String, projectID: String? = nil) async throws -> KanbanBoardMetadata {
         struct Body: Encodable {
             let slug: String
@@ -151,7 +196,7 @@ final class KanbanService {
             enum CodingKeys: String, CodingKey { case slug, name; case projectID = "project_id" }
         }
         let response = try await request(
-            path: Self.namespace + "/boards",
+            path: scoped(Self.namespace + "/boards"),
             method: "POST",
             body: try encodedDictionary(Body(slug: slug, name: name, projectID: projectID))
         )
@@ -169,7 +214,7 @@ final class KanbanService {
             }
         }
         let response = try await request(
-            path: Self.namespace + "/boards/\(pathComponent(slug))",
+            path: scoped(Self.namespace + "/boards/\(pathComponent(slug))"),
             method: "PATCH",
             body: try encodedDictionary(Body(name: name, description: description, defaultWorkdir: defaultWorkdir))
         )
@@ -212,9 +257,14 @@ final class KanbanService {
         return object
     }
 
+    private func scoped(_ path: String) -> String {
+        withBoard(path, slug: nil)
+    }
+
     private func withBoard(_ path: String, slug: String?, params: [String: String] = [:]) -> String {
         var values = params
         if let slug, !slug.isEmpty { values["board"] = slug }
+        if !profile.isEmpty, profile != "default" { values["profile"] = profile }
         guard !values.isEmpty else { return path }
         let query = values.keys.sorted().compactMap { key -> String? in
             guard let encodedValue = DashboardPath.encodedQueryComponent(values[key] ?? "") else { return nil }

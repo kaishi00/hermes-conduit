@@ -31,6 +31,16 @@ struct CapabilitiesView: View {
                 .scrollContentBackground(.hidden)
                 .listStyle(.plain)
                 .refreshable { await loadCapabilities() }
+                .overlay(alignment: .top) {
+                    if let loadError, !appState.skills.isEmpty || !appState.toolsets.isEmpty {
+                        Text("Refresh failed: \(loadError)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(8)
+                            .background(.ultraThinMaterial, in: Capsule())
+                            .padding(.top, 6)
+                    }
+                }
             }
         }
         .navigationTitle("Capabilities")
@@ -105,12 +115,19 @@ struct CapabilitiesView: View {
 
     private func loadCapabilities() async {
         capabilitiesLoading = true
+        let previousError = appState.errorMessage
         defer { capabilitiesLoading = false }
         await appState.loadCapabilities()
-        if let error = appState.errorMessage, error.localizedCaseInsensitiveContains("capabil") {
+
+        let hasData = !appState.skills.isEmpty || !appState.toolsets.isEmpty
+        if let error = appState.errorMessage, error != previousError {
+            // Preserve loaded data while still surfacing a failed refresh.
+            // Do not filter the message by wording: backend errors may change.
             loadError = error
-        } else {
+        } else if hasData {
             loadError = nil
+        } else {
+            loadError = "No capabilities found."
         }
     }
 }
