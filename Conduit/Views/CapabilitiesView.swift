@@ -115,25 +115,33 @@ struct CapabilitiesView: View {
 
     private func loadCapabilities() async {
         capabilitiesLoading = true
-        // Request-scoped outcome: results from a profile that is no longer
-        // active when the load finishes are discarded, so a stale profile's
-        // data (or error) can never masquerade as the current one's.
+        // Request-scoped outcome: the result of THIS request is returned
+        // directly; global error/skill state is never treated as the result.
         let requestedProfile = appState.activeProfile
         defer { capabilitiesLoading = false }
-        await appState.loadCapabilities()
+        let outcome = await appState.loadCapabilities()
 
-        guard appState.activeProfile == requestedProfile else { return }
+        guard appState.activeProfile == requestedProfile, !outcome.isSuperseded else { return }
 
-        let hasData = !appState.skills.isEmpty || !appState.toolsets.isEmpty
-        if hasData {
-            // A successful load clears any previously surfaced failure.
-            loadError = nil
-        } else if let error = appState.errorMessage {
-            // Real backend failures surface verbatim - repeated identical
-            // failures included. Loaded data stays visible via the banner.
-            loadError = error
-        } else {
-            loadError = "No capabilities found."
+        loadError = Self.localError(
+            for: outcome,
+            hasData: !appState.skills.isEmpty || !appState.toolsets.isEmpty
+        )
+    }
+
+    /// Pure mapping from a request outcome to this screen's local failure
+    /// presentation. Loaded data always stays visible; a failed refresh with a
+    /// populated cache surfaces through the banner instead of wiping content.
+    static func localError(for outcome: AppState.CapabilityLoadOutcome, hasData: Bool) -> String? {
+        switch outcome {
+        case .success:
+            return hasData ? nil : "No capabilities found."
+        case .failed(_, let message):
+            return message
+        case .unavailable:
+            return "Connect to a Hermes dashboard to load capabilities."
+        case .superseded:
+            return nil
         }
     }
 }

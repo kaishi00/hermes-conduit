@@ -15,7 +15,10 @@ private extension KeyedDecodingContainer {
         // Doubles must be finite and exactly representable; a fractional or
         // huge value decodes as nil instead of silently truncating (or
         // crashing on architectures where the cast traps).
-        if let value = try? decode(Double.self, forKey: key), value.isFinite, let exact = Int(exactly: value.rounded(.towardZero)) {
+        if let value = try? decode(Double.self, forKey: key) {
+            // Exact integers only: finite AND integral. Fractional values
+            // (2.5), NaN, and overflow decode as nil instead of truncating.
+            guard value.isFinite, let exact = Int(exactly: value) else { return nil }
             return exact
         }
         if let value = try? decode(String.self, forKey: key) { return Int(value) }
@@ -233,7 +236,11 @@ struct KanbanColumn: Codable, Equatable, Identifiable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         name = (try? container.decode(String.self, forKey: .name)) ?? "unknown"
-        tasks = (try? container.decode([KanbanTask].self, forKey: .tasks)) ?? []
+        // Lossily decode every row, but DROP rows without an identity: two
+        // id-less tasks would collide on "" inside SwiftUI ForEach and the
+        // service rejects empty IDs anyway, so they can never be actionable.
+        let rawTasks = (try? container.decodeIfPresent([KanbanTask].self, forKey: .tasks)) ?? []
+        tasks = rawTasks.filter { !$0.id.isEmpty }
     }
 }
 

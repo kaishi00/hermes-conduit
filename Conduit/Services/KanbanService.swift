@@ -49,12 +49,13 @@ enum KanbanServiceError: LocalizedError, Equatable {
 /// HermesClient. Board selection is always sent as a local board query and
 /// never changes the server-wide current-board pointer.
 ///
-/// Profile routing: upstream Desktop reaches other Hermes profiles by dialing
-/// a per-profile backend process (each profile is an independent HERMES_HOME;
-/// see apps/desktop/electron/main.ts backendPool). The dashboard plugin API
-/// accepts no profile parameter and always serves the backend's own home, so
-/// this service deliberately sends no fabricated profile query parameter.
-/// Kanban in Conduit reflects the profile of the authenticated dashboard.
+/// Profiles: Hermes Kanban is intentionally a SHARED, cross-profile board.
+/// hermes_cli/kanban_db.py anchors boards at the shared Hermes root - when
+/// HERMES_HOME is <root>/profiles/<name>, paths resolve back through
+/// get_default_hermes_root() so every profile joins the same dispatch bus by
+/// design. There is therefore nothing profile-scoped to request: this service
+/// deliberately sends no profile query parameter, and switching Conduit's UI
+/// profile must not reload or re-scope Kanban.
 @MainActor
 final class KanbanService {
     private let requester: any DashboardJSONRequester

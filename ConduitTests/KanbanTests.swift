@@ -90,6 +90,9 @@ final class KanbanTests: XCTestCase {
         responses["/api/plugins/kanban/tasks"] = ["task": ["id": "SHOULD-NOT-EXIST", "title": "x", "status": "todo"]]
         let requester = MockKanbanRequester(responsesByPath: responses)
         let store = makeStore(requester: requester)
+        // Establish a loaded board snapshot before any mutation.
+        await store.refresh()
+        XCTAssertEqual(store.loadedBoardSlug, "default")
 
         do {
             _ = try await store.createTask(KanbanCreateTaskRequest(title: "Never"), initialStatus: "scheduled")
@@ -114,6 +117,7 @@ final class KanbanTests: XCTestCase {
             errorsByPath: ["/api/plugins/kanban/tasks/task-1": MockRequestError.failed("parent dependency blocks Blocked")]
         )
         let store = makeStore(requester: requester)
+        await store.refresh()
 
         do {
             _ = try await store.createTask(KanbanCreateTaskRequest(title: "Blocked pick"), initialStatus: "blocked")
@@ -283,13 +287,172 @@ final class KanbanTests: XCTestCase {
     // MARK: - Tolerant decoding must not crash on hostile numbers
 
     func testLossyIntDecodingHandlesExtremeAndMalformedValues() throws {
-        let json = "{\"id\":\"t\",\"title\":\"x\",\"status\":\"todo\",\"priority\":1e999,\"created_at\":2.5,\"comment_count\":-3,\"started_at\":\"7\",\"worker_pid\":\"not-a-number\"}"
+        let json = "{\"id\":\"t\",\"title\":\"x\",\"status\":\"todo\",\"priority\":1e999,\"created_at\":2.5,\"completed_at\":3.0,\"comment_count\":-3,\"started_at\":\"7\",\"worker_pid\":\"not-a-number\"}"
         let task = try JSONDecoder().decode(KanbanTask.self, from: Data(json.utf8))
         XCTAssertNil(task.priority, "unrepresentable huge double must decode as nil, not crash")
-        XCTAssertEqual(task.createdAt, 2)
+        XCTAssertNil(task.createdAt, "fractional doubles must not truncate to an integer")
+        XCTAssertEqual(task.completedAt, 3, "integral doubles decode exactly")
         XCTAssertEqual(task.commentCount, -3)
         XCTAssertEqual(task.startedAt, 7)
         XCTAssertNil(task.workerPid)
+    }
+
+    // MARK: - Board selection supersedes background polls
+
+    func testBoardSelectionSupersedesInFlightPollAndBindsMutationToLoadedSnapshot() async throws {
+        var responses = standardKanbanResponses(boardSlug: "alpha")
+        responses["/api/plugins/kanban/board?board=alpha"] = [
+            "columns": [["name": "todo", "tasks": [["id": "t-a", "title": "from alpha", "status": "todo"]]]],
+            "tenants": [], "assignees": []
+        ]
+        responses["/api/plugins/kanban/board?board=beta"] = [
+            "columns": [["name": "todo", "tasks": [["id": "t-b", "title": "from beta", "status": "todo"]]]],
+            "tenants": [], "assignees": []
+        ]
+        responses["/api/plugins/kanban/tasks/t-a"] = ["task": ["id": "t-a", "title": "edited on alpha", "status": "todo"]]
+        let requester = MockKanbanRequester(responsesByPath: responses)
+        let store = makeStore(requester: requester)
+        await store.selectBoard(slug: "alpha")
+        XCTAssertEqual(store.loadedBoardSlug, "alpha")
+        XCTAssertEqual(store.board?.columns.first?.tasks.first?.title, "from alpha")
+
+        // Park an ordinary background refresh of board A.
+        requester.hold(pathPrefix: "/api/plugins/kanban/boards")
+        let poll = Task { await store.poll() }
+        await Task.yield(); await Task.yield(); await Task.yield()
+
+        // The user selects B while the A poll is still parked.
+        let selection = Task { await store.selectBoard(slug: "beta") }
+        await Task.yield(); await Task.yield(); await Task.yield()
+        XCTAssertEqual(store.selectedBoardSlug, "beta")
+        XCTAssertEqual(store.loadedBoardSlug, "alpha", "displayed snapshot must stay bound to A until B loads")
+        XCTAssertEqual(store.board?.columns.first?.tasks.first?.id, "t-a")
+
+        // A card from snapshot A mutates board ALPHA, never the pending B.
+        let mutation = Task { try? await store.updateTask(id: "t-a", patch: KanbanTaskPatch(title: "edited on alpha")) }
+        await Task.yield(); await Task.yield(); await Task.yield()
+        let patchCall = requester.calls.last(where: { $0.method == "PATCH" })
+        XCTAssertTrue(patchCall?.path.contains("/tasks/t-a?") == true || patchCall?.path.contains("/tasks/t-a") == true)
+        XCTAssertTrue(patchCall?.path.contains("board=alpha") == true, patchCall?.path ?? "no PATCH")
+
+        requester.releaseAll()
+        await poll.value
+        await selection.value
+        _ = await mutation.value
+        await flushNudge()
+
+        XCTAssertEqual(store.selectedBoardSlug, "beta")
+        XCTAssertEqual(store.loadedBoardSlug, "beta")
+        XCTAssertEqual(store.board?.columns.first?.tasks.first?.title, "from beta", "stale A completion must be discarded")
+        XCTAssertNil(store.mutationErrorMessage)
+    }
+
+    // MARK: - Cross-server stale mutation isolation
+
+    func testReconfiguredServerIsolatesStaleMutationFailure() async throws {
+        var responsesA = standardKanbanResponses(boardSlug: "a-board")
+        let requesterA = MockKanbanRequester(responsesByPath: responsesA)
+        let store = makeStore(requester: requesterA)
+        await store.refresh()
+
+        requesterA.hold(pathPrefix: "/api/plugins/kanban/tasks/t1")
+        let mutation = Task { try? await store.updateTask(id: "t1", patch: KanbanTaskPatch(title: "held")) }
+        await Task.yield(); await Task.yield(); await Task.yield()
+
+        var responsesB = standardKanbanResponses(boardSlug: "b-board")
+        responsesB["/api/plugins/kanban/board"] = [
+            "columns": [["name": "todo", "tasks": [["id": "2", "title": "from B", "status": "todo"]]]],
+            "tenants": [], "assignees": []
+        ]
+        let requesterB = MockKanbanRequester(responsesByPath: responsesB)
+        store.configure(requester: requesterB, serverIdentity: "https://b.test")
+        await store.reload()
+        XCTAssertEqual(store.board?.columns.first?.tasks.first?.title, "from B")
+
+        // configure() revokes the old operation's UI ownership immediately.
+        XCTAssertFalse(store.isMutating)
+        XCTAssertNil(store.mutationErrorMessage)
+        let bCallsBeforeRelease = requesterB.calls.count
+
+        requesterA.errorsByPath["/api/plugins/kanban/tasks/t1"] = MockRequestError.failed("server A exploded")
+        requesterA.releaseAll()
+        _ = await mutation.value
+
+        XCTAssertFalse(store.isMutating)
+        XCTAssertNil(store.mutationErrorMessage, "server A's failure must not surface on server B")
+        XCTAssertEqual(requesterB.calls.count, bCallsBeforeRelease, "stale completion must not trigger a B refresh")
+        XCTAssertEqual(store.board?.columns.first?.tasks.first?.title, "from B")
+    }
+
+    func testReconfiguredServerIsolatesStaleMutationSuccess() async throws {
+        var responsesA = standardKanbanResponses(boardSlug: "a-board")
+        responsesA["/api/plugins/kanban/tasks/t1"] = ["task": ["id": "t1", "title": "saved on A", "status": "todo"]]
+        let requesterA = MockKanbanRequester(responsesByPath: responsesA)
+        let store = makeStore(requester: requesterA)
+        await store.refresh()
+
+        requesterA.hold(pathPrefix: "/api/plugins/kanban/tasks/t1")
+        let mutation = Task { try? await store.updateTask(id: "t1", patch: KanbanTaskPatch(title: "saved on A")) }
+        await Task.yield(); await Task.yield(); await Task.yield()
+
+        var responsesB = standardKanbanResponses(boardSlug: "b-board")
+        responsesB["/api/plugins/kanban/board"] = [
+            "columns": [["name": "todo", "tasks": [["id": "2", "title": "from B", "status": "todo"]]]],
+            "tenants": [], "assignees": []
+        ]
+        let requesterB = MockKanbanRequester(responsesByPath: responsesB)
+        store.configure(requester: requesterB, serverIdentity: "https://b.test")
+        await store.reload()
+        XCTAssertEqual(store.board?.columns.first?.tasks.first?.title, "from B")
+        let bCallsBeforeRelease = requesterB.calls.count
+
+        requesterA.releaseAll()
+        _ = await mutation.value
+        await flushNudge()
+
+        XCTAssertNil(store.mutationErrorMessage)
+        XCTAssertFalse(store.isMutating)
+        XCTAssertEqual(requesterB.calls.count, bCallsBeforeRelease, "old success must not refresh the new server")
+        XCTAssertEqual(store.board?.columns.first?.tasks.first?.title, "from B")
+    }
+
+    // MARK: - Malformed rows
+
+    func testIdLessTaskRowsAreDroppedFromBoardColumns() throws {
+        let json = "{\"name\":\"todo\",\"tasks\":[" +
+            "{\"id\":\"valid-1\",\"title\":\"one\",\"status\":\"todo\"}," +
+            "{\"title\":\"missing a\",\"status\":\"todo\"}," +
+            "{\"status\":\"todo\"}," +
+            "{\"id\":\"valid-2\",\"title\":\"two\",\"status\":\"todo\"}]}"
+        let column = try JSONDecoder().decode(KanbanColumn.self, from: Data(json.utf8))
+        XCTAssertEqual(column.tasks.map(\.id), ["valid-1", "valid-2"])
+        XCTAssertEqual(Set(column.tasks.map(\.id)).count, column.tasks.count, "no duplicate SwiftUI identities possible")
+    }
+
+    // MARK: - Capabilities request-scoped outcome contract
+
+    func testCapabilityOutcomeMappingIsRequestScoped() {
+        typealias Outcome = AppState.CapabilityLoadOutcome
+
+        // Successful load with data clears any local failure.
+        XCTAssertNil(CapabilitiesView.localError(for: .success(profile: "p"), hasData: true))
+        // Successful EMPTY result is distinct from failure and independent of
+        // any stale global error message.
+        XCTAssertEqual(
+            CapabilitiesView.localError(for: .success(profile: "p"), hasData: false),
+            "No capabilities found."
+        )
+        // Failure surfaces verbatim whether or not cached data exists; the
+        // same failure repeated is surfaced again identically.
+        for _ in 0..<2 {
+            XCTAssertEqual(CapabilitiesView.localError(for: .failed(profile: "p", message: "boom"), hasData: true), "boom")
+            XCTAssertEqual(CapabilitiesView.localError(for: .failed(profile: "p", message: "boom"), hasData: false), "boom")
+        }
+        XCTAssertEqual(
+            CapabilitiesView.localError(for: .unavailable(profile: "p"), hasData: false),
+            "Connect to a Hermes dashboard to load capabilities."
+        )
+        XCTAssertNil(CapabilitiesView.localError(for: .superseded(requestedProfile: "a", activeProfile: "b"), hasData: true))
     }
 
     // MARK: - Helpers

@@ -52,8 +52,8 @@ struct KanbanView: View {
     }
 
     /// Configuration/polling key. Deliberately EXCLUDES appState.activeProfile:
-    /// the Kanban plugin API serves the dashboard backend's own Hermes home,
-    /// so Conduit's UI profile switch does not change the Kanban data source.
+    /// Hermes Kanban is a shared cross-profile board anchored at the Hermes
+    /// root, so Conduit's UI profile switch does not change Kanban data.
     private var pollingKey: String {
         "\(String(describing: bridgeIdentity))|\(appState.dashboardTicketBridge?.baseURL ?? "")|archived=\(includeArchived)"
     }
@@ -104,10 +104,11 @@ struct KanbanView: View {
                                 if let mutationError = store.mutationErrorMessage {
                                     HStack(spacing: 6) {
                                         Text(mutationError)
-                                        Button { store.clearMutationError() } label: {
-                                            Image(systemName: "xmark.circle.fill")
-                                        }
-                                        .buttonStyle(.plain)
+                                    Button { store.clearMutationError() } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityLabel("Dismiss Kanban error")
                                     }
                                     .font(.caption)
                                     .foregroundStyle(.red)
@@ -398,6 +399,7 @@ private struct KanbanCardView: View {
                         .frame(width: 24, height: 24)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Task actions")
             }
 
             if let summary = task.latestSummary, !summary.isEmpty {
@@ -657,6 +659,7 @@ struct KanbanTaskDetailView: View {
                     } label: {
                         Image(systemName: "ellipsis.circle")
                     }
+                    .accessibilityLabel("Task actions")
                 }
             }
             .task(id: initialTask.id) {

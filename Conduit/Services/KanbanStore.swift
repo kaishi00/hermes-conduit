@@ -21,6 +21,11 @@ final class KanbanStore: ObservableObject {
     @Published private(set) var projects: [KanbanProject] = []
     @Published private(set) var orchestration: KanbanOrchestrationSettings?
     @Published private(set) var selectedBoardSlug = ""
+    /// Board identity of the snapshot currently on screen. Set ONLY when a
+    /// load completes for the generation that is still current; mutations
+    /// always target this value so a displayed card can never be written to a
+    /// different board than the one it was read from.
+    @Published private(set) var loadedBoardSlug: String?
     @Published private(set) var isLoading = false
     @Published private(set) var isMutating = false
     @Published private(set) var errorMessage: String?
@@ -34,8 +39,13 @@ final class KanbanStore: ObservableObject {
     private var persistenceKey: String?
     private var loadGeneration = 0
     /// Bumped on every configure(); captured by mutations so post-mutation
-    /// refreshes from an old server/board context are discarded.
+    /// refreshes and UI-state writes from an old server/board context are
+    /// discarded.
     private var configurationGeneration = 0
+    /// Generation of the mutation that currently owns isMutating/
+    /// mutationErrorMessage. Nil when no live operation owns the UI; configure()
+    /// clears it immediately so a stale server's completion becomes inert.
+    private var activeMutationGeneration: Int?
 
     init(
         defaults: UserDefaults = .standard,
@@ -54,11 +64,12 @@ final class KanbanStore: ObservableObject {
         return boards.first(where: { $0.slug == slug })
     }
 
-    /// Board selection is scoped to the dashboard SERVER identity only. The
-    /// plugin API serves the backend's own Hermes home (one profile per
-    /// process), so the server URL - not the app-level UI profile - is the
-    /// real data boundary. Two dashboards never share a selection; switching
-    /// Conduit's active profile on one dashboard intentionally does not either.
+    /// Board selection is scoped to the dashboard SERVER identity only.
+    /// Hermes Kanban is a shared, cross-profile coordination primitive anchored
+    /// at the shared Hermes root (kanban_db.py resolves profiles back through
+    /// get_default_hermes_root()), so profiles on one dashboard intentionally
+    /// see the same boards - there is nothing profile-scoped to persist. Two
+    /// different dashboards (roots) never share a selection.
     static func scopedBoardKey(serverIdentity: String) -> String {
         // Normalize exactly like configure() so equivalent URLs share a key.
         let normalized = serverIdentity.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
@@ -70,10 +81,12 @@ final class KanbanStore: ObservableObject {
             configurationGeneration += 1
             loadGeneration += 1
             isLoading = false
+            endActiveMutationOwnership()
             service = nil
             requesterID = nil
             board = nil
             boards = []
+            loadedBoardSlug = nil
             return
         }
 
@@ -83,10 +96,13 @@ final class KanbanStore: ObservableObject {
 
         // Invalidate any cancelled load or in-flight mutation from the
         // previous bridge/server. Their completions must not repopulate this
-        // store after the data source changes.
+        // store, touch its UI mutation state, or trigger refreshes after the
+        // data source changes.
         configurationGeneration += 1
         loadGeneration += 1
         isLoading = false
+        endActiveMutationOwnership()
+        loadedBoardSlug = nil
 
         service = makeService(requester)
         requesterID = identity
@@ -111,8 +127,11 @@ final class KanbanStore: ObservableObject {
         mutationErrorMessage = nil
     }
 
-    func reload(includeArchived: Bool = false) async {
-        guard !isLoading else { return }
+    /// `superseding: true` lets an explicit user navigation (board selection)
+    /// invalidate and outrun an in-flight background poll. The stale load's
+    /// completion is discarded by the generation checks below.
+    func reload(includeArchived: Bool = false, superseding: Bool = false) async {
+        if !superseding && isLoading { return }
         loadGeneration += 1
         let generation = loadGeneration
         guard let service else {
@@ -122,6 +141,9 @@ final class KanbanStore: ObservableObject {
             return
         }
 
+        // Freeze the requested identity now; whatever completes must match
+        // BOTH this generation AND this slug to be applied.
+        let requestedSlug = effectiveBoardSlug
         isLoading = true
         errorMessage = nil
         defer {
@@ -152,6 +174,9 @@ final class KanbanStore: ObservableObject {
             guard generation == loadGeneration else { return }
 
             board = resolvedBoard
+            // Bind the snapshot to the identity it was actually loaded from:
+            // nil selection means the backend's current board.
+            loadedBoardSlug = requestedSlug ?? currentServerBoardSlug
             if let resolvedProfiles { profiles = resolvedProfiles }
             if let resolvedProjects { projects = resolvedProjects }
             if let resolvedOrchestration { orchestration = resolvedOrchestration }
@@ -176,7 +201,9 @@ final class KanbanStore: ObservableObject {
         } else if let persistenceKey {
             defaults.set(slug, forKey: persistenceKey)
         }
-        await reload(includeArchived: includeArchived)
+        // Explicit navigation supersedes any in-flight poll so the displayed
+        // snapshot converges on the selection instead of racing it.
+        await reload(includeArchived: includeArchived, superseding: true)
     }
 
     func refresh(includeArchived: Bool = false) async {
@@ -186,12 +213,12 @@ final class KanbanStore: ObservableObject {
 
     func fetchTaskDetail(id: String) async throws -> KanbanTaskDetail {
         guard let service else { throw KanbanServiceError.invalidResponse("Kanban is not connected.") }
-        return try await service.fetchTask(id: id, board: effectiveBoardSlug)
+        return try await service.fetchTask(id: id, board: loadedBoardSlug ?? effectiveBoardSlug)
     }
 
     func fetchTaskLog(id: String, tailBytes: Int = 16_384) async throws -> KanbanWorkerLog {
         guard let service else { throw KanbanServiceError.invalidResponse("Kanban is not connected.") }
-        return try await service.fetchTaskLog(id: id, board: effectiveBoardSlug, tailBytes: tailBytes)
+        return try await service.fetchTaskLog(id: id, board: loadedBoardSlug ?? effectiveBoardSlug, tailBytes: tailBytes)
     }
 
     @discardableResult
@@ -338,9 +365,13 @@ final class KanbanStore: ObservableObject {
 
     private func makeOperationContext() -> KanbanOperationContext? {
         guard let service else { return nil }
+        // Bind to the LOADED snapshot identity, never the mutable selection:
+        // a card on screen must be written back to the board it was read from,
+        // even if the user has already started navigating elsewhere.
+        guard let loadedBoardSlug else { return nil }
         return KanbanOperationContext(
             service: service,
-            boardSlug: effectiveBoardSlug,
+            boardSlug: loadedBoardSlug,
             configurationGeneration: configurationGeneration
         )
     }
@@ -350,26 +381,53 @@ final class KanbanStore: ObservableObject {
         includeArchived: Bool,
         operation: () async throws -> T
     ) async throws -> T {
-        isMutating = true
-        mutationErrorMessage = nil
-        defer { isMutating = false }
-        do {
-            let result = try await operation()
-            if configurationGeneration == context.configurationGeneration {
-                await reload(includeArchived: includeArchived)
-            }
-            return result
-        } catch {
-            // Refresh so a partial success (e.g. created-but-not-moved task)
-            // becomes visible even though the overall call failed - unless the
-            // store was reconfigured mid-flight, in which case the fresh load
-            // already reflects the new source.
-            if configurationGeneration == context.configurationGeneration {
-                await reload(includeArchived: includeArchived)
-            }
+        let generation = context.configurationGeneration
+        // Only one operation may own the UI mutation state at a time. The
+        // owning generation is recorded so configure() can revoke ownership
+        // instantly when the data source changes mid-flight.
+        guard activeMutationGeneration == nil else {
+            let error = KanbanServiceError.mutationInProgress
             mutationErrorMessage = error.localizedDescription
             throw error
         }
+        activeMutationGeneration = generation
+        isMutating = true
+        mutationErrorMessage = nil
+        do {
+            let result = try await operation()
+            if configurationGeneration == generation {
+                await reload(includeArchived: includeArchived)
+            }
+            endMutationOwnership(generation: generation)
+            return result
+        } catch {
+            // Ownership check FIRST: after a reconfigure, this completion must
+            // be completely inert - no refresh, no UI error text, no flag flip.
+            let stillOwnsUI = configurationGeneration == generation && activeMutationGeneration == generation
+            if stillOwnsUI {
+                // Refresh so a partial success (e.g. created-but-not-moved
+                // task) becomes visible even though the overall call failed.
+                await reload(includeArchived: includeArchived)
+                mutationErrorMessage = error.localizedDescription
+            }
+            endMutationOwnership(generation: generation)
+            throw error
+        }
+    }
+
+    /// Revokes this operation's UI ownership if it still holds it.
+    private func endMutationOwnership(generation: Int) {
+        guard activeMutationGeneration == generation else { return }
+        activeMutationGeneration = nil
+        if configurationGeneration == generation {
+            isMutating = false
+        }
+    }
+
+    /// Immediately strips any in-flight operation of UI mutation ownership.
+    private func endActiveMutationOwnership() {
+        activeMutationGeneration = nil
+        isMutating = false
     }
 
     private func recordMutationError(_ error: KanbanServiceError) -> KanbanServiceError {

@@ -6473,14 +6473,32 @@ final class AppState: ObservableObject {
 
     // MARK: - Capabilities
 
-    func loadCapabilities() async {
+    /// Request-scoped result for a capability load. The caller must be able to
+    /// know how THIS request ended without consulting global error/skill
+    /// state, which can be stale or mutated by unrelated flows.
+    enum CapabilityLoadOutcome {
+        case success(profile: String)
+        case failed(profile: String, message: String)
+        case unavailable(profile: String)
+        /// The active profile changed mid-request; the result belongs to an
+        /// abandoned profile and callers should discard it.
+        case superseded(requestedProfile: String, activeProfile: String)
+
+        var isSuperseded: Bool {
+            if case .superseded = self { return true }
+            return false
+        }
+    }
+
+    @discardableResult
+    func loadCapabilities() async -> CapabilityLoadOutcome {
         let profile = activeProfile
-        guard let dashboardTicketBridge else { return }
+        guard let dashboardTicketBridge else { return .unavailable(profile: profile) }
         async let skillsResult = dashboardTicketBridge.requestJSON(path: dashboardPath("/api/skills", profile: profile))
         async let toolsetsResult = dashboardTicketBridge.requestJSON(path: dashboardPath("/api/tools/toolsets", profile: profile))
         do {
             let (skillsResponse, toolsetsResponse) = try await (skillsResult, toolsetsResult)
-            guard profile == activeProfile else { return }
+            guard profile == activeProfile else { return .superseded(requestedProfile: profile, activeProfile: activeProfile) }
             let skillsValues = skillsResponse["_array"] as? [Any] ?? []
             self.skills = skillsValues.compactMap(decodeCapabilitySkill)
                 .sorted { lhs, rhs in
@@ -6492,9 +6510,11 @@ final class AppState: ObservableObject {
             let toolsetsValues = toolsetsResponse["_array"] as? [Any] ?? []
             self.toolsets = toolsetsValues.compactMap(decodeCapabilityToolset)
                 .sorted { ($0.label ?? $0.name) < ($1.label ?? $1.name) }
+            return .success(profile: profile)
         } catch {
-            guard profile == activeProfile else { return }
+            guard profile == activeProfile else { return .superseded(requestedProfile: profile, activeProfile: activeProfile) }
             errorMessage = "Could not load capabilities: \(error.localizedDescription)"
+            return .failed(profile: profile, message: "Could not load capabilities: \(error.localizedDescription)")
         }
     }
 
