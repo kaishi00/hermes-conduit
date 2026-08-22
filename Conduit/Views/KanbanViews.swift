@@ -5,6 +5,36 @@ enum KanbanPollingPolicy {
     static let detailIntervalNanoseconds: UInt64 = 4_000_000_000
 }
 
+/// Pure draft-reconciliation rules for the task detail surface, extracted so
+/// polling behavior is deterministically testable without UI timing.
+enum KanbanDetailDraftPolicy {
+    static func isDirty(
+        draftTitle: String,
+        draftBody: String,
+        draftStatus: String,
+        baselineTitle: String,
+        baselineBodyText: String,
+        baselineStatus: String
+    ) -> Bool {
+        draftTitle != baselineTitle
+            || draftBody != baselineBodyText
+            || draftStatus != baselineStatus
+    }
+
+    static func serverMovedIndependently(
+        serverTitle: String,
+        serverBodyText: String,
+        serverStatus: String,
+        baselineTitle: String,
+        baselineBodyText: String,
+        baselineStatus: String
+    ) -> Bool {
+        serverTitle != baselineTitle
+            || serverBodyText != baselineBodyText
+            || serverStatus != baselineStatus
+    }
+}
+
 struct KanbanView: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var store = KanbanStore()
@@ -13,17 +43,19 @@ struct KanbanView: View {
     @State private var newTaskStatus = "todo"
     @State private var includeArchived = false
     @State private var searchText = ""
+    /// iPhone-native interaction: one selected lane rendered as a vertical
+    /// card list behind a horizontally scrolling chip selector.
+    @State private var selectedLane: String?
 
     private var bridgeIdentity: ObjectIdentifier? {
         appState.dashboardTicketBridge.map { ObjectIdentifier($0) }
     }
 
-    private var configurationKey: String {
-        "\(String(describing: bridgeIdentity))|\(appState.dashboardTicketBridge?.baseURL ?? "")|\(appState.activeProfile)"
-    }
-
+    /// Configuration/polling key. Deliberately EXCLUDES appState.activeProfile:
+    /// the Kanban plugin API serves the dashboard backend's own Hermes home,
+    /// so Conduit's UI profile switch does not change the Kanban data source.
     private var pollingKey: String {
-        "\(configurationKey)|archived=\(includeArchived)"
+        "\(String(describing: bridgeIdentity))|\(appState.dashboardTicketBridge?.baseURL ?? "")|archived=\(includeArchived)"
     }
 
     private var visibleColumns: [KanbanColumn] {
@@ -65,53 +97,32 @@ struct KanbanView: View {
                     ContentUnavailableView("No Columns", systemImage: "rectangle.3.group")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        LazyHStack(alignment: .top, spacing: 12) {
-                            ForEach(visibleColumns) { column in
-                                KanbanColumnView(
-                                    column: column,
-                                    onOpenTask: { selectedTask = $0 },
-                                    onAddTask: { status in
-                                        newTaskStatus = status
-                                        showNewTask = true
-                                    },
-                                    onMoveTask: { task, status in
-                                        Task { await move(task, to: status) }
-                                    },
-                                    onDeleteTask: { task in
-                                        Task { await delete(task) }
+                    laneBoard
+                        .refreshable { await store.refresh(includeArchived: includeArchived) }
+                        .overlay(alignment: .topTrailing) {
+                            VStack(alignment: .trailing, spacing: 6) {
+                                if let mutationError = store.mutationErrorMessage {
+                                    HStack(spacing: 6) {
+                                        Text(mutationError)
+                                        Button { store.clearMutationError() } label: {
+                                            Image(systemName: "xmark.circle.fill")
+                                        }
+                                        .buttonStyle(.plain)
                                     }
-                                )
-                            }
-                        }
-                        .padding(.horizontal, 2)
-                        .padding(.bottom, 12)
-                    }
-                    .refreshable { await store.refresh(includeArchived: includeArchived) }
-                    .overlay(alignment: .topTrailing) {
-                        VStack(alignment: .trailing, spacing: 6) {
-                            if let mutationError = store.mutationErrorMessage {
-                                HStack(spacing: 6) {
-                                    Text(mutationError)
-                                    Button { store.clearMutationError() } label: {
-                                        Image(systemName: "xmark.circle.fill")
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                                .font(.caption)
-                                .foregroundStyle(.red)
-                                .padding(8)
-                                .background(.ultraThinMaterial, in: Capsule())
-                            } else if let refreshError = store.errorMessage {
-                                Text("Refresh failed: \(refreshError)")
                                     .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(.red)
                                     .padding(8)
                                     .background(.ultraThinMaterial, in: Capsule())
+                                } else if let refreshError = store.errorMessage {
+                                    Text("Refresh failed: \(refreshError)")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .padding(8)
+                                        .background(.ultraThinMaterial, in: Capsule())
+                                }
                             }
+                            .padding(.top, 4)
                         }
-                        .padding(.top, 4)
-                    }
                 }
             } else {
                 ContentUnavailableView("No Board", systemImage: "rectangle.3.group")
@@ -137,7 +148,6 @@ struct KanbanView: View {
             selectedTask = nil
             store.configure(
                 requester: appState.dashboardTicketBridge,
-                profile: appState.activeProfile,
                 serverIdentity: appState.dashboardTicketBridge?.baseURL ?? ""
             )
             await store.reload(includeArchived: includeArchived)
@@ -151,6 +161,90 @@ struct KanbanView: View {
                 await store.poll(includeArchived: includeArchived)
             }
         }
+    }
+
+    // MARK: - Lane-based iPhone board
+
+    /// Native mobile interaction: horizontally scrolling lane chips over one
+    /// vertically scrolling card list for the selected lane. Locked/system
+    /// lanes stay visible with their counts but are marked and never offer
+    /// creation, matching upstream LOCKED_COLUMNS semantics.
+    @ViewBuilder
+    private var laneBoard: some View {
+        let columns = visibleColumns
+        VStack(spacing: 10) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 7) {
+                    ForEach(columns) { column in
+                        laneChip(column)
+                    }
+                }
+                .padding(.horizontal, 2)
+                .padding(.vertical, 1)
+            }
+            .frame(height: 34)
+
+            if let column = resolvedLaneColumn(in: columns) {
+                ScrollView(showsIndicators: false) {
+                    LazyVStack(spacing: 9) {
+                        ForEach(column.tasks) { task in
+                            KanbanCardView(
+                                task: task,
+                                onOpen: { selectedTask = task },
+                                onMove: { status in Task { await move(task, to: status) } },
+                                onDelete: { Task { await delete(task) } }
+                            )
+                        }
+                    }
+                    .padding(.horizontal, 1)
+                    .padding(.bottom, 14)
+                }
+            } else {
+                Spacer()
+            }
+        }
+    }
+
+    private func laneChip(_ column: KanbanColumn) -> some View {
+        let presentation = KanbanStatusPresentation.forStatus(column.name)
+        let isSelected = resolvedLaneName(columns: visibleColumns) == column.name
+        return Button {
+            selectedLane = column.name
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: presentation.systemImage)
+                    .font(.caption2)
+                Text(presentation.displayName)
+                    .font(.caption.weight(isSelected ? .bold : .semibold))
+                Text(String(column.tasks.count))
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                if presentation.isBackendControlled {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 8))
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .padding(.horizontal, 11)
+            .frame(height: 30)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(isSelected ? .primary : .secondary)
+        .conduitGlassControl(cornerRadius: 15, tint: isSelected ? presentation.tint.opacity(0.16) : .clear)
+        .accessibilityLabel(presentation.displayName + ", " + String(column.tasks.count) + " tasks")
+    }
+
+    private func resolvedLaneName(columns: [KanbanColumn]) -> String? {
+        if let selectedLane, columns.contains(where: { $0.name == selectedLane }) {
+            return selectedLane
+        }
+        // Prefer an unlocked default so the first paint shows actionable work.
+        return columns.first(where: { !KanbanStatusPresentation.isLockedDestination($0.name) })?.name ?? columns.first?.name
+    }
+
+    private func resolvedLaneColumn(in columns: [KanbanColumn]) -> KanbanColumn? {
+        guard let name = resolvedLaneName(columns: columns) else { return nil }
+        return columns.first(where: { $0.name == name })
     }
 
     @ViewBuilder
@@ -203,7 +297,11 @@ struct KanbanView: View {
             .accessibilityLabel("Refresh Kanban board")
 
             Button {
-                newTaskStatus = "todo"
+                // Land on the visible lane when it accepts creation; otherwise
+                // fall back to the backend's default unlocked lane.
+                newTaskStatus = selectedLane.flatMap { lane in
+                    KanbanStatusPresentation.canCreateTask(in: lane) ? lane : nil
+                } ?? "todo"
                 showNewTask = true
             } label: {
                 Image(systemName: "plus")
@@ -252,60 +350,6 @@ struct KanbanView: View {
         } catch {
             store.showMutationError(error)
         }
-    }
-}
-
-private struct KanbanColumnView: View {
-    let column: KanbanColumn
-    let onOpenTask: (KanbanTask) -> Void
-    let onAddTask: (String) -> Void
-    let onMoveTask: (KanbanTask, String) -> Void
-    let onDeleteTask: (KanbanTask) -> Void
-
-    private var presentation: KanbanStatusPresentation {
-        KanbanStatusPresentation.forStatus(column.name)
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            HStack(spacing: 7) {
-                Image(systemName: presentation.systemImage)
-                    .foregroundStyle(presentation.tint)
-                Text(presentation.displayName)
-                    .font(.subheadline.weight(.semibold))
-                Text(String(column.tasks.count))
-                    .font(.caption.monospacedDigit().weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Spacer(minLength: 0)
-                if presentation.isTaskCreatable {
-                    Button { onAddTask(column.name) } label: {
-                        Image(systemName: "plus")
-                            .font(.caption.weight(.bold))
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
-                    .accessibilityLabel("Add task to " + presentation.displayName)
-                }
-            }
-
-            ScrollView(.vertical, showsIndicators: false) {
-                LazyVStack(spacing: 8) {
-                    ForEach(column.tasks) { task in
-                        KanbanCardView(
-                            task: task,
-                            onOpen: { onOpenTask(task) },
-                            onMove: { onMoveTask(task, $0) },
-                            onDelete: { onDeleteTask(task) }
-                        )
-                    }
-                }
-                .padding(.bottom, 4)
-            }
-            .frame(minHeight: 160, maxHeight: 560)
-        }
-        .padding(11)
-        .frame(width: 286, alignment: .topLeading)
-        .conduitGlassSurface(cornerRadius: 22, tint: presentation.tint.opacity(0.06))
     }
 }
 
@@ -504,13 +548,25 @@ struct KanbanTaskEditorView: View {
 }
 
 struct KanbanTaskDetailView: View {
+    /// Editable fields as last synced from the server. The draft fields below
+    /// are compared against this so a 4-second poll can refresh comments,
+    /// runs, and metadata WITHOUT ever overwriting unsaved user edits.
+    private struct ServerBaseline: Equatable {
+        var title: String
+        var bodyText: String
+        var status: String
+    }
+
     @EnvironmentObject private var store: KanbanStore
     @Environment(\.dismiss) private var dismiss
     let initialTask: KanbanTask
     @State private var detail: KanbanTaskDetail?
+    // Draft (editable) state - owned by the user until saved.
     @State private var title: String
     @State private var taskBody: String
     @State private var status: String
+    @State private var baseline: ServerBaseline
+    @State private var remoteChangeNotice: String?
     @State private var comment = ""
     @State private var isSaving = false
     @State private var isAddingComment = false
@@ -524,11 +580,24 @@ struct KanbanTaskDetailView: View {
         _title = State(initialValue: task.title)
         _taskBody = State(initialValue: task.body ?? "")
         _status = State(initialValue: task.status)
+        _baseline = State(initialValue: ServerBaseline(title: task.title, bodyText: task.body ?? "", status: task.status))
     }
 
     private var currentTask: KanbanTask {
         detail?.task ?? initialTask
     }
+
+    private var hasUnsavedChanges: Bool {
+        KanbanDetailDraftPolicy.isDirty(
+            draftTitle: title,
+            draftBody: taskBody,
+            draftStatus: status,
+            baselineTitle: baseline.title,
+            baselineBodyText: baseline.bodyText,
+            baselineStatus: baseline.status
+        )
+    }
+
 
     private var statusOptions: [KanbanStatusPresentation] {
         var values = KanbanStatusPresentation.manuallySelectableStatuses
@@ -546,6 +615,18 @@ struct KanbanTaskDetailView: View {
                     metadataSection
                     commentsSection
                     runsSection
+                    if let remoteChangeNotice {
+                        Text(remoteChangeNotice)
+                            .font(.footnote)
+                            .foregroundStyle(.orange)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    if hasUnsavedChanges {
+                        Text("Unsaved edits")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+                    }
                     if let refreshErrorMessage {
                         Text("Refresh failed: \(refreshErrorMessage)")
                             .font(.footnote)
@@ -719,15 +800,35 @@ struct KanbanTaskDetailView: View {
     }
 
     private func loadDetail(force: Bool = false) async {
+        // A poll never runs underneath an active save/comment write.
         guard force || (!isSaving && !isAddingComment), !isLoadingDetail else { return }
         isLoadingDetail = true
         defer { isLoadingDetail = false }
         do {
             let loaded = try await store.fetchTaskDetail(id: initialTask.id)
+            let server = loaded.task
+            if hasUnsavedChanges {
+                // Preserve the user's draft. Flag external edits to the same
+                // fields so the conflict is visible without destroying input.
+                let serverMoved = KanbanDetailDraftPolicy.serverMovedIndependently(
+                    serverTitle: server.title,
+                    serverBodyText: server.body ?? "",
+                    serverStatus: server.status,
+                    baselineTitle: baseline.title,
+                    baselineBodyText: baseline.bodyText,
+                    baselineStatus: baseline.status
+                )
+                if serverMoved && remoteChangeNotice == nil {
+                    remoteChangeNotice = "This task changed on the server. Your unsaved edits are preserved."
+                }
+            } else {
+                title = server.title
+                taskBody = server.body ?? ""
+                status = server.status
+                baseline = ServerBaseline(title: server.title, bodyText: server.body ?? "", status: server.status)
+                remoteChangeNotice = nil
+            }
             detail = loaded
-            title = loaded.task.title
-            taskBody = loaded.task.body ?? ""
-            status = loaded.task.status
             refreshErrorMessage = nil
         } catch {
             if detail == nil {
@@ -742,9 +843,11 @@ struct KanbanTaskDetailView: View {
         let current = currentTask
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         var patch = KanbanTaskPatch()
-        if trimmedTitle != current.title { patch.title = trimmedTitle }
-        if taskBody != (current.body ?? "") { patch.body = taskBody }
-        if status != current.status {
+        // Diffs run against the last-synced baseline, not the live server
+        // snapshot, so an external edit cannot silently drop a user field.
+        if trimmedTitle != baseline.title { patch.title = trimmedTitle }
+        if taskBody != baseline.bodyText { patch.body = taskBody }
+        if status != baseline.status {
             guard KanbanStatusPresentation.canSelectManually(status) else {
                 errorMessage = KanbanServiceError.invalidManualStatus(status).localizedDescription
                 return
@@ -756,7 +859,15 @@ struct KanbanTaskDetailView: View {
         errorMessage = nil
         defer { isSaving = false }
         do {
-            _ = try await store.updateTask(id: current.id, patch: patch)
+            let saved = try await store.updateTask(id: current.id, patch: patch)
+            // Reconcile the draft with the saved representation and clear the
+            // dirty state before the next poll cycle lands.
+            let savedServer = saved ?? currentTask
+            title = savedServer.title
+            taskBody = savedServer.body ?? taskBody
+            status = savedServer.status
+            baseline = ServerBaseline(title: savedServer.title, bodyText: savedServer.body ?? taskBody, status: savedServer.status)
+            remoteChangeNotice = nil
             await loadDetail(force: true)
         } catch {
             errorMessage = error.localizedDescription

@@ -12,7 +12,12 @@ private extension KeyedDecodingContainer {
 
     func decodeLossyInt(forKey key: Key) -> Int? {
         if let value = try? decode(Int.self, forKey: key) { return value }
-        if let value = try? decode(Double.self, forKey: key) { return Int(value) }
+        // Doubles must be finite and exactly representable; a fractional or
+        // huge value decodes as nil instead of silently truncating (or
+        // crashing on architectures where the cast traps).
+        if let value = try? decode(Double.self, forKey: key), value.isFinite, let exact = Int(exactly: value.rounded(.towardZero)) {
+            return exact
+        }
         if let value = try? decode(String.self, forKey: key) { return Int(value) }
         return nil
     }

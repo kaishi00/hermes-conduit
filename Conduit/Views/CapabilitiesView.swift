@@ -115,17 +115,23 @@ struct CapabilitiesView: View {
 
     private func loadCapabilities() async {
         capabilitiesLoading = true
-        let previousError = appState.errorMessage
+        // Request-scoped outcome: results from a profile that is no longer
+        // active when the load finishes are discarded, so a stale profile's
+        // data (or error) can never masquerade as the current one's.
+        let requestedProfile = appState.activeProfile
         defer { capabilitiesLoading = false }
         await appState.loadCapabilities()
 
+        guard appState.activeProfile == requestedProfile else { return }
+
         let hasData = !appState.skills.isEmpty || !appState.toolsets.isEmpty
-        if let error = appState.errorMessage, error != previousError {
-            // Preserve loaded data while still surfacing a failed refresh.
-            // Do not filter the message by wording: backend errors may change.
-            loadError = error
-        } else if hasData {
+        if hasData {
+            // A successful load clears any previously surfaced failure.
             loadError = nil
+        } else if let error = appState.errorMessage {
+            // Real backend failures surface verbatim - repeated identical
+            // failures included. Loaded data stays visible via the banner.
+            loadError = error
         } else {
             loadError = "No capabilities found."
         }

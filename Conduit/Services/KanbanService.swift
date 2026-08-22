@@ -19,6 +19,7 @@ enum KanbanServiceError: LocalizedError, Equatable {
     case invalidManualStatus(String)
     case taskCreatedButMoveFailed(taskID: String?, targetStatus: String, reason: String)
     case mutationInProgress
+    case invalidQueryParameter(String)
 
     var errorDescription: String? {
         switch self {
@@ -28,33 +29,49 @@ enum KanbanServiceError: LocalizedError, Equatable {
             if status == "running" {
                 return "Hermes controls Running; use the dispatcher/claim path instead of setting it manually."
             }
-            return "Hermes does not allow \(status) as a manual Kanban destination."
+            return "Hermes does not allow " + status + " as a manual Kanban destination."
         case .taskCreatedButMoveFailed(let taskID, let targetStatus, let reason):
-            let identifier = taskID.map { " (task \($0))" } ?? ""
-            return "The task was created\(identifier), but Hermes could not move it to \(targetStatus). It was not duplicated; close this form and refresh the board. \(reason)"
+            let identifier = taskID.map { " (task " + $0 + ")" } ?? ""
+            return "The task was created" + identifier + ", but Hermes could not move it to " + targetStatus + ". It was not duplicated; close this form and refresh the board. " + reason
         case .mutationInProgress:
             return "Another Kanban change is still being saved."
+        case .invalidQueryParameter(let name):
+            // Fail closed: a dropped board/id parameter would silently
+            // retarget the request at the backend's current board.
+            return "Could not build a safe Hermes Kanban request (invalid " + name + "). The operation was cancelled before any data changed."
         }
     }
 }
 
 /// Typed client for the authenticated Hermes dashboard Kanban plugin.
-/// This depends on the existing dashboard request bridge rather than HermesClient.
-/// Board selection is always sent as a local board query and never changes the
-/// server-wide current-board pointer. Profile scoping is kept here so views do
-/// not need to know dashboard routing details.
+///
+/// This depends on the existing dashboard request bridge rather than
+/// HermesClient. Board selection is always sent as a local board query and
+/// never changes the server-wide current-board pointer.
+///
+/// Profile routing: upstream Desktop reaches other Hermes profiles by dialing
+/// a per-profile backend process (each profile is an independent HERMES_HOME;
+/// see apps/desktop/electron/main.ts backendPool). The dashboard plugin API
+/// accepts no profile parameter and always serves the backend's own home, so
+/// this service deliberately sends no fabricated profile query parameter.
+/// Kanban in Conduit reflects the profile of the authenticated dashboard.
 @MainActor
 final class KanbanService {
     private let requester: any DashboardJSONRequester
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
-    private let profile: String
     private static let namespace = "/api/plugins/kanban"
+    /// Mirrors upstream's 400 ms dispatcher-nudge debounce (api.ts autoNudge).
+    static let dispatcherNudgeDebounceNanoseconds: UInt64 = 400_000_000
+    private let nudgeDebounceIntervalNanoseconds: UInt64
     private var pendingDispatcherNudge: Task<Void, Never>?
 
-    init(requester: any DashboardJSONRequester, profile: String = "default") {
+    init(
+        requester: any DashboardJSONRequester,
+        nudgeDebounceNanoseconds: UInt64 = KanbanService.dispatcherNudgeDebounceNanoseconds
+    ) {
         self.requester = requester
-        self.profile = profile
+        self.nudgeDebounceIntervalNanoseconds = max(1, nudgeDebounceNanoseconds)
         decoder = JSONDecoder()
         encoder = JSONEncoder()
     }
@@ -68,7 +85,7 @@ final class KanbanService {
         if includeArchived { params["include_archived"] = "true" }
         return try await decode(
             KanbanBoard.self,
-            path: withBoard(Self.namespace + "/board", slug: slug, params: params)
+            path: try withBoard(Self.namespace + "/board", slug: slug, params: params)
         )
     }
 
@@ -76,7 +93,7 @@ final class KanbanService {
         guard !id.isEmpty else { throw KanbanServiceError.emptyTaskID }
         return try await decode(
             KanbanTaskDetail.self,
-            path: withBoard(Self.namespace + "/tasks/\(pathComponent(id))", slug: board)
+            path: try withBoard(Self.namespace + "/tasks/" + (try pathComponent(id)), slug: board)
         )
     }
 
@@ -84,7 +101,7 @@ final class KanbanService {
         guard !id.isEmpty else { throw KanbanServiceError.emptyTaskID }
         return try await decode(
             KanbanWorkerLog.self,
-            path: withBoard(Self.namespace + "/tasks/\(pathComponent(id))/log", slug: board, params: ["tail": String(max(1, tailBytes))])
+            path: try withBoard(Self.namespace + "/tasks/" + (try pathComponent(id)) + "/log", slug: board, params: ["tail": String(max(1, tailBytes))])
         )
     }
 
@@ -104,7 +121,7 @@ final class KanbanService {
 
     func createTask(_ requestBody: KanbanCreateTaskRequest, board: String?) async throws -> KanbanCreateTaskResponse {
         let response = try await request(
-            path: withBoard(Self.namespace + "/tasks", slug: board),
+            path: try withBoard(Self.namespace + "/tasks", slug: board),
             method: "POST",
             body: try encodedDictionary(requestBody)
         )
@@ -115,7 +132,7 @@ final class KanbanService {
     func updateTask(id: String, board: String?, patch: KanbanTaskPatch) async throws -> KanbanTask? {
         guard !id.isEmpty else { throw KanbanServiceError.emptyTaskID }
         let response = try await request(
-            path: withBoard(Self.namespace + "/tasks/\(pathComponent(id))", slug: board),
+            path: try withBoard(Self.namespace + "/tasks/" + (try pathComponent(id)), slug: board),
             method: "PATCH",
             body: try encodedDictionary(patch)
         )
@@ -125,7 +142,7 @@ final class KanbanService {
     func deleteTask(id: String, board: String?) async throws {
         guard !id.isEmpty else { throw KanbanServiceError.emptyTaskID }
         _ = try await request(
-            path: withBoard(Self.namespace + "/tasks/\(pathComponent(id))", slug: board),
+            path: try withBoard(Self.namespace + "/tasks/" + (try pathComponent(id)), slug: board),
             method: "DELETE",
             body: nil
         )
@@ -136,7 +153,7 @@ final class KanbanService {
         let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         _ = try await request(
-            path: withBoard(Self.namespace + "/tasks/\(pathComponent(taskID))/comments", slug: board),
+            path: try withBoard(Self.namespace + "/tasks/" + (try pathComponent(taskID)) + "/comments", slug: board),
             method: "POST",
             body: try encodedDictionary(KanbanCommentRequest(author: author, body: trimmed))
         )
@@ -145,7 +162,7 @@ final class KanbanService {
     func reassignTask(taskID: String, board: String?, profile: String?, reclaimFirst: Bool = true, reason: String? = nil) async throws {
         guard !taskID.isEmpty else { throw KanbanServiceError.emptyTaskID }
         _ = try await request(
-            path: withBoard(Self.namespace + "/tasks/\(pathComponent(taskID))/reassign", slug: board),
+            path: try withBoard(Self.namespace + "/tasks/" + (try pathComponent(taskID)) + "/reassign", slug: board),
             method: "POST",
             body: try encodedDictionary(KanbanReassignRequest(profile: profile, reclaimFirst: reclaimFirst, reason: reason))
         )
@@ -154,37 +171,43 @@ final class KanbanService {
     func reclaimTask(taskID: String, board: String?, reason: String? = nil) async throws {
         guard !taskID.isEmpty else { throw KanbanServiceError.emptyTaskID }
         _ = try await request(
-            path: withBoard(Self.namespace + "/tasks/\(pathComponent(taskID))/reclaim", slug: board),
+            path: try withBoard(Self.namespace + "/tasks/" + (try pathComponent(taskID)) + "/reclaim", slug: board),
             method: "POST",
             body: try encodedDictionary(KanbanReclaimRequest(reason: reason))
         )
     }
 
-    /// Best-effort quick path for the backend dispatcher. The short delay
-    /// coalesces rapid writes while keeping the nudge inside the Kanban layer.
-    /// Its result is deliberately ignored: a successful mutation remains a
-    /// success even when no dispatcher is available.
-    func nudgeDispatcher(board: String?) async {
-        if let pendingDispatcherNudge {
-            await pendingDispatcherNudge.value
-            return
-        }
+    // MARK: - Dispatcher nudge
 
-        let task = Task { [weak self] in
+    /// Schedule the upstream-equivalent acceleration hint for the backend
+    /// dispatcher. True fire-and-forget: returns immediately (it never blocks
+    /// or outlives a mutation's success), coalesces rapid writes onto one
+    /// debounced timer, and swallows its own failures - the periodic backend
+    /// tick remains the fallback. The board scope is captured now so a later
+    /// board switch cannot retarget an already-scheduled nudge.
+    func scheduleDispatcherNudge(board: String?) {
+        pendingDispatcherNudge?.cancel()
+        let capturedBoard = board
+        let debounce = nudgeDebounceIntervalNanoseconds
+        pendingDispatcherNudge = Task { [weak self] in
             do {
-                try await Task.sleep(nanoseconds: 75_000_000)
+                try? await Task.sleep(nanoseconds: debounce)
+                if Task.isCancelled { return }
                 guard let self else { return }
                 _ = try? await self.request(
-                    path: self.withBoard(Self.namespace + "/dispatch", slug: board),
+                    path: try self.withBoard(Self.namespace + "/dispatch", slug: capturedBoard),
                     method: "POST",
-                    body: nil
+                    body: [:]
                 )
             } catch {
                 // Dispatch is an acceleration hint, never a mutation dependency.
             }
         }
-        pendingDispatcherNudge = task
-        await task.value
+    }
+
+    /// Test seam: awaits (without cancelling) any in-flight debounced nudge.
+    func awaitPendingDispatcherNudgeForTesting() async {
+        await pendingDispatcherNudge?.value
         pendingDispatcherNudge = nil
     }
 
@@ -214,7 +237,7 @@ final class KanbanService {
             }
         }
         let response = try await request(
-            path: scoped(Self.namespace + "/boards/\(pathComponent(slug))"),
+            path: scoped(Self.namespace + "/boards/" + (try pathComponent(slug))),
             method: "PATCH",
             body: try encodedDictionary(Body(name: name, description: description, defaultWorkdir: defaultWorkdir))
         )
@@ -245,7 +268,7 @@ final class KanbanService {
         do {
             return try decoder.decode(type, from: data)
         } catch {
-            throw KanbanServiceError.invalidResponse("Hermes returned an unexpected Kanban response: \(error.localizedDescription)")
+            throw KanbanServiceError.invalidResponse("Hermes returned an unexpected Kanban response: " + error.localizedDescription)
         }
     }
 
@@ -258,23 +281,33 @@ final class KanbanService {
     }
 
     private func scoped(_ path: String) -> String {
-        withBoard(path, slug: nil)
+        // Reserved seam for future request-scoped parameters. Today the plugin
+        // API takes no profile/scope query and must stay that way.
+        path
     }
 
-    private func withBoard(_ path: String, slug: String?, params: [String: String] = [:]) -> String {
+    /// Throwing query builder: board scope is data-integrity critical, so an
+    /// unencodable parameter fails the request instead of silently vanishing
+    /// (which would retarget the call at the backend's current board).
+    private func withBoard(_ path: String, slug: String?, params: [String: String] = [:]) throws -> String {
         var values = params
         if let slug, !slug.isEmpty { values["board"] = slug }
-        if !profile.isEmpty, profile != "default" { values["profile"] = profile }
         guard !values.isEmpty else { return path }
-        let query = values.keys.sorted().compactMap { key -> String? in
-            guard let encodedValue = DashboardPath.encodedQueryComponent(values[key] ?? "") else { return nil }
-            return "\(key)=\(encodedValue)"
+        let query = try values.keys.sorted().map { key -> String in
+            guard let encodedKey = DashboardPath.encodedQueryComponent(key),
+                  let encodedValue = DashboardPath.encodedQueryComponent(values[key] ?? "") else {
+                throw KanbanServiceError.invalidQueryParameter(key)
+            }
+            return encodedKey + "=" + encodedValue
         }.joined(separator: "&")
-        return query.isEmpty ? path : "\(path)?\(query)"
+        return query.isEmpty ? path : path + "?" + query
     }
 
-    private func pathComponent(_ value: String) -> String {
-        DashboardPath.encodedQueryComponent(value) ?? value
+    private func pathComponent(_ value: String) throws -> String {
+        guard let encoded = DashboardPath.encodedQueryComponent(value), !encoded.isEmpty else {
+            throw KanbanServiceError.invalidQueryParameter("id")
+        }
+        return encoded
     }
 
     private struct TaskEnvelope: Decodable { let task: KanbanTask? }

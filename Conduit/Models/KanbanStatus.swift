@@ -1,6 +1,13 @@
 import SwiftUI
 
 /// Central presentation and mutation metadata for backend workflow statuses.
+///
+/// Capability values mirror the current Hermes desktop board contract
+/// (`LOCKED_COLUMNS = ['review', 'running', 'scheduled']` in
+/// apps/desktop/src/plugins/kanban/ui.tsx): locked lanes are system-owned drop
+/// targets — a card can be dragged OUT of them, never INTO them, and the
+/// backend refuses bare transitions into them (running: 409 direct-set;
+/// scheduled: 409 without an attached wake time; review: claim-path only).
 /// Unknown statuses remain renderable through the fallback metadata but are
 /// never offered as new-task or manual status destinations.
 struct KanbanStatusPresentation: Equatable, Identifiable {
@@ -40,6 +47,14 @@ struct KanbanStatusPresentation: Equatable, Identifiable {
         knownStatuses.contains(rawValue) && forStatus(rawValue).isTaskCreatable
     }
 
+    /// Upstream LOCKED_COLUMNS: system-owned lanes that must never appear as
+    /// manual move/create destinations, while remaining visible on the board.
+    static let lockedDestinations: [String] = ["review", "running", "scheduled"]
+
+    static func isLockedDestination(_ rawValue: String) -> Bool {
+        Self.lockedDestinations.contains(rawValue)
+    }
+
     static func forStatus(_ rawValue: String) -> KanbanStatusPresentation {
         switch rawValue {
         case "triage":
@@ -47,7 +62,9 @@ struct KanbanStatusPresentation: Equatable, Identifiable {
         case "todo":
             return .init(rawValue: rawValue, displayName: "To Do", systemImage: "circle", tint: .secondary, sortOrder: 1, isVisibleOnBoard: true, isManuallySelectable: true, isTaskCreatable: true, isBackendControlled: false)
         case "scheduled":
-            return .init(rawValue: rawValue, displayName: "Scheduled", systemImage: "clock", tint: .purple, sortOrder: 2, isVisibleOnBoard: true, isManuallySelectable: true, isTaskCreatable: true, isBackendControlled: false)
+            // Locked upstream: needs a wake-up time only an agent/CLI attaches;
+            // a bare status set is refused with a 409.
+            return .init(rawValue: rawValue, displayName: "Scheduled", systemImage: "clock", tint: .purple, sortOrder: 2, isVisibleOnBoard: true, isManuallySelectable: false, isTaskCreatable: false, isBackendControlled: true)
         case "ready":
             return .init(rawValue: rawValue, displayName: "Ready", systemImage: "play.circle", tint: .blue, sortOrder: 3, isVisibleOnBoard: true, isManuallySelectable: true, isTaskCreatable: true, isBackendControlled: false)
         case "running":
@@ -55,7 +72,9 @@ struct KanbanStatusPresentation: Equatable, Identifiable {
         case "blocked":
             return .init(rawValue: rawValue, displayName: "Blocked", systemImage: "exclamationmark.octagon", tint: .red, sortOrder: 5, isVisibleOnBoard: true, isManuallySelectable: true, isTaskCreatable: true, isBackendControlled: false)
         case "review":
-            return .init(rawValue: rawValue, displayName: "Review", systemImage: "eye", tint: .orange, sortOrder: 6, isVisibleOnBoard: true, isManuallySelectable: true, isTaskCreatable: true, isBackendControlled: false)
+            // Locked upstream: entered/exited through the dispatcher's claim
+            // path, not by arbitrary status assignment.
+            return .init(rawValue: rawValue, displayName: "Review", systemImage: "eye", tint: .orange, sortOrder: 6, isVisibleOnBoard: true, isManuallySelectable: false, isTaskCreatable: false, isBackendControlled: true)
         case "done":
             return .init(rawValue: rawValue, displayName: "Done", systemImage: "checkmark.circle", tint: .secondary, sortOrder: 7, isVisibleOnBoard: true, isManuallySelectable: true, isTaskCreatable: true, isBackendControlled: false)
         case "archived":

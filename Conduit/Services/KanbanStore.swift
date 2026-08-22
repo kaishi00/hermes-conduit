@@ -1,6 +1,15 @@
 import Foundation
 import SwiftUI
 
+/// Immutable capture of everything a mutation needs. Captured BEFORE the first
+/// suspension point so a concurrent board/server switch can never splice a
+/// new board slug (or a different backend) into an in-flight write.
+struct KanbanOperationContext {
+    let service: KanbanService
+    let boardSlug: String?
+    let configurationGeneration: Int
+}
+
 @MainActor
 final class KanbanStore: ObservableObject {
     static let selectedBoardKey = "conduit.kanbanBoardSlug"
@@ -18,15 +27,22 @@ final class KanbanStore: ObservableObject {
     @Published private(set) var mutationErrorMessage: String?
 
     private let defaults: UserDefaults
+    private let makeService: @MainActor (any DashboardJSONRequester) -> KanbanService
     private var service: KanbanService?
     private var requesterID: ObjectIdentifier?
-    private var profile = "default"
     private var serverIdentity = ""
     private var persistenceKey: String?
     private var loadGeneration = 0
+    /// Bumped on every configure(); captured by mutations so post-mutation
+    /// refreshes from an old server/board context are discarded.
+    private var configurationGeneration = 0
 
-    init(defaults: UserDefaults = .standard) {
+    init(
+        defaults: UserDefaults = .standard,
+        serviceFactory: ((any DashboardJSONRequester) -> KanbanService)? = nil
+    ) {
         self.defaults = defaults
+        self.makeService = serviceFactory ?? { KanbanService(requester: $0) }
     }
 
     var effectiveBoardSlug: String? {
@@ -38,17 +54,21 @@ final class KanbanStore: ObservableObject {
         return boards.first(where: { $0.slug == slug })
     }
 
-    static func scopedBoardKey(serverIdentity: String, profile: String) -> String {
-        "\(selectedBoardKey).\(scopeToken(serverIdentity)).\(scopeToken(profile))"
+    /// Board selection is scoped to the dashboard SERVER identity only. The
+    /// plugin API serves the backend's own Hermes home (one profile per
+    /// process), so the server URL - not the app-level UI profile - is the
+    /// real data boundary. Two dashboards never share a selection; switching
+    /// Conduit's active profile on one dashboard intentionally does not either.
+    static func scopedBoardKey(serverIdentity: String) -> String {
+        // Normalize exactly like configure() so equivalent URLs share a key.
+        let normalized = serverIdentity.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        return selectedBoardKey + "." + scopeToken(normalized)
     }
 
-    func configure(
-        requester: (any DashboardJSONRequester)?,
-        profile: String = "default",
-        serverIdentity: String = ""
-    ) {
+    func configure(requester: (any DashboardJSONRequester)?, serverIdentity: String = "") {
         guard let requester else {
-            loadGeneration &+= 1
+            configurationGeneration += 1
+            loadGeneration += 1
             isLoading = false
             service = nil
             requesterID = nil
@@ -57,30 +77,27 @@ final class KanbanStore: ObservableObject {
             return
         }
 
-        let normalizedProfile = profile.isEmpty ? "default" : profile
         let normalizedServer = serverIdentity.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         let identity = ObjectIdentifier(requester)
-        let nextPersistenceKey = Self.scopedBoardKey(serverIdentity: normalizedServer, profile: normalizedProfile)
-        guard requesterID != identity || self.profile != normalizedProfile || self.serverIdentity != normalizedServer else {
-            return
-        }
+        if requesterID == identity && self.serverIdentity == normalizedServer { return }
 
-        // Invalidate any cancelled load from the previous bridge/profile. Its
-        // response must not repopulate this store after the profile changes.
-        loadGeneration &+= 1
+        // Invalidate any cancelled load or in-flight mutation from the
+        // previous bridge/server. Their completions must not repopulate this
+        // store after the data source changes.
+        configurationGeneration += 1
+        loadGeneration += 1
         isLoading = false
-        self.service = KanbanService(requester: requester, profile: normalizedProfile)
-        requesterID = identity
-        self.profile = normalizedProfile
-        self.serverIdentity = normalizedServer
-        persistenceKey = nextPersistenceKey
-        selectedBoardSlug = defaults.string(forKey: nextPersistenceKey) ?? ""
 
-        // One-time migration for the pre-profile-scoped key. Once migrated,
-        // every subsequent profile gets an independent board selection.
+        service = makeService(requester)
+        requesterID = identity
+        self.serverIdentity = normalizedServer
+        persistenceKey = Self.scopedBoardKey(serverIdentity: normalizedServer)
+        selectedBoardSlug = defaults.string(forKey: persistenceKey!) ?? ""
+
+        // One-time migration for the pre-scoped key.
         if selectedBoardSlug.isEmpty, let legacy = defaults.string(forKey: Self.selectedBoardKey) {
             selectedBoardSlug = legacy
-            defaults.set(legacy, forKey: nextPersistenceKey)
+            defaults.set(legacy, forKey: persistenceKey!)
             defaults.removeObject(forKey: Self.selectedBoardKey)
         }
 
@@ -96,7 +113,7 @@ final class KanbanStore: ObservableObject {
 
     func reload(includeArchived: Bool = false) async {
         guard !isLoading else { return }
-        loadGeneration &+= 1
+        loadGeneration += 1
         let generation = loadGeneration
         guard let service else {
             if board == nil {
@@ -183,29 +200,34 @@ final class KanbanStore: ObservableObject {
         initialStatus: String? = nil,
         includeArchived: Bool = false
     ) async throws -> KanbanTask? {
-        guard let service else {
-            let error = KanbanServiceError.invalidResponse("Kanban is not connected.")
-            mutationErrorMessage = error.localizedDescription
-            throw error
+        guard !isMutating else {
+            throw recordMutationError(KanbanServiceError.mutationInProgress)
+        }
+        // Context is frozen before the first suspension point.
+        guard let context = makeOperationContext() else {
+            throw recordMutationError(KanbanServiceError.invalidResponse("Kanban is not connected."))
         }
         let targetStatus = initialStatus ?? (request.triage ? "triage" : "todo")
 
-        return try await performMutation(includeArchived: includeArchived) {
+        return try await performMutation(context: context, includeArchived: includeArchived) {
+            // Upstream only exposes creation targets on unlocked lanes; locked
+            // lanes are rejected before any POST so no partial task can exist.
             guard KanbanStatusPresentation.canCreateTask(in: targetStatus) else {
                 throw KanbanServiceError.invalidManualStatus(targetStatus)
             }
 
             var body = request
             if targetStatus == "triage" { body.triage = true }
-            let response = try await service.createTask(body, board: self.effectiveBoardSlug)
+            let response = try await context.service.createTask(body, board: context.boardSlug)
             var task = response.task
 
-            // The backend owns native triage/default creation. Other supported
-            // manual lanes use one guarded follow-up transition.
+            // Upstream parity: native triage landing, otherwise a guarded
+            // follow-up transition when the created status differs from the
+            // requested lane (board.tsx submit()).
             let needsMove = targetStatus != "todo" && targetStatus != "triage" && task?.status != targetStatus
             if needsMove {
                 guard let taskID = task?.id, !taskID.isEmpty else {
-                    await service.nudgeDispatcher(board: self.effectiveBoardSlug)
+                    context.service.scheduleDispatcherNudge(board: context.boardSlug)
                     throw KanbanServiceError.taskCreatedButMoveFailed(
                         taskID: nil,
                         targetStatus: targetStatus,
@@ -213,13 +235,13 @@ final class KanbanStore: ObservableObject {
                     )
                 }
                 do {
-                    task = try await service.updateTask(
+                    task = try await context.service.updateTask(
                         id: taskID,
-                        board: self.effectiveBoardSlug,
+                        board: context.boardSlug,
                         patch: KanbanTaskPatch(status: targetStatus)
                     ) ?? task
                 } catch {
-                    await service.nudgeDispatcher(board: self.effectiveBoardSlug)
+                    context.service.scheduleDispatcherNudge(board: context.boardSlug)
                     throw KanbanServiceError.taskCreatedButMoveFailed(
                         taskID: taskID,
                         targetStatus: targetStatus,
@@ -228,72 +250,79 @@ final class KanbanStore: ObservableObject {
                 }
             }
 
-            await service.nudgeDispatcher(board: self.effectiveBoardSlug)
+            context.service.scheduleDispatcherNudge(board: context.boardSlug)
             return task
         }
     }
 
     @discardableResult
     func updateTask(id: String, patch: KanbanTaskPatch, includeArchived: Bool = false) async throws -> KanbanTask? {
-        guard let service else {
-            let error = KanbanServiceError.invalidResponse("Kanban is not connected.")
-            mutationErrorMessage = error.localizedDescription
-            throw error
+        guard !isMutating else {
+            throw recordMutationError(KanbanServiceError.mutationInProgress)
         }
-        return try await performMutation(includeArchived: includeArchived) {
+        guard let context = makeOperationContext() else {
+            throw recordMutationError(KanbanServiceError.invalidResponse("Kanban is not connected."))
+        }
+        return try await performMutation(context: context, includeArchived: includeArchived) {
             if let status = patch.status, !KanbanStatusPresentation.canSelectManually(status) {
                 throw KanbanServiceError.invalidManualStatus(status)
             }
-            let task = try await service.updateTask(id: id, board: self.effectiveBoardSlug, patch: patch)
-            await service.nudgeDispatcher(board: self.effectiveBoardSlug)
+            let task = try await context.service.updateTask(id: id, board: context.boardSlug, patch: patch)
+            context.service.scheduleDispatcherNudge(board: context.boardSlug)
             return task
         }
     }
 
     func deleteTask(id: String, includeArchived: Bool = false) async throws {
-        guard let service else {
-            let error = KanbanServiceError.invalidResponse("Kanban is not connected.")
-            mutationErrorMessage = error.localizedDescription
-            throw error
+        guard !isMutating else {
+            throw recordMutationError(KanbanServiceError.mutationInProgress)
         }
-        try await performMutation(includeArchived: includeArchived) {
-            try await service.deleteTask(id: id, board: self.effectiveBoardSlug)
-            await service.nudgeDispatcher(board: self.effectiveBoardSlug)
+        guard let context = makeOperationContext() else {
+            throw recordMutationError(KanbanServiceError.invalidResponse("Kanban is not connected."))
+        }
+        try await performMutation(context: context, includeArchived: includeArchived) {
+            try await context.service.deleteTask(id: id, board: context.boardSlug)
+            // Deleting can unblock dependants, so it nudges too (upstream).
+            context.service.scheduleDispatcherNudge(board: context.boardSlug)
         }
     }
 
     func addComment(taskID: String, body: String) async throws {
-        guard let service else {
-            let error = KanbanServiceError.invalidResponse("Kanban is not connected.")
-            mutationErrorMessage = error.localizedDescription
-            throw error
+        guard !isMutating else {
+            throw recordMutationError(KanbanServiceError.mutationInProgress)
         }
-        try await performMutation(includeArchived: false) {
-            try await service.addComment(taskID: taskID, board: self.effectiveBoardSlug, body: body)
+        guard let context = makeOperationContext() else {
+            throw recordMutationError(KanbanServiceError.invalidResponse("Kanban is not connected."))
+        }
+        try await performMutation(context: context, includeArchived: false) {
+            // Comments are not dispatcher-relevant upstream: no nudge.
+            try await context.service.addComment(taskID: taskID, board: context.boardSlug, body: body)
         }
     }
 
     func reassignTask(taskID: String, profile: String?, reclaimFirst: Bool = true) async throws {
-        guard let service else {
-            let error = KanbanServiceError.invalidResponse("Kanban is not connected.")
-            mutationErrorMessage = error.localizedDescription
-            throw error
+        guard !isMutating else {
+            throw recordMutationError(KanbanServiceError.mutationInProgress)
         }
-        try await performMutation(includeArchived: false) {
-            try await service.reassignTask(taskID: taskID, board: self.effectiveBoardSlug, profile: profile, reclaimFirst: reclaimFirst)
-            await service.nudgeDispatcher(board: self.effectiveBoardSlug)
+        guard let context = makeOperationContext() else {
+            throw recordMutationError(KanbanServiceError.invalidResponse("Kanban is not connected."))
+        }
+        try await performMutation(context: context, includeArchived: false) {
+            try await context.service.reassignTask(taskID: taskID, board: context.boardSlug, profile: profile, reclaimFirst: reclaimFirst)
+            context.service.scheduleDispatcherNudge(board: context.boardSlug)
         }
     }
 
     func reclaimTask(taskID: String, reason: String? = nil) async throws {
-        guard let service else {
-            let error = KanbanServiceError.invalidResponse("Kanban is not connected.")
-            mutationErrorMessage = error.localizedDescription
-            throw error
+        guard !isMutating else {
+            throw recordMutationError(KanbanServiceError.mutationInProgress)
         }
-        try await performMutation(includeArchived: false) {
-            try await service.reclaimTask(taskID: taskID, board: self.effectiveBoardSlug, reason: reason)
-            await service.nudgeDispatcher(board: self.effectiveBoardSlug)
+        guard let context = makeOperationContext() else {
+            throw recordMutationError(KanbanServiceError.invalidResponse("Kanban is not connected."))
+        }
+        try await performMutation(context: context, includeArchived: false) {
+            try await context.service.reclaimTask(taskID: taskID, board: context.boardSlug, reason: reason)
+            context.service.scheduleDispatcherNudge(board: context.boardSlug)
         }
     }
 
@@ -307,27 +336,46 @@ final class KanbanStore: ObservableObject {
 
     // MARK: - Mutation state
 
-    private func performMutation<T>(includeArchived: Bool, operation: () async throws -> T) async throws -> T {
-        guard !isMutating else {
-            let error = KanbanServiceError.mutationInProgress
-            mutationErrorMessage = error.localizedDescription
-            throw error
-        }
+    private func makeOperationContext() -> KanbanOperationContext? {
+        guard let service else { return nil }
+        return KanbanOperationContext(
+            service: service,
+            boardSlug: effectiveBoardSlug,
+            configurationGeneration: configurationGeneration
+        )
+    }
+
+    private func performMutation<T>(
+        context: KanbanOperationContext,
+        includeArchived: Bool,
+        operation: () async throws -> T
+    ) async throws -> T {
         isMutating = true
         mutationErrorMessage = nil
+        defer { isMutating = false }
         do {
             let result = try await operation()
-            isMutating = false
-            await reload(includeArchived: includeArchived)
+            if configurationGeneration == context.configurationGeneration {
+                await reload(includeArchived: includeArchived)
+            }
             return result
         } catch {
-            isMutating = false
-            await reload(includeArchived: includeArchived)
+            // Refresh so a partial success (e.g. created-but-not-moved task)
+            // becomes visible even though the overall call failed - unless the
+            // store was reconfigured mid-flight, in which case the fresh load
+            // already reflects the new source.
+            if configurationGeneration == context.configurationGeneration {
+                await reload(includeArchived: includeArchived)
+            }
             mutationErrorMessage = error.localizedDescription
             throw error
         }
     }
 
+    private func recordMutationError(_ error: KanbanServiceError) -> KanbanServiceError {
+        mutationErrorMessage = error.localizedDescription
+        return error
+    }
 
     private static func scopeToken(_ value: String) -> String {
         Data(value.utf8)
