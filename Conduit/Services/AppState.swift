@@ -8677,14 +8677,33 @@ enum CapabilityLoadPolicy {
         loadError: String?,
         hasRows: Bool
     ) -> PresentationState {
-        guard shouldPresentRows(snapshotProfile: snapshotProfile, activeProfile: activeProfile) else {
-            // Foreign/no snapshot: even a settled foreign error belongs to the
-            // other profile, so show loading until THIS profile settles.
+        let ownsSnapshot = shouldPresentRows(
+            snapshotProfile: snapshotProfile,
+            activeProfile: activeProfile
+        )
+
+        // The view's request token guarantees a settled error belongs to the
+        // CURRENT request/profile - never to a foreign one. So errors surface
+        // before any snapshot-ownership masking; otherwise a failed first
+        // load (no snapshot yet) would hide behind an eternal spinner.
+        if isLoading {
             return .loading
         }
-        if hasRows { return .list(banner: loadError) }
-        if let loadError { return .failure(loadError) }
-        return .emptySuccess
+
+        if let loadError {
+            if ownsSnapshot && hasRows {
+                return .list(banner: loadError)
+            }
+            return .failure(loadError)
+        }
+
+        guard ownsSnapshot else {
+            // No settled result for this profile yet: never render rows that
+            // belong to another profile while the current one is pending.
+            return .loading
+        }
+
+        return hasRows ? .list(banner: nil) : .emptySuccess
     }
 }
 

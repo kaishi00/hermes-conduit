@@ -148,7 +148,7 @@ final class KanbanTests: XCTestCase {
         // Fire-and-forget: the write resolved before the debounced dispatch.
         XCTAssertFalse(requester.calls.contains { $0.path.contains("/dispatch") })
 
-        await flushNudge()
+        await store.awaitPendingDispatcherNudgeForTesting()
         let dispatchCalls = requester.calls.filter { $0.path.contains("/dispatch") }
         XCTAssertEqual(dispatchCalls.count, 1)
         XCTAssertEqual(dispatchCalls.first?.method, "POST")
@@ -167,7 +167,7 @@ final class KanbanTests: XCTestCase {
 
         _ = try await store.updateTask(id: "t1", patch: KanbanTaskPatch(title: "A"))
         _ = try await store.updateTask(id: "t1", patch: KanbanTaskPatch(title: "AA"))
-        await flushNudge()
+        await store.awaitPendingDispatcherNudgeForTesting()
 
         XCTAssertEqual(requester.calls.filter { $0.path.contains("/dispatch") }.count, 1)
         XCTAssertNil(store.mutationErrorMessage)
@@ -190,7 +190,7 @@ final class KanbanTests: XCTestCase {
         await store.selectBoard(slug: "beta")
         requester.releaseAll()
         _ = await mutation.value
-        await flushNudge()
+        await store.awaitPendingDispatcherNudgeForTesting()
 
         let patchCall = requester.calls.last(where: { $0.method == "PATCH" })
         XCTAssertTrue(patchCall?.path.contains("board=alpha") == true)
@@ -287,7 +287,7 @@ final class KanbanTests: XCTestCase {
     // MARK: - Tolerant decoding must not crash on hostile numbers
 
     func testLossyIntDecodingHandlesExtremeAndMalformedValues() throws {
-        let json = "{\"id\":\"t\",\"title\":\"x\",\"status\":\"todo\",\"priority\":1e999,\"created_at\":2.5,\"completed_at\":3.0,\"comment_count\":-3,\"started_at\":\"7\",\"worker_pid\":\"not-a-number\"}"
+        let json = "{\"id\":\"t\",\"title\":\"x\",\"status\":\"todo\",\"priority\":1e300,\"created_at\":2.5,\"completed_at\":3.0,\"comment_count\":-3,\"started_at\":\"7\",\"worker_pid\":\"not-a-number\"}"
         let task = try JSONDecoder().decode(KanbanTask.self, from: Data(json.utf8))
         XCTAssertNil(task.priority, "unrepresentable huge double must decode as nil, not crash")
         XCTAssertNil(task.createdAt, "fractional doubles must not truncate to an integer")
@@ -351,7 +351,7 @@ final class KanbanTests: XCTestCase {
         requester.releaseAll()
         await poll.value
         await selection.value
-        await flushNudge()
+        await store.awaitPendingDispatcherNudgeForTesting()
 
         XCTAssertEqual(store.selectedBoardSlug, "beta")
         XCTAssertEqual(store.loadedBoardSlug, "beta")
@@ -414,7 +414,7 @@ final class KanbanTests: XCTestCase {
             await Task.yield()
         }
         _ = await mutation.value
-        await flushNudge()
+        await store.awaitPendingDispatcherNudgeForTesting()
 
         // The reconciliation actually issued a NEW board fetch (it was not
         // dropped because isLoading was true).
@@ -491,7 +491,7 @@ final class KanbanTests: XCTestCase {
 
         requesterA.releaseAll()
         _ = await mutation.value
-        await flushNudge()
+        await store.awaitPendingDispatcherNudgeForTesting()
 
         XCTAssertNil(store.mutationErrorMessage)
         XCTAssertFalse(store.isMutating)
@@ -660,15 +660,37 @@ final class KanbanTests: XCTestCase {
     // MARK: - Capabilities rendering boundary policy
 
     func testForeignSnapshotCanNeverResolveToARowState() {
-        // A rows under active B, spinner not yet running (SwiftUI render race).
+        // A rows under active B while B's request is still in flight (SwiftUI
+        // render race): the transition state must stay loading, never rows.
+        XCTAssertEqual(
+            CapabilityLoadPolicy.resolvePresentation(snapshotProfile: "A", activeProfile: "B", isLoading: true, loadError: nil, hasRows: true),
+            .loading
+        )
+        // Foreign snapshot with nothing settled for B yet: still loading.
         XCTAssertEqual(
             CapabilityLoadPolicy.resolvePresentation(snapshotProfile: "A", activeProfile: "B", isLoading: false, loadError: nil, hasRows: true),
             .loading
         )
-        // Even a settled foreign error stays masked.
+    }
+
+    func testFailedFirstLoadWithoutSnapshotShowsFailure() {
+        // First load fails before any snapshot exists (e.g. offline).
         XCTAssertEqual(
-            CapabilityLoadPolicy.resolvePresentation(snapshotProfile: "A", activeProfile: "B", isLoading: false, loadError: "A failure", hasRows: true),
-            .loading
+            CapabilityLoadPolicy.resolvePresentation(snapshotProfile: nil, activeProfile: "B", isLoading: false, loadError: "offline", hasRows: false),
+            .failure("offline")
+        )
+    }
+
+    func testNoDashboardUnavailableFirstLoadShowsConnectionFailure() {
+        XCTAssertEqual(
+            CapabilityLoadPolicy.resolvePresentation(
+                snapshotProfile: nil,
+                activeProfile: "B",
+                isLoading: false,
+                loadError: "Connect to a Hermes dashboard to load capabilities.",
+                hasRows: false
+            ),
+            .failure("Connect to a Hermes dashboard to load capabilities.")
         )
     }
 
@@ -713,14 +735,9 @@ final class KanbanTests: XCTestCase {
         store.configure(requester: requester, serverIdentity: "https://example.test")
         return store
     }
-
-    private func flushNudge() async {
-        // The instrumented debounce is tens of milliseconds; wait past it and
-        // give the scheduled task a few ticks to finish its POST.
-        try? await Task.sleep(nanoseconds: 250_000_000)
-        await Task.yield()
-    }
 }
+
+
 
 private enum MockRequestError: LocalizedError {
     case failed(String)

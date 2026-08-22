@@ -449,6 +449,12 @@ private struct KanbanCardView: View {
         }
         .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .onTapGesture(perform: onOpen)
+        // VoiceOver: expose the whole card as one tappable "Open task" button
+        // while keeping the ellipsis menu and context actions intact.
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityHint("Opens task details")
+        .accessibilityAction(named: "Open task", onOpen)
         .contextMenu {
             Button { onOpen() } label: { Label("Open", systemImage: "arrow.up.right.square") }
             Button(role: .destructive, action: onDelete) { Label("Delete", systemImage: "trash") }

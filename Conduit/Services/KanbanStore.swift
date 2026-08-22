@@ -377,6 +377,12 @@ final class KanbanStore: ObservableObject {
         mutationErrorMessage = nil
     }
 
+    /// Test seam: awaits any in-flight debounced dispatcher nudge owned by the
+    /// active service, so tests need no wall-clock sleeps.
+    func awaitPendingDispatcherNudgeForTesting() async {
+        await service?.awaitPendingDispatcherNudgeForTesting()
+    }
+
     func showMutationError(_ error: Error) {
         mutationErrorMessage = error.localizedDescription
     }
