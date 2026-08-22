@@ -2,7 +2,7 @@
 //  SidebarView.swift
 //  Conduit
 //
-//  Full-screen slide-in sidebar with Sessions / Cron / Capabilities tabs.
+//  Full-screen slide-in sidebar with Sessions / Cron / Kanban tabs.
 //
 
 import SwiftUI
@@ -10,23 +10,14 @@ import SwiftUI
 struct SidebarView: View {
     @EnvironmentObject var appState: AppState
     let onRequestSettings: () -> Void
-    @AppStorage("conduit.sidebarTab") private var selectedTab: SidebarTab = .sessions
+    @AppStorage("conduit.sidebarTab") private var selectedTabRaw = SidebarTab.sessions.rawValue
+
+    private var selectedTab: SidebarTab {
+        get { SidebarTab.migrated(rawValue: selectedTabRaw) }
+        set { selectedTabRaw = newValue.rawValue }
+    }
     @State private var showProfilePicker = false
     @Environment(\.dismiss) private var dismiss
-
-    enum SidebarTab: String, CaseIterable {
-        case sessions = "Sessions"
-        case cron = "Cron"
-        case capabilities = "Capabilities"
-
-        var icon: String {
-            switch self {
-            case .sessions: return "bubble.left.and.bubble.right"
-            case .cron: return "clock"
-            case .capabilities: return "wrench.adjustable"
-            }
-        }
-    }
 
     var body: some View {
         NavigationStack {
@@ -95,7 +86,7 @@ struct SidebarView: View {
                                 Button {
                                     withAnimation(ConduitMotion.response) {
                                         Haptics.selection()
-                                        selectedTab = tab
+                                        selectedTabRaw = tab.rawValue
                                     }
                                 } label: {
                                     Label(tab.rawValue, systemImage: tab.icon)
@@ -121,8 +112,8 @@ struct SidebarView: View {
                             SessionList()
                         case .cron:
                             CronList()
-                        case .capabilities:
-                            CapabilitiesList()
+                        case .kanban:
+                            KanbanView()
                         }
                     }
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
@@ -136,6 +127,10 @@ struct SidebarView: View {
             ProfilePickerSheet()
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
+        }
+        .onAppear {
+            // Explicitly migrate removed raw values such as Capabilities.
+            selectedTabRaw = SidebarTab.migrated(rawValue: selectedTabRaw).rawValue
         }
     }
 }
@@ -1181,237 +1176,5 @@ private struct CronJobDetailSheet: View {
             }
         }
         .task { await appState.loadCronRuns(for: job) }
-    }
-}
-
-// MARK: - Capabilities List
-
-struct CapabilitiesList: View {
-    @EnvironmentObject var appState: AppState
-    @State private var searchText = ""
-    @State private var capabilitiesLoading = false
-    @State private var loadError: String?
-
-    var body: some View {
-        VStack(spacing: 0) {
-            if capabilitiesLoading && appState.skills.isEmpty && appState.toolsets.isEmpty {
-                Spacer()
-                ProgressView("Loading capabilities…")
-                    .tint(.conduitAccent)
-                Spacer()
-            } else if let loadError, appState.skills.isEmpty && appState.toolsets.isEmpty {
-                ContentUnavailableView(
-                    "Couldn't Load",
-                    systemImage: "exclamationmark.triangle",
-                    description: Text(loadError)
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                List {
-                    skillsSection
-                    toolsetsSection
-                }
-                .searchable(text: $searchText, prompt: "Search skills")
-                .scrollContentBackground(.hidden)
-                .listStyle(.plain)
-                .refreshable { await loadCapabilities() }
-            }
-        }
-        .task(id: appState.activeProfile) { await loadCapabilities() }
-    }
-
-    // MARK: Skills
-
-    @ViewBuilder
-    private var skillsSection: some View {
-        if !filteredSkills.isEmpty {
-            if hasCategories {
-                ForEach(skillsByCategory, id: \.0) { category, skills in
-                    Section(category) {
-                        ForEach(skills) { skill in
-                            CapabilitySkillRow(skill: skill)
-                        }
-                    }
-                }
-            } else {
-                Section("Skills") {
-                    ForEach(filteredSkills) { skill in
-                        CapabilitySkillRow(skill: skill)
-                    }
-                }
-            }
-        }
-    }
-
-    // MARK: Toolsets
-
-    @ViewBuilder
-    private var toolsetsSection: some View {
-        if !filteredToolsets.isEmpty {
-            Section("Toolsets") {
-                ForEach(filteredToolsets) { toolset in
-                    CapabilityToolsetRow(toolset: toolset)
-                }
-            }
-        }
-    }
-
-    // MARK: Filtering & grouping
-
-    private var filteredSkills: [CapabilitySkill] {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return appState.skills }
-        return appState.skills.filter { skill in
-            [skill.name, skill.description ?? "", skill.category ?? ""]
-                .contains { $0.localizedCaseInsensitiveContains(query) }
-        }
-    }
-
-    private var filteredToolsets: [CapabilityToolset] {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return appState.toolsets }
-        return appState.toolsets.filter { toolset in
-            [toolset.name, toolset.label ?? "", toolset.description ?? ""]
-                .contains { $0.localizedCaseInsensitiveContains(query) }
-        }
-    }
-
-    private var hasCategories: Bool {
-        appState.skills.contains { $0.category != nil && !($0.category?.isEmpty ?? true) }
-    }
-
-    private var skillsByCategory: [(String, [CapabilitySkill])] {
-        let groups = Dictionary(grouping: filteredSkills) { $0.category ?? "Uncategorized" }
-        return groups.sorted { $0.key < $1.key }
-    }
-
-    // MARK: Loading
-
-    private func loadCapabilities() async {
-        capabilitiesLoading = true
-        defer { capabilitiesLoading = false }
-        await appState.loadCapabilities()
-        if appState.skills.isEmpty && appState.toolsets.isEmpty {
-            loadError = appState.errorMessage ?? "No capabilities found."
-        } else {
-            loadError = nil
-        }
-    }
-}
-
-// MARK: - Skill Row
-
-private struct CapabilitySkillRow: View {
-    @EnvironmentObject var appState: AppState
-    let skill: CapabilitySkill
-
-    private var provenanceIcon: String? {
-        switch skill.provenance {
-        case "hub": return "bag"
-        case "bundled": return "shippingbox"
-        case "agent": return "wrench"
-        default: return nil
-        }
-    }
-
-    var body: some View {
-        Toggle(isOn: Binding(
-            get: { skill.enabled },
-            set: { newValue in
-                Task { await appState.toggleSkill(name: skill.name, enabled: newValue) }
-            }
-        )) {
-            HStack(spacing: 11) {
-                Image(systemName: provenanceIcon ?? "puzzlepiece.extension")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(skill.enabled ? .conduitAccent : .secondary)
-                    .frame(width: 30, height: 30)
-                    .background(
-                        (skill.enabled ? Color.conduitAccent : Color.secondary).opacity(0.13),
-                        in: Circle()
-                    )
-
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 6) {
-                        Text(skill.name)
-                            .font(.subheadline.weight(.medium))
-                            .lineLimit(1)
-                        if let category = skill.category, !category.isEmpty {
-                            Text(category)
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(Color.conduitAura.opacity(0.14), in: Capsule())
-                        }
-                    }
-                    if let desc = skill.description, !desc.isEmpty {
-                        Text(desc)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                    }
-                }
-            }
-        }
-        .tint(.conduitAccent)
-        .listRowBackground(Color.clear)
-        .listRowSeparator(.hidden)
-        .listRowInsets(EdgeInsets(top: 3, leading: 0, bottom: 3, trailing: 0))
-    }
-}
-
-// MARK: - Toolset Row
-
-private struct CapabilityToolsetRow: View {
-    @EnvironmentObject var appState: AppState
-    let toolset: CapabilityToolset
-
-    var body: some View {
-        Toggle(isOn: Binding(
-            get: { toolset.enabled },
-            set: { newValue in
-                Task { await appState.toggleToolset(name: toolset.name, enabled: newValue) }
-            }
-        )) {
-            HStack(spacing: 11) {
-                Image(systemName: "wrench.and.screwdriver")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(toolset.enabled ? .conduitAccent : .secondary)
-                    .frame(width: 30, height: 30)
-                    .background(
-                        (toolset.enabled ? Color.conduitAccent : Color.secondary).opacity(0.13),
-                        in: Circle()
-                    )
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(toolset.label ?? toolset.name.capitalized)
-                        .font(.subheadline.weight(.medium))
-                        .lineLimit(1)
-                    if let desc = toolset.description, !desc.isEmpty {
-                        Text(desc)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                    }
-                    if let tools = toolset.tools, !tools.isEmpty {
-                        Text(tools.joined(separator: ", "))
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                            .lineLimit(1)
-                    }
-                }
-
-                Spacer(minLength: 0)
-
-                Image(systemName: toolset.configured == true ? "checkmark.circle.fill" : "circle.dashed")
-                    .font(.caption)
-                    .foregroundStyle(toolset.configured == true ? .green : .secondary)
-            }
-        }
-        .tint(.conduitAccent)
-        .listRowBackground(Color.clear)
-        .listRowSeparator(.hidden)
-        .listRowInsets(EdgeInsets(top: 3, leading: 0, bottom: 3, trailing: 0))
     }
 }

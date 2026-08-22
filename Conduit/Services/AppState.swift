@@ -519,6 +519,12 @@ final class AppState: ObservableObject {
     @Published var slashCommands: [SlashCommand] = AppState.builtInSlashCommands
     @Published var skills: [CapabilitySkill] = []
     @Published var toolsets: [CapabilityToolset] = []
+    /// Profile that owns the currently displayed skills/toolsets. Rows are
+    /// only presentable while this equals the active profile.
+    @Published private(set) var capabilitiesProfile: String?
+    /// Monotonic request token for capability loads; older requests can never
+    /// commit over newer ones (protects the A -> B -> A race).
+    private var capabilityLoadGeneration: UInt64 = 0
     @Published var mcpServers: [CapabilityMcpServer] = []
     @Published private(set) var voiceCapabilitySnapshot = VoiceCapabilitySnapshot.unavailable
     @Published private(set) var isVoiceEnabled = false
@@ -6473,14 +6479,44 @@ final class AppState: ObservableObject {
 
     // MARK: - Capabilities
 
-    func loadCapabilities() async {
+    /// Request-scoped result for a capability load. The caller must be able to
+    /// know how THIS request ended without consulting global error/skill
+    /// state, which can be stale or mutated by unrelated flows.
+    enum CapabilityLoadOutcome {
+        case success(profile: String)
+        case failed(profile: String, message: String)
+        case unavailable(profile: String)
+        /// The active profile changed mid-request; the result belongs to an
+        /// abandoned profile and callers should discard it.
+        case superseded(requestedProfile: String, activeProfile: String)
+
+        var isSuperseded: Bool {
+            if case .superseded = self { return true }
+            return false
+        }
+    }
+
+    @discardableResult
+    func loadCapabilities() async -> CapabilityLoadOutcome {
+        capabilityLoadGeneration &+= 1
+        let generation = capabilityLoadGeneration
         let profile = activeProfile
-        guard let dashboardTicketBridge else { return }
+        guard let dashboardTicketBridge else { return .unavailable(profile: profile) }
         async let skillsResult = dashboardTicketBridge.requestJSON(path: dashboardPath("/api/skills", profile: profile))
         async let toolsetsResult = dashboardTicketBridge.requestJSON(path: dashboardPath("/api/tools/toolsets", profile: profile))
+        // Commit gate: this exact request must still be the newest one AND
+        // target the still-active profile (A -> B -> A stale commits rejected).
+        func ownsRequest() -> Bool {
+            CapabilityLoadPolicy.canCommit(
+                generation: generation,
+                latestGeneration: capabilityLoadGeneration,
+                requestedProfile: profile,
+                activeProfile: activeProfile
+            )
+        }
         do {
             let (skillsResponse, toolsetsResponse) = try await (skillsResult, toolsetsResult)
-            guard profile == activeProfile else { return }
+            guard ownsRequest() else { return .superseded(requestedProfile: profile, activeProfile: activeProfile) }
             let skillsValues = skillsResponse["_array"] as? [Any] ?? []
             self.skills = skillsValues.compactMap(decodeCapabilitySkill)
                 .sorted { lhs, rhs in
@@ -6492,9 +6528,12 @@ final class AppState: ObservableObject {
             let toolsetsValues = toolsetsResponse["_array"] as? [Any] ?? []
             self.toolsets = toolsetsValues.compactMap(decodeCapabilityToolset)
                 .sorted { ($0.label ?? $0.name) < ($1.label ?? $1.name) }
+            capabilitiesProfile = profile
+            return .success(profile: profile)
         } catch {
-            guard profile == activeProfile else { return }
+            guard ownsRequest() else { return .superseded(requestedProfile: profile, activeProfile: activeProfile) }
             errorMessage = "Could not load capabilities: \(error.localizedDescription)"
+            return .failed(profile: profile, message: "Could not load capabilities: \(error.localizedDescription)")
         }
     }
 
@@ -8601,6 +8640,72 @@ enum KeychainHelper {
 }
 
 // MARK: - Attachment Helper
+
+/// Pure ownership rules for capability loads, extracted for deterministic
+/// testing of the rapid-profile-switch races.
+enum CapabilityLoadPolicy {
+    /// A finished request may commit only while it is still the newest load
+    /// AND its profile is still active (A -> B -> A stale commits rejected).
+    static func canCommit(
+        generation: UInt64,
+        latestGeneration: UInt64,
+        requestedProfile: String,
+        activeProfile: String
+    ) -> Bool {
+        generation == latestGeneration && requestedProfile == activeProfile
+    }
+
+    /// Rows may render only when the snapshot belongs to the active profile.
+    static func shouldPresentRows(snapshotProfile: String?, activeProfile: String) -> Bool {
+        snapshotProfile == activeProfile
+    }
+
+    /// Final rendering boundary for the Capabilities screen. Foreign or absent
+    /// snapshots can never resolve to a row-bearing state - toggles must never
+    /// appear under a profile they do not belong to.
+    enum PresentationState: Equatable {
+        case loading
+        case failure(String)
+        case emptySuccess
+        case list(banner: String?)
+    }
+
+    static func resolvePresentation(
+        snapshotProfile: String?,
+        activeProfile: String,
+        isLoading: Bool,
+        loadError: String?,
+        hasRows: Bool
+    ) -> PresentationState {
+        let ownsSnapshot = shouldPresentRows(
+            snapshotProfile: snapshotProfile,
+            activeProfile: activeProfile
+        )
+
+        // The view's request token guarantees a settled error belongs to the
+        // CURRENT request/profile - never to a foreign one. So errors surface
+        // before any snapshot-ownership masking; otherwise a failed first
+        // load (no snapshot yet) would hide behind an eternal spinner.
+        if isLoading {
+            return .loading
+        }
+
+        if let loadError {
+            if ownsSnapshot && hasRows {
+                return .list(banner: loadError)
+            }
+            return .failure(loadError)
+        }
+
+        guard ownsSnapshot else {
+            // No settled result for this profile yet: never render rows that
+            // belong to another profile while the current one is pending.
+            return .loading
+        }
+
+        return hasRows ? .list(banner: nil) : .emptySuccess
+    }
+}
 
 enum AttachmentHelper {
     static func toBase64(_ attachment: Attachment) async -> String {
