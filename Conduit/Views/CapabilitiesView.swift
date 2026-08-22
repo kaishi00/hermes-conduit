@@ -11,51 +11,64 @@ struct CapabilitiesView: View {
     /// the loading flag or set the error of a newer one.
     @State private var capabilityRequestID = UUID()
 
-    /// Rows may render only when the loaded snapshot belongs to the profile
-    /// that is active right now; a foreign snapshot never shows as B.
-    private var snapshotBelongsToActiveProfile: Bool {
-        CapabilityLoadPolicy.shouldPresentRows(
-            snapshotProfile: appState.capabilitiesProfile,
-            activeProfile: appState.activeProfile
-        )
-    }
-
     var body: some View {
-        VStack(spacing: 0) {
-            if capabilitiesLoading && !snapshotBelongsToActiveProfile {
-                // Loading (or switching profiles): never render another
-                // profile's rows under this one.
+        // Single authoritative rendering boundary: foreign snapshots can never
+        // reach a row-bearing state, so stale toggles can never fire mutations
+        // against the wrong profile.
+        Group {
+            switch CapabilityLoadPolicy.resolvePresentation(
+                snapshotProfile: appState.capabilitiesProfile,
+                activeProfile: appState.activeProfile,
+                isLoading: capabilitiesLoading,
+                loadError: loadError,
+                hasRows: !appState.skills.isEmpty || !appState.toolsets.isEmpty
+            ) {
+        case .loading:
+            VStack(spacing: 0) {
                 Spacer()
                 ProgressView("Loading capabilities…")
                     .tint(.conduitAccent)
                 Spacer()
-            } else if let loadError, !snapshotBelongsToActiveProfile {
+            }
+        case .failure(let message):
+            VStack(spacing: 0) {
                 ContentUnavailableView(
                     "Couldn't Load",
                     systemImage: "exclamationmark.triangle",
-                    description: Text(loadError)
+                    description: Text(message)
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                List {
-                    skillsSection
-                    toolsetsSection
+            }
+            .refreshable { await loadCapabilities() }
+        case .emptySuccess:
+            VStack(spacing: 0) {
+                ContentUnavailableView(
+                    "No capabilities found",
+                    systemImage: "tray",
+                    description: Text("This profile has no enabled skills or toolsets.")
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .refreshable { await loadCapabilities() }
+        case .list(let banner):
+            List {
+                skillsSection
+                toolsetsSection
+            }
+            .searchable(text: $searchText, prompt: "Search skills")
+            .scrollContentBackground(.hidden)
+            .listStyle(.plain)
+            .refreshable { await loadCapabilities() }
+            .overlay(alignment: .top) {
+                if let banner {
+                    Text("Refresh failed: \(banner)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(8)
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .padding(.top, 6)
                 }
-                .searchable(text: $searchText, prompt: "Search skills")
-                .scrollContentBackground(.hidden)
-                .listStyle(.plain)
-                .refreshable { await loadCapabilities() }
-                .overlay(alignment: .top) {
-                    if let loadError, snapshotBelongsToActiveProfile,
-                       !appState.skills.isEmpty || !appState.toolsets.isEmpty {
-                        Text("Refresh failed: \(loadError)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .padding(8)
-                            .background(.ultraThinMaterial, in: Capsule())
-                            .padding(.top, 6)
-                    }
-                }
+            }
             }
         }
         .navigationTitle("Capabilities")
@@ -135,6 +148,9 @@ struct CapabilitiesView: View {
         let myToken = UUID()
         capabilityRequestID = myToken
         capabilitiesLoading = true
+        // A genuinely newer request starts with clean local error state; the
+        // token guard below keeps any older completion from re-setting it.
+        loadError = nil
         let requestedProfile = appState.activeProfile
         let outcome = await appState.loadCapabilities()
 

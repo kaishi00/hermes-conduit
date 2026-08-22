@@ -369,6 +369,67 @@ final class KanbanTests: XCTestCase {
         }
     }
 
+    // MARK: - Mutation reconciliation vs passive poll ordering
+
+    func testMutationReconciliationSupersedesInFlightPassivePoll() async throws {
+        var responses = standardKanbanResponses(boardSlug: "alpha")
+        responses["/api/plugins/kanban/board?board=alpha"] = [
+            "columns": [["name": "todo", "tasks": [["id": "t-old", "title": "stale card", "status": "todo"]]]],
+            "tenants": [], "assignees": []
+        ]
+        let requester = MockKanbanRequester(responsesByPath: responses)
+        let store = makeStore(requester: requester, nudgeDebounceNanoseconds: 30_000_000)
+        await store.refresh()
+        XCTAssertEqual(store.board?.columns.first?.tasks.first?.id, "t-old")
+        let boardFetchesBefore = requester.calls.filter { $0.path.contains("/board?") }.count
+
+        // Park an ordinary 8-second-style passive poll at its first request.
+        requester.hold(pathPrefix: "/api/plugins/kanban/boards")
+        let poll = Task { await store.poll() }
+        // Deterministic wait: the poll must actually be parked before proceeding.
+        for _ in 0..<5000 where requester.heldCount == 0 { await Task.yield() }
+        XCTAssertGreaterThan(requester.heldCount, 0, "passive poll should be parked")
+
+        // Delete succeeds while the poll is still parked. The mutation's own
+        // reconciliation must supersede the parked poll instead of being
+        // dropped behind isLoading.
+        let mutation = Task { try? await store.deleteTask(id: "t-old") }
+        // Wait until the mutation's superseding reconciliation is parked
+        // behind the poll (two held requests), so releaseNext is never early.
+        for _ in 0..<5000 where requester.heldCount < 2 { await Task.yield() }
+        XCTAssertGreaterThanOrEqual(requester.heldCount, 2, "reconciliation should be queued behind the poll")
+
+        // Fresh authoritative state after the delete: the board no longer has
+        // the deleted task. (Mutate the MOCK - the local dict was copied at init.)
+        requester.responsesByPath["/api/plugins/kanban/board?board=alpha"] = [
+            "columns": [], "tenants": [], "assignees": [], "latest_event_id": 2, "now": 3
+        ]
+        // Wake the parked POLL and lift the hold (same-prefix drains too, so
+        // the superseding reconciliation passes through freely afterwards).
+        requester.releaseNext()
+        // The unheld prefix lets the reconciliation's /boards pass freely;
+        // wait until its board fetch lands before asserting.
+        for _ in 0..<5000
+        where requester.calls.filter({ $0.path.contains("/board?") }).count <= boardFetchesBefore {
+            await Task.yield()
+        }
+        _ = await mutation.value
+        await flushNudge()
+
+        // The reconciliation actually issued a NEW board fetch (it was not
+        // dropped because isLoading was true).
+        let boardFetchesAfter = requester.calls.filter { $0.path.contains("/board?") }.count
+        XCTAssertGreaterThan(boardFetchesAfter, boardFetchesBefore, "post-mutation reconciliation must not be skipped")
+        XCTAssertNil(store.mutationErrorMessage)
+        XCTAssertNil(store.board?.columns.first?.tasks.first, "deleted card must be gone from the reconciled snapshot")
+
+        // The released old poll finishes as a stale generation and cannot
+        // resurrect the pre-mutation snapshot.
+        await poll.value
+        XCTAssertNil(store.board?.columns.first?.tasks.first, "old poll must not overwrite post-mutation state")
+        XCTAssertEqual(store.loadedBoardSlug, "alpha")
+    }
+
     // MARK: - Cross-server stale mutation isolation
 
     func testReconfiguredServerIsolatesStaleMutationFailure() async throws {
@@ -596,6 +657,47 @@ final class KanbanTests: XCTestCase {
         XCTAssertTrue(CapabilityLoadPolicy.shouldPresentRows(snapshotProfile: "B", activeProfile: "B"))
     }
 
+    // MARK: - Capabilities rendering boundary policy
+
+    func testForeignSnapshotCanNeverResolveToARowState() {
+        // A rows under active B, spinner not yet running (SwiftUI render race).
+        XCTAssertEqual(
+            CapabilityLoadPolicy.resolvePresentation(snapshotProfile: "A", activeProfile: "B", isLoading: false, loadError: nil, hasRows: true),
+            .loading
+        )
+        // Even a settled foreign error stays masked.
+        XCTAssertEqual(
+            CapabilityLoadPolicy.resolvePresentation(snapshotProfile: "A", activeProfile: "B", isLoading: false, loadError: "A failure", hasRows: true),
+            .loading
+        )
+    }
+
+    func testCurrentSnapshotEmptySuccessShowsExplicitEmptyState() {
+        XCTAssertEqual(
+            CapabilityLoadPolicy.resolvePresentation(snapshotProfile: "B", activeProfile: "B", isLoading: false, loadError: nil, hasRows: false),
+            .emptySuccess
+        )
+    }
+
+    func testCurrentSnapshotEmptyFailureShowsFullFailureState() {
+        XCTAssertEqual(
+            CapabilityLoadPolicy.resolvePresentation(snapshotProfile: "B", activeProfile: "B", isLoading: false, loadError: "boom", hasRows: false),
+            .failure("boom")
+        )
+    }
+
+    func testPopulatedSameProfileRefreshFailureKeepsRowsWithBanner() {
+        XCTAssertEqual(
+            CapabilityLoadPolicy.resolvePresentation(snapshotProfile: "B", activeProfile: "B", isLoading: false, loadError: "refresh boom", hasRows: true),
+            .list(banner: "refresh boom")
+        )
+        // Clean populated load renders the plain list.
+        XCTAssertEqual(
+            CapabilityLoadPolicy.resolvePresentation(snapshotProfile: "B", activeProfile: "B", isLoading: false, loadError: nil, hasRows: true),
+            .list(banner: nil)
+        )
+    }
+
     // MARK: - Helpers
 
     private func makeStore(
@@ -636,7 +738,13 @@ private final class MockKanbanRequester: DashboardJSONRequester {
     var responsesByPath: [String: [String: Any]]
     var errorsByPath: [String: Error]
     private var holdsActive: Set<String> = []
-    private var heldContinuations: [CheckedContinuation<Void, Never>] = []
+    private struct HeldRequest {
+        let prefix: String
+        let continuation: CheckedContinuation<Void, Never>
+    }
+    private var heldRequests: [HeldRequest] = []
+    /// Number of requests currently parked by an active hold.
+    var heldCount: Int { heldRequests.count }
     var calls: [Call] = []
 
     init(responsesByPath: [String: [String: Any]] = [:], errorsByPath: [String: Error] = [:]) {
@@ -647,10 +755,27 @@ private final class MockKanbanRequester: DashboardJSONRequester {
     /// Park every request whose path starts with the prefix until releaseAll().
     func hold(pathPrefix: String) { holdsActive.insert(pathPrefix) }
 
+    /// Wake exactly the oldest parked request and stop holding its prefix, so
+    /// later matching requests (e.g. a superseding reconciliation) pass freely
+    /// while the released one finishes as a stale generation.
+    /// Wake exactly the oldest parked request and stop holding its prefix.
+    /// Any OTHER requests already parked under the same prefix are woken too:
+    /// they proceed as stale generations (their completions discard), while
+    /// later matching requests pass through freely.
+    func releaseNext() {
+        guard let first = heldRequests.first else { return }
+        heldRequests.removeFirst()
+        holdsActive.remove(first.prefix)
+        first.continuation.resume()
+        let samePrefix = heldRequests.filter { $0.prefix == first.prefix }
+        heldRequests.removeAll { $0.prefix == first.prefix }
+        for held in samePrefix { held.continuation.resume() }
+    }
+
     func releaseAll() {
         holdsActive.removeAll()
-        for continuation in heldContinuations { continuation.resume() }
-        heldContinuations.removeAll()
+        for held in heldRequests { held.continuation.resume() }
+        heldRequests.removeAll()
     }
 
     func requestJSON(path: String, method: String, body: [String: Any]?, timeoutMilliseconds: Int, maxResponseBytes: Int) async throws -> [String: Any] {
@@ -658,12 +783,16 @@ private final class MockKanbanRequester: DashboardJSONRequester {
         let basePath = path.components(separatedBy: "?").first ?? path
         if !holdsActive.isEmpty, holdsActive.contains(where: { path.hasPrefix($0) || basePath.hasPrefix($0) }) {
             await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                heldContinuations.append(continuation)
+                heldRequests.append(HeldRequest(prefix: Self.matchingHoldPrefix(path: path, basePath: basePath, prefixes: holdsActive), continuation: continuation))
             }
         }
         if let error = errorsByPath[path] ?? errorsByPath[basePath] { throw error }
         if let response = responsesByPath[path] ?? responsesByPath[basePath] { return response }
         return [:]
+    }
+
+    private static func matchingHoldPrefix(path: String, basePath: String, prefixes: Set<String>) -> String {
+        prefixes.first { path.hasPrefix($0) || basePath.hasPrefix($0) } ?? ""
     }
 }
 

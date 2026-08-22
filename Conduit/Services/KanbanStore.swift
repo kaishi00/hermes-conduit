@@ -424,7 +424,10 @@ final class KanbanStore: ObservableObject {
         do {
             let result = try await operation()
             if configurationGeneration == generation {
-                await reload(includeArchived: includeArchived)
+                // A finished mutation is newer authoritative activity than any
+                // passive poll that started before it: supersede so the
+                // reconciliation cannot be dropped behind isLoading.
+                await reload(includeArchived: includeArchived, superseding: true)
             }
             endMutationOwnership(generation: generation)
             return result
@@ -433,9 +436,10 @@ final class KanbanStore: ObservableObject {
             // be completely inert - no refresh, no UI error text, no flag flip.
             let stillOwnsUI = configurationGeneration == generation && activeMutationGeneration == generation
             if stillOwnsUI {
-                // Refresh so a partial success (e.g. created-but-not-moved
-                // task) becomes visible even though the overall call failed.
-                await reload(includeArchived: includeArchived)
+                // Refresh (superseding) so a partial success - e.g. a created
+                // task whose follow-up move failed - becomes visible even when
+                // a passive poll is already in flight.
+                await reload(includeArchived: includeArchived, superseding: true)
                 mutationErrorMessage = error.localizedDescription
             }
             endMutationOwnership(generation: generation)
