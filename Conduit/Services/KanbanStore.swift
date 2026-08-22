@@ -59,6 +59,20 @@ final class KanbanStore: ObservableObject {
         selectedBoardSlug.isEmpty ? nil : selectedBoardSlug
     }
 
+    /// The board identity the selection currently resolves to ("Server
+    /// current" collapses onto the server-reported current board).
+    var resolvedSelectedBoardSlug: String {
+        selectedBoardSlug.isEmpty ? currentServerBoardSlug : selectedBoardSlug
+    }
+
+    /// True when the on-screen snapshot belongs to the currently selected
+    /// board. During navigation the stale snapshot stays visible but must be
+    /// non-actionable: mutations are rejected in the store and the view
+    /// disables creation/moves/deletes until the new board finishes loading.
+    var isSelectedSnapshotLoaded: Bool {
+        loadedBoardSlug == resolvedSelectedBoardSlug
+    }
+
     var selectedBoardMetadata: KanbanBoardMetadata? {
         let slug = selectedBoardSlug.isEmpty ? currentServerBoardSlug : selectedBoardSlug
         return boards.first(where: { $0.slug == slug })
@@ -107,13 +121,14 @@ final class KanbanStore: ObservableObject {
         service = makeService(requester)
         requesterID = identity
         self.serverIdentity = normalizedServer
-        persistenceKey = Self.scopedBoardKey(serverIdentity: normalizedServer)
-        selectedBoardSlug = defaults.string(forKey: persistenceKey!) ?? ""
+        let scopedKey = Self.scopedBoardKey(serverIdentity: normalizedServer)
+        persistenceKey = scopedKey
+        selectedBoardSlug = defaults.string(forKey: scopedKey) ?? ""
 
         // One-time migration for the pre-scoped key.
         if selectedBoardSlug.isEmpty, let legacy = defaults.string(forKey: Self.selectedBoardKey) {
             selectedBoardSlug = legacy
-            defaults.set(legacy, forKey: persistenceKey!)
+            defaults.set(legacy, forKey: scopedKey)
             defaults.removeObject(forKey: Self.selectedBoardKey)
         }
 
@@ -141,9 +156,9 @@ final class KanbanStore: ObservableObject {
             return
         }
 
-        // Freeze the requested identity now; whatever completes must match
-        // BOTH this generation AND this slug to be applied.
-        let requestedSlug = effectiveBoardSlug
+        // Freeze nothing yet: the concrete slug can only be known after
+        // /boards returns and invalid-selection validation runs, so the fetch
+        // below always carries an explicit ?board= that matches what we record.
         isLoading = true
         errorMessage = nil
         defer {
@@ -162,7 +177,13 @@ final class KanbanStore: ObservableObject {
                 if let persistenceKey { defaults.removeObject(forKey: persistenceKey) }
             }
 
-            async let loadedBoard = service.fetchBoard(slug: effectiveBoardSlug, includeArchived: includeArchived)
+            // Pin ONE concrete identity for this load. An omitted board=
+            // would let the backend resolve "current" independently at GET
+            // /board time, so loadedBoardSlug could drift from what was truly
+            // fetched if another client moved the pointer in between.
+            let resolvedSlug = selectedBoardSlug.isEmpty ? boardResponse.current : selectedBoardSlug
+
+            async let loadedBoard = service.fetchBoard(slug: resolvedSlug, includeArchived: includeArchived)
             async let loadedProfiles = try? service.fetchProfiles()
             async let loadedProjects = try? service.fetchProjects()
             async let loadedOrchestration = try? service.fetchOrchestration()
@@ -174,9 +195,8 @@ final class KanbanStore: ObservableObject {
             guard generation == loadGeneration else { return }
 
             board = resolvedBoard
-            // Bind the snapshot to the identity it was actually loaded from:
-            // nil selection means the backend's current board.
-            loadedBoardSlug = requestedSlug ?? currentServerBoardSlug
+            // Exactly the slug used in GET /board?board=... above.
+            loadedBoardSlug = resolvedSlug
             if let resolvedProfiles { profiles = resolvedProfiles }
             if let resolvedProjects { projects = resolvedProjects }
             if let resolvedOrchestration { orchestration = resolvedOrchestration }
@@ -387,6 +407,14 @@ final class KanbanStore: ObservableObject {
         // instantly when the data source changes mid-flight.
         guard activeMutationGeneration == nil else {
             let error = KanbanServiceError.mutationInProgress
+            mutationErrorMessage = error.localizedDescription
+            throw error
+        }
+        // Navigation invariant: while the selected and loaded board identities
+        // differ, the visible snapshot belongs to the OLD board. Refuse to act
+        // on it rather than writing old-board data under a new-board UI.
+        guard isSelectedSnapshotLoaded else {
+            let error = KanbanServiceError.boardNavigationInProgress
             mutationErrorMessage = error.localizedDescription
             throw error
         }

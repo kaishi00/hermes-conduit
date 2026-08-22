@@ -7,15 +7,29 @@ struct CapabilitiesView: View {
     @State private var searchText = ""
     @State private var capabilitiesLoading = false
     @State private var loadError: String?
+    /// Token of the most recent request. An older completion can never clear
+    /// the loading flag or set the error of a newer one.
+    @State private var capabilityRequestID = UUID()
+
+    /// Rows may render only when the loaded snapshot belongs to the profile
+    /// that is active right now; a foreign snapshot never shows as B.
+    private var snapshotBelongsToActiveProfile: Bool {
+        CapabilityLoadPolicy.shouldPresentRows(
+            snapshotProfile: appState.capabilitiesProfile,
+            activeProfile: appState.activeProfile
+        )
+    }
 
     var body: some View {
         VStack(spacing: 0) {
-            if capabilitiesLoading && appState.skills.isEmpty && appState.toolsets.isEmpty {
+            if capabilitiesLoading && !snapshotBelongsToActiveProfile {
+                // Loading (or switching profiles): never render another
+                // profile's rows under this one.
                 Spacer()
                 ProgressView("Loading capabilities…")
                     .tint(.conduitAccent)
                 Spacer()
-            } else if let loadError, appState.skills.isEmpty && appState.toolsets.isEmpty {
+            } else if let loadError, !snapshotBelongsToActiveProfile {
                 ContentUnavailableView(
                     "Couldn't Load",
                     systemImage: "exclamationmark.triangle",
@@ -32,7 +46,8 @@ struct CapabilitiesView: View {
                 .listStyle(.plain)
                 .refreshable { await loadCapabilities() }
                 .overlay(alignment: .top) {
-                    if let loadError, !appState.skills.isEmpty || !appState.toolsets.isEmpty {
+                    if let loadError, snapshotBelongsToActiveProfile,
+                       !appState.skills.isEmpty || !appState.toolsets.isEmpty {
                         Text("Refresh failed: \(loadError)")
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -114,18 +129,25 @@ struct CapabilitiesView: View {
     }
 
     private func loadCapabilities() async {
+        // Request token: an older completion must never clear the newer
+        // request's loading flag or overwrite its error state (rapid A->B or
+        // A->B->A switching).
+        let myToken = UUID()
+        capabilityRequestID = myToken
         capabilitiesLoading = true
-        // Request-scoped outcome: the result of THIS request is returned
-        // directly; global error/skill state is never treated as the result.
         let requestedProfile = appState.activeProfile
-        defer { capabilitiesLoading = false }
         let outcome = await appState.loadCapabilities()
 
+        guard capabilityRequestID == myToken else { return }
+        capabilitiesLoading = false
         guard appState.activeProfile == requestedProfile, !outcome.isSuperseded else { return }
 
         loadError = Self.localError(
             for: outcome,
-            hasData: !appState.skills.isEmpty || !appState.toolsets.isEmpty
+            hasData: CapabilityLoadPolicy.shouldPresentRows(
+                snapshotProfile: appState.capabilitiesProfile,
+                activeProfile: requestedProfile
+            ) && (!appState.skills.isEmpty || !appState.toolsets.isEmpty)
         )
     }
 

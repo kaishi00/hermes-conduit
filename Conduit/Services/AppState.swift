@@ -519,6 +519,12 @@ final class AppState: ObservableObject {
     @Published var slashCommands: [SlashCommand] = AppState.builtInSlashCommands
     @Published var skills: [CapabilitySkill] = []
     @Published var toolsets: [CapabilityToolset] = []
+    /// Profile that owns the currently displayed skills/toolsets. Rows are
+    /// only presentable while this equals the active profile.
+    @Published private(set) var capabilitiesProfile: String?
+    /// Monotonic request token for capability loads; older requests can never
+    /// commit over newer ones (protects the A -> B -> A race).
+    private var capabilityLoadGeneration: UInt64 = 0
     @Published var mcpServers: [CapabilityMcpServer] = []
     @Published private(set) var voiceCapabilitySnapshot = VoiceCapabilitySnapshot.unavailable
     @Published private(set) var isVoiceEnabled = false
@@ -6492,13 +6498,25 @@ final class AppState: ObservableObject {
 
     @discardableResult
     func loadCapabilities() async -> CapabilityLoadOutcome {
+        capabilityLoadGeneration &+= 1
+        let generation = capabilityLoadGeneration
         let profile = activeProfile
         guard let dashboardTicketBridge else { return .unavailable(profile: profile) }
         async let skillsResult = dashboardTicketBridge.requestJSON(path: dashboardPath("/api/skills", profile: profile))
         async let toolsetsResult = dashboardTicketBridge.requestJSON(path: dashboardPath("/api/tools/toolsets", profile: profile))
+        // Commit gate: this exact request must still be the newest one AND
+        // target the still-active profile (A -> B -> A stale commits rejected).
+        func ownsRequest() -> Bool {
+            CapabilityLoadPolicy.canCommit(
+                generation: generation,
+                latestGeneration: capabilityLoadGeneration,
+                requestedProfile: profile,
+                activeProfile: activeProfile
+            )
+        }
         do {
             let (skillsResponse, toolsetsResponse) = try await (skillsResult, toolsetsResult)
-            guard profile == activeProfile else { return .superseded(requestedProfile: profile, activeProfile: activeProfile) }
+            guard ownsRequest() else { return .superseded(requestedProfile: profile, activeProfile: activeProfile) }
             let skillsValues = skillsResponse["_array"] as? [Any] ?? []
             self.skills = skillsValues.compactMap(decodeCapabilitySkill)
                 .sorted { lhs, rhs in
@@ -6510,9 +6528,10 @@ final class AppState: ObservableObject {
             let toolsetsValues = toolsetsResponse["_array"] as? [Any] ?? []
             self.toolsets = toolsetsValues.compactMap(decodeCapabilityToolset)
                 .sorted { ($0.label ?? $0.name) < ($1.label ?? $1.name) }
+            capabilitiesProfile = profile
             return .success(profile: profile)
         } catch {
-            guard profile == activeProfile else { return .superseded(requestedProfile: profile, activeProfile: activeProfile) }
+            guard ownsRequest() else { return .superseded(requestedProfile: profile, activeProfile: activeProfile) }
             errorMessage = "Could not load capabilities: \(error.localizedDescription)"
             return .failed(profile: profile, message: "Could not load capabilities: \(error.localizedDescription)")
         }
@@ -8621,6 +8640,26 @@ enum KeychainHelper {
 }
 
 // MARK: - Attachment Helper
+
+/// Pure ownership rules for capability loads, extracted for deterministic
+/// testing of the rapid-profile-switch races.
+enum CapabilityLoadPolicy {
+    /// A finished request may commit only while it is still the newest load
+    /// AND its profile is still active (A -> B -> A stale commits rejected).
+    static func canCommit(
+        generation: UInt64,
+        latestGeneration: UInt64,
+        requestedProfile: String,
+        activeProfile: String
+    ) -> Bool {
+        generation == latestGeneration && requestedProfile == activeProfile
+    }
+
+    /// Rows may render only when the snapshot belongs to the active profile.
+    static func shouldPresentRows(snapshotProfile: String?, activeProfile: String) -> Bool {
+        snapshotProfile == activeProfile
+    }
+}
 
 enum AttachmentHelper {
     static func toBase64(_ attachment: Attachment) async -> String {

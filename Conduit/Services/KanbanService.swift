@@ -19,6 +19,7 @@ enum KanbanServiceError: LocalizedError, Equatable {
     case invalidManualStatus(String)
     case taskCreatedButMoveFailed(taskID: String?, targetStatus: String, reason: String)
     case mutationInProgress
+    case boardNavigationInProgress
     case invalidQueryParameter(String)
 
     var errorDescription: String? {
@@ -35,6 +36,8 @@ enum KanbanServiceError: LocalizedError, Equatable {
             return "The task was created" + identifier + ", but Hermes could not move it to " + targetStatus + ". It was not duplicated; close this form and refresh the board. " + reason
         case .mutationInProgress:
             return "Another Kanban change is still being saved."
+        case .boardNavigationInProgress:
+            return "Still switching boards. Try again once the new board finishes loading."
         case .invalidQueryParameter(let name):
             // Fail closed: a dropped board/id parameter would silently
             // retarget the request at the backend's current board.
@@ -305,6 +308,11 @@ final class KanbanService {
     }
 
     private func pathComponent(_ value: String) throws -> String {
+        // Exact dot segments navigate URL directories: "tasks/.." would
+        // normalize onto a parent route while keeping the PATCH/DELETE method.
+        guard value != ".", value != ".." else {
+            throw KanbanServiceError.invalidQueryParameter(value)
+        }
         guard let encoded = DashboardPath.encodedQueryComponent(value), !encoded.isEmpty else {
             throw KanbanServiceError.invalidQueryParameter("id")
         }

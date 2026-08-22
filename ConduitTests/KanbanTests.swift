@@ -328,23 +328,45 @@ final class KanbanTests: XCTestCase {
         XCTAssertEqual(store.loadedBoardSlug, "alpha", "displayed snapshot must stay bound to A until B loads")
         XCTAssertEqual(store.board?.columns.first?.tasks.first?.id, "t-a")
 
-        // A card from snapshot A mutates board ALPHA, never the pending B.
-        let mutation = Task { try? await store.updateTask(id: "t-a", patch: KanbanTaskPatch(title: "edited on alpha")) }
-        await Task.yield(); await Task.yield(); await Task.yield()
-        let patchCall = requester.calls.last(where: { $0.method == "PATCH" })
-        XCTAssertTrue(patchCall?.path.contains("/tasks/t-a?") == true || patchCall?.path.contains("/tasks/t-a") == true)
-        XCTAssertTrue(patchCall?.path.contains("board=alpha") == true, patchCall?.path ?? "no PATCH")
+        // While B is pending, the stale A snapshot must NOT be actionable:
+        // the store rejects the mutation outright (no PATCH can target A or
+        // B), matching the view's disabled cards and New Task button.
+        let blocked = try? await store.updateTask(id: "t-a", patch: KanbanTaskPatch(title: "edited on alpha"))
+        XCTAssertNil(blocked)
+        XCTAssertEqual(store.mutationErrorMessage, KanbanServiceError.boardNavigationInProgress.localizedDescription)
+        XCTAssertFalse(requester.calls.contains { $0.method == "PATCH" }, "no write may leave during navigation")
+
+        do {
+            _ = try await store.createTask(KanbanCreateTaskRequest(title: "No A create"), initialStatus: "todo")
+            XCTFail("creation must be rejected while navigating")
+        } catch let error as KanbanServiceError {
+            XCTAssertEqual(error, .boardNavigationInProgress)
+        }
+        XCTAssertFalse(requester.calls.contains { $0.method == "POST" && $0.path.contains("/tasks") })
+
+        // The transient navigation hint is dismissed (user-tappable banner);
+        // later phases assert fresh error state only.
+        store.clearMutationError()
 
         requester.releaseAll()
         await poll.value
         await selection.value
-        _ = await mutation.value
         await flushNudge()
 
         XCTAssertEqual(store.selectedBoardSlug, "beta")
         XCTAssertEqual(store.loadedBoardSlug, "beta")
         XCTAssertEqual(store.board?.columns.first?.tasks.first?.title, "from beta", "stale A completion must be discarded")
         XCTAssertNil(store.mutationErrorMessage)
+
+        // Actions become available again once B is the loaded snapshot.
+        XCTAssertTrue(store.isSelectedSnapshotLoaded)
+        requester.errorsByPath["/api/plugins/kanban/tasks/t-b"] = MockRequestError.failed("beta write failed")
+        do {
+            _ = try await store.updateTask(id: "t-b", patch: KanbanTaskPatch(title: "x"))
+            XCTFail("expected current-generation failure to surface")
+        } catch {
+            XCTAssertTrue(store.mutationErrorMessage?.contains("beta write failed") == true)
+        }
     }
 
     // MARK: - Cross-server stale mutation isolation
@@ -453,6 +475,125 @@ final class KanbanTests: XCTestCase {
             "Connect to a Hermes dashboard to load capabilities."
         )
         XCTAssertNil(CapabilitiesView.localError(for: .superseded(requestedProfile: "a", activeProfile: "b"), hasData: true))
+    }
+
+    // MARK: - Concrete slug resolution
+
+    func testInvalidPersistedSelectionResolvesToConcreteCurrentBoard() async throws {
+        let defaults = UserDefaults(suiteName: UUID().uuidString)!
+        var responses = standardKanbanResponses(boardSlug: "beta")
+        // The persisted selection points at a board that no longer exists.
+        responses["/api/plugins/kanban/boards"] = [
+            "boards": [["slug": "beta", "name": "Beta", "is_current": true]],
+            "current": "beta"
+        ]
+        responses["/api/plugins/kanban/board?board=removed-board"] = [:]
+        responses["/api/plugins/kanban/board?board=beta"] = [
+            "columns": [["name": "todo", "tasks": [["id": "b1", "title": "from beta", "status": "todo"]]]],
+            "tenants": [], "assignees": []
+        ]
+        let requester = MockKanbanRequester(responsesByPath: responses)
+        defaults.set("removed-board", forKey: KanbanStore.scopedBoardKey(serverIdentity: "https://example.test"))
+        let store = KanbanStore(defaults: defaults)
+        store.configure(requester: requester, serverIdentity: "https://example.test")
+        await store.reload()
+
+        let boardCall = try XCTUnwrap(requester.calls.last(where: { $0.path.contains("/board?") }))
+        XCTAssertTrue(boardCall.path.contains("board=beta"), boardCall.path)
+        XCTAssertFalse(boardCall.path.contains("removed-board"))
+        XCTAssertEqual(store.selectedBoardSlug, "")
+        XCTAssertEqual(store.loadedBoardSlug, "beta", "loaded identity must equal the fetched slug")
+        XCTAssertEqual(store.board?.columns.first?.tasks.first?.title, "from beta")
+    }
+
+    func testServerCurrentLoadPinsConcreteResolvedSlug() async throws {
+        var responses = standardKanbanResponses(boardSlug: "alpha")
+        responses.removeValue(forKey: "/api/plugins/kanban/board")
+        responses["/api/plugins/kanban/board?board=alpha"] = [
+            "columns": [["name": "todo", "tasks": [["id": "a1", "title": "pinned alpha", "status": "todo"]]]],
+            "tenants": [], "assignees": []
+        ]
+        let requester = MockKanbanRequester(responsesByPath: responses)
+        let store = makeStore(requester: requester)
+        await store.refresh()
+
+        let boardCall = try XCTUnwrap(requester.calls.last(where: { $0.path.contains("/api/plugins/kanban/board") && !$0.path.contains("/boards") }))
+        XCTAssertTrue(boardCall.path.hasSuffix("/board?board=alpha"), "server-current must be pinned before GET /board: \(boardCall.path)")
+        XCTAssertEqual(store.loadedBoardSlug, "alpha")
+    }
+
+    func testDotSegmentIdentifiersFailBeforeTransport() async throws {
+        let requester = MockKanbanRequester(responsesByPath: standardKanbanResponses())
+        let service = KanbanService(requester: requester)
+
+        for bad in [".", ".."] {
+            do {
+                _ = try await service.updateTask(id: bad, board: nil, patch: KanbanTaskPatch(title: "x"))
+                XCTFail("dot segment must be rejected: \(bad)")
+            } catch let error as KanbanServiceError {
+                XCTAssertEqual(error, .invalidQueryParameter(bad))
+            }
+        }
+        XCTAssertTrue(requester.calls.isEmpty, "rejection happens before transport")
+
+        _ = try await service.updateTask(id: "t_99", board: nil, patch: KanbanTaskPatch(title: "ok"))
+        XCTAssertEqual(requester.calls.last?.path, "/api/plugins/kanban/tasks/t_99")
+    }
+
+    func testStaleDeleteFailureIsInvisibleAfterReconfigure() async throws {
+        let requesterA = MockKanbanRequester(responsesByPath: standardKanbanResponses(boardSlug: "a-board"))
+        let store = makeStore(requester: requesterA)
+        await store.refresh()
+
+        requesterA.hold(pathPrefix: "/api/plugins/kanban/tasks/t1")
+        let mutation = Task { try? await store.deleteTask(id: "t1") }
+        await Task.yield(); await Task.yield(); await Task.yield()
+
+        let requesterB = MockKanbanRequester(responsesByPath: standardKanbanResponses(boardSlug: "b-board"))
+        store.configure(requester: requesterB, serverIdentity: "https://b.test")
+        await store.reload()
+        XCTAssertFalse(store.isMutating)
+        let bCallsBefore = requesterB.calls.count
+
+        requesterA.errorsByPath["/api/plugins/kanban/tasks/t1"] = MockRequestError.failed("A delete failed")
+        requesterA.releaseAll()
+        _ = await mutation.value
+
+        XCTAssertNil(store.mutationErrorMessage, "stale View/store channel must stay silent on B")
+        XCTAssertFalse(store.isMutating)
+        XCTAssertEqual(requesterB.calls.count, bCallsBefore)
+
+        // Current-generation delete failures remain visible.
+        requesterB.errorsByPath["/api/plugins/kanban/tasks/t9"] = MockRequestError.failed("B delete failed")
+        do {
+            try await store.deleteTask(id: "t9")
+            XCTFail("expected current-generation failure")
+        } catch {
+            XCTAssertTrue(store.mutationErrorMessage?.contains("B delete failed") == true)
+        }
+    }
+
+    // MARK: - Capability ownership policy (rapid profile switching)
+
+    func testCapabilityCommitPolicyRejectsABAAndForeignProfiles() {
+        // A -> B -> A: old A1 finishes after A2 started; latestGeneration moved on.
+        XCTAssertFalse(CapabilityLoadPolicy.canCommit(
+            generation: 1, latestGeneration: 3, requestedProfile: "A", activeProfile: "A"
+        ))
+        // Newer request for the same still-active profile commits.
+        XCTAssertTrue(CapabilityLoadPolicy.canCommit(
+            generation: 3, latestGeneration: 3, requestedProfile: "A", activeProfile: "A"
+        ))
+        // Profile changed mid-flight.
+        XCTAssertFalse(CapabilityLoadPolicy.canCommit(
+            generation: 2, latestGeneration: 2, requestedProfile: "A", activeProfile: "B"
+        ))
+    }
+
+    func testCapabilityRowsNeverRenderForForeignSnapshotProfile() {
+        XCTAssertFalse(CapabilityLoadPolicy.shouldPresentRows(snapshotProfile: "A", activeProfile: "B"))
+        XCTAssertFalse(CapabilityLoadPolicy.shouldPresentRows(snapshotProfile: nil, activeProfile: "B"))
+        XCTAssertTrue(CapabilityLoadPolicy.shouldPresentRows(snapshotProfile: "B", activeProfile: "B"))
     }
 
     // MARK: - Helpers

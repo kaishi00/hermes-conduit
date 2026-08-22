@@ -200,6 +200,20 @@ struct KanbanView: View {
                     .padding(.horizontal, 1)
                     .padding(.bottom, 14)
                 }
+                // Navigation invariant: while the newly selected board is
+                // still loading, the visible cards belong to the OLD board.
+                // Keep them as read-only cached content - no taps, menus,
+                // moves, or deletes - until the new snapshot lands.
+                .disabled(!store.isSelectedSnapshotLoaded)
+                .overlay(alignment: .top) {
+                    if !store.isSelectedSnapshotLoaded {
+                        Label("Loading \(store.selectedBoardMetadata?.name ?? store.resolvedSelectedBoardSlug)…", systemImage: "hourglass")
+                            .font(.caption)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(.ultraThinMaterial, in: Capsule())
+                    }
+                }
             } else {
                 Spacer()
             }
@@ -309,7 +323,7 @@ struct KanbanView: View {
                     .frame(width: 36, height: 36)
             }
             .conduitGlassControl(cornerRadius: 14, tint: .conduitAccent.opacity(0.12))
-            .disabled(store.board == nil || store.isMutating)
+            .disabled(store.board == nil || store.isMutating || !store.isSelectedSnapshotLoaded)
             .accessibilityLabel("New Kanban task")
         }
 
@@ -338,19 +352,15 @@ struct KanbanView: View {
 
     private func move(_ task: KanbanTask, to status: String) async {
         guard task.status != status else { return }
-        do {
-            _ = try await store.updateTask(id: task.id, patch: KanbanTaskPatch(status: status), includeArchived: includeArchived)
-        } catch {
-            store.showMutationError(error)
-        }
+        // The store owns mutation-error presentation for the CURRENT
+        // generation; a completion that lost ownership after a server/board
+        // switch is deliberately inert, so there is no second error channel
+        // here that could resurface a stale failure.
+        _ = try? await store.updateTask(id: task.id, patch: KanbanTaskPatch(status: status), includeArchived: includeArchived)
     }
 
     private func delete(_ task: KanbanTask) async {
-        do {
-            try await store.deleteTask(id: task.id, includeArchived: includeArchived)
-        } catch {
-            store.showMutationError(error)
-        }
+        _ = try? await store.deleteTask(id: task.id, includeArchived: includeArchived)
     }
 }
 
