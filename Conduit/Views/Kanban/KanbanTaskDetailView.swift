@@ -63,12 +63,31 @@ struct KanbanTaskDetailView: View {
         _baseline = State(initialValue: ServerBaseline(title: task.title, bodyText: task.body ?? "", status: task.status))
     }
 
-    private var currentTask: KanbanTask {
-        detail?.task ?? initialTask
+    /// The actionable task for the CURRENT displayed identity — the only
+    /// object any task-specific render or mutation may go through — or nil
+    /// while that identity's detail is loading / failed to load.
+    ///
+    /// INVARIANT: whenever non-nil, displayedTask.id == displayedTaskID.
+    /// The opening task is a legal actionable task ONLY while the screen
+    /// still displays the identity it opened with: after a dependency tap
+    /// swaps the identity, a slow or failed replacement load must NEVER fall
+    /// back to the previous task's data.
+    private var displayedTask: KanbanTask? {
+        KanbanDetailIdentityPolicy.actionableTask(
+            displayedID: displayedTaskID,
+            detailTask: detail?.task,
+            initialTask: initialTask
+        )
+    }
+
+    /// True once the displayed identity has an actionable task (loaded
+    /// detail, or the still-current opening task).
+    private var isDisplayedTaskLoaded: Bool {
+        displayedTask != nil
     }
 
     private var isRunning: Bool {
-        currentTask.status == "running"
+        displayedTask?.status == "running"
     }
 
     private var hasUnsavedChanges: Bool {
@@ -98,40 +117,55 @@ struct KanbanTaskDetailView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    editorSection
-                    assignmentExecutionSection
-                    if currentTask.status == "ready", (currentTask.assignee ?? "").isEmpty, !hasDispatcherFallback {
-                        readyUnassignedCallout
-                    }
-                    diagnosticsSection
-                    dependenciesSection
-                    commentsSection
-                    activitySection
-                    runsSection
-                    workerLogLink
-                    if let remoteChangeNotice {
-                        Text(remoteChangeNotice)
-                            .font(.footnote)
-                            .foregroundStyle(.orange)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    if hasUnsavedChanges {
-                        Text("Unsaved edits")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .trailing)
-                    }
-                    if let refreshErrorMessage {
-                        Text("Refresh failed: \(refreshErrorMessage)")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    if let errorMessage {
-                        Text(errorMessage)
-                            .font(.footnote)
-                            .foregroundStyle(.red)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                    // Identity gate: while the displayed identity has no
+                    // actionable task (a replacement detail is loading or
+                    // failed), NO task-specific content renders or acts — the
+                    // task this screen opened with must not leak through as
+                    // the displayed task's data.
+                    if let currentTask = displayedTask {
+                        editorSection
+                        assignmentExecutionSection
+                        if currentTask.status == "ready", (currentTask.assignee ?? "").isEmpty, !hasDispatcherFallback {
+                            readyUnassignedCallout
+                        }
+                        diagnosticsSection
+                        dependenciesSection
+                        commentsSection
+                        activitySection
+                        runsSection
+                        workerLogLink
+                        if let remoteChangeNotice {
+                            Text(remoteChangeNotice)
+                                .font(.footnote)
+                                .foregroundStyle(.orange)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        if hasUnsavedChanges {
+                            Text("Unsaved edits")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .trailing)
+                        }
+                        if let refreshErrorMessage {
+                            Text("Refresh failed: \(refreshErrorMessage)")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        if let errorMessage {
+                            Text(errorMessage)
+                                .font(.footnote)
+                                .foregroundStyle(.red)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    } else if let errorMessage {
+                        // The displayed identity's detail failed to load. The
+                        // screen stays on THIS identity (the poll loop keeps
+                        // retrying it); the task that opened the screen is
+                        // never resurrected as actionable content.
+                        loadFailureView(errorMessage)
+                    } else {
+                        replacementLoadingView
                     }
                 }
                 .padding(16)
@@ -170,6 +204,21 @@ struct KanbanTaskDetailView: View {
                 detail = nil
                 isLoadingDetail = false
                 isSaving = false
+                // Comment-flow spinners are released ONLY through
+                // identity-guarded defers, and a stale completion must skip
+                // that release — so the swap itself clears the flags (and
+                // the unsent draft) the departing identity owned. Otherwise
+                // the new identity's Add-comment button and its poll guard
+                // stay frozen forever, and A's unsent text could post to B.
+                isAddingComment = false
+                isRequeuing = false
+                comment = ""
+                // No sheet/alert may stay armed over the replacement
+                // identity: a presented editor or confirmation belongs to
+                // the departed task and must never act on the new one.
+                showReassignSheet = false
+                showModelSheet = false
+                showDeleteConfirmation = false
                 title = ""
                 taskBody = ""
                 status = "todo"
@@ -180,7 +229,7 @@ struct KanbanTaskDetailView: View {
                 modelOverrideDraft = TaskModelOverride()
             }
             .sheet(isPresented: $showReassignSheet) {
-                KanbanReassignSheet(taskID: displayedTaskID, currentAssignee: currentTask.assignee)
+                KanbanReassignSheet(taskID: displayedTaskID, currentAssignee: displayedTask?.assignee)
                     .environmentObject(store)
                     .presentationDetents([.medium])
             }
@@ -196,9 +245,9 @@ struct KanbanTaskDetailView: View {
                     // server snapshot so a poll landing mid-edit can neither
                     // clobber the user nor duplicate the write.
                     let next = modelOverrideDraft
-                    if next != TaskModelOverride(task: currentTask) {
-                        Task { await commitModelOverride(next) }
-                    }
+                    guard let serverTask = displayedTask,
+                          next != TaskModelOverride(task: serverTask) else { return }
+                    Task { await commitModelOverride(next) }
                 }
             }
             .alert("Delete this task?", isPresented: $showDeleteConfirmation) {
@@ -211,9 +260,10 @@ struct KanbanTaskDetailView: View {
     }
 
     private var hasAnyServerOverride: Bool {
-        !(currentTask.modelOverride ?? "").isEmpty
-            || !(currentTask.providerOverride ?? "").isEmpty
-            || !(currentTask.reasoningEffort ?? "").isEmpty
+        guard let task = displayedTask else { return false }
+        return !(task.modelOverride ?? "").isEmpty
+            || !(task.providerOverride ?? "").isEmpty
+            || !(task.reasoningEffort ?? "").isEmpty
     }
 
     // MARK: - Actions menu
@@ -221,20 +271,27 @@ struct KanbanTaskDetailView: View {
     private var actionsMenu: some View {
         Menu {
             Button {
-                KanbanClipboard.copy(currentTask.id, announcement: "Task ID copied")
+                if let task = displayedTask {
+                    KanbanClipboard.copy(task.id, announcement: "Task ID copied")
+                }
             } label: {
                 Label("Copy Task ID", systemImage: "doc.on.doc")
             }
+            .disabled(!isDisplayedTaskLoaded)
             Button {
-                KanbanClipboard.copy(currentTask.title.isEmpty ? currentTask.id : currentTask.title, announcement: "Title copied")
+                if let task = displayedTask {
+                    KanbanClipboard.copy(task.title.isEmpty ? task.id : task.title, announcement: "Title copied")
+                }
             } label: {
                 Label("Copy Task Title", systemImage: "doc.on.doc.fill")
             }
+            .disabled(!isDisplayedTaskLoaded)
             Button {
                 showReassignSheet = true
             } label: {
                 Label("Reassign…", systemImage: "person.2")
             }
+            .disabled(!isDisplayedTaskLoaded)
             Divider()
             // Archive is first-class but NOT destructive upstream (plain
             // archived-status PATCH), so it carries no destructive styling.
@@ -243,12 +300,13 @@ struct KanbanTaskDetailView: View {
             } label: {
                 Label("Archive", systemImage: "archivebox")
             }
-            .disabled(currentTask.status == "archived")
+            .disabled(!isDisplayedTaskLoaded || displayedTask?.status == "archived")
             Button(role: .destructive) {
                 showDeleteConfirmation = true
             } label: {
                 Label("Delete…", systemImage: "trash")
             }
+            .disabled(!isDisplayedTaskLoaded)
         } label: {
             Image(systemName: "ellipsis.circle")
         }
@@ -300,11 +358,11 @@ struct KanbanTaskDetailView: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 8)
-                if let assignee = currentTask.assignee, !assignee.isEmpty {
+                if let assignee = displayedTask?.assignee, !assignee.isEmpty {
                     Text(assignee)
                         .lineLimit(1)
                 } else {
-                    Text("Unassigned" + (currentTask.status == "ready" && hasDispatcherFallback ? " → default" : ""))
+                    Text("Unassigned" + (displayedTask?.status == "ready" && hasDispatcherFallback ? " → default" : ""))
                         .foregroundStyle(.secondary)
                 }
                 Button {
@@ -314,17 +372,22 @@ struct KanbanTaskDetailView: View {
                 }
                 .accessibilityLabel("Reassign task")
             }
-            if let priority = currentTask.priority {
+            if let priority = displayedTask?.priority {
                 SettingsMetricRow(label: "Priority", value: String(priority))
             }
-            if let workspaceKind = currentTask.workspaceKind, !workspaceKind.isEmpty,
-               let path = currentTask.workspacePath, !path.isEmpty {
+            if let workspaceKind = displayedTask?.workspaceKind, !workspaceKind.isEmpty,
+               let path = displayedTask?.workspacePath, !path.isEmpty {
                 SettingsMetricRow(label: "Workspace", value: workspaceKind + ": " + path, lineLimit: 2)
-            } else if let path = currentTask.workspacePath, !path.isEmpty {
+            } else if let path = displayedTask?.workspacePath, !path.isEmpty {
                 SettingsMetricRow(label: "Workspace", value: path, lineLimit: 2)
             }
             Button {
-                modelOverrideDraft = TaskModelOverride(task: currentTask)
+                // Seed the EDITOR draft from the current displayed SERVER task
+                // the moment the sheet opens. While the sheet is closed the
+                // row below renders the server value directly, so a poll that
+                // changes the override updates the row — and an open editor
+                // draft is never clobbered by polling.
+                modelOverrideDraft = KanbanModelOverrideDisplayPolicy.override(for: displayedTask)
                 showModelSheet = true
             } label: {
                 HStack(spacing: 8) {
@@ -332,7 +395,9 @@ struct KanbanTaskDetailView: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                     Spacer(minLength: 8)
-                    Text(modelOverrideDraft.label(inheritCopy: "Inherit from profile"))
+                    // Display-only: derived from the loaded server task,
+                    // never from the editor draft.
+                    Text(KanbanModelOverrideDisplayPolicy.label(for: displayedTask, inheritCopy: "Inherit from profile"))
                         .foregroundStyle(hasAnyServerOverride ? Color.primary : Color.secondary)
                         .lineLimit(2)
                         .multilineTextAlignment(.trailing)
@@ -342,16 +407,16 @@ struct KanbanTaskDetailView: View {
                 }
             }
             .accessibilityHint("Edits the per-task model, provider, and reasoning override")
-            if isRunning, let pid = currentTask.workerPid {
+            if isRunning, let pid = displayedTask?.workerPid {
                 SettingsMetricRow(label: "Worker PID", value: String(pid))
             }
-            if let createdBy = currentTask.createdBy, !createdBy.isEmpty {
+            if let createdBy = displayedTask?.createdBy, !createdBy.isEmpty {
                 SettingsMetricRow(label: "Created by", value: createdBy, lineLimit: 1)
             }
-            if let failures = currentTask.consecutiveFailures, failures > 0 {
+            if let failures = displayedTask?.consecutiveFailures, failures > 0 {
                 SettingsMetricRow(label: "Consecutive failures", value: String(failures))
             }
-            if let failure = currentTask.lastFailureError, !failure.isEmpty {
+            if let failure = displayedTask?.lastFailureError, !failure.isEmpty {
                 VStack(alignment: .leading, spacing: 5) {
                     Text("Last failure")
                         .font(.caption.weight(.semibold))
@@ -392,7 +457,7 @@ struct KanbanTaskDetailView: View {
 
     @ViewBuilder
     private var diagnosticsSection: some View {
-        if let diagnostics = currentTask.diagnostics, !diagnostics.isEmpty {
+        if let diagnostics = displayedTask?.diagnostics, !diagnostics.isEmpty {
             ConduitSettingsSection(title: "Diagnostics (\(diagnostics.count))", symbol: "stethoscope", tint: .red) {
                 ForEach(Array(diagnostics.enumerated()), id: \.offset) { _, diagnostic in
                     diagnosticCard(diagnostic)
@@ -750,8 +815,17 @@ struct KanbanTaskDetailView: View {
         do {
             let loaded = try await store.fetchTaskDetail(id: expectedID)
             guard displayedTaskID == expectedID else { return }
-            guard loaded.task.id == expectedID || loaded.task.id.isEmpty else {
+            guard loaded.task.id == expectedID else {
                 // Defensive double-check against a server-side id mismatch.
+                // An EMPTY-id payload under a NON-empty displayed identity is
+                // a server contract violation: the identity policy correctly
+                // refuses to make it actionable, so surface it as THIS
+                // identity's load failure (failure view + poll retry) rather
+                // than letting the screen spin forever. The empty/empty
+                // same-identity case flows through the equality branch above.
+                if loaded.task.id.isEmpty, !expectedID.isEmpty {
+                    errorMessage = KanbanServiceError.invalidResponse("Task detail returned an invalid id.").localizedDescription
+                }
                 return
             }
             let server = loaded.task
@@ -776,6 +850,14 @@ struct KanbanTaskDetailView: View {
                 baseline = ServerBaseline(title: server.title, bodyText: server.body ?? "", status: server.status)
                 remoteChangeNotice = nil
             }
+            // Recovery from a load-failure state: a successful load for the
+            // displayed identity clears the load-failure error so content
+            // renders clean. Conditioned on the identity having NO
+            // actionable task: on the opening identity (actionable through
+            // initialTask while detail is nil) a mutation error raised in
+            // that window keeps its existing persistence semantics instead
+            // of being wiped by this poll.
+            if displayedTask == nil { errorMessage = nil }
             detail = loaded
             refreshErrorMessage = nil
         } catch is CancellationError {
@@ -795,7 +877,10 @@ struct KanbanTaskDetailView: View {
     // MARK: - Mutations
 
     private func saveChanges() async {
-        let current = currentTask
+        // Freeze the actionable task AND its identity before the first
+        // suspension point: this save may only ever touch this task's UI.
+        guard let startedTask = displayedTask else { return }
+        let expectedID = displayedTaskID
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         var patch = KanbanTaskPatch()
         // Diffs run against the last-synced baseline, not the live server
@@ -812,10 +897,23 @@ struct KanbanTaskDetailView: View {
         guard !patch.isEmpty else { return }
         isSaving = true
         errorMessage = nil
-        defer { isSaving = false }
+        // A stale completion must not clear a saving spinner that now belongs
+        // to the displayed task's own operations.
+        defer {
+            if KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) {
+                isSaving = false
+            }
+        }
         do {
-            let saved = try await store.updateTask(id: current.id, patch: patch)
-            let savedServer = saved ?? currentTask
+            let saved = try await store.updateTask(id: startedTask.id, patch: patch)
+            let completion = KanbanDetailMutationPolicy.saveCompletion(
+                startedTask: startedTask,
+                response: saved,
+                displayedTaskID: displayedTaskID
+            )
+            // After a dependency tap the completion is UI-inert: no draft,
+            // baseline, error, or refresh for the task now displayed.
+            guard completion.isActive, let savedServer = completion.serverTask else { return }
             title = savedServer.title
             taskBody = savedServer.body ?? taskBody
             status = savedServer.status
@@ -823,6 +921,7 @@ struct KanbanTaskDetailView: View {
             remoteChangeNotice = nil
             await loadDetail(force: true)
         } catch {
+            guard KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) else { return }
             errorMessage = error.localizedDescription
         }
     }
@@ -830,24 +929,35 @@ struct KanbanTaskDetailView: View {
     /// Committed immediately on change (desktop parity): PATCH with explicit
     /// clear flags computed against the CURRENT server snapshot.
     private func commitModelOverride(_ next: TaskModelOverride) async {
-        let patch = TaskModelOverride.patch(from: currentTask, to: next)
+        guard let startedTask = displayedTask else { return }
+        let expectedID = displayedTaskID
+        let patch = TaskModelOverride.patch(from: startedTask, to: next)
         guard !patch.isEmpty else { return }
         isSaving = true
-        defer { isSaving = false }
+        defer {
+            if KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) {
+                isSaving = false
+            }
+        }
         do {
-            _ = try await store.updateTask(id: currentTask.id, patch: patch)
+            _ = try await store.updateTask(id: startedTask.id, patch: patch)
+            guard KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) else { return }
             await loadDetail(force: true)
         } catch {
+            guard KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) else { return }
             errorMessage = error.localizedDescription
         }
     }
 
     private func archiveTask() async {
-        guard currentTask.status != "archived" else { return }
+        guard let startedTask = displayedTask, startedTask.status != "archived" else { return }
+        let expectedID = displayedTaskID
         do {
-            _ = try await store.updateTask(id: currentTask.id, patch: KanbanTaskPatch(status: "archived"))
+            _ = try await store.updateTask(id: startedTask.id, patch: KanbanTaskPatch(status: "archived"))
+            guard KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) else { return }
             await loadDetail(force: true)
         } catch {
+            guard KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) else { return }
             errorMessage = error.localizedDescription
         }
     }
@@ -855,52 +965,122 @@ struct KanbanTaskDetailView: View {
     private func addComment() async {
         let text = comment.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        let expectedID = displayedTaskID
         isAddingComment = true
         errorMessage = nil
-        defer { isAddingComment = false }
+        defer {
+            if KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) {
+                isAddingComment = false
+            }
+        }
         do {
-            try await store.addComment(taskID: displayedTaskID, body: text)
+            try await store.addComment(taskID: expectedID, body: text)
+            guard KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) else { return }
             comment = ""
             await loadDetail(force: true)
         } catch {
+            guard KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) else { return }
             errorMessage = error.localizedDescription
         }
     }
 
     /// Note & requeue: two supported mutations composed exactly like the
-    /// desktop drawer (comment first, then reclaim).
+    /// desktop drawer (comment first, then reclaim) — but with OBSERVABLE
+    /// partial success: the draft is consumed the moment the note reaches the
+    /// server, and a reclaim failure afterwards is reported as partial
+    /// success without ever reposting the note.
     private func noteAndRequeue() async {
         let text = comment.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        let expectedID = displayedTaskID
         isRequeuing = true
         errorMessage = nil
-        defer { isRequeuing = false }
-        do {
-            try await store.addComment(taskID: displayedTaskID, body: text)
-            try await store.reclaimTask(taskID: displayedTaskID)
-            comment = ""
-            await loadDetail(force: true)
-        } catch {
-            errorMessage = error.localizedDescription
+        defer {
+            if KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) {
+                isRequeuing = false
+            }
         }
+        let outcome = await KanbanNoteAndRequeueFlow.perform(
+            text: text,
+            postComment: { body in try await store.addComment(taskID: expectedID, body: body) },
+            reclaim: { try await store.reclaimTask(taskID: expectedID) },
+            onCommentPosted: {
+                // Consume the draft immediately: the note already exists on
+                // the server, so a retry after a reclaim failure must never
+                // post it a second time.
+                if KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) {
+                    comment = ""
+                }
+            }
+        )
+        guard KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) else { return }
+        if let message = KanbanNoteAndRequeueFlow.message(for: outcome) {
+            errorMessage = message
+            return
+        }
+        await loadDetail(force: true)
     }
 
     private func reclaimTask(reason: String?) async {
+        let expectedID = displayedTaskID
         do {
-            try await store.reclaimTask(taskID: displayedTaskID, reason: reason)
+            try await store.reclaimTask(taskID: expectedID, reason: reason)
+            guard KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) else { return }
             await loadDetail(force: true)
         } catch {
+            guard KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) else { return }
             errorMessage = error.localizedDescription
         }
     }
 
     private func deleteTask() async {
+        guard let startedTask = displayedTask else { return }
+        let expectedID = displayedTaskID
         do {
-            try await store.deleteTask(id: currentTask.id)
+            try await store.deleteTask(id: startedTask.id)
+            // A delete started for another identity must NEVER dismiss the
+            // screen while it displays this task.
+            guard KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) else { return }
             dismiss()
         } catch {
+            guard KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) else { return }
             errorMessage = error.localizedDescription
         }
+    }
+
+    // MARK: - Replacement identity states
+
+    /// The displayed identity's detail is loading: nothing task-specific may
+    /// render or act — in particular, the task the screen opened with must
+    /// not leak through as this screen's content.
+    private var replacementLoadingView: some View {
+        VStack(spacing: 10) {
+            ProgressView()
+            Text("Loading task…")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 60)
+    }
+
+    /// The displayed identity's detail failed to load: the failure belongs to
+    /// THIS identity and the screen stays on it (the poll loop keeps
+    /// retrying); the previous task is never resurrected as content.
+    private func loadFailureView(_ message: String) -> some View {
+        VStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.title2)
+                .foregroundStyle(.orange)
+            Text("Couldn't load this task")
+                .font(.subheadline.weight(.semibold))
+            Text(message)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 60)
     }
 
     private func relativeDate(_ epoch: Int?) -> String {
@@ -908,6 +1088,144 @@ struct KanbanTaskDetailView: View {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .abbreviated
         return formatter.localizedString(for: Date(timeIntervalSince1970: Double(epoch)), relativeTo: Date())
+    }
+}
+
+// MARK: - Detail identity & mutation ownership policies
+
+/// Identity resolution for the task detail screen (Kanban V2 correctness).
+///
+/// A task detail screen may only display or mutate data belonging to its
+/// current displayed identity. The opening task is a legal actionable task
+/// ONLY while the displayed identity is still that task: once a dependency
+/// tap swaps the identity, a loading or failed replacement load must NEVER
+/// fall back to the previous task's data.
+enum KanbanDetailIdentityPolicy {
+    /// The actionable task for `displayedID`, or nil while that identity is
+    /// not loaded. STRICT invariant: result.id == displayedID whenever
+    /// non-nil. A detail task whose id does not equal the displayed id —
+    /// including a server task with an EMPTY id under a non-empty displayed
+    /// id — is never actionable: the mutation policies gate on
+    /// startedTask.id == displayedTaskID, so honoring such a task would aim
+    /// PATCH/DELETE at an empty task id and make its own saves silently
+    /// inert. The mismatched case renders the loading/failed state and the
+    /// poll keeps retrying the displayed identity.
+    static func actionableTask(displayedID: String, detailTask: KanbanTask?, initialTask: KanbanTask) -> KanbanTask? {
+        if let detailTask, detailTask.id == displayedID {
+            return detailTask
+        }
+        // The opening task may act ONLY for its own identity: after a
+        // dependency tap to another id there is deliberately NO fallback.
+        return displayedID == initialTask.id ? initialTask : nil
+    }
+}
+
+/// Async-ownership rules for task-detail mutations (Kanban V2 correctness).
+///
+/// Every task-specific async operation captures its identity before its
+/// first suspension point. After every await, the completion may touch
+/// detail UI state ONLY while the identity it started for is still the
+/// displayed one — otherwise it is UI-inert: the server write may still
+/// finish, but it must not overwrite the displayed task's draft/baseline,
+/// surface the old task's error, dismiss the screen, or trigger a refresh
+/// for the displayed task.
+enum KanbanDetailMutationPolicy {
+    static func completionIsActive(startedTaskID: String, displayedTaskID: String) -> Bool {
+        startedTaskID == displayedTaskID
+    }
+
+    struct SaveCompletion: Equatable {
+        /// False → the whole completion is inert: no draft, baseline, error,
+        /// or refresh changes are permitted.
+        let isActive: Bool
+        /// The task whose values seed the draft/baseline when active — ALWAYS
+        /// the task that started the save (or its server response), never
+        /// whatever task is displayed when the response lands.
+        let serverTask: KanbanTask?
+    }
+
+    static func saveCompletion(startedTask: KanbanTask, response: KanbanTask?, displayedTaskID: String) -> SaveCompletion {
+        guard completionIsActive(startedTaskID: startedTask.id, displayedTaskID: displayedTaskID) else {
+            return SaveCompletion(isActive: false, serverTask: nil)
+        }
+        // A response that does not echo the STARTED task's id is a server
+        // contract violation: never let it seed the started task's baseline.
+        // An empty-id response is honored only for the empty/empty identity
+        // case, mirroring the load path's acceptance rule; the forced reload
+        // afterwards re-syncs from the authoritative task.
+        let trusted = response.flatMap { $0.id == startedTask.id || ($0.id.isEmpty && startedTask.id.isEmpty) ? $0 : nil } ?? startedTask
+        return SaveCompletion(isActive: true, serverTask: trusted)
+    }
+}
+
+/// Model-row display rules (Kanban V2 correctness).
+///
+/// The NON-EDITING row derives from the current loaded SERVER task, so an
+/// existing override is visible immediately (without opening the editor) and
+/// a poll that changes the override updates the row. `modelOverrideDraft` is
+/// the ACTIVE EDITOR draft only: it exists solely while the sheet is open
+/// and is never a display source (polling can never clobber it).
+enum KanbanModelOverrideDisplayPolicy {
+    /// The server override to show (and to seed the editor with) for the
+    /// displayed task; inherit/empty while none or not yet loaded.
+    static func override(for displayedTask: KanbanTask?) -> TaskModelOverride {
+        displayedTask.map { TaskModelOverride(task: $0) } ?? TaskModelOverride()
+    }
+
+    /// The visible Model-row label.
+    static func label(for displayedTask: KanbanTask?, inheritCopy: String) -> String {
+        override(for: displayedTask).label(inheritCopy: inheritCopy)
+    }
+}
+
+/// Note & requeue as an explicit two-step operation with OBSERVABLE partial
+/// success (Kanban V2 correctness): the comment draft is consumed the moment
+/// the note reaches the server, and a later reclaim failure is reported as
+/// partial success — a retry can never repost the note.
+enum KanbanNoteAndRequeueFlow {
+    struct Outcome: Equatable {
+        /// The note reached the server — the input MUST be consumed now,
+        /// whatever happens to the reclaim step.
+        let commentPosted: Bool
+        /// Full success: note posted AND task requeued.
+        let requeued: Bool
+        /// Underlying failure detail when the flow did not fully succeed.
+        let failureDetail: String?
+    }
+
+    static func perform(
+        text: String,
+        postComment: @MainActor (String) async throws -> Void,
+        reclaim: @MainActor () async throws -> Void,
+        onCommentPosted: @MainActor () -> Void
+    ) async -> Outcome {
+        do {
+            try await postComment(text)
+        } catch {
+            return Outcome(commentPosted: false, requeued: false, failureDetail: error.localizedDescription)
+        }
+        // The note now exists on the server: consume the draft BEFORE the
+        // reclaim attempt so a reclaim failure can never double-post it.
+        await onCommentPosted()
+        do {
+            try await reclaim()
+        } catch {
+            return Outcome(commentPosted: true, requeued: false, failureDetail: error.localizedDescription)
+        }
+        return Outcome(commentPosted: true, requeued: true, failureDetail: nil)
+    }
+
+    /// User-facing wording. A posted note + failed reclaim is PARTIAL success
+    /// and must be described as such — the note is already on the server.
+    static func message(for outcome: Outcome) -> String? {
+        switch (outcome.commentPosted, outcome.requeued, outcome.failureDetail) {
+        case (false, _, let detail?):
+            return detail
+        case (true, false, let detail?):
+            return "The note was posted, but the task could not be requeued. (\(detail))"
+        default:
+            return nil
+        }
     }
 }
 

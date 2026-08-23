@@ -26,27 +26,43 @@ struct KanbanWorkerLogScreen: View {
     @State private var log: KanbanWorkerLog?
     @State private var isLoading = false
     @State private var errorMessage: String?
+    /// Set when a REFRESH failed while a log is already cached: the cached
+    /// content stays on screen with a small banner; the full "unavailable"
+    /// state is reserved for initial loads with nothing cached.
+    @State private var refreshErrorMessage: String?
 
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
-                    if isLoading && log == nil {
+                    switch KanbanWorkerLogPresentation.resolve(
+                        log: log,
+                        loadError: errorMessage,
+                        refreshError: refreshErrorMessage
+                    ) {
+                    case .loading:
                         HStack {
                             Spacer()
                             ProgressView("Loading worker log…")
                             Spacer()
                         }
                         .padding(.top, 40)
-                    } else if let errorMessage {
+                    case .unavailable(let message):
                         ContentUnavailableView(
                             "Log unavailable",
                             systemImage: "doc.text.magnifyingglass",
-                            description: Text(errorMessage)
+                            description: Text(message)
                         )
                         .padding(.top, 40)
-                    } else if let log {
-                        if !log.exists {
+                    case .content(let cachedLog, let refreshError):
+                        if let refreshError {
+                            // Non-destructive banner: a failed refresh NEVER
+                            // evicts the cached log from the screen.
+                            Label("Refresh failed: \(refreshError)", systemImage: "exclamationmark.circle")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                        if !cachedLog.exists {
                             ContentUnavailableView(
                                 "No worker output yet",
                                 systemImage: "terminal",
@@ -54,8 +70,8 @@ struct KanbanWorkerLogScreen: View {
                             )
                             .padding(.top, 40)
                         } else {
-                            summaryFooter(log)
-                            logText(log)
+                            summaryFooter(cachedLog)
+                            logText(cachedLog)
                                 .id("logBottom")
                         }
                     }
@@ -134,6 +150,8 @@ struct KanbanWorkerLogScreen: View {
         do {
             // Board context comes pinned from the store's loaded snapshot.
             log = try await store.fetchTaskLog(id: taskID, tailBytes: Self.tailBytes)
+            // A successful refresh clears any stale refresh banner.
+            refreshErrorMessage = nil
             // One run-loop turn lets SwiftUI lay out the (possibly huge)
             // monospaced text before we jump to the bottom; bail out if the
             // screen was dismissed during that window instead of scrolling a
@@ -142,7 +160,40 @@ struct KanbanWorkerLogScreen: View {
             guard !Task.isCancelled else { return }
             scrollProxy?.scrollTo("logBottom", anchor: .bottom)
         } catch {
-            errorMessage = error.localizedDescription
+            if log == nil {
+                // Initial load failure: nothing is cached, so the full
+                // "unavailable" state applies.
+                errorMessage = error.localizedDescription
+            } else {
+                // Refresh failure with cached content: keep the log visible
+                // and surface a small non-destructive banner instead.
+                refreshErrorMessage = error.localizedDescription
+            }
         }
+    }
+}
+
+// MARK: - Presentation
+
+/// Presentation resolution for the worker-log screen, extracted so the
+/// cached-content refresh-failure rule is deterministically testable:
+/// a failed refresh must never evict an already-loaded log, and a successful
+/// refresh clears the banner.
+enum KanbanWorkerLogPresentation: Equatable {
+    /// No log yet and no failure: initial load in flight.
+    case loading
+    /// Nothing cached and the load failed: full unavailable state.
+    case unavailable(String)
+    /// A log is on screen. refreshError is non-nil when the most recent
+    /// REFRESH failed — the cached content stays visible with a small,
+    /// non-destructive banner.
+    case content(log: KanbanWorkerLog, refreshError: String?)
+
+    static func resolve(log: KanbanWorkerLog?, loadError: String?, refreshError: String?) -> KanbanWorkerLogPresentation {
+        guard let log else {
+            if let loadError { return .unavailable(loadError) }
+            return .loading
+        }
+        return .content(log: log, refreshError: refreshError)
     }
 }

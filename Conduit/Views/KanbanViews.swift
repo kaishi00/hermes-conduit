@@ -35,6 +35,35 @@ enum KanbanDetailDraftPolicy {
     }
 }
 
+/// Permanent deletion from CARDS is a two-step action (Kanban V2
+/// correctness). Card entry points — the ellipsis menu AND the context menu —
+/// only STAGE a confirmation request; the destructive DELETE is issued solely
+/// by an explicit confirmation. Lane moves and Archive stay immediate and
+/// non-destructive.
+enum KanbanCardDeletePolicy {
+    enum Request: Equatable {
+        case none
+        case confirm(KanbanTask)
+        case perform(KanbanTask)
+    }
+
+    /// What a card's Delete… entry resolves to: NEVER the destructive
+    /// mutation by itself.
+    static func cardRequestedDelete(for task: KanbanTask) -> Request {
+        .confirm(task)
+    }
+
+    /// Cancellation stages nothing.
+    static func cancelled() -> Request {
+        .none
+    }
+
+    /// Only an explicit confirm resolves to the destructive request.
+    static func confirmed(staged: KanbanTask?) -> Request {
+        staged.map { .perform($0) } ?? .none
+    }
+}
+
 struct KanbanView: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var store = KanbanStore()
@@ -46,6 +75,11 @@ struct KanbanView: View {
     /// iPhone-native interaction: one selected lane rendered as a vertical
     /// card list behind a horizontally scrolling chip selector.
     @State private var selectedLane: String?
+    /// Permanent deletion from a card is a TWO-STEP action (V2): BOTH card
+    /// entry points (ellipsis menu and context menu) stage the task here,
+    /// and only an explicit confirmation issues the destructive DELETE.
+    /// Archive and lane moves stay immediate.
+    @State private var pendingDeleteTask: KanbanTask?
 
     private var bridgeIdentity: ObjectIdentifier? {
         appState.dashboardTicketBridge.map { ObjectIdentifier($0) }
@@ -145,6 +179,24 @@ struct KanbanView: View {
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
+        // Permanent deletion from cards is CONFIRMED before the DELETE is
+        // issued; the wording matches the detail screen's delete alert. The
+        // staged task is passed BY VALUE through the alert's presenting
+        // binding, so the destructive action never depends on reading
+        // mutable state that alert dismissal may already have cleared.
+        .alert(
+            "Delete this task?",
+            isPresented: Binding(
+                get: { pendingDeleteTask != nil },
+                set: { if !$0 { pendingDeleteTask = nil } }
+            ),
+            presenting: pendingDeleteTask
+        ) { task in
+            Button("Delete", role: .destructive) { confirmCardDelete(task) }
+            Button("Cancel", role: .cancel) { pendingDeleteTask = nil }
+        } message: { _ in
+            Text("This permanently removes the task from the selected Hermes board.")
+        }
         .task(id: pollingKey) {
             selectedTask = nil
             store.configure(
@@ -195,7 +247,7 @@ struct KanbanView: View {
                                 onOpen: { selectedTask = task },
                                 onMove: { status in Task { await move(task, to: status) } },
                                 onArchive: { Task { await archive(task) } },
-                                onDelete: { Task { await delete(task) } }
+                                onDelete: { stageCardDelete(task) }
                             )
                         }
                     }
@@ -377,6 +429,24 @@ struct KanbanView: View {
 
     private func delete(_ task: KanbanTask) async {
         _ = try? await store.deleteTask(id: task.id, includeArchived: includeArchived)
+    }
+
+    /// A card's Delete… entry STAGES the shared board-level confirmation; it
+    /// never issues the destructive mutation directly.
+    private func stageCardDelete(_ task: KanbanTask) {
+        if case .confirm(let staged) = KanbanCardDeletePolicy.cardRequestedDelete(for: task) {
+            pendingDeleteTask = staged
+        }
+    }
+
+    /// Only an explicit confirmation resolves the staged request to a
+    /// permanent DELETE. The staged task arrives BY VALUE from the alert's
+    /// presenting binding, so presentation-dismissal ordering can never
+    /// detach the action from its task.
+    private func confirmCardDelete(_ staged: KanbanTask) {
+        pendingDeleteTask = nil
+        guard case .perform(let task) = KanbanCardDeletePolicy.confirmed(staged: staged) else { return }
+        Task { await delete(task) }
     }
 }
 
