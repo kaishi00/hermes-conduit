@@ -88,14 +88,6 @@ enum KanbanProfileDescriptionPolicy {
     static func discard(draft: String, baseline: String) -> String {
         baseline
     }
-
-    /// A completion (save or generation) for `sessionProfile` may update the
-    /// editor only while the editor still edits that same profile. This is the
-    /// view-level identity guard; the store's generation guard is the hard
-    /// boundary underneath it.
-    static func completionIsActive(sessionProfile: String, currentProfile: String) -> Bool {
-        sessionProfile == currentProfile
-    }
 }
 
 // MARK: - Triage action flows
@@ -127,13 +119,18 @@ enum KanbanTriageActionsPolicy {
         if fanout {
             return "Decomposed into \(childCount) task" + (childCount == 1 ? "" : "s")
         }
-        return "Task specified (no fan-out)"
+        // Decompose's single-task fallback (backend fanout=false == a
+        // spec-style promotion; distinct from a plain Specify).
+        return "Decomposed (single task, no fan-out)"
     }
 
-    /// Partial-success wording when the mutation reached the server but the
+    /// Partial-success notice when the mutation reached the server but the
     /// authoritative refresh afterwards failed: the failure belongs to the
-    /// REFRESH, never to the action itself.
-    static func refreshFailureNotice(actionLabel: String, detail: String) -> String {
-        "\(actionLabel), but the task could not be refreshed. \(detail)"
+    /// REFRESH, never to the action itself. storeRefreshError is the board
+    /// banner the store recorded for a failed reload (nil = refresh fine).
+    static func successNoticeWithRefreshFailure(base: String, storeRefreshError: String?) -> String {
+        guard let storeRefreshError,
+              !storeRefreshError.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return base }
+        return "\(base), but the board could not be refreshed. \(storeRefreshError)"
     }
 }

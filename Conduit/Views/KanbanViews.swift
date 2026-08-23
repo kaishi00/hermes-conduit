@@ -113,6 +113,9 @@ struct KanbanView: View {
     @State private var showProfileRouting = false
     /// Unobtrusive post-nudge feedback ("Dispatcher nudged"); transient only.
     @State private var nudgeNotice: String?
+    /// Monotonic token so a rapid second nudge invalidates the first notice's
+    /// auto-hide timer (a stale timer must never clear the newer notice).
+    @State private var nudgeNoticeToken = 0
 
     private var bridgeIdentity: ObjectIdentifier? {
         appState.dashboardTicketBridge.map { ObjectIdentifier($0) }
@@ -285,8 +288,16 @@ struct KanbanView: View {
     private func nudgeDispatcher() async {
         do {
             try await store.nudgeDispatcher(includeArchived: includeArchived)
+            nudgeNoticeToken += 1
+            let token = nudgeNoticeToken
             withAnimation(.easeOut(duration: 0.15)) { nudgeNotice = "Dispatcher nudged" }
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            do {
+                try await Task.sleep(nanoseconds: 2_000_000_000)
+            } catch {
+                return // cancelled (view dismissed / task replaced): leave as-is
+            }
+            // Only the LATEST notice may clear itself.
+            guard nudgeNoticeToken == token, !Task.isCancelled else { return }
             withAnimation(.easeOut(duration: 0.3)) { nudgeNotice = nil }
         } catch {
             // Store-owned mutation error presentation (current generation only).

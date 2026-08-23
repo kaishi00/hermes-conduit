@@ -147,6 +147,16 @@ struct KanbanTaskDetailView: View {
                         activitySection
                         runsSection
                         workerLogLink
+                        // V3A success feedback lives OUTSIDE the eligibility-
+                        // gated Triage Actions section: after a successful
+                        // Specify/Decompose the task leaves triage and the
+                        // section disappears - the notice must survive.
+                        if let actionNotice {
+                            Label(actionNotice, systemImage: "checkmark.circle")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
                         if let remoteChangeNotice {
                             Text(remoteChangeNotice)
                                 .font(.footnote)
@@ -509,8 +519,11 @@ struct KanbanTaskDetailView: View {
 
                 Button {
                     // Decompose may create and assign multiple dependent
-                    // tasks: it is ALWAYS confirmation-gated.
-                    showDecomposeConfirmation = true
+                    // tasks: it is ALWAYS confirmation-gated (the action
+                    // policy answers, never the view directly).
+                    if KanbanTriageActionsPolicy.decomposeTap() == .confirm {
+                        showDecomposeConfirmation = true
+                    }
                 } label: {
                     HStack {
                         Spacer()
@@ -520,12 +533,6 @@ struct KanbanTaskDetailView: View {
                 }
                 .buttonStyle(.bordered)
                 .disabled(isSpecifying || isDecomposing)
-
-                if let actionNotice {
-                    Label(actionNotice, systemImage: "checkmark.circle")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
             }
         }
     }
@@ -1156,7 +1163,10 @@ struct KanbanTaskDetailView: View {
         do {
             _ = try await store.specifyTask(id: startedTask.id)
             guard KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) else { return }
-            actionNotice = "Task specified"
+            actionNotice = KanbanTriageActionsPolicy.successNoticeWithRefreshFailure(
+                base: "Task specified",
+                storeRefreshError: store.errorMessage
+            )
             await loadDetail(force: true)
         } catch {
             guard KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) else { return }
@@ -1183,7 +1193,14 @@ struct KanbanTaskDetailView: View {
         do {
             let response = try await store.decomposeTask(id: startedTask.id)
             guard KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) else { return }
-            actionNotice = KanbanTriageActionsPolicy.successNotice(fanout: response.fanout, childCount: response.childIDs.count)
+            let base = KanbanTriageActionsPolicy.successNotice(fanout: response.fanout, childCount: response.childIDs.count) ?? "Decompose succeeded"
+            // PARTIAL SUCCESS distinction: the mutation landed, so any
+            // failure the store recorded now is a REFRESH failure. Never
+            // blame the decompose itself.
+            actionNotice = KanbanTriageActionsPolicy.successNoticeWithRefreshFailure(
+                base: base,
+                storeRefreshError: store.errorMessage
+            )
             await loadDetail(force: true)
         } catch {
             guard KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) else { return }

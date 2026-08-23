@@ -281,6 +281,7 @@ final class KanbanV3ATests: XCTestCase {
         let task = Task { try? await store.autoDescribeProfile(profile: "coder", overwrite: true) }
         await requesterA.waitForSuspension()
 
+        let generation = store.currentConfigurationGeneration
         let requesterB = V3AMockRequester(responsesByPath: routes(boardSlug: "beta"))
         store.configure(requester: requesterB, serverIdentity: "https://b.test")
         requesterA.resumeSuspended()
@@ -289,15 +290,26 @@ final class KanbanV3ATests: XCTestCase {
         XCTAssertNil(store.mutationErrorMessage)
         XCTAssertTrue(store.profiles.isEmpty, "stale profile completion must not repopulate the new context")
         XCTAssertEqual(requesterB.calls.count, 0)
-        XCTAssertEqual(
-            KanbanProfileDescriptionPolicy.completionIsActive(sessionProfile: "coder", currentProfile: "coder"),
-            true
+        XCTAssertFalse(
+            store.isCurrentConfiguration(generation),
+            "the view-local generation guard sees the ownership loss immediately"
         )
-        XCTAssertEqual(
-            KanbanProfileDescriptionPolicy.completionIsActive(sessionProfile: "coder", currentProfile: "lancelot"),
-            false,
-            "a session for A never updates B's editor"
-        )
+    }
+
+    func testStoreGenerationTokenFlipsOnConfigure() async {
+        let requesterA = V3AMockRequester(responsesByPath: routes(boardSlug: "alpha"))
+        let store = makeStore(requester: requesterA)
+        await store.reload()
+        let generationA = store.currentConfigurationGeneration
+
+        XCTAssertTrue(store.isCurrentConfiguration(generationA), "a fresh token stays current")
+        XCTAssertEqual(generationA, store.currentConfigurationGeneration, "token stable across loads")
+
+        let requesterB = V3AMockRequester(responsesByPath: routes(boardSlug: "beta"))
+        store.configure(requester: requesterB, serverIdentity: "https://b.test")
+
+        XCTAssertFalse(store.isCurrentConfiguration(generationA), "configure() invalidates captured tokens")
+        XCTAssertTrue(store.isCurrentConfiguration(store.currentConfigurationGeneration))
     }
 
     // MARK: - 4. Manual dispatcher nudge
@@ -596,12 +608,50 @@ final class KanbanV3ATests: XCTestCase {
     }
 
     func testPartialSuccessRefreshWordingNeverBlamesTheMutation() {
-        let notice = KanbanTriageActionsPolicy.refreshFailureNotice(
-            actionLabel: "Decomposition succeeded",
-            detail: "network unreachable"
+        // Mutation succeeded + refresh failed: the wording blames the refresh.
+        let notice = KanbanTriageActionsPolicy.successNoticeWithRefreshFailure(
+            base: "Decomposed into 3 tasks",
+            storeRefreshError: "network unreachable"
         )
-        XCTAssertTrue(notice.hasPrefix("Decomposition succeeded"))
+        XCTAssertTrue(notice.hasPrefix("Decomposed into 3 tasks"))
         XCTAssertTrue(notice.contains("could not be refreshed"))
+        XCTAssertTrue(notice.hasSuffix("network unreachable"))
+        // Refresh fine: exact base passes through untouched.
+        XCTAssertEqual(
+            KanbanTriageActionsPolicy.successNoticeWithRefreshFailure(base: "Task specified", storeRefreshError: nil),
+            "Task specified"
+        )
+        XCTAssertEqual(
+            KanbanTriageActionsPolicy.successNoticeWithRefreshFailure(base: "Task specified", storeRefreshError: "  "),
+            "Task specified",
+            "blank refresh errors never wrap the base"
+        )
+        // Decompose fanout=false single-task fallback wording.
+        XCTAssertEqual(KanbanTriageActionsPolicy.successNotice(fanout: false, childCount: 0), "Decomposed (single task, no fan-out)")
+    }
+
+    func testSpecifyResponseDecodesTolerantly() throws {
+        let json = """
+        {"ok": true, "task_id": "t7", "reason": "specified", "new_title": "Tightened"}
+        """
+        let outcome = try JSONDecoder().decode(KanbanSpecifyResponse.self, from: Data(json.utf8))
+        XCTAssertTrue(outcome.ok)
+        XCTAssertEqual(outcome.taskID, "t7")
+        XCTAssertEqual(outcome.newTitle, "Tightened")
+
+        // Tolerant decode mirror of the Decompose case: hostile field types
+        // degrade without crashing.
+        let malformed = """
+        {"ok": "nope", "task_id": 7, "new_title": ["array"]}
+        """
+        let tolerant = try JSONDecoder().decode(KanbanSpecifyResponse.self, from: Data(malformed.utf8))
+        XCTAssertFalse(tolerant.ok)
+        XCTAssertEqual(tolerant.taskID, "7")
+        XCTAssertNil(tolerant.newTitle, "non-string new_title fails safe to nil")
+    }
+
+    func testAutoPromoteChildrenBackendDefaultConstant() {
+        XCTAssertTrue(KanbanOrchestrationSettings.defaultAutoPromoteChildren, "upstream config default is true")
     }
 
     func testDecomposeResponseDecodesTolerantly() throws {

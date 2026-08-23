@@ -26,10 +26,6 @@ enum KanbanServiceError: LocalizedError, Equatable {
     /// semantics and must be shown verbatim, never replaced by a made-up
     /// message.
     case actionDeclined(reason: String)
-    /// The mutation reached the server, but the authoritative refresh after it
-    /// failed. The mutation itself SUCCEEDED — this must never read as the
-    /// mutation failing.
-    case mutationSucceededButRefreshFailed(detail: String)
 
     var errorDescription: String? {
         switch self {
@@ -55,8 +51,6 @@ enum KanbanServiceError: LocalizedError, Equatable {
             // The backend's own reason (e.g. "task is not in triage") is the
             // product semantics; never translate it into a generic failure.
             return reason.isEmpty ? "Hermes declined the action." : reason
-        case .mutationSucceededButRefreshFailed(let detail):
-            return "The change was saved, but the board could not be refreshed. " + detail
         }
     }
 }

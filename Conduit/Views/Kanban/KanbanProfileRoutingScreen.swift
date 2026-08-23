@@ -110,8 +110,11 @@ struct KanbanProfileDescriptionEditorView: View {
         _draft = State(initialValue: profile.description)
     }
 
+    /// Dirty compares the TRIMMED draft against the server-trimmed baseline,
+    /// so a trailing newline from the TextEditor can never produce a no-op
+    /// PATCH that "saves" the same text back.
     private var isDirty: Bool {
-        KanbanProfileDescriptionPolicy.isDirty(draft: draft, baseline: baseline.description)
+        KanbanProfileDescriptionPolicy.isDirty(draft: trimmedDraft, baseline: baseline.description)
     }
 
     private var trimmedDraft: String {
@@ -132,7 +135,7 @@ struct KanbanProfileDescriptionEditorView: View {
             } header: {
                 Text("Routing Description")
             } footer: {
-                Text("The decomposer reads these descriptions to route child tasks to the best specialist profile. Empty descriptions fall back to name matching.")
+                Text("The decomposer reads these descriptions to route child tasks to the best specialist profile. Saving an empty description clears it (Hermes then falls back to name matching).")
             }
 
             Section {
@@ -182,6 +185,9 @@ struct KanbanProfileDescriptionEditorView: View {
             titleVisibility: .visible
         ) {
             Button("Discard & Generate", role: .destructive) {
+                // Explicitly drop the unsaved draft BEFORE generating (the
+                // generation would otherwise persist over the editor's draft).
+                draft = KanbanProfileDescriptionPolicy.discard(draft: draft, baseline: baseline.description)
                 Task { await generate() }
             }
             Button("Cancel", role: .cancel) {}
@@ -192,7 +198,7 @@ struct KanbanProfileDescriptionEditorView: View {
     }
 
     private func requestGenerate() {
-        switch KanbanProfileDescriptionPolicy.resolveGenerate(draft: draft, baseline: baseline.description) {
+        switch KanbanProfileDescriptionPolicy.resolveGenerate(draft: trimmedDraft, baseline: baseline.description) {
         case .allowed:
             Task { await generate() }
         case .requiresDiscard:
@@ -202,36 +208,40 @@ struct KanbanProfileDescriptionEditorView: View {
     }
 
     private func save() async {
+        // Freeze the server/board ownership BEFORE the first suspension point:
+        // a completion from a stale generation is UI-inert - it must not
+        // rewrite the editor's baseline/draft or show "saved" for a server
+        // that no longer owns this screen (review W-1).
         let sessionProfile = profile.name
-        guard KanbanProfileDescriptionPolicy.completionIsActive(sessionProfile: sessionProfile, currentProfile: profile.name) else { return }
+        let generation = store.currentConfigurationGeneration
         isSaving = true
         errorMessage = nil
         notice = nil
         defer {
-            if KanbanProfileDescriptionPolicy.completionIsActive(sessionProfile: sessionProfile, currentProfile: profile.name) {
+            if store.isCurrentConfiguration(generation) {
                 isSaving = false
             }
         }
         do {
             try await store.updateProfileDescription(profile: sessionProfile, description: trimmedDraft)
-            guard KanbanProfileDescriptionPolicy.completionIsActive(sessionProfile: sessionProfile, currentProfile: profile.name) else { return }
+            guard store.isCurrentConfiguration(generation) else { return }
             baseline = KanbanProfileDescriptionPolicy.Snapshot(profile: sessionProfile, description: trimmedDraft, isAuto: false)
             draft = trimmedDraft
             notice = "Description saved."
         } catch {
-            guard KanbanProfileDescriptionPolicy.completionIsActive(sessionProfile: sessionProfile, currentProfile: profile.name) else { return }
+            guard store.isCurrentConfiguration(generation) else { return }
             errorMessage = error.localizedDescription
         }
     }
 
     private func generate() async {
         let sessionProfile = profile.name
-        guard KanbanProfileDescriptionPolicy.completionIsActive(sessionProfile: sessionProfile, currentProfile: profile.name) else { return }
+        let generation = store.currentConfigurationGeneration
         isGenerating = true
         errorMessage = nil
         notice = nil
         defer {
-            if KanbanProfileDescriptionPolicy.completionIsActive(sessionProfile: sessionProfile, currentProfile: profile.name) {
+            if store.isCurrentConfiguration(generation) {
                 isGenerating = false
             }
         }
@@ -239,7 +249,7 @@ struct KanbanProfileDescriptionEditorView: View {
             // Generated text is persisted server-side immediately with
             // description_auto=true; the editor adopts the authoritative text.
             let outcome = try await store.autoDescribeProfile(profile: sessionProfile, overwrite: true)
-            guard KanbanProfileDescriptionPolicy.completionIsActive(sessionProfile: sessionProfile, currentProfile: profile.name) else { return }
+            guard store.isCurrentConfiguration(generation) else { return }
             if outcome.ok {
                 let generated = outcome.description ?? ""
                 baseline = KanbanProfileDescriptionPolicy.Snapshot(profile: sessionProfile, description: generated, isAuto: true)
@@ -251,7 +261,7 @@ struct KanbanProfileDescriptionEditorView: View {
                 errorMessage = outcome.reason ?? "Hermes could not generate a description."
             }
         } catch {
-            guard KanbanProfileDescriptionPolicy.completionIsActive(sessionProfile: sessionProfile, currentProfile: profile.name) else { return }
+            guard store.isCurrentConfiguration(generation) else { return }
             errorMessage = error.localizedDescription
         }
     }

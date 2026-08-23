@@ -655,6 +655,10 @@ struct KanbanProject: Codable, Identifiable, Equatable {
 }
 
 struct KanbanOrchestrationSettings: Codable, Equatable {
+    /// Backend default for auto_promote_children when config omits it
+    /// (plugin_api.py GET /orchestration: bool(cfg.get("auto_promote_children", True))).
+    static let defaultAutoPromoteChildren = true
+
     var orchestratorProfile: String
     var defaultAssignee: String
     var autoDecompose: Bool

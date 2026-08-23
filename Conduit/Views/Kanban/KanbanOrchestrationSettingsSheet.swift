@@ -148,6 +148,12 @@ struct KanbanOrchestrationSettingsSheet: View {
                 }
             }
             .onAppear(perform: seedOnce)
+            // The sheet may open before orchestration data lands (e.g. right
+            // after launch); re-seed the moment it arrives. seedOnce is
+            // idempotent, so a later remediation is a no-op.
+            .onChange(of: store.orchestration) { _, _ in
+                seedOnce()
+            }
         }
         .interactiveDismissDisabled(isSaving)
     }
@@ -160,9 +166,7 @@ struct KanbanOrchestrationSettingsSheet: View {
         guard seed == nil else { return }
         guard let settings = store.orchestration else { return }
         autoDecompose = settings.autoDecompose
-        // Backend default is True when config omits it (plugin_api.py GET
-        // /orchestration: bool(cfg.get("auto_promote_children", True))).
-        autoPromoteChildren = settings.autoPromoteChildren ?? true
+        autoPromoteChildren = settings.autoPromoteChildren ?? KanbanOrchestrationSettings.defaultAutoPromoteChildren
         orchestratorProfile = settings.orchestratorProfile
         defaultAssignee = settings.defaultAssignee
         seed = Seed(
@@ -174,16 +178,25 @@ struct KanbanOrchestrationSettingsSheet: View {
     }
 
     private func save() async {
-        guard hasChanges else { return }
+        guard hasChanges, !patch.isEmpty else { return }
+        // Freeze server/board ownership BEFORE the suspension: a completion
+        // from a stale generation is UI-inert (its echo must not re-base this
+        // sheet against a server that no longer owns the screen).
+        let generation = store.currentConfigurationGeneration
         isSaving = true
         errorMessage = nil
         notice = nil
-        defer { isSaving = false }
+        defer {
+            if store.isCurrentConfiguration(generation) {
+                isSaving = false
+            }
+        }
         do {
             // Re-seed from the authoritative echo (when available) so a later
             // poll cannot present stale "unsaved changes"; if the refresh
             // failed the saved draft values still become the new baseline.
             let updated = try await store.updateOrchestration(patch)
+            guard store.isCurrentConfiguration(generation) else { return }
             autoDecompose = updated?.autoDecompose ?? autoDecompose
             autoPromoteChildren = updated?.autoPromoteChildren ?? autoPromoteChildren
             orchestratorProfile = updated?.orchestratorProfile ?? orchestratorProfile
@@ -196,6 +209,7 @@ struct KanbanOrchestrationSettingsSheet: View {
             )
             notice = "Orchestration settings saved."
         } catch {
+            guard store.isCurrentConfiguration(generation) else { return }
             // The store owns the current-generation error presentation too;
             // the inline copy keeps the sheet self-contained.
             errorMessage = error.localizedDescription

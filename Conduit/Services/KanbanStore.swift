@@ -58,6 +58,18 @@ final class KanbanStore: ObservableObject {
     /// clears it immediately so a stale server's completion becomes inert.
     private var activeMutationGeneration: Int?
 
+    /// The current configuration generation, captured BEFORE a suspension so a
+    /// completion can prove it still belongs to the current server/board
+    /// context (store-level UI-inertness for view-local state writing).
+    var currentConfigurationGeneration: Int { configurationGeneration }
+
+    /// True while a captured generation is still the store's current
+    /// configuration generation - the ownership check for view-local
+    /// completions (sheets/editors) that must stay UI-inert after configure().
+    func isCurrentConfiguration(_ generation: Int) -> Bool {
+        configurationGeneration == generation
+    }
+
     init(
         defaults: UserDefaults = .standard,
         serviceFactory: ((any DashboardJSONRequester) -> KanbanService)? = nil
