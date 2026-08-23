@@ -233,6 +233,64 @@ enum KanbanBoardFilterPolicy {
     }
 }
 
+// MARK: - Canonical workspace presentation (V3B final pass)
+
+/// ONE derivation of the editor workspace representation from authoritative
+/// board metadata + the projects roster. Used identically for the initial
+/// sheet seed AND the post-save authoritative echo, so freshly-opened and
+/// freshly-saved editors always agree on identical server metadata.
+enum KanbanBoardWorkspacePresentation {
+    /// authoritative -> editor representation:
+    /// - project + workdir == project primary (or nil workdir, meaning the
+    ///   backend's project-default semantics)  -> .projectDefault
+    /// - project + drifted custom workdir      -> .custom(workdir)
+    /// - no project + workdir                  -> .custom(workdir)
+    /// - no project + no workdir               -> .none
+    static func derive(
+        projectID: String?,
+        defaultWorkdir: String?,
+        projects: [KanbanProject]
+    ) -> KanbanDefaultWorkspaceChoice {
+        let project: String? = (projectID ?? "").isEmpty ? nil : projectID
+        let workdir: String? = (defaultWorkdir ?? "").isEmpty ? nil : defaultWorkdir
+        if let project {
+            let primary = KanbanBoardPatchPolicy.primaryPath(of: project, projects: projects)
+            if let workdir, workdir != primary {
+                return .custom(workdir)
+            }
+            return .projectDefault
+        }
+        if let workdir {
+            return .custom(workdir)
+        }
+        return .none
+    }
+
+    static func derive(from board: KanbanBoardMetadata, projects: [KanbanProject]) -> KanbanDefaultWorkspaceChoice {
+        derive(projectID: board.projectID, defaultWorkdir: board.defaultWorkdir, projects: projects)
+    }
+
+    /// Effective-directory PREVIEW deriving from the CURRENT DRAFT state
+    /// (review G): the selected project's primary path must appear the moment
+    /// the project changes — never the sheet-opening board's stale workdir.
+    static func previewDirectory(
+        workspace: KanbanDefaultWorkspaceChoice,
+        projectID: String?,
+        projects: [KanbanProject]
+    ) -> String? {
+        let project: String? = (projectID ?? "").isEmpty ? nil : projectID
+        switch workspace {
+        case .custom(let path):
+            let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        case .projectDefault:
+            return KanbanBoardPatchPolicy.primaryPath(of: project, projects: projects)
+        case .none:
+            return nil
+        }
+    }
+}
+
 // MARK: - Running grouped by profile (V3B)
 
 /// Sub-groups the Running lane by the task's OWN assignee, with an
@@ -257,7 +315,11 @@ enum KanbanRunningGroupPolicy {
     static func group(_ tasks: [KanbanTask]) -> [Group] {
         var buckets: [String: [KanbanTask]] = [:]
         for task in tasks {
-            let key = task.assignee ?? unassignedKey
+            // Upstream parity (board.tsx: task.assignee || UNASSIGNED_LANE):
+            // an EMPTY-STRING assignee is falsy and maps to the Unassigned
+            // group; whitespace-only strings stay truthy like upstream.
+            let assignee = task.assignee ?? ""
+            let key = assignee.isEmpty ? unassignedKey : assignee
             buckets[key, default: []].append(task)
         }
         // Deterministic: case-insensitive primary, raw tie-break so equal

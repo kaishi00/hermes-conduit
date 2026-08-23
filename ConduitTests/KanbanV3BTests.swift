@@ -125,6 +125,120 @@ final class KanbanV3BTests: XCTestCase {
         XCTAssertEqual(patch.defaultWorkdir, "/repos/typed")
     }
 
+    // MARK: - V3B final pass: canonical workspace + baselines
+
+    private let projects = [
+        KanbanProject(id: "proj-a", slug: "project-a", name: "Project A", primaryPath: "/repos/a"),
+        KanbanProject(id: "proj-b", slug: "project-b", name: "Project B", primaryPath: "/repos/b"),
+    ]
+
+    func testWorkspaceDerivationCases() {
+        // F: one canonical derivation for seed AND post-save echo.
+        XCTAssertEqual(
+            KanbanBoardWorkspacePresentation.derive(projectID: "proj-a", defaultWorkdir: "/repos/a", projects: projects),
+            .projectDefault,
+            "project + primary workdir -> Project Default"
+        )
+        XCTAssertEqual(
+            KanbanBoardWorkspacePresentation.derive(projectID: "proj-a", defaultWorkdir: "/repos/custom", projects: projects),
+            .custom("/repos/custom"),
+            "project + drifted custom workdir -> Custom"
+        )
+        XCTAssertEqual(
+            KanbanBoardWorkspacePresentation.derive(projectID: nil, defaultWorkdir: "/repos/solo", projects: projects),
+            .custom("/repos/solo"),
+            "no project + workdir -> Custom"
+        )
+        XCTAssertEqual(
+            KanbanBoardWorkspacePresentation.derive(projectID: nil, defaultWorkdir: nil, projects: projects),
+            .none,
+            "no project + no workdir -> None"
+        )
+        XCTAssertEqual(
+            KanbanBoardWorkspacePresentation.derive(projectID: "proj-a", defaultWorkdir: nil, projects: projects),
+            .projectDefault,
+            "project + nil workdir means project default upstream"
+        )
+    }
+
+    func testDriftedCustomWorkdirSurvivesUnrelatedSave() {
+        // D: project-scoped board with a DRIFTED custom workdir; a name-only
+        // save must leave both project_id and default_workdir off the wire -
+        // the next unrelated save can never re-mirror /repos/custom to /repos/a.
+        let baseline = KanbanBoardMetadata(
+            slug: "alpha", name: "Alpha",
+            defaultWorkdir: "/repos/custom", projectID: "proj-a"
+        )
+        let derived = KanbanBoardWorkspacePresentation.derive(from: baseline, projects: projects)
+        XCTAssertEqual(derived, .custom("/repos/custom"), "the echo stays Custom")
+
+        let draft = KanbanBoardEditorDraft(
+            name: "Renamed", description: "", projectID: "proj-a", workspace: derived
+        )
+        let patch = KanbanBoardPatchPolicy.patch(baseline: baseline, draft: draft, projects: projects)
+        XCTAssertEqual(patch.name, "Renamed")
+        XCTAssertNil(patch.projectID, "unrelated save omits project_id")
+        XCTAssertNil(patch.defaultWorkdir, "unrelated save omits default_workdir - the drift is preserved")
+    }
+
+    func testBaselineAdvancesAfterSave() {
+        // E: Save #1 changes workdir /old -> /new; Save #2 edits description
+        // only. The second PATCH must be compared against /new (the accepted
+        // echo), never /old - so default_workdir is omitted, not resent.
+        let stale = KanbanBoardMetadata(slug: "alpha", name: "Alpha", defaultWorkdir: "/old")
+        let accepted = KanbanBoardMetadata(slug: "alpha", name: "Alpha", defaultWorkdir: "/new")
+        let derivedAfterEcho = KanbanBoardWorkspacePresentation.derive(from: accepted, projects: [])
+        XCTAssertEqual(derivedAfterEcho, .custom("/new"))
+
+        let secondDraft = KanbanBoardEditorDraft(
+            name: "Alpha", description: "Fresh description", projectID: nil, workspace: derivedAfterEcho
+        )
+        let secondPatch = KanbanBoardPatchPolicy.patch(baseline: accepted, draft: secondDraft, projects: [])
+        XCTAssertEqual(secondPatch.description, "Fresh description")
+        XCTAssertNil(secondPatch.defaultWorkdir, "no stale /old comparison; workdir untouched")
+
+        // Contrast: had the editor still compared against /old, the second
+        // patch would have had to resend default_workdir "/new".
+        let staleBaselinePatch = KanbanBoardPatchPolicy.patch(baseline: stale, draft: secondDraft, projects: [])
+        XCTAssertEqual(staleBaselinePatch.defaultWorkdir, "/new", "stale baseline would resend - proving the advance matters")
+    }
+
+    func testEffectiveDirectoryPreviewFollowsDraftProjectSelection() {
+        // G: selecting Project B after Project A must preview B's primary
+        // path immediately - never the original board's stale workdir.
+        XCTAssertEqual(
+            KanbanBoardWorkspacePresentation.previewDirectory(workspace: .projectDefault, projectID: "proj-b", projects: projects),
+            "/repos/b"
+        )
+        XCTAssertEqual(
+            KanbanBoardWorkspacePresentation.previewDirectory(workspace: .projectDefault, projectID: "proj-a", projects: projects),
+            "/repos/a"
+        )
+        XCTAssertEqual(
+            KanbanBoardWorkspacePresentation.previewDirectory(workspace: .custom(" /repos/typed "), projectID: nil, projects: projects),
+            "/repos/typed"
+        )
+        XCTAssertNil(KanbanBoardWorkspacePresentation.previewDirectory(workspace: .none, projectID: nil, projects: projects))
+        // projectDefault with a nil/unresolvable project previews nothing.
+        XCTAssertNil(KanbanBoardWorkspacePresentation.previewDirectory(workspace: .projectDefault, projectID: nil, projects: projects))
+        XCTAssertNil(KanbanBoardWorkspacePresentation.previewDirectory(workspace: .projectDefault, projectID: "missing", projects: projects))
+    }
+
+    func testEmptyAssigneeGroupsAsUnassigned() {
+        // H: nil AND "" map to the Unassigned group; "coder" stays its own
+        // group; whitespace-only strings stay truthy like upstream; no blank
+        // group is ever produced.
+        let blank = makeTask(id: "blank", assignee: "")
+        let nilA = makeTask(id: "nil-a", assignee: nil)
+        let coder = makeTask(id: "coder", assignee: "coder")
+        let spacey = makeTask(id: "space", assignee: "   ")
+
+        let groups = KanbanRunningGroupPolicy.group([blank, nilA, coder, spacey])
+        XCTAssertEqual(groups.map(\.key).sorted(), ["   ", "coder", "unassigned"], "no blank group")
+        let unassigned = groups.first { $0.key == KanbanRunningGroupPolicy.unassignedKey }
+        XCTAssertEqual(unassigned?.tasks.map(\.id).sorted(), ["blank", "nil-a"], "nil and empty-string both land in Unassigned")
+    }
+
     func testCreateRequestProjectWorkspaceEncoding() {
         // Project + Project Default: only project_id travels; workdir mirrors
         // server-side.
@@ -411,12 +525,12 @@ final class KanbanV3BTests: XCTestCase {
     func testArchiveNeverRequestsHardDelete() async throws {
         let requester = V3BMockRequester(responsesByPath: routes())
         requester.boardsProvider = { _ in
-            ["boards": [["slug": "default", "name": "Default", "archived": false]], "current": "default"]
+            ["boards": V3BMockRequester.baseBoards, "current": "alpha"]
         }
         requester.boardForSlug = { _ in V3BMockRequester.defaultBoard }
         requester.deleteBoardResponse = [
             "result": ["slug": "alpha", "action": "archived", "new_path": "/kanban/boards/_archived/alpha-1"],
-            "current": "default",
+            "current": "alpha",
         ]
         let store = makeStore(requester: requester)
         await store.reload()
@@ -478,17 +592,17 @@ final class KanbanV3BTests: XCTestCase {
         }
         requester.boardForSlug = { _ in V3BMockRequester.defaultBoard }
         requester.deleteBoardResponse = [
-            "result": ["slug": "beta", "action": "archived", "new_path": "/x"],
+            "result": ["slug": "alpha", "action": "archived", "new_path": "/x"],
             "current": "alpha",
         ]
         let store = makeStore(requester: requester)
         await store.reload()
         guard let stampA = store.loadedContextStamp else { return XCTFail("expected context") }
 
-        // DELETE succeeds (archiving a NON-selected board), but the boards
+        // DELETE succeeds (archiving the loaded board), but the authoritative
         // refresh afterwards fails: the ARCHIVE is not reported as failed and
         // the crafted partial-success wording survives (no clobbering reload).
-        let archived = try await store.archiveBoard(slug: "beta", expectedContext: stampA)
+        let archived = try await store.archiveBoard(slug: "alpha", expectedContext: stampA)
         XCTAssertTrue(archived)
         XCTAssertNil(store.mutationErrorMessage, "the archive itself did not fail")
         XCTAssertTrue(
@@ -539,13 +653,13 @@ final class KanbanV3BTests: XCTestCase {
 
     func testArchiveBackendRefusalPreserved() async {
         let requester = V3BMockRequester(responsesByPath: routes())
-        requester.errorsByPath["/api/plugins/kanban/boards/beta"] = KanbanAdminTestError.refused("board 'beta' is already archived")
+        requester.errorsByPath["/api/plugins/kanban/boards/alpha"] = KanbanAdminTestError.refused("board 'alpha' is already archived")
         let store = makeStore(requester: requester)
         await store.reload()
         guard let stampA = store.loadedContextStamp else { return XCTFail("expected context") }
 
         do {
-            _ = try await store.archiveBoard(slug: "beta", expectedContext: stampA)
+            _ = try await store.archiveBoard(slug: "alpha", expectedContext: stampA)
             XCTFail("the backend refusal must propagate")
         } catch {
             XCTAssertTrue(error.localizedDescription.contains("already archived"), "backend reason surfaced verbatim")
@@ -584,25 +698,97 @@ final class KanbanV3BTests: XCTestCase {
         XCTAssertNil(store.mutationErrorMessage)
     }
 
-    func testArchiveNonSelectedBoardDoesNotDisturbSelection() async throws {
+    func testUpdateTargetMismatchWithCurrentContextFailsClosed() async {
+        // A. BLOCKER regression: current loaded board = beta, expected stamp =
+        // beta, but the EXPLICIT target slug = alpha. The stale sheet window
+        // (sheet still targeting alpha while beta is now current) must fail
+        // closed with ZERO network traffic.
+        let requester = V3BMockRequester(responsesByPath: routes())
+        requester.boardsProvider = { _ in
+            ["boards": V3BMockRequester.baseBoards, "current": "alpha"]
+        }
+        requester.boardForSlug = { _ in V3BMockRequester.defaultBoard }
+        requester.responsesByPath["/api/plugins/kanban/boards/alpha"] = [
+            "board": ["slug": "alpha", "name": "Alpha", "archived": false],
+        ]
+        let store = makeStore(requester: requester)
+        await store.reload()
+        // Move the loaded context to beta.
+        await store.selectBoard(slug: "beta")
+        XCTAssertEqual(store.loadedBoardSlug, "beta")
+        guard let stampB = store.loadedContextStamp else { return XCTFail("expected context") }
+
+        do {
+            _ = try await store.updateBoard(
+                slug: "alpha",
+                patch: KanbanUpdateBoardPatch(name: "X"),
+                expectedContext: stampB
+            )
+            XCTFail("target slug alpha with a beta stamp must fail closed")
+        } catch KanbanServiceError.boardNavigationInProgress {
+            // expected
+        } catch {
+            XCTFail("unexpected: \(error)")
+        }
+        XCTAssertFalse(requester.calls.contains { $0.method == "PATCH" && $0.path.contains("/boards/alpha") }, "zero PATCH to alpha")
+        XCTAssertFalse(requester.calls.contains { $0.method == "PATCH" && $0.path.contains("/boards/beta") }, "zero PATCH to beta")
+    }
+
+    func testArchiveTargetMismatchWithCurrentContextFailsClosed() async {
+        // B. Same stale-sheet regression for an archive: current = beta,
+        // stamp = beta, explicit target slug = alpha -> zero DELETE (the
+        // view would stage a PendingBoardArchive; the store boundary is the
+        // hard gate, exercised directly here).
         let requester = V3BMockRequester(responsesByPath: routes())
         requester.boardsProvider = { _ in
             ["boards": V3BMockRequester.baseBoards, "current": "alpha"]
         }
         requester.boardForSlug = { _ in V3BMockRequester.defaultBoard }
         requester.deleteBoardResponse = [
-            "result": ["slug": "beta", "action": "archived", "new_path": "/x"],
+            "result": ["slug": "alpha", "action": "archived", "new_path": "/x"],
             "current": "alpha",
+        ]
+        let store = makeStore(requester: requester)
+        await store.reload()
+        await store.selectBoard(slug: "beta")
+        guard let stampB = store.loadedContextStamp else { return XCTFail("expected context") }
+
+        do {
+            _ = try await store.archiveBoard(slug: "alpha", expectedContext: stampB)
+            XCTFail("a staged archive for alpha with a beta stamp must fail closed")
+        } catch KanbanServiceError.boardNavigationInProgress {
+            // expected
+        } catch {
+            XCTFail("unexpected: \(error)")
+        }
+        XCTAssertFalse(requester.calls.contains { $0.method == "DELETE" }, "zero DELETE")
+    }
+
+    func testBoardUpdateCorrectTargetStillWorks() async throws {
+        // C. The matching configuration (current = alpha, stamp = alpha,
+        // target slug = alpha) still executes normally.
+        let requester = V3BMockRequester(responsesByPath: routes())
+        requester.responsesByPath["/api/plugins/kanban/boards/alpha"] = [
+            "board": ["slug": "alpha", "name": "Renamed", "archived": false],
         ]
         let store = makeStore(requester: requester)
         await store.reload()
         guard let stampA = store.loadedContextStamp else { return XCTFail("expected context") }
 
-        // Archive a NON-selected board while alpha stays loaded/selected.
-        _ = try await store.archiveBoard(slug: "beta", expectedContext: stampA)
-
-        XCTAssertEqual(store.selectedBoardSlug, "", "selection (server current -> alpha) undisturbed")
-        XCTAssertEqual(store.loadedBoardSlug, "alpha", "the selected board is still loaded")
+        let updated = try await store.updateBoard(
+            slug: "alpha",
+            patch: KanbanUpdateBoardPatch(name: "Renamed"),
+            expectedContext: stampA
+        )
+        XCTAssertEqual(updated.name, "Renamed")
+        let patchCalls = requester.calls.filter { $0.method == "PATCH" && $0.path.contains("/boards/alpha") }
+        XCTAssertEqual(patchCalls.count, 1)
+        // Wire-level: the encoded body really contains name and OMITS the
+        // untouched project/workdir fields (S-1).
+        let body = try XCTUnwrap(patchCalls.first?.body)
+        XCTAssertEqual(body["name"] as? String, "Renamed")
+        XCTAssertNil(body["project_id"], "project_id omitted on the wire")
+        XCTAssertNil(body["default_workdir"], "default_workdir omitted on the wire")
         XCTAssertNil(store.mutationErrorMessage)
     }
 

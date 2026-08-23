@@ -678,10 +678,10 @@ final class KanbanStore: ObservableObject {
         guard !isMutating else {
             throw recordMutationError(KanbanServiceError.mutationInProgress)
         }
-        // The captured slug is frozen by the view at stage time and never
-        // re-read; the store validates the CONTEXT stamp (a same-named board
-        // on another server can never be hit). An all-nil patch is a no-op.
-        try validateExpectedContext(expectedContext)
+        // The explicit target slug must equal the slug inside the shared
+        // ownership stamp (a stale sheet can never PATCH a different board
+        // during the dismissal window). An all-nil patch is a no-op.
+        try validateExpectedBoardTarget(slug: slug, expectedContext: expectedContext)
         // An all-nil patch is a no-op: never waste a PATCH on it.
         guard !patch.isEmpty else {
             if let existing = boards.first(where: { $0.slug == slug }) {
@@ -731,7 +731,10 @@ final class KanbanStore: ObservableObject {
             throw recordMutationError(KanbanServiceError.mutationInProgress)
         }
         try refuseDefaultBoardArchive(slug)
-        try validateExpectedContext(expectedContext)
+        // The staged target slug must equal the slug inside the stamp: a
+        // confirmation staged for alpha can never archive beta (or vice
+        // versa) after the context moved.
+        try validateExpectedBoardTarget(slug: slug, expectedContext: expectedContext)
         guard let context = makeOperationContext() else {
             throw recordMutationError(KanbanServiceError.invalidResponse("Kanban is not connected."))
         }
@@ -837,6 +840,25 @@ final class KanbanStore: ObservableObject {
         guard let expectedContext else { return }
         guard isSelectedSnapshotLoaded, loadedContextStamp == expectedContext else {
             throw recordMutationError(KanbanServiceError.boardNavigationInProgress)
+        }
+    }
+
+    /// Board-administration target binding (V3B final pass): the EXPLICIT
+    /// target board slug must equal the board slug contained in the ownership
+    /// stamp — and the stamp must still prove the currently actionable loaded
+    /// context. A stale Board Settings sheet (target slug alpha) combined
+    /// with a newly current context (stamp beta) can therefore never PATCH or
+    /// DELETE alpha during the sheet-dismiss window. Back-to-back with
+    /// makeOperationContext() on the MainActor, before any suspension.
+    private func validateExpectedBoardTarget(
+        slug: String,
+        expectedContext: KanbanBoardContextStamp?
+    ) throws {
+        try validateExpectedContext(expectedContext)
+        if let expectedContext {
+            guard expectedContext.boardSlug == slug else {
+                throw recordMutationError(KanbanServiceError.boardNavigationInProgress)
+            }
         }
     }
 

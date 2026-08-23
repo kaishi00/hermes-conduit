@@ -35,6 +35,12 @@ struct KanbanBoardEditorView: View {
     @State private var customPath = ""
     @State private var slug = ""
     @State private var manualSlug = false
+    /// The most recent AUTHORITATIVE server metadata this editor accepted —
+    /// the wire baseline for every PATCH. Advances on every successful Save
+    /// so a later save is never compared against the sheet-opening state
+    /// (review 2). mode.settings(board:) stays valuable only for the original
+    /// target slug + initial seed.
+    @State private var serverBaseline: KanbanBoardMetadata?
     @State private var seedDraft: KanbanBoardEditorDraft?
     @State private var isSaving = false
     @State private var liveness = KanbanEditorLiveness()
@@ -100,16 +106,15 @@ struct KanbanBoardEditorView: View {
         return currentDraft != seedDraft
     }
 
+    /// Effective-directory PREVIEW from the CURRENT DRAFT: selecting another
+    /// project immediately shows its primary repo — never the sheet-opening
+    /// board's stale workdir (review 3/G).
     private var effectiveDirectory: String? {
-        if case .custom(let path) = effectiveWorkspaceChoice, !path.isEmpty {
-            return path
-        }
-        if let workdir = board?.defaultWorkdir, !workdir.isEmpty { return workdir }
-        if let projectID, let project = store.projects.first(where: { $0.id == projectID }),
-           let primary = project.primaryPath, !primary.isEmpty {
-            return primary
-        }
-        return nil
+        KanbanBoardWorkspacePresentation.previewDirectory(
+            workspace: effectiveWorkspaceChoice,
+            projectID: projectID,
+            projects: store.projects
+        )
     }
 
     var body: some View {
@@ -300,30 +305,30 @@ struct KanbanBoardEditorView: View {
     }
 
     private func seedOnce() {
-        guard seedDraft == nil else { return }
-        let effectiveProject = (board?.projectID ?? "").isEmpty ? nil : board?.projectID
-        if let projectID = effectiveProject, !projectID.isEmpty {
-            // Project Default only when the stored workdir is already the
-            // project's primary repo; a DRIFTED custom dir is presented as
-            // Custom so the preview never misleads (review B-2/C-1).
-            let primary = KanbanBoardPatchPolicy.primaryPath(of: projectID, projects: store.projects)
-            if let stored = board?.defaultWorkdir, !stored.isEmpty, stored != primary {
-                workspaceRow = .custom
-                customPath = stored
-            } else {
-                workspaceRow = .projectDefault
-            }
-        } else if let workdir = board?.defaultWorkdir, !workdir.isEmpty {
-            workspaceRow = .custom
-            customPath = workdir
-        } else {
-            workspaceRow = .none
-        }
-        name = board?.name ?? ""
-        descriptionText = board?.description ?? ""
+        guard seedDraft == nil, let board else { return }
+        serverBaseline = board
+        let effectiveProject = (board.projectID ?? "").isEmpty ? nil : board.projectID
+        let derivedWorkspace = KanbanBoardWorkspacePresentation.derive(from: board, projects: store.projects)
+        applyWorkspacePresentation(derivedWorkspace)
+        name = board.name ?? ""
+        descriptionText = board.description ?? ""
         projectID = effectiveProject
-        slug = board?.slug ?? ""
+        slug = board.slug
         seedDraft = currentDraft
+    }
+
+    /// The ONE path that materializes a workspace representation into the
+    /// editor rows (initial seed AND post-save authoritative echo).
+    private func applyWorkspacePresentation(_ derived: KanbanDefaultWorkspaceChoice) {
+        switch derived {
+        case .projectDefault:
+            workspaceRow = .projectDefault
+        case .none:
+            workspaceRow = .none
+        case .custom(let path):
+            workspaceRow = .custom
+            customPath = path
+        }
     }
 
     /// Synchronous tap handler: freezes the mutation identity (concrete slug
@@ -355,12 +360,14 @@ struct KanbanBoardEditorView: View {
                 )
             }
         } else {
-            guard let board else {
+            guard let baseline = serverBaseline else {
                 if liveness.owns(operationID) { isSaving = false }
                 return
             }
-            let patch = KanbanBoardPatchPolicy.patch(baseline: board, draft: draft, projects: store.projects)
-            let targetSlug = board.slug
+            // PATCH built from the LATEST authoritative metadata this editor
+            // accepted — never the sheet-opening state (review 2/E).
+            let patch = KanbanBoardPatchPolicy.patch(baseline: baseline, draft: draft, projects: store.projects)
+            let targetSlug = baseline.slug
             Task {
                 await performUpdate(
                     slug: targetSlug,
@@ -414,6 +421,9 @@ struct KanbanBoardEditorView: View {
             return
         }
         do {
+            // Concurrent completions cannot race the baseline: the store's
+            // single-live-mutation gate serializes PATCHes and this editor's
+            // liveness token discards echoes from older operations.
             let updated = try await store.updateBoard(
                 slug: slug,
                 patch: patch,
@@ -422,18 +432,15 @@ struct KanbanBoardEditorView: View {
             )
             if liveness.owns(operationID) { isSaving = false }
             guard store.isCurrentConfiguration(generation) else { return }
-            // Authoritative echo becomes the new baseline.
+            // The authoritative echo ADVANCES the server baseline FIRST; the
+            // workspace rows materialize through the same canonical
+            // derivation as the initial seed (review 3/D).
+            serverBaseline = updated
+            let derived = KanbanBoardWorkspacePresentation.derive(from: updated, projects: store.projects)
+            applyWorkspacePresentation(derived)
             name = updated.name ?? ""
             descriptionText = updated.description ?? ""
             projectID = (updated.projectID ?? "").isEmpty ? nil : updated.projectID
-            if let projectID, !projectID.isEmpty {
-                workspaceRow = .projectDefault
-            } else if let workdir = updated.defaultWorkdir, !workdir.isEmpty {
-                workspaceRow = .custom
-                customPath = workdir
-            } else {
-                workspaceRow = .none
-            }
             seedDraft = currentDraft
             notice = "Board settings saved."
         } catch {
