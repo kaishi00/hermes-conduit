@@ -672,7 +672,7 @@ final class KanbanStore: ObservableObject {
     func updateBoard(
         slug: String,
         patch: KanbanUpdateBoardPatch,
-        expectedContext: KanbanBoardContextStamp? = nil,
+        expectedContext: KanbanBoardContextStamp,
         includeArchived: Bool = false
     ) async throws -> KanbanBoardMetadata {
         guard !isMutating else {
@@ -724,7 +724,7 @@ final class KanbanStore: ObservableObject {
     @discardableResult
     func archiveBoard(
         slug: String,
-        expectedContext: KanbanBoardContextStamp? = nil,
+        expectedContext: KanbanBoardContextStamp,
         includeArchived: Bool = false
     ) async throws -> Bool {
         guard !isMutating else {
@@ -844,21 +844,21 @@ final class KanbanStore: ObservableObject {
     }
 
     /// Board-administration target binding (V3B final pass): the EXPLICIT
-    /// target board slug must equal the board slug contained in the ownership
-    /// stamp — and the stamp must still prove the currently actionable loaded
-    /// context. A stale Board Settings sheet (target slug alpha) combined
-    /// with a newly current context (stamp beta) can therefore never PATCH or
-    /// DELETE alpha during the sheet-dismiss window. Back-to-back with
-    /// makeOperationContext() on the MainActor, before any suspension.
+    /// target board slug must equal the board slug contained in the (REQUIRED)
+    /// ownership stamp — and the stamp must still prove the currently
+    /// actionable loaded context. A stale Board Settings sheet (target slug
+    /// alpha) combined with a newly current context (stamp beta) can
+    /// therefore never PATCH or DELETE alpha during the sheet-dismiss window.
+    /// The stamp is non-optional BY TYPE: a board-targeted admin mutation can
+    /// never run without ownership. Back-to-back with makeOperationContext()
+    /// on the MainActor, before any suspension.
     private func validateExpectedBoardTarget(
         slug: String,
-        expectedContext: KanbanBoardContextStamp?
+        expectedContext: KanbanBoardContextStamp
     ) throws {
         try validateExpectedContext(expectedContext)
-        if let expectedContext {
-            guard expectedContext.boardSlug == slug else {
-                throw recordMutationError(KanbanServiceError.boardNavigationInProgress)
-            }
+        guard expectedContext.boardSlug == slug else {
+            throw recordMutationError(KanbanServiceError.boardNavigationInProgress)
         }
     }
 

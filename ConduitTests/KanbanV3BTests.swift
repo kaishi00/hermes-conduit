@@ -452,6 +452,68 @@ final class KanbanV3BTests: XCTestCase {
         XCTAssertEqual(patch.defaultWorkdir, "/repos/custom")
     }
 
+    func testProjectChangeWithSameCustomPathReassertsWorkdirOnTheWire() {
+        // The two-fix pass regression: the user intentionally PRESERVES the
+        // custom directory while switching projects. Because the project
+        // change makes upstream implicitly mirror the new project's primary
+        // repo, the SAME custom path must be sent explicitly even though its
+        // string equals the old baseline workdir.
+        let baseline = boardMeta(name: "Alpha", projectID: "proj-a", workdir: "/repos/custom")
+        let draft = KanbanBoardEditorDraft(
+            name: "Alpha", description: "", projectID: "proj-b", workspace: .custom("/repos/custom")
+        )
+        let patch = KanbanBoardPatchPolicy.patch(
+            baseline: baseline,
+            draft: draft,
+            projects: [
+                KanbanProject(id: "proj-a", slug: "project-a", name: "Project A", primaryPath: "/repos/a"),
+                KanbanProject(id: "proj-b", slug: "project-b", name: "Project B", primaryPath: "/repos/b"),
+            ]
+        )
+        XCTAssertEqual(patch.projectID, "proj-b")
+        XCTAssertEqual(patch.defaultWorkdir, "/repos/custom", "the preserved custom path MUST override the implicit mirror")
+
+        // Canonical derivation keeps the editor on Custom after the echo.
+        let echo = KanbanBoardMetadata(slug: "alpha", name: "Alpha", defaultWorkdir: "/repos/custom", projectID: "proj-b")
+        XCTAssertEqual(
+            KanbanBoardWorkspacePresentation.derive(from: echo, projects: [
+                KanbanProject(id: "proj-b", slug: "project-b", name: "Project B", primaryPath: "/repos/b"),
+            ]),
+            .custom("/repos/custom")
+        )
+    }
+
+    func testUnchangedProjectSameCustomPathStillOmitsWorkdir() {
+        // No project change + unchanged custom path: default_workdir must
+        // stay OFF the wire (no redundant PATCH fields).
+        let baseline = boardMeta(name: "Alpha", projectID: "proj-a", workdir: "/repos/custom")
+        let draft = KanbanBoardEditorDraft(
+            name: "Alpha", description: "New description", projectID: "proj-a", workspace: .custom("/repos/custom")
+        )
+        let patch = KanbanBoardPatchPolicy.patch(
+            baseline: baseline,
+            draft: draft,
+            projects: [KanbanProject(id: "proj-a", slug: "project-a", name: "Project A", primaryPath: "/repos/a")]
+        )
+        XCTAssertEqual(patch.description, "New description")
+        XCTAssertNil(patch.projectID)
+        XCTAssertNil(patch.defaultWorkdir, "unchanged custom path is not resent")
+    }
+
+    func testNoneWithProjectChangeSuppressesImplicitMirror() {
+        // .none + project change: default_workdir "" travels so the new
+        // project's implicit mirror is suppressed (defense-in-depth; the UI
+        // hides None while a project is selected).
+        let baseline = boardMeta(name: "Alpha", projectID: "proj-a") // workdir nil
+        let patch = KanbanBoardPatchPolicy.patch(
+            baseline: baseline,
+            draft: KanbanBoardEditorDraft(name: "Alpha", description: "", projectID: "proj-b", workspace: .none),
+            projects: [KanbanProject(id: "proj-b", slug: "project-b", name: "Project B", primaryPath: "/repos/b")]
+        )
+        XCTAssertEqual(patch.projectID, "proj-b")
+        XCTAssertEqual(patch.defaultWorkdir, "", "implicit mirror suppressed for .none")
+    }
+
     func testPatchProjectDefaultRemirrorsDriftedWorkdir() {
         // Same project, but the workdir drifted away from the project repo:
         // re-sending the same project_id re-mirrors (default_workdir omitted).

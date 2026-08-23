@@ -118,13 +118,22 @@ enum KanbanBoardPatchPolicy {
                 }
             }
         case .none:
-            // None / Scratch: clear any existing workdir explicitly.
-            if baselineWorkdir != nil {
+            // None / Scratch: clear any existing workdir explicitly - and on
+            // a PROJECT change too, so the new project's implicit mirror is
+            // suppressed (symmetry with the .custom branch; the UI hides
+            // None while a project is selected, defense-in-depth otherwise).
+            if projectChanged || baselineWorkdir != nil {
                 patch.defaultWorkdir = ""
             }
         case .custom(let path):
             let trimmedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmedPath != (baselineWorkdir ?? "") {
+            // A project change makes upstream IMPLICITLY mirror the new
+            // project's primary repo when default_workdir is omitted — so the
+            // explicit Custom path must travel even when its string equals
+            // the OLD baseline workdir, to override that implicit behavior.
+            // Without a project change, an unchanged custom path stays
+            // omitted (no redundant PATCH fields).
+            if projectChanged || trimmedPath != (baselineWorkdir ?? "") {
                 patch.defaultWorkdir = trimmedPath
             }
         }
