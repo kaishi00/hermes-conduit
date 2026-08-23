@@ -849,6 +849,13 @@ final class KanbanStore: ObservableObject {
             throw recordMutationError(KanbanServiceError.invalidResponse("No tasks selected."))
         }
         try validateExpectedContext(expectedContext)
+        // Defense-in-depth (single-task parity): a bulk Move cannot target a
+        // locked/invalid status even if a future UI path bypasses the
+        // destination policy. Rejected BEFORE any network traffic or
+        // reconciliation (the mirror of the single-task move boundary).
+        if let status = patch.status, !KanbanStatusPresentation.canSelectManually(status) {
+            throw recordMutationError(KanbanServiceError.invalidManualStatus(status))
+        }
         guard let context = makeOperationContext() else {
             throw recordMutationError(KanbanServiceError.invalidResponse("Kanban is not connected."))
         }

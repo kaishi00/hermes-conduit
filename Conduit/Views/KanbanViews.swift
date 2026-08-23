@@ -46,14 +46,6 @@ struct PendingCardDelete: Equatable {
     var taskID: String { task.id }
 }
 
-/// The frozen (ids, context) captured synchronously when a bulk action was
-/// tapped; the move/assign/priority sheets compose their payload from it and
-/// can never re-read the live selection.
-struct BulkStagedSelection: Equatable {
-    let ids: [String]
-    let context: KanbanBoardContextStamp
-}
-
 /// Permanent deletion from CARDS is a two-step action (Kanban V2
 /// correctness). Card entry points — the ellipsis menu AND the context menu —
 /// only STAGE a confirmation request BOUND to the board/server context that
@@ -148,7 +140,7 @@ struct KanbanView: View {
     @State private var showBulkPriority = false
     @State private var showBulkFailures = false
     @State private var lastBulkOutcome: KanbanBulkOperationOutcome?
-    @State private var bulkNotice: String?
+    @State private var bulkNoticeState = KanbanBulkNoticeState()
     @State private var bulkPriorityValue = 0
 
     private var bridgeIdentity: ObjectIdentifier? {
@@ -185,7 +177,7 @@ struct KanbanView: View {
         showBulkAssign = false
         showBulkPriority = false
         lastBulkOutcome = nil
-        bulkNotice = nil
+        bulkNoticeState.clear()
         showBulkFailures = false
     }
 
@@ -262,10 +254,10 @@ struct KanbanView: View {
                                         .background(.ultraThinMaterial, in: Capsule())
                                         .transition(.opacity)
                                 }
-                                if let bulkNotice {
-                                    Label(bulkNotice, systemImage: "checkmark.circle")
+                                if let bulkNotice = bulkNoticeState.text {
+                                    Label(bulkNotice, systemImage: bulkNoticeState.kind == .success ? "checkmark.circle" : "exclamationmark.triangle.fill")
                                         .font(.caption)
-                                        .foregroundStyle(.green)
+                                        .foregroundStyle(bulkNoticeState.kind == .success ? Color.green : Color.orange)
                                         .padding(8)
                                         .background(.ultraThinMaterial, in: Capsule())
                                         .transition(.opacity)
@@ -356,13 +348,13 @@ struct KanbanView: View {
         }
         // V3C: bulk action sheets all consume the FROZEN staged selection;
         // composition can never re-read the live selection or context.
-        .sheet(isPresented: $showBulkMove) {
+        .sheet(isPresented: $showBulkMove, onDismiss: { bulkStagedSelection = nil }) {
             bulkMoveSheet
         }
-        .sheet(isPresented: $showBulkAssign) {
+        .sheet(isPresented: $showBulkAssign, onDismiss: { bulkStagedSelection = nil }) {
             bulkAssignSheet
         }
-        .sheet(isPresented: $showBulkPriority) {
+        .sheet(isPresented: $showBulkPriority, onDismiss: { bulkStagedSelection = nil }) {
             bulkPrioritySheet
         }
         .sheet(isPresented: $showBulkFailures) {
@@ -408,16 +400,18 @@ struct KanbanView: View {
             bulkArchiveTitle,
             isPresented: Binding(
                 get: { pendingBulkOperation != nil && pendingBulkOperation?.action == .archive },
-                set: { if !$0 { pendingBulkOperation = nil } }
+                set: { if !$0 { pendingBulkOperation = nil; bulkStagedSelection = nil } }
             ),
             titleVisibility: .visible,
             presenting: pendingBulkOperation
         ) { staged in
             Button(bulkArchiveActionTitle(count: staged.ids.count), role: .destructive) {
+                // Consumed: the stage must not survive into a later action.
                 pendingBulkOperation = nil
+                bulkStagedSelection = nil
                 runBulk(PendingBulkOperation(ids: staged.ids, context: staged.context, action: .archive))
             }
-            Button("Cancel", role: .cancel) { pendingBulkOperation = nil }
+            Button("Cancel", role: .cancel) { pendingBulkOperation = nil; bulkStagedSelection = nil }
         } message: { staged in
             Text("They will be moved out of the active board view. Tasks are not being permanently deleted.")
         }
@@ -425,7 +419,7 @@ struct KanbanView: View {
             bulkDeleteTitle,
             isPresented: Binding(
                 get: { pendingBulkDelete != nil },
-                set: { if !$0 { pendingBulkDelete = nil } }
+                set: { if !$0 { pendingBulkDelete = nil; bulkStagedSelection = nil } }
             ),
             titleVisibility: .visible,
             presenting: pendingBulkDelete
@@ -659,10 +653,18 @@ struct KanbanView: View {
             // outside selection mode (review M5).
             cardCore(task: task, isSelected: isSelected, actionsInert: actionsInert)
                 .accessibilityAddTraits(isSelected ? .isSelected : [])
-                .accessibilityLabel(Text((isSelected ? "Task \(task.id), selected" : "Task \(task.id), not selected") + ", " + (task.latestSummary ?? task.title ?? "")))
+                .accessibilityLabel(selectionA11yLabel(task: task, isSelected: isSelected))
         } else {
             cardCore(task: task, isSelected: isSelected, actionsInert: actionsInert)
         }
+    }
+
+    /// Selection-mode VoiceOver label: status/lane context retained + the
+    /// selection state (review: never color-only, never strictly ID-only).
+    private func selectionA11yLabel(task: KanbanTask, isSelected: Bool) -> Text {
+        let lane = KanbanStatusPresentation.forStatus(task.status).displayName
+        let body = task.latestSummary ?? task.title
+        return Text((isSelected ? "Task \(task.id), selected" : "Task \(task.id), not selected") + ", " + lane + ": " + body)
     }
 
     private func cardCore(task: KanbanTask, isSelected: Bool, actionsInert: Bool) -> some View {
@@ -671,6 +673,7 @@ struct KanbanView: View {
         return KanbanCardView(
             task: task,
             hasDispatcherFallback: !(store.orchestration?.resolvedDefaultAssignee ?? "").isEmpty,
+            isMenusDisabled: actionsInert,
             onOpen: {
                 // Selection mode: normal card tap TOGGLES selection and must
                 // never open the detail sheet.
@@ -704,7 +707,8 @@ struct KanbanView: View {
         guard !isSelectionActive, let stamp = store.loadedContextStamp, store.isSelectedSnapshotLoaded else { return }
         selectionContext = stamp
         selectedTaskIDs = []
-        bulkNotice = nil
+        bulkNoticeState.clear()
+        lastBulkOutcome = nil
     }
 
     private func toggleSelection(_ id: String) {
@@ -749,7 +753,12 @@ struct KanbanView: View {
             .accessibilityLabel("Assign \(selectedTaskIDs.count) selected tasks")
             Menu {
                 Button {
-                    showBulkPriority = true
+                    // BLOCKER fix: Priority MUST route through the same
+                    // staging path as every other action - the sheet then
+                    // composes from the frozen stage and can never reuse a
+                    // stale stage from an earlier Archive/Delete flow. The
+                    // payload value is a placeholder (Apply re-freezes it).
+                    stageBulk(.priority(0))
                 } label: {
                     Label("Set Priority…", systemImage: "number")
                 }
@@ -896,13 +905,39 @@ struct KanbanView: View {
         NavigationStack {
             Form {
                 Section {
-                    Stepper(value: $bulkPriorityValue, in: -10 ... 100) {
-                        Text("Priority: \(bulkPriorityValue)")
+                    HStack(spacing: 12) {
+                        Button {
+                            // Clamped at Int bounds: the numeric field can
+                            // hold Int.max/Int.min pasted values; an
+                            // unclamped +/- would trap on overflow.
+                            if bulkPriorityValue > Int.min { bulkPriorityValue -= 1 }
+                        } label: {
+                            Image(systemName: "minus.circle")
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(bulkStagedSelection == nil || bulkPriorityValue == Int.min)
+                        .accessibilityLabel("Decrease priority")
+                        TextField("Priority", value: $bulkPriorityValue, format: .number)
+                            .keyboardType(.numbersAndPunctuation)
+                            .multilineTextAlignment(.center)
                             .font(.title3.bold())
                             .monospacedDigit()
+                            .accessibilityLabel("Priority value")
+                        Button {
+                            if bulkPriorityValue < Int.max { bulkPriorityValue += 1 }
+                        } label: {
+                            Image(systemName: "plus.circle")
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(bulkStagedSelection == nil || bulkPriorityValue == Int.max)
+                        .accessibilityLabel("Increase priority")
                     }
+                    .padding(.vertical, 4)
                 } footer: {
-                    Text("Integer priority value; Hermes stores it verbatim (no scale conversion).")
+                    // Audited contract: upstream applies the verbatim
+                    // integer (direct SQL) - NO bounds exist; this control
+                    // validates only that the value parses as Int.
+                    Text("Any integer is valid; Hermes stores it verbatim (no bounds upstream).")
                 }
             }
             .navigationTitle(prioritySheetTitle)
@@ -913,12 +948,19 @@ struct KanbanView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Apply to \(bulkStagedSelection?.ids.count ?? 0)") {
-                        // Freeze the stepper value synchronously; it never
-                        // persists across batches (M4).
+                        // Freeze the numeric value synchronously at Apply; the
+                        // operation composes from the FROZEN stage ONLY (never
+                        // a stale stage from an earlier flow), and the value
+                        // never persists across batches.
                         let value = bulkPriorityValue
                         bulkPriorityValue = 0
                         commitBulkFromStage { staged in
-                            PendingBulkOperation(ids: staged.ids, context: staged.context, action: .priority(value))
+                            KanbanBulkStagePolicy.priorityOperation(
+                                staged: staged,
+                                value: value,
+                                currentStamp: store.loadedContextStamp,
+                                isSnapshotActionable: store.isSelectedSnapshotLoaded
+                            )
                         }
                     }
                     .disabled(bulkStagedSelection == nil)
@@ -957,14 +999,13 @@ struct KanbanView: View {
     /// Consume the frozen staged selection: build the operation if requested
     /// (and it is still owned), run it, and close the sheet. Sheets are
     /// always dismissed through this path - Cancel is a real control.
-    private func commitBulkFromStage(_ build: ((BulkStagedSelection) -> PendingBulkOperation)?) {
+    private func commitBulkFromStage(_ build: ((BulkStagedSelection) -> PendingBulkOperation?)?) {
         guard let staged = bulkStagedSelection else { return }
         bulkStagedSelection = nil
         showBulkMove = false
         showBulkAssign = false
         showBulkPriority = false
-        guard let build else { return }
-        let operation = build(staged)
+        guard let build, let operation = build(staged) else { return }
         guard operation.context == store.loadedContextStamp, store.isSelectedSnapshotLoaded else { return }
         runBulk(operation)
     }
@@ -978,6 +1019,11 @@ struct KanbanView: View {
 
     private func stageBulk(_ action: KanbanBulkAction) {
         guard canRunBulk, let context = selectionContext, let stamp = store.loadedContextStamp, context == stamp else { return }
+        // A new operation begins: drop any previous result notice/failure
+        // presentation so stale feedback never lingers next to a new flow.
+        bulkNoticeState.clear()
+        lastBulkOutcome = nil
+        showBulkFailures = false
         let frozen = BulkStagedSelection(ids: sortedSelectedIDs, context: stamp)
         bulkStagedSelection = frozen
         switch action {
@@ -997,6 +1043,12 @@ struct KanbanView: View {
     private func runBulk(_ operation: PendingBulkOperation) {
         let token = bulkLiveness.begin()
         bulkBusy = true
+        // A new operation begins: clear any previous result notice - a
+        // top-level transport failure must never sit next to a stale
+        // "2 updated, 1 failed" banner.
+        bulkNoticeState.clear()
+        lastBulkOutcome = nil
+        showBulkFailures = false
         // Snapshot the operation AND the Show-Archived state synchronously;
         // the async body can never re-read the live selection, context, or
         // visibility preference.
@@ -1067,27 +1119,39 @@ struct KanbanView: View {
     private func apply(outcome: KanbanBulkOperationOutcome, to original: Set<String>) {
         let summary = KanbanBulkResultPolicy.summary(outcome: outcome)
         let keep = KanbanBulkResultPolicy.selectionAfterApplying(outcome: outcome, originalSelection: original)
+        let hasFailures = !outcome.failures.isEmpty
         if keep.isEmpty {
             // Full success: exit first, then publish the notice so
-            // exitSelectionMode() cannot nil it in the same run (F2).
+            // exitSelectionMode() cannot clear it in the same run (F2).
             exitSelectionMode()
         } else {
             selectedTaskIDs = keep
             lastBulkOutcome = outcome
-            if !outcome.failures.isEmpty {
+            if hasFailures {
                 showBulkFailures = true
             }
         }
-        bulkNotice = summary
+        // Partial failure is AMBER feedback ("N updated, M failed"); full
+        // success is green. Token-guarded auto-hide (Nudge pattern).
+        var token = 0
+        withAnimation(.easeOut(duration: 0.25)) {
+            token = bulkNoticeState.show(summary, kind: hasFailures ? .warning : .success)
+        }
+        Task {
+            try? await Task.sleep(for: .seconds(3.5))
+            bulkNoticeState.hideIfCurrent(token)
+        }
     }
 
     private func confirmBulkDelete(_ staged: PendingBulkDelete) {
         pendingBulkDelete = nil
+        bulkStagedSelection = nil
         runBulk(PendingBulkOperation(ids: staged.taskIDs, context: staged.context, action: .delete))
     }
 
     private func cancelBulkDelete() {
         pendingBulkDelete = nil
+        bulkStagedSelection = nil
     }
 
     private func laneChip(_ column: KanbanColumn) -> some View {
@@ -1426,6 +1490,10 @@ private struct KanbanCardView: View {
     /// Whether Hermes has ANY configured default assignee fallback. When not,
     /// an unassigned ready card would silently never run — worth surfacing.
     var hasDispatcherFallback: Bool = true
+    /// V3C: while multi-select is active or a bulk op is running, the card's
+    /// own Move/Archive/Delete controls are HIDDEN (ellipsis menu) or
+    /// disabled (context menu) instead of looking enabled-but-inert.
+    var isMenusDisabled: Bool = false
     let onOpen: () -> Void
     let onMove: (String) -> Void
     let onArchive: () -> Void
@@ -1454,6 +1522,7 @@ private struct KanbanCardView: View {
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(3)
                 Spacer(minLength: 2)
+                if !isMenusDisabled {
                 Menu {
                     Section("Move to") {
                         ForEach(statusOptions) { status in
@@ -1504,6 +1573,7 @@ private struct KanbanCardView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Task actions")
+                } // if !isMenusDisabled
             }
 
             if let summary = task.latestSummary, !summary.isEmpty {
@@ -1543,6 +1613,7 @@ private struct KanbanCardView: View {
                 Button { onMove(status.rawValue) } label: {
                     Label("Move to \(status.displayName)", systemImage: status.systemImage)
                 }
+                .disabled(isMenusDisabled)
             }
             Button { copy(text: task.id, notice: "Task ID copied") } label: {
                 Label("Copy Task ID", systemImage: "doc.on.doc")
@@ -1552,7 +1623,9 @@ private struct KanbanCardView: View {
             }
             Divider()
             Button(action: onArchive) { Label("Archive", systemImage: "archivebox") }
+                .disabled(isMenusDisabled)
             Button(role: .destructive, action: onDelete) { Label("Delete…", systemImage: "trash") }
+                .disabled(isMenusDisabled)
         }
     }
 

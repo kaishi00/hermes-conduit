@@ -30,6 +30,67 @@ struct PendingBulkDelete: Equatable, Identifiable {
     let context: KanbanBoardContextStamp
 }
 
+/// The frozen (ids, context) captured synchronously when a bulk action was
+/// tapped; the move/assign/priority sheets compose their payload from it and
+/// can never re-read the live selection. The stage is the SINGLE source of
+/// truth for a pending action: every action entry point overwrites it, and
+/// every Archive/Delete confirmation cancel/consume clears it - a stale stage
+/// from an earlier flow can never leak into a later action.
+struct BulkStagedSelection: Equatable {
+    let ids: [String]
+    let context: KanbanBoardContextStamp
+}
+
+// MARK: - Bulk stage policy (V3C correction pass)
+
+enum KanbanBulkStagePolicy {
+    /// Compose the Priority operation from the FROZEN staged selection ONLY -
+    /// the Apply button can never target a stale stage from an earlier
+    /// Archive/Delete flow (regression: stage A+B -> cancel -> select C+D ->
+    /// stage priority -> the operation targets exactly C+D).
+    static func priorityOperation(
+        staged: BulkStagedSelection?,
+        value: Int,
+        currentStamp: KanbanBoardContextStamp?,
+        isSnapshotActionable: Bool
+    ) -> PendingBulkOperation? {
+        guard let staged, staged.context == currentStamp, isSnapshotActionable else { return nil }
+        return PendingBulkOperation(ids: staged.ids, context: staged.context, action: .priority(value))
+    }
+}
+
+// MARK: - Bulk notice state (V3C correction pass)
+
+/// Token-guarded bulk-result notice: success vs partial-failure presentation,
+/// cleared when a new operation begins or the context changes, auto-hidden by
+/// the caller's timer through hideIfCurrent (Nudge pattern).
+struct KanbanBulkNoticeState: Equatable {
+    enum Kind: Equatable {
+        case success
+        case warning
+    }
+
+    private(set) var token = 0
+    private(set) var text: String?
+    private(set) var kind: Kind = .success
+
+    mutating func show(_ text: String, kind: Kind) -> Int {
+        token += 1
+        self.text = text
+        self.kind = kind
+        return token
+    }
+
+    mutating func hideIfCurrent(_ id: Int) {
+        if token == id { text = nil }
+    }
+
+    mutating func clear() {
+        token += 1
+        text = nil
+    }
+}
+
 // MARK: - Selection ownership (V3C)
 
 /// Selection belongs to ONE exact loaded board/server context. The selected
@@ -109,6 +170,8 @@ enum KanbanBulkResultPolicy {
             return "1 updated, 1 failed"
         case (1, _):
             return "1 updated, \(failedCount) failed"
+        case (_, 0):
+            return "\(updated) tasks updated"
         default:
             return "\(updated) updated, \(failedCount) failed"
         }

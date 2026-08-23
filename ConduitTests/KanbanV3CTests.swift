@@ -11,8 +11,9 @@ final class KanbanV3CTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func makeStore(requester: V3CMockRequester) -> KanbanStore {
-        let store = KanbanStore(defaults: UserDefaults(suiteName: UUID().uuidString)!)
+    private func makeStore(requester: V3CMockRequester) throws -> KanbanStore {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: UUID().uuidString))
+        let store = KanbanStore(defaults: defaults)
         store.configure(requester: requester, serverIdentity: "https://a.test")
         return store
     }
@@ -31,7 +32,7 @@ final class KanbanV3CTests: XCTestCase {
                 ["id": "t-2", "ok": true],
             ],
         ]
-        let store = makeStore(requester: requester)
+        let store = try makeStore(requester: requester)
         await store.reload()
         guard let stampA = store.loadedContextStamp else { return XCTFail("expected context") }
 
@@ -66,7 +67,7 @@ final class KanbanV3CTests: XCTestCase {
     func testBulkAssignWireContract() async throws {
         let requester = V3CMockRequester()
         requester.bulkUpdateResponse = ["results": [["id": "t-1", "ok": true]]]
-        let store = makeStore(requester: requester)
+        let store = try makeStore(requester: requester)
         await store.reload()
         guard let stampA = store.loadedContextStamp else { return XCTFail("expected context") }
 
@@ -86,7 +87,7 @@ final class KanbanV3CTests: XCTestCase {
     func testBulkUnassignWireContract() async throws {
         let requester = V3CMockRequester()
         requester.bulkUpdateResponse = ["results": [["id": "t-1", "ok": true]]]
-        let store = makeStore(requester: requester)
+        let store = try makeStore(requester: requester)
         await store.reload()
         guard let stampA = store.loadedContextStamp else { return XCTFail("expected context") }
 
@@ -103,7 +104,7 @@ final class KanbanV3CTests: XCTestCase {
     func testBulkPriorityWireContract() async throws {
         let requester = V3CMockRequester()
         requester.bulkUpdateResponse = ["results": [["id": "t-1", "ok": true]]]
-        let store = makeStore(requester: requester)
+        let store = try makeStore(requester: requester)
         await store.reload()
         guard let stampA = store.loadedContextStamp else { return XCTFail("expected context") }
 
@@ -121,7 +122,7 @@ final class KanbanV3CTests: XCTestCase {
     func testBulkArchiveWireContract() async throws {
         let requester = V3CMockRequester()
         requester.bulkUpdateResponse = ["results": [["id": "t-1", "ok": true]]]
-        let store = makeStore(requester: requester)
+        let store = try makeStore(requester: requester)
         await store.reload()
         guard let stampA = store.loadedContextStamp else { return XCTFail("expected context") }
 
@@ -144,7 +145,7 @@ final class KanbanV3CTests: XCTestCase {
             "t-2": KanbanBulkTaskResult(id: "t-2", ok: false, error: "not found"),
             "t-3": KanbanBulkTaskResult(id: "t-3", ok: true),
         ]
-        let store = makeStore(requester: requester)
+        let store = try makeStore(requester: requester)
         await store.reload()
         guard let stampA = store.loadedContextStamp else { return XCTFail("expected context") }
         let boardFetchesBefore = requester.boardFetches
@@ -172,7 +173,7 @@ final class KanbanV3CTests: XCTestCase {
         let requester = V3CMockRequester()
         requester.errorsByPath["/api/plugins/kanban/tasks/t-1"] = URLError(.cannotConnectToHost)
         requester.errorsByPath["/api/plugins/kanban/tasks/t-2"] = URLError(.cannotConnectToHost)
-        let store = makeStore(requester: requester)
+        let store = try makeStore(requester: requester)
         await store.reload()
         guard let stampA = store.loadedContextStamp else { return XCTFail("expected context") }
 
@@ -189,7 +190,7 @@ final class KanbanV3CTests: XCTestCase {
     func testBulkUpdateContextMismatchFailsClosed() async throws {
         let requester = V3CMockRequester()
         requester.bulkUpdateResponse = ["results": [["id": "t-1", "ok": true]]]
-        let store = makeStore(requester: requester)
+        let store = try makeStore(requester: requester)
         await store.reload()
         // Capture the ALPHA stamp while alpha is still loaded/actionable.
         guard let stampA = store.loadedContextStamp else { return XCTFail("expected context") }
@@ -219,7 +220,7 @@ final class KanbanV3CTests: XCTestCase {
         let requester = V3CMockRequester()
         requester.bulkUpdateResponse = ["results": [["id": "t-1", "ok": true]]]
         requester.suspend(method: "POST", basePath: "/api/plugins/kanban/tasks/bulk")
-        let store = makeStore(requester: requester)
+        let store = try makeStore(requester: requester)
         await store.reload()
         guard let stampA = store.loadedContextStamp else { return XCTFail("expected context") }
 
@@ -237,7 +238,7 @@ final class KanbanV3CTests: XCTestCase {
     func testEmptyBulkIDsRejectedBeforeAnyRequest() async throws {
         let requester = V3CMockRequester()
         requester.bulkUpdateResponse = ["results": []]
-        let store = makeStore(requester: requester)
+        let store = try makeStore(requester: requester)
         await store.reload()
         guard let stampA = store.loadedContextStamp else { return XCTFail("expected context") }
 
@@ -337,10 +338,72 @@ final class KanbanV3CTests: XCTestCase {
 
     // MARK: - Top-level request failure semantics
 
+    func testPriorityStageIgnoresStaleStageAfterArchiveCancel() {
+        // BLOCKER regression: stage archive A+B -> cancel -> change selection
+        // to C+D -> stage priority. The priority operation must target
+        // EXACTLY C+D - never a stale A+B stage from the cancelled flow.
+        let current = stamp("alpha", generation: 2)
+        let stale = BulkStagedSelection(ids: ["A", "B"], context: stamp("alpha", generation: 1))
+        XCTAssertNil(
+            KanbanBulkStagePolicy.priorityOperation(staged: stale, value: 3, currentStamp: current, isSnapshotActionable: true),
+            "a stale stage (old generation) can never be composed even if it survived a cancel"
+        )
+        let fresh = BulkStagedSelection(ids: ["C", "D"], context: current)
+        let operation = KanbanBulkStagePolicy.priorityOperation(staged: fresh, value: 7, currentStamp: current, isSnapshotActionable: true)
+        XCTAssertEqual(operation?.ids, ["C", "D"], "priority stage == C+D after re-selection")
+        XCTAssertEqual(operation?.action, .priority(7))
+        XCTAssertNil(
+            KanbanBulkStagePolicy.priorityOperation(staged: fresh, value: 1, currentStamp: stamp("beta", generation: 2), isSnapshotActionable: true),
+            "a board change makes the stage non-composable"
+        )
+        XCTAssertNil(
+            KanbanBulkStagePolicy.priorityOperation(staged: fresh, value: 1, currentStamp: current, isSnapshotActionable: false),
+            "a non-actionable board makes the stage non-composable"
+        )
+    }
+
+    func testSummaryZeroFailurePluralBranch() {
+        let three = KanbanBulkOperationOutcome(succeededIDs: ["A", "B", "C"], failures: [])
+        XCTAssertEqual(KanbanBulkResultPolicy.summary(outcome: three), "3 tasks updated", "N>1 zero-failure plural branch")
+        let one = KanbanBulkOperationOutcome(succeededIDs: ["A"], failures: [])
+        XCTAssertEqual(KanbanBulkResultPolicy.summary(outcome: one), "1 task updated")
+        let partial = KanbanBulkOperationOutcome(
+            succeededIDs: ["A", "B"],
+            failures: [KanbanBulkFailure(id: "C", reason: "running task is claimed")]
+        )
+        XCTAssertEqual(KanbanBulkResultPolicy.summary(outcome: partial), "2 updated, 1 failed")
+        let none = KanbanBulkOperationOutcome(succeededIDs: [], failures: [])
+        XCTAssertEqual(KanbanBulkResultPolicy.summary(outcome: none), "No tasks updated")
+    }
+
+    func testBulkMoveLockedStatusRejectedBeforeAnyRequest() async throws {
+        // Defense-in-depth parity with the single-task boundary: a bulk Move
+        // to a locked/invalid status fails LOCALLY with zero network traffic.
+        let requester = V3CMockRequester()
+        let store = try makeStore(requester: requester)
+        await store.reload()
+        guard let stampA = store.loadedContextStamp else { return XCTFail("expected context") }
+
+        do {
+            _ = try await store.bulkUpdateTasks(
+                ids: ["t-1"],
+                patch: KanbanBulkTaskRequest(ids: ["t-1"], status: "running"),
+                expectedContext: stampA
+            )
+            XCTFail("a locked bulk status must fail locally")
+        } catch KanbanServiceError.invalidManualStatus("running") {
+            // expected
+        } catch {
+            XCTFail("unexpected: \(error)")
+        }
+        XCTAssertTrue(requester.calls.filter { $0.method == "POST" && $0.path.contains("/tasks/bulk") }.isEmpty, "zero POST /tasks/bulk")
+        XCTAssertNotNil(store.mutationErrorMessage, "the local refusal is surfaced")
+    }
+
     func testBulkUpdateTopLevelTransportFailureThrows() async throws {
         let requester = V3CMockRequester()
         requester.errorsByPath["/api/plugins/kanban/tasks/bulk"] = URLError(.notConnectedToInternet)
-        let store = makeStore(requester: requester)
+        let store = try makeStore(requester: requester)
         await store.reload()
         guard let stampA = store.loadedContextStamp else { return XCTFail("expected context") }
 
