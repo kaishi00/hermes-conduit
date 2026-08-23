@@ -354,6 +354,42 @@ final class KanbanStore: ObservableObject {
     }
 
     func deleteTask(id: String, includeArchived: Bool = false) async throws {
+        // !isMutating is the fast-path UX rejection only; performMutation
+        // additionally enforces the structural activeMutationGeneration and
+        // snapshot invariants inside the same actor turn.
+        guard !isMutating else {
+            throw recordMutationError(KanbanServiceError.mutationInProgress)
+        }
+        guard let context = makeOperationContext() else {
+            throw recordMutationError(KanbanServiceError.invalidResponse("Kanban is not connected."))
+        }
+        try await performMutation(context: context, includeArchived: includeArchived) {
+            try await context.service.deleteTask(id: id, board: context.boardSlug)
+            // Deleting can unblock dependants, so it nudges too (upstream).
+            context.service.scheduleDispatcherNudge(board: context.boardSlug)
+        }
+    }
+
+    /// Context-bound permanent deletion for STAGED destructive confirmations
+    /// (card Delete…). TOCTOU-closed: the staged ownership stamp is validated
+    /// against the currently loaded context AND the mutation operation
+    /// context is captured back-to-back — both on the MainActor, before the
+    /// first suspension point — so validation and capture are atomic. A
+    /// confirmation staged for server/board A can therefore never execute a
+    /// DELETE under context B, even when the store reconfigures or switches
+    /// boards between the confirmation tap and the spawned Task's execution.
+    /// The view-level KanbanCardDeletePolicy check remains only as early UX
+    /// rejection; THIS is the hard safety boundary and fails closed.
+    func deleteTask(id: String, expectedContext: KanbanBoardContextStamp, includeArchived: Bool = false) async throws {
+        guard isSelectedSnapshotLoaded, loadedContextStamp == expectedContext else {
+            // Fail closed: the staged confirmation no longer owns the loaded
+            // board/server context. Discard it without any destructive
+            // request — a colliding task id on the new board is never a match.
+            throw recordMutationError(KanbanServiceError.boardNavigationInProgress)
+        }
+        // !isMutating is the fast-path UX rejection only; performMutation
+        // additionally enforces the structural activeMutationGeneration and
+        // snapshot invariants inside the same actor turn.
         guard !isMutating else {
             throw recordMutationError(KanbanServiceError.mutationInProgress)
         }

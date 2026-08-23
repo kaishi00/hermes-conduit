@@ -333,8 +333,8 @@ final class KanbanV2CorrectnessTests: XCTestCase {
             KanbanCardDeletePolicy.cardRequestedDelete(for: makeTask(id: "t1"), stamp: stamp)
         )
 
-        // Context unchanged: the confirmation resolves and the view's delete
-        // issues exactly one DELETE to the staging board.
+        // Context unchanged: the confirmation resolves and the view issues the
+        // CONTEXT-BOUND delete exactly as production does.
         guard case .perform(let task) = KanbanCardDeletePolicy.confirmed(
             staged: staged,
             currentStamp: store.loadedContextStamp,
@@ -342,13 +342,108 @@ final class KanbanV2CorrectnessTests: XCTestCase {
         ) else {
             return XCTFail("an unchanged context must honor the confirmed delete")
         }
-        try await store.deleteTask(id: task.id)
+        try await store.deleteTask(id: task.id, expectedContext: staged!.stamp)
         await store.awaitPendingDispatcherNudgeForTesting()
 
         let deletes = requester.calls.filter { $0.method == "DELETE" }
         XCTAssertEqual(deletes.count, 1, "exactly one DELETE for the staged task")
         XCTAssertTrue(deletes[0].path.contains("/tasks/t1"), deletes[0].path)
         XCTAssertTrue(deletes[0].path.contains("board=alpha"), deletes[0].path)
+    }
+
+    // MARK: - 6c. Card delete check-to-dispatch TOCTOU (store boundary)
+
+    func testContextBoundDeleteFailsClosedWhenServerReconfiguresBeforeContextCapture() async throws {
+        // The exact check -> Task-scheduling race: the alert confirmation
+        // VALIDATES on server A, the spawned Task captures its mutation
+        // context only later — after the store has reconfigured to server B.
+        // The store-level boundary must fail closed on the STAGED stamp.
+        var responsesA = contextRaceResponses(boardSlug: "alpha")
+        responsesA["/api/plugins/kanban/tasks/t1"] = ["ok": true]
+        let requesterA = ContextRaceMockRequester(responsesByPath: responsesA)
+        let store = makeContextRaceStore(requester: requesterA)
+        await store.refresh()
+
+        let stampA = try XCTUnwrap(store.loadedContextStamp)
+        let staged = stagedIfConfirm(
+            KanbanCardDeletePolicy.cardRequestedDelete(for: makeTask(id: "t1"), stamp: stampA)
+        )!
+        // The view-level early check passes on A (this is the TOCTOU window:
+        // validation happened BEFORE the switch below).
+        guard case .perform = KanbanCardDeletePolicy.confirmed(
+            staged: staged,
+            currentStamp: store.loadedContextStamp,
+            isSnapshotActionable: store.isSelectedSnapshotLoaded
+        ) else {
+            return XCTFail("precondition: the confirmation must validate on A before the switch")
+        }
+
+        // ...the store reconfigures to server B BEFORE the spawned Task runs.
+        let requesterB = ContextRaceMockRequester(responsesByPath: contextRaceResponses(boardSlug: "beta"))
+        store.configure(requester: requesterB, serverIdentity: "https://b.test")
+        await store.reload()
+
+        // The Task executes the context-bound delete with the STILL-STAGED
+        // stamp A: it must throw fail-closed and send zero DELETEs anywhere.
+        do {
+            try await store.deleteTask(id: staged.taskID, expectedContext: staged.stamp)
+            XCTFail("context-bound delete must fail closed after a server reconfigure")
+        } catch let error as KanbanServiceError {
+            // Pin the exact fail-closed branch: the STAMP guard, not some
+            // other rejection path.
+            XCTAssertEqual(error, .boardNavigationInProgress)
+        } catch {
+            XCTFail("unexpected error type: \(error)")
+        }
+        XCTAssertFalse(store.isMutating, "a fail-closed delete must not claim mutation ownership")
+        XCTAssertEqual(store.mutationErrorMessage, KanbanServiceError.boardNavigationInProgress.localizedDescription)
+        XCTAssertFalse(requesterB.calls.contains { $0.method == "DELETE" }, "zero DELETE reaches server B")
+        XCTAssertFalse(requesterA.calls.contains { $0.method == "DELETE" }, "zero destructive request occurs on A either")
+    }
+
+    func testContextBoundDeleteFailsClosedAcrossSameServerBoardSwitchWithCollidingId() async throws {
+        // Same server, colliding task id on both boards: the check->dispatch
+        // race must not let a staged A confirmation delete B's t1.
+        var responses = contextRaceResponses(boardSlug: "alpha")
+        responses["/api/plugins/kanban/board?board=alpha"] = [
+            "columns": [["name": "todo", "tasks": [["id": "t1", "title": "on alpha", "status": "todo"]]]],
+            "tenants": [], "assignees": []
+        ]
+        responses["/api/plugins/kanban/board?board=beta"] = [
+            "columns": [["name": "todo", "tasks": [["id": "t1", "title": "on beta", "status": "todo"]]]],
+            "tenants": [], "assignees": []
+        ]
+        responses["/api/plugins/kanban/tasks/t1"] = ["ok": true]
+        let requester = ContextRaceMockRequester(responsesByPath: responses)
+        let store = makeContextRaceStore(requester: requester)
+        await store.selectBoard(slug: "alpha")
+
+        let stampA = try XCTUnwrap(store.loadedContextStamp)
+        XCTAssertEqual(stampA.boardSlug, "alpha")
+        let staged = stagedIfConfirm(
+            KanbanCardDeletePolicy.cardRequestedDelete(for: makeTask(id: "t1"), stamp: stampA)
+        )!
+        guard case .perform = KanbanCardDeletePolicy.confirmed(
+            staged: staged,
+            currentStamp: store.loadedContextStamp,
+            isSnapshotActionable: store.isSelectedSnapshotLoaded
+        ) else {
+            return XCTFail("precondition: the confirmation must validate on board A")
+        }
+
+        // Board switches on the SAME server before the Task runs.
+        await store.selectBoard(slug: "beta")
+
+        do {
+            try await store.deleteTask(id: staged.taskID, expectedContext: staged.stamp)
+            XCTFail("a confirmation staged on board A must never delete on board B")
+        } catch let error as KanbanServiceError {
+            XCTAssertEqual(error, .boardNavigationInProgress)
+        } catch {
+            XCTFail("unexpected error type: \(error)")
+        }
+        XCTAssertFalse(store.isMutating)
+        XCTAssertFalse(requester.calls.contains { $0.method == "DELETE" }, "zero DELETE for any board, colliding id or not")
     }
 
     // MARK: - 7. Existing model override display
@@ -515,6 +610,109 @@ final class KanbanV2CorrectnessTests: XCTestCase {
                 displayedTaskID: "task-a"
             ),
             .noWrite
+        )
+    }
+
+    // MARK: - 7c. Model commit target frozen before async dispatch
+
+    func testModelCommitTargetFreezesIdentityBeforeAsyncDispatch() {
+        // The model editor for task A dismisses with a REAL user edit...
+        let serverA = makeTask(id: "task-a", extra: ["model_override": "model-a"])
+        let session = KanbanModelOverrideSession(
+            taskID: "task-a",
+            baseline: TaskModelOverride(task: serverA)
+        )
+        let edited = TaskModelOverride(model: "model-c")
+        let target = KanbanModelOverrideSessionPolicy.commitTarget(
+            session: session,
+            draft: edited,
+            displayedTask: serverA,
+            displayedTaskID: "task-a"
+        )
+        guard let target else {
+            return XCTFail("a real edit on the matching identity must produce a commit target")
+        }
+
+        // ...then the user navigates A -> dependency B BEFORE the spawned
+        // commit Task runs. The commit must use the FROZEN identity: the
+        // PATCH target stays task-a and never becomes task-b.
+        XCTAssertEqual(target.startedTask.id, "task-a")
+        XCTAssertEqual(target.expectedID, "task-a")
+        let patch = TaskModelOverride.patch(from: target.startedTask, to: target.value)
+        XCTAssertEqual(patch.modelOverride, "model-c")
+
+        // The stale A completion remains UI-inert on B.
+        XCTAssertFalse(
+            KanbanDetailMutationPolicy.completionIsActive(startedTaskID: target.expectedID, displayedTaskID: "task-b"),
+            "an A completion must never touch B's UI after navigation"
+        )
+    }
+
+    func testModelCommitTargetNoEditAfterConcurrentServerChangeWritesNothing() {
+        // Session-level no-edit rule expressed through the commit target:
+        // server moved A -> B while the sheet was open, user made no edit.
+        let serverAtOpen = makeTask(id: "t1", extra: ["model_override": "model-a"])
+        let session = KanbanModelOverrideSession(
+            taskID: "t1",
+            baseline: TaskModelOverride(task: serverAtOpen)
+        )
+        let untouchedDraft = TaskModelOverride(task: serverAtOpen)
+        // Polling delivered the newer server value B to the displayed task.
+        let serverNow = makeTask(id: "t1", extra: ["model_override": "model-b"])
+
+        XCTAssertNil(
+            KanbanModelOverrideSessionPolicy.commitTarget(
+                session: session,
+                draft: untouchedDraft,
+                displayedTask: serverNow,
+                displayedTaskID: "t1"
+            ),
+            "a no-edit dismissal must never produce a commit target, even when the server moved"
+        )
+    }
+
+    func testModelCommitTargetRejectsDisplayedIdentityMismatch() {
+        // Belt-and-braces: the captured server task must belong to the
+        // displayed identity at dismissal; anything else writes nothing.
+        let serverA = makeTask(id: "task-a", extra: ["model_override": "model-a"])
+        let session = KanbanModelOverrideSession(
+            taskID: "task-a",
+            baseline: TaskModelOverride(task: serverA)
+        )
+        let edited = TaskModelOverride(model: "model-c")
+        XCTAssertNil(
+            KanbanModelOverrideSessionPolicy.commitTarget(
+                session: session,
+                draft: edited,
+                displayedTask: serverA,
+                displayedTaskID: "task-b"
+            ),
+            "a session for A must not commit when the displayed identity is B"
+        )
+    }
+
+    func testModelCommitTargetNoDuplicateWriteWhenEditMatchesMovedServerValue() {
+        // The user independently edited to exactly the value a mid-edit poll
+        // landed on: the server already holds it, so the no-duplicate-write
+        // gate must yield NO commit target (zero PATCH).
+        let serverAtOpen = makeTask(id: "t1", extra: ["model_override": "model-a"])
+        let session = KanbanModelOverrideSession(
+            taskID: "t1",
+            baseline: TaskModelOverride(task: serverAtOpen)
+        )
+        let serverNow = makeTask(id: "t1", extra: ["model_override": "model-c"])
+        let editedToServerValue = TaskModelOverride(model: "model-c")
+        // Real user edit (differs from the open-time baseline)...
+        XCTAssertNotEqual(editedToServerValue, session.baseline)
+        // ...but the server already moved to that exact value.
+        XCTAssertNil(
+            KanbanModelOverrideSessionPolicy.commitTarget(
+                session: session,
+                draft: editedToServerValue,
+                displayedTask: serverNow,
+                displayedTaskID: "t1"
+            ),
+            "an edit that matches the current server value must not produce a duplicate PATCH"
         )
     }
 

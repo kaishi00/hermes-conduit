@@ -462,9 +462,6 @@ struct KanbanView: View {
         _ = try? await store.updateTask(id: task.id, patch: KanbanTaskPatch(status: "archived"), includeArchived: includeArchived)
     }
 
-    private func delete(_ task: KanbanTask) async {
-        _ = try? await store.deleteTask(id: task.id, includeArchived: includeArchived)
-    }
 
     /// A card's Delete… entry STAGES the shared board-level confirmation; it
     /// never issues the destructive mutation directly. The task is captured
@@ -485,7 +482,11 @@ struct KanbanView: View {
     /// context has changed (different slug, new configuration generation, or
     /// an in-flight board navigation), the stale confirmation is discarded
     /// without any request — even if the new board happens to contain a task
-    /// with the same id.
+    /// with the same id. The check below is EARLY UX REJECTION only: the
+    /// spawned delete passes the staged stamp to the store's context-bound
+    /// deleteTask, which re-validates ownership and captures its mutation
+    /// context ATOMICALLY — the hard boundary that closes the check-to-
+    /// Task-scheduling TOCTOU window.
     private func confirmCardDelete(_ staged: PendingCardDelete) {
         pendingDelete = nil
         guard case .perform(let task) = KanbanCardDeletePolicy.confirmed(
@@ -493,7 +494,13 @@ struct KanbanView: View {
             currentStamp: store.loadedContextStamp,
             isSnapshotActionable: store.isSelectedSnapshotLoaded
         ) else { return }
-        Task { await delete(task) }
+        Task {
+            try? await store.deleteTask(
+                id: task.id,
+                expectedContext: staged.stamp,
+                includeArchived: includeArchived
+            )
+        }
     }
 }
 

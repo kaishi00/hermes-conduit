@@ -250,27 +250,31 @@ struct KanbanTaskDetailView: View {
             .onChange(of: showModelSheet) { wasOpen, nowOpen in
                 guard !nowOpen, wasOpen else { return }
                 defer { modelOverrideSession = nil }
-                // Two conceptually separate comparisons (V2 correctness):
-                //   draft vs sheet-open baseline  -> did the user edit anything?
-                //   draft vs current server value -> what wire mutation is required?
+                // THREE conceptually separate concerns (V2 correctness):
+                //   1. draft vs sheet-open baseline -> did the user edit anything?
+                //   2. displayed server task NOW     -> authorizes the write and
+                //      defines the network target (frozen BELOW, before the
+                //      async Task is spawned);
+                //   3. post-await identity guard     -> may the completion touch
+                //      the CURRENT UI (stale completions stay UI-inert).
                 // A no-edit dismissal can NEVER overwrite a server value that
                 // changed while the sheet was open; an actual edit is diffed
-                // against the CURRENT server snapshot below for correct
-                // clear/set flags.
-                switch KanbanModelOverrideSessionPolicy.dismissalOutcome(
+                // against the captured server snapshot for correct clear/set
+                // flags. Freezing the target here closes the dismiss-to-Task
+                // scheduling gap: a navigation A -> B between dismissal and
+                // execution can never retarget the PATCH to B.
+                guard let target = KanbanModelOverrideSessionPolicy.commitTarget(
                     session: modelOverrideSession,
                     draft: modelOverrideDraft,
+                    displayedTask: displayedTask,
                     displayedTaskID: displayedTaskID
-                ) {
-                case .noWrite:
-                    return
-                case .commit(let next):
-                    // The user edited; compute the wire mutation against the
-                    // CURRENT server snapshot so a poll landing mid-edit can
-                    // neither clobber the user nor duplicate the write.
-                    guard let serverTask = displayedTask,
-                          next != TaskModelOverride(task: serverTask) else { return }
-                    Task { await commitModelOverride(next) }
+                ) else { return }
+                Task {
+                    await commitModelOverride(
+                        target.value,
+                        startedTask: target.startedTask,
+                        expectedID: target.expectedID
+                    )
                 }
             }
             .alert("Delete this task?", isPresented: $showDeleteConfirmation) {
@@ -956,10 +960,14 @@ struct KanbanTaskDetailView: View {
     }
 
     /// Committed immediately on change (desktop parity): PATCH with explicit
-    /// clear flags computed against the CURRENT server snapshot.
-    private func commitModelOverride(_ next: TaskModelOverride) async {
-        guard let startedTask = displayedTask else { return }
-        let expectedID = displayedTaskID
+    /// clear flags computed against the CAPTURED server snapshot. The
+    /// mutation identity (startedTask + expectedID) is frozen by the caller
+    /// BEFORE the async Task is spawned; this method deliberately never
+    /// re-reads displayedTask/displayedTaskID to choose its network target,
+    /// so navigation between dismissal and execution cannot retarget the
+    /// PATCH. Post-await identity guards keep the completion UI-inert on any
+    /// other displayed identity.
+    private func commitModelOverride(_ next: TaskModelOverride, startedTask: KanbanTask, expectedID: String) async {
         let patch = TaskModelOverride.patch(from: startedTask, to: next)
         guard !patch.isEmpty else { return }
         isSaving = true
@@ -1248,6 +1256,42 @@ enum KanbanModelOverrideSessionPolicy {
         // server value (which polling may have moved under the sheet).
         guard draft != session.baseline else { return .noWrite }
         return .commit(draft)
+    }
+
+    /// The frozen mutation identity for a committed model edit: the edited
+    /// value, the DISPLAYED SERVER TASK captured at dismissal (which both
+    /// authorizes the write and defines the network target), and its
+    /// identity. Computed synchronously at dismissal — BEFORE the async
+    /// commit Task is spawned — so the commit can never re-read a different
+    /// displayed task to choose what it PATCHes.
+    struct CommitTarget: Equatable {
+        let value: TaskModelOverride
+        let startedTask: KanbanTask
+        let expectedID: String
+    }
+
+    /// Resolves the commit target at dismissal time. Requires: a session for
+    /// the current identity, a REAL user edit (vs the sheet-open baseline),
+    /// an actionable displayed task whose id matches the displayed identity,
+    /// and an edited value that still differs from the current server
+    /// override (no duplicate write). Anything else — including a nil
+    /// session (never opened, or reset by navigation), which yields nil
+    /// through dismissalOutcome's .noWrite — writes nothing.
+    static func commitTarget(
+        session: KanbanModelOverrideSession?,
+        draft: TaskModelOverride,
+        displayedTask: KanbanTask?,
+        displayedTaskID: String
+    ) -> CommitTarget? {
+        guard case .commit(let next) = dismissalOutcome(
+            session: session,
+            draft: draft,
+            displayedTaskID: displayedTaskID
+        ) else { return nil }
+        guard let serverTask = displayedTask,
+              serverTask.id == displayedTaskID,
+              next != TaskModelOverride(task: serverTask) else { return nil }
+        return CommitTarget(value: next, startedTask: serverTask, expectedID: displayedTaskID)
     }
 }
 
