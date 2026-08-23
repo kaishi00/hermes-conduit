@@ -1183,3 +1183,95 @@ struct KanbanDeleteBoardResult: Codable, Equatable {
         newPath = try? container.decodeIfPresent(String.self, forKey: .newPath)
     }
 }
+
+// MARK: - V3C: Bulk operations wire contracts
+//
+// Audited at NousResearch/hermes-agent 2eaa86311 (docs/KANBAN_V3C_AUDIT.md):
+// POST /tasks/bulk iterates IDs independently (one task failing never aborts
+// siblings) and returns {results: [{id, ok, error?}]} - reconcile strictly by
+// ID. Bulk priority is a plain unbound integer upstream (same semantics as
+// single-task priority). Bulk Delete has NO backend route: Conduit fans out
+// one DELETE /tasks/{id} per selected ID (Desktop parity).
+
+/// Conduit's narrow V3C request: ONLY the fields V3C exposes. Backend fields
+/// like model/provider/reasoning/result/summary/metadata overrides are
+/// intentionally not modeled.
+struct KanbanBulkTaskRequest: Encodable, Equatable {
+    var ids: [String]
+    var status: String?
+    var assignee: String?
+    var priority: Int?
+    var archive: Bool?
+    var reclaimFirst: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case ids, status, assignee, priority, archive
+        case reclaimFirst = "reclaim_first"
+    }
+
+    init(
+        ids: [String],
+        status: String? = nil,
+        assignee: String? = nil,
+        priority: Int? = nil,
+        archive: Bool? = nil,
+        reclaimFirst: Bool? = nil
+    ) {
+        self.ids = ids
+        self.status = status
+        self.assignee = assignee
+        self.priority = priority
+        self.archive = archive
+        self.reclaimFirst = reclaimFirst
+    }
+}
+
+/// One per-ID outcome from /tasks/bulk (or a fan-out delete). Required fields:
+/// id + ok. Tolerant decode: unknown fields ignored; hostile values fail safe.
+struct KanbanBulkTaskResult: Decodable, Equatable {
+    var id: String
+    var ok: Bool
+    var error: String?
+
+    enum CodingKeys: String, CodingKey { case id, ok, error }
+
+    init(id: String, ok: Bool, error: String? = nil) {
+        self.id = id
+        self.ok = ok
+        self.error = error
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = container.decodeLossyString(forKey: .id) ?? ""
+        ok = (try? container.decode(Bool.self, forKey: .ok)) ?? false
+        error = try? container.decodeIfPresent(String.self, forKey: .error)
+    }
+}
+
+struct KanbanBulkTaskResponse: Decodable, Equatable {
+    var results: [KanbanBulkTaskResult]
+
+    init(results: [KanbanBulkTaskResult] = []) {
+        self.results = results
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        results = (try? container.decodeIfPresent([KanbanBulkTaskResult].self, forKey: .results)) ?? []
+    }
+
+    enum CodingKeys: String, CodingKey { case results }
+}
+
+/// Reconciliation outcome surfaced to the UI: succeeded IDs vs per-ID
+/// failures. Never derived from a global "request failed" flag.
+struct KanbanBulkOperationOutcome: Equatable {
+    let succeededIDs: [String]
+    let failures: [KanbanBulkFailure]
+}
+
+struct KanbanBulkFailure: Equatable {
+    let id: String
+    let reason: String
+}

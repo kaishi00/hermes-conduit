@@ -366,6 +366,59 @@ final class KanbanService {
         return try decodeResponse(DeleteBoardEnvelope.self, from: response).result
     }
 
+    // MARK: - V3C: Bulk operations
+
+    /// POST /tasks/bulk (board-scoped). The backend iterates IDs INDEPENDENTLY
+    /// (no rollback, no transaction) and returns per-ID outcomes; HTTP 200
+    /// does not imply per-task success - the caller reconciles by ID.
+    func bulkUpdateTasks(payload: KanbanBulkTaskRequest, board: String?) async throws -> KanbanBulkTaskResponse {
+        let response = try await request(
+            path: try withBoard(Self.namespace + "/tasks/bulk", slug: board),
+            method: "POST",
+            body: try encodedDictionary(payload)
+        )
+        return try decodeResponse(KanbanBulkTaskResponse.self, from: response)
+    }
+
+    /// Bulk-delete fan-out (Desktop parity; NO /tasks/bulk/delete route
+    /// exists upstream). Issues ONE DELETE /tasks/{id} per ID under the
+    /// caller-owned board context, collects every outcome, and ALWAYS
+    /// settles every task - a per-task failure becomes {ok:false, error},
+    /// never a thrown error that could cancel siblings. The caller performs
+    /// ONE authoritative reconciliation afterwards.
+    func deleteTasksFanout(ids: [String], board: String?) async -> [KanbanBulkTaskResult] {
+        // Bounded fan-out (review F3): at most 8 concurrent DELETEs; every
+        // child settles (a per-ID failure is captured, never thrown out of
+        // the group - one task failure cannot cancel siblings).
+        let chunkSize = 8
+        var collected: [KanbanBulkTaskResult] = []
+        for chunk in ids.chunked(into: chunkSize) {
+            let results = await withTaskGroup(of: KanbanBulkTaskResult.self) { group in
+                for id in chunk {
+                    group.addTask {
+                        do {
+                            try await self.request(
+                                path: try self.withBoard(Self.namespace + "/tasks/" + (try self.pathComponent(id)), slug: board),
+                                method: "DELETE",
+                                body: nil
+                            )
+                            return KanbanBulkTaskResult(id: id, ok: true)
+                        } catch {
+                            return KanbanBulkTaskResult(id: id, ok: false, error: error.localizedDescription)
+                        }
+                    }
+                }
+                var results: [String: KanbanBulkTaskResult] = [:]
+                for await result in group {
+                    results[result.id] = result
+                }
+                return chunk.compactMap { results[$0] }
+            }
+            collected.append(contentsOf: results)
+        }
+        return collected
+    }
+
     // MARK: - Transport helpers
 
     private func decode<T: Decodable>(_ type: T.Type, path: String) async throws -> T {
@@ -443,4 +496,15 @@ final class KanbanService {
     private struct ProfileDescriptionBody: Encodable { let description: String }
     private struct TriageActionAuthorBody: Encodable { let author: String }
 
+}
+
+/// Bounded fan-out helper for bulk delete (V3C): stable ordering, no
+/// dependency on the stdlib.
+private extension Array {
+    func chunked(into size: Int) -> [[Element]] {
+        guard size > 0, !isEmpty else { return [] }
+        return stride(from: 0, to: count, by: size).map {
+            Array(self[$0 ..< Swift.min($0 + size, count)])
+        }
+    }
 }

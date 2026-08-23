@@ -813,6 +813,78 @@ final class KanbanStore: ObservableObject {
         }
     }
 
+    // MARK: - V3C: Bulk operations (all board-scoped)
+
+    /// Normalize bulk IDs at the store boundary: trim whitespace, drop
+    /// empties, and dedupe (first occurrence wins, order preserved) so the
+    /// wire never carries redundant or blank task IDs.
+    static func normalizedBulkIDs(_ ids: [String]) -> [String] {
+        var seen = Set<String>()
+        var result: [String] = []
+        for id in ids {
+            let trimmed = id.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, !seen.contains(trimmed) else { continue }
+            seen.insert(trimmed)
+            result.append(trimmed)
+        }
+        return result
+    }
+
+    /// POST /tasks/bulk under ONE mutation ownership with ONE post-operation
+    /// superseding reconciliation. The route requires the exact actionable
+    /// loaded context (non-optional stamp, board-scoped). A top-level
+    /// transport failure throws (selection stays untouched); per-ID failures
+    /// are returned as the outcome (failed IDs stay selected).
+    func bulkUpdateTasks(
+        ids: [String],
+        patch: KanbanBulkTaskRequest,
+        expectedContext: KanbanBoardContextStamp,
+        includeArchived: Bool = false
+    ) async throws -> KanbanBulkOperationOutcome {
+        guard !isMutating else {
+            throw recordMutationError(KanbanServiceError.mutationInProgress)
+        }
+        let requestedIDs = Self.normalizedBulkIDs(ids)
+        guard !requestedIDs.isEmpty else {
+            throw recordMutationError(KanbanServiceError.invalidResponse("No tasks selected."))
+        }
+        try validateExpectedContext(expectedContext)
+        guard let context = makeOperationContext() else {
+            throw recordMutationError(KanbanServiceError.invalidResponse("Kanban is not connected."))
+        }
+        var mutationPatch = patch
+        mutationPatch.ids = requestedIDs
+        return try await performMutation(context: context, includeArchived: includeArchived) {
+            let response = try await context.service.bulkUpdateTasks(payload: mutationPatch, board: context.boardSlug)
+            return KanbanBulkResultPolicy.reconcile(requestedIDs: requestedIDs, results: response.results)
+        }
+    }
+
+    /// Bulk delete: one DELETE /tasks/{id} per selected ID under ONE captured
+    /// operation context, all settling, then ONE authoritative reconciliation
+    /// (performMutation's superseding reload). No invented bulk-delete route.
+    func bulkDeleteTasks(
+        ids: [String],
+        expectedContext: KanbanBoardContextStamp,
+        includeArchived: Bool = false
+    ) async throws -> KanbanBulkOperationOutcome {
+        guard !isMutating else {
+            throw recordMutationError(KanbanServiceError.mutationInProgress)
+        }
+        let requestedIDs = Self.normalizedBulkIDs(ids)
+        guard !requestedIDs.isEmpty else {
+            throw recordMutationError(KanbanServiceError.invalidResponse("No tasks selected."))
+        }
+        try validateExpectedContext(expectedContext)
+        guard let context = makeOperationContext() else {
+            throw recordMutationError(KanbanServiceError.invalidResponse("Kanban is not connected."))
+        }
+        return try await performMutation(context: context, includeArchived: includeArchived) {
+            let results = await context.service.deleteTasksFanout(ids: requestedIDs, board: context.boardSlug)
+            return KanbanBulkResultPolicy.reconcile(requestedIDs: requestedIDs, results: results)
+        }
+    }
+
     func clearMutationError() {
         mutationErrorMessage = nil
     }
