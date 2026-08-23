@@ -48,6 +48,12 @@ struct KanbanTaskDetailView: View {
     @State private var isRequeuing = false
     @State private var isLoadingDetail = false
     @State private var showDeleteConfirmation = false
+    /// Triage actions (V3A): Specify / Decompose are offered ONLY for
+    /// eligible (triage) tasks, and Decompose always requires confirmation.
+    @State private var isSpecifying = false
+    @State private var isDecomposing = false
+    @State private var showDecomposeConfirmation = false
+    @State private var actionNotice: String?
     @State private var showReassignSheet = false
     @State private var showModelSheet = false
     @State private var modelOverrideDraft = TaskModelOverride()
@@ -131,6 +137,7 @@ struct KanbanTaskDetailView: View {
                     if let currentTask = displayedTask {
                         editorSection
                         assignmentExecutionSection
+                        triageActionsSection
                         if currentTask.status == "ready", (currentTask.assignee ?? "").isEmpty, !hasDispatcherFallback {
                             readyUnassignedCallout
                         }
@@ -225,6 +232,10 @@ struct KanbanTaskDetailView: View {
                 showReassignSheet = false
                 showModelSheet = false
                 showDeleteConfirmation = false
+                isSpecifying = false
+                isDecomposing = false
+                showDecomposeConfirmation = false
+                actionNotice = nil
                 title = ""
                 taskBody = ""
                 status = "todo"
@@ -282,6 +293,16 @@ struct KanbanTaskDetailView: View {
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text("This permanently removes the task from the selected Hermes board.")
+            }
+            .confirmationDialog(
+                KanbanTriageActionsPolicy.decomposeConfirmationTitle,
+                isPresented: $showDecomposeConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Decompose") { Task { await decomposeTask() } }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(KanbanTriageActionsPolicy.decomposeConfirmationMessage)
             }
         }
     }
@@ -457,6 +478,53 @@ struct KanbanTaskDetailView: View {
                     Text(failure)
                         .font(.caption)
                         .foregroundStyle(.red)
+                }
+            }
+        }
+    }
+
+    // MARK: - Triage actions (V3A)
+
+    /// Dedicated Triage Actions section: shown ONLY for eligible (triage)
+    /// tasks — the backend refusal contract is `task is not in triage`,
+    /// so no other status may ever expose these actions (and never on
+    /// generic cards). Decompose surfaces a confirmation; Specify is a
+    /// direct action; both report the backend's semantic refusal verbatim.
+    @ViewBuilder
+    private var triageActionsSection: some View {
+        if KanbanTriagePolicy.isEligible(task: displayedTask) {
+            ConduitSettingsSection(title: "Triage Actions", symbol: "tray.and.arrow.down", tint: .conduitAccent) {
+                Button {
+                    Task { await specifyTask() }
+                } label: {
+                    HStack {
+                        Spacer()
+                        if isSpecifying { ProgressView() } else { Label("Specify Task", systemImage: "sparkles") }
+                        Spacer()
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.conduitAccent)
+                .disabled(isSpecifying || isDecomposing)
+
+                Button {
+                    // Decompose may create and assign multiple dependent
+                    // tasks: it is ALWAYS confirmation-gated.
+                    showDecomposeConfirmation = true
+                } label: {
+                    HStack {
+                        Spacer()
+                        if isDecomposing { ProgressView() } else { Label("Decompose Into Tasks", systemImage: "flask") }
+                        Spacer()
+                    }
+                }
+                .buttonStyle(.bordered)
+                .disabled(isSpecifying || isDecomposing)
+
+                if let actionNotice {
+                    Label(actionNotice, systemImage: "checkmark.circle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
         }
@@ -1063,6 +1131,59 @@ struct KanbanTaskDetailView: View {
         do {
             try await store.reclaimTask(taskID: expectedID, reason: reason)
             guard KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) else { return }
+            await loadDetail(force: true)
+        } catch {
+            guard KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) else { return }
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Specify (V3A): POST /tasks/{id}/specify for an eligible triage task.
+    /// On success the store supersedes stale board polling with an
+    /// authoritative reload and this screen re-syncs the detail from the
+    /// server. A semantic {ok:false} refusal surfaces the backend reason
+    /// and leaves the task entirely intact.
+    private func specifyTask() async {
+        guard let startedTask = displayedTask else { return }
+        let expectedID = displayedTaskID
+        isSpecifying = true
+        errorMessage = nil
+        defer {
+            if KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) {
+                isSpecifying = false
+            }
+        }
+        do {
+            _ = try await store.specifyTask(id: startedTask.id)
+            guard KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) else { return }
+            actionNotice = "Task specified"
+            await loadDetail(force: true)
+        } catch {
+            guard KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) else { return }
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Decompose (V3A): confirmation-gated fan-out. Success reconciles from
+    /// authoritative REST state (the store's superseding board reload plus
+    /// this detail reload); the child-ids response is never synthesized
+    /// into cards. A refresh failure AFTER a successful mutation is
+    /// reported as partial success — the action succeeded, only the
+    /// refresh failed (the passive poll recovers it).
+    private func decomposeTask() async {
+        guard let startedTask = displayedTask else { return }
+        let expectedID = displayedTaskID
+        isDecomposing = true
+        errorMessage = nil
+        defer {
+            if KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) {
+                isDecomposing = false
+            }
+        }
+        do {
+            let response = try await store.decomposeTask(id: startedTask.id)
+            guard KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) else { return }
+            actionNotice = KanbanTriageActionsPolicy.successNotice(fanout: response.fanout, childCount: response.childIDs.count)
             await loadDetail(force: true)
         } catch {
             guard KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) else { return }

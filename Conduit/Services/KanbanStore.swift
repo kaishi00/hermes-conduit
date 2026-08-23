@@ -442,6 +442,139 @@ final class KanbanStore: ObservableObject {
         }
     }
 
+    // MARK: - V3A: Orchestration settings
+
+    /// PUT /orchestration (server-global, but still server-ownership-safe:
+    /// the mutation context pins the loaded board/server generation and the
+    /// post-mutation superseding reload refreshes GET /orchestration).
+    /// Upstream does NOT nudge the dispatcher for settings saves.
+    @discardableResult
+    func updateOrchestration(_ patch: KanbanOrchestrationPatch, includeArchived: Bool = false) async throws -> KanbanOrchestrationSettings? {
+        guard !isMutating else {
+            throw recordMutationError(KanbanServiceError.mutationInProgress)
+        }
+        guard let context = makeOperationContext() else {
+            throw recordMutationError(KanbanServiceError.invalidResponse("Kanban is not connected."))
+        }
+        return try await performMutation(context: context, includeArchived: includeArchived) {
+            let settings = try await context.service.updateOrchestration(patch)
+            // Adopt the backend's resolved echo ONLY while this mutation still
+            // owns the current generation: after configure() the completion is
+            // inert and must not repopulate the newly configured store.
+            if configurationGeneration == context.configurationGeneration {
+                orchestration = settings
+            }
+            return settings
+        }
+    }
+
+    // MARK: - V3A: Profile routing descriptions
+
+    /// PATCH /profiles/{name} {description}. Not dispatcher-relevant upstream
+    /// (the desktop saves descriptions without a nudge).
+    func updateProfileDescription(profile: String, description: String, includeArchived: Bool = false) async throws {
+        guard !isMutating else {
+            throw recordMutationError(KanbanServiceError.mutationInProgress)
+        }
+        guard let context = makeOperationContext() else {
+            throw recordMutationError(KanbanServiceError.invalidResponse("Kanban is not connected."))
+        }
+        try await performMutation(context: context, includeArchived: includeArchived) {
+            try await context.service.updateProfileDescription(profile: profile, description: description)
+        }
+    }
+
+    /// POST /profiles/{name}/describe-auto. The generated text is persisted
+    /// immediately server-side; a non-ok outcome is a SEMANTIC refusal the
+    /// caller renders inline (never an HTTP error, never a fabricated
+    /// failure).
+    @discardableResult
+    func autoDescribeProfile(profile: String, overwrite: Bool = true, includeArchived: Bool = false) async throws -> KanbanAutoDescribeResponse {
+        guard !isMutating else {
+            throw recordMutationError(KanbanServiceError.mutationInProgress)
+        }
+        guard let context = makeOperationContext() else {
+            throw recordMutationError(KanbanServiceError.invalidResponse("Kanban is not connected."))
+        }
+        return try await performMutation(context: context, includeArchived: includeArchived) {
+            let outcome = try await context.service.autoDescribeProfile(profile: profile, overwrite: overwrite)
+            if outcome.ok, let generated = outcome.description,
+               configurationGeneration == context.configurationGeneration {
+                // Adopt the authoritative generated text locally (generation-
+                // guarded: a stale completion never repopulates the store);
+                // reload also refreshes profile descriptions.
+                profiles = profiles.map {
+                    $0.name == outcome.profile ? KanbanProfile(
+                        name: $0.name,
+                        isDefault: $0.isDefault,
+                        description: generated,
+                        descriptionAuto: true,
+                        model: $0.model,
+                        provider: $0.provider,
+                        skillCount: $0.skillCount
+                    ) : $0
+                }
+            }
+            return outcome
+        }
+    }
+
+    // MARK: - V3A: Triage actions
+
+    /// Specify a TRIAGE task: POST /tasks/{id}/specify, then supersede stale
+    /// board polling with an authoritative reload. The backend flips the task
+    /// triage -> todo (and recompute_ready may promote it to ready). A
+    /// semantic {ok:false} refusal throws the backend reason; the task is
+    /// left intact and the failure is recorded as the current-generation
+    /// mutation error.
+    @discardableResult
+    func specifyTask(id: String, includeArchived: Bool = false) async throws -> KanbanSpecifyResponse {
+        guard !isMutating else {
+            throw recordMutationError(KanbanServiceError.mutationInProgress)
+        }
+        guard let context = makeOperationContext() else {
+            throw recordMutationError(KanbanServiceError.invalidResponse("Kanban is not connected."))
+        }
+        return try await performMutation(context: context, includeArchived: includeArchived) {
+            try await context.service.specifyTask(id: id, board: context.boardSlug)
+        }
+    }
+
+    /// Decompose a TRIAGE task: POST /tasks/{id}/decompose, then reconcile
+    /// from authoritative REST state (performMutation's superseding reload).
+    /// The response is child ids only — Conduit NEVER synthesizes cards from
+    /// it. Semantic refusal throws the backend reason.
+    @discardableResult
+    func decomposeTask(id: String, includeArchived: Bool = false) async throws -> KanbanDecomposeResponse {
+        guard !isMutating else {
+            throw recordMutationError(KanbanServiceError.mutationInProgress)
+        }
+        guard let context = makeOperationContext() else {
+            throw recordMutationError(KanbanServiceError.invalidResponse("Kanban is not connected."))
+        }
+        return try await performMutation(context: context, includeArchived: includeArchived) {
+            try await context.service.decomposeTask(id: id, board: context.boardSlug)
+        }
+    }
+
+    // MARK: - V3A: Manual dispatcher nudge
+
+    /// Explicit board-menu nudge. Ownership-disciplined like every mutation:
+    /// the request is issued only while the captured context still owns the
+    /// UI, and a completion after configure() is inert. The board reload
+    /// after success doubles as the authoritative post-nudge refresh.
+    func nudgeDispatcher(includeArchived: Bool = false) async throws {
+        guard !isMutating else {
+            throw recordMutationError(KanbanServiceError.mutationInProgress)
+        }
+        guard let context = makeOperationContext() else {
+            throw recordMutationError(KanbanServiceError.invalidResponse("Kanban is not connected."))
+        }
+        try await performMutation(context: context, includeArchived: includeArchived) {
+            try await context.service.nudgeDispatcher(board: context.boardSlug)
+        }
+    }
+
     func clearMutationError() {
         mutationErrorMessage = nil
     }

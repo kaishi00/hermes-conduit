@@ -21,6 +21,15 @@ enum KanbanServiceError: LocalizedError, Equatable {
     case mutationInProgress
     case boardNavigationInProgress
     case invalidQueryParameter(String)
+    /// The backend answered HTTP 200 with {ok: false, reason: ...}. The server
+    /// write did NOT happen (or was refused); the reason is stable product
+    /// semantics and must be shown verbatim, never replaced by a made-up
+    /// message.
+    case actionDeclined(reason: String)
+    /// The mutation reached the server, but the authoritative refresh after it
+    /// failed. The mutation itself SUCCEEDED — this must never read as the
+    /// mutation failing.
+    case mutationSucceededButRefreshFailed(detail: String)
 
     var errorDescription: String? {
         switch self {
@@ -42,6 +51,12 @@ enum KanbanServiceError: LocalizedError, Equatable {
             // Fail closed: a dropped board/id parameter would silently
             // retarget the request at the backend's current board.
             return "Could not build a safe Hermes Kanban request (invalid " + name + "). The operation was cancelled before any data changed."
+        case .actionDeclined(let reason):
+            // The backend's own reason (e.g. "task is not in triage") is the
+            // product semantics; never translate it into a generic failure.
+            return reason.isEmpty ? "Hermes declined the action." : reason
+        case .mutationSucceededButRefreshFailed(let detail):
+            return "The change was saved, but the board could not be refreshed. " + detail
         }
     }
 }
@@ -190,6 +205,99 @@ final class KanbanService {
         )
     }
 
+    // MARK: - V3A: Orchestration settings (server-global; no board query)
+
+    /// PUT /orchestration — only present patch fields are written; ""
+    /// clears an override (server falls back to the active default profile).
+    /// Returns the resolved echo the backend always answers with.
+    func updateOrchestration(_ patch: KanbanOrchestrationPatch) async throws -> KanbanOrchestrationSettings {
+        let response = try await request(
+            path: scoped(Self.namespace + "/orchestration"),
+            method: "PUT",
+            body: try encodedDictionary(patch)
+        )
+        return try decodeResponse(KanbanOrchestrationSettings.self, from: response)
+    }
+
+    // MARK: - V3A: Profile routing descriptions (server-global; no board query)
+
+    /// PATCH /profiles/{name} {description}. Empty text CLEARS the
+    /// description; the backend stores user-authored text with
+    /// description_auto=false so auto-generation never silently replaces it.
+    func updateProfileDescription(profile: String, description: String) async throws {
+        _ = try await request(
+            path: scoped(Self.namespace + "/profiles/" + (try pathComponent(profile))),
+            method: "PATCH",
+            body: try encodedDictionary(ProfileDescriptionBody(description: description))
+        )
+    }
+
+    /// POST /profiles/{name}/describe-auto {overwrite}. The generated text is
+    /// PERSISTED immediately (description_auto=true). A non-ok outcome is NOT
+    /// an HTTP error — the caller renders the backend reason inline.
+    func autoDescribeProfile(profile: String, overwrite: Bool = true) async throws -> KanbanAutoDescribeResponse {
+        let response = try await request(
+            path: scoped(Self.namespace + "/profiles/" + (try pathComponent(profile)) + "/describe-auto"),
+            method: "POST",
+            body: ["overwrite": overwrite]
+        )
+        return try decodeResponse(KanbanAutoDescribeResponse.self, from: response)
+    }
+
+    // MARK: - V3A: Triage actions (Specify / Decompose)
+
+    /// POST /tasks/{id}/specify — LLM-fleshes a TRIAGE task and promotes it
+    /// to todo (recompute_ready may then promote it to ready). HTTP 200 does
+    /// not imply success: {ok:false, reason} is a semantic refusal and throws
+    /// actionDeclined(reason) so callers display the backend reason verbatim.
+    func specifyTask(id: String, board: String?, author: String = "conduit") async throws -> KanbanSpecifyResponse {
+        guard !id.isEmpty else { throw KanbanServiceError.emptyTaskID }
+        let response = try await request(
+            path: try withBoard(Self.namespace + "/tasks/" + (try pathComponent(id)) + "/specify", slug: board),
+            method: "POST",
+            body: try encodedDictionary(TriageActionAuthorBody(author: author))
+        )
+        let outcome = try decodeResponse(KanbanSpecifyResponse.self, from: response)
+        guard outcome.ok else {
+            throw KanbanServiceError.actionDeclined(reason: outcome.reason ?? "Hermes declined to specify this task.")
+        }
+        return outcome
+    }
+
+    /// POST /tasks/{id}/decompose — LLM-fans a TRIAGE task into a child graph
+    /// (children created, sibling dependency edges, root kept as parent of the
+    /// graph and promoted to todo). Same semantic-failure contract as
+    /// specify. The response is NOT authoritative board state: callers reload
+    /// the board and the root task afterwards.
+    func decomposeTask(id: String, board: String?, author: String = "conduit") async throws -> KanbanDecomposeResponse {
+        guard !id.isEmpty else { throw KanbanServiceError.emptyTaskID }
+        let response = try await request(
+            path: try withBoard(Self.namespace + "/tasks/" + (try pathComponent(id)) + "/decompose", slug: board),
+            method: "POST",
+            body: try encodedDictionary(TriageActionAuthorBody(author: author))
+        )
+        let outcome = try decodeResponse(KanbanDecomposeResponse.self, from: response)
+        guard outcome.ok else {
+            throw KanbanServiceError.actionDeclined(reason: outcome.reason ?? "Hermes declined to decompose this task.")
+        }
+        return outcome
+    }
+
+    // MARK: - V3A: Manual dispatcher nudge
+
+    /// Immediate POST /dispatch for the captured board (board menu action).
+    /// Unlike the debounced auto-nudge this posts right away so the operator
+    /// gets direct feedback. Response counters are intentionally ignored: the
+    /// desktop renders nothing from them and Conduit must not fabricate
+    /// diagnostics.
+    func nudgeDispatcher(board: String?) async throws {
+        _ = try await request(
+            path: try withBoard(Self.namespace + "/dispatch", slug: board),
+            method: "POST",
+            body: [:]
+        )
+    }
+
     // MARK: - Dispatcher nudge
 
     /// Schedule the upstream-equivalent acceleration hint for the backend
@@ -330,4 +438,7 @@ final class KanbanService {
 
     private struct TaskEnvelope: Decodable { let task: KanbanTask? }
     private struct BoardEnvelope: Decodable { let board: KanbanBoardMetadata }
+    private struct ProfileDescriptionBody: Encodable { let description: String }
+    private struct TriageActionAuthorBody: Encodable { let author: String }
+
 }

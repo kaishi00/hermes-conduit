@@ -107,6 +107,12 @@ struct KanbanView: View {
     /// only an explicit confirmation that still owns that context issues the
     /// destructive DELETE. Archive and lane moves stay immediate.
     @State private var pendingDelete: PendingCardDelete?
+    /// V3A board-level administration: orchestration settings sheet,
+    /// profile routing descriptions, and the manual dispatcher nudge.
+    @State private var showOrchestrationSettings = false
+    @State private var showProfileRouting = false
+    /// Unobtrusive post-nudge feedback ("Dispatcher nudged"); transient only.
+    @State private var nudgeNotice: String?
 
     private var bridgeIdentity: ObjectIdentifier? {
         appState.dashboardTicketBridge.map { ObjectIdentifier($0) }
@@ -162,6 +168,14 @@ struct KanbanView: View {
                         .refreshable { await store.refresh(includeArchived: includeArchived) }
                         .overlay(alignment: .topTrailing) {
                             VStack(alignment: .trailing, spacing: 6) {
+                                if let nudgeNotice {
+                                    Label(nudgeNotice, systemImage: "checkmark.circle")
+                                        .font(.caption)
+                                        .foregroundStyle(.green)
+                                        .padding(8)
+                                        .background(.ultraThinMaterial, in: Capsule())
+                                        .transition(.opacity)
+                                }
                                 if let mutationError = store.mutationErrorMessage {
                                     HStack(spacing: 6) {
                                         Text(mutationError)
@@ -202,6 +216,18 @@ struct KanbanView: View {
         }
         .sheet(isPresented: $showNewTask) {
             KanbanTaskComposerView(initialStatus: newTaskStatus)
+                .environmentObject(store)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showOrchestrationSettings) {
+            KanbanOrchestrationSettingsSheet()
+                .environmentObject(store)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showProfileRouting) {
+            KanbanProfileRoutingScreen()
                 .environmentObject(store)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
@@ -248,6 +274,22 @@ struct KanbanView: View {
                 guard !Task.isCancelled else { break }
                 await store.poll(includeArchived: includeArchived)
             }
+        }
+    }
+
+    /// Manual dispatcher nudge (V3A §5): a lightweight board action with
+    /// unobtrusive feedback. The store owns board/server context safety and
+    /// the current-generation error presentation; this view only adds the
+    /// transient "Dispatcher nudged" notice on success. No diagnostics are
+    /// fabricated from the backend response (the desktop renders none either).
+    private func nudgeDispatcher() async {
+        do {
+            try await store.nudgeDispatcher(includeArchived: includeArchived)
+            withAnimation(.easeOut(duration: 0.15)) { nudgeNotice = "Dispatcher nudged" }
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            withAnimation(.easeOut(duration: 0.3)) { nudgeNotice = nil }
+        } catch {
+            // Store-owned mutation error presentation (current generation only).
         }
     }
 
@@ -394,6 +436,38 @@ struct KanbanView: View {
             }
             .conduitGlassControl(cornerRadius: 14)
             .accessibilityLabel("Choose Kanban board")
+
+            // V3A board-level administration stays behind ONE extra menu so
+            // the main header is not overcrowded (task spec: "Kanban / Board
+            // Name [ … ]").
+            Menu {
+                Button {
+                    showOrchestrationSettings = true
+                } label: {
+                    Label("Orchestration Settings…", systemImage: "slider.horizontal.3")
+                }
+                .disabled(store.orchestration == nil && store.isLoading)
+
+                Button {
+                    showProfileRouting = true
+                } label: {
+                    Label("Profiles…", systemImage: "person.3")
+                }
+
+                Divider()
+
+                Button {
+                    Task { await nudgeDispatcher() }
+                } label: {
+                    Label("Nudge Dispatcher", systemImage: "arrow.forward.circle")
+                }
+                .disabled(store.isMutating || !store.isSelectedSnapshotLoaded)
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .frame(width: 36, height: 36)
+            }
+            .conduitGlassControl(cornerRadius: 14)
+            .accessibilityLabel("Kanban board actions")
 
             Button {
                 Task { await store.refresh(includeArchived: includeArchived) }
