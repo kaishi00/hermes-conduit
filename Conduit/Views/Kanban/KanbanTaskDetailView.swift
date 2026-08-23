@@ -48,6 +48,24 @@ struct KanbanTaskDetailView: View {
     @State private var isRequeuing = false
     @State private var isLoadingDetail = false
     @State private var showDeleteConfirmation = false
+    /// Triage actions (V3A): Specify / Decompose are offered ONLY for
+    /// eligible (triage) tasks, and Decompose always requires confirmation.
+    /// Both actions freeze the task identity + board/server stamp AT THE TAP
+    /// (PendingTriageAction) and the store revalidates the stamp at its
+    /// mutation boundary; Decompose additionally stages its PendingTriageAction
+    /// BY VALUE through the confirmation dialog, so confirming an action
+    /// staged for task A can never act on task B after navigation.
+    @State private var isSpecifying = false
+    @State private var isDecomposing = false
+    @State private var pendingDecompose: PendingTriageAction?
+    /// V3A merge pass: task/context marker of the LAST successful
+    /// Specify/Decompose. While the displayed identity matches it, the Triage
+    /// Actions stay suppressed even if a failed authoritative refresh leaves
+    /// the cached detail reporting triage - a committed task is never offered
+    /// a second triage mutation. Cleared by authoritative reconciliation or
+    /// identity/context replacement.
+    @State private var completedTriageMutation: CompletedTriageMutation?
+    @State private var actionNotice: String?
     @State private var showReassignSheet = false
     @State private var showModelSheet = false
     @State private var modelOverrideDraft = TaskModelOverride()
@@ -119,6 +137,18 @@ struct KanbanTaskDetailView: View {
         !(store.orchestration?.resolvedDefaultAssignee ?? "").isEmpty
     }
 
+    /// True while the displayed identity still matches a completed triage
+    /// mutation for its board/server context (cached triage status must not
+    /// re-expose Specify/Decompose for a task whose server-side action
+    /// already committed).
+    private var triageActionsSuppressed: Bool {
+        KanbanTriageCompletionPolicy.isSuppressed(
+            completed: completedTriageMutation,
+            displayedTaskID: displayedTaskID,
+            context: store.loadedContextStamp
+        )
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -131,6 +161,7 @@ struct KanbanTaskDetailView: View {
                     if let currentTask = displayedTask {
                         editorSection
                         assignmentExecutionSection
+                        triageActionsSection
                         if currentTask.status == "ready", (currentTask.assignee ?? "").isEmpty, !hasDispatcherFallback {
                             readyUnassignedCallout
                         }
@@ -140,6 +171,16 @@ struct KanbanTaskDetailView: View {
                         activitySection
                         runsSection
                         workerLogLink
+                        // V3A success feedback lives OUTSIDE the eligibility-
+                        // gated Triage Actions section: after a successful
+                        // Specify/Decompose the task leaves triage and the
+                        // section disappears - the notice must survive.
+                        if let actionNotice {
+                            Label(actionNotice, systemImage: "checkmark.circle")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
                         if let remoteChangeNotice {
                             Text(remoteChangeNotice)
                                 .font(.footnote)
@@ -225,6 +266,11 @@ struct KanbanTaskDetailView: View {
                 showReassignSheet = false
                 showModelSheet = false
                 showDeleteConfirmation = false
+                isSpecifying = false
+                isDecomposing = false
+                pendingDecompose = nil
+                completedTriageMutation = nil
+                actionNotice = nil
                 title = ""
                 taskBody = ""
                 status = "todo"
@@ -282,6 +328,28 @@ struct KanbanTaskDetailView: View {
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text("This permanently removes the task from the selected Hermes board.")
+            }
+            .confirmationDialog(
+                KanbanTriageActionsPolicy.decomposeConfirmationTitle,
+                isPresented: Binding(
+                    get: { pendingDecompose != nil },
+                    set: { if !$0 { pendingDecompose = nil } }
+                ),
+                titleVisibility: .visible,
+                presenting: pendingDecompose
+            ) { staged in
+                Button("Decompose") { confirmDecompose(staged) }
+                Button("Cancel", role: .cancel) { pendingDecompose = nil }
+            } message: { _ in
+                Text(KanbanTriageActionsPolicy.decomposeConfirmationMessage)
+            }
+            // Proactive disarm: when the loaded board identity changes, any
+            // staged triage action AND any completion marker are now foreign.
+            // The confirm-time store stamp revalidation remains the hard
+            // boundary.
+            .onChange(of: store.loadedBoardSlug) { _, _ in
+                pendingDecompose = nil
+                completedTriageMutation = nil
             }
         }
     }
@@ -460,6 +528,82 @@ struct KanbanTaskDetailView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Triage actions (V3A)
+
+    /// Dedicated Triage Actions section: shown ONLY for eligible (triage)
+    /// tasks — the backend refusal contract is `task is not in triage`,
+    /// so no other status may ever expose these actions (and never on
+    /// generic cards). Decompose surfaces a confirmation; Specify is a
+    /// direct action; both report the backend's semantic refusal verbatim.
+    @ViewBuilder
+    private var triageActionsSection: some View {
+        // Suppression outranks the cached status: a task whose Specify/
+        // Decompose already committed must not be offered the actions again
+        // merely because the authoritative refresh failed (merge pass).
+        if KanbanTriagePolicy.isEligible(task: displayedTask), !triageActionsSuppressed {
+            ConduitSettingsSection(title: "Triage Actions", symbol: "tray.and.arrow.down", tint: .conduitAccent) {
+                Button {
+                    // V3A final pass: capture the task identity + board/server
+                    // stamp SYNCHRONOUSLY at the tap, then schedule. The store
+                    // revalidates the stamp at its mutation boundary; a task
+                    // shown as A at tap time can never be specified as B.
+                    guard let pending = PendingTriageAction.capture(
+                        task: displayedTask,
+                        isSnapshotActionable: store.isSelectedSnapshotLoaded,
+                        stamp: store.loadedContextStamp
+                    ) else { return }
+                    isSpecifying = true
+                    errorMessage = nil
+                    Task { await specifyTask(pending: pending) }
+                } label: {
+                    HStack {
+                        Spacer()
+                        if isSpecifying { ProgressView() } else { Label("Specify Task", systemImage: "sparkles") }
+                        Spacer()
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.conduitAccent)
+                .disabled(isSpecifying || isDecomposing)
+
+                Button {
+                    // Decompose may create and assign multiple dependent
+                    // tasks: it is ALWAYS confirmation-gated, and the
+                    // confirmation is bound BY VALUE to the task/context
+                    // staged at this tap (the action policy answers, never
+                    // the view directly).
+                    guard KanbanTriageActionsPolicy.decomposeTap() == .confirm,
+                          let pending = PendingTriageAction.capture(
+                              task: displayedTask,
+                              isSnapshotActionable: store.isSelectedSnapshotLoaded,
+                              stamp: store.loadedContextStamp
+                          ) else { return }
+                    pendingDecompose = pending
+                } label: {
+                    HStack {
+                        Spacer()
+                        if isDecomposing { ProgressView() } else { Label("Decompose Into Tasks", systemImage: "flask") }
+                        Spacer()
+                    }
+                }
+                .buttonStyle(.bordered)
+                .disabled(isSpecifying || isDecomposing)
+            }
+        }
+    }
+
+    /// Confirmation of a STAGED action only: the staged task identity and
+    /// stamp are passed BY VALUE to the store, which revalidates the stamp
+    /// back-to-back with its operation-context capture. After task
+    /// navigation, board switching, or server reconfiguration the stale
+    /// confirmation is discarded without any request.
+    private func confirmDecompose(_ staged: PendingTriageAction) {
+        pendingDecompose = nil
+        isDecomposing = true
+        errorMessage = nil
+        Task { await decomposeTask(pending: staged) }
     }
 
     private var readyUnassignedCallout: some View {
@@ -892,6 +1036,13 @@ struct KanbanTaskDetailView: View {
             // of being wiped by this poll.
             if displayedTask == nil { errorMessage = nil }
             detail = loaded
+            // Authoritative reconciliation: once the detail confirms the task
+            // left triage, the completion marker clears and the normal status
+            // gate owns the visibility. If it still reports triage, the
+            // marker KEEPS the actions suppressed.
+            if KanbanTriageCompletionPolicy.shouldClearAfterReconciliation(reconciledStatus: loaded.task.status) {
+                completedTriageMutation = nil
+            }
             refreshErrorMessage = nil
         } catch is CancellationError {
             // The poll loop was replaced (identity switch or dismissal); its
@@ -1063,6 +1214,79 @@ struct KanbanTaskDetailView: View {
         do {
             try await store.reclaimTask(taskID: expectedID, reason: reason)
             guard KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) else { return }
+            await loadDetail(force: true)
+        } catch {
+            guard KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) else { return }
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Specify (V3A): POST /tasks/{id}/specify for an eligible triage task.
+    /// On success the store supersedes stale board polling with an
+    /// authoritative reload and this screen re-syncs the detail from the
+    /// server. A semantic {ok:false} refusal surfaces the backend reason
+    /// and leaves the task entirely intact.
+    private func specifyTask(pending: PendingTriageAction) async {
+        // The mutation identity is the STAGED value, never a re-read of the
+        // mutable display state: an action started for A must finish as A
+        // (or fail closed), even after the user navigates to B.
+        let expectedID = pending.taskID
+        let expectedContext = pending.context
+        defer {
+            if KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) {
+                isSpecifying = false
+            }
+        }
+        do {
+            _ = try await store.specifyTask(id: expectedID, expectedContext: expectedContext)
+            guard KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) else { return }
+            // Record the committed mutation BEFORE the refresh attempt: even
+            // if the detail fetch fails and the cached task still says
+            // triage, the actions must stay suppressed (merge pass).
+            completedTriageMutation = CompletedTriageMutation(taskID: expectedID, context: expectedContext)
+            actionNotice = KanbanTriageActionsPolicy.successNoticeWithRefreshFailure(
+                base: "Task specified",
+                storeRefreshError: store.errorMessage
+            )
+            await loadDetail(force: true)
+        } catch {
+            guard KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) else { return }
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Decompose (V3A): confirmation-gated fan-out. Success reconciles from
+    /// authoritative REST state (the store's superseding board reload plus
+    /// this detail reload); the child-ids response is never synthesized
+    /// into cards. A refresh failure AFTER a successful mutation is
+    /// reported as partial success — the action succeeded, only the
+    /// refresh failed (the passive poll recovers it).
+    private func decomposeTask(pending: PendingTriageAction) async {
+        // The staged confirmation value is the only valid identity: the
+        // store revalidates its stamp before issuing anything, and this
+        // completion stays UI-inert unless the displayed task is still the
+        // staged one.
+        let expectedID = pending.taskID
+        let expectedContext = pending.context
+        defer {
+            if KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) {
+                isDecomposing = false
+            }
+        }
+        do {
+            let response = try await store.decomposeTask(id: expectedID, expectedContext: expectedContext)
+            guard KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) else { return }
+            // Record the committed mutation BEFORE the refresh attempt (see
+            // specifyTask - suppression must survive a failed refresh).
+            completedTriageMutation = CompletedTriageMutation(taskID: expectedID, context: expectedContext)
+            let base = KanbanTriageActionsPolicy.successNotice(fanout: response.fanout, childCount: response.childIDs.count) ?? "Decompose succeeded"
+            // PARTIAL SUCCESS distinction: the mutation landed, so any
+            // failure the store recorded now is a REFRESH failure. Never
+            // blame the decompose itself.
+            actionNotice = KanbanTriageActionsPolicy.successNoticeWithRefreshFailure(
+                base: base,
+                storeRefreshError: store.errorMessage
+            )
             await loadDetail(force: true)
         } catch {
             guard KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) else { return }

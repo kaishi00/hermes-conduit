@@ -655,6 +655,10 @@ struct KanbanProject: Codable, Identifiable, Equatable {
 }
 
 struct KanbanOrchestrationSettings: Codable, Equatable {
+    /// Backend default for auto_promote_children when config omits it
+    /// (plugin_api.py GET /orchestration: bool(cfg.get("auto_promote_children", True))).
+    static let defaultAutoPromoteChildren = true
+
     var orchestratorProfile: String
     var defaultAssignee: String
     var autoDecompose: Bool
@@ -912,4 +916,146 @@ struct KanbanModelProviderOption: Codable, Equatable, Identifiable {
     }
 
     enum CodingKeys: String, CodingKey { case slug, label, models }
+}
+
+// MARK: - V3A: Orchestration mutation + triage action contracts
+//
+// Wire fidelity audited against NousResearch/hermes-agent @ fd760435c
+// (see docs/KANBAN_V3A_AUDIT.md):
+// - "" is the wire encoding of "Default"/inherit for the orchestration
+//   profile pickers — never a Conduit-specific sentinel.
+// - Specify/Decompose return HTTP 200 even on semantic failure; the client
+//   must inspect ok / reason (plugin_api.py specify/decompose docs).
+
+/// Partial body for PUT /orchestration. Only present fields are written;
+/// "" clears an override so the server falls back to the active default
+/// profile. Every field is optional BY DESIGN (nil = not sent).
+struct KanbanOrchestrationPatch: Encodable, Equatable {
+    var orchestratorProfile: String?
+    var defaultAssignee: String?
+    var autoDecompose: Bool?
+    var autoPromoteChildren: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case orchestratorProfile = "orchestrator_profile"
+        case defaultAssignee = "default_assignee"
+        case autoDecompose = "auto_decompose"
+        case autoPromoteChildren = "auto_promote_children"
+    }
+
+    init(
+        orchestratorProfile: String? = nil,
+        defaultAssignee: String? = nil,
+        autoDecompose: Bool? = nil,
+        autoPromoteChildren: Bool? = nil
+    ) {
+        self.orchestratorProfile = orchestratorProfile
+        self.defaultAssignee = defaultAssignee
+        self.autoDecompose = autoDecompose
+        self.autoPromoteChildren = autoPromoteChildren
+    }
+
+    var isEmpty: Bool {
+        orchestratorProfile == nil && defaultAssignee == nil
+            && autoDecompose == nil && autoPromoteChildren == nil
+    }
+}
+
+/// POST /tasks/{id}/specify response. ok:false is a SEMANTIC failure that
+/// still rides an HTTP 200 — the backend deliberately reports it as a normal
+/// body so the UI can render reason inline and retry without reloading.
+struct KanbanSpecifyResponse: Codable, Equatable {
+    var ok: Bool
+    var taskID: String
+    var reason: String?
+    var newTitle: String?
+
+    enum CodingKeys: String, CodingKey {
+        case ok, reason
+        case taskID = "task_id"
+        case newTitle = "new_title"
+    }
+
+    init(ok: Bool, taskID: String, reason: String? = nil, newTitle: String? = nil) {
+        self.ok = ok
+        self.taskID = taskID
+        self.reason = reason
+        self.newTitle = newTitle
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        ok = (try? container.decode(Bool.self, forKey: .ok)) ?? false
+        taskID = container.decodeLossyString(forKey: .taskID) ?? ""
+        reason = try? container.decodeIfPresent(String.self, forKey: .reason)
+        newTitle = try? container.decodeIfPresent(String.self, forKey: .newTitle)
+    }
+}
+
+/// POST /tasks/{id}/decompose response. Same HTTP-200-bears-semantic-failure
+/// contract as Specify. child_ids is NOT authoritative board state — it is
+/// the list of created children (in creation order); Conduit reconciles by
+/// reloading the board and the current/root task.
+struct KanbanDecomposeResponse: Codable, Equatable {
+    var ok: Bool
+    var taskID: String
+    var reason: String?
+    var fanout: Bool
+    var childIDs: [String]
+    var newTitle: String?
+
+    enum CodingKeys: String, CodingKey {
+        case ok, reason, fanout
+        case taskID = "task_id"
+        case childIDs = "child_ids"
+        case newTitle = "new_title"
+    }
+
+    init(ok: Bool, taskID: String, reason: String? = nil, fanout: Bool = false, childIDs: [String] = [], newTitle: String? = nil) {
+        self.ok = ok
+        self.taskID = taskID
+        self.reason = reason
+        self.fanout = fanout
+        self.childIDs = childIDs
+        self.newTitle = newTitle
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        ok = (try? container.decode(Bool.self, forKey: .ok)) ?? false
+        taskID = container.decodeLossyString(forKey: .taskID) ?? ""
+        reason = try? container.decodeIfPresent(String.self, forKey: .reason)
+        fanout = (try? container.decode(Bool.self, forKey: .fanout)) ?? false
+        childIDs = (try? container.decodeIfPresent([String].self, forKey: .childIDs)) ?? []
+        newTitle = try? container.decodeIfPresent(String.self, forKey: .newTitle)
+    }
+}
+
+/// POST /profiles/{name}/describe-auto response. A non-ok outcome is NOT an
+/// HTTP error either (e.g. "no auxiliary client configured") — the editor
+/// renders reason inline.
+struct KanbanAutoDescribeResponse: Codable, Equatable {
+    var ok: Bool
+    var profile: String
+    var reason: String?
+    var description: String?
+
+    enum CodingKeys: String, CodingKey {
+        case ok, reason, profile, description
+    }
+
+    init(ok: Bool, profile: String, reason: String? = nil, description: String? = nil) {
+        self.ok = ok
+        self.profile = profile
+        self.reason = reason
+        self.description = description
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        ok = (try? container.decode(Bool.self, forKey: .ok)) ?? false
+        profile = container.decodeLossyString(forKey: .profile) ?? ""
+        reason = try? container.decodeIfPresent(String.self, forKey: .reason)
+        description = try? container.decodeIfPresent(String.self, forKey: .description)
+    }
 }

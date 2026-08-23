@@ -107,6 +107,14 @@ struct KanbanView: View {
     /// only an explicit confirmation that still owns that context issues the
     /// destructive DELETE. Archive and lane moves stay immediate.
     @State private var pendingDelete: PendingCardDelete?
+    /// V3A board-level administration: orchestration settings sheet,
+    /// profile routing descriptions, and the manual dispatcher nudge.
+    @State private var showOrchestrationSettings = false
+    @State private var showProfileRouting = false
+    /// Unobtrusive post-nudge feedback ("Dispatcher nudged"); transient only.
+    /// Token-guarded so a rapid second nudge OR a board switch invalidates an
+    /// older auto-hide timer (a stale timer must never clear a newer notice).
+    @State private var nudgeNoticeState = KanbanNudgeNoticeState()
 
     private var bridgeIdentity: ObjectIdentifier? {
         appState.dashboardTicketBridge.map { ObjectIdentifier($0) }
@@ -117,6 +125,16 @@ struct KanbanView: View {
     /// root, so Conduit's UI profile switch does not change Kanban data.
     private var pollingKey: String {
         "\(String(describing: bridgeIdentity))|\(appState.dashboardTicketBridge?.baseURL ?? "")|archived=\(includeArchived)"
+    }
+
+    /// Server identity only (bridge + URL). When THIS changes, administrator
+    /// sheets (orchestration settings / profiles) owned by the old server
+    /// must not remain open over the new one: a settings editor seeded from
+    /// A would otherwise sit on top of B. Board selection within the same
+    /// server does NOT dismiss them (their data is server-global), and
+    /// ordinary board polling never changes this key.
+    private var serverIdentityKey: String {
+        "\(String(describing: bridgeIdentity))|\(appState.dashboardTicketBridge?.baseURL ?? "")"
     }
 
     private var visibleColumns: [KanbanColumn] {
@@ -162,6 +180,14 @@ struct KanbanView: View {
                         .refreshable { await store.refresh(includeArchived: includeArchived) }
                         .overlay(alignment: .topTrailing) {
                             VStack(alignment: .trailing, spacing: 6) {
+                                if let nudgeNotice = nudgeNoticeState.notice {
+                                    Label(nudgeNotice, systemImage: "checkmark.circle")
+                                        .font(.caption)
+                                        .foregroundStyle(.green)
+                                        .padding(8)
+                                        .background(.ultraThinMaterial, in: Capsule())
+                                        .transition(.opacity)
+                                }
                                 if let mutationError = store.mutationErrorMessage {
                                     HStack(spacing: 6) {
                                         Text(mutationError)
@@ -206,6 +232,18 @@ struct KanbanView: View {
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
+        .sheet(isPresented: $showOrchestrationSettings) {
+            KanbanOrchestrationSettingsSheet()
+                .environmentObject(store)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showProfileRouting) {
+            KanbanProfileRoutingScreen()
+                .environmentObject(store)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+        }
         // Permanent deletion from cards is CONFIRMED before the DELETE is
         // issued; the wording matches the detail screen's delete alert. The
         // staged request (task + staging context) is passed BY VALUE through
@@ -231,6 +269,17 @@ struct KanbanView: View {
         // ownership check below remains the hard boundary.)
         .onChange(of: store.loadedBoardSlug) { _, _ in
             pendingDelete = nil
+            // V3A merge pass: a board switch drops any visible nudge feedback
+            // IMMEDIATELY (the alpha success capsule must never linger on
+            // beta) and bumps the token so the old auto-hide timer can never
+            // mutate a later notice.
+            nudgeNoticeState.invalidateOnContextChange()
+        }
+        .onChange(of: serverIdentityKey) { _, _ in
+            // Server changed: the admin sheets belonged to the old server.
+            showOrchestrationSettings = false
+            showProfileRouting = false
+            nudgeNoticeState.invalidateOnContextChange()
         }
         .task(id: pollingKey) {
             selectedTask = nil
@@ -248,6 +297,46 @@ struct KanbanView: View {
                 guard !Task.isCancelled else { break }
                 await store.poll(includeArchived: includeArchived)
             }
+        }
+    }
+
+    /// Manual dispatcher nudge (V3A §5): a lightweight board action with
+    /// unobtrusive feedback. The board/server stamp is captured
+    /// SYNCHRONOUSLY by nudgeTapped() before any Task; the store revalidates
+    /// it at its mutation boundary. No diagnostics are fabricated from the
+    /// backend response (the desktop renders none either).
+    private func nudgeTapped() {
+        guard !store.isMutating, store.isSelectedSnapshotLoaded,
+              let stamp = store.loadedContextStamp else { return }
+        Task { await nudgeDispatcher(context: stamp) }
+    }
+
+    private func nudgeDispatcher(context: KanbanBoardContextStamp) async {
+        do {
+            try await store.nudgeDispatcher(expectedContext: context, includeArchived: includeArchived)
+            // V3A final pass: a /dispatch that succeeded on the OLD server
+            // after the UI moved elsewhere is UI-inert - its success must
+            // never surface as feedback on the new context.
+            guard KanbanNudgePolicy.shouldShowNotice(
+                capturedStamp: context,
+                currentStamp: store.loadedContextStamp,
+                isSnapshotActionable: store.isSelectedSnapshotLoaded
+            ) else { return }
+            var token = 0
+            withAnimation(.easeOut(duration: 0.15)) {
+                token = nudgeNoticeState.show("Dispatcher nudged")
+            }
+            do {
+                try await Task.sleep(nanoseconds: 2_000_000_000)
+            } catch {
+                return // cancelled (view dismissed / task replaced): leave as-is
+            }
+            guard !Task.isCancelled else { return }
+            // Only the notice instance whose token is still current may clear
+            // itself (a newer nudge or a board switch already invalidated it).
+            withAnimation(.easeOut(duration: 0.3)) { nudgeNoticeState.hideIfCurrent(token) }
+        } catch {
+            // Store-owned mutation error presentation (current generation only).
         }
     }
 
@@ -394,6 +483,41 @@ struct KanbanView: View {
             }
             .conduitGlassControl(cornerRadius: 14)
             .accessibilityLabel("Choose Kanban board")
+
+            // V3A board-level administration stays behind ONE extra menu so
+            // the main header is not overcrowded (task spec: "Kanban / Board
+            // Name [ … ]").
+            Menu {
+                Button {
+                    showOrchestrationSettings = true
+                } label: {
+                    Label("Orchestration Settings…", systemImage: "slider.horizontal.3")
+                }
+                .disabled(store.orchestration == nil && store.isLoading)
+
+                Button {
+                    showProfileRouting = true
+                } label: {
+                    Label("Profiles…", systemImage: "person.3")
+                }
+
+                Divider()
+
+                Button {
+                    // V3A final pass: capture the board/server stamp
+                    // SYNCHRONOUSLY at the tap; a nudge staged for A can
+                    // never fire against B.
+                    nudgeTapped()
+                } label: {
+                    Label("Nudge Dispatcher", systemImage: "arrow.forward.circle")
+                }
+                .disabled(store.isMutating || !store.isSelectedSnapshotLoaded)
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .frame(width: 36, height: 36)
+            }
+            .conduitGlassControl(cornerRadius: 14)
+            .accessibilityLabel("Kanban board actions")
 
             Button {
                 Task { await store.refresh(includeArchived: includeArchived) }

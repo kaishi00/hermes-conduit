@@ -10,12 +10,16 @@
 # Contract:
 #   - Runs the full suite up to 2 times. Exit 0 = some attempt passed.
 #     Exit 1 = every attempt failed or timed out.
-#   - Each attempt gets ATTEMPT_TIMEOUT_SECS (default 960 = 16 min; healthy
-#     runs finish in 7-13 min). Sized so the worst case — setup + a killed
-#     attempt 1 + simulator reboots (bootstatus is bounded at 180s each) + a
-#     full attempt 2 — stays under the 45-minute job timeout. A timed-out
-#     attempt is killed by process group and its status flows through the
-#     retry loop exactly like a test failure.
+#   - Each attempt gets ATTEMPT_TIMEOUT_SECS (default 1200 = 20 min; healthy
+#     runs finish in 7-13 min). The 20-minute value is a temporary cold-run
+#     ceiling intended to prevent healthy-but-slow first attempts from being
+#     killed at 16 minutes and forcing an expensive simulator erase/retry. The
+#     workflow's 45-minute job timeout remains the ultimate bound, so in the
+#     pathological case a second full-length attempt may not receive its entire
+#     nominal 20-minute budget. The intent is: prefer one 17-20 minute
+#     successful cold attempt over killing it at 16 minutes + erase/reboot +
+#     warm retry. A timed-out attempt is killed by process group and its status
+#     flows through the retry loop exactly like a test failure.
 #   - The simulator is explicitly booted (shutdown → boot → bootstatus) before
 #     EVERY attempt, including the first.
 #   - After a TIMED-OUT attempt the retry erases the dedicated simulator before
@@ -29,7 +33,7 @@
 # Required env:
 #   SIMULATOR            UDID of the iOS simulator to test against.
 # Optional env:
-#   ATTEMPT_TIMEOUT_SECS per-attempt budget in seconds (default 960).
+#   ATTEMPT_TIMEOUT_SECS per-attempt budget in seconds (default 1200).
 #   ATTEMPTS             max attempts (default 2).
 #
 # Bash 3.2 compatible (GitHub macOS runners default to /bin/bash).
@@ -37,7 +41,10 @@
 set -uo pipefail
 
 SIMULATOR="${SIMULATOR:-}"
-ATTEMPT_TIMEOUT_SECS="${ATTEMPT_TIMEOUT_SECS:-960}"
+# TEMPORARY ceiling (Kanban V3 merge): raise/revert via this default.
+# TODO(kanban-v3): revert to 960 once the cold-run page-ceiling work
+# (see header comment) is no longer needed.
+ATTEMPT_TIMEOUT_SECS="${ATTEMPT_TIMEOUT_SECS:-1200}"
 ATTEMPTS="${ATTEMPTS:-2}"
 
 if [ -z "$SIMULATOR" ]; then
