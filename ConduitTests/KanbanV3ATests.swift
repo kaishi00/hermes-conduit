@@ -619,6 +619,151 @@ final class KanbanV3ATests: XCTestCase {
         XCTAssertFalse(requester.calls.contains { $0.path.contains("board=") && $0.path.contains("profiles") }, "no board query on server-global profile calls")
     }
 
+    func testServerGlobalSaveProceedsDuringInFlightBoardTransition() async throws {
+        // Merge pass: a server-global orchestration save must stay valid while
+        // a same-server alpha -> beta transition is IN FLIGHT (selected = beta,
+        // loaded = alpha, snapshot not actionable).
+        let requester = V3AMockRequester(responsesByPath: routes(boardSlug: "alpha"))
+        requester.responsesByPath["/api/plugins/kanban/boards"] = [
+            "boards": [
+                ["slug": "alpha", "name": "Alpha", "is_current": true],
+                ["slug": "beta", "name": "Beta", "is_current": false],
+            ],
+            "current": "alpha",
+        ]
+        requester.boardProvider = { _ in V3AMockRequester.staticBoard(task: nil) }
+        requester.blockedBoardFetches = [2] // hold the beta load mid-flight
+        let store = makeStore(requester: requester)
+        await store.reload()
+        guard let stampA = store.loadedContextStamp else { return XCTFail("expected a loaded context") }
+
+        let navigation = Task { await store.selectBoard(slug: "beta") }
+        await requester.waitUntilBoardFetchParked()
+        XCTAssertFalse(store.isSelectedSnapshotLoaded, "navigation is genuinely in flight")
+
+        let updated = try await store.updateOrchestration(
+            KanbanOrchestrationPatch(autoDecompose: false),
+            expectedContext: stampA
+        )
+        XCTAssertEqual(updated?.autoDecompose, false, "same-server in-flight transition does not reject the save")
+        XCTAssertEqual(
+            requester.calls.filter { $0.method == "PUT" && $0.path.hasSuffix("/orchestration") }.count,
+            1,
+            "PUT occurs exactly once"
+        )
+        XCTAssertNil(store.mutationErrorMessage, "no boardNavigationInProgress")
+
+        requester.releaseBoardFetches()
+        await navigation.value
+        XCTAssertEqual(store.loadedBoardSlug, "beta", "reconciliation converges onto the currently selected board")
+    }
+
+    func testServerGlobalProfileSaveProceedsDuringInFlightBoardTransition() async throws {
+        let requester = V3AMockRequester(responsesByPath: routes(boardSlug: "alpha"))
+        requester.responsesByPath["/api/plugins/kanban/boards"] = [
+            "boards": [
+                ["slug": "alpha", "name": "Alpha", "is_current": true],
+                ["slug": "beta", "name": "Beta", "is_current": false],
+            ],
+            "current": "alpha",
+        ]
+        requester.boardProvider = { _ in V3AMockRequester.staticBoard(task: nil) }
+        requester.blockedBoardFetches = [2]
+        let store = makeStore(requester: requester)
+        await store.reload()
+        guard let stampA = store.loadedContextStamp else { return XCTFail("expected a loaded context") }
+
+        let navigation = Task { await store.selectBoard(slug: "beta") }
+        await requester.waitUntilBoardFetchParked()
+
+        try await store.updateProfileDescription(profile: "coder", description: "New text", expectedContext: stampA)
+        XCTAssertNil(store.mutationErrorMessage)
+        XCTAssertEqual(
+            requester.calls.filter { $0.method == "PATCH" && $0.path.contains("/profiles/coder") }.count,
+            1,
+            "PATCH still occurs exactly once"
+        )
+
+        requester.releaseBoardFetches()
+        await navigation.value
+        XCTAssertEqual(store.loadedBoardSlug, "beta")
+    }
+
+    func testServerGlobalGenerateProceedsDuringInFlightBoardTransition() async throws {
+        let requester = V3AMockRequester(responsesByPath: routes(boardSlug: "alpha"))
+        requester.responsesByPath["/api/plugins/kanban/boards"] = [
+            "boards": [
+                ["slug": "alpha", "name": "Alpha", "is_current": true],
+                ["slug": "beta", "name": "Beta", "is_current": false],
+            ],
+            "current": "alpha",
+        ]
+        requester.boardProvider = { _ in V3AMockRequester.staticBoard(task: nil) }
+        requester.blockedBoardFetches = [2]
+        requester.responsesByPath["/api/plugins/kanban/profiles/coder/describe-auto"] = [
+            "ok": true, "profile": "coder", "reason": "", "description": "Generated",
+        ]
+        let store = makeStore(requester: requester)
+        await store.reload()
+        guard let stampA = store.loadedContextStamp else { return XCTFail("expected a loaded context") }
+
+        let navigation = Task { await store.selectBoard(slug: "beta") }
+        await requester.waitUntilBoardFetchParked()
+
+        let outcome = try await store.autoDescribeProfile(profile: "coder", overwrite: true, expectedContext: stampA)
+        XCTAssertTrue(outcome.ok)
+        XCTAssertNil(store.mutationErrorMessage)
+        XCTAssertEqual(
+            requester.calls.filter { $0.method == "POST" && $0.path.contains("/profiles/coder/describe-auto") }.count,
+            1,
+            "describe-auto still occurs exactly once"
+        )
+
+        requester.releaseBoardFetches()
+        await navigation.value
+        XCTAssertEqual(store.loadedBoardSlug, "beta")
+    }
+
+    func testBoardScopedSpecifyFailsClosedDuringInFlightBoardTransition() async {
+        // S-1 negative branch: BOARD-scoped mutations must keep the
+        // fail-closed invariant during a PARKED (not failed) transition -
+        // selected beta, loaded alpha, snapshot not actionable.
+        let t1 = makeTask(id: "t1", status: "triage")
+        let requester = V3AMockRequester(responsesByPath: routes(boardSlug: "alpha", task: t1))
+        requester.responsesByPath["/api/plugins/kanban/boards"] = [
+            "boards": [
+                ["slug": "alpha", "name": "Alpha", "is_current": true],
+                ["slug": "beta", "name": "Beta", "is_current": false],
+            ],
+            "current": "alpha",
+        ]
+        requester.boardProvider = { fetch in
+            V3AMockRequester.staticBoard(task: fetch >= 2 ? nil : t1)
+        }
+        requester.blockedBoardFetches = [2]
+        let store = makeStore(requester: requester)
+        await store.reload()
+        guard let stampA = store.loadedContextStamp else { return XCTFail("expected a loaded context") }
+
+        let navigation = Task { await store.selectBoard(slug: "beta") }
+        await requester.waitUntilBoardFetchParked()
+        XCTAssertFalse(store.isSelectedSnapshotLoaded)
+
+        do {
+            _ = try await store.specifyTask(id: "t1", expectedContext: stampA)
+            XCTFail("a board-scoped mutation must fail closed during the transition")
+        } catch KanbanServiceError.boardNavigationInProgress {
+            // expected fail-closed
+        } catch {
+            XCTFail("unexpected error: \(error)")
+        }
+        XCTAssertFalse(requester.calls.contains { $0.path.contains("/tasks/t1/specify") }, "zero specify may fire")
+
+        requester.releaseBoardFetches()
+        await navigation.value
+        XCTAssertEqual(store.loadedBoardSlug, "beta")
+    }
+
     func testOrchestrationSaveStaleContextCannotReachServerB() async {
         let requesterA = V3AMockRequester(responsesByPath: routes(boardSlug: "alpha"))
         let store = makeStore(requester: requesterA)
@@ -789,14 +934,17 @@ final class KanbanV3ATests: XCTestCase {
         XCTAssertEqual(liveness.token, op2, "monotonic token")
     }
 
-    func testOperationCompletionAfterReconfigureStillReleasesBusyFlag() async {
-        // Operation A starts under generation A; the server changes to B
-        // before A completes; A's completion is UI-inert for server data but
-        // the LIFETIME ownership check (liveness token) is independent of the
-        // generation, so the local busy flag is still released.
+    func testStaleCompletionStillOwnsItsLocalBusyTokenAfterReconfigure() async {
+        // The editor starts ONE operation and captures its liveness token
+        // BEFORE the simulated reconfigure - this is precisely the contract
+        // the test asserts (merge pass: the old version fabricated an
+        // unrelated fresh token and proved nothing).
+        var liveness = KanbanEditorLiveness()
+        let operationID = liveness.begin()
         let requesterA = V3AMockRequester(responsesByPath: routes(boardSlug: "alpha"))
         let store = makeStore(requester: requesterA)
         await store.reload()
+        let generationA = store.currentConfigurationGeneration
 
         requesterA.suspend(method: "POST", basePath: "/api/plugins/kanban/profiles/coder/describe-auto")
         let operation = Task { try? await store.autoDescribeProfile(profile: "coder", overwrite: true) }
@@ -807,16 +955,66 @@ final class KanbanV3ATests: XCTestCase {
         requesterA.resumeSuspended()
         _ = await operation.value
 
-        // Store-level stale-completion guarantees unchanged...
+        // Independent facts the view relies on for busy-release:
+        XCTAssertFalse(store.isCurrentConfiguration(generationA), "generation A is stale after the reconfigure")
+        XCTAssertTrue(liveness.owns(operationID), "the STALE completion still owns its local busy token, so it can release the flag")
+        // Store-level inertness of the stale completion is preserved:
         XCTAssertNil(store.mutationErrorMessage)
         XCTAssertEqual(requesterB.calls.count, 0)
-        // ...and the LIFETIME layer: the token the operation started with no
-        // longer owns the busy flag for a subsequent operation, i.e. the
-        // local flag release never depends on the server generation.
-        var liveness = KanbanEditorLiveness()
-        let opA = liveness.begin()
-        _ = liveness.begin() // a newer operation (post-reconfigure UI)
-        XCTAssertFalse(liveness.owns(opA))
+    }
+
+    // MARK: - V3A merge pass: triage completion suppression
+
+    func testTriageCompletionSuppressionSurvivesFailedRefresh() {
+        let stamp = KanbanBoardContextStamp(boardSlug: "alpha", configurationGeneration: 4)
+        let marker = CompletedTriageMutation(taskID: "t1", context: stamp)
+        // Cached detail still reports triage: suppression holds - no second
+        // request can be staged for the committed task.
+        XCTAssertTrue(KanbanTriageCompletionPolicy.isSuppressed(completed: marker, displayedTaskID: "t1", context: stamp))
+        // Task replaced.
+        XCTAssertFalse(KanbanTriageCompletionPolicy.isSuppressed(completed: marker, displayedTaskID: "t2", context: stamp))
+        // Board/server context replaced.
+        XCTAssertFalse(KanbanTriageCompletionPolicy.isSuppressed(
+            completed: marker,
+            displayedTaskID: "t1",
+            context: KanbanBoardContextStamp(boardSlug: "beta", configurationGeneration: 4)
+        ))
+        // No loaded context / no marker: never suppressed.
+        XCTAssertFalse(KanbanTriageCompletionPolicy.isSuppressed(completed: marker, displayedTaskID: "t1", context: nil))
+        XCTAssertFalse(KanbanTriageCompletionPolicy.isSuppressed(completed: nil, displayedTaskID: "t1", context: stamp))
+    }
+
+    func testTriageCompletionMarkerClearsOnlyAfterAuthoritativeReconciliation() {
+        XCTAssertTrue(KanbanTriageCompletionPolicy.shouldClearAfterReconciliation(reconciledStatus: "todo"))
+        XCTAssertTrue(KanbanTriageCompletionPolicy.shouldClearAfterReconciliation(reconciledStatus: "ready"))
+        XCTAssertTrue(KanbanTriageCompletionPolicy.shouldClearAfterReconciliation(reconciledStatus: "done"))
+        // The task still reports triage from an authoritative load: the
+        // marker KEEPS the actions suppressed until state proves otherwise.
+        XCTAssertFalse(KanbanTriageCompletionPolicy.shouldClearAfterReconciliation(reconciledStatus: "triage"))
+    }
+
+    // MARK: - V3A merge pass: nudge notice invalidation
+
+    func testNudgeNoticeClearsOnBoardChangeAndOldTimerIsInert() {
+        var state = KanbanNudgeNoticeState()
+        let alphaTimer = state.show("Dispatcher nudged")
+        XCTAssertEqual(state.notice, "Dispatcher nudged")
+
+        // Board switch alpha -> beta: feedback clears IMMEDIATELY.
+        state.invalidateOnContextChange()
+        XCTAssertNil(state.notice)
+        // The old alpha auto-hide timer firing later changes nothing.
+        state.hideIfCurrent(alphaTimer)
+        XCTAssertNil(state.notice)
+
+        // A later beta notice cannot be cleared by the old timer...
+        let betaTimer = state.show("Dispatcher nudged")
+        XCTAssertEqual(state.notice, "Dispatcher nudged")
+        state.hideIfCurrent(alphaTimer)
+        XCTAssertEqual(state.notice, "Dispatcher nudged", "the stale timer is inert for the newer notice")
+        // ...only its own (current) timer clears it.
+        state.hideIfCurrent(betaTimer)
+        XCTAssertNil(state.notice)
     }
 
     // MARK: - 9. V3A final pass: continuation-helper + nudge feedback
@@ -1146,6 +1344,27 @@ private final class V3AMockRequester: DashboardJSONRequester {
     private var suspensionWaiters: [CheckedContinuation<Void, Never>] = []
     private var parkedCount = 0
     private var parkedWaiters: [CheckedContinuation<Void, Never>] = []
+    /// Board-fetch gate (merge pass): suspends specific GET /board fetches so
+    /// a test can hold a board navigation IN FLIGHT while server-global
+    /// mutations run, then release it and observe convergence.
+    var blockedBoardFetches: [Int] = []
+    private var boardGateContinuations: [CheckedContinuation<Void, Never>] = []
+    private var boardGateWaiters: [CheckedContinuation<Void, Never>] = []
+
+    func waitUntilBoardFetchParked() async {
+        if !boardGateContinuations.isEmpty {
+            return
+        }
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            boardGateWaiters.append(continuation)
+        }
+    }
+
+    func releaseBoardFetches() {
+        let pending = boardGateContinuations
+        boardGateContinuations.removeAll()
+        pending.forEach { $0.resume() }
+    }
 
     init(responsesByPath: [String: [String: Any]] = [:]) {
         self.responsesByPath = responsesByPath
@@ -1216,6 +1435,13 @@ private final class V3AMockRequester: DashboardJSONRequester {
         if let error = errorsByPath[path] ?? errorsByPath[basePath] { throw error }
         if method == "GET", basePath == "/api/plugins/kanban/board" {
             boardFetches += 1
+            if blockedBoardFetches.contains(boardFetches) {
+                boardGateWaiters.forEach { $0.resume() }
+                boardGateWaiters.removeAll()
+                await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                    boardGateContinuations.append(continuation)
+                }
+            }
             return try boardProvider(boardFetches)
         }
         if method == "GET", basePath == "/api/plugins/kanban/profiles" {

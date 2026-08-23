@@ -112,10 +112,9 @@ struct KanbanView: View {
     @State private var showOrchestrationSettings = false
     @State private var showProfileRouting = false
     /// Unobtrusive post-nudge feedback ("Dispatcher nudged"); transient only.
-    @State private var nudgeNotice: String?
-    /// Monotonic token so a rapid second nudge invalidates the first notice's
-    /// auto-hide timer (a stale timer must never clear the newer notice).
-    @State private var nudgeNoticeToken = 0
+    /// Token-guarded so a rapid second nudge OR a board switch invalidates an
+    /// older auto-hide timer (a stale timer must never clear a newer notice).
+    @State private var nudgeNoticeState = KanbanNudgeNoticeState()
 
     private var bridgeIdentity: ObjectIdentifier? {
         appState.dashboardTicketBridge.map { ObjectIdentifier($0) }
@@ -181,7 +180,7 @@ struct KanbanView: View {
                         .refreshable { await store.refresh(includeArchived: includeArchived) }
                         .overlay(alignment: .topTrailing) {
                             VStack(alignment: .trailing, spacing: 6) {
-                                if let nudgeNotice {
+                                if let nudgeNotice = nudgeNoticeState.notice {
                                     Label(nudgeNotice, systemImage: "checkmark.circle")
                                         .font(.caption)
                                         .foregroundStyle(.green)
@@ -270,12 +269,17 @@ struct KanbanView: View {
         // ownership check below remains the hard boundary.)
         .onChange(of: store.loadedBoardSlug) { _, _ in
             pendingDelete = nil
+            // V3A merge pass: a board switch drops any visible nudge feedback
+            // IMMEDIATELY (the alpha success capsule must never linger on
+            // beta) and bumps the token so the old auto-hide timer can never
+            // mutate a later notice.
+            nudgeNoticeState.invalidateOnContextChange()
         }
         .onChange(of: serverIdentityKey) { _, _ in
             // Server changed: the admin sheets belonged to the old server.
             showOrchestrationSettings = false
             showProfileRouting = false
-            nudgeNotice = nil
+            nudgeNoticeState.invalidateOnContextChange()
         }
         .task(id: pollingKey) {
             selectedTask = nil
@@ -318,17 +322,19 @@ struct KanbanView: View {
                 currentStamp: store.loadedContextStamp,
                 isSnapshotActionable: store.isSelectedSnapshotLoaded
             ) else { return }
-            nudgeNoticeToken += 1
-            let token = nudgeNoticeToken
-            withAnimation(.easeOut(duration: 0.15)) { nudgeNotice = "Dispatcher nudged" }
+            var token = 0
+            withAnimation(.easeOut(duration: 0.15)) {
+                token = nudgeNoticeState.show("Dispatcher nudged")
+            }
             do {
                 try await Task.sleep(nanoseconds: 2_000_000_000)
             } catch {
                 return // cancelled (view dismissed / task replaced): leave as-is
             }
-            // Only the LATEST notice may clear itself.
-            guard nudgeNoticeToken == token, !Task.isCancelled else { return }
-            withAnimation(.easeOut(duration: 0.3)) { nudgeNotice = nil }
+            guard !Task.isCancelled else { return }
+            // Only the notice instance whose token is still current may clear
+            // itself (a newer nudge or a board switch already invalidated it).
+            withAnimation(.easeOut(duration: 0.3)) { nudgeNoticeState.hideIfCurrent(token) }
         } catch {
             // Store-owned mutation error presentation (current generation only).
         }

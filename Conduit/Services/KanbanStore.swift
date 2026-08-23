@@ -477,7 +477,7 @@ final class KanbanStore: ObservableObject {
         guard let context = makeOperationContext() else {
             throw recordMutationError(KanbanServiceError.invalidResponse("Kanban is not connected."))
         }
-        return try await performMutation(context: context, includeArchived: includeArchived) {
+        return try await performMutation(context: context, includeArchived: includeArchived, scope: .server) {
             let settings = try await context.service.updateOrchestration(patch)
             // Adopt the backend's resolved echo ONLY while this mutation still
             // owns the current generation: after configure() the completion is
@@ -508,7 +508,7 @@ final class KanbanStore: ObservableObject {
         guard let context = makeOperationContext() else {
             throw recordMutationError(KanbanServiceError.invalidResponse("Kanban is not connected."))
         }
-        try await performMutation(context: context, includeArchived: includeArchived) {
+        try await performMutation(context: context, includeArchived: includeArchived, scope: .server) {
             try await context.service.updateProfileDescription(profile: profile, description: description)
         }
     }
@@ -533,7 +533,7 @@ final class KanbanStore: ObservableObject {
         guard let context = makeOperationContext() else {
             throw recordMutationError(KanbanServiceError.invalidResponse("Kanban is not connected."))
         }
-        return try await performMutation(context: context, includeArchived: includeArchived) {
+        return try await performMutation(context: context, includeArchived: includeArchived, scope: .server) {
             let outcome = try await context.service.autoDescribeProfile(profile: profile, overwrite: overwrite)
             if outcome.ok, let generated = outcome.description,
                configurationGeneration == context.configurationGeneration {
@@ -682,9 +682,25 @@ final class KanbanStore: ObservableObject {
         )
     }
 
+    /// Whether a mutation requires the loaded snapshot to be the actionable
+    /// (selected) board:
+    /// - .board (default): board-scoped writes (create/update/delete task,
+    ///   Specify, Decompose, Nudge, reassign/reclaim) must never act on a
+    ///   stale snapshot - during a board transition they fail closed.
+    /// - .server: SERVER-GLOBAL writes (orchestration settings, profile
+    ///   descriptions) carry no board query upstream; their ownership is the
+    ///   configuration generation (already validated by
+    ///   validateExpectedServerContext), and a same-server board transition
+    ///   must not reject them.
+    enum MutationScope {
+        case board
+        case server
+    }
+
     private func performMutation<T>(
         context: KanbanOperationContext,
         includeArchived: Bool,
+        scope: MutationScope = .board,
         operation: () async throws -> T
     ) async throws -> T {
         let generation = context.configurationGeneration
@@ -696,10 +712,15 @@ final class KanbanStore: ObservableObject {
             mutationErrorMessage = error.localizedDescription
             throw error
         }
-        // Navigation invariant: while the selected and loaded board identities
-        // differ, the visible snapshot belongs to the OLD board. Refuse to act
-        // on it rather than writing old-board data under a new-board UI.
-        guard isSelectedSnapshotLoaded else {
+        // Navigation invariant (board-scoped mutations only): while the
+        // selected and loaded board identities differ, the visible snapshot
+        // belongs to the OLD board - refuse to act on it rather than writing
+        // old-board data under a new-board UI. Server-global mutations skip
+        // this guard: their wire target is the server, which has not changed
+        // during a same-server board transition. The superseding reload after
+        // success converges onto the CURRENTLY selected board, so the old
+        // board can never be restored by the reconciliation.
+        guard scope == .server || isSelectedSnapshotLoaded else {
             let error = KanbanServiceError.boardNavigationInProgress
             mutationErrorMessage = error.localizedDescription
             throw error

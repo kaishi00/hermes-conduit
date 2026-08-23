@@ -146,6 +146,70 @@ enum KanbanProfileDescriptionPolicy {
     }
 }
 
+// MARK: - Triage completion suppression (V3A merge pass)
+
+/// Marker that a Specify/Decompose mutation COMMITTED for a captured
+/// task/context. While the displayed identity matches this marker, the Triage
+/// Actions section stays suppressed even if the cached detail still reports
+/// status triage after a failed authoritative refresh - a second request must
+/// never be staged for a task whose server-side action already succeeded.
+/// The marker is never derived from the human-readable actionNotice string.
+struct CompletedTriageMutation: Equatable {
+    let taskID: String
+    let context: KanbanBoardContextStamp
+}
+
+enum KanbanTriageCompletionPolicy {
+    /// The displayed task/context still matches the completed mutation:
+    /// triage actions must be suppressed.
+    static func isSuppressed(
+        completed: CompletedTriageMutation?,
+        displayedTaskID: String,
+        context: KanbanBoardContextStamp?
+    ) -> Bool {
+        guard let completed, let context else { return false }
+        return completed.taskID == displayedTaskID && completed.context == context
+    }
+
+    /// After an authoritative detail load: once the reconciled status is no
+    /// longer triage, the normal status gate hides the actions and the marker
+    /// is cleared. If it STILL reports triage, suppression must remain in
+    /// force until authoritative state establishes validity again.
+    static func shouldClearAfterReconciliation(reconciledStatus: String) -> Bool {
+        reconciledStatus != "triage"
+    }
+}
+
+// MARK: - Nudge notice presentation state (V3A merge pass)
+
+/// Token-guarded transient nudge feedback. The token makes the 2-second
+/// auto-hide timer safe across rapid nudges AND board switches: a board
+/// change clears the notice immediately and bumps the token so the OLD
+/// timer can never mutate a newer notice.
+struct KanbanNudgeNoticeState: Equatable {
+    private(set) var token = 0
+    private(set) var notice: String?
+
+    /// Shows feedback and returns the hide-token the caller's timer must use.
+    mutating func show(_ text: String) -> Int {
+        token += 1
+        notice = text
+        return token
+    }
+
+    /// Hides only the notice instance whose token is still current.
+    mutating func hideIfCurrent(_ id: Int) {
+        if token == id { notice = nil }
+    }
+
+    /// Board/server context changed: drop any visible feedback NOW and bump
+    /// the token so an in-flight old timer cannot clear a later notice.
+    mutating func invalidateOnContextChange() {
+        token += 1
+        notice = nil
+    }
+}
+
 // MARK: - Nudge feedback ownership (V3A final pass)
 
 /// Whether a completed dispatcher nudge may show its success feedback.

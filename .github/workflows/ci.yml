@@ -19,11 +19,11 @@ jobs:
     name: Build & Test
     runs-on: macos-26
     # Outer emergency limit only — wedge detection lives in
-    # scripts/ci-run-tests.sh (per-attempt wall-clock budget of 16 min).
-    # Worst case: ~4 min setup + 2 × (≤3 min bootstatus-bounded reset +
-    # 16 min budget + ~25 s kill/diagnostics) ≈ 43 min, so a bounded run
-    # fits; this cap exists for the residual cases the budget cannot reach
-    # (e.g. a wedged CoreSimulatorService blocking simctl itself).
+    # scripts/ci-run-tests.sh (per-attempt wall-clock budget, temporarily
+    # defaulted to 20 min as a cold-run ceiling). Headroom is tight when a
+    # second full-length attempt is needed; the 45-min cap remains the
+    # ultimate bound, and it exists for the residual cases the budget cannot
+    # reach (e.g. a wedged CoreSimulatorService blocking simctl itself).
     timeout-minutes: 45
 
     steps:
@@ -70,13 +70,15 @@ jobs:
 
       - name: Run tests
         # scripts/ci-run-tests.sh owns the retry loop. Each attempt gets its
-        # own wall-clock budget (default 16 min; healthy runs take 7-13) so a
-        # hung test or wedged simulator is killed and retried instead of
-        # stalling until the 45-min job timeout — which remains the outer
-        # emergency limit, not the wedge-detection mechanism. The script also
-        # boots the simulator before every attempt, streams raw xcodebuild
-        # output into this step's log, and leaves per-attempt logs + any
-        # partial .xcresult bundles for the upload step below.
+        # own wall-clock budget (default 1200 s = 20 min, a temporary
+        # cold-run ceiling; healthy runs take 7-13 min) so a hung test or
+        # wedged simulator is killed and retried instead of stalling until
+        # the 45-min job timeout — which remains the outer emergency limit,
+        # not the wedge-detection mechanism. See the script header for the
+        # exact worst-case caveat. The script also boots the simulator before
+        # every attempt, streams raw xcodebuild output into this step's log,
+        # and leaves per-attempt logs + any partial .xcresult bundles for the
+        # upload step below.
         run: bash scripts/ci-run-tests.sh
 
       - name: Upload test results on failure
