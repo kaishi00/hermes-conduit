@@ -365,11 +365,17 @@ struct KanbanBoardMetadata: Codable, Identifiable, Equatable {
     var defaultWorkspaceKind: String?
     var projectID: String?
     var projectName: String?
+    /// V3B: added from the audited GET /boards contract. Optional metadata is
+    /// decoded tolerantly — a missing/odd icon/color/archived field must
+    /// never make an otherwise usable board disappear.
+    var icon: String?
+    var color: String?
+    var archived: Bool?
 
     var id: String { slug }
 
     enum CodingKeys: String, CodingKey {
-        case slug, name, description
+        case slug, name, description, icon, color, archived
         case isCurrent = "is_current"
         case total
         case defaultWorkdir = "default_workdir"
@@ -389,9 +395,12 @@ struct KanbanBoardMetadata: Codable, Identifiable, Equatable {
         defaultWorkspaceKind = try? container.decodeIfPresent(String.self, forKey: .defaultWorkspaceKind)
         projectID = try? container.decodeIfPresent(String.self, forKey: .projectID)
         projectName = try? container.decodeIfPresent(String.self, forKey: .projectName)
+        icon = try? container.decodeIfPresent(String.self, forKey: .icon)
+        color = try? container.decodeIfPresent(String.self, forKey: .color)
+        archived = try? container.decodeIfPresent(Bool.self, forKey: .archived)
     }
 
-    init(slug: String, name: String? = nil, description: String? = nil, isCurrent: Bool? = nil, total: Int? = nil, defaultWorkdir: String? = nil, defaultWorkspaceKind: String? = nil, projectID: String? = nil, projectName: String? = nil) {
+    init(slug: String, name: String? = nil, description: String? = nil, isCurrent: Bool? = nil, total: Int? = nil, defaultWorkdir: String? = nil, defaultWorkspaceKind: String? = nil, projectID: String? = nil, projectName: String? = nil, icon: String? = nil, color: String? = nil, archived: Bool? = nil) {
         self.slug = slug
         self.name = name
         self.description = description
@@ -401,6 +410,9 @@ struct KanbanBoardMetadata: Codable, Identifiable, Equatable {
         self.defaultWorkspaceKind = defaultWorkspaceKind
         self.projectID = projectID
         self.projectName = projectName
+        self.icon = icon
+        self.color = color
+        self.archived = archived
     }
 }
 
@@ -1057,5 +1069,117 @@ struct KanbanAutoDescribeResponse: Codable, Equatable {
         profile = container.decodeLossyString(forKey: .profile) ?? ""
         reason = try? container.decodeIfPresent(String.self, forKey: .reason)
         description = try? container.decodeIfPresent(String.self, forKey: .description)
+    }
+}
+
+// MARK: - V3B: Board administration wire contracts
+//
+// Audited at NousResearch/hermes-agent f293e7206 (docs/KANBAN_V3B_AUDIT.md):
+// - POST /boards is IDEMPOTENT on slug collision (returns existing metadata;
+//   the response carries no created flag - Conduit never fabricates one).
+// - Tri-state PATCH: omitted = leave unchanged, "" = clear, value = set.
+// - switch is sent explicitly false; Conduit never mutates the server-wide
+//   current-board pointer (POST /boards/{slug}/switch is never called).
+
+/// POST /boards body. slug is validated upstream (lowercase alphanumeric,
+/// 1-64 chars, hyphens/underscores allowed after the first char). project_id
+/// accepts an id or slug and mirrors the project's primary repo into
+/// default_workdir unless default_workdir is passed explicitly. switch is
+/// ALWAYS false from Conduit.
+struct KanbanCreateBoardRequest: Encodable, Equatable {
+    var slug: String
+    var name: String?
+    var description: String?
+    var icon: String?
+    var color: String?
+    var defaultWorkdir: String?
+    var projectID: String?
+    /// Compile-time-enforced: Conduit NEVER asks the server to switch its
+    /// current-board pointer; selection after create is Conduit-local.
+    let switchRequested: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case slug, name, description, icon, color
+        case defaultWorkdir = "default_workdir"
+        case projectID = "project_id"
+        case switchRequested = "switch"
+    }
+
+    init(
+        slug: String,
+        name: String? = nil,
+        description: String? = nil,
+        icon: String? = nil,
+        color: String? = nil,
+        defaultWorkdir: String? = nil,
+        projectID: String? = nil,
+        switchRequested: Bool = false
+    ) {
+        self.slug = slug
+        self.name = name
+        self.description = description
+        self.icon = icon
+        self.color = color
+        self.defaultWorkdir = defaultWorkdir
+        self.projectID = projectID
+        self.switchRequested = switchRequested
+    }
+}
+
+/// PATCH /boards/{slug} body. nil = field omitted (leave unchanged);
+/// "" = clear the field (default_workdir / project_id); value = set
+/// (empty strings NEVER leak from Swift optionals as clears).
+struct KanbanUpdateBoardPatch: Encodable, Equatable {
+    var name: String?
+    var description: String?
+    var icon: String?
+    var color: String?
+    var defaultWorkdir: String?
+    var projectID: String?
+
+    enum CodingKeys: String, CodingKey {
+        case name, description, icon, color
+        case defaultWorkdir = "default_workdir"
+        case projectID = "project_id"
+    }
+
+    init(
+        name: String? = nil,
+        description: String? = nil,
+        icon: String? = nil,
+        color: String? = nil,
+        defaultWorkdir: String? = nil,
+        projectID: String? = nil
+    ) {
+        self.name = name
+        self.description = description
+        self.icon = icon
+        self.color = color
+        self.defaultWorkdir = defaultWorkdir
+        self.projectID = projectID
+    }
+
+    var isEmpty: Bool {
+        name == nil && description == nil && icon == nil && color == nil
+            && defaultWorkdir == nil && projectID == nil
+    }
+}
+
+/// DELETE /boards/{slug} result (archive default; hard-delete never sent).
+struct KanbanDeleteBoardResult: Codable, Equatable {
+    var action: String?
+    var slug: String?
+    var newPath: String?
+
+    enum CodingKeys: String, CodingKey {
+        case action, slug
+        case newPath = "new_path"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        action = try? container.decodeIfPresent(String.self, forKey: .action)
+        slug = try? container.decodeIfPresent(String.self, forKey: .slug)
+        newPath = try? container.decodeIfPresent(String.self, forKey: .newPath)
     }
 }

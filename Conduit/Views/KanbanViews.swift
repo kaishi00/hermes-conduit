@@ -115,6 +115,17 @@ struct KanbanView: View {
     /// Token-guarded so a rapid second nudge OR a board switch invalidates an
     /// older auto-hide timer (a stale timer must never clear a newer notice).
     @State private var nudgeNoticeState = KanbanNudgeNoticeState()
+    /// V3B board administration: editor sheets + staged archive confirmation.
+    @State private var showBoardSettings = false
+    @State private var showNewBoard = false
+    @State private var pendingBoardArchive: PendingBoardArchive?
+    /// V3B filters. Assignee/tenant are TRANSIENT view state (never persisted
+    /// across servers); Show Archived keeps its existing semantics; Group
+    /// Running by Profile is a persisted UI preference (desktop parity).
+    @State private var showFilters = false
+    @State private var assigneeFilter: String?
+    @State private var tenantFilter: String?
+    @AppStorage("conduit.kanbanGroupRunningByProfile") private var groupRunningByProfile = false
 
     private var bridgeIdentity: ObjectIdentifier? {
         appState.dashboardTicketBridge.map { ObjectIdentifier($0) }
@@ -139,20 +150,12 @@ struct KanbanView: View {
 
     private var visibleColumns: [KanbanColumn] {
         guard let board = store.board else { return [] }
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let columns = KanbanStatusPresentation.orderedColumns(board.columns)
-        guard !query.isEmpty else { return columns }
-        return columns.map { column in
-            KanbanColumn(
-                name: column.name,
-                tasks: column.tasks.filter {
-                    $0.title.localizedCaseInsensitiveContains(query)
-                        || $0.body?.localizedCaseInsensitiveContains(query) == true
-                        || $0.latestSummary?.localizedCaseInsensitiveContains(query) == true
-                        || $0.assignee?.localizedCaseInsensitiveContains(query) == true
-                }
-            )
-        }
+        return KanbanBoardFilterPolicy.visibleColumns(
+            board: board,
+            search: searchText,
+            assignee: assigneeFilter,
+            tenant: tenantFilter
+        )
     }
 
     var body: some View {
@@ -244,6 +247,48 @@ struct KanbanView: View {
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
+        .sheet(isPresented: $showBoardSettings) {
+            // Board Settings is tied to the CONCRETE loaded board (never a
+            // re-read of the mutable selection); the button is disabled while
+            // no loaded metadata exists.
+            if let board = loadedBoardMetadata {
+                KanbanBoardEditorView(mode: .settings(board: board), includeArchived: includeArchived)
+                    .environmentObject(store)
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+            }
+        }
+        .sheet(isPresented: $showNewBoard) {
+            KanbanBoardEditorView(mode: .create, includeArchived: includeArchived)
+                .environmentObject(store)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showFilters) {
+            KanbanBoardFilterSheet(
+                includeArchived: $includeArchived,
+                assigneeFilter: $assigneeFilter,
+                tenantFilter: $tenantFilter,
+                groupRunningByProfile: $groupRunningByProfile
+            )
+            .environmentObject(store)
+            .presentationDetents([.medium])
+            .presentationDragIndicator(.visible)
+        }
+        .confirmationDialog(
+            "Archive Board?",
+            isPresented: Binding(
+                get: { pendingBoardArchive != nil },
+                set: { if !$0 { pendingBoardArchive = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: pendingBoardArchive
+        ) { staged in
+            Button("Archive", role: .destructive) { confirmBoardArchive(staged) }
+            Button("Cancel", role: .cancel) { pendingBoardArchive = nil }
+        } message: { staged in
+            Text("Archive “\(staged.displayName)”?\nThe board will be removed from the active board list. Its tasks are not being permanently deleted.")
+        }
         // Permanent deletion from cards is CONFIRMED before the DELETE is
         // issued; the wording matches the detail screen's delete alert. The
         // staged request (task + staging context) is passed BY VALUE through
@@ -274,11 +319,25 @@ struct KanbanView: View {
             // beta) and bumps the token so the old auto-hide timer can never
             // mutate a later notice.
             nudgeNoticeState.invalidateOnContextChange()
+            // V3B: a staged archive, the board-settings/new-board editors and
+            // the filter sheet (board-scoped rosters) belong to the PREVIOUS
+            // board - disarm/dismiss them, and clear transient filters so no
+            // stale roster value lingers in the UI state.
+            pendingBoardArchive = nil
+            showBoardSettings = false
+            showNewBoard = false
+            showFilters = false
+            assigneeFilter = nil
+            tenantFilter = nil
         }
         .onChange(of: serverIdentityKey) { _, _ in
             // Server changed: the admin sheets belonged to the old server.
             showOrchestrationSettings = false
             showProfileRouting = false
+            showBoardSettings = false
+            showNewBoard = false
+            showFilters = false
+            pendingBoardArchive = nil
             nudgeNoticeState.invalidateOnContextChange()
         }
         .task(id: pollingKey) {
@@ -340,6 +399,46 @@ struct KanbanView: View {
         }
     }
 
+    // MARK: - V3B board administration helpers
+
+    /// The metadata of the CONCRETE board currently loaded (nil while
+    /// loading/navigation keeps a stale snapshot visible).
+    private var loadedBoardMetadata: KanbanBoardMetadata? {
+        guard let slug = store.loadedBoardSlug else { return nil }
+        return store.boards.first { $0.slug == slug }
+    }
+
+    /// Archive targets the concrete LOADED board and is refused for the
+    /// backend-immortal default board (remove_board raises; surfaced as 400).
+    private var canArchiveSelectedBoard: Bool {
+        guard let slug = store.loadedBoardSlug,
+              store.isSelectedSnapshotLoaded,
+              !store.isMutating else { return false }
+        return slug != "default"
+    }
+
+    /// Stage the archive BY VALUE (slug + name + board/server stamp) at the
+    /// menu tap; only an explicit confirmation that still owns the stamp may
+    /// archive, and the store revalidates the stamp at its mutation boundary.
+    private func stageBoardArchive() {
+        guard let slug = store.loadedBoardSlug,
+              let stamp = store.loadedContextStamp,
+              store.isSelectedSnapshotLoaded else { return }
+        let name = loadedBoardMetadata?.name ?? slug
+        pendingBoardArchive = PendingBoardArchive(slug: slug, displayName: name, stamp: stamp)
+    }
+
+    private func confirmBoardArchive(_ staged: PendingBoardArchive) {
+        pendingBoardArchive = nil
+        Task {
+            try? await store.archiveBoard(
+                slug: staged.slug,
+                expectedContext: staged.stamp,
+                includeArchived: includeArchived
+            )
+        }
+    }
+
     // MARK: - Lane-based iPhone board
 
     /// Native mobile interaction: horizontally scrolling lane chips over one
@@ -364,15 +463,33 @@ struct KanbanView: View {
             if let column = resolvedLaneColumn(in: columns) {
                 ScrollView(showsIndicators: false) {
                     LazyVStack(spacing: 9) {
-                        ForEach(column.tasks) { task in
-                            KanbanCardView(
-                                task: task,
-                                hasDispatcherFallback: !(store.orchestration?.resolvedDefaultAssignee ?? "").isEmpty,
-                                onOpen: { selectedTask = task },
-                                onMove: { status in Task { await move(task, to: status) } },
-                                onArchive: { Task { await archive(task) } },
-                                onDelete: { stageCardDelete(task) }
-                            )
+                        if KanbanRunningGroupPolicy.shouldApply(lane: column.name, enabled: groupRunningByProfile) {
+                            // V3B: Running grouped by profile - AFTER all
+                            // filters (the column above is already filtered).
+                            ForEach(KanbanRunningGroupPolicy.group(column.tasks)) { group in
+                                runningGroupHeader(group)
+                                ForEach(group.tasks) { task in
+                                    KanbanCardView(
+                                        task: task,
+                                        hasDispatcherFallback: !(store.orchestration?.resolvedDefaultAssignee ?? "").isEmpty,
+                                        onOpen: { selectedTask = task },
+                                        onMove: { status in Task { await move(task, to: status) } },
+                                        onArchive: { Task { await archive(task) } },
+                                        onDelete: { stageCardDelete(task) }
+                                    )
+                                }
+                            }
+                        } else {
+                            ForEach(column.tasks) { task in
+                                KanbanCardView(
+                                    task: task,
+                                    hasDispatcherFallback: !(store.orchestration?.resolvedDefaultAssignee ?? "").isEmpty,
+                                    onOpen: { selectedTask = task },
+                                    onMove: { status in Task { await move(task, to: status) } },
+                                    onArchive: { Task { await archive(task) } },
+                                    onDelete: { stageCardDelete(task) }
+                                )
+                            }
                         }
                     }
                     .padding(.horizontal, 1)
@@ -489,6 +606,29 @@ struct KanbanView: View {
             // Name [ … ]").
             Menu {
                 Button {
+                    showBoardSettings = true
+                } label: {
+                    Label("Board Settings…", systemImage: "slider.vertical.3")
+                }
+                .disabled(loadedBoardMetadata == nil || store.isMutating || !store.isSelectedSnapshotLoaded)
+
+                Button {
+                    showNewBoard = true
+                } label: {
+                    Label("New Board…", systemImage: "square.badge.plus")
+                }
+                .disabled(store.isMutating || !store.isSelectedSnapshotLoaded)
+
+                Button {
+                    stageBoardArchive()
+                } label: {
+                    Label("Archive Board…", systemImage: "archivebox")
+                }
+                .disabled(!canArchiveSelectedBoard)
+
+                Divider()
+
+                Button {
                     showOrchestrationSettings = true
                 } label: {
                     Label("Orchestration Settings…", systemImage: "slider.horizontal.3")
@@ -559,15 +699,51 @@ struct KanbanView: View {
                 }
                 .buttonStyle(.plain)
             }
-            Toggle("Archived", isOn: $includeArchived)
-                .toggleStyle(.switch)
-                .font(.caption)
-                .labelsHidden()
-                .accessibilityLabel("Show archived tasks")
+            // V3B: assignee/tenant/Show Archived/grouping live behind ONE
+            // compact filter button instead of crowding the header.
+            Button {
+                showFilters = true
+            } label: {
+                Image(systemName: filtersActive
+                    ? "line.3.horizontal.decrease.circle.fill"
+                    : "line.3.horizontal.decrease.circle")
+                    .foregroundStyle(filtersActive ? Color.conduitAccent : Color.secondary)
+                    .frame(width: 32, height: 32)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(filtersActive ? "Filters active — open filters" : "Open filters")
+            .accessibilityHint("Shows assignee, tenant, archived, and running grouping options")
+            .disabled(!store.isSelectedSnapshotLoaded)
         }
         .padding(.horizontal, 12)
         .frame(height: 40)
         .conduitGlassControl(cornerRadius: 15)
+    }
+
+    /// Active-filter indication for the filter button (sheet-driven filters:
+    /// archived toggle, grouping preference, assignee, tenant).
+    private var filtersActive: Bool {
+        includeArchived
+            || groupRunningByProfile
+            || !(assigneeFilter ?? "").isEmpty
+            || !(tenantFilter ?? "").isEmpty
+    }
+
+    /// Group header for the grouped Running lane (accessibility-labeled).
+    private func runningGroupHeader(_ group: KanbanRunningGroupPolicy.Group) -> some View {
+        HStack(spacing: 6) {
+            Text(group.displayName)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(String(group.tasks.count))
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.tertiary)
+            Spacer()
+        }
+        .padding(.horizontal, 4)
+        .padding(.top, 6)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(group.displayName), \(group.tasks.count) tasks")
     }
 
     private func move(_ task: KanbanTask, to status: String) async {
