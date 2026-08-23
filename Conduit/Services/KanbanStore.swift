@@ -626,6 +626,193 @@ final class KanbanStore: ObservableObject {
         }
     }
 
+    // MARK: - V3B: Board administration
+
+    /// POST /boards (server-scope: the write targets the server's board
+    /// registry, validated by the configuration generation). switch is never
+    /// requested, so the server-wide current-board pointer is untouched; on
+    /// success Conduit selects the returned concrete slug LOCALLY (persisted
+    /// per dashboard) and reconciles from authoritative state.
+    @discardableResult
+    func createBoard(
+        _ request: KanbanCreateBoardRequest,
+        expectedContext: KanbanBoardContextStamp? = nil,
+        includeArchived: Bool = false
+    ) async throws -> KanbanBoardMetadata {
+        guard !isMutating else {
+            throw recordMutationError(KanbanServiceError.mutationInProgress)
+        }
+        try validateExpectedServerContext(expectedContext)
+        // Defense-in-depth: the UI gates on the derived slug, but the store
+        // refuses a malformed slug before any request reaches the network.
+        guard KanbanBoardSlugPolicy.isValid(request.slug) else {
+            throw recordMutationError(KanbanServiceError.actionDeclined(
+                reason: "Invalid board slug — use 1-64 lowercase letters or numbers with hyphens/underscores."
+            ))
+        }
+        guard let context = makeOperationContext() else {
+            throw recordMutationError(KanbanServiceError.invalidResponse("Kanban is not connected."))
+        }
+        return try await performMutation(context: context, includeArchived: includeArchived, scope: .server) {
+            let created = try await context.service.createBoard(request)
+            // Local selection only: never switch the server pointer.
+            if configurationGeneration == context.configurationGeneration,
+               !created.slug.isEmpty {
+                selectedBoardSlug = created.slug
+                if let persistenceKey { defaults.set(created.slug, forKey: persistenceKey) }
+            }
+            return created
+        }
+    }
+
+    /// PATCH /boards/{slug} tied to the CONCRETE board slug the settings
+    /// sheet was opened for (board-scope full-stamp validation). The network
+    /// target is the captured slug, never whatever board is selected later.
+    @discardableResult
+    func updateBoard(
+        slug: String,
+        patch: KanbanUpdateBoardPatch,
+        expectedContext: KanbanBoardContextStamp,
+        includeArchived: Bool = false
+    ) async throws -> KanbanBoardMetadata {
+        guard !isMutating else {
+            throw recordMutationError(KanbanServiceError.mutationInProgress)
+        }
+        // The explicit target slug must equal the slug inside the shared
+        // ownership stamp (a stale sheet can never PATCH a different board
+        // during the dismissal window). An all-nil patch is a no-op.
+        try validateExpectedBoardTarget(slug: slug, expectedContext: expectedContext)
+        // An all-nil patch is a no-op: never waste a PATCH on it.
+        guard !patch.isEmpty else {
+            if let existing = boards.first(where: { $0.slug == slug }) {
+                return existing
+            }
+            throw recordMutationError(KanbanServiceError.invalidResponse("No board changes to save."))
+        }
+        guard let context = makeOperationContext() else {
+            throw recordMutationError(KanbanServiceError.invalidResponse("Kanban is not connected."))
+        }
+        return try await performMutation(context: context, includeArchived: includeArchived) {
+            let updated = try await context.service.updateBoard(slug: slug, patch: patch)
+            // Adopt the authoritative echo while this mutation still owns the
+            // current generation; the superseding reload refreshes board
+            // metadata + content afterwards.
+            if configurationGeneration == context.configurationGeneration {
+                boards = boards.map { $0.slug == updated.slug ? updated : $0 }
+            }
+            return updated
+        }
+    }
+
+    /// DELETE /boards/{slug} (archive only - the hard-delete query is never
+    /// sent). Staged via PendingBoardArchive and revalidated at this
+    /// boundary. On success the board list is re-fetched authoritatively, the
+    /// LOCAL selection is validated against it, a disappearing selected board
+    /// falls back through the existing rules, and the board is reloaded. The
+    /// server-wide current pointer is never touched by Conduit.
+    /// Archiving the backend-immortal default board is refused up front
+    /// (remove_board raises upstream; this is defense-in-depth so the bubble
+    /// never reaches the network).
+    private func refuseDefaultBoardArchive(_ slug: String) throws {
+        guard slug != "default" else {
+            throw recordMutationError(KanbanServiceError.actionDeclined(
+                reason: "Hermes does not allow archiving the default board."
+            ))
+        }
+    }
+
+    @discardableResult
+    func archiveBoard(
+        slug: String,
+        expectedContext: KanbanBoardContextStamp,
+        includeArchived: Bool = false
+    ) async throws -> Bool {
+        guard !isMutating else {
+            throw recordMutationError(KanbanServiceError.mutationInProgress)
+        }
+        try refuseDefaultBoardArchive(slug)
+        // The staged target slug must equal the slug inside the stamp: a
+        // confirmation staged for alpha can never archive beta (or vice
+        // versa) after the context moved.
+        try validateExpectedBoardTarget(slug: slug, expectedContext: expectedContext)
+        guard let context = makeOperationContext() else {
+            throw recordMutationError(KanbanServiceError.invalidResponse("Kanban is not connected."))
+        }
+        let generation = context.configurationGeneration
+        // Bespoke ownership flow (review W-1..W-4): ONE owned reconciliation
+        // pass after the DELETE, so the partial-success wording survives and
+        // no second superseding reload is issued.
+        guard activeMutationGeneration == nil else {
+            throw recordMutationError(KanbanServiceError.mutationInProgress)
+        }
+        activeMutationGeneration = generation
+        isMutating = true
+        mutationErrorMessage = nil
+        do {
+            let result = try await context.service.archiveBoard(slug: slug)
+            if result.action != "archived" {
+                throw KanbanServiceError.invalidResponse(
+                    "Hermes answered the board delete with an unexpected result: " + (result.action ?? "unknown")
+                )
+            }
+            if configurationGeneration == generation {
+                let refreshFailure = await reconcileAfterBoardRemoval(generation: generation, includeArchived: includeArchived)
+                if let refreshFailure {
+                    // The archive itself succeeded - report the REFRESH
+                    // failure as partial success, never as a failed archive.
+                    errorMessage = KanbanBoardAdminMessage.archiveRefreshFailureMessage(refreshFailure)
+                }
+            }
+            endMutationOwnership(generation: generation)
+            return true
+        } catch {
+            let stillOwnsUI = configurationGeneration == generation && activeMutationGeneration == generation
+            if stillOwnsUI {
+                await reload(includeArchived: includeArchived, superseding: true)
+                mutationErrorMessage = error.localizedDescription
+            }
+            endMutationOwnership(generation: generation)
+            throw error
+        }
+    }
+
+    /// Post-archive reconciliation: refresh the authoritative board list,
+    /// drop a local selection whose slug no longer exists (persisted
+    /// per-dashboard key cleared), and converge the board onto the fallback
+    /// with ONE superseding reload.
+    ///
+    /// Returns the refresh failure detail (from the boards fetch OR the
+    /// convergence reload) while the generation is still current, so the
+    /// CALLER owns the wording: the archive itself succeeded, so any failure
+    /// here is the partial-success refresh channel.
+    @discardableResult
+    func reconcileAfterBoardRemoval(generation: Int, includeArchived: Bool) async -> String? {
+        guard configurationGeneration == generation, let service else { return nil }
+        do {
+            let response = try await service.fetchBoards()
+            guard configurationGeneration == generation else { return nil }
+            boards = response.boards
+            currentServerBoardSlug = response.current
+            if !selectedBoardSlug.isEmpty,
+               !boards.contains(where: { $0.slug == selectedBoardSlug }) {
+                selectedBoardSlug = ""
+                if let persistenceKey { defaults.removeObject(forKey: persistenceKey) }
+            }
+            errorMessage = nil
+            // Converge on the validated selection (fallback = server current).
+            await reload(includeArchived: includeArchived, superseding: true)
+            if configurationGeneration == generation, let errorMessage {
+                return errorMessage
+            }
+            return nil
+        } catch {
+            if configurationGeneration == generation {
+                return error.localizedDescription
+            }
+            return nil
+        }
+    }
+
     func clearMutationError() {
         mutationErrorMessage = nil
     }
@@ -652,6 +839,25 @@ final class KanbanStore: ObservableObject {
     private func validateExpectedContext(_ expectedContext: KanbanBoardContextStamp?) throws {
         guard let expectedContext else { return }
         guard isSelectedSnapshotLoaded, loadedContextStamp == expectedContext else {
+            throw recordMutationError(KanbanServiceError.boardNavigationInProgress)
+        }
+    }
+
+    /// Board-administration target binding (V3B final pass): the EXPLICIT
+    /// target board slug must equal the board slug contained in the (REQUIRED)
+    /// ownership stamp — and the stamp must still prove the currently
+    /// actionable loaded context. A stale Board Settings sheet (target slug
+    /// alpha) combined with a newly current context (stamp beta) can
+    /// therefore never PATCH or DELETE alpha during the sheet-dismiss window.
+    /// The stamp is non-optional BY TYPE: a board-targeted admin mutation can
+    /// never run without ownership. Back-to-back with makeOperationContext()
+    /// on the MainActor, before any suspension.
+    private func validateExpectedBoardTarget(
+        slug: String,
+        expectedContext: KanbanBoardContextStamp
+    ) throws {
+        try validateExpectedContext(expectedContext)
+        guard expectedContext.boardSlug == slug else {
             throw recordMutationError(KanbanServiceError.boardNavigationInProgress)
         }
     }

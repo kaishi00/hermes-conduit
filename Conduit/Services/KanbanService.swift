@@ -326,37 +326,44 @@ final class KanbanService {
         pendingDispatcherNudge = nil
     }
 
-    func createBoard(slug: String, name: String, projectID: String? = nil) async throws -> KanbanBoardMetadata {
-        struct Body: Encodable {
-            let slug: String
-            let name: String
-            let projectID: String?
-            enum CodingKeys: String, CodingKey { case slug, name; case projectID = "project_id" }
-        }
+    /// POST /boards (V3B). The upstream contract is idempotent on slug
+    /// collision (create_board returns existing metadata) and validates the
+    /// slug (lowercase alnum, 1-64 chars, \-_ allowed after the first char).
+    /// switch is sent EXPLICITLY false: Conduit never mutates the server-wide
+    /// current-board pointer; selection after create is Conduit-local.
+    func createBoard(_ payload: KanbanCreateBoardRequest) async throws -> KanbanBoardMetadata {
         let response = try await request(
             path: scoped(Self.namespace + "/boards"),
             method: "POST",
-            body: try encodedDictionary(Body(slug: slug, name: name, projectID: projectID))
+            body: try encodedDictionary(payload)
         )
         return try decodeResponse(BoardEnvelope.self, from: response).board
     }
 
-    func updateBoard(slug: String, name: String?, description: String?, defaultWorkdir: String?) async throws -> KanbanBoardMetadata {
-        struct Body: Encodable {
-            let name: String?
-            let description: String?
-            let defaultWorkdir: String?
-            enum CodingKeys: String, CodingKey {
-                case name, description
-                case defaultWorkdir = "default_workdir"
-            }
-        }
+    /// PATCH /boards/{slug} (V3B). Tri-state field semantics match upstream
+    /// RenameBoardBody: omitted = leave unchanged, "" = clear (workdir /
+    /// project), value = set (workdir validated server-side). Slug immutable.
+    func updateBoard(slug: String, patch: KanbanUpdateBoardPatch) async throws -> KanbanBoardMetadata {
         let response = try await request(
             path: scoped(Self.namespace + "/boards/" + (try pathComponent(slug))),
             method: "PATCH",
-            body: try encodedDictionary(Body(name: name, description: description, defaultWorkdir: defaultWorkdir))
+            body: try encodedDictionary(patch)
         )
         return try decodeResponse(BoardEnvelope.self, from: response).board
+    }
+
+    /// DELETE /boards/{slug} WITHOUT the delete query → upstream archives the
+    /// board (moves its directory under _archived/; recoverable). The
+    /// hard-delete query option is intentionally never sent by Conduit. The
+    /// result envelope is decoded so the caller can verify the action really
+    /// was an archive.
+    func archiveBoard(slug: String) async throws -> KanbanDeleteBoardResult {
+        let response = try await request(
+            path: scoped(Self.namespace + "/boards/" + (try pathComponent(slug))),
+            method: "DELETE",
+            body: nil
+        )
+        return try decodeResponse(DeleteBoardEnvelope.self, from: response).result
     }
 
     // MARK: - Transport helpers
@@ -432,6 +439,7 @@ final class KanbanService {
 
     private struct TaskEnvelope: Decodable { let task: KanbanTask? }
     private struct BoardEnvelope: Decodable { let board: KanbanBoardMetadata }
+    private struct DeleteBoardEnvelope: Decodable { let result: KanbanDeleteBoardResult }
     private struct ProfileDescriptionBody: Encodable { let description: String }
     private struct TriageActionAuthorBody: Encodable { let author: String }
 
