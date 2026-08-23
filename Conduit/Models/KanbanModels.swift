@@ -1275,3 +1275,67 @@ struct KanbanBulkFailure: Equatable {
     let id: String
     let reason: String
 }
+
+// MARK: - V3D: Live event wire contracts (invalidation only)
+//
+// Audited at NousResearch/hermes-agent 4a3e5c409 (docs/KANBAN_V3D_AUDIT.md):
+// frames are {"events":[{id, task_id, run_id, kind, payload, created_at}],
+// "cursor":N}. Conduit decodes ONLY what invalidation needs (id + task_id);
+// kind/payload/run_id/created_at are deliberately NOT modeled - REST is the
+// sole authority and unknown future event kinds must invalidate without a
+// Conduit update.
+
+struct KanbanLiveEvent: Decodable, Equatable {
+    /// Malformed/missing ids decode to nil and never crash the stream loop.
+    var id: Int?
+    /// Blank/missing task IDs still count for board invalidation but never
+    /// touch a detail surface.
+    var taskID: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case taskID = "task_id"
+    }
+
+    init(id: Int? = nil, taskID: String? = nil) {
+        self.id = id
+        self.taskID = taskID
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = (try? container.decodeIfPresent(Int.self, forKey: .id)) ?? nil
+        taskID = (try? container.decodeIfPresent(String.self, forKey: .taskID)) ?? nil
+    }
+}
+
+struct KanbanEventFrame: Decodable, Equatable {
+    var events: [KanbanLiveEvent]
+    var cursor: Int?
+
+    init(events: [KanbanLiveEvent] = [], cursor: Int? = nil) {
+        self.events = events
+        self.cursor = cursor
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        // Per-element tolerance (review S1): ONE malformed event must not
+        // drop the whole frame's invalidation value - malformed elements are
+        // skipped individually. KanbanLiveEvent's own decoder never throws,
+        // so every successful advance appends exactly one entry.
+        var decoded: [KanbanLiveEvent] = []
+        if var nested = try? container.nestedUnkeyedContainer(forKey: .events) {
+            let total = nested.count ?? 0
+            for _ in 0..<total {
+                if let event = try? nested.decode(KanbanLiveEvent.self) {
+                    decoded.append(event)
+                }
+            }
+        }
+        events = decoded
+        cursor = (try? container.decodeIfPresent(Int.self, forKey: .cursor)) ?? nil
+    }
+
+    enum CodingKeys: String, CodingKey { case events, cursor }
+}
