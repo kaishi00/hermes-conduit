@@ -50,9 +50,14 @@ struct KanbanTaskDetailView: View {
     @State private var showDeleteConfirmation = false
     /// Triage actions (V3A): Specify / Decompose are offered ONLY for
     /// eligible (triage) tasks, and Decompose always requires confirmation.
+    /// Both actions freeze the task identity + board/server stamp AT THE TAP
+    /// (PendingTriageAction) and the store revalidates the stamp at its
+    /// mutation boundary; Decompose additionally stages its PendingTriageAction
+    /// BY VALUE through the confirmation dialog, so confirming an action
+    /// staged for task A can never act on task B after navigation.
     @State private var isSpecifying = false
     @State private var isDecomposing = false
-    @State private var showDecomposeConfirmation = false
+    @State private var pendingDecompose: PendingTriageAction?
     @State private var actionNotice: String?
     @State private var showReassignSheet = false
     @State private var showModelSheet = false
@@ -244,7 +249,7 @@ struct KanbanTaskDetailView: View {
                 showDeleteConfirmation = false
                 isSpecifying = false
                 isDecomposing = false
-                showDecomposeConfirmation = false
+                pendingDecompose = nil
                 actionNotice = nil
                 title = ""
                 taskBody = ""
@@ -306,13 +311,23 @@ struct KanbanTaskDetailView: View {
             }
             .confirmationDialog(
                 KanbanTriageActionsPolicy.decomposeConfirmationTitle,
-                isPresented: $showDecomposeConfirmation,
-                titleVisibility: .visible
-            ) {
-                Button("Decompose") { Task { await decomposeTask() } }
-                Button("Cancel", role: .cancel) {}
-            } message: {
+                isPresented: Binding(
+                    get: { pendingDecompose != nil },
+                    set: { if !$0 { pendingDecompose = nil } }
+                ),
+                titleVisibility: .visible,
+                presenting: pendingDecompose
+            ) { staged in
+                Button("Decompose") { confirmDecompose(staged) }
+                Button("Cancel", role: .cancel) { pendingDecompose = nil }
+            } message: { _ in
                 Text(KanbanTriageActionsPolicy.decomposeConfirmationMessage)
+            }
+            // Proactive disarm: when the loaded board identity changes, any
+            // staged triage action is now foreign. The confirm-time store
+            // stamp revalidation remains the hard boundary.
+            .onChange(of: store.loadedBoardSlug) { _, _ in
+                pendingDecompose = nil
             }
         }
     }
@@ -505,7 +520,18 @@ struct KanbanTaskDetailView: View {
         if KanbanTriagePolicy.isEligible(task: displayedTask) {
             ConduitSettingsSection(title: "Triage Actions", symbol: "tray.and.arrow.down", tint: .conduitAccent) {
                 Button {
-                    Task { await specifyTask() }
+                    // V3A final pass: capture the task identity + board/server
+                    // stamp SYNCHRONOUSLY at the tap, then schedule. The store
+                    // revalidates the stamp at its mutation boundary; a task
+                    // shown as A at tap time can never be specified as B.
+                    guard let pending = PendingTriageAction.capture(
+                        task: displayedTask,
+                        isSnapshotActionable: store.isSelectedSnapshotLoaded,
+                        stamp: store.loadedContextStamp
+                    ) else { return }
+                    isSpecifying = true
+                    errorMessage = nil
+                    Task { await specifyTask(pending: pending) }
                 } label: {
                     HStack {
                         Spacer()
@@ -519,11 +545,17 @@ struct KanbanTaskDetailView: View {
 
                 Button {
                     // Decompose may create and assign multiple dependent
-                    // tasks: it is ALWAYS confirmation-gated (the action
-                    // policy answers, never the view directly).
-                    if KanbanTriageActionsPolicy.decomposeTap() == .confirm {
-                        showDecomposeConfirmation = true
-                    }
+                    // tasks: it is ALWAYS confirmation-gated, and the
+                    // confirmation is bound BY VALUE to the task/context
+                    // staged at this tap (the action policy answers, never
+                    // the view directly).
+                    guard KanbanTriageActionsPolicy.decomposeTap() == .confirm,
+                          let pending = PendingTriageAction.capture(
+                              task: displayedTask,
+                              isSnapshotActionable: store.isSelectedSnapshotLoaded,
+                              stamp: store.loadedContextStamp
+                          ) else { return }
+                    pendingDecompose = pending
                 } label: {
                     HStack {
                         Spacer()
@@ -535,6 +567,18 @@ struct KanbanTaskDetailView: View {
                 .disabled(isSpecifying || isDecomposing)
             }
         }
+    }
+
+    /// Confirmation of a STAGED action only: the staged task identity and
+    /// stamp are passed BY VALUE to the store, which revalidates the stamp
+    /// back-to-back with its operation-context capture. After task
+    /// navigation, board switching, or server reconfiguration the stale
+    /// confirmation is discarded without any request.
+    private func confirmDecompose(_ staged: PendingTriageAction) {
+        pendingDecompose = nil
+        isDecomposing = true
+        errorMessage = nil
+        Task { await decomposeTask(pending: staged) }
     }
 
     private var readyUnassignedCallout: some View {
@@ -1150,18 +1194,19 @@ struct KanbanTaskDetailView: View {
     /// authoritative reload and this screen re-syncs the detail from the
     /// server. A semantic {ok:false} refusal surfaces the backend reason
     /// and leaves the task entirely intact.
-    private func specifyTask() async {
-        guard let startedTask = displayedTask else { return }
-        let expectedID = displayedTaskID
-        isSpecifying = true
-        errorMessage = nil
+    private func specifyTask(pending: PendingTriageAction) async {
+        // The mutation identity is the STAGED value, never a re-read of the
+        // mutable display state: an action started for A must finish as A
+        // (or fail closed), even after the user navigates to B.
+        let expectedID = pending.taskID
+        let expectedContext = pending.context
         defer {
             if KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) {
                 isSpecifying = false
             }
         }
         do {
-            _ = try await store.specifyTask(id: startedTask.id)
+            _ = try await store.specifyTask(id: expectedID, expectedContext: expectedContext)
             guard KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) else { return }
             actionNotice = KanbanTriageActionsPolicy.successNoticeWithRefreshFailure(
                 base: "Task specified",
@@ -1180,18 +1225,20 @@ struct KanbanTaskDetailView: View {
     /// into cards. A refresh failure AFTER a successful mutation is
     /// reported as partial success — the action succeeded, only the
     /// refresh failed (the passive poll recovers it).
-    private func decomposeTask() async {
-        guard let startedTask = displayedTask else { return }
-        let expectedID = displayedTaskID
-        isDecomposing = true
-        errorMessage = nil
+    private func decomposeTask(pending: PendingTriageAction) async {
+        // The staged confirmation value is the only valid identity: the
+        // store revalidates its stamp before issuing anything, and this
+        // completion stays UI-inert unless the displayed task is still the
+        // staged one.
+        let expectedID = pending.taskID
+        let expectedContext = pending.context
         defer {
             if KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) {
                 isDecomposing = false
             }
         }
         do {
-            let response = try await store.decomposeTask(id: startedTask.id)
+            let response = try await store.decomposeTask(id: expectedID, expectedContext: expectedContext)
             guard KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) else { return }
             let base = KanbanTriageActionsPolicy.successNotice(fanout: response.fanout, childCount: response.childIDs.count) ?? "Decompose succeeded"
             // PARTIAL SUCCESS distinction: the mutation landed, so any

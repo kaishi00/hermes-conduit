@@ -27,6 +27,9 @@ struct KanbanOrchestrationSettingsSheet: View {
     @State private var isSaving = false
     @State private var notice: String?
     @State private var errorMessage: String?
+    /// Local busy-flag ownership (V3A final pass): the operation that started
+    /// isSaving owns its release, independent of server generations.
+    @State private var liveness = KanbanEditorLiveness()
 
     private struct Seed: Equatable {
         var autoDecompose: Bool
@@ -130,21 +133,30 @@ struct KanbanOrchestrationSettingsSheet: View {
                             }
                         }
                     }
+                    // V3A final pass: no control may be edited while a Save is
+                    // in flight, so a completion can structurally never
+                    // clobber a post-submit edit. The busy state itself is
+                    // established synchronously by saveTapped() BEFORE the
+                    // Task is spawned.
+                    .disabled(isSaving)
                 }
             }
             .navigationTitle("Orchestration Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
+                    // F-3: no dismissing mid-save - the busy flow owns the
+                    // sheet until it lands or fails.
                     Button("Close") { dismiss() }
+                        .disabled(isSaving)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
-                        Task { await save() }
+                        saveTapped()
                     } label: {
                         if isSaving { ProgressView() } else { Text("Save") }
                     }
-                    .disabled(!hasChanges || isSaving)
+                    .disabled(!hasChanges || isSaving || !store.isSelectedSnapshotLoaded)
                 }
             }
             .onAppear(perform: seedOnce)
@@ -177,25 +189,41 @@ struct KanbanOrchestrationSettingsSheet: View {
         )
     }
 
-    private func save() async {
-        guard hasChanges, !patch.isEmpty else { return }
-        // Freeze server/board ownership BEFORE the suspension: a completion
-        // from a stale generation is UI-inert (its echo must not re-base this
-        // sheet against a server that no longer owns the screen).
+    /// V3A final pass: Save tap freezes the draft VALUES (via the computed
+    /// patch), the board/server stamp, the server generation, and the busy
+    /// state synchronously BEFORE any Task is spawned. Orchestration is
+    /// server-global on the wire, but the loaded board/server stamp is still
+    /// the UI ownership token: a sheet seeded from server A can never write
+    /// its draft to B after a reconfiguration.
+    private func saveTapped() {
+        guard !isSaving, hasChanges, !patch.isEmpty,
+              store.isSelectedSnapshotLoaded,
+              let stamp = store.loadedContextStamp else { return }
+        let patch = patch
         let generation = store.currentConfigurationGeneration
+        let operationID = liveness.begin()
         isSaving = true
         errorMessage = nil
         notice = nil
-        defer {
-            if store.isCurrentConfiguration(generation) {
-                isSaving = false
-            }
+        Task {
+            await performSave(patch: patch, context: stamp, generation: generation, operationID: operationID)
         }
+    }
+
+    private func performSave(
+        patch: KanbanOrchestrationPatch,
+        context: KanbanBoardContextStamp,
+        generation: Int,
+        operationID: Int
+    ) async {
         do {
             // Re-seed from the authoritative echo (when available) so a later
             // poll cannot present stale "unsaved changes"; if the refresh
             // failed the saved draft values still become the new baseline.
-            let updated = try await store.updateOrchestration(patch)
+            let updated = try await store.updateOrchestration(patch, expectedContext: context)
+            // Local busy release is owned by THIS operation, never by the
+            // server generation (a stale completion still releases it).
+            if liveness.owns(operationID) { isSaving = false }
             guard store.isCurrentConfiguration(generation) else { return }
             autoDecompose = updated?.autoDecompose ?? autoDecompose
             autoPromoteChildren = updated?.autoPromoteChildren ?? autoPromoteChildren
@@ -209,6 +237,7 @@ struct KanbanOrchestrationSettingsSheet: View {
             )
             notice = "Orchestration settings saved."
         } catch {
+            if liveness.owns(operationID) { isSaving = false }
             guard store.isCurrentConfiguration(generation) else { return }
             // The store owns the current-generation error presentation too;
             // the inline copy keeps the sheet self-contained.

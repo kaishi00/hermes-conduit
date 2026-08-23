@@ -1,6 +1,6 @@
 # Kanban V3A — Upstream Audit (authoritative contract basis)
 
-- Upstream repo: NousResearch/hermes-agent (clone: C:\Users\Micro\AppData\Local\Temp\hermes-agent-upstream)
+- Upstream repo: https://github.com/NousResearch/hermes-agent (clone at any revision >= the audited commit and diff against it)
 - Audited revision: **fd760435c6688a2b6c6b7436dde30e267237baef** ("test(bedrock): make the botocore stub windows airtight — kills the vendored-import flake")
 - Commit date: 2026-08-22 19:30:10 -0700
 - Audit date: 2026-08-23 (session)

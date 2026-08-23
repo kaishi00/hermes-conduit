@@ -98,6 +98,10 @@ struct KanbanProfileDescriptionEditorView: View {
     @State private var notice: String?
     @State private var errorMessage: String?
     @State private var showDiscardConfirmation = false
+    /// Local busy-flag ownership: the operation that STARTED isSaving/
+    /// isGenerating owns their release, independent of server generations
+    /// (a stale completion must still release the flags it owns).
+    @State private var liveness = KanbanEditorLiveness()
 
     init(profile: KanbanProfile) {
         self.profile = profile
@@ -139,8 +143,12 @@ struct KanbanProfileDescriptionEditorView: View {
             }
 
             Section {
+                // V3A final pass: the identity (profile name), the board/server
+                // stamp, the SUBMITTED value and the busy state are all frozen
+                // synchronously in the button action (saveTapped) BEFORE any
+                // Task is spawned - closing the tap -> Task-scheduling gap.
                 Button {
-                    Task { await save() }
+                    saveTapped()
                 } label: {
                     HStack {
                         Spacer()
@@ -148,7 +156,7 @@ struct KanbanProfileDescriptionEditorView: View {
                         Spacer()
                     }
                 }
-                .disabled(!isDirty || isSaving || isGenerating)
+                .disabled(!isDirty || isSaving || isGenerating || !store.isSelectedSnapshotLoaded)
 
                 Button {
                     requestGenerate()
@@ -159,7 +167,7 @@ struct KanbanProfileDescriptionEditorView: View {
                         Spacer()
                     }
                 }
-                .disabled(isSaving || isGenerating)
+                .disabled(isSaving || isGenerating || !store.isSelectedSnapshotLoaded)
             }
 
             if let errorMessage {
@@ -188,7 +196,7 @@ struct KanbanProfileDescriptionEditorView: View {
                 // Explicitly drop the unsaved draft BEFORE generating (the
                 // generation would otherwise persist over the editor's draft).
                 draft = KanbanProfileDescriptionPolicy.discard(draft: draft, baseline: baseline.description)
-                Task { await generate() }
+                startGenerate()
             }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -197,70 +205,157 @@ struct KanbanProfileDescriptionEditorView: View {
         .interactiveDismissDisabled(isSaving || isGenerating)
     }
 
+    // MARK: - V3A final pass: synchronous tap handlers
+
+    /// Save tap: freezes profile identity, board/server stamp, the SUBMITTED
+    /// (trimmed) value, the server generation, and the busy state - all
+    /// synchronously, BEFORE the Task is spawned. An editor opened for server
+    /// A / profile X can therefore never save against server B / profile X,
+    /// and a newer local edit made while the request is pending is never
+    /// marked saved (the submission is frozen by value).
+    private func saveTapped() {
+        guard isDirty, !isSaving, !isGenerating,
+              store.isSelectedSnapshotLoaded,
+              let stamp = store.loadedContextStamp else { return }
+        isSaving = true
+        errorMessage = nil
+        notice = nil
+        let submitted = trimmedDraft
+        let sessionProfile = profile.name
+        let generation = store.currentConfigurationGeneration
+        let operationID = liveness.begin()
+        Task {
+            await performSave(
+                submitted: submitted,
+                sessionProfile: sessionProfile,
+                context: stamp,
+                generation: generation,
+                operationID: operationID
+            )
+        }
+    }
+
+    private func performSave(
+        submitted: String,
+        sessionProfile: String,
+        context: KanbanBoardContextStamp,
+        generation: Int,
+        operationID: Int
+    ) async {
+        do {
+            try await store.updateProfileDescription(
+                profile: sessionProfile,
+                description: submitted,
+                expectedContext: context
+            )
+            // Local busy release is owned by THIS operation, never by the
+            // server generation (a stale completion still releases it).
+            if liveness.owns(operationID) { isSaving = false }
+            guard store.isCurrentConfiguration(generation) else { return }
+            // Server/UI result applies only while this operation still owns
+            // the current lifecycle AND the editor still edits this profile.
+            let outcome = KanbanProfileDescriptionPolicy.saveCompletion(
+                submitted: submitted,
+                currentRawDraft: draft,
+                currentTrimmedDraft: trimmedDraft
+            )
+            baseline = KanbanProfileDescriptionPolicy.Snapshot(
+                profile: sessionProfile,
+                description: outcome.baselineDescription,
+                isAuto: outcome.baselineIsAuto
+            )
+            draft = outcome.draft
+            errorMessage = nil
+            notice = outcome.notice
+        } catch {
+            if liveness.owns(operationID) { isSaving = false }
+            guard store.isCurrentConfiguration(generation) else { return }
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Requests generation, honoring the dirty-draft gate.
     private func requestGenerate() {
         switch KanbanProfileDescriptionPolicy.resolveGenerate(draft: trimmedDraft, baseline: baseline.description) {
         case .allowed:
-            Task { await generate() }
+            startGenerate()
         case .requiresDiscard:
             // Never silently overwrite an unsaved manual draft.
             showDiscardConfirmation = true
         }
     }
 
-    private func save() async {
-        // Freeze the server/board ownership BEFORE the first suspension point:
-        // a completion from a stale generation is UI-inert - it must not
-        // rewrite the editor's baseline/draft or show "saved" for a server
-        // that no longer owns this screen (review W-1).
-        let sessionProfile = profile.name
-        let generation = store.currentConfigurationGeneration
-        isSaving = true
-        errorMessage = nil
-        notice = nil
-        defer {
-            if store.isCurrentConfiguration(generation) {
-                isSaving = false
-            }
-        }
-        do {
-            try await store.updateProfileDescription(profile: sessionProfile, description: trimmedDraft)
-            guard store.isCurrentConfiguration(generation) else { return }
-            baseline = KanbanProfileDescriptionPolicy.Snapshot(profile: sessionProfile, description: trimmedDraft, isAuto: false)
-            draft = trimmedDraft
-            notice = "Description saved."
-        } catch {
-            guard store.isCurrentConfiguration(generation) else { return }
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    private func generate() async {
-        let sessionProfile = profile.name
-        let generation = store.currentConfigurationGeneration
+    /// Generate tap (or confirmed discard-and-generate): freezes the profile
+    /// identity, board/server stamp, the editor snapshot AT SUBMISSION, the
+    /// server generation and the busy state synchronously, before any Task.
+    /// The submission snapshot is what generation later compares against:
+    /// newer manual typing (after submission) is preserved, never clobbered
+    /// by the generated server value.
+    private func startGenerate() {
+        guard !isGenerating, !isSaving,
+              store.isSelectedSnapshotLoaded,
+              let stamp = store.loadedContextStamp else { return }
         isGenerating = true
         errorMessage = nil
         notice = nil
-        defer {
-            if store.isCurrentConfiguration(generation) {
-                isGenerating = false
-            }
+        // TRIMMED, matching saveTapped: generateCompletion compares
+        // trimmed/trimmed, so a whitespace-ragged submission is never
+        // misclassified as "newer typing" (review F-1).
+        let submittedDraft = trimmedDraft
+        let sessionProfile = profile.name
+        let generation = store.currentConfigurationGeneration
+        let operationID = liveness.begin()
+        Task {
+            await performGenerate(
+                submittedDraft: submittedDraft,
+                sessionProfile: sessionProfile,
+                context: stamp,
+                generation: generation,
+                operationID: operationID
+            )
         }
+    }
+
+    private func performGenerate(
+        submittedDraft: String,
+        sessionProfile: String,
+        context: KanbanBoardContextStamp,
+        generation: Int,
+        operationID: Int
+    ) async {
         do {
             // Generated text is persisted server-side immediately with
             // description_auto=true; the editor adopts the authoritative text.
-            let outcome = try await store.autoDescribeProfile(profile: sessionProfile, overwrite: true)
+            let outcome = try await store.autoDescribeProfile(
+                profile: sessionProfile,
+                overwrite: true,
+                expectedContext: context
+            )
+            if liveness.owns(operationID) { isGenerating = false }
             guard store.isCurrentConfiguration(generation) else { return }
             if outcome.ok {
                 let generated = outcome.description ?? ""
-                baseline = KanbanProfileDescriptionPolicy.Snapshot(profile: sessionProfile, description: generated, isAuto: true)
-                draft = generated
-                notice = "Generated automatically — review recommended."
+                let completion = KanbanProfileDescriptionPolicy.generateCompletion(
+                    submittedDraft: submittedDraft,
+                    currentRawDraft: draft,
+                    currentTrimmedDraft: trimmedDraft,
+                    generated: generated
+                )
+                baseline = KanbanProfileDescriptionPolicy.Snapshot(
+                    profile: sessionProfile,
+                    description: completion.baselineDescription,
+                    isAuto: completion.baselineIsAuto
+                )
+                draft = completion.draft
+                errorMessage = nil
+                notice = completion.notice
             } else {
                 // Semantic refusal (e.g. "no auxiliary client configured"):
                 // the backend reason IS the product semantics.
                 errorMessage = outcome.reason ?? "Hermes could not generate a description."
             }
         } catch {
+            if liveness.owns(operationID) { isGenerating = false }
             guard store.isCurrentConfiguration(generation) else { return }
             errorMessage = error.localizedDescription
         }

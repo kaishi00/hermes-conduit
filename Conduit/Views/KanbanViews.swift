@@ -128,6 +128,16 @@ struct KanbanView: View {
         "\(String(describing: bridgeIdentity))|\(appState.dashboardTicketBridge?.baseURL ?? "")|archived=\(includeArchived)"
     }
 
+    /// Server identity only (bridge + URL). When THIS changes, administrator
+    /// sheets (orchestration settings / profiles) owned by the old server
+    /// must not remain open over the new one: a settings editor seeded from
+    /// A would otherwise sit on top of B. Board selection within the same
+    /// server does NOT dismiss them (their data is server-global), and
+    /// ordinary board polling never changes this key.
+    private var serverIdentityKey: String {
+        "\(String(describing: bridgeIdentity))|\(appState.dashboardTicketBridge?.baseURL ?? "")"
+    }
+
     private var visibleColumns: [KanbanColumn] {
         guard let board = store.board else { return [] }
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -261,6 +271,12 @@ struct KanbanView: View {
         .onChange(of: store.loadedBoardSlug) { _, _ in
             pendingDelete = nil
         }
+        .onChange(of: serverIdentityKey) { _, _ in
+            // Server changed: the admin sheets belonged to the old server.
+            showOrchestrationSettings = false
+            showProfileRouting = false
+            nudgeNotice = nil
+        }
         .task(id: pollingKey) {
             selectedTask = nil
             store.configure(
@@ -281,13 +297,27 @@ struct KanbanView: View {
     }
 
     /// Manual dispatcher nudge (V3A §5): a lightweight board action with
-    /// unobtrusive feedback. The store owns board/server context safety and
-    /// the current-generation error presentation; this view only adds the
-    /// transient "Dispatcher nudged" notice on success. No diagnostics are
-    /// fabricated from the backend response (the desktop renders none either).
-    private func nudgeDispatcher() async {
+    /// unobtrusive feedback. The board/server stamp is captured
+    /// SYNCHRONOUSLY by nudgeTapped() before any Task; the store revalidates
+    /// it at its mutation boundary. No diagnostics are fabricated from the
+    /// backend response (the desktop renders none either).
+    private func nudgeTapped() {
+        guard !store.isMutating, store.isSelectedSnapshotLoaded,
+              let stamp = store.loadedContextStamp else { return }
+        Task { await nudgeDispatcher(context: stamp) }
+    }
+
+    private func nudgeDispatcher(context: KanbanBoardContextStamp) async {
         do {
-            try await store.nudgeDispatcher(includeArchived: includeArchived)
+            try await store.nudgeDispatcher(expectedContext: context, includeArchived: includeArchived)
+            // V3A final pass: a /dispatch that succeeded on the OLD server
+            // after the UI moved elsewhere is UI-inert - its success must
+            // never surface as feedback on the new context.
+            guard KanbanNudgePolicy.shouldShowNotice(
+                capturedStamp: context,
+                currentStamp: store.loadedContextStamp,
+                isSnapshotActionable: store.isSelectedSnapshotLoaded
+            ) else { return }
             nudgeNoticeToken += 1
             let token = nudgeNoticeToken
             withAnimation(.easeOut(duration: 0.15)) { nudgeNotice = "Dispatcher nudged" }
@@ -468,7 +498,10 @@ struct KanbanView: View {
                 Divider()
 
                 Button {
-                    Task { await nudgeDispatcher() }
+                    // V3A final pass: capture the board/server stamp
+                    // SYNCHRONOUSLY at the tap; a nudge staged for A can
+                    // never fire against B.
+                    nudgeTapped()
                 } label: {
                     Label("Nudge Dispatcher", systemImage: "arrow.forward.circle")
                 }

@@ -461,10 +461,19 @@ final class KanbanStore: ObservableObject {
     /// post-mutation superseding reload refreshes GET /orchestration).
     /// Upstream does NOT nudge the dispatcher for settings saves.
     @discardableResult
-    func updateOrchestration(_ patch: KanbanOrchestrationPatch, includeArchived: Bool = false) async throws -> KanbanOrchestrationSettings? {
+    func updateOrchestration(
+        _ patch: KanbanOrchestrationPatch,
+        expectedContext: KanbanBoardContextStamp? = nil,
+        includeArchived: Bool = false
+    ) async throws -> KanbanOrchestrationSettings? {
         guard !isMutating else {
             throw recordMutationError(KanbanServiceError.mutationInProgress)
         }
+        // Orchestration is SERVER-GLOBAL on the wire (no board query): the
+        // captured stamp is validated on its configuration GENERATION only,
+        // so a same-server board switch never aborts a valid settings save,
+        // while a server reconfigure still fails closed (review F-2).
+        try validateExpectedServerContext(expectedContext)
         guard let context = makeOperationContext() else {
             throw recordMutationError(KanbanServiceError.invalidResponse("Kanban is not connected."))
         }
@@ -484,10 +493,18 @@ final class KanbanStore: ObservableObject {
 
     /// PATCH /profiles/{name} {description}. Not dispatcher-relevant upstream
     /// (the desktop saves descriptions without a nudge).
-    func updateProfileDescription(profile: String, description: String, includeArchived: Bool = false) async throws {
+    func updateProfileDescription(
+        profile: String,
+        description: String,
+        expectedContext: KanbanBoardContextStamp? = nil,
+        includeArchived: Bool = false
+    ) async throws {
         guard !isMutating else {
             throw recordMutationError(KanbanServiceError.mutationInProgress)
         }
+        // Server-global endpoint: generation-scoped validation (see
+        // updateOrchestration for the F-2 rationale).
+        try validateExpectedServerContext(expectedContext)
         guard let context = makeOperationContext() else {
             throw recordMutationError(KanbanServiceError.invalidResponse("Kanban is not connected."))
         }
@@ -501,10 +518,18 @@ final class KanbanStore: ObservableObject {
     /// caller renders inline (never an HTTP error, never a fabricated
     /// failure).
     @discardableResult
-    func autoDescribeProfile(profile: String, overwrite: Bool = true, includeArchived: Bool = false) async throws -> KanbanAutoDescribeResponse {
+    func autoDescribeProfile(
+        profile: String,
+        overwrite: Bool = true,
+        expectedContext: KanbanBoardContextStamp? = nil,
+        includeArchived: Bool = false
+    ) async throws -> KanbanAutoDescribeResponse {
         guard !isMutating else {
             throw recordMutationError(KanbanServiceError.mutationInProgress)
         }
+        // Server-global endpoint: generation-scoped validation (see
+        // updateOrchestration for the F-2 rationale).
+        try validateExpectedServerContext(expectedContext)
         guard let context = makeOperationContext() else {
             throw recordMutationError(KanbanServiceError.invalidResponse("Kanban is not connected."))
         }
@@ -540,10 +565,15 @@ final class KanbanStore: ObservableObject {
     /// left intact and the failure is recorded as the current-generation
     /// mutation error.
     @discardableResult
-    func specifyTask(id: String, includeArchived: Bool = false) async throws -> KanbanSpecifyResponse {
+    func specifyTask(
+        id: String,
+        expectedContext: KanbanBoardContextStamp? = nil,
+        includeArchived: Bool = false
+    ) async throws -> KanbanSpecifyResponse {
         guard !isMutating else {
             throw recordMutationError(KanbanServiceError.mutationInProgress)
         }
+        try validateExpectedContext(expectedContext)
         guard let context = makeOperationContext() else {
             throw recordMutationError(KanbanServiceError.invalidResponse("Kanban is not connected."))
         }
@@ -557,10 +587,15 @@ final class KanbanStore: ObservableObject {
     /// The response is child ids only — Conduit NEVER synthesizes cards from
     /// it. Semantic refusal throws the backend reason.
     @discardableResult
-    func decomposeTask(id: String, includeArchived: Bool = false) async throws -> KanbanDecomposeResponse {
+    func decomposeTask(
+        id: String,
+        expectedContext: KanbanBoardContextStamp? = nil,
+        includeArchived: Bool = false
+    ) async throws -> KanbanDecomposeResponse {
         guard !isMutating else {
             throw recordMutationError(KanbanServiceError.mutationInProgress)
         }
+        try validateExpectedContext(expectedContext)
         guard let context = makeOperationContext() else {
             throw recordMutationError(KanbanServiceError.invalidResponse("Kanban is not connected."))
         }
@@ -575,10 +610,14 @@ final class KanbanStore: ObservableObject {
     /// the request is issued only while the captured context still owns the
     /// UI, and a completion after configure() is inert. The board reload
     /// after success doubles as the authoritative post-nudge refresh.
-    func nudgeDispatcher(includeArchived: Bool = false) async throws {
+    func nudgeDispatcher(
+        expectedContext: KanbanBoardContextStamp? = nil,
+        includeArchived: Bool = false
+    ) async throws {
         guard !isMutating else {
             throw recordMutationError(KanbanServiceError.mutationInProgress)
         }
+        try validateExpectedContext(expectedContext)
         guard let context = makeOperationContext() else {
             throw recordMutationError(KanbanServiceError.invalidResponse("Kanban is not connected."))
         }
@@ -602,6 +641,33 @@ final class KanbanStore: ObservableObject {
     }
 
     // MARK: - Mutation state
+
+    /// Context-bound ownership validation (V3A final pass): a UI operation
+    /// captured its board/server stamp synchronously at the tap; the store
+    /// revalidates it HERE, back-to-back with makeOperationContext() on the
+    /// MainActor before the first suspension point. A stale stamp (board
+    /// switch, server reconfigure, or in-flight navigation) fails closed in
+    /// the same actor turn as the capture — a mutation started for A can
+    /// never silently retarget to B.
+    private func validateExpectedContext(_ expectedContext: KanbanBoardContextStamp?) throws {
+        guard let expectedContext else { return }
+        guard isSelectedSnapshotLoaded, loadedContextStamp == expectedContext else {
+            throw recordMutationError(KanbanServiceError.boardNavigationInProgress)
+        }
+    }
+
+    /// Server-scoped variant for SERVER-GLOBAL writes (orchestration settings,
+    /// profile descriptions): the wire request carries NO board query, so the
+    /// UI ownership token is the server CONFIGURATION GENERATION (inside the
+    /// captured stamp). A board switch on the SAME server keeps the generation
+    /// and must not abort the valid write; a server reconfigure bumps the
+    /// generation and fails closed exactly like the full-stamp check.
+    private func validateExpectedServerContext(_ expectedContext: KanbanBoardContextStamp?) throws {
+        guard let expectedContext else { return }
+        guard configurationGeneration == expectedContext.configurationGeneration else {
+            throw recordMutationError(KanbanServiceError.boardNavigationInProgress)
+        }
+    }
 
     private func makeOperationContext() -> KanbanOperationContext? {
         guard let service else { return nil }

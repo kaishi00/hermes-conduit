@@ -4,10 +4,9 @@ Status: V3A implementation in progress. Written 2026-08-23.
 
 ## Repo / branch facts
 - Repo: kaishi00/hermes-conduit (origin: https://github.com/kaishi00/hermes-conduit.git)
-- Worktree: C:\Users\Micro\OneDrive\Documents\hermes-conduit-kanban-v3a
-- Branch: feature/kanban-v3a-orchestration-triage (tracks origin/main)
+- Branch: feature/kanban-v3a-orchestration-triage (tracking origin/main; PR #94)
 - Base commit: 10719f4 — "Merge pull request #93 from kaishi00/feature/kanban-v2" (V2 merged; upstream iOS baseline)
-- iOS test target: remote Mac ios-mac, /Users/agrias/projects/hermes-conduit-swiftui, scheme Conduit, prepare 'xcodegen generate' (.ios-test.json at repo root)
+- iOS test target: the Harness ios_test tool against this repo (scheme Conduit, prepare 'xcodegen generate'; see .ios-test.json at the repo root)
 - project.yml picks up Conduit/** and ConduitTests/** automatically (XcodeGen). Never edit Conduit.xcodeproj.
 
 ## Keep-out list (do NOT modify)
@@ -17,9 +16,9 @@ Status: V3A implementation in progress. Written 2026-08-23.
 
 ## Session playbook (how to continue if interrupted)
 1. Read this file.
-2. git -C worktree status (expect: uncommitted V3A work on branch feature/kanban-v3a-orchestration-triage).
-3. Read C:\Users\Micro\AppData\Local\Temp\kanban-v3a-audit\REPORT.md (upstream audit; clone path + SHA inside).
-4. Finish open todos: implement service/store/views/tests -> xcodegen sync to Mac -> ios_test {} full -> multi-model review (workflows/multi-model-review.js) -> fix blockers -> push + PR -> final 17-item report.
+2. git status in the phase worktree (expect: branch feature/kanban-v3a-orchestration-triage).
+3. Upstream audit: docs/KANBAN_V3A_AUDIT.md (upstream commit SHA recorded; re-verify if the upstream head moved).
+4. Finish open todos: implement service/store/views/tests -> run the Harness ios_test tool (full) -> multi-model review (workflows/multi-model-review.js) -> fix findings -> push + PR -> final 17-item report.
 5. AGENTS.md review gate applies BEFORE pushing to any PR.
 
 ## V3A scope (this branch)
