@@ -53,6 +53,27 @@ struct KanbanDiagnosticAction: Codable, Equatable {
     var label: String
     var payload: [String: AnyCodable]?
     var suggested: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case kind, label, payload, suggested
+    }
+
+    init(kind: String, label: String, payload: [String: AnyCodable]? = nil, suggested: Bool? = nil) {
+        self.kind = kind
+        self.label = label
+        self.payload = payload
+        self.suggested = suggested
+    }
+
+    /// Tolerant decode: recovery actions are operator-critical, so degrade
+    /// individual field types instead of dropping the action.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        kind = container.decodeLossyString(forKey: .kind) ?? ""
+        label = container.decodeLossyString(forKey: .label) ?? ""
+        payload = try? container.decodeIfPresent([String: AnyCodable].self, forKey: .payload)
+        suggested = try? container.decodeIfPresent(Bool.self, forKey: .suggested)
+    }
 }
 
 struct KanbanDiagnostic: Codable, Equatable {
@@ -68,6 +89,65 @@ struct KanbanDiagnostic: Codable, Equatable {
     enum CodingKeys: String, CodingKey {
         case kind, severity, title, detail, actions, count, data
         case lastSeenAt = "last_seen_at"
+    }
+
+    init(
+        kind: String,
+        severity: String,
+        title: String,
+        detail: String,
+        actions: [KanbanDiagnosticAction],
+        count: Int,
+        lastSeenAt: Int? = nil,
+        data: [String: AnyCodable]? = nil
+    ) {
+        self.kind = kind
+        self.severity = severity
+        self.title = title
+        self.detail = detail
+        self.actions = actions
+        self.count = count
+        self.lastSeenAt = lastSeenAt
+        self.data = data
+    }
+
+    /// Tolerant decode (V2 §14): a partially-hostile diagnostic row still
+    /// renders — identity text degrades to "", numeric fields fail safely to
+    /// zero/nil, and a non-array actions payload becomes an empty list.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        kind = container.decodeLossyString(forKey: .kind) ?? ""
+        severity = container.decodeLossyString(forKey: .severity) ?? ""
+        title = container.decodeLossyString(forKey: .title) ?? ""
+        detail = container.decodeLossyString(forKey: .detail) ?? ""
+        let typedActions = try? container.decodeIfPresent([KanbanDiagnosticAction].self, forKey: .actions)
+        if let typedActions {
+            // Whole-array typed decode succeeded.
+            actions = typedActions
+        } else if var walker = try? container.nestedUnkeyedContainer(forKey: .actions) {
+            // Some element was hostile: walk manually, keeping every row we
+            // can normalize and consuming the rest so iteration continues.
+            // The counter guarantees termination even against payloads where
+            // both decode attempts fail without advancing the cursor.
+            var decoded: [KanbanDiagnosticAction] = []
+            var safetyCounter = 0
+            while !walker.isAtEnd && safetyCounter < 10_000 {
+                safetyCounter += 1
+                if let action = try? walker.decode(KanbanDiagnosticAction.self) {
+                    decoded.append(action)
+                } else {
+                    _ = try? walker.decode(AnyCodable.self)
+                }
+            }
+            actions = decoded
+        } else {
+            actions = []
+        }
+        // Absent/lost count renders as 1 (never "×N"), matching how the
+        // drawer treats single occurrences; 0 would hide real repeats.
+        count = container.decodeLossyInt(forKey: .count) ?? 1
+        lastSeenAt = container.decodeLossyInt(forKey: .lastSeenAt)
+        data = try? container.decodeIfPresent([String: AnyCodable].self, forKey: .data)
     }
 }
 
@@ -367,6 +447,15 @@ struct KanbanEvent: Codable, Identifiable, Equatable {
     var payload: AnyCodable?
     var createdAt: Int?
     var runID: String?
+
+    init(id: String, taskID: String? = nil, kind: String, payload: AnyCodable? = nil, createdAt: Int? = nil, runID: String? = nil) {
+        self.id = id
+        self.taskID = taskID
+        self.kind = kind
+        self.payload = payload
+        self.createdAt = createdAt
+        self.runID = runID
+    }
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -775,3 +864,52 @@ struct KanbanMutationResponse: Codable, Equatable {
 
 struct KanbanProfilesResponse: Codable, Equatable { var profiles: [KanbanProfile] }
 struct KanbanProjectsResponse: Codable, Equatable { var projects: [KanbanProject] }
+
+// MARK: - Model options (per-task worker override catalog)
+
+/// GET /api/plugins/kanban/model-options — the backend-curated provider/model
+/// roster for per-task overrides (plugins/kanban/dashboard/plugin_api.py
+/// `model_options`). Curated server-side so the picker can never offer a
+/// provider:model pair a Hermes worker would refuse. Decoded tolerantly:
+/// an unavailable inventory degrades to an empty list and the UI falls back
+/// to free-text entry.
+struct KanbanModelOptionsResponse: Codable, Equatable {
+    var providers: [KanbanModelProviderOption]
+
+    init(providers: [KanbanModelProviderOption] = []) { self.providers = providers }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        providers = (try? container.decodeIfPresent([KanbanModelProviderOption].self, forKey: .providers)) ?? []
+    }
+
+    enum CodingKeys: String, CodingKey { case providers }
+}
+
+struct KanbanModelProviderOption: Codable, Equatable, Identifiable {
+    var slug: String
+    var label: String?
+    var models: [String]
+
+    var id: String { slug }
+    var displayName: String {
+        let resolved = label ?? slug
+        return resolved.isEmpty ? slug : resolved
+    }
+
+    init(slug: String, label: String? = nil, models: [String] = []) {
+        self.slug = slug
+        self.label = label
+        self.models = models
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        slug = container.decodeLossyString(forKey: .slug) ?? ""
+        label = try? container.decodeIfPresent(String.self, forKey: .label)
+        let rawModels = (try? container.decodeIfPresent([String].self, forKey: .models)) ?? []
+        models = rawModels.filter { !$0.isEmpty }
+    }
+
+    enum CodingKeys: String, CodingKey { case slug, label, models }
+}

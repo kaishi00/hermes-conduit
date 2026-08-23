@@ -35,6 +35,61 @@ enum KanbanDetailDraftPolicy {
     }
 }
 
+/// A staged destructive delete request: the task captured BY VALUE plus the
+/// loaded board/server context (KanbanBoardContextStamp) that staged it.
+/// The task id alone is deliberately NOT the ownership token — ids can
+/// collide across independent boards/servers.
+struct PendingCardDelete: Equatable {
+    let task: KanbanTask
+    let stamp: KanbanBoardContextStamp
+
+    var taskID: String { task.id }
+}
+
+/// Permanent deletion from CARDS is a two-step action (Kanban V2
+/// correctness). Card entry points — the ellipsis menu AND the context menu —
+/// only STAGE a confirmation request BOUND to the board/server context that
+/// staged it; the destructive DELETE is issued solely by an explicit
+/// confirmation that still owns that exact context. Lane moves and Archive
+/// stay immediate and non-destructive.
+enum KanbanCardDeletePolicy {
+    enum Request: Equatable {
+        case none
+        case confirm(PendingCardDelete)
+        case perform(KanbanTask)
+    }
+
+    /// What a card's Delete… entry resolves to: NEVER the destructive
+    /// mutation by itself — always a context-stamped confirmation.
+    static func cardRequestedDelete(for task: KanbanTask, stamp: KanbanBoardContextStamp) -> Request {
+        .confirm(PendingCardDelete(task: task, stamp: stamp))
+    }
+
+    /// Cancellation stages nothing.
+    static func cancelled() -> Request {
+        .none
+    }
+
+    /// FAIL-CLOSED ownership validation at the destructive boundary: the
+    /// staged confirmation may resolve to a DELETE only while the store's
+    /// currently loaded context is EXACTLY the context that staged it (same
+    /// board slug AND same configuration generation) and the visible
+    /// snapshot is still the actionable one. After a board switch, a server
+    /// reconfigure, or during in-flight board navigation, the stale request
+    /// is discarded without sending anything.
+    static func confirmed(
+        staged: PendingCardDelete?,
+        currentStamp: KanbanBoardContextStamp?,
+        isSnapshotActionable: Bool
+    ) -> Request {
+        guard isSnapshotActionable,
+              let staged,
+              let currentStamp,
+              staged.stamp == currentStamp else { return .none }
+        return .perform(staged.task)
+    }
+}
+
 struct KanbanView: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var store = KanbanStore()
@@ -46,6 +101,12 @@ struct KanbanView: View {
     /// iPhone-native interaction: one selected lane rendered as a vertical
     /// card list behind a horizontally scrolling chip selector.
     @State private var selectedLane: String?
+    /// Permanent deletion from a card is a TWO-STEP action (V2): BOTH card
+    /// entry points (ellipsis menu and context menu) stage the task here
+    /// TOGETHER WITH the loaded board/server context that staged it, and
+    /// only an explicit confirmation that still owns that context issues the
+    /// destructive DELETE. Archive and lane moves stay immediate.
+    @State private var pendingDelete: PendingCardDelete?
 
     private var bridgeIdentity: ObjectIdentifier? {
         appState.dashboardTicketBridge.map { ObjectIdentifier($0) }
@@ -140,10 +201,36 @@ struct KanbanView: View {
                 .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showNewTask) {
-            KanbanTaskEditorView(initialStatus: newTaskStatus)
+            KanbanTaskComposerView(initialStatus: newTaskStatus)
                 .environmentObject(store)
-                .presentationDetents([.medium, .large])
+                .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
+        }
+        // Permanent deletion from cards is CONFIRMED before the DELETE is
+        // issued; the wording matches the detail screen's delete alert. The
+        // staged request (task + staging context) is passed BY VALUE through
+        // the alert's presenting binding, so the destructive action never
+        // depends on reading mutable state that alert dismissal may already
+        // have cleared — and confirmCardDelete re-validates context
+        // ownership before anything is sent.
+        .alert(
+            "Delete this task?",
+            isPresented: Binding(
+                get: { pendingDelete != nil },
+                set: { if !$0 { pendingDelete = nil } }
+            ),
+            presenting: pendingDelete
+        ) { staged in
+            Button("Delete", role: .destructive) { confirmCardDelete(staged) }
+            Button("Cancel", role: .cancel) { pendingDelete = nil }
+        } message: { _ in
+            Text("This permanently removes the task from the selected Hermes board.")
+        }
+        // Proactive disarm: when the loaded board identity changes, any
+        // staged destructive confirmation is now foreign. (The confirm-time
+        // ownership check below remains the hard boundary.)
+        .onChange(of: store.loadedBoardSlug) { _, _ in
+            pendingDelete = nil
         }
         .task(id: pollingKey) {
             selectedTask = nil
@@ -191,9 +278,11 @@ struct KanbanView: View {
                         ForEach(column.tasks) { task in
                             KanbanCardView(
                                 task: task,
+                                hasDispatcherFallback: !(store.orchestration?.resolvedDefaultAssignee ?? "").isEmpty,
                                 onOpen: { selectedTask = task },
                                 onMove: { status in Task { await move(task, to: status) } },
-                                onDelete: { Task { await delete(task) } }
+                                onArchive: { Task { await archive(task) } },
+                                onDelete: { stageCardDelete(task) }
                             )
                         }
                     }
@@ -249,12 +338,17 @@ struct KanbanView: View {
         .accessibilityLabel(presentation.displayName + ", " + String(column.tasks.count) + " tasks")
     }
 
+    /// THE canonical visible-lane answer. Every consumer — the chip
+    /// highlight, the card list, and the New Task button's initial status —
+    /// must ask this instead of reading raw `selectedLane`, which stays nil
+    /// until the user explicitly taps a chip even though a lane IS resolved
+    /// for display (first unlocked lane). See KanbanLanePolicy.
+    private var effectiveSelectedLane: String? {
+        KanbanLanePolicy.effectiveSelectedLane(selected: selectedLane, columns: visibleColumns)
+    }
+
     private func resolvedLaneName(columns: [KanbanColumn]) -> String? {
-        if let selectedLane, columns.contains(where: { $0.name == selectedLane }) {
-            return selectedLane
-        }
-        // Prefer an unlocked default so the first paint shows actionable work.
-        return columns.first(where: { !KanbanStatusPresentation.isLockedDestination($0.name) })?.name ?? columns.first?.name
+        KanbanLanePolicy.effectiveSelectedLane(selected: selectedLane, columns: columns)
     }
 
     private func resolvedLaneColumn(in columns: [KanbanColumn]) -> KanbanColumn? {
@@ -312,11 +406,13 @@ struct KanbanView: View {
             .accessibilityLabel("Refresh Kanban board")
 
             Button {
-                // Land on the visible lane when it accepts creation; otherwise
-                // fall back to the backend's default unlocked lane.
-                newTaskStatus = selectedLane.flatMap { lane in
-                    KanbanStatusPresentation.canCreateTask(in: lane) ? lane : nil
-                } ?? "todo"
+                // The global + creates relative to the lane the UI actually
+                // considers visible (effectiveSelectedLane), NOT the raw chip
+                // selection — selectedLane stays nil until a chip is tapped,
+                // and falling back to Todo then would ignore the resolved
+                // visible lane. Locked lanes collapse to the default unlocked
+                // landing status.
+                newTaskStatus = KanbanLanePolicy.newTaskInitialStatus(effectiveLane: effectiveSelectedLane)
                 showNewTask = true
             } label: {
                 Image(systemName: "plus")
@@ -359,15 +455,63 @@ struct KanbanView: View {
         _ = try? await store.updateTask(id: task.id, patch: KanbanTaskPatch(status: status), includeArchived: includeArchived)
     }
 
-    private func delete(_ task: KanbanTask) async {
-        _ = try? await store.deleteTask(id: task.id, includeArchived: includeArchived)
+    /// Upstream archive semantics: a plain PATCH status='archived'
+    /// (kanban_db.archive_task). NOT destructive, so no confirmation.
+    private func archive(_ task: KanbanTask) async {
+        guard task.status != "archived" else { return }
+        _ = try? await store.updateTask(id: task.id, patch: KanbanTaskPatch(status: "archived"), includeArchived: includeArchived)
+    }
+
+
+    /// A card's Delete… entry STAGES the shared board-level confirmation; it
+    /// never issues the destructive mutation directly. The task is captured
+    /// BY VALUE together with the loaded board/server context stamp, so the
+    /// confirmation can later prove it still owns the store's current
+    /// context before deleting.
+    private func stageCardDelete(_ task: KanbanTask) {
+        // Stage-time gate mirrors the confirm-time gate: only an actionable
+        // loaded context may stage a destructive confirmation at all.
+        guard let stamp = store.loadedContextStamp, store.isSelectedSnapshotLoaded else { return }
+        if case .confirm(let staged) = KanbanCardDeletePolicy.cardRequestedDelete(for: task, stamp: stamp) {
+            pendingDelete = staged
+        }
+    }
+
+    /// Only an explicit confirmation that still owns the staging context
+    /// resolves to a permanent DELETE. FAIL-CLOSED: if the board or server
+    /// context has changed (different slug, new configuration generation, or
+    /// an in-flight board navigation), the stale confirmation is discarded
+    /// without any request — even if the new board happens to contain a task
+    /// with the same id. The check below is EARLY UX REJECTION only: the
+    /// spawned delete passes the staged stamp to the store's context-bound
+    /// deleteTask, which re-validates ownership and captures its mutation
+    /// context ATOMICALLY — the hard boundary that closes the check-to-
+    /// Task-scheduling TOCTOU window.
+    private func confirmCardDelete(_ staged: PendingCardDelete) {
+        pendingDelete = nil
+        guard case .perform(let task) = KanbanCardDeletePolicy.confirmed(
+            staged: staged,
+            currentStamp: store.loadedContextStamp,
+            isSnapshotActionable: store.isSelectedSnapshotLoaded
+        ) else { return }
+        Task {
+            try? await store.deleteTask(
+                id: task.id,
+                expectedContext: staged.stamp,
+                includeArchived: includeArchived
+            )
+        }
     }
 }
 
 private struct KanbanCardView: View {
     let task: KanbanTask
+    /// Whether Hermes has ANY configured default assignee fallback. When not,
+    /// an unassigned ready card would silently never run — worth surfacing.
+    var hasDispatcherFallback: Bool = true
     let onOpen: () -> Void
     let onMove: (String) -> Void
+    let onArchive: () -> Void
     let onDelete: () -> Void
 
     private var presentation: KanbanStatusPresentation {
@@ -375,7 +519,11 @@ private struct KanbanCardView: View {
     }
 
     private var statusOptions: [KanbanStatusPresentation] {
-        KanbanStatusPresentation.manuallySelectableStatuses
+        KanbanStatusPresentation.manuallySelectableStatuses.filter { $0.rawValue != task.status }
+    }
+
+    private var liveness: KanbanCardLiveness.State? {
+        KanbanCardLiveness.state(for: task)
     }
 
     var body: some View {
@@ -398,9 +546,38 @@ private struct KanbanCardView: View {
                                 Label(status.displayName, systemImage: status.systemImage)
                             }
                         }
+                        // The CURRENT lane stays visible but inert, matching
+                        // desktop StatusMenu (name === status || !locked): a
+                        // non-control child renders as a disabled Menu row.
+                        HStack {
+                            Label(presentation.displayName, systemImage: presentation.systemImage)
+                            Spacer()
+                            Image(systemName: "checkmark")
+                        }
+                        .foregroundStyle(.secondary)
+                        .accessibilityHint("Current lane")
                     }
-                    Button(role: .destructive, action: onDelete) {
-                        Label("Delete", systemImage: "trash")
+                    Section {
+                        Button {
+                            copy(text: task.id, notice: "Task ID copied")
+                        } label: {
+                            Label("Copy Task ID", systemImage: "doc.on.doc")
+                        }
+                        Button {
+                            copy(text: task.title, notice: "Title copied")
+                        } label: {
+                            Label("Copy Task Title", systemImage: "doc.on.doc.fill")
+                        }
+                    }
+                    Section {
+                        // First-class archive: plain PATCH semantics upstream,
+                        // so no destructive confirmation language.
+                        Button(action: onArchive) {
+                            Label("Archive", systemImage: "archivebox")
+                        }
+                        Button(role: .destructive, action: onDelete) {
+                            Label("Delete…", systemImage: "trash")
+                        }
                     }
                 } label: {
                     Image(systemName: "ellipsis")
@@ -424,21 +601,7 @@ private struct KanbanCardView: View {
                     .lineLimit(3)
             }
 
-            HStack(spacing: 8) {
-                if let assignee = task.assignee, !assignee.isEmpty {
-                    Label(assignee, systemImage: "person")
-                        .lineLimit(1)
-                }
-                if let priority = task.priority, priority > 0 {
-                    Label(String(priority), systemImage: "flag.fill")
-                }
-                if let comments = task.commentCount, comments > 0 {
-                    Label(String(comments), systemImage: "bubble.left")
-                }
-                Spacer(minLength: 0)
-            }
-            .font(.caption2)
-            .foregroundStyle(.tertiary)
+            operationalFooter
         }
         .padding(11)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -455,472 +618,73 @@ private struct KanbanCardView: View {
         .accessibilityAddTraits(.isButton)
         .accessibilityHint("Opens task details")
         .accessibilityAction(named: "Open task", onOpen)
+        .accessibilityAction(named: "Copy task ID") { copy(text: task.id, notice: "Task ID copied") }
+        .accessibilityAction(named: "Copy task title") { copy(text: task.title, notice: "Title copied") }
         .contextMenu {
             Button { onOpen() } label: { Label("Open", systemImage: "arrow.up.right.square") }
-            Button(role: .destructive, action: onDelete) { Label("Delete", systemImage: "trash") }
-        }
-    }
-}
-
-struct KanbanTaskEditorView: View {
-    @EnvironmentObject private var store: KanbanStore
-    @Environment(\.dismiss) private var dismiss
-    let initialStatus: String
-    @State private var title = ""
-    @State private var taskBody = ""
-    @State private var assignee = ""
-    @State private var priority = 0
-    @State private var isSaving = false
-    @State private var didCreate = false
-    @State private var errorMessage: String?
-
-    private var statusPresentation: KanbanStatusPresentation {
-        KanbanStatusPresentation.forStatus(initialStatus)
-    }
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section("Task") {
-                    TextField("Title", text: $title)
-                    TextEditor(text: $taskBody)
-                        .frame(minHeight: 120)
-                    Picker("Priority", selection: $priority) {
-                        Text("Normal").tag(0)
-                        Text("High").tag(1)
-                        Text("Urgent").tag(2)
-                        Text("Critical").tag(3)
-                    }
-                    .pickerStyle(.menu)
-                }
-
-                Section("Assignment") {
-                    Picker("Profile", selection: $assignee) {
-                        Text("Unassigned").tag("")
-                        ForEach(store.profiles) { profile in
-                            Text(profile.name).tag(profile.name)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                }
-
-                Section("Workflow") {
-                    Label(statusPresentation.displayName, systemImage: statusPresentation.systemImage)
-                        .foregroundStyle(statusPresentation.tint)
-                    Text("The board selection is local to this device; creating this task will not switch Hermes' global board.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                if let errorMessage {
-                    Section { Text(errorMessage).foregroundStyle(.red) }
+            ForEach(statusOptions) { status in
+                Button { onMove(status.rawValue) } label: {
+                    Label("Move to \(status.displayName)", systemImage: status.systemImage)
                 }
             }
-            .navigationTitle("New task")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(didCreate ? "Close" : "Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button {
-                        if didCreate {
-                            dismiss()
-                        } else {
-                            Task { await save() }
-                        }
-                    } label: {
-                        if isSaving { ProgressView() } else { Text(didCreate ? "Done" : "Create") }
-                    }
-                    .disabled((title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !didCreate) || isSaving)
-                }
+            Button { copy(text: task.id, notice: "Task ID copied") } label: {
+                Label("Copy Task ID", systemImage: "doc.on.doc")
             }
+            Button { copy(text: task.title, notice: "Title copied") } label: {
+                Label("Copy Task Title", systemImage: "doc.on.doc.fill")
+            }
+            Divider()
+            Button(action: onArchive) { Label("Archive", systemImage: "archivebox") }
+            Button(role: .destructive, action: onDelete) { Label("Delete…", systemImage: "trash") }
         }
     }
 
-    private func save() async {
-        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedTitle.isEmpty, statusPresentation.isTaskCreatable else { return }
-        isSaving = true
-        errorMessage = nil
-        defer { isSaving = false }
-        do {
-            _ = try await store.createTask(
-                KanbanCreateTaskRequest(
-                    title: trimmedTitle,
-                    body: taskBody.isEmpty ? nil : taskBody,
-                    assignee: assignee.isEmpty ? nil : assignee,
-                    priority: priority,
-                    triage: initialStatus == "triage"
-                ),
-                initialStatus: initialStatus
-            )
-            dismiss()
-        } catch {
-            errorMessage = error.localizedDescription
-            if let kanbanError = error as? KanbanServiceError, case .taskCreatedButMoveFailed = kanbanError {
-                didCreate = true
-            }
-        }
-    }
-}
-
-struct KanbanTaskDetailView: View {
-    /// Editable fields as last synced from the server. The draft fields below
-    /// are compared against this so a 4-second poll can refresh comments,
-    /// runs, and metadata WITHOUT ever overwriting unsaved user edits.
-    private struct ServerBaseline: Equatable {
-        var title: String
-        var bodyText: String
-        var status: String
-    }
-
-    @EnvironmentObject private var store: KanbanStore
-    @Environment(\.dismiss) private var dismiss
-    let initialTask: KanbanTask
-    @State private var detail: KanbanTaskDetail?
-    // Draft (editable) state - owned by the user until saved.
-    @State private var title: String
-    @State private var taskBody: String
-    @State private var status: String
-    @State private var baseline: ServerBaseline
-    @State private var remoteChangeNotice: String?
-    @State private var comment = ""
-    @State private var isSaving = false
-    @State private var isAddingComment = false
-    @State private var isLoadingDetail = false
-    @State private var showDeleteConfirmation = false
-    @State private var errorMessage: String?
-    @State private var refreshErrorMessage: String?
-
-    init(task: KanbanTask) {
-        initialTask = task
-        _title = State(initialValue: task.title)
-        _taskBody = State(initialValue: task.body ?? "")
-        _status = State(initialValue: task.status)
-        _baseline = State(initialValue: ServerBaseline(title: task.title, bodyText: task.body ?? "", status: task.status))
-    }
-
-    private var currentTask: KanbanTask {
-        detail?.task ?? initialTask
-    }
-
-    private var hasUnsavedChanges: Bool {
-        KanbanDetailDraftPolicy.isDirty(
-            draftTitle: title,
-            draftBody: taskBody,
-            draftStatus: status,
-            baselineTitle: baseline.title,
-            baselineBodyText: baseline.bodyText,
-            baselineStatus: baseline.status
-        )
-    }
-
-
-    private var statusOptions: [KanbanStatusPresentation] {
-        var values = KanbanStatusPresentation.manuallySelectableStatuses
-        if !values.contains(where: { $0.rawValue == status }) {
-            values.insert(KanbanStatusPresentation.forStatus(status), at: 0)
-        }
-        return values
-    }
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    editorSection
-                    metadataSection
-                    commentsSection
-                    runsSection
-                    if let remoteChangeNotice {
-                        Text(remoteChangeNotice)
-                            .font(.footnote)
-                            .foregroundStyle(.orange)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    if hasUnsavedChanges {
-                        Text("Unsaved edits")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .trailing)
-                    }
-                    if let refreshErrorMessage {
-                        Text("Refresh failed: \(refreshErrorMessage)")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    if let errorMessage {
-                        Text(errorMessage)
-                            .font(.footnote)
-                            .foregroundStyle(.red)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }
-                .padding(16)
-            }
-            .background(ConduitBackdrop())
-            .navigationTitle("Task")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }
-                }
-                ToolbarItem(placement: .primaryAction) {
-                    Menu {
-                        Button(role: .destructive) { showDeleteConfirmation = true } label: {
-                            Label("Delete task", systemImage: "trash")
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
-                    }
-                    .accessibilityLabel("Task actions")
-                }
-            }
-            .task(id: initialTask.id) {
-                while !Task.isCancelled {
-                    await loadDetail()
-                    do {
-                        try await Task.sleep(nanoseconds: KanbanPollingPolicy.detailIntervalNanoseconds)
-                    } catch {
-                        break
-                    }
-                }
-            }
-            .alert("Delete this task?", isPresented: $showDeleteConfirmation) {
-                Button("Delete", role: .destructive) { Task { await deleteTask() } }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("This removes the task from the selected Hermes board.")
-            }
-        }
-    }
-
-    private var editorSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            TextField("Title", text: $title)
-                .font(.headline)
-                .textFieldStyle(.roundedBorder)
-            TextEditor(text: $taskBody)
-                .frame(minHeight: 150)
-                .padding(4)
-                .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
-            Picker("Status", selection: $status) {
-                ForEach(statusOptions) { value in
-                    Label(value.displayName, systemImage: value.systemImage)
-                        .tag(value.rawValue)
-                        .disabled(!value.isManuallySelectable)
-                }
-            }
-            .pickerStyle(.menu)
-            Button {
-                Task { await saveChanges() }
-            } label: {
-                HStack {
-                    Spacer()
-                    if isSaving { ProgressView() } else { Text("Save changes") }
-                    Spacer()
-                }
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(.conduitAccent)
-            .disabled(isSaving || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-        }
-        .padding(16)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-    }
-
-    private var metadataSection: some View {
-        ConduitSettingsSection(title: "Details", symbol: "info.circle", tint: .conduitAura) {
-            SettingsMetricRow(label: "ID", value: currentTask.id, lineLimit: 1)
-            if let assignee = currentTask.assignee, !assignee.isEmpty {
-                SettingsMetricRow(label: "Assignee", value: assignee, lineLimit: 1)
-            }
-            if let priority = currentTask.priority {
-                SettingsMetricRow(label: "Priority", value: String(priority))
-            }
-            if let workspace = currentTask.workspacePath, !workspace.isEmpty {
-                SettingsMetricRow(label: "Workspace", value: workspace, lineLimit: 2)
-            }
-            if let result = currentTask.result, !result.isEmpty {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("Result")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                    Text(result)
-                        .font(.footnote)
-                }
-            }
-        }
-    }
-
-    private var commentsSection: some View {
-        ConduitSettingsSection(title: "Comments", symbol: "bubble.left.and.bubble.right", tint: .conduitAccent) {
-            if let comments = detail?.comments, !comments.isEmpty {
-                ForEach(comments) { value in
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack {
-                            Text(value.author).font(.caption.weight(.semibold))
-                            Spacer()
-                            Text(relativeDate(value.createdAt))
-                                .font(.caption2)
-                                .foregroundStyle(.tertiary)
-                        }
-                        Text(value.body).font(.footnote)
-                    }
-                    .padding(.vertical, 3)
-                }
-            } else {
-                Text("No comments yet.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-            TextEditor(text: $comment)
-                .frame(minHeight: 80)
-                .padding(4)
-                .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
-            Button {
-                Task { await addComment() }
-            } label: {
-                HStack {
-                    Spacer()
-                    if isAddingComment { ProgressView() } else { Label("Add comment", systemImage: "paperplane") }
-                    Spacer()
-                }
-            }
-            .buttonStyle(.bordered)
-            .disabled(comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isAddingComment)
-        }
-    }
-
+    /// Selective operational indicators (V2 §20): short ID, child progress,
+    /// link counts, diagnostics warnings, run clock / stale heartbeat, and
+    /// the genuine silent-failure warning — nothing decorative.
     @ViewBuilder
-    private var runsSection: some View {
-        if let runs = detail?.runs, !runs.isEmpty {
-            ConduitSettingsSection(title: "Runs", symbol: "terminal", tint: .orange) {
-                ForEach(runs) { run in
-                    HStack(alignment: .top, spacing: 10) {
-                        Image(systemName: run.status == "completed" ? "checkmark.circle" : "circle.dotted")
-                            .foregroundStyle(run.status == "completed" ? .green : .secondary)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(run.status.capitalized).font(.subheadline.weight(.medium))
-                            if let summary = run.summary, !summary.isEmpty {
-                                Text(summary).font(.caption).foregroundStyle(.secondary).lineLimit(3)
-                            }
-                            if let error = run.error, !error.isEmpty {
-                                Text(error).font(.caption).foregroundStyle(.red).lineLimit(3)
-                            }
-                        }
-                        Spacer(minLength: 0)
-                    }
-                }
+    private var operationalFooter: some View {
+        HStack(spacing: 8) {
+            if liveness == .stale {
+                Label("no heartbeat", systemImage: "heartbeat.slash")
+                    .foregroundStyle(.orange)
+            } else if task.status == "running", let elapsed = KanbanCardLiveness.elapsedText(startedAt: task.startedAt) {
+                Label(elapsed, systemImage: "timer")
+                    .foregroundStyle(KanbanStatusPresentation.forStatus("running").tint)
             }
-        }
-    }
-
-    private func loadDetail(force: Bool = false) async {
-        // A poll never runs underneath an active save/comment write.
-        guard force || (!isSaving && !isAddingComment), !isLoadingDetail else { return }
-        isLoadingDetail = true
-        defer { isLoadingDetail = false }
-        do {
-            let loaded = try await store.fetchTaskDetail(id: initialTask.id)
-            let server = loaded.task
-            if hasUnsavedChanges {
-                // Preserve the user's draft. Flag external edits to the same
-                // fields so the conflict is visible without destroying input.
-                let serverMoved = KanbanDetailDraftPolicy.serverMovedIndependently(
-                    serverTitle: server.title,
-                    serverBodyText: server.body ?? "",
-                    serverStatus: server.status,
-                    baselineTitle: baseline.title,
-                    baselineBodyText: baseline.bodyText,
-                    baselineStatus: baseline.status
-                )
-                if serverMoved && remoteChangeNotice == nil {
-                    remoteChangeNotice = "This task changed on the server. Your unsaved edits are preserved."
-                }
-            } else {
-                title = server.title
-                taskBody = server.body ?? ""
-                status = server.status
-                baseline = ServerBaseline(title: server.title, bodyText: server.body ?? "", status: server.status)
-                remoteChangeNotice = nil
+            if task.status == "ready", (task.assignee ?? "").isEmpty, !hasDispatcherFallback {
+                Label("won't run", systemImage: "bolt.slash")
+                    .foregroundStyle(.orange)
             }
-            detail = loaded
-            refreshErrorMessage = nil
-        } catch {
-            if detail == nil {
-                errorMessage = error.localizedDescription
-            } else {
-                refreshErrorMessage = error.localizedDescription
+            if let progress = task.progress, progress.total > 0 {
+                Label("\(progress.done)/\(progress.total)", systemImage: "checklist")
             }
-        }
-    }
-
-    private func saveChanges() async {
-        let current = currentTask
-        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        var patch = KanbanTaskPatch()
-        // Diffs run against the last-synced baseline, not the live server
-        // snapshot, so an external edit cannot silently drop a user field.
-        if trimmedTitle != baseline.title { patch.title = trimmedTitle }
-        if taskBody != baseline.bodyText { patch.body = taskBody }
-        if status != baseline.status {
-            guard KanbanStatusPresentation.canSelectManually(status) else {
-                errorMessage = KanbanServiceError.invalidManualStatus(status).localizedDescription
-                return
+            if let comments = task.commentCount, comments > 0 {
+                Label(String(comments), systemImage: "bubble.left")
             }
-            patch.status = status
+            let links = (task.linkCounts?.parents ?? 0) + (task.linkCounts?.children ?? 0)
+            if links > 0 {
+                Label(String(links), systemImage: "arrow.triangle.branch")
+            }
+            if let priority = task.priority, priority > 0 {
+                Label(String(priority), systemImage: "flag.fill")
+            }
+            Spacer(minLength: 0)
+            if let warnings = task.warnings, warnings.count > 0 {
+                Label(String(warnings.count), systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.red)
+            }
+            Text(KanbanShortID.of(task.id))
+                .font(.caption2.monospaced())
         }
-        guard !patch.isEmpty else { return }
-        isSaving = true
-        errorMessage = nil
-        defer { isSaving = false }
-        do {
-            let saved = try await store.updateTask(id: current.id, patch: patch)
-            // Reconcile the draft with the saved representation and clear the
-            // dirty state before the next poll cycle lands.
-            let savedServer = saved ?? currentTask
-            title = savedServer.title
-            taskBody = savedServer.body ?? taskBody
-            status = savedServer.status
-            baseline = ServerBaseline(title: savedServer.title, bodyText: savedServer.body ?? taskBody, status: savedServer.status)
-            remoteChangeNotice = nil
-            await loadDetail(force: true)
-        } catch {
-            errorMessage = error.localizedDescription
-        }
+        .font(.caption2)
+        .foregroundStyle(.tertiary)
     }
 
-    private func addComment() async {
-        let text = comment.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
-        isAddingComment = true
-        errorMessage = nil
-        defer { isAddingComment = false }
-        do {
-            try await store.addComment(taskID: currentTask.id, body: text)
-            comment = ""
-            await loadDetail(force: true)
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    private func deleteTask() async {
-        do {
-            try await store.deleteTask(id: currentTask.id)
-            dismiss()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    private func relativeDate(_ epoch: Int?) -> String {
-        guard let epoch else { return "" }
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .abbreviated
-        return formatter.localizedString(for: Date(timeIntervalSince1970: Double(epoch)), relativeTo: Date())
+    private func copy(text: String, notice: String) {
+        KanbanClipboard.copy(text, announcement: notice)
     }
 }
+
+// The minimal New Task editor was superseded by KanbanTaskComposerView
+// (Conduit/Views/Kanban/KanbanTaskComposerView.swift) in Kanban V2.

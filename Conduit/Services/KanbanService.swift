@@ -123,6 +123,15 @@ final class KanbanService {
         try await decode(KanbanOrchestrationSettings.self, path: scoped(Self.namespace + "/orchestration"))
     }
 
+    /// Backend-curated provider/model roster for per-task overrides
+    /// (`GET /model-options`). Board-independent, so no board query is sent.
+    /// Unusable rows (empty slug or no models — e.g. a degraded inventory
+    /// payload) are dropped here so every caller sees an offerable catalog.
+    func fetchModelOptions() async throws -> [KanbanModelProviderOption] {
+        let response = try await decode(KanbanModelOptionsResponse.self, path: scoped(Self.namespace + "/model-options"))
+        return response.providers.filter { !$0.slug.isEmpty && !$0.models.isEmpty }
+    }
+
     func createTask(_ requestBody: KanbanCreateTaskRequest, board: String?) async throws -> KanbanCreateTaskResponse {
         let response = try await request(
             path: try withBoard(Self.namespace + "/tasks", slug: board),

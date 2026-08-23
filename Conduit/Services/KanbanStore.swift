@@ -10,6 +10,17 @@ struct KanbanOperationContext {
     let configurationGeneration: Int
 }
 
+/// Immutable board/server ownership of the currently loaded snapshot: the
+/// loaded board slug plus the configuration generation that produced it.
+/// Destructive confirmations staged on one context (e.g. a pending card
+/// delete) must match this stamp EXACTLY before executing — a task id alone
+/// is never an ownership token, because ids can collide across independent
+/// boards/servers.
+struct KanbanBoardContextStamp: Equatable {
+    let boardSlug: String
+    let configurationGeneration: Int
+}
+
 @MainActor
 final class KanbanStore: ObservableObject {
     static let selectedBoardKey = "conduit.kanbanBoardSlug"
@@ -71,6 +82,20 @@ final class KanbanStore: ObservableObject {
     /// disables creation/moves/deletes until the new board finishes loading.
     var isSelectedSnapshotLoaded: Bool {
         loadedBoardSlug == resolvedSelectedBoardSlug
+    }
+
+    /// Stamp of the board/server context that currently owns mutations, or
+    /// nil while no snapshot is loaded. Staged destructive confirmations
+    /// capture this at STAGE time and must match it again at CONFIRM time;
+    /// any board or server switch (different slug, or a configure() that
+    /// bumps the generation) invalidates the staged request fail-closed.
+    /// Note the generation deliberately does NOT change on reloads, polls,
+    /// or board selections — only configure() moves it (and configure()
+    /// early-returns for an identical requester+URL, matching the mutation
+    /// ownership model; do not "fix" the counter into every reload).
+    var loadedContextStamp: KanbanBoardContextStamp? {
+        guard let loadedBoardSlug else { return nil }
+        return KanbanBoardContextStamp(boardSlug: loadedBoardSlug, configurationGeneration: configurationGeneration)
     }
 
     var selectedBoardMetadata: KanbanBoardMetadata? {
@@ -241,6 +266,14 @@ final class KanbanStore: ObservableObject {
         return try await service.fetchTaskLog(id: id, board: loadedBoardSlug ?? effectiveBoardSlug, tailBytes: tailBytes)
     }
 
+    /// Provider/model roster for the per-task override picker. Read-only
+    /// auxiliary data: failures are surfaced to the caller (the picker falls
+    /// back to free-text entry) but never touch board state.
+    func fetchModelOptions() async throws -> [KanbanModelProviderOption] {
+        guard let service else { throw KanbanServiceError.invalidResponse("Kanban is not connected.") }
+        return try await service.fetchModelOptions()
+    }
+
     @discardableResult
     func createTask(
         _ request: KanbanCreateTaskRequest,
@@ -321,6 +354,42 @@ final class KanbanStore: ObservableObject {
     }
 
     func deleteTask(id: String, includeArchived: Bool = false) async throws {
+        // !isMutating is the fast-path UX rejection only; performMutation
+        // additionally enforces the structural activeMutationGeneration and
+        // snapshot invariants inside the same actor turn.
+        guard !isMutating else {
+            throw recordMutationError(KanbanServiceError.mutationInProgress)
+        }
+        guard let context = makeOperationContext() else {
+            throw recordMutationError(KanbanServiceError.invalidResponse("Kanban is not connected."))
+        }
+        try await performMutation(context: context, includeArchived: includeArchived) {
+            try await context.service.deleteTask(id: id, board: context.boardSlug)
+            // Deleting can unblock dependants, so it nudges too (upstream).
+            context.service.scheduleDispatcherNudge(board: context.boardSlug)
+        }
+    }
+
+    /// Context-bound permanent deletion for STAGED destructive confirmations
+    /// (card Delete…). TOCTOU-closed: the staged ownership stamp is validated
+    /// against the currently loaded context AND the mutation operation
+    /// context is captured back-to-back — both on the MainActor, before the
+    /// first suspension point — so validation and capture are atomic. A
+    /// confirmation staged for server/board A can therefore never execute a
+    /// DELETE under context B, even when the store reconfigures or switches
+    /// boards between the confirmation tap and the spawned Task's execution.
+    /// The view-level KanbanCardDeletePolicy check remains only as early UX
+    /// rejection; THIS is the hard safety boundary and fails closed.
+    func deleteTask(id: String, expectedContext: KanbanBoardContextStamp, includeArchived: Bool = false) async throws {
+        guard isSelectedSnapshotLoaded, loadedContextStamp == expectedContext else {
+            // Fail closed: the staged confirmation no longer owns the loaded
+            // board/server context. Discard it without any destructive
+            // request — a colliding task id on the new board is never a match.
+            throw recordMutationError(KanbanServiceError.boardNavigationInProgress)
+        }
+        // !isMutating is the fast-path UX rejection only; performMutation
+        // additionally enforces the structural activeMutationGeneration and
+        // snapshot invariants inside the same actor turn.
         guard !isMutating else {
             throw recordMutationError(KanbanServiceError.mutationInProgress)
         }
