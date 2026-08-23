@@ -10,6 +10,17 @@ struct KanbanOperationContext {
     let configurationGeneration: Int
 }
 
+/// Immutable board/server ownership of the currently loaded snapshot: the
+/// loaded board slug plus the configuration generation that produced it.
+/// Destructive confirmations staged on one context (e.g. a pending card
+/// delete) must match this stamp EXACTLY before executing — a task id alone
+/// is never an ownership token, because ids can collide across independent
+/// boards/servers.
+struct KanbanBoardContextStamp: Equatable {
+    let boardSlug: String
+    let configurationGeneration: Int
+}
+
 @MainActor
 final class KanbanStore: ObservableObject {
     static let selectedBoardKey = "conduit.kanbanBoardSlug"
@@ -71,6 +82,20 @@ final class KanbanStore: ObservableObject {
     /// disables creation/moves/deletes until the new board finishes loading.
     var isSelectedSnapshotLoaded: Bool {
         loadedBoardSlug == resolvedSelectedBoardSlug
+    }
+
+    /// Stamp of the board/server context that currently owns mutations, or
+    /// nil while no snapshot is loaded. Staged destructive confirmations
+    /// capture this at STAGE time and must match it again at CONFIRM time;
+    /// any board or server switch (different slug, or a configure() that
+    /// bumps the generation) invalidates the staged request fail-closed.
+    /// Note the generation deliberately does NOT change on reloads, polls,
+    /// or board selections — only configure() moves it (and configure()
+    /// early-returns for an identical requester+URL, matching the mutation
+    /// ownership model; do not "fix" the counter into every reload).
+    var loadedContextStamp: KanbanBoardContextStamp? {
+        guard let loadedBoardSlug else { return nil }
+        return KanbanBoardContextStamp(boardSlug: loadedBoardSlug, configurationGeneration: configurationGeneration)
     }
 
     var selectedBoardMetadata: KanbanBoardMetadata? {

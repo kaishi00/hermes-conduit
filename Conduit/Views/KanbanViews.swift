@@ -35,22 +35,34 @@ enum KanbanDetailDraftPolicy {
     }
 }
 
+/// A staged destructive delete request: the task captured BY VALUE plus the
+/// loaded board/server context (KanbanBoardContextStamp) that staged it.
+/// The task id alone is deliberately NOT the ownership token — ids can
+/// collide across independent boards/servers.
+struct PendingCardDelete: Equatable {
+    let task: KanbanTask
+    let stamp: KanbanBoardContextStamp
+
+    var taskID: String { task.id }
+}
+
 /// Permanent deletion from CARDS is a two-step action (Kanban V2
 /// correctness). Card entry points — the ellipsis menu AND the context menu —
-/// only STAGE a confirmation request; the destructive DELETE is issued solely
-/// by an explicit confirmation. Lane moves and Archive stay immediate and
-/// non-destructive.
+/// only STAGE a confirmation request BOUND to the board/server context that
+/// staged it; the destructive DELETE is issued solely by an explicit
+/// confirmation that still owns that exact context. Lane moves and Archive
+/// stay immediate and non-destructive.
 enum KanbanCardDeletePolicy {
     enum Request: Equatable {
         case none
-        case confirm(KanbanTask)
+        case confirm(PendingCardDelete)
         case perform(KanbanTask)
     }
 
     /// What a card's Delete… entry resolves to: NEVER the destructive
-    /// mutation by itself.
-    static func cardRequestedDelete(for task: KanbanTask) -> Request {
-        .confirm(task)
+    /// mutation by itself — always a context-stamped confirmation.
+    static func cardRequestedDelete(for task: KanbanTask, stamp: KanbanBoardContextStamp) -> Request {
+        .confirm(PendingCardDelete(task: task, stamp: stamp))
     }
 
     /// Cancellation stages nothing.
@@ -58,9 +70,23 @@ enum KanbanCardDeletePolicy {
         .none
     }
 
-    /// Only an explicit confirm resolves to the destructive request.
-    static func confirmed(staged: KanbanTask?) -> Request {
-        staged.map { .perform($0) } ?? .none
+    /// FAIL-CLOSED ownership validation at the destructive boundary: the
+    /// staged confirmation may resolve to a DELETE only while the store's
+    /// currently loaded context is EXACTLY the context that staged it (same
+    /// board slug AND same configuration generation) and the visible
+    /// snapshot is still the actionable one. After a board switch, a server
+    /// reconfigure, or during in-flight board navigation, the stale request
+    /// is discarded without sending anything.
+    static func confirmed(
+        staged: PendingCardDelete?,
+        currentStamp: KanbanBoardContextStamp?,
+        isSnapshotActionable: Bool
+    ) -> Request {
+        guard isSnapshotActionable,
+              let staged,
+              let currentStamp,
+              staged.stamp == currentStamp else { return .none }
+        return .perform(staged.task)
     }
 }
 
@@ -76,10 +102,11 @@ struct KanbanView: View {
     /// card list behind a horizontally scrolling chip selector.
     @State private var selectedLane: String?
     /// Permanent deletion from a card is a TWO-STEP action (V2): BOTH card
-    /// entry points (ellipsis menu and context menu) stage the task here,
-    /// and only an explicit confirmation issues the destructive DELETE.
-    /// Archive and lane moves stay immediate.
-    @State private var pendingDeleteTask: KanbanTask?
+    /// entry points (ellipsis menu and context menu) stage the task here
+    /// TOGETHER WITH the loaded board/server context that staged it, and
+    /// only an explicit confirmation that still owns that context issues the
+    /// destructive DELETE. Archive and lane moves stay immediate.
+    @State private var pendingDelete: PendingCardDelete?
 
     private var bridgeIdentity: ObjectIdentifier? {
         appState.dashboardTicketBridge.map { ObjectIdentifier($0) }
@@ -181,21 +208,29 @@ struct KanbanView: View {
         }
         // Permanent deletion from cards is CONFIRMED before the DELETE is
         // issued; the wording matches the detail screen's delete alert. The
-        // staged task is passed BY VALUE through the alert's presenting
-        // binding, so the destructive action never depends on reading
-        // mutable state that alert dismissal may already have cleared.
+        // staged request (task + staging context) is passed BY VALUE through
+        // the alert's presenting binding, so the destructive action never
+        // depends on reading mutable state that alert dismissal may already
+        // have cleared — and confirmCardDelete re-validates context
+        // ownership before anything is sent.
         .alert(
             "Delete this task?",
             isPresented: Binding(
-                get: { pendingDeleteTask != nil },
-                set: { if !$0 { pendingDeleteTask = nil } }
+                get: { pendingDelete != nil },
+                set: { if !$0 { pendingDelete = nil } }
             ),
-            presenting: pendingDeleteTask
-        ) { task in
-            Button("Delete", role: .destructive) { confirmCardDelete(task) }
-            Button("Cancel", role: .cancel) { pendingDeleteTask = nil }
+            presenting: pendingDelete
+        ) { staged in
+            Button("Delete", role: .destructive) { confirmCardDelete(staged) }
+            Button("Cancel", role: .cancel) { pendingDelete = nil }
         } message: { _ in
             Text("This permanently removes the task from the selected Hermes board.")
+        }
+        // Proactive disarm: when the loaded board identity changes, any
+        // staged destructive confirmation is now foreign. (The confirm-time
+        // ownership check below remains the hard boundary.)
+        .onChange(of: store.loadedBoardSlug) { _, _ in
+            pendingDelete = nil
         }
         .task(id: pollingKey) {
             selectedTask = nil
@@ -432,20 +467,32 @@ struct KanbanView: View {
     }
 
     /// A card's Delete… entry STAGES the shared board-level confirmation; it
-    /// never issues the destructive mutation directly.
+    /// never issues the destructive mutation directly. The task is captured
+    /// BY VALUE together with the loaded board/server context stamp, so the
+    /// confirmation can later prove it still owns the store's current
+    /// context before deleting.
     private func stageCardDelete(_ task: KanbanTask) {
-        if case .confirm(let staged) = KanbanCardDeletePolicy.cardRequestedDelete(for: task) {
-            pendingDeleteTask = staged
+        // Stage-time gate mirrors the confirm-time gate: only an actionable
+        // loaded context may stage a destructive confirmation at all.
+        guard let stamp = store.loadedContextStamp, store.isSelectedSnapshotLoaded else { return }
+        if case .confirm(let staged) = KanbanCardDeletePolicy.cardRequestedDelete(for: task, stamp: stamp) {
+            pendingDelete = staged
         }
     }
 
-    /// Only an explicit confirmation resolves the staged request to a
-    /// permanent DELETE. The staged task arrives BY VALUE from the alert's
-    /// presenting binding, so presentation-dismissal ordering can never
-    /// detach the action from its task.
-    private func confirmCardDelete(_ staged: KanbanTask) {
-        pendingDeleteTask = nil
-        guard case .perform(let task) = KanbanCardDeletePolicy.confirmed(staged: staged) else { return }
+    /// Only an explicit confirmation that still owns the staging context
+    /// resolves to a permanent DELETE. FAIL-CLOSED: if the board or server
+    /// context has changed (different slug, new configuration generation, or
+    /// an in-flight board navigation), the stale confirmation is discarded
+    /// without any request — even if the new board happens to contain a task
+    /// with the same id.
+    private func confirmCardDelete(_ staged: PendingCardDelete) {
+        pendingDelete = nil
+        guard case .perform(let task) = KanbanCardDeletePolicy.confirmed(
+            staged: staged,
+            currentStamp: store.loadedContextStamp,
+            isSnapshotActionable: store.isSelectedSnapshotLoaded
+        ) else { return }
         Task { await delete(task) }
     }
 }

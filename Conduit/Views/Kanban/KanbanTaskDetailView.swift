@@ -51,6 +51,12 @@ struct KanbanTaskDetailView: View {
     @State private var showReassignSheet = false
     @State private var showModelSheet = false
     @State private var modelOverrideDraft = TaskModelOverride()
+    /// The CURRENT model-editor sheet session: the task identity the sheet
+    /// was opened for plus the SERVER override frozen at open time. "Did the
+    /// user edit anything?" is always draft vs THIS baseline — never vs a
+    /// later poll — so a no-edit dismissal can never overwrite a concurrent
+    /// server change, and a session for task A can never commit against B.
+    @State private var modelOverrideSession: KanbanModelOverrideSession?
     @State private var errorMessage: String?
     @State private var refreshErrorMessage: String?
 
@@ -227,6 +233,9 @@ struct KanbanTaskDetailView: View {
                 errorMessage = nil
                 refreshErrorMessage = nil
                 modelOverrideDraft = TaskModelOverride()
+                // The open editor session belonged to the departed identity;
+                // its dismissal must never commit against the new one.
+                modelOverrideSession = nil
             }
             .sheet(isPresented: $showReassignSheet) {
                 KanbanReassignSheet(taskID: displayedTaskID, currentAssignee: displayedTask?.assignee)
@@ -239,12 +248,26 @@ struct KanbanTaskDetailView: View {
                     .presentationDetents([.medium, .large])
             }
             .onChange(of: showModelSheet) { wasOpen, nowOpen in
-                if !nowOpen && wasOpen {
-                    // Commit-on-dismiss (desktop parity: the drawer PATCHes on
-                    // change). Diff the edited override against the CURRENT
-                    // server snapshot so a poll landing mid-edit can neither
-                    // clobber the user nor duplicate the write.
-                    let next = modelOverrideDraft
+                guard !nowOpen, wasOpen else { return }
+                defer { modelOverrideSession = nil }
+                // Two conceptually separate comparisons (V2 correctness):
+                //   draft vs sheet-open baseline  -> did the user edit anything?
+                //   draft vs current server value -> what wire mutation is required?
+                // A no-edit dismissal can NEVER overwrite a server value that
+                // changed while the sheet was open; an actual edit is diffed
+                // against the CURRENT server snapshot below for correct
+                // clear/set flags.
+                switch KanbanModelOverrideSessionPolicy.dismissalOutcome(
+                    session: modelOverrideSession,
+                    draft: modelOverrideDraft,
+                    displayedTaskID: displayedTaskID
+                ) {
+                case .noWrite:
+                    return
+                case .commit(let next):
+                    // The user edited; compute the wire mutation against the
+                    // CURRENT server snapshot so a poll landing mid-edit can
+                    // neither clobber the user nor duplicate the write.
                     guard let serverTask = displayedTask,
                           next != TaskModelOverride(task: serverTask) else { return }
                     Task { await commitModelOverride(next) }
@@ -382,12 +405,18 @@ struct KanbanTaskDetailView: View {
                 SettingsMetricRow(label: "Workspace", value: path, lineLimit: 2)
             }
             Button {
-                // Seed the EDITOR draft from the current displayed SERVER task
-                // the moment the sheet opens. While the sheet is closed the
-                // row below renders the server value directly, so a poll that
-                // changes the override updates the row — and an open editor
-                // draft is never clobbered by polling.
-                modelOverrideDraft = KanbanModelOverrideDisplayPolicy.override(for: displayedTask)
+                // Begin a NEW sheet session: freeze the server value AT OPEN
+                // TIME as both the editor draft and the session baseline.
+                // While the sheet is closed the row below renders the server
+                // value directly; while it is open, polling may move the
+                // server underneath, but "did the user edit?" stays draft vs
+                // baseline — the server change is never mistaken for an edit.
+                let serverOverride = KanbanModelOverrideDisplayPolicy.override(for: displayedTask)
+                modelOverrideSession = KanbanModelOverrideSession(
+                    taskID: displayedTaskID,
+                    baseline: serverOverride
+                )
+                modelOverrideDraft = serverOverride
                 showModelSheet = true
             } label: {
                 HStack(spacing: 8) {
@@ -1175,6 +1204,50 @@ enum KanbanModelOverrideDisplayPolicy {
     /// The visible Model-row label.
     static func label(for displayedTask: KanbanTask?, inheritCopy: String) -> String {
         override(for: displayedTask).label(inheritCopy: inheritCopy)
+    }
+}
+
+/// One model-override editor sheet session: the task identity the sheet was
+/// opened for, and the SERVER override value frozen at open time.
+struct KanbanModelOverrideSession: Equatable {
+    let taskID: String
+    let baseline: TaskModelOverride
+}
+
+/// Dismissal rules for the model override editor (Kanban V2 correctness).
+///
+/// Keeps two comparisons conceptually separate:
+/// - draft vs sheet-open baseline  -> did the user edit anything?
+/// - draft vs current server value -> what wire mutation is required?
+///
+/// A no-edit dismissal can never overwrite a server value that changed while
+/// the sheet was open (the draft matches the baseline, whatever the server
+/// now holds), and a session belonging to one task identity never commits
+/// against another.
+enum KanbanModelOverrideSessionPolicy {
+    enum DismissalOutcome: Equatable {
+        /// Nothing may be written: no user edit, no session, a foreign
+        /// identity, or a session already invalidated by navigation.
+        case noWrite
+        /// The user edited after opening; commit this value. The wire
+        /// mutation is computed against the CURRENT server snapshot at
+        /// commit time (correct clear/set semantics).
+        case commit(TaskModelOverride)
+    }
+
+    static func dismissalOutcome(
+        session: KanbanModelOverrideSession?,
+        draft: TaskModelOverride,
+        displayedTaskID: String
+    ) -> DismissalOutcome {
+        guard let session else { return .noWrite }
+        // A sheet session belongs to exactly one task identity: a session
+        // opened for A must never commit against B.
+        guard session.taskID == displayedTaskID else { return .noWrite }
+        // USER-EDIT test: against the sheet-open baseline, NOT the live
+        // server value (which polling may have moved under the sheet).
+        guard draft != session.baseline else { return .noWrite }
+        return .commit(draft)
     }
 }
 

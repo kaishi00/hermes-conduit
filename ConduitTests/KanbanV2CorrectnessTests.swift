@@ -21,6 +21,14 @@ final class KanbanV2CorrectnessTests: XCTestCase {
         }
     }
 
+    private func makeContextRaceStore(requester: ContextRaceMockRequester) -> KanbanStore {
+        let store = KanbanStore(
+            defaults: UserDefaults(suiteName: UUID().uuidString)!
+        )
+        store.configure(requester: requester, serverIdentity: "https://a.test")
+        return store
+    }
+
     private func makeTask(id: String, extra: [String: Any] = [:]) -> KanbanTask {
         var object: [String: Any] = ["id": id, "title": "T", "status": "todo"]
         for (key, value) in extra { object[key] = value }
@@ -209,19 +217,138 @@ final class KanbanV2CorrectnessTests: XCTestCase {
 
     func testCardDeleteActionNeverIssuesDestructiveMutationDirectly() {
         let task = makeTask(id: "task-a")
+        let stamp = KanbanBoardContextStamp(boardSlug: "alpha", configurationGeneration: 3)
 
         // Both card entry points (ellipsis menu and context menu) route
-        // through the staging request: never the destructive mutation.
-        let staged = KanbanCardDeletePolicy.cardRequestedDelete(for: task)
-        XCTAssertEqual(staged, .confirm(task))
+        // through the staging request: never the destructive mutation, and
+        // always stamped with the staging board/server context.
+        let staged = KanbanCardDeletePolicy.cardRequestedDelete(for: task, stamp: stamp)
+        XCTAssertEqual(
+            staged,
+            .confirm(PendingCardDelete(task: task, stamp: stamp))
+        )
         if case .perform = staged {
             XCTFail("a card action must never issue the destructive DELETE directly")
         }
 
-        // Only an explicit confirmation resolves to the destructive request.
-        XCTAssertEqual(KanbanCardDeletePolicy.confirmed(staged: task), .perform(task))
+        // Only an explicit confirmation that still owns the staging context
+        // resolves to the destructive request.
+        XCTAssertEqual(
+            KanbanCardDeletePolicy.confirmed(staged: stagedIfConfirm(staged), currentStamp: stamp, isSnapshotActionable: true),
+            .perform(task)
+        )
         XCTAssertEqual(KanbanCardDeletePolicy.cancelled(), .none)
-        XCTAssertEqual(KanbanCardDeletePolicy.confirmed(staged: nil), .none)
+        XCTAssertEqual(
+            KanbanCardDeletePolicy.confirmed(staged: nil, currentStamp: stamp, isSnapshotActionable: true),
+            .none
+        )
+    }
+
+    /// Staging helper mirroring the view: only a .confirm carries a pending
+    /// delete; anything else stages nothing.
+    private func stagedIfConfirm(_ request: KanbanCardDeletePolicy.Request) -> PendingCardDelete? {
+        if case .confirm(let pending) = request { return pending }
+        return nil
+    }
+
+    // MARK: - 6b. Card delete context ownership (staged confirmation races)
+
+    func testStagedCardDeleteIsInertAfterServerReconfigure() async throws {
+        let requesterA = ContextRaceMockRequester(responsesByPath: contextRaceResponses(boardSlug: "alpha"))
+        let store = makeContextRaceStore(requester: requesterA)
+        await store.refresh()
+
+        // Stage exactly as the view does: task by value + current stamp.
+        let stampA = try XCTUnwrap(store.loadedContextStamp)
+        let staged = stagedIfConfirm(
+            KanbanCardDeletePolicy.cardRequestedDelete(for: makeTask(id: "t1"), stamp: stampA)
+        )
+
+        // The dashboard/server reconfigures to B before the user confirms.
+        let requesterB = ContextRaceMockRequester(responsesByPath: contextRaceResponses(boardSlug: "beta"))
+        store.configure(requester: requesterB, serverIdentity: "https://b.test")
+        await store.reload()
+
+        let outcome = KanbanCardDeletePolicy.confirmed(
+            staged: staged,
+            currentStamp: store.loadedContextStamp,
+            isSnapshotActionable: store.isSelectedSnapshotLoaded
+        )
+        XCTAssertEqual(outcome, KanbanCardDeletePolicy.Request.none, "a confirmation staged on server A must never delete on server B")
+        XCTAssertFalse(requesterB.calls.contains { $0.method == "DELETE" }, "zero DELETE requests may reach server B")
+        XCTAssertFalse(requesterA.calls.contains { $0.method == "DELETE" }, "nothing was sent to A either — the request was discarded before any transport")
+    }
+
+    func testStagedCardDeleteIsInertAfterBoardSwitchOnSameServer() async throws {
+        // The SAME task id exists on both boards: the id alone must never be
+        // the ownership token.
+        var responses = contextRaceResponses(boardSlug: "alpha")
+        responses["/api/plugins/kanban/board?board=alpha"] = [
+            "columns": [["name": "todo", "tasks": [["id": "t1", "title": "on alpha", "status": "todo"]]]],
+            "tenants": [], "assignees": []
+        ]
+        responses["/api/plugins/kanban/board?board=beta"] = [
+            "columns": [["name": "todo", "tasks": [["id": "t1", "title": "on beta", "status": "todo"]]]],
+            "tenants": [], "assignees": []
+        ]
+        let requester = ContextRaceMockRequester(responsesByPath: responses)
+        let store = makeContextRaceStore(requester: requester)
+        await store.selectBoard(slug: "alpha")
+
+        let stampA = try XCTUnwrap(store.loadedContextStamp)
+        XCTAssertEqual(stampA.boardSlug, "alpha")
+        let staged = stagedIfConfirm(
+            KanbanCardDeletePolicy.cardRequestedDelete(for: makeTask(id: "t1"), stamp: stampA)
+        )
+
+        // Confirm while the new board is still loading (loaded snapshot is
+        // still alpha, but it is no longer actionable): discarded.
+        let inFlightOutcome = KanbanCardDeletePolicy.confirmed(
+            staged: staged,
+            currentStamp: KanbanBoardContextStamp(boardSlug: "alpha", configurationGeneration: stampA.configurationGeneration),
+            isSnapshotActionable: false
+        )
+        XCTAssertEqual(inFlightOutcome, KanbanCardDeletePolicy.Request.none, "an in-flight board navigation must invalidate a staged confirmation")
+
+        // Select board B on the SAME server and let it load.
+        await store.selectBoard(slug: "beta")
+        let outcome = KanbanCardDeletePolicy.confirmed(
+            staged: staged,
+            currentStamp: store.loadedContextStamp,
+            isSnapshotActionable: store.isSelectedSnapshotLoaded
+        )
+        XCTAssertEqual(outcome, KanbanCardDeletePolicy.Request.none, "a confirmation staged on board A must never delete on board B, even for a colliding task id")
+        XCTAssertFalse(requester.calls.contains { $0.method == "DELETE" }, "zero DELETE requests may leave for any board")
+    }
+
+    func testConfirmedCardDeleteOnUnchangedContextSendsExactlyOneDelete() async throws {
+        var responses = contextRaceResponses(boardSlug: "alpha")
+        responses["/api/plugins/kanban/tasks/t1"] = ["ok": true]
+        let requester = ContextRaceMockRequester(responsesByPath: responses)
+        let store = makeContextRaceStore(requester: requester)
+        await store.refresh()
+
+        let stamp = try XCTUnwrap(store.loadedContextStamp)
+        let staged = stagedIfConfirm(
+            KanbanCardDeletePolicy.cardRequestedDelete(for: makeTask(id: "t1"), stamp: stamp)
+        )
+
+        // Context unchanged: the confirmation resolves and the view's delete
+        // issues exactly one DELETE to the staging board.
+        guard case .perform(let task) = KanbanCardDeletePolicy.confirmed(
+            staged: staged,
+            currentStamp: store.loadedContextStamp,
+            isSnapshotActionable: store.isSelectedSnapshotLoaded
+        ) else {
+            return XCTFail("an unchanged context must honor the confirmed delete")
+        }
+        try await store.deleteTask(id: task.id)
+        await store.awaitPendingDispatcherNudgeForTesting()
+
+        let deletes = requester.calls.filter { $0.method == "DELETE" }
+        XCTAssertEqual(deletes.count, 1, "exactly one DELETE for the staged task")
+        XCTAssertTrue(deletes[0].path.contains("/tasks/t1"), deletes[0].path)
+        XCTAssertTrue(deletes[0].path.contains("board=alpha"), deletes[0].path)
     }
 
     // MARK: - 7. Existing model override display
@@ -274,6 +401,121 @@ final class KanbanV2CorrectnessTests: XCTestCase {
             "zhipu: glm-5.3"
         )
         XCTAssertEqual(seededDraft.model, "glm-4.7", "the editor draft is never rewritten by later server loads")
+    }
+
+    // MARK: - 7b. Model sheet session (no-edit vs server-changed race)
+
+    func testModelSheetBaselineSeedingPinsToTheDisplayPolicy() {
+        // The view seeds both the draft and the session baseline through
+        // KanbanModelOverrideDisplayPolicy.override(for:); the tests below
+        // seed raw TaskModelOverride(task:). Pin their equality so the two
+        // can never drift apart silently.
+        let serverTask = makeTask(id: "t1", extra: [
+            "model_override": "model-a",
+            "provider_override": "prov-a",
+            "reasoning_effort": "high"
+        ])
+        XCTAssertEqual(
+            KanbanModelOverrideDisplayPolicy.override(for: serverTask),
+            TaskModelOverride(task: serverTask)
+        )
+    }
+
+    func testModelSheetNoEditDismissNeverOverwritesConcurrentServerChange() {
+        let serverAtOpen = makeTask(id: "t1", extra: ["model_override": "model-a"])
+        let session = KanbanModelOverrideSession(
+            taskID: "t1",
+            baseline: TaskModelOverride(task: serverAtOpen)
+        )
+        // The user opened the editor and made NO changes.
+        let untouchedDraft = TaskModelOverride(task: serverAtOpen)
+
+        // While the sheet stayed open, the server moved to B.
+        let serverNow = makeTask(id: "t1", extra: ["model_override": "model-b"])
+        // Precondition of the OLD bug: draft != current server would have
+        // been misread as "the user edited" and PATCHed A back over B.
+        XCTAssertNotEqual(untouchedDraft, TaskModelOverride(task: serverNow))
+
+        // The session baseline says the user never edited: no write at all,
+        // so B remains authoritative and zero PATCH requests are made.
+        XCTAssertEqual(
+            KanbanModelOverrideSessionPolicy.dismissalOutcome(
+                session: session,
+                draft: untouchedDraft,
+                displayedTaskID: "t1"
+            ),
+            .noWrite
+        )
+    }
+
+    func testModelSheetUserEditCommitsDiffedAgainstCurrentServer() {
+        let serverAtOpen = makeTask(id: "t1", extra: ["model_override": "model-a"])
+        let session = KanbanModelOverrideSession(
+            taskID: "t1",
+            baseline: TaskModelOverride(task: serverAtOpen)
+        )
+        // The user deliberately edited the draft to C.
+        let edited = TaskModelOverride(model: "model-c")
+
+        // And the server moved to B while the sheet was open.
+        let serverNow = makeTask(id: "t1", extra: [
+            "model_override": "model-b",
+            "provider_override": "prov-b"
+        ])
+
+        // The user's edit IS committed...
+        XCTAssertEqual(
+            KanbanModelOverrideSessionPolicy.dismissalOutcome(
+                session: session,
+                draft: edited,
+                displayedTaskID: "t1"
+            ),
+            .commit(edited)
+        )
+
+        // ...and the wire mutation is diffed against the CURRENT server B
+        // (not the open-time baseline): model set to C, no spurious clears.
+        let patch = TaskModelOverride.patch(from: serverNow, to: edited)
+        XCTAssertEqual(patch.modelOverride, "model-c")
+        XCTAssertFalse(patch.clearModelOverride)
+        XCTAssertNil(patch.providerOverride, "provider is sent only when explicitly chosen (desktop parity)")
+
+        // Explicit-clear semantics survive: editing to INHERIT clears the
+        // server's B override through the dedicated clear flag.
+        let inheritPatch = TaskModelOverride.patch(from: serverNow, to: TaskModelOverride())
+        XCTAssertTrue(inheritPatch.clearModelOverride)
+        XCTAssertFalse(inheritPatch.clearReasoningEffort)
+    }
+
+    func testModelSheetSessionNeverCommitsForAnotherTaskIdentity() {
+        let serverA = makeTask(id: "task-a", extra: ["model_override": "model-a"])
+        let session = KanbanModelOverrideSession(
+            taskID: "task-a",
+            baseline: TaskModelOverride(task: serverA)
+        )
+        let edited = TaskModelOverride(model: "model-c")
+
+        // Dependency navigation replaced the displayed identity: the old
+        // session must not PATCH either A or B.
+        XCTAssertEqual(
+            KanbanModelOverrideSessionPolicy.dismissalOutcome(
+                session: session,
+                draft: edited,
+                displayedTaskID: "task-b"
+            ),
+            .noWrite
+        )
+
+        // A missing session (never opened, or reset by navigation) writes
+        // nothing either.
+        XCTAssertEqual(
+            KanbanModelOverrideSessionPolicy.dismissalOutcome(
+                session: nil,
+                draft: edited,
+                displayedTaskID: "task-a"
+            ),
+            .noWrite
+        )
     }
 
     // MARK: - 8. Note & requeue partial success
@@ -378,4 +620,55 @@ final class KanbanV2CorrectnessTests: XCTestCase {
             .content(log: fresh, refreshError: nil)
         )
     }
+}
+
+// MARK: - Card-delete context-race doubles
+
+@MainActor
+private final class ContextRaceMockRequester: DashboardJSONRequester {
+    struct Call {
+        let path: String
+        let method: String
+        let body: [String: Any]?
+    }
+
+    var responsesByPath: [String: [String: Any]]
+    var errorsByPath: [String: Error] = [:]
+    var calls: [Call] = []
+
+    init(responsesByPath: [String: [String: Any]] = [:]) {
+        self.responsesByPath = responsesByPath
+    }
+
+    func requestJSON(path: String, method: String, body: [String: Any]?, timeoutMilliseconds: Int, maxResponseBytes: Int) async throws -> [String: Any] {
+        calls.append(Call(path: path, method: method, body: body))
+        let basePath = path.components(separatedBy: "?").first ?? path
+        if let error = errorsByPath[path] ?? errorsByPath[basePath] { throw error }
+        if let response = responsesByPath[path] ?? responsesByPath[basePath] { return response }
+        return [:]
+    }
+}
+
+private func contextRaceResponses(boardSlug: String) -> [String: [String: Any]] {
+    [
+        "/api/plugins/kanban/boards": [
+            "boards": [
+                ["slug": boardSlug, "name": boardSlug, "is_current": true],
+                ["slug": "beta", "name": "Beta", "is_current": false]
+            ],
+            "current": boardSlug
+        ],
+        "/api/plugins/kanban/board": ["columns": [], "tenants": [], "assignees": [], "latest_event_id": 1, "now": 2],
+        "/api/plugins/kanban/profiles": ["profiles": []],
+        "/api/plugins/kanban/projects": ["projects": []],
+        "/api/plugins/kanban/orchestration": [
+            "orchestrator_profile": "",
+            "default_assignee": "",
+            "auto_decompose": true,
+            "auto_promote_children": true,
+            "resolved_orchestrator_profile": "default",
+            "resolved_default_assignee": "default"
+        ],
+        "/api/plugins/kanban/dispatch": [:]
+    ]
 }
