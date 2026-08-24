@@ -60,12 +60,6 @@ final class KanbanV3DTests: XCTestCase {
         return String(data: data, encoding: .utf8) ?? "{}"
     }
 
-    /// Bounded spin-wait: lets scheduled MainActor work run without hanging
-    /// CI forever when an expected condition never materializes.
-    private func boundedYields(_ iterations: Int = 20_000) async {
-        for _ in 0..<iterations { await Task.yield() }
-    }
-
     private func eventJSON(id: Int?, taskID: String?) -> [String: Any] {
         var object: [String: Any] = [:]
         if let id { object["id"] = id }
@@ -819,6 +813,7 @@ final class KanbanV3DTests: XCTestCase {
 
         let mintsBefore = coordinator.mintedTickets.count
         let urlsBefore = coordinator.issuedURLs.count
+        let cursorBefore = coordinator.cursor
 
         // Retire WHILE nothing is parked but the generation is alive: the
         // next event must produce no observable work.
@@ -827,27 +822,36 @@ final class KanbanV3DTests: XCTestCase {
         XCTAssertTrue(socket.cancelled, "retirement cancels the current socket")
         XCTAssertEqual(coordinator.mintedTickets.count, mintsBefore, "no reconnect after retirement")
         XCTAssertEqual(coordinator.issuedURLs.count, urlsBefore, "no new URL after retirement")
+        XCTAssertEqual(coordinator.cursor, cursorBefore, "no cursor change after retirement")
 
+        // The hardened seam: post-retirement injection is a TRUE no-op - it
+        // cannot even open a new coalescing window/lifecycle.
         coordinator.injectForTesting(text: try frameJSON(events: [eventJSON(id: 99, taskID: "Z")], cursor: 99))
         await drain()
         XCTAssertEqual(batches.count, 1, "a retired stream performs no additional batch callback")
         XCTAssertEqual(batches.first?.taskIDs, Set(["A"]))
+        XCTAssertEqual(gates.heldCount, 1, "no new coalescing window/lifecycle from a retired seam injection")
+        XCTAssertEqual(coordinator.cursor, cursorBefore, "seam injection cannot move the cursor")
     }
 
     func testOwnerCancelDuringInFlightBatchPreventsRetryAndPublication() async throws {
-        // Owner cancellation during an active stream must retire everything:
-        // no further pings, refreshes, or publications from the dead generation.
+        // Owner cancellation while onBatch(A) is DEFINITELY parked mid-flight
+        // must retire everything: no refresh publication, no retry delay, no
+        // reconnect, no further pings - the dead generation performs zero work.
         let requester = V3DMockRequester()
         let store = try makeStore(requester: requester)
         await store.reload()
         guard let stampA = store.loadedContextStamp else { return XCTFail("expected context") }
 
+        let gates = SleeperGate()
+        let refreshGate = ContinuationGate()
         var pingCallCount = 0
+        var publishedAfterRefresh = 0
         let coordinator = KanbanEventStreamCoordinator(
             configuration: .init(stamp: stampA, boardSlug: "alpha", initialCursor: 10, baseURL: "https://a.test"),
             socketFactory: { _ in MockSocket() },
             ticketMinter: { "t" },
-            sleeper: { _ in },   // backoff drains instantly
+            sleeper: gates.sleeper,
             heartbeatIntervalNanoseconds: noHeartbeatInterval,
             pingTimeoutNanoseconds: KanbanLiveUpdatePolicy.pingTimeoutNanoseconds,
             pinger: { _ in
@@ -855,33 +859,74 @@ final class KanbanV3DTests: XCTestCase {
                 return true
             },
             onBatch: { invalidation in
-                _ = await store.refreshFromEvent(expectedContext: stampA, includeArchived: false)
-                return .completed
+                do {
+                    try await refreshGate.awaitRelease()
+                } catch is CancellationError {
+                    return .discard
+                }
+
+                let disposition = await store.refreshFromEvent(
+                    expectedContext: invalidation.context,
+                    includeArchived: false
+                )
+                if disposition == .refreshed {
+                    publishedAfterRefresh += 1
+                }
+                return disposition == .deferred ? .retrySoon : .completed
             }
         )
         let owner = Task { await coordinator.run() }
-        await boundedYields(5_000)
-        coordinator.injectForTesting(text: try frameJSON(events: [eventJSON(id: 11, taskID: "A")], cursor: 11))
-        await boundedYields(5_000)
+        // Connect handshake: the stream is up once the first URL is issued.
+        var urlSpins = 0
+        while coordinator.issuedURLs.isEmpty {
+            urlSpins += 1
+            if urlSpins > 20_000 {
+                XCTFail("connect never issued a URL")
+                return
+            }
+            await Task.yield()
+        }
 
-        // Verify the stream was active before cancellation.
+        // 2-6. Inject A, open/release the coalescing window, then park
+        // onBatch(A) INSIDE its handler - definitely in flight.
+        coordinator.injectForTesting(text: try frameJSON(events: [eventJSON(id: 11, taskID: "A")], cursor: 11))
+        await gates.waitUntilHeld(1)
+        await gates.releaseAll()
+        await refreshGate.waitUntilAwaited(1)   // A's handler is parked NOW
+
         let pingsBeforeCancel = pingCallCount
         XCTAssertGreaterThan(pingsBeforeCancel, 0, "pinger was called at least once")
+        let mintsBefore = coordinator.mintedTickets.count
+        let urlsBefore = coordinator.issuedURLs.count
+        let cursorBefore = coordinator.cursor
 
-        // Cancel the owner - this must retire everything.
+        // 7-8. Cancel the owner; run() returns only after full retirement.
         owner.cancel()
+        await owner.value
+        let pingsAfterCancel = pingCallCount
+
+        // 9. Release the gate after cancellation: the parked handler already
+        // unwound via CancellationError, so nothing can publish/retry now.
+        await refreshGate.releaseAll()
         await drain()
 
-        // After retirement: no more ping calls, no more refreshes.
-        let pingsAfterCancel = pingCallCount
-        await boundedYields(5_000)
-        XCTAssertEqual(pingCallCount, pingsAfterCancel, "no additional ping calls after retirement")
+        XCTAssertEqual(publishedAfterRefresh, 0, "the cancelled handler never reached a refresh publication")
         XCTAssertNil(store.liveInvalidation, "retired generation publishes nothing")
+        XCTAssertEqual(pingCallCount, pingsAfterCancel, "no additional ping after retirement")
+        XCTAssertEqual(coordinator.mintedTickets.count, mintsBefore, "no new ticket after retirement")
+        XCTAssertEqual(coordinator.issuedURLs.count, urlsBefore, "no new URL after retirement")
+        XCTAssertEqual(coordinator.cursor, cursorBefore, "no cursor change after retirement")
+        XCTAssertEqual(gates.delays.filter { $0 == KanbanLiveUpdatePolicy.deferredRetryNanoseconds }.count, 0,
+                       "the 750ms deferred-retry delay never started")
 
-        // Inject another event - it should be ignored by the retired coordinator.
+        // The hardened seam: post-retirement injection is a TRUE no-op.
         coordinator.injectForTesting(text: try frameJSON(events: [eventJSON(id: 99, taskID: "Z")], cursor: 99))
-        await boundedYields(5_000)
-        XCTAssertEqual(pingCallCount, pingsAfterCancel, "retired coordinator performs no work")
+        await drain()
+        XCTAssertEqual(pingCallCount, pingsAfterCancel, "seam injection performs zero stream work")
+        XCTAssertEqual(coordinator.cursor, cursorBefore, "seam injection cannot move the cursor")
+        XCTAssertEqual(coordinator.mintedTickets.count, mintsBefore, "seam injection cannot mint tickets")
+        XCTAssertEqual(coordinator.issuedURLs.count, urlsBefore, "seam injection cannot reconnect")
+        XCTAssertEqual(publishedAfterRefresh, 0, "seam injection cannot publish")
     }
 
     func testCancelDuringDeferredDelayStopsTheRetry() async throws {
@@ -900,6 +945,11 @@ final class KanbanV3DTests: XCTestCase {
                 expectedContext: stampA
             )
         }
+        // Deterministic handshake: the mutation is parked INSIDE the bulk
+        // POST before any event is injected - no scheduling luck - so the
+        // first batch MUST observe store.isMutating == true and defer, which
+        // schedules the one 750 ms retry delay this test cancels.
+        await requester.waitForSuspension()
 
         var batches: [KanbanEventInvalidation] = []
         let coordinator = KanbanEventStreamCoordinator(

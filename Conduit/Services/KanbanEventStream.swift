@@ -621,8 +621,12 @@ final class KanbanEventStreamCoordinator {
     // MARK: Test-only ingestion surface
 
     /// TEST-ONLY: feed a raw text frame into the ingestion pipeline exactly
-    /// as a receive() completion would.
+    /// as a receive() completion would. Mirrors production ownership: only a
+    /// RUNNING generation may ingest - the real receive path proves
+    /// isCurrent(myRun) before calling ingest, so a retired stream can never
+    /// schedule work through this seam either.
     func injectForTesting(text: String) {
+        guard isRunning else { return }
         ingest(.text(text), myRun: runID)
     }
 }
