@@ -1320,16 +1320,21 @@ struct KanbanEventFrame: Decodable, Equatable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        // Per-element tolerance (review S1): ONE malformed event must not
-        // drop the whole frame's invalidation value - malformed elements are
-        // skipped individually. KanbanLiveEvent's own decoder never throws,
-        // so every successful advance appends exactly one entry.
+        // Per-element tolerance with GUARANTEED ADVANCEMENT (V3D correction
+        // pass): a failed element decode must CONSUME that slot - otherwise
+        // the walk re-reads the same malformed element forever, silently
+        // skipping every later valid event while the cursor still advances
+        // past them. AnyCodable accepts any JSON value, so it always
+        // consumes; KanbanLiveEvent's own decoder never throws for object
+        // elements.
         var decoded: [KanbanLiveEvent] = []
         if var nested = try? container.nestedUnkeyedContainer(forKey: .events) {
             let total = nested.count ?? 0
             for _ in 0..<total {
                 if let event = try? nested.decode(KanbanLiveEvent.self) {
                     decoded.append(event)
+                } else {
+                    _ = try? nested.decode(AnyCodable.self)
                 }
             }
         }

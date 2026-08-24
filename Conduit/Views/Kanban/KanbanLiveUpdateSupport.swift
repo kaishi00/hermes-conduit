@@ -8,15 +8,18 @@ import SwiftUI
 
 enum KanbanLiveUpdateSupport {
     /// The live-stream identity: server identity + configuration generation +
-    /// the CONCRETE loaded board slug. Any change retires the current socket;
-    /// the new context starts from ITS OWN authoritative watermark.
+    /// the CONCRETE loaded board slug + the Show-Archived filter (an archived
+    /// toggle must restart the stream so event-driven refreshes use the NEW
+    /// filter, never a stale captured one). Any change retires the current
+    /// socket; the new context starts from ITS OWN authoritative watermark.
     static func streamKey(
         bridgeIdentity: ObjectIdentifier?,
         baseURL: String,
         configurationGeneration: Int,
-        loadedBoardSlug: String?
+        loadedBoardSlug: String?,
+        includeArchived: Bool
     ) -> String {
-        [String(describing: bridgeIdentity), baseURL, String(configurationGeneration), loadedBoardSlug ?? "-"]
+        [String(describing: bridgeIdentity), baseURL, String(configurationGeneration), loadedBoardSlug ?? "-", "archived=\(includeArchived)"]
             .joined(separator: "|")
     }
 

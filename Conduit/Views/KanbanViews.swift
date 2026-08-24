@@ -209,7 +209,8 @@ struct KanbanView: View {
             bridgeIdentity: bridgeIdentity,
             baseURL: appState.dashboardTicketBridge?.baseURL ?? "",
             configurationGeneration: store.currentConfigurationGeneration,
-            loadedBoardSlug: store.loadedBoardSlug
+            loadedBoardSlug: store.loadedBoardSlug,
+            includeArchived: includeArchived
         )
     }
 
@@ -245,6 +246,11 @@ struct KanbanView: View {
                     expectedContext: invalidation.context,
                     includeArchived: includeArchived
                 )
+                // A retired generation (owning task cancelled mid-refresh)
+                // publishes nothing and reports discard.
+                if disposition == .refreshed, Task.isCancelled {
+                    return .discard
+                }
                 switch disposition {
                 case .refreshed:
                     store.publishLiveInvalidation(invalidation)
