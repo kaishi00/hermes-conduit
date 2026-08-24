@@ -81,18 +81,36 @@ final class URLSessionKanbanEventSocket: KanbanEventSocket {
     }
 }
 
-/// Single-resume gate for one ping attempt.
+/// Single-resume gate for one ping attempt. Cancellation and pong callbacks
+/// hop through Task { @MainActor }, so a result can race AHEAD of register():
+/// the gate remembers that early result and consumes it at registration -
+/// exactly once.
 @MainActor
 final class PingContinuationGate {
     private var continuation: CheckedContinuation<Void, Error>?
     private var resumed = false
+    private var pendingResult: Result<Void, Error>?
 
     func register(_ continuation: CheckedContinuation<Void, Error>) {
+        if let pendingResult {
+            self.pendingResult = nil
+            resumed = true
+            continuation.resume(with: pendingResult)
+            return
+        }
         self.continuation = continuation
     }
 
     func resumeIfPending(_ result: Result<Void, Error>) {
-        guard !resumed, let continuation else { return }
+        guard !resumed else { return }
+        guard let continuation else {
+            // No continuation registered yet: remember the FIRST early result
+            // so register() delivers it; later attempts stay ignored.
+            if pendingResult == nil {
+                pendingResult = result
+            }
+            return
+        }
         resumed = true
         self.continuation = nil
         continuation.resume(with: result)
@@ -535,7 +553,15 @@ final class KanbanEventStreamCoordinator {
     /// re-proves both stream ownership AND batch ownership, so a retired
     /// generation can publish nothing after its retirement point.
     private func runBatchLifecycle(_ myRun: Int, batchRun: Int) async {
-        defer { batchTask = nil }
+        // Ownership-safe teardown: clear the handle ONLY if THIS lifecycle
+        // still owns it. A cancelled old-generation lifecycle can unwind LATE
+        // - after a restarted coordinator already scheduled its own batchTask
+        // - and must never clear that newer handle.
+        defer {
+            if batchRun == batchRunID {
+                batchTask = nil
+            }
+        }
         do {
             try await sleeper(coalescingWindowNanoseconds)
         } catch {

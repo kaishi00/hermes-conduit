@@ -31,6 +31,28 @@ final class KanbanV3DTests: XCTestCase {
         for _ in 0..<200 { await Task.yield() }
     }
 
+    /// Races an async operation against a watchdog so a broken park fails
+    /// the test within a bound instead of hanging CI. nil result == the
+    /// watchdog won (the operation never completed).
+    private func raced<T>(
+        _ operation: @escaping () async throws -> T,
+        timeoutNanoseconds: UInt64 = 500_000_000
+    ) async -> Result<T, Error>? {
+        await withTaskGroup(of: Result<T, Error>?.self) { group -> Result<T, Error>? in
+            group.addTask { () -> Result<T, Error>? in
+                do { return .success(try await operation()) }
+                catch { return .failure(error) }
+            }
+            group.addTask { () -> Result<T, Error>? in
+                try? await Task.sleep(nanoseconds: timeoutNanoseconds)
+                return nil
+            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
+        }
+    }
+
     private func frameJSON(events: [[String: Any]], cursor: Int?) throws -> String {
         var object: [String: Any] = ["events": events]
         if let cursor { object["cursor"] = cursor }
@@ -166,20 +188,23 @@ final class KanbanV3DTests: XCTestCase {
     func testBoardSwitchSubscribesFromItsOwnWatermark() {
         // Cursor/context ownership: a cursor belongs to exactly one
         // board/server context. Beta's stream starts from BETA's watermark,
-        // never alpha's cursor.
+        // never alpha's cursor. ONE shared bridge identity keeps the
+        // comparison honest: only the variables under test differ (board
+        // slug, includeArchived) - never bridge identity itself.
+        let identity = ObjectIdentifier(NSObject())
         let alphaKey = KanbanLiveUpdateSupport.streamKey(
-            bridgeIdentity: ObjectIdentifier(NSObject()), baseURL: "https://a.test",
+            bridgeIdentity: identity, baseURL: "https://a.test",
             configurationGeneration: 4, loadedBoardSlug: "alpha", includeArchived: false
         )
         let betaKey = KanbanLiveUpdateSupport.streamKey(
-            bridgeIdentity: ObjectIdentifier(NSObject()), baseURL: "https://a.test",
+            bridgeIdentity: identity, baseURL: "https://a.test",
             configurationGeneration: 4, loadedBoardSlug: "beta", includeArchived: false
         )
         XCTAssertNotEqual(alphaKey, betaKey, "a board change retires the stream identity")
         // Show Archived is part of the identity: toggling it restarts the
         // stream so event-driven refreshes use the NEW filter.
         XCTAssertNotEqual(alphaKey, KanbanLiveUpdateSupport.streamKey(
-            bridgeIdentity: ObjectIdentifier(NSObject()), baseURL: "https://a.test",
+            bridgeIdentity: identity, baseURL: "https://a.test",
             configurationGeneration: 4, loadedBoardSlug: "alpha", includeArchived: true
         ), "an archived-toggle restarts the stream with the fresh filter")
 
@@ -213,6 +238,41 @@ final class KanbanV3DTests: XCTestCase {
         let afterServerChange = await store.refreshFromEvent(expectedContext: stampAlpha, includeArchived: false)
         XCTAssertEqual(afterServerChange, .stale, "same slug, new server generation -> still stale")
         XCTAssertTrue(secondRequester.calls.isEmpty, "generation-4 frames cause ZERO requests on the new server")
+    }
+
+    // MARK: - V3D third correction pass: passive-refresh error preservation
+
+    /// Regression: cancelling the owning stream task while an event-triggered
+    /// refresh is IN FLIGHT discards the refresh outcome AND restores BOTH
+    /// pre-cancellation error surfaces. A passive refresh must never erase a
+    /// pending mutation error it did not create.
+    func testCancelledPassiveRefreshPreservesExistingMutationError() async throws {
+        let requester = V3DMockRequester()
+        let store = try makeStore(requester: requester)
+        await store.reload()
+        guard let stampA = store.loadedContextStamp else { return XCTFail("expected context") }
+
+        // 1. A PRE-EXISTING mutation error owned by a failed user action -
+        // unrelated to any passive event refresh.
+        store.showMutationError(KanbanServiceError.mutationInProgress)
+        let original = try XCTUnwrap(store.mutationErrorMessage)
+
+        // 2-3. An event-triggered refresh starts and is cancelled WHILE the
+        // authoritative reload is suspended mid-flight.
+        requester.suspend(method: "GET", basePath: "/api/plugins/kanban/board")
+        let refreshTask = Task {
+            await store.refreshFromEvent(expectedContext: stampA, includeArchived: false)
+        }
+        await requester.waitForSuspension()
+        refreshTask.cancel()
+        requester.resumeSuspended()
+
+        // 4. The retired refresh reports stale/discard behavior...
+        let disposition = await refreshTask.value
+        XCTAssertEqual(disposition, .stale, "a cancelled passive refresh discards its outcome")
+        // 5. ...and the ORIGINAL mutation error survives untouched.
+        XCTAssertEqual(store.mutationErrorMessage, original,
+                       "a cancelled passive refresh never erases a pre-existing mutation error")
     }
 
     // MARK: - V3D correction pass regressions
@@ -303,6 +363,10 @@ final class KanbanV3DTests: XCTestCase {
                 expectedContext: stampA
             )
         }
+        // Deterministic handshake: the mutation is parked INSIDE the bulk
+        // POST before any event is injected - no scheduling luck - so the
+        // first event attempt definitely observes store.isMutating == true.
+        await requester.waitForSuspension()
 
         let coordinator = KanbanEventStreamCoordinator(
             configuration: .init(stamp: stampA, boardSlug: "alpha", initialCursor: 10, baseURL: "https://a.test"),
@@ -372,16 +436,11 @@ final class KanbanV3DTests: XCTestCase {
     }
 
     func testEventDuringInFlightRefreshRunsExactlyOneFollowUp() async throws {
-        let requester = V3DMockRequester()
-        let store = try makeStore(requester: requester)
-        await store.reload()
-        guard let stampA = store.loadedContextStamp else { return XCTFail("expected context") }
-
         let gates = SleeperGate()
         let refreshGate = ContinuationGate()
         var batches: [KanbanEventInvalidation] = []
         let coordinator = KanbanEventStreamCoordinator(
-            configuration: .init(stamp: stampA, boardSlug: "alpha", initialCursor: 10, baseURL: "https://a.test"),
+            configuration: .init(stamp: stamp(), boardSlug: "alpha", initialCursor: 10, baseURL: "https://a.test"),
             socketFactory: { _ in MockSocket() },
             ticketMinter: { "t" },
             sleeper: gates.sleeper,
@@ -389,30 +448,38 @@ final class KanbanV3DTests: XCTestCase {
             pinger: { _ in true },
             onBatch: { invalidation in
                 batches.append(invalidation)
-                // REST refresh runs immediately (store idle)
-                _ = await store.refreshFromEvent(expectedContext: invalidation.context, includeArchived: false)
+                try await refreshGate.awaitRelease()   // park EVERY handler mid-flight
                 return .completed
             }
         )
         coordinator.start()
 
-        // Phase 1: inject A → window(1) opens → release → batch A handled
+        // Phase 1: inject A -> window opens -> release -> onBatch(A) runs and
+        // PARKS inside its handler (genuinely IN FLIGHT, not completed).
         coordinator.injectForTesting(text: try frameJSON(events: [eventJSON(id: 11, taskID: "A")], cursor: 11))
         await gates.waitUntilHeld(1)
         await gates.releaseAll()
-        await drain()
+        await refreshGate.waitUntilAwaited(1)   // A's handler is parked NOW
 
-        // Phase 2: inject B DURING active processing (batch-A just completed).
-        // The lifecycle's outer loop should pick up B from pending and run
-        // a new attempt WITHOUT needing another coalescing window.
+        // Phase 2: B arrives while A's handler is STILL parked.
         coordinator.injectForTesting(text: try frameJSON(events: [eventJSON(id: 12, taskID: "B")], cursor: 12))
-        await gates.waitUntilHeld(2)
-        await gates.releaseAll()
-        await drain()
-
-        XCTAssertEqual(batches.count, 2, "both batches delivered")
+        XCTAssertEqual(batches.count, 1, "only batch A observed while A's handler is still in flight")
         XCTAssertEqual(batches.first?.taskIDs, Set(["A"]))
+
+        // Releasing A lets the SAME lifecycle's next outer-loop pass pick up
+        // B - no new event, no second coalescing window.
+        await refreshGate.releaseAll()
+        await refreshGate.waitUntilAwaited(2)   // B's handler started and parked
+        XCTAssertEqual(batches.count, 2, "the in-flight follow-up was picked up without a new event")
         XCTAssertEqual(batches.last?.taskIDs, Set(["B"]))
+        XCTAssertEqual(gates.heldCount, 1, "no second coalescing window was needed")
+
+        await refreshGate.releaseAll()   // release B's handler as well
+        await drain()
+        coordinator.stop()
+
+        XCTAssertEqual(batches.count, 2, "exactly two batches: A then B - no third")
+        XCTAssertEqual(batches.map(\.taskIDs), [Set(["A"]), Set(["B"])])
     }
 
     // MARK: - Busy store boundary
@@ -482,9 +549,9 @@ final class KanbanV3DTests: XCTestCase {
         )
         coordinator.start()
         coordinator.injectForTesting(text: try frameJSON(events: [], cursor: 104))
-        await gates.waitUntilHeld(0)
         await drain()
         coordinator.stop()
+        XCTAssertEqual(gates.heldCount, 0, "an empty frame opens no coalescing window")
         XCTAssertEqual(coordinator.cursor, 104, "cursor still advances")
         XCTAssertTrue(batches.isEmpty, "empty frames never invalidate")
     }
@@ -662,6 +729,57 @@ final class KanbanV3DTests: XCTestCase {
 
     // MARK: - V3D second correction pass: lifecycle + bounded ping
 
+    /// Regression: generation A's batch lifecycle cancelled in retirement can
+    /// unwind LATE - after a restarted coordinator already scheduled its own
+    /// batchTask - and its teardown must never clear that newer handle.
+    func testRetiredBatchLifecycleCannotClearANewerBatchTask() async throws {
+        let gates = SleeperGate()
+        var batches: [KanbanEventInvalidation] = []
+        let coordinator = KanbanEventStreamCoordinator(
+            configuration: .init(stamp: stamp(), boardSlug: "alpha", initialCursor: 10, baseURL: "https://a.test"),
+            socketFactory: { _ in MockSocket() },
+            ticketMinter: { "t" },
+            sleeper: gates.sleeper,
+            heartbeatIntervalNanoseconds: noHeartbeatInterval,
+            pinger: { _ in true },
+            onBatch: { invalidation in
+                batches.append(invalidation)
+                return .completed
+            }
+        )
+        // Generation A: open a batch and PARK inside its coalescing window.
+        coordinator.start()
+        coordinator.injectForTesting(text: try frameJSON(events: [eventJSON(id: 11, taskID: "A")], cursor: 11))
+        await gates.waitUntilHeld(1)
+
+        // Retire A, restart the SAME coordinator, and let generation B
+        // schedule ITS OWN batch - all before A's cancelled lifecycle unwinds
+        // (synchronous MainActor sequence: no interleaving possible).
+        coordinator.stop()
+        coordinator.start()
+        coordinator.injectForTesting(text: try frameJSON(events: [eventJSON(id: 12, taskID: "B")], cursor: 12))
+
+        // NOW allow A's cancelled lifecycle to unwind against B's live handle.
+        await drain()
+
+        XCTAssertEqual(gates.heldCount, 2,
+                       "A's teardown ran; B's owned coalescing window is still the only one besides A's")
+
+        // While B's lifecycle owns the handle, C must merge into it - never
+        // start a duplicate batch lifecycle.
+        coordinator.injectForTesting(text: try frameJSON(events: [eventJSON(id: 13, taskID: "C")], cursor: 13))
+        await drain()
+        XCTAssertEqual(gates.heldCount, 2, "no duplicate coalescing window/lifecycle for C")
+        XCTAssertTrue(batches.isEmpty, "nothing flushes while B's window is open")
+
+        await gates.releaseAll()
+        await drain()
+        coordinator.stop()
+
+        XCTAssertEqual(batches.count, 1, "exactly ONE batch lifecycle ran")
+        XCTAssertEqual(batches.first?.taskIDs, Set(["B", "C"]), "C merged into B's owned lifecycle")
+    }
+
     func testStopDuringInFlightBatchRetiresWithoutFurtherWork() async throws {
         let requester = V3DMockRequester()
         let store = try makeStore(requester: requester)
@@ -670,7 +788,6 @@ final class KanbanV3DTests: XCTestCase {
 
         let socket = MockSocket()
         let gates = SleeperGate()
-        let recorder = StreamRecorder(minterTickets: ["ticket-1", "ticket-2"])
         var batches: [KanbanEventInvalidation] = []
         let coordinator = KanbanEventStreamCoordinator(
             configuration: .init(stamp: stampA, boardSlug: "alpha", initialCursor: 10, baseURL: "https://a.test"),
@@ -700,16 +817,16 @@ final class KanbanV3DTests: XCTestCase {
         await gates.releaseAll()       // window elapses; onBatch runs to completion
         await drain()
 
-        let mintsBefore = recorder.mintedTickets.count
-        let urlsBefore = recorder.issuedURLs.count
+        let mintsBefore = coordinator.mintedTickets.count
+        let urlsBefore = coordinator.issuedURLs.count
 
         // Retire WHILE nothing is parked but the generation is alive: the
         // next event must produce no observable work.
         owner.cancel()
         await drain()
         XCTAssertTrue(socket.cancelled, "retirement cancels the current socket")
-        XCTAssertEqual(recorder.mintedTickets.count, mintsBefore, "no reconnect after retirement")
-        XCTAssertEqual(recorder.issuedURLs.count, urlsBefore, "no new URL after retirement")
+        XCTAssertEqual(coordinator.mintedTickets.count, mintsBefore, "no reconnect after retirement")
+        XCTAssertEqual(coordinator.issuedURLs.count, urlsBefore, "no new URL after retirement")
 
         coordinator.injectForTesting(text: try frameJSON(events: [eventJSON(id: 99, taskID: "Z")], cursor: 99))
         await drain()
@@ -857,19 +974,21 @@ final class KanbanV3DTests: XCTestCase {
         guard let stampA = store.loadedContextStamp else { return XCTFail("expected context") }
 
         // Socket 1: connect-time ping succeeds, but the HEARTBEAT ping parks
-        // forever (silent peer). Socket 2: fully healthy.
+        // forever (silent peer). Socket 2: fully healthy. Local counters:
+        // this test constructs the coordinator DIRECTLY (no StreamRecorder).
         let heartbeatSilent = MockSocket(pingMode: .firstSucceedsThenParks)
         let healthy = MockSocket()
-        let recorder = StreamRecorder(minterTickets: ["ticket-1", "ticket-2"])
+        var connectionIndex = 0
+        var ticketIndex = 0
         let coordinator = KanbanEventStreamCoordinator(
             configuration: .init(stamp: stampA, boardSlug: "alpha", initialCursor: 42, baseURL: "https://a.test"),
             socketFactory: { _ in
-                if recorder.issuedURLs.isEmpty { return heartbeatSilent }
-                return healthy
+                defer { connectionIndex += 1 }
+                return connectionIndex == 0 ? heartbeatSilent : healthy
             },
             ticketMinter: {
-                let tickets = ["ticket-1", "ticket-2"]
-                return tickets[min(recorder.mintedTickets.count, tickets.count - 1)]
+                defer { ticketIndex += 1 }
+                return ticketIndex == 0 ? "ticket-1" : "ticket-2"
             },
             sleeper: { _ in },   // backoff drains instantly on reconnect
             heartbeatIntervalNanoseconds: 50_000_000,   // fires after 50ms real
@@ -887,7 +1006,19 @@ final class KanbanV3DTests: XCTestCase {
 
         XCTAssertTrue(heartbeatSilent.cancelled, "heartbeat timeout retires the connection")
         XCTAssertGreaterThanOrEqual(coordinator.pingFailures, 1)
+
+        // The reconnect must ACTUALLY reach the healthy second connection -
+        // not merely cancel the first one.
+        var reconnectNs: UInt64 = 0
+        while coordinator.issuedURLs.count < 2 && reconnectNs < 2_000_000_000 {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+            reconnectNs += 10_000_000
+        }
+        XCTAssertEqual(coordinator.issuedURLs.count, 2, "the reconnect opened a second connection")
+        XCTAssertEqual(coordinator.mintedTickets, ["ticket-1", "ticket-2"], "fresh single-use ticket per connect")
+
         coordinator.stop()
+        XCTAssertTrue(healthy.cancelled, "the HEALTHY socket was connected (current) when the stream stopped")
     }
 
     func testOwnerCancellationDuringParkedPingUnwindsPromptly() async throws {
@@ -923,6 +1054,48 @@ final class KanbanV3DTests: XCTestCase {
         XCTAssertEqual(recorder.mintedTickets.count, mintsBefore, "no new ticket after retirement")
     }
 
+    /// Direct gate regression: a result delivered BEFORE register() is
+    /// remembered, consumed at registration EXACTLY once, and later resumes
+    /// are ignored. Bounded watchdog instead of an unbounded park.
+    func testPingGateConsumesResultThatRacesAheadOfRegister() async throws {
+        let gate = PingContinuationGate()
+        // Resume BEFORE registration: the early result must be remembered...
+        gate.resumeIfPending(.failure(CancellationError()))
+
+        // ...and consumed exactly once when the continuation registers.
+        let outcome = await withTaskGroup(of: Result<Void, Error>?.self) { group -> Result<Void, Error>? in
+            group.addTask { @MainActor () -> Result<Void, Error>? in
+                do {
+                    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                        // The @MainActor child closure gives the continuation
+                        // body the same inherited isolation production ping()
+                        // relies on.
+                        gate.register(continuation)
+                    }
+                    return .success(())
+                } catch {
+                    return .failure(error)
+                }
+            }
+            group.addTask { @MainActor () -> Result<Void, Error>? in
+                // Watchdog: if the early result were dropped, the registered
+                // continuation would still be parked - wake it and report.
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                gate.resumeIfPending(.success(()))
+                return nil
+            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
+        }
+
+        guard case .failure(let error)? = outcome else {
+            return XCTFail("register() did not consume the remembered early result (parked or wrong result)")
+        }
+        XCTAssertTrue(error is CancellationError,
+                      "the EARLY failure is delivered exactly once; subsequent resumes are ignored")
+    }
+
     // MARK: - Cancellation finality
 
     func testStopCancelsSocketAndSilencesLateCompletions() async throws {
@@ -931,27 +1104,75 @@ final class KanbanV3DTests: XCTestCase {
         await store.reload()
         guard let stampA = store.loadedContextStamp else { return XCTFail("expected context") }
 
-        let socket = MockSocket()
+        // Late-completion socket: cancel() marks cancelled but leaves the
+        // in-flight receive PARKED, so emitLate() can deliver a frame that
+        // was already in flight when the stream retired - exactly like a
+        // URLSession receive completion racing .goingAway.
+        let socket = MockSocket(cancelMode: .leavesReceiveParked)
+        var batchCount = 0
         let recorder = StreamRecorder(minterTickets: ["ticket-1"])
         let coordinator = recorder.makeCoordinator(
             stamp: stampA, boardSlug: "alpha", initialCursor: 42, baseURL: "https://a.test",
-            sockets: [socket]
+            sockets: [socket],
+            onBatch: { _ in
+                batchCount += 1
+                return .discard
+            }
         )
         coordinator.start()
         await recorder.waitUntilURLCount(1)
         let urlsBefore = recorder.issuedURLs.count
         let mintsBefore = recorder.mintedTickets.count
+        let cursorBefore = coordinator.cursor
+
+        // Deterministic: the stream is connected AND its receive is parked
+        // in flight BEFORE retirement - otherwise cancellation wins the race,
+        // the next receive throws immediately, and there is nothing for the
+        // late completion to deliver to.
+        var parkedSpins = 0
+        while !socket.hasParkedReceive {
+            parkedSpins += 1
+            if parkedSpins > 20_000 {
+                XCTFail("the stream never parked its receive")
+                return
+            }
+            await Task.yield()
+        }
 
         coordinator.stop()
         XCTAssertTrue(socket.cancelled, "the URLSessionWebSocketTask is cancelled (.goingAway behind the protocol)")
 
-        // A late receive completion after cancellation is ignored: no new
-        // tickets, no new URLs, no batches.
+        // The late completion REALLY reaches the still-parked receive path.
         socket.emitLate(text: try frameJSON(events: [eventJSON(id: 50, taskID: "A")], cursor: 50))
         await drain()
 
+        XCTAssertTrue(socket.lateDeliveryHadParkedReceive,
+                      "test precondition: the late frame had a parked receive to be delivered to")
         XCTAssertEqual(recorder.issuedURLs.count, urlsBefore, "no reconnect after stop()")
         XCTAssertEqual(recorder.mintedTickets.count, mintsBefore, "no new ticket minted after stop()")
+        XCTAssertEqual(batchCount, 0, "the retired generation never runs a batch callback")
+        XCTAssertEqual(coordinator.cursor, cursorBefore, "the late frame causes no cursor/state resurrection")
+    }
+
+    /// Direct helper regression: a releaseAll() recorded BEFORE anyone
+    /// awaited is consumed by the next awaitRelease() immediately - nothing
+    /// parks, no continuation is left behind.
+    func testContinuationGateAwaitReleaseConsumesAPreReleaseImmediately() async throws {
+        let gate = ContinuationGate()
+        await gate.releaseAll()   // nothing parked yet -> recorded as pre-release
+
+        // Bounded race: if awaitRelease() parked anyway, this fails instead
+        // of hanging (its cancellation handler unwinds the parked continuation).
+        let outcome = await raced({ try await gate.awaitRelease() })
+        guard case .success? = outcome else {
+            return XCTFail("awaitRelease() parked despite a recorded pre-release")
+        }
+        XCTAssertEqual(gate.awaitedCount, 1)
+
+        // The consumed pre-release must not leak into later waits: a fresh
+        // awaitRelease() genuinely parks until released (watchdog wins).
+        let parkedOutcome = await raced({ try await gate.awaitRelease() })
+        XCTAssertNil(parkedOutcome, "without a pre-release, awaitRelease() parks as usual")
     }
 }
 
@@ -973,22 +1194,43 @@ private final class MockSocket: KanbanEventSocket {
         case parksForever
     }
 
+    enum CancelMode {
+        /// cancel() wakes parked receives immediately (URLSession-like).
+        case immediate
+        /// cancel() marks cancelled but LEAVES the in-flight receive parked -
+        /// an already-in-flight completion arrives only afterwards. Used by
+        /// the late-completion test so emitLate() has something to deliver to.
+        case leavesReceiveParked
+    }
+
     private(set) var cancelled = false
+    private(set) var lateDeliveryHadParkedReceive = false
+    /// True while a receive() caller is parked - lets tests synchronize on
+    /// the in-flight receive BEFORE retiring the stream.
+    var hasParkedReceive: Bool { !parked.isEmpty }
     private var scripts: [Script]
     private var scriptIndex = 0
     private var parked: [CheckedContinuation<KanbanEventSocketMessage, Error>] = []
     private var parkedPings: [CheckedContinuation<Void, Error>] = []
-    private(set) var pingResumeCount = 0
     private var pingCalls = 0
     private let pingMode: PingMode
+    private let cancelMode: CancelMode
 
-    init(scripts: [Script] = [], pingMode: PingMode = .succeeds) {
+    init(
+        scripts: [Script] = [],
+        pingMode: PingMode = .succeeds,
+        cancelMode: CancelMode = .immediate
+    ) {
         self.scripts = scripts
         self.pingMode = pingMode
+        self.cancelMode = cancelMode
     }
 
     /// Deliver a message AFTER cancellation (late receive completion).
+    /// Records whether a receive was actually parked - tests assert this so
+    /// a late frame can never be silently dropped by the DOUBLE itself.
     func emitLate(text: String) {
+        lateDeliveryHadParkedReceive = !parked.isEmpty
         let parkedNow = parked
         parked.removeAll()
         parkedNow.forEach { $0.resume(returning: .text(text)) }
@@ -1021,7 +1263,6 @@ private final class MockSocket: KanbanEventSocket {
         }
         // Park until cancel()/owner cancellation; exactly-once resume.
         if cancelled { throw CancellationError() }
-        pingResumeCount += 1
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
                 parkedPings.append(continuation)
@@ -1044,10 +1285,13 @@ private final class MockSocket: KanbanEventSocket {
 
     func cancel() {
         cancelled = true
+        failParkedPings(CancellationError())
+        // Late-completion mode simulates an in-flight URLSession receive that
+        // completes only AFTER cancellation: leave it parked for emitLate().
+        guard cancelMode == .immediate else { return }
         let parkedNow = parked
         parked.removeAll()
         parkedNow.forEach { $0.resume(throwing: CancellationError()) }
-        failParkedPings(CancellationError())
     }
 }
 
@@ -1129,6 +1373,12 @@ private final class ContinuationGate {
 
     func awaitRelease() async throws {
         awaitedCount += 1
+        // Mirror SleeperGate: a release recorded BEFORE anyone awaited is
+        // consumed immediately - no continuation parks.
+        if pendingReleases > 0 {
+            pendingReleases -= 1
+            return
+        }
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
                 parked.append(continuation)
@@ -1293,7 +1543,8 @@ private final class StreamRecorder {
         baseURL: String,
         sockets: [MockSocket] = [],
         heartbeatIntervalNanoseconds: UInt64 = 3_600_000_000_000,
-        pinger: KanbanEventStreamCoordinator.Pinger? = nil
+        pinger: KanbanEventStreamCoordinator.Pinger? = nil,
+        onBatch: KanbanEventStreamCoordinator.BatchHandler? = nil
     ) -> KanbanEventStreamCoordinator {
         let rec = self
         var connectionIndex = 0
@@ -1319,7 +1570,7 @@ private final class StreamRecorder {
             },
             sleeper: { _ in },   // backoff/retry delays drain instantly unless overridden
             pinger: pinger,
-            onBatch: { _ in .discard }
+            onBatch: onBatch ?? { _ in .discard }
         )
     }
 

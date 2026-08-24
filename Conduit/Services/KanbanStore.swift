@@ -931,13 +931,16 @@ final class KanbanStore: ObservableObject {
         }
         // If the OWNING stream task is cancelled while the refresh is in
         // flight (retired generation), the reload's outcome belongs to a dead
-        // generation: restore the pre-cancellation error state so a
-        // CancellationError can never surface as a user-facing Kanban error.
+        // generation: restore BOTH pre-cancellation error surfaces so a
+        // CancellationError can never surface as a user-facing Kanban error
+        // and a passive refresh can never erase an unrelated pending
+        // mutation error it did not create.
         let previousErrorMessage = errorMessage
+        let previousMutationErrorMessage = mutationErrorMessage
         await refresh(includeArchived: includeArchived)
         if Task.isCancelled {
             errorMessage = previousErrorMessage
-            mutationErrorMessage = nil
+            mutationErrorMessage = previousMutationErrorMessage
             return .stale
         }
         return .refreshed
