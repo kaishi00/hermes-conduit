@@ -41,6 +41,9 @@ final class KanbanStore: ObservableObject {
     @Published private(set) var isMutating = false
     @Published private(set) var errorMessage: String?
     @Published private(set) var mutationErrorMessage: String?
+    /// V3D: latest coalesced live-event invalidation (published only after a
+    /// REFRESHED board reload so detail surfaces act on fresh REST state).
+    @Published private(set) var liveInvalidation: KanbanEventInvalidation?
 
     private let defaults: UserDefaults
     private let makeService: @MainActor (any DashboardJSONRequester) -> KanbanService
@@ -894,6 +897,59 @@ final class KanbanStore: ObservableObject {
 
     func clearMutationError() {
         mutationErrorMessage = nil
+    }
+
+    // MARK: - V3D: live-event refresh boundary
+
+    enum KanbanEventRefreshDisposition: Equatable {
+        /// The authoritative reload ran to completion.
+        case refreshed
+        /// Store was mutating/loading - the caller should retry the SAME
+        /// batch once; the ordinary poll converges regardless.
+        case deferred
+        /// Context no longer matches the actionable loaded snapshot - the
+        /// batch is dropped permanently (zero requests).
+        case stale
+    }
+
+    /// Socket-driven invalidation boundary. Deliberately NOT superseding:
+    /// passive event refreshes never cancel an explicit user navigation.
+    /// Order matters and is checked BEFORE any request:
+    ///   stale context / non-actionable snapshot -> .stale (zero request)
+    ///   mutating or loading                     -> .deferred
+    ///   actionable + idle                       -> authoritative reload
+    @discardableResult
+    func refreshFromEvent(
+        expectedContext: KanbanBoardContextStamp,
+        includeArchived: Bool
+    ) async -> KanbanEventRefreshDisposition {
+        guard isSelectedSnapshotLoaded, loadedContextStamp == expectedContext else {
+            return .stale
+        }
+        guard !isMutating, !isLoading else {
+            return .deferred
+        }
+        // If the OWNING stream task is cancelled while the refresh is in
+        // flight (retired generation), the reload's outcome belongs to a dead
+        // generation: restore BOTH pre-cancellation error surfaces so a
+        // CancellationError can never surface as a user-facing Kanban error
+        // and a passive refresh can never erase an unrelated pending
+        // mutation error it did not create.
+        let previousErrorMessage = errorMessage
+        let previousMutationErrorMessage = mutationErrorMessage
+        await refresh(includeArchived: includeArchived)
+        if Task.isCancelled {
+            errorMessage = previousErrorMessage
+            mutationErrorMessage = previousMutationErrorMessage
+            return .stale
+        }
+        return .refreshed
+    }
+
+    /// Publish a coalesced invalidation AFTER a refreshed reload so detail
+    /// surfaces act on fresh REST state, never on raw socket payloads.
+    func publishLiveInvalidation(_ invalidation: KanbanEventInvalidation) {
+        liveInvalidation = invalidation
     }
 
     /// Test seam: awaits any in-flight debounced dispatcher nudge owned by the

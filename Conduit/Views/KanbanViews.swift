@@ -201,6 +201,70 @@ struct KanbanView: View {
         "\(String(describing: bridgeIdentity))|\(appState.dashboardTicketBridge?.baseURL ?? "")|archived=\(includeArchived)"
     }
 
+    /// V3D: the live /events stream identity. ANY component change (server,
+    /// generation, concrete loaded board) retires the current socket; the new
+    /// context starts from its own authoritative watermark.
+    private var liveEventsKey: String {
+        KanbanLiveUpdateSupport.streamKey(
+            bridgeIdentity: bridgeIdentity,
+            baseURL: appState.dashboardTicketBridge?.baseURL ?? "",
+            configurationGeneration: store.currentConfigurationGeneration,
+            loadedBoardSlug: store.loadedBoardSlug,
+            includeArchived: includeArchived
+        )
+    }
+
+    /// Foreground live invalidation stream. REST stays canonical: frames are
+    /// coalesced into batches, and each batch drives ONE authoritative store
+    /// refresh plus a touched-detail publication. Socket failures are silent
+    /// here by design - the ordinary poll keeps Kanban usable.
+    private func runLiveEventStream() async {
+        guard let bridge = appState.dashboardTicketBridge,
+              let stamp = store.loadedContextStamp,
+              store.isSelectedSnapshotLoaded,
+              let watermark = KanbanLiveUpdateSupport.initialWatermark(from: store.board) else {
+            // Not actionable yet / malformed watermark: polling alone until
+            // the key changes (a completed load updates loadedBoardSlug).
+            return
+        }
+        let coordinator = KanbanEventStreamCoordinator(
+            configuration: .init(
+                stamp: stamp,
+                boardSlug: stamp.boardSlug,
+                initialCursor: watermark,
+                baseURL: bridge.baseURL
+            ),
+            socketFactory: { url in
+                let task = URLSession.shared.webSocketTask(with: url)
+                task.resume()
+                return URLSessionKanbanEventSocket(task: task)
+            },
+            ticketMinter: { try await bridge.mintTicket() },
+            sleeper: { nanoseconds in try await Task.sleep(nanoseconds: nanoseconds) },
+            onBatch: { [includeArchived] invalidation in
+                let disposition = await store.refreshFromEvent(
+                    expectedContext: invalidation.context,
+                    includeArchived: includeArchived
+                )
+                // A retired generation (owning task cancelled mid-refresh)
+                // publishes nothing and reports discard.
+                if disposition == .refreshed, Task.isCancelled {
+                    return .discard
+                }
+                switch disposition {
+                case .refreshed:
+                    store.publishLiveInvalidation(invalidation)
+                    return .completed
+                case .deferred:
+                    return .retrySoon
+                case .stale:
+                    return .discard
+                }
+            }
+        )
+        await coordinator.run()
+    }
+
     /// Server identity only (bridge + URL). When THIS changes, administrator
     /// sheets (orchestration settings / profiles) owned by the old server
     /// must not remain open over the new one: a settings editor seeded from
@@ -470,6 +534,9 @@ struct KanbanView: View {
         // prune ghost selections against it (never transfer by index).
         .onChange(of: store.board) { _, _ in
             pruneSelectionAgainstBoard()
+        }
+        .task(id: liveEventsKey) {
+            await runLiveEventStream()
         }
         .task(id: pollingKey) {
             selectedTask = nil

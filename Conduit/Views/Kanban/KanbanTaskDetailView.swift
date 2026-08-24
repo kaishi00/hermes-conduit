@@ -242,6 +242,20 @@ struct KanbanTaskDetailView: View {
                     await loadDetail()
                 }
             }
+            // V3D: a coalesced live-event batch that TOUCHES the displayed
+            // task wakes the same loadDetail path as ordinary polling - it
+            // already refuses to overwrite active saves/comments/requeues,
+            // in-flight loads, and unsaved local drafts. Unrelated task IDs
+            // never wake this surface.
+            .onChange(of: store.liveInvalidation) { _, invalidation in
+                guard KanbanLiveUpdateSupport.shouldRefreshDetail(
+                    invalidation: invalidation,
+                    currentStamp: store.loadedContextStamp,
+                    isSnapshotActionable: store.isSelectedSnapshotLoaded,
+                    displayedTaskID: displayedTaskID
+                ) else { return }
+                Task { await loadDetail() }
+            }
             .onChange(of: displayedTaskID) { _, newValue in
                 guard newValue != detail?.task.id else { return }
                 // Identity switch (dependency tap): drop everything the old
