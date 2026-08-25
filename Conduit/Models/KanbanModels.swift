@@ -53,6 +53,27 @@ struct KanbanDiagnosticAction: Codable, Equatable {
     var label: String
     var payload: [String: AnyCodable]?
     var suggested: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case kind, label, payload, suggested
+    }
+
+    init(kind: String, label: String, payload: [String: AnyCodable]? = nil, suggested: Bool? = nil) {
+        self.kind = kind
+        self.label = label
+        self.payload = payload
+        self.suggested = suggested
+    }
+
+    /// Tolerant decode: recovery actions are operator-critical, so degrade
+    /// individual field types instead of dropping the action.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        kind = container.decodeLossyString(forKey: .kind) ?? ""
+        label = container.decodeLossyString(forKey: .label) ?? ""
+        payload = try? container.decodeIfPresent([String: AnyCodable].self, forKey: .payload)
+        suggested = try? container.decodeIfPresent(Bool.self, forKey: .suggested)
+    }
 }
 
 struct KanbanDiagnostic: Codable, Equatable {
@@ -68,6 +89,65 @@ struct KanbanDiagnostic: Codable, Equatable {
     enum CodingKeys: String, CodingKey {
         case kind, severity, title, detail, actions, count, data
         case lastSeenAt = "last_seen_at"
+    }
+
+    init(
+        kind: String,
+        severity: String,
+        title: String,
+        detail: String,
+        actions: [KanbanDiagnosticAction],
+        count: Int,
+        lastSeenAt: Int? = nil,
+        data: [String: AnyCodable]? = nil
+    ) {
+        self.kind = kind
+        self.severity = severity
+        self.title = title
+        self.detail = detail
+        self.actions = actions
+        self.count = count
+        self.lastSeenAt = lastSeenAt
+        self.data = data
+    }
+
+    /// Tolerant decode (V2 §14): a partially-hostile diagnostic row still
+    /// renders — identity text degrades to "", numeric fields fail safely to
+    /// zero/nil, and a non-array actions payload becomes an empty list.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        kind = container.decodeLossyString(forKey: .kind) ?? ""
+        severity = container.decodeLossyString(forKey: .severity) ?? ""
+        title = container.decodeLossyString(forKey: .title) ?? ""
+        detail = container.decodeLossyString(forKey: .detail) ?? ""
+        let typedActions = try? container.decodeIfPresent([KanbanDiagnosticAction].self, forKey: .actions)
+        if let typedActions {
+            // Whole-array typed decode succeeded.
+            actions = typedActions
+        } else if var walker = try? container.nestedUnkeyedContainer(forKey: .actions) {
+            // Some element was hostile: walk manually, keeping every row we
+            // can normalize and consuming the rest so iteration continues.
+            // The counter guarantees termination even against payloads where
+            // both decode attempts fail without advancing the cursor.
+            var decoded: [KanbanDiagnosticAction] = []
+            var safetyCounter = 0
+            while !walker.isAtEnd && safetyCounter < 10_000 {
+                safetyCounter += 1
+                if let action = try? walker.decode(KanbanDiagnosticAction.self) {
+                    decoded.append(action)
+                } else {
+                    _ = try? walker.decode(AnyCodable.self)
+                }
+            }
+            actions = decoded
+        } else {
+            actions = []
+        }
+        // Absent/lost count renders as 1 (never "×N"), matching how the
+        // drawer treats single occurrences; 0 would hide real repeats.
+        count = container.decodeLossyInt(forKey: .count) ?? 1
+        lastSeenAt = container.decodeLossyInt(forKey: .lastSeenAt)
+        data = try? container.decodeIfPresent([String: AnyCodable].self, forKey: .data)
     }
 }
 
@@ -285,11 +365,17 @@ struct KanbanBoardMetadata: Codable, Identifiable, Equatable {
     var defaultWorkspaceKind: String?
     var projectID: String?
     var projectName: String?
+    /// V3B: added from the audited GET /boards contract. Optional metadata is
+    /// decoded tolerantly — a missing/odd icon/color/archived field must
+    /// never make an otherwise usable board disappear.
+    var icon: String?
+    var color: String?
+    var archived: Bool?
 
     var id: String { slug }
 
     enum CodingKeys: String, CodingKey {
-        case slug, name, description
+        case slug, name, description, icon, color, archived
         case isCurrent = "is_current"
         case total
         case defaultWorkdir = "default_workdir"
@@ -309,9 +395,12 @@ struct KanbanBoardMetadata: Codable, Identifiable, Equatable {
         defaultWorkspaceKind = try? container.decodeIfPresent(String.self, forKey: .defaultWorkspaceKind)
         projectID = try? container.decodeIfPresent(String.self, forKey: .projectID)
         projectName = try? container.decodeIfPresent(String.self, forKey: .projectName)
+        icon = try? container.decodeIfPresent(String.self, forKey: .icon)
+        color = try? container.decodeIfPresent(String.self, forKey: .color)
+        archived = try? container.decodeIfPresent(Bool.self, forKey: .archived)
     }
 
-    init(slug: String, name: String? = nil, description: String? = nil, isCurrent: Bool? = nil, total: Int? = nil, defaultWorkdir: String? = nil, defaultWorkspaceKind: String? = nil, projectID: String? = nil, projectName: String? = nil) {
+    init(slug: String, name: String? = nil, description: String? = nil, isCurrent: Bool? = nil, total: Int? = nil, defaultWorkdir: String? = nil, defaultWorkspaceKind: String? = nil, projectID: String? = nil, projectName: String? = nil, icon: String? = nil, color: String? = nil, archived: Bool? = nil) {
         self.slug = slug
         self.name = name
         self.description = description
@@ -321,6 +410,9 @@ struct KanbanBoardMetadata: Codable, Identifiable, Equatable {
         self.defaultWorkspaceKind = defaultWorkspaceKind
         self.projectID = projectID
         self.projectName = projectName
+        self.icon = icon
+        self.color = color
+        self.archived = archived
     }
 }
 
@@ -367,6 +459,15 @@ struct KanbanEvent: Codable, Identifiable, Equatable {
     var payload: AnyCodable?
     var createdAt: Int?
     var runID: String?
+
+    init(id: String, taskID: String? = nil, kind: String, payload: AnyCodable? = nil, createdAt: Int? = nil, runID: String? = nil) {
+        self.id = id
+        self.taskID = taskID
+        self.kind = kind
+        self.payload = payload
+        self.createdAt = createdAt
+        self.runID = runID
+    }
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -566,6 +667,10 @@ struct KanbanProject: Codable, Identifiable, Equatable {
 }
 
 struct KanbanOrchestrationSettings: Codable, Equatable {
+    /// Backend default for auto_promote_children when config omits it
+    /// (plugin_api.py GET /orchestration: bool(cfg.get("auto_promote_children", True))).
+    static let defaultAutoPromoteChildren = true
+
     var orchestratorProfile: String
     var defaultAssignee: String
     var autoDecompose: Bool
@@ -775,3 +880,467 @@ struct KanbanMutationResponse: Codable, Equatable {
 
 struct KanbanProfilesResponse: Codable, Equatable { var profiles: [KanbanProfile] }
 struct KanbanProjectsResponse: Codable, Equatable { var projects: [KanbanProject] }
+
+// MARK: - Model options (per-task worker override catalog)
+
+/// GET /api/plugins/kanban/model-options — the backend-curated provider/model
+/// roster for per-task overrides (plugins/kanban/dashboard/plugin_api.py
+/// `model_options`). Curated server-side so the picker can never offer a
+/// provider:model pair a Hermes worker would refuse. Decoded tolerantly:
+/// an unavailable inventory degrades to an empty list and the UI falls back
+/// to free-text entry.
+struct KanbanModelOptionsResponse: Codable, Equatable {
+    var providers: [KanbanModelProviderOption]
+
+    init(providers: [KanbanModelProviderOption] = []) { self.providers = providers }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        providers = (try? container.decodeIfPresent([KanbanModelProviderOption].self, forKey: .providers)) ?? []
+    }
+
+    enum CodingKeys: String, CodingKey { case providers }
+}
+
+struct KanbanModelProviderOption: Codable, Equatable, Identifiable {
+    var slug: String
+    var label: String?
+    var models: [String]
+
+    var id: String { slug }
+    var displayName: String {
+        let resolved = label ?? slug
+        return resolved.isEmpty ? slug : resolved
+    }
+
+    init(slug: String, label: String? = nil, models: [String] = []) {
+        self.slug = slug
+        self.label = label
+        self.models = models
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        slug = container.decodeLossyString(forKey: .slug) ?? ""
+        label = try? container.decodeIfPresent(String.self, forKey: .label)
+        let rawModels = (try? container.decodeIfPresent([String].self, forKey: .models)) ?? []
+        models = rawModels.filter { !$0.isEmpty }
+    }
+
+    enum CodingKeys: String, CodingKey { case slug, label, models }
+}
+
+// MARK: - V3A: Orchestration mutation + triage action contracts
+//
+// Wire fidelity audited against NousResearch/hermes-agent @ fd760435c
+// (see docs/KANBAN_V3A_AUDIT.md):
+// - "" is the wire encoding of "Default"/inherit for the orchestration
+//   profile pickers — never a Conduit-specific sentinel.
+// - Specify/Decompose return HTTP 200 even on semantic failure; the client
+//   must inspect ok / reason (plugin_api.py specify/decompose docs).
+
+/// Partial body for PUT /orchestration. Only present fields are written;
+/// "" clears an override so the server falls back to the active default
+/// profile. Every field is optional BY DESIGN (nil = not sent).
+struct KanbanOrchestrationPatch: Encodable, Equatable {
+    var orchestratorProfile: String?
+    var defaultAssignee: String?
+    var autoDecompose: Bool?
+    var autoPromoteChildren: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case orchestratorProfile = "orchestrator_profile"
+        case defaultAssignee = "default_assignee"
+        case autoDecompose = "auto_decompose"
+        case autoPromoteChildren = "auto_promote_children"
+    }
+
+    init(
+        orchestratorProfile: String? = nil,
+        defaultAssignee: String? = nil,
+        autoDecompose: Bool? = nil,
+        autoPromoteChildren: Bool? = nil
+    ) {
+        self.orchestratorProfile = orchestratorProfile
+        self.defaultAssignee = defaultAssignee
+        self.autoDecompose = autoDecompose
+        self.autoPromoteChildren = autoPromoteChildren
+    }
+
+    var isEmpty: Bool {
+        orchestratorProfile == nil && defaultAssignee == nil
+            && autoDecompose == nil && autoPromoteChildren == nil
+    }
+}
+
+/// POST /tasks/{id}/specify response. ok:false is a SEMANTIC failure that
+/// still rides an HTTP 200 — the backend deliberately reports it as a normal
+/// body so the UI can render reason inline and retry without reloading.
+struct KanbanSpecifyResponse: Codable, Equatable {
+    var ok: Bool
+    var taskID: String
+    var reason: String?
+    var newTitle: String?
+
+    enum CodingKeys: String, CodingKey {
+        case ok, reason
+        case taskID = "task_id"
+        case newTitle = "new_title"
+    }
+
+    init(ok: Bool, taskID: String, reason: String? = nil, newTitle: String? = nil) {
+        self.ok = ok
+        self.taskID = taskID
+        self.reason = reason
+        self.newTitle = newTitle
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        ok = (try? container.decode(Bool.self, forKey: .ok)) ?? false
+        taskID = container.decodeLossyString(forKey: .taskID) ?? ""
+        reason = try? container.decodeIfPresent(String.self, forKey: .reason)
+        newTitle = try? container.decodeIfPresent(String.self, forKey: .newTitle)
+    }
+}
+
+/// POST /tasks/{id}/decompose response. Same HTTP-200-bears-semantic-failure
+/// contract as Specify. child_ids is NOT authoritative board state — it is
+/// the list of created children (in creation order); Conduit reconciles by
+/// reloading the board and the current/root task.
+struct KanbanDecomposeResponse: Codable, Equatable {
+    var ok: Bool
+    var taskID: String
+    var reason: String?
+    var fanout: Bool
+    var childIDs: [String]
+    var newTitle: String?
+
+    enum CodingKeys: String, CodingKey {
+        case ok, reason, fanout
+        case taskID = "task_id"
+        case childIDs = "child_ids"
+        case newTitle = "new_title"
+    }
+
+    init(ok: Bool, taskID: String, reason: String? = nil, fanout: Bool = false, childIDs: [String] = [], newTitle: String? = nil) {
+        self.ok = ok
+        self.taskID = taskID
+        self.reason = reason
+        self.fanout = fanout
+        self.childIDs = childIDs
+        self.newTitle = newTitle
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        ok = (try? container.decode(Bool.self, forKey: .ok)) ?? false
+        taskID = container.decodeLossyString(forKey: .taskID) ?? ""
+        reason = try? container.decodeIfPresent(String.self, forKey: .reason)
+        fanout = (try? container.decode(Bool.self, forKey: .fanout)) ?? false
+        childIDs = (try? container.decodeIfPresent([String].self, forKey: .childIDs)) ?? []
+        newTitle = try? container.decodeIfPresent(String.self, forKey: .newTitle)
+    }
+}
+
+/// POST /profiles/{name}/describe-auto response. A non-ok outcome is NOT an
+/// HTTP error either (e.g. "no auxiliary client configured") — the editor
+/// renders reason inline.
+struct KanbanAutoDescribeResponse: Codable, Equatable {
+    var ok: Bool
+    var profile: String
+    var reason: String?
+    var description: String?
+
+    enum CodingKeys: String, CodingKey {
+        case ok, reason, profile, description
+    }
+
+    init(ok: Bool, profile: String, reason: String? = nil, description: String? = nil) {
+        self.ok = ok
+        self.profile = profile
+        self.reason = reason
+        self.description = description
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        ok = (try? container.decode(Bool.self, forKey: .ok)) ?? false
+        profile = container.decodeLossyString(forKey: .profile) ?? ""
+        reason = try? container.decodeIfPresent(String.self, forKey: .reason)
+        description = try? container.decodeIfPresent(String.self, forKey: .description)
+    }
+}
+
+// MARK: - V3B: Board administration wire contracts
+//
+// Audited at NousResearch/hermes-agent f293e7206 (docs/KANBAN_V3B_AUDIT.md):
+// - POST /boards is IDEMPOTENT on slug collision (returns existing metadata;
+//   the response carries no created flag - Conduit never fabricates one).
+// - Tri-state PATCH: omitted = leave unchanged, "" = clear, value = set.
+// - switch is sent explicitly false; Conduit never mutates the server-wide
+//   current-board pointer (POST /boards/{slug}/switch is never called).
+
+/// POST /boards body. slug is validated upstream (lowercase alphanumeric,
+/// 1-64 chars, hyphens/underscores allowed after the first char). project_id
+/// accepts an id or slug and mirrors the project's primary repo into
+/// default_workdir unless default_workdir is passed explicitly. switch is
+/// ALWAYS false from Conduit.
+struct KanbanCreateBoardRequest: Encodable, Equatable {
+    var slug: String
+    var name: String?
+    var description: String?
+    var icon: String?
+    var color: String?
+    var defaultWorkdir: String?
+    var projectID: String?
+    /// Compile-time-enforced: Conduit NEVER asks the server to switch its
+    /// current-board pointer; selection after create is Conduit-local.
+    let switchRequested: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case slug, name, description, icon, color
+        case defaultWorkdir = "default_workdir"
+        case projectID = "project_id"
+        case switchRequested = "switch"
+    }
+
+    init(
+        slug: String,
+        name: String? = nil,
+        description: String? = nil,
+        icon: String? = nil,
+        color: String? = nil,
+        defaultWorkdir: String? = nil,
+        projectID: String? = nil,
+        switchRequested: Bool = false
+    ) {
+        self.slug = slug
+        self.name = name
+        self.description = description
+        self.icon = icon
+        self.color = color
+        self.defaultWorkdir = defaultWorkdir
+        self.projectID = projectID
+        self.switchRequested = switchRequested
+    }
+}
+
+/// PATCH /boards/{slug} body. nil = field omitted (leave unchanged);
+/// "" = clear the field (default_workdir / project_id); value = set
+/// (empty strings NEVER leak from Swift optionals as clears).
+struct KanbanUpdateBoardPatch: Encodable, Equatable {
+    var name: String?
+    var description: String?
+    var icon: String?
+    var color: String?
+    var defaultWorkdir: String?
+    var projectID: String?
+
+    enum CodingKeys: String, CodingKey {
+        case name, description, icon, color
+        case defaultWorkdir = "default_workdir"
+        case projectID = "project_id"
+    }
+
+    init(
+        name: String? = nil,
+        description: String? = nil,
+        icon: String? = nil,
+        color: String? = nil,
+        defaultWorkdir: String? = nil,
+        projectID: String? = nil
+    ) {
+        self.name = name
+        self.description = description
+        self.icon = icon
+        self.color = color
+        self.defaultWorkdir = defaultWorkdir
+        self.projectID = projectID
+    }
+
+    var isEmpty: Bool {
+        name == nil && description == nil && icon == nil && color == nil
+            && defaultWorkdir == nil && projectID == nil
+    }
+}
+
+/// DELETE /boards/{slug} result (archive default; hard-delete never sent).
+struct KanbanDeleteBoardResult: Codable, Equatable {
+    var action: String?
+    var slug: String?
+    var newPath: String?
+
+    enum CodingKeys: String, CodingKey {
+        case action, slug
+        case newPath = "new_path"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        action = try? container.decodeIfPresent(String.self, forKey: .action)
+        slug = try? container.decodeIfPresent(String.self, forKey: .slug)
+        newPath = try? container.decodeIfPresent(String.self, forKey: .newPath)
+    }
+}
+
+// MARK: - V3C: Bulk operations wire contracts
+//
+// Audited at NousResearch/hermes-agent 2eaa86311 (docs/KANBAN_V3C_AUDIT.md):
+// POST /tasks/bulk iterates IDs independently (one task failing never aborts
+// siblings) and returns {results: [{id, ok, error?}]} - reconcile strictly by
+// ID. Bulk priority is a plain unbound integer upstream (same semantics as
+// single-task priority). Bulk Delete has NO backend route: Conduit fans out
+// one DELETE /tasks/{id} per selected ID (Desktop parity).
+
+/// Conduit's narrow V3C request: ONLY the fields V3C exposes. Backend fields
+/// like model/provider/reasoning/result/summary/metadata overrides are
+/// intentionally not modeled.
+struct KanbanBulkTaskRequest: Encodable, Equatable {
+    var ids: [String]
+    var status: String?
+    var assignee: String?
+    var priority: Int?
+    var archive: Bool?
+    var reclaimFirst: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case ids, status, assignee, priority, archive
+        case reclaimFirst = "reclaim_first"
+    }
+
+    init(
+        ids: [String],
+        status: String? = nil,
+        assignee: String? = nil,
+        priority: Int? = nil,
+        archive: Bool? = nil,
+        reclaimFirst: Bool? = nil
+    ) {
+        self.ids = ids
+        self.status = status
+        self.assignee = assignee
+        self.priority = priority
+        self.archive = archive
+        self.reclaimFirst = reclaimFirst
+    }
+}
+
+/// One per-ID outcome from /tasks/bulk (or a fan-out delete). Required fields:
+/// id + ok. Tolerant decode: unknown fields ignored; hostile values fail safe.
+struct KanbanBulkTaskResult: Decodable, Equatable {
+    var id: String
+    var ok: Bool
+    var error: String?
+
+    enum CodingKeys: String, CodingKey { case id, ok, error }
+
+    init(id: String, ok: Bool, error: String? = nil) {
+        self.id = id
+        self.ok = ok
+        self.error = error
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = container.decodeLossyString(forKey: .id) ?? ""
+        ok = (try? container.decode(Bool.self, forKey: .ok)) ?? false
+        error = try? container.decodeIfPresent(String.self, forKey: .error)
+    }
+}
+
+struct KanbanBulkTaskResponse: Decodable, Equatable {
+    var results: [KanbanBulkTaskResult]
+
+    init(results: [KanbanBulkTaskResult] = []) {
+        self.results = results
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        results = (try? container.decodeIfPresent([KanbanBulkTaskResult].self, forKey: .results)) ?? []
+    }
+
+    enum CodingKeys: String, CodingKey { case results }
+}
+
+/// Reconciliation outcome surfaced to the UI: succeeded IDs vs per-ID
+/// failures. Never derived from a global "request failed" flag.
+struct KanbanBulkOperationOutcome: Equatable {
+    let succeededIDs: [String]
+    let failures: [KanbanBulkFailure]
+}
+
+struct KanbanBulkFailure: Equatable {
+    let id: String
+    let reason: String
+}
+
+// MARK: - V3D: Live event wire contracts (invalidation only)
+//
+// Audited at NousResearch/hermes-agent 4a3e5c409 (docs/KANBAN_V3D_AUDIT.md):
+// frames are {"events":[{id, task_id, run_id, kind, payload, created_at}],
+// "cursor":N}. Conduit decodes ONLY what invalidation needs (id + task_id);
+// kind/payload/run_id/created_at are deliberately NOT modeled - REST is the
+// sole authority and unknown future event kinds must invalidate without a
+// Conduit update.
+
+struct KanbanLiveEvent: Decodable, Equatable {
+    /// Malformed/missing ids decode to nil and never crash the stream loop.
+    var id: Int?
+    /// Blank/missing task IDs still count for board invalidation but never
+    /// touch a detail surface.
+    var taskID: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case taskID = "task_id"
+    }
+
+    init(id: Int? = nil, taskID: String? = nil) {
+        self.id = id
+        self.taskID = taskID
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = (try? container.decodeIfPresent(Int.self, forKey: .id)) ?? nil
+        taskID = (try? container.decodeIfPresent(String.self, forKey: .taskID)) ?? nil
+    }
+}
+
+struct KanbanEventFrame: Decodable, Equatable {
+    var events: [KanbanLiveEvent]
+    var cursor: Int?
+
+    init(events: [KanbanLiveEvent] = [], cursor: Int? = nil) {
+        self.events = events
+        self.cursor = cursor
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        // Per-element tolerance with GUARANTEED ADVANCEMENT (V3D correction
+        // pass): a failed element decode must CONSUME that slot - otherwise
+        // the walk re-reads the same malformed element forever, silently
+        // skipping every later valid event while the cursor still advances
+        // past them. AnyCodable accepts any JSON value, so it always
+        // consumes; KanbanLiveEvent's own decoder never throws for object
+        // elements.
+        var decoded: [KanbanLiveEvent] = []
+        if var nested = try? container.nestedUnkeyedContainer(forKey: .events) {
+            let total = nested.count ?? 0
+            for _ in 0..<total {
+                if let event = try? nested.decode(KanbanLiveEvent.self) {
+                    decoded.append(event)
+                } else {
+                    _ = try? nested.decode(AnyCodable.self)
+                }
+            }
+        }
+        events = decoded
+        cursor = (try? container.decodeIfPresent(Int.self, forKey: .cursor)) ?? nil
+    }
+
+    enum CodingKeys: String, CodingKey { case events, cursor }
+}

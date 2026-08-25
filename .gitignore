@@ -27,3 +27,6 @@ Package.resolved
 *.mobileprovision
 TestResults*.xcresult
 ci-logs/
+
+# Agent-session artifacts (stray SDD reports previously leaked in via a PR)
+.superpowers/

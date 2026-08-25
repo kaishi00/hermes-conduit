@@ -21,6 +21,11 @@ enum KanbanServiceError: LocalizedError, Equatable {
     case mutationInProgress
     case boardNavigationInProgress
     case invalidQueryParameter(String)
+    /// The backend answered HTTP 200 with {ok: false, reason: ...}. The server
+    /// write did NOT happen (or was refused); the reason is stable product
+    /// semantics and must be shown verbatim, never replaced by a made-up
+    /// message.
+    case actionDeclined(reason: String)
 
     var errorDescription: String? {
         switch self {
@@ -42,6 +47,10 @@ enum KanbanServiceError: LocalizedError, Equatable {
             // Fail closed: a dropped board/id parameter would silently
             // retarget the request at the backend's current board.
             return "Could not build a safe Hermes Kanban request (invalid " + name + "). The operation was cancelled before any data changed."
+        case .actionDeclined(let reason):
+            // The backend's own reason (e.g. "task is not in triage") is the
+            // product semantics; never translate it into a generic failure.
+            return reason.isEmpty ? "Hermes declined the action." : reason
         }
     }
 }
@@ -123,6 +132,15 @@ final class KanbanService {
         try await decode(KanbanOrchestrationSettings.self, path: scoped(Self.namespace + "/orchestration"))
     }
 
+    /// Backend-curated provider/model roster for per-task overrides
+    /// (`GET /model-options`). Board-independent, so no board query is sent.
+    /// Unusable rows (empty slug or no models — e.g. a degraded inventory
+    /// payload) are dropped here so every caller sees an offerable catalog.
+    func fetchModelOptions() async throws -> [KanbanModelProviderOption] {
+        let response = try await decode(KanbanModelOptionsResponse.self, path: scoped(Self.namespace + "/model-options"))
+        return response.providers.filter { !$0.slug.isEmpty && !$0.models.isEmpty }
+    }
+
     func createTask(_ requestBody: KanbanCreateTaskRequest, board: String?) async throws -> KanbanCreateTaskResponse {
         let response = try await request(
             path: try withBoard(Self.namespace + "/tasks", slug: board),
@@ -181,6 +199,99 @@ final class KanbanService {
         )
     }
 
+    // MARK: - V3A: Orchestration settings (server-global; no board query)
+
+    /// PUT /orchestration — only present patch fields are written; ""
+    /// clears an override (server falls back to the active default profile).
+    /// Returns the resolved echo the backend always answers with.
+    func updateOrchestration(_ patch: KanbanOrchestrationPatch) async throws -> KanbanOrchestrationSettings {
+        let response = try await request(
+            path: scoped(Self.namespace + "/orchestration"),
+            method: "PUT",
+            body: try encodedDictionary(patch)
+        )
+        return try decodeResponse(KanbanOrchestrationSettings.self, from: response)
+    }
+
+    // MARK: - V3A: Profile routing descriptions (server-global; no board query)
+
+    /// PATCH /profiles/{name} {description}. Empty text CLEARS the
+    /// description; the backend stores user-authored text with
+    /// description_auto=false so auto-generation never silently replaces it.
+    func updateProfileDescription(profile: String, description: String) async throws {
+        _ = try await request(
+            path: scoped(Self.namespace + "/profiles/" + (try pathComponent(profile))),
+            method: "PATCH",
+            body: try encodedDictionary(ProfileDescriptionBody(description: description))
+        )
+    }
+
+    /// POST /profiles/{name}/describe-auto {overwrite}. The generated text is
+    /// PERSISTED immediately (description_auto=true). A non-ok outcome is NOT
+    /// an HTTP error — the caller renders the backend reason inline.
+    func autoDescribeProfile(profile: String, overwrite: Bool = true) async throws -> KanbanAutoDescribeResponse {
+        let response = try await request(
+            path: scoped(Self.namespace + "/profiles/" + (try pathComponent(profile)) + "/describe-auto"),
+            method: "POST",
+            body: ["overwrite": overwrite]
+        )
+        return try decodeResponse(KanbanAutoDescribeResponse.self, from: response)
+    }
+
+    // MARK: - V3A: Triage actions (Specify / Decompose)
+
+    /// POST /tasks/{id}/specify — LLM-fleshes a TRIAGE task and promotes it
+    /// to todo (recompute_ready may then promote it to ready). HTTP 200 does
+    /// not imply success: {ok:false, reason} is a semantic refusal and throws
+    /// actionDeclined(reason) so callers display the backend reason verbatim.
+    func specifyTask(id: String, board: String?, author: String = "conduit") async throws -> KanbanSpecifyResponse {
+        guard !id.isEmpty else { throw KanbanServiceError.emptyTaskID }
+        let response = try await request(
+            path: try withBoard(Self.namespace + "/tasks/" + (try pathComponent(id)) + "/specify", slug: board),
+            method: "POST",
+            body: try encodedDictionary(TriageActionAuthorBody(author: author))
+        )
+        let outcome = try decodeResponse(KanbanSpecifyResponse.self, from: response)
+        guard outcome.ok else {
+            throw KanbanServiceError.actionDeclined(reason: outcome.reason ?? "Hermes declined to specify this task.")
+        }
+        return outcome
+    }
+
+    /// POST /tasks/{id}/decompose — LLM-fans a TRIAGE task into a child graph
+    /// (children created, sibling dependency edges, root kept as parent of the
+    /// graph and promoted to todo). Same semantic-failure contract as
+    /// specify. The response is NOT authoritative board state: callers reload
+    /// the board and the root task afterwards.
+    func decomposeTask(id: String, board: String?, author: String = "conduit") async throws -> KanbanDecomposeResponse {
+        guard !id.isEmpty else { throw KanbanServiceError.emptyTaskID }
+        let response = try await request(
+            path: try withBoard(Self.namespace + "/tasks/" + (try pathComponent(id)) + "/decompose", slug: board),
+            method: "POST",
+            body: try encodedDictionary(TriageActionAuthorBody(author: author))
+        )
+        let outcome = try decodeResponse(KanbanDecomposeResponse.self, from: response)
+        guard outcome.ok else {
+            throw KanbanServiceError.actionDeclined(reason: outcome.reason ?? "Hermes declined to decompose this task.")
+        }
+        return outcome
+    }
+
+    // MARK: - V3A: Manual dispatcher nudge
+
+    /// Immediate POST /dispatch for the captured board (board menu action).
+    /// Unlike the debounced auto-nudge this posts right away so the operator
+    /// gets direct feedback. Response counters are intentionally ignored: the
+    /// desktop renders nothing from them and Conduit must not fabricate
+    /// diagnostics.
+    func nudgeDispatcher(board: String?) async throws {
+        _ = try await request(
+            path: try withBoard(Self.namespace + "/dispatch", slug: board),
+            method: "POST",
+            body: [:]
+        )
+    }
+
     // MARK: - Dispatcher nudge
 
     /// Schedule the upstream-equivalent acceleration hint for the backend
@@ -215,37 +326,97 @@ final class KanbanService {
         pendingDispatcherNudge = nil
     }
 
-    func createBoard(slug: String, name: String, projectID: String? = nil) async throws -> KanbanBoardMetadata {
-        struct Body: Encodable {
-            let slug: String
-            let name: String
-            let projectID: String?
-            enum CodingKeys: String, CodingKey { case slug, name; case projectID = "project_id" }
-        }
+    /// POST /boards (V3B). The upstream contract is idempotent on slug
+    /// collision (create_board returns existing metadata) and validates the
+    /// slug (lowercase alnum, 1-64 chars, \-_ allowed after the first char).
+    /// switch is sent EXPLICITLY false: Conduit never mutates the server-wide
+    /// current-board pointer; selection after create is Conduit-local.
+    func createBoard(_ payload: KanbanCreateBoardRequest) async throws -> KanbanBoardMetadata {
         let response = try await request(
             path: scoped(Self.namespace + "/boards"),
             method: "POST",
-            body: try encodedDictionary(Body(slug: slug, name: name, projectID: projectID))
+            body: try encodedDictionary(payload)
         )
         return try decodeResponse(BoardEnvelope.self, from: response).board
     }
 
-    func updateBoard(slug: String, name: String?, description: String?, defaultWorkdir: String?) async throws -> KanbanBoardMetadata {
-        struct Body: Encodable {
-            let name: String?
-            let description: String?
-            let defaultWorkdir: String?
-            enum CodingKeys: String, CodingKey {
-                case name, description
-                case defaultWorkdir = "default_workdir"
-            }
-        }
+    /// PATCH /boards/{slug} (V3B). Tri-state field semantics match upstream
+    /// RenameBoardBody: omitted = leave unchanged, "" = clear (workdir /
+    /// project), value = set (workdir validated server-side). Slug immutable.
+    func updateBoard(slug: String, patch: KanbanUpdateBoardPatch) async throws -> KanbanBoardMetadata {
         let response = try await request(
             path: scoped(Self.namespace + "/boards/" + (try pathComponent(slug))),
             method: "PATCH",
-            body: try encodedDictionary(Body(name: name, description: description, defaultWorkdir: defaultWorkdir))
+            body: try encodedDictionary(patch)
         )
         return try decodeResponse(BoardEnvelope.self, from: response).board
+    }
+
+    /// DELETE /boards/{slug} WITHOUT the delete query → upstream archives the
+    /// board (moves its directory under _archived/; recoverable). The
+    /// hard-delete query option is intentionally never sent by Conduit. The
+    /// result envelope is decoded so the caller can verify the action really
+    /// was an archive.
+    func archiveBoard(slug: String) async throws -> KanbanDeleteBoardResult {
+        let response = try await request(
+            path: scoped(Self.namespace + "/boards/" + (try pathComponent(slug))),
+            method: "DELETE",
+            body: nil
+        )
+        return try decodeResponse(DeleteBoardEnvelope.self, from: response).result
+    }
+
+    // MARK: - V3C: Bulk operations
+
+    /// POST /tasks/bulk (board-scoped). The backend iterates IDs INDEPENDENTLY
+    /// (no rollback, no transaction) and returns per-ID outcomes; HTTP 200
+    /// does not imply per-task success - the caller reconciles by ID.
+    func bulkUpdateTasks(payload: KanbanBulkTaskRequest, board: String?) async throws -> KanbanBulkTaskResponse {
+        let response = try await request(
+            path: try withBoard(Self.namespace + "/tasks/bulk", slug: board),
+            method: "POST",
+            body: try encodedDictionary(payload)
+        )
+        return try decodeResponse(KanbanBulkTaskResponse.self, from: response)
+    }
+
+    /// Bulk-delete fan-out (Desktop parity; NO /tasks/bulk/delete route
+    /// exists upstream). Issues ONE DELETE /tasks/{id} per ID under the
+    /// caller-owned board context, collects every outcome, and ALWAYS
+    /// settles every task - a per-task failure becomes {ok:false, error},
+    /// never a thrown error that could cancel siblings. The caller performs
+    /// ONE authoritative reconciliation afterwards.
+    func deleteTasksFanout(ids: [String], board: String?) async -> [KanbanBulkTaskResult] {
+        // Bounded fan-out (review F3): at most 8 concurrent DELETEs; every
+        // child settles (a per-ID failure is captured, never thrown out of
+        // the group - one task failure cannot cancel siblings).
+        let chunkSize = 8
+        var collected: [KanbanBulkTaskResult] = []
+        for chunk in ids.chunked(into: chunkSize) {
+            let results = await withTaskGroup(of: KanbanBulkTaskResult.self) { group in
+                for id in chunk {
+                    group.addTask {
+                        do {
+                            try await self.request(
+                                path: try self.withBoard(Self.namespace + "/tasks/" + (try self.pathComponent(id)), slug: board),
+                                method: "DELETE",
+                                body: nil
+                            )
+                            return KanbanBulkTaskResult(id: id, ok: true)
+                        } catch {
+                            return KanbanBulkTaskResult(id: id, ok: false, error: error.localizedDescription)
+                        }
+                    }
+                }
+                var results: [String: KanbanBulkTaskResult] = [:]
+                for await result in group {
+                    results[result.id] = result
+                }
+                return chunk.compactMap { results[$0] }
+            }
+            collected.append(contentsOf: results)
+        }
+        return collected
     }
 
     // MARK: - Transport helpers
@@ -321,4 +492,19 @@ final class KanbanService {
 
     private struct TaskEnvelope: Decodable { let task: KanbanTask? }
     private struct BoardEnvelope: Decodable { let board: KanbanBoardMetadata }
+    private struct DeleteBoardEnvelope: Decodable { let result: KanbanDeleteBoardResult }
+    private struct ProfileDescriptionBody: Encodable { let description: String }
+    private struct TriageActionAuthorBody: Encodable { let author: String }
+
+}
+
+/// Bounded fan-out helper for bulk delete (V3C): stable ordering, no
+/// dependency on the stdlib.
+private extension Array {
+    func chunked(into size: Int) -> [[Element]] {
+        guard size > 0, !isEmpty else { return [] }
+        return stride(from: 0, to: count, by: size).map {
+            Array(self[$0 ..< Swift.min($0 + size, count)])
+        }
+    }
 }
