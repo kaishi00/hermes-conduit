@@ -17,7 +17,7 @@ settings:
     DEVELOPMENT_TEAM: U2TH557QA8
     CODE_SIGN_STYLE: Manual
     MARKETING_VERSION: "0.1.7"
-    CURRENT_PROJECT_VERSION: "139"
+    CURRENT_PROJECT_VERSION: "140"139"
 targets:
   Conduit:
     type: application
