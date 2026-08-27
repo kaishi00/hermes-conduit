@@ -323,13 +323,11 @@ final class CrossProfilePresentationCacheTests: XCTestCase {
         )
     }
 
-    /// The identity change inside connect(with:profile:) — a legitimate
-    /// profile-switch entry point that never touches
-    /// `presentationCacheFlushTask` itself — must uphold the same hard
-    /// boundary as switchProfile: the parked flush is cancelled by the
-    /// boundary flush inside setActiveProfile(_:), the outgoing profile's
-    /// latest transcript is preserved synchronously while it is still
-    /// active, and nothing from session A ever reaches work's namespace.
+    /// connect(with:profile:) is a legitimate profile-switch entry point
+    /// that upholds the same hard boundary as switchProfile: its forward
+    /// transition flushes the outgoing transcript synchronously (cancelling
+    /// the parked flush), fences anything scheduled under the old identity,
+    /// and nothing from session A ever reaches work's namespace.
     func testConnectProfileChangePreservesOutgoingAndFencesStaleFlush() async {
         let (gate, park) = makeGatePark()
         let fixtures = workSessionFixtures()
@@ -431,14 +429,15 @@ final class CrossProfilePresentationCacheTests: XCTestCase {
         gate.release()
         await Task.yield()
 
-        // Mid-attempt resume work may legitimately have persisted work's own
-        // transcript under work before the failure; the rollback guarantees
-        // are: the restored profile's own entry survives intact, nothing
-        // foreign lands anywhere, and no other namespace leaks.
+        // With no rollback flush and openSession never reached, nothing may
+        // be persisted during or after the aborted attempt beyond the
+        // pre-flip boundary write: exactly the restored profile's own
+        // namespace survives.
         let store = persistedCache(from: harness.defaults)
-        XCTAssertTrue(
-            Set(store.keys).isSubset(of: Set(["default|session-a", "work|" + fixtures.session.id.lowercased()])),
-            "A failed switch may only leave the two legitimate namespaces, got \(store.keys)"
+        XCTAssertEqual(
+            Set(store.keys),
+            Set(["default|session-a"]),
+            "A failed switch must leave only the restored profile's namespace, got \(store.keys)"
         )
         XCTAssertEqual(store["default|session-a"], ["a1"])
         for (key, ids) in store where key.hasPrefix("work|") {

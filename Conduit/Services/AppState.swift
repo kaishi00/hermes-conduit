@@ -877,22 +877,21 @@ final class AppState: ObservableObject {
         cacheMessagePresentation()
     }
 
-    /// Assigns the active profile and enforces the hard presentation-cache
-    /// profile boundary: any coalesced flush scheduled while another profile
-    /// was active is flushed synchronously here — while the outgoing profile
-    /// is still active — and then fenced by the epoch bump, so no mutation
-    /// site can skip the boundary or lose the outgoing transcript. The
-    /// flush-before-bump ordering is what makes the epoch a complete fence;
-    /// `presentationCacheProfileEpoch` uses wrapping arithmetic because ~2^63
-    /// switches are unreachable, and the profile string is compared
-    /// independently in the task anyway, so a wrap can never resurrect a
-    /// stale flush. Both fence conditions in
-    /// `schedulePresentationCacheFlush` are deliberately redundant with this
-    /// single mutator (string equality is the readable guard; the epoch
-    /// catches A→B→A round-trips) — do not simplify either away.
+    /// Assigns the active profile and fences deferred presentation-cache
+    /// work: any coalesced flush scheduled under another profile becomes
+    /// stale the moment the identity changes. Call this instead of assigning
+    /// `activeProfile` directly so no mutation site can skip the fence.
+    ///
+    /// Deliberately NOT flushing here: on rollbacks (failed switches) the
+    /// still-active identity does not own the restored in-memory content,
+    /// so the synchronous outgoing-transcript flush belongs at each forward
+    /// transition site (`switchProfile`, `connect(with:profile:)`) where
+    /// that ownership is guaranteed. Both fence conditions in
+    /// `schedulePresentationCacheFlush` are intentionally redundant — string
+    /// equality is the readable guard, the wrapping `&+= 1` (~2^63 switches,
+    /// unreachable) catches A→B→A round-trips — do not simplify either away.
     private func setActiveProfile(_ newValue: String) {
         guard newValue != activeProfile else { return }
-        flushPendingPresentationCache()
         activeProfile = newValue
         presentationCacheProfileEpoch &+= 1
     }
@@ -1929,6 +1928,11 @@ final class AppState: ObservableObject {
         showLogin = false
         connection = conn
         if activeProfile != profile {
+            // Hard profile boundary for this forward transition: cancel the
+            // debounced stream flush and write synchronously while the
+            // current profile still owns the in-memory transcript. Mirrors
+            // switchProfile(to:reusing:).
+            flushPendingPresentationCache()
             sessions = []
             cronSessions = []
             archivedSessions = []
@@ -6176,9 +6180,11 @@ final class AppState: ObservableObject {
             transitionGeneration = beginExplicitChatViewportTransition()
         }
         cancelChatResumeTransportRecovery()
-        // The hard profile boundary (synchronous outgoing-transcript flush +
-        // epoch fence) lives in setActiveProfile(_:), invoked below when the
-        // identity actually flips.
+        // Hard profile boundary for this forward transition: cancel the
+        // debounced stream flush and write synchronously while the outgoing
+        // profile still owns the in-memory transcript. No parked task
+        // survives the identity changes below (success or rollback).
+        flushPendingPresentationCache()
         cancelSecondaryProfileTitleRecovery()
 
         // Dismiss keyboard before switching profiles
