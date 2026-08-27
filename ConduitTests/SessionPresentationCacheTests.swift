@@ -1968,7 +1968,7 @@ final class SessionPresentationCacheTests: XCTestCase {
 /// Test-scope clock whose value only moves when a test advances it. Gives
 /// multi-write alias scenarios strictly increasing, deterministic
 /// CachedSession.updatedAt ordering without wall-clock dependence.
-private final class DeterministicClock: @unchecked Sendable {
+final class DeterministicClock: @unchecked Sendable {
     private let lock = NSLock()
     private var value: TimeInterval = 1_000_000
 

@@ -3470,7 +3470,7 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertTrue(harness.appState.applyChatResume(resumeResult))
 
         XCTAssertEqual(
-            harness.appState.messages.map(\.timestamp),
+            harness.appState.messages.map { $0.timestamp },
             ["fresh-1", "fresh-2", "fresh-3", "fresh-4", "fresh-5"]
         )
     }
