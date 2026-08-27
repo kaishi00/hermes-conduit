@@ -169,6 +169,12 @@ final class SessionPresentationCache {
         // are resolved in supplied order; when several aliases hold the same
         // logical snapshot — including one rewritten later with only fresh
         // presentation stamps — the freshest write wins.
+        //
+        // Ordering contract (review-gate W1): DIVERGENT snapshots that
+        // outscore equally tie-break by earliest pool position, which is
+        // this call's argument order. The sole production caller passes
+        // [resolvedId, requestedId] so the live write leads; keep callers
+        // passing the most-current alias first.
         var resolutionOrder: [String] = []
         var snapshotByID: [String: CachedSession] = [:]
         var seenCacheKeys = Set<String>()
@@ -603,7 +609,8 @@ final class SessionPresentationCache {
             var score = Int.min
 
             if candidate.id == message.id {
-                score = 1_000
+                // Absolute maximum; no later candidate can outrank it.
+                return index
             } else if let tool = message.tool {
                 guard candidate.toolName == normalized(tool.name) else { continue }
                 score = 50
@@ -625,6 +632,8 @@ final class SessionPresentationCache {
                 score = 20 - distance
             }
 
+            // Strict > : the first highest-scoring candidate in ascending
+            // index order wins the tie, never arbitrary Set iteration order.
             if score > bestScore {
                 bestScore = score
                 bestIndex = index
@@ -704,12 +713,22 @@ final class SessionPresentationCache {
     private static func logicalSnapshotIdentity(
         for messages: [CachedMessage]
     ) -> String {
-        let rowIdentity = messages.map { message -> String in
-            String(describing: message.role)
-                + "|" + message.id
-                + "|" + message.signature
-                + "|" + (message.toolName ?? "")
+        // Review-gate W2: encode the row matrix as JSON before fingerprinting
+        // so no separator/field content can ever alias two structurally
+        // different sequences onto one identity.
+        let rowIdentity = messages.map { message -> [String] in
+            [
+                String(describing: message.role),
+                message.id,
+                message.signature,
+                message.toolName ?? ""
+            ]
         }
-        return fingerprint(rowIdentity.joined(separator: "\u{1F}"))
+        guard let data = try? JSONEncoder().encode(rowIdentity) else {
+            // Encoding cannot fail for [ [String] ]; failing open can only
+            // ever ADD a candidate, never silently drop a real one.
+            return UUID().uuidString
+        }
+        return fingerprint(String(decoding: data, as: UTF8.self))
     }
 }

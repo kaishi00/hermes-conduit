@@ -395,6 +395,55 @@ final class SessionPresentationCacheTests: XCTestCase {
         cache.clear(profile: profile)
     }
 
+    /// Pins the documented tie contract for DIVERGENT snapshots: equal-
+    /// scoring rows resolve to the earliest pool position, which is this
+    /// call's argument order (production passes [resolved, requested] so
+    /// the live write leads). Here the newer-written alias is listed
+    /// second; precedence still follows argument order by design.
+    func testDivergentSnapshotTieResolvesByAliasArgumentOrder() {
+        let (cache, _, tickClock, _) = makeIsolatedCache()
+        let requestedId = "tie-requested-" + UUID().uuidString
+        let resolvedId = "tie-resolved-" + UUID().uuidString
+        let profile = "test"
+
+        // Older write lands under the SECOND-listed alias...
+        cache.save(
+            [ChatMessage(id: "", role: .assistant, content: "Drifted row", timestamp: "older-ts")],
+            profile: profile,
+            sessionIDs: [requestedId]
+        )
+        tickClock()
+        // ...and the newer write under the FIRST-listed alias. Rows share
+        // role+signature shape via identical content; identities diverge
+        // only through their stamps being absent from the identity key.
+        // Different toolName-free assistant rows with the same text and
+        // id have the SAME identity, so instead give genuinely different
+        // ids: both records stay in the pool and the tie must follow
+        // argument order.
+        cache.save(
+            [ChatMessage(id: "drift-b", role: .assistant, content: "Drifted row", timestamp: "newer-ts")],
+            profile: profile,
+            sessionIDs: [resolvedId]
+        )
+
+        let gatewayMessages = [
+            ChatMessage(id: "gw-drift-a", role: .assistant, content: "Drifted row", timestamp: ""),
+            ChatMessage(id: "gw-drift-b", role: .assistant, content: "Drifted row", timestamp: ""),
+        ]
+        let merged = cache.merge(gatewayMessages, profile: profile, sessionIDs: [resolvedId, requestedId])
+
+        XCTAssertEqual(
+            Set(merged.compactMap(\.timestamp)),
+            Set(["older-ts", "newer-ts"]),
+            "both divergent snapshots stay available to the matcher"
+        )
+        XCTAssertNotEqual(
+            merged[0].timestamp, merged[1].timestamp,
+            "distinct gateway rows must consume distinct candidates"
+        )
+        cache.clear(profile: profile)
+    }
+
     // MARK: - Merge: pending clarification restoration
 
     func testMergeRestoresPendingClarificationWhenRequested() {
