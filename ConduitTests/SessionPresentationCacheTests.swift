@@ -211,6 +211,190 @@ final class SessionPresentationCacheTests: XCTestCase {
         cache.clear(profile: profile)
     }
 
+    // MARK: - Multi-alias merge: logical-snapshot deduplication
+
+    /// Isolated cache with a manually advanced clock so alias-write order
+    /// (and therefore CachedSession.updatedAt comparisons) is deterministic.
+    private func makeIsolatedCache() -> (cache: SessionPresentationCache, defaults: UserDefaults, tickClock: () -> Void, suiteName: String) {
+        let suiteName = "SessionPresentationCacheTests.dedup." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suiteName)!
+        let clock = DeterministicClock()
+        let cache = SessionPresentationCache(defaults: defaults, now: { clock.currentValue() })
+        addTeardownBlock {
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+        return (cache, defaults, { clock.advance() }, suiteName)
+    }
+
+    /// THE reported bug shape: one transcript saved under [primary,
+    /// resolved] and later REWRITTEN through only one alias with fresher
+    /// presentation metadata (same messages - Hermes re-stamped them).
+    /// Merging through both aliases must yield the freshest snapshot's
+    /// metadata exactly once per row. The old duplicated-candidate pool
+    /// flattened both generations and could attach stale metadata.
+    func testDualAliasMergeYieldsFreshestSnapshotOncePerRow() {
+        let (cache, _, tickClock, _) = makeIsolatedCache()
+        let primaryId = "alias-primary-" + UUID().uuidString
+        let resolvedId = "alias-resolved-" + UUID().uuidString
+        let profile = "test"
+
+        func generation(prefix: String) -> [ChatMessage] {
+            (1...5).map { index in
+                ChatMessage(
+                    id: "gen-row-" + String(index),
+                    role: .assistant,
+                    content: "Status digest " + String(index),
+                    timestamp: prefix + String(index)
+                )
+            }
+        }
+
+        cache.save(generation(prefix: "stale-"), profile: profile, sessionIDs: [primaryId, resolvedId])
+        tickClock()
+        cache.save(generation(prefix: "fresh-"), profile: profile, sessionIDs: [resolvedId])
+
+        // Regenerated ids force fingerprint-based matching instead of the
+        // exact-id path.
+        let gatewayMessages = (1...5).map { index in
+            ChatMessage(id: "gw-" + String(index), role: .assistant, content: "Status digest " + String(index), timestamp: "")
+        }
+        let merged = cache.merge(gatewayMessages, profile: profile, sessionIDs: [primaryId, resolvedId])
+
+        XCTAssertEqual(
+            merged.map(\.timestamp),
+            ["fresh-1", "fresh-2", "fresh-3", "fresh-4", "fresh-5"]
+        )
+        cache.clear(profile: profile)
+    }
+
+    /// Tool-call flavor of the same drift: same tool name, fresher input
+    /// preview. Duplicated candidates must not cross-wire row one's input
+    /// with row two's.
+    func testRepeatedToolCallsKeepDistinctFreshMetadataAcrossAliases() {
+        let (cache, _, tickClock, _) = makeIsolatedCache()
+        let primaryId = "tool-primary-" + UUID().uuidString
+        let resolvedId = "tool-resolved-" + UUID().uuidString
+        let profile = "test"
+
+        func toolGeneration(prefix: String) -> [ChatMessage] {
+            (1...2).map { index in
+                ChatMessage(
+                    id: "tool-row-" + String(index),
+                    role: .tool,
+                    content: "",
+                    timestamp: prefix + "ts-" + String(index),
+                    tool: ToolActivity(
+                        id: nil,
+                        name: "deploy",
+                        input: prefix + "input-" + String(index),
+                        output: prefix + "output-" + String(index),
+                        status: .complete
+                    )
+                )
+            }
+        }
+
+        cache.save(toolGeneration(prefix: "stale-"), profile: profile, sessionIDs: [primaryId, resolvedId])
+        tickClock()
+        cache.save(toolGeneration(prefix: "fresh-"), profile: profile, sessionIDs: [resolvedId])
+
+        let gatewayMessages = (1...2).map { index in
+            ChatMessage(
+                id: "gw-tool-" + String(index),
+                role: .tool,
+                content: "",
+                timestamp: "",
+                tool: ToolActivity(id: nil, name: "deploy", input: nil, output: nil, status: .complete)
+            )
+        }
+        let merged = cache.merge(gatewayMessages, profile: profile, sessionIDs: [primaryId, resolvedId])
+
+        XCTAssertEqual(merged[0].tool?.input, "fresh-input-1")
+        XCTAssertEqual(merged[1].tool?.input, "fresh-input-2")
+        XCTAssertEqual(merged[0].timestamp, "freshts-1")
+        cache.clear(profile: profile)
+    }
+
+    /// Duplicate STRINGS inside sessionIDs behave like any other
+    /// multi-alias lookup rather than a doubled pool.
+    func testDuplicateStringsInsideSessionIDsDoNotDuplicateCandidates() {
+        let (cache, _, _, _) = makeIsolatedCache()
+        let sessionId = "dup-string-" + UUID().uuidString
+        let profile = "test"
+
+        let savedMessages = [
+            ChatMessage(id: "twin-a", role: .assistant, content: "Twin status A", timestamp: "twin-ts-a"),
+            ChatMessage(id: "twin-b", role: .assistant, content: "Twin status B", timestamp: "twin-ts-b"),
+        ]
+        cache.save(savedMessages, profile: profile, sessionIDs: [sessionId])
+
+        let gatewayMessages = [
+            ChatMessage(id: "gw-twin-a", role: .assistant, content: "Twin status A", timestamp: ""),
+            ChatMessage(id: "gw-twin-b", role: .assistant, content: "Twin status B", timestamp: ""),
+        ]
+        let merged = cache.merge(gatewayMessages, profile: profile, sessionIDs: [sessionId, sessionId])
+
+        XCTAssertEqual(merged[0].timestamp, "twin-ts-a")
+        XCTAssertEqual(merged[1].timestamp, "twin-ts-b")
+        cache.clear(profile: profile)
+    }
+
+    /// Single-alias lookup keeps working exactly as before.
+    func testSingleAliasMergeUnchangedByDeduplication() {
+        let (cache, _, _, _) = makeIsolatedCache()
+        let sessionId = "single-" + UUID().uuidString
+        let profile = "test"
+
+        cache.save(
+            [ChatMessage(id: "keep-1", role: .assistant, content: "Saved once", timestamp: "kept-ts")],
+            profile: profile,
+            sessionIDs: [sessionId]
+        )
+        let merged = cache.merge(
+            [ChatMessage(id: "keep-1", role: .assistant, content: "Saved once", timestamp: "")],
+            profile: profile,
+            sessionIDs: [sessionId]
+        )
+        XCTAssertEqual(merged[0].timestamp, "kept-ts")
+        cache.clear(profile: profile)
+    }
+
+    /// Two supplied IDs that hold genuinely DIFFERENT snapshots must both
+    /// stay available to the matcher: dedup keys on whole-record logical
+    /// identity, never on surface similarity of individual rows.
+    func testDifferentSnapshotsRemainAvailableToMatcher() {
+        let (cache, _, _, _) = makeIsolatedCache()
+        let primaryId = "distinct-primary-" + UUID().uuidString
+        let resolvedId = "distinct-resolved-" + UUID().uuidString
+        let profile = "test"
+
+        cache.save(
+            [ChatMessage(id: "a-row", role: .assistant, content: "snapshot alpha", timestamp: "alpha-ts")],
+            profile: profile,
+            sessionIDs: [primaryId]
+        )
+        cache.save(
+            [
+                ChatMessage(id: "b-row", role: .assistant, content: "snapshot beta", timestamp: "beta-ts"),
+                ChatMessage(id: "c-row", role: .user, content: "snapshot gamma", timestamp: "gamma-ts"),
+            ],
+            profile: profile,
+            sessionIDs: [resolvedId]
+        )
+
+        let gatewayMessages = [
+            ChatMessage(id: "a-row", role: .assistant, content: "snapshot alpha", timestamp: ""),
+            ChatMessage(id: "b-row", role: .assistant, content: "snapshot beta", timestamp: ""),
+            ChatMessage(id: "c-row", role: .user, content: "snapshot gamma", timestamp: ""),
+        ]
+        let merged = cache.merge(gatewayMessages, profile: profile, sessionIDs: [primaryId, resolvedId])
+
+        XCTAssertEqual(merged[0].timestamp, "alpha-ts")
+        XCTAssertEqual(merged[1].timestamp, "beta-ts")
+        XCTAssertEqual(merged[2].timestamp, "gamma-ts")
+        cache.clear(profile: profile)
+    }
+
     // MARK: - Merge: pending clarification restoration
 
     func testMergeRestoresPendingClarificationWhenRequested() {
@@ -1778,5 +1962,25 @@ final class SessionPresentationCacheTests: XCTestCase {
             ).contains { $0.approval?.sessionId == sessionId },
             "An expired gateway approval must be removed from the presentation cache"
         )
+    }
+}
+
+/// Test-scope clock whose value only moves when a test advances it. Gives
+/// multi-write alias scenarios strictly increasing, deterministic
+/// CachedSession.updatedAt ordering without wall-clock dependence.
+private final class DeterministicClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: TimeInterval = 1_000_000
+
+    func currentValue() -> Date {
+        lock.lock()
+        defer { lock.unlock() }
+        return Date(timeIntervalSince1970: value)
+    }
+
+    func advance() {
+        lock.lock()
+        defer { lock.unlock() }
+        value += 10
     }
 }
