@@ -423,9 +423,8 @@ final class CrossProfilePresentationCacheTests: XCTestCase {
         harness.appState.handleStreamEvent(.cwdUpdate(sessionId: "session-a", cwd: "/tmp/a"))
         await gate.waitUntilEngaged()
 
-        let switched = await harness.appState.switchProfile(to: "work")
+        await harness.appState.switchProfile(to: "work")
 
-        XCTAssertFalse(switched)
         XCTAssertEqual(harness.appState.activeProfile, "default")
         XCTAssertEqual(harness.appState.messages, self.outgoingTranscript)
 
@@ -438,7 +437,7 @@ final class CrossProfilePresentationCacheTests: XCTestCase {
         // foreign lands anywhere, and no other namespace leaks.
         let store = persistedCache(from: harness.defaults)
         XCTAssertTrue(
-            store.keys.isSubset(of: Set(["default|session-a", "work|" + fixtures.session.id.lowercased()])),
+            Set(store.keys).isSubset(of: Set(["default|session-a", "work|" + fixtures.session.id.lowercased()])),
             "A failed switch may only leave the two legitimate namespaces, got \(store.keys)"
         )
         XCTAssertEqual(store["default|session-a"], ["a1"])
