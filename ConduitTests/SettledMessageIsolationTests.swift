@@ -64,7 +64,13 @@ final class SettledMessageIsolationTests: XCTestCase {
         )
     }
 
-    /// Hosts an AssistantBubble row in a retained, live window.
+    /// Hosts an AssistantBubble row in a retained, live window. The Dynamic
+    /// Type environment is PINNED: on a freshly booted CI simulator the
+    /// hosting window's content-size category resolves asynchronously, and a
+    /// late trait-sync transaction inside a measurement window would
+    /// otherwise read as a spurious settled re-evaluation (the same failure
+    /// mode testDynamicTypeChangeReOpensSettledContentGate was hardened
+    /// against).
     private func mountRow(
         message: ChatMessage,
         appState: AppState,
@@ -75,7 +81,8 @@ final class SettledMessageIsolationTests: XCTestCase {
             readAloudController: appState.messageReadAloudController,
             gatewayResolver: resolver
         )
-        .environmentObject(appState))
+        .environmentObject(appState)
+        .environment(\.sizeCategory, .large))
         let host = UIHostingController(rootView: row)
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
         window.rootViewController = host
@@ -94,23 +101,35 @@ final class SettledMessageIsolationTests: XCTestCase {
 
         let host = mountRow(message: message, appState: appState, resolver: resolver)
 
-        // Baseline: the initial mount performed the expensive work.
-        let initialMarkdownBodies = TranscriptPerf.settledMarkdownTextBodyEvaluations
+        // Baseline: the initial mount performed the expensive work — and let
+        // its full commit (including trait-sync follow-up transactions) land
+        // BEFORE arming the measurement window, exactly like
+        // testDynamicTypeChangeReOpensSettledContentGate. A zero-interval
+        // run-loop tick observes only what flushed synchronously, so a late
+        // first-mount transaction on a slow/cold runner otherwise lands
+        // inside the window and reads as a spurious re-evaluation.
+        drainUntil(2.0) { TranscriptPerf.settledMarkdownTextBodyEvaluations > 0 }
         let initialSTVUpdates = TranscriptPerf.selectableTextViewUpdateCalls
-        XCTAssertGreaterThan(initialMarkdownBodies, 0, "initial mount must render the markdown")
+        XCTAssertGreaterThan(TranscriptPerf.settledMarkdownTextBodyEvaluations, 0, "initial mount must render the markdown")
 
         // Simulate a streaming tick: the parent re-creates the row with
-        // IDENTICAL inputs (equal message value, same resolver identity).
+        // IDENTICAL inputs (equal message value, same resolver identity,
+        // same pinned Dynamic Type environment).
         TranscriptPerf.reset()
         host.rootView = AnyView(AssistantBubble(
             message: message,
             readAloudController: appState.messageReadAloudController,
             gatewayResolver: resolver
         )
-        .environmentObject(appState))
+        .environmentObject(appState)
+        .environment(\.sizeCategory, .large))
         host.view.setNeedsLayout()
         host.view.layoutIfNeeded()
-        RunLoop.current.run(until: Date())
+
+        // Give any (incorrect) re-evaluation time to surface before
+        // asserting; draining past the re-creation commit makes the
+        // stay-at-zero assertion meaningful instead of vacuously passing.
+        drainUntil(1.0) { TranscriptPerf.settledMarkdownTextBodyEvaluations > 0 }
 
         XCTAssertEqual(
             TranscriptPerf.settledMarkdownTextBodyEvaluations, 0,
@@ -140,10 +159,11 @@ final class SettledMessageIsolationTests: XCTestCase {
             readAloudController: appState.messageReadAloudController,
             gatewayResolver: resolver
         )
-        .environmentObject(appState))
+        .environmentObject(appState)
+        .environment(\.sizeCategory, .large))
         host.view.setNeedsLayout()
         host.view.layoutIfNeeded()
-        RunLoop.current.run(until: Date())
+        drainUntil(2.0) { TranscriptPerf.settledMarkdownTextBodyEvaluations > 0 }
 
         XCTAssertGreaterThan(
             TranscriptPerf.settledMarkdownTextBodyEvaluations, 0,
@@ -169,10 +189,11 @@ final class SettledMessageIsolationTests: XCTestCase {
             readAloudController: appState.messageReadAloudController,
             gatewayResolver: resolverB
         )
-        .environmentObject(appState))
+        .environmentObject(appState)
+        .environment(\.sizeCategory, .large))
         host.view.setNeedsLayout()
         host.view.layoutIfNeeded()
-        RunLoop.current.run(until: Date())
+        drainUntil(2.0) { TranscriptPerf.settledMarkdownTextBodyEvaluations > 0 }
 
         XCTAssertGreaterThan(
             TranscriptPerf.settledMarkdownTextBodyEvaluations, 0,
