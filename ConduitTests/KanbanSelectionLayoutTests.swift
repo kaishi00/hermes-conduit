@@ -48,8 +48,11 @@ final class KanbanSelectionLayoutTests: XCTestCase {
             self.window = window
             self.hostView = host.view
             self.proposedWidth = width
-            self.fitSize = { [weak host] proposal in
-                host?.sizeThatFits(in: proposal) ?? .zero
+            // STRONG capture: HostBox owns the controller's lifetime. A
+            // weak capture let it deallocate right after init, silently
+            // collapsing fitSize to .zero and neutering every guard below.
+            self.fitSize = { proposal in
+                host.sizeThatFits(in: proposal)
             }
             window.makeKeyAndVisible()
             window.layoutIfNeeded()
@@ -83,6 +86,9 @@ final class KanbanSelectionLayoutTests: XCTestCase {
     private func fittedHeight(of box: HostBox) -> CGFloat {
         box.window.layoutIfNeeded()
         let size = box.fitSize(CGSize(width: box.proposedWidth, height: .greatestFiniteMagnitude))
+        // Real-measurement guard: proves the hosted controller is alive and
+        // actually sized (a .zero here would mean a dead/never-measured host).
+        XCTAssertGreaterThan(size.height, 0, "hosted layout measurement collapsed")
         return max(size.height, box.hostView.bounds.height)
     }
 
@@ -171,14 +177,16 @@ final class KanbanSelectionLayoutTests: XCTestCase {
         XCTAssertTrue(KanbanSelectionChromePolicy.fullBulkActions.allSatisfy { $0.title != nil })
         XCTAssertTrue(KanbanSelectionChromePolicy.compactBulkActions.allSatisfy { $0.title == nil })
 
-        // …and VoiceOver text identical for both variants at any count.
+        // …and VoiceOver text identical for both variants, singular noun
+        // for exactly one selected task, plural otherwise.
         for count in [0, 1, 3] {
+            let noun = count == 1 ? "task" : "tasks"
             for kind in kinds {
                 let expected: String
                 switch kind {
-                case .move: expected = "Move \(count) selected tasks"
-                case .assign: expected = "Assign \(count) selected tasks"
-                case .more: expected = "More actions for \(count) selected tasks"
+                case .move: expected = "Move \(count) selected \(noun)"
+                case .assign: expected = "Assign \(count) selected \(noun)"
+                case .more: expected = "More actions for \(count) selected \(noun)"
                 }
                 XCTAssertEqual(
                     KanbanSelectionChromePolicy.bulkAccessibilityLabel(kind, selectedCount: count),

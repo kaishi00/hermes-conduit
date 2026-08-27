@@ -165,15 +165,17 @@ enum KanbanSelectionChromePolicy {
     ]
 
     /// VoiceOver text — deliberately IDENTICAL for both variants: the labels,
-    /// not visual titles, carry the meaning when icons stand alone.
+    /// not visual titles, carry the meaning when icons stand alone. The noun
+    /// is singular for exactly one selected task, plural otherwise.
     static func bulkAccessibilityLabel(_ kind: BulkActionDescriptor.Kind, selectedCount: Int) -> String {
+        let noun = selectedCount == 1 ? "task" : "tasks"
         switch kind {
         case .move:
-            return "Move \(selectedCount) selected tasks"
+            return "Move \(selectedCount) selected \(noun)"
         case .assign:
-            return "Assign \(selectedCount) selected tasks"
+            return "Assign \(selectedCount) selected \(noun)"
         case .more:
-            return "More actions for \(selectedCount) selected tasks"
+            return "More actions for \(selectedCount) selected \(noun)"
         }
     }
 }
@@ -1532,13 +1534,14 @@ struct KanbanView: View {
         // picker / overflow / refresh / add controls alongside "Cancel" +
         // "N tasks selected", which on iPhone widths wrapped into unreadable
         // character fragments.
-        if isSelectionActive {
+        switch KanbanSelectionChromePolicy.headerVariant(isSelectionActive: isSelectionActive) {
+        case .compactSelection:
             KanbanSelectionHeaderBar(
                 selectedCount: selectedTaskIDs.count,
                 bulkBusy: bulkBusy,
                 onCancel: { exitSelectionMode() }
             )
-        } else {
+        case .standardBoardControls:
             standardBoardHeader
         }
 
