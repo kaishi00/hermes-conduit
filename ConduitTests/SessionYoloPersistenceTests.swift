@@ -1145,6 +1145,184 @@ final class SessionYoloPersistenceTests: XCTestCase {
         XCTAssertEqual(recorder.invocations.first?.enabled, true)
     }
 
+    // MARK: - Profile-switch in-flight bookkeeping ownership
+
+    /// Installs the connection/client state profile switching requires.
+    private func installSwitchableConnection(on appState: AppState) {
+        let connection = HermesConnection(baseUrl: "https://127.0.0.1:1", ticket: "saved-ticket")
+        appState.connection = connection
+        appState.client = HermesClient(connection: connection, profile: "default")
+        appState.isConnected = true
+        appState.showLogin = false
+    }
+
+    private func switchLifecycleOperations(
+        setSessionYolo: (@MainActor @Sendable (HermesClient, String, Bool) async throws -> Void)?
+    ) -> ChatResumeLifecycleOperations {
+        ChatResumeLifecycleOperations(
+            connectClient: { _ in },
+            loadCatalog: { _, _ in [] },
+            mintTicket: { _ in "profile-ticket" },
+            openSession: { _, sessionID in
+                SessionResumeResult(
+                    sessionId: sessionID,
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            refreshContext: { _, _ in },
+            setSessionYolo: setSessionYolo,
+            loadProfiles: {},
+            loadBusyInputMode: { _ in },
+            loadProfileDisplayPreferences: {},
+            loadSlashCommands: {}
+        )
+    }
+
+    private func formatKeys(_ keys: Set<ChatScrollSessionKey>) -> Set<String> {
+        Set(keys.map { $0.profile + "|" + $0.sessionID })
+    }
+
+    /// THE leak: a YOLO write suspended under profile A while the app
+    /// switches to B must clean its A-profile ownership keys even though
+    /// activeProfile is B by the time cleanup runs - and must leave
+    /// profile B's (empty) namespace untouched. Runtime vs persisted ids
+    /// are diverged so BOTH originating keys prove cleanup.
+    func testProfileSwitchDuringSuspendedYoloWriteCleansOriginatingKeys() async {
+        let (suite, defaults) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = SessionYoloStore(defaults: defaults, storageKey: "test.session-yolo")
+        // The user already has a persisted override; the toggle under test
+        // flips it back off at the gateway.
+        store.setOverride(true, for: "default", sessionID: "persisted-a")
+        let gate = SessionYoloResumeGate()
+        let operations = switchLifecycleOperations(setSessionYolo: { _, _, _ in
+            await gate.suspend()
+        })
+        let appState = makeAppState(defaults: defaults, store: store, lifecycleOperations: operations)
+        appState.sessions = [session("persisted-a", alternateIDs: ["runtime-a"])]
+        appState.activeSessionId = "runtime-a"
+        appState.runtime.approvalsMode = "on"
+        installSwitchableConnection(on: appState)
+
+        let operation = Task { await appState.setYoloMode(false) }
+        await gate.waitUntilSuspended()
+        XCTAssertFalse(
+            appState.inFlightSessionYoloWriteKeysForTesting.isEmpty,
+            "the suspended write should hold its ownership keys"
+        )
+
+        await appState.switchProfile(to: "work")
+        XCTAssertEqual(appState.activeProfile, "work")
+
+        gate.resume()
+        await operation.value
+
+        XCTAssertEqual(
+            formatKeys(appState.inFlightSessionYoloWriteKeysForTesting),
+            Set(),
+            "originating-profile in-flight keys must be removed after the op settles"
+        )
+        XCTAssertNil(store.storedOverride(for: "work", sessionID: "persisted-a"))
+        XCTAssertNil(store.storedOverride(for: "work", sessionID: "runtime-a"))
+    }
+
+    /// After the toggle settles (even failed/stale), returning to the
+    /// originating profile+session and resuming must still re-assert the
+    /// persisted override - stale in-flight keys must not suppress it.
+    func testReassertionNotSuppressedAfterProfileRoundTrip() async {
+        let (suite, defaults) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = SessionYoloStore(defaults: defaults, storageKey: "test.session-yolo")
+        store.setOverride(true, for: "default", sessionID: "persisted-a")
+        let recorder = YoloSetCallRecorder()
+        let gate = SessionYoloResumeGate()
+        var resumedOnce = false
+        let operations = switchLifecycleOperations(setSessionYolo: { _, _, enabled in
+            if !resumedOnce {
+                await gate.suspend()
+                resumedOnce = true
+            }
+            recorder.record("runtime-a", enabled)
+        })
+        let appState = makeAppState(defaults: defaults, store: store, lifecycleOperations: operations)
+        appState.sessions = [session("persisted-a", alternateIDs: ["runtime-a"])]
+        appState.activeSessionId = "runtime-a"
+        appState.runtime.approvalsMode = "on"
+        installSwitchableConnection(on: appState)
+
+        let operation = Task { await appState.setYoloMode(false) }
+        await gate.waitUntilSuspended()
+
+        await appState.switchProfile(to: "work")
+        XCTAssertEqual(appState.activeProfile, "work")
+
+        gate.resume()
+        await operation.value
+        // The first settled RPC is the user's off-toggle.
+        XCTAssertEqual(recorder.invocations.count, 1)
+        XCTAssertFalse(recorder.invocations[0].enabled)
+
+        await appState.switchProfile(to: "default")
+        XCTAssertEqual(appState.activeProfile, "default")
+        appState.sessions = [session("persisted-a", alternateIDs: ["runtime-a"])]
+        appState.activeSessionId = "runtime-a"
+        appState.runtime.approvalsMode = "on"
+        await appState.applyChatResume(SessionResumeResult(
+            sessionId: "runtime-a",
+            messages: [],
+            snapshot: SessionRuntimeSnapshot(object: [
+                "running": .bool(false),
+                "yolo": .bool(false),
+            ])
+        ))
+
+        XCTAssertTrue(
+            recorder.invocations.contains { $0.enabled == true },
+            "the persisted override must be re-asserted after returning; got " + String(describing: recorder.invocations)
+        )
+        XCTAssertTrue(appState.inFlightSessionYoloWriteKeysForTesting.isEmpty)
+    }
+
+    /// A throwing RPC that happens across a profile switch still cleans
+    /// the exact originating keys - errors must not leak bookkeeping.
+    func testThrowingYoloWriteAcrossProfileSwitchCleansOriginatingKeys() async {
+        let (suite, defaults) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = SessionYoloStore(defaults: defaults, storageKey: "test.session-yolo")
+        store.setOverride(true, for: "default", sessionID: "persisted-a")
+        let gate = SessionYoloResumeGate()
+        var reachedRpc = false
+        let operations = switchLifecycleOperations(setSessionYolo: { _, _, _ in
+            if !reachedRpc {
+                await gate.suspend()
+                reachedRpc = true
+                throw TestError.rejected
+            }
+        })
+        let appState = makeAppState(defaults: defaults, store: store, lifecycleOperations: operations)
+        appState.sessions = [session("persisted-a", alternateIDs: ["runtime-a"])]
+        appState.activeSessionId = "runtime-a"
+        appState.runtime.approvalsMode = "on"
+        installSwitchableConnection(on: appState)
+
+        let operation = Task { await appState.setYoloMode(true) }
+        await gate.waitUntilSuspended()
+
+        await appState.switchProfile(to: "work")
+        gate.resume()
+        let outcome = await operation.value
+        XCTAssertFalse(outcome)
+
+        XCTAssertEqual(
+            formatKeys(appState.inFlightSessionYoloWriteKeysForTesting),
+            Set(),
+            "a thrown RPC must not leak in-flight ownership keys"
+        )
+        XCTAssertEqual(store.storedOverride(for: "default", sessionID: "persisted-a"), true)
+        XCTAssertNil(store.storedOverride(for: "work", sessionID: "runtime-a"))
+    }
+
     private func makeAppState(
         defaults: UserDefaults,
         store: SessionYoloStore,

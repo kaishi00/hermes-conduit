@@ -3545,6 +3545,14 @@ final class AppState: ObservableObject {
         }
     }
 
+#if DEBUG
+    /// Test-only view of pending YOLO write ownership. A non-empty entry after
+    /// its operation settled means the bookkeeping leaked.
+    var inFlightSessionYoloWriteKeysForTesting: Set<ChatScrollSessionKey> {
+        inFlightSessionYoloWrites
+    }
+#endif
+
     private func hasInFlightSessionYoloWrite(sessionIDs: [String]) -> Bool {
         !sessionYoloKeys(for: sessionIDs).isDisjoint(with: inFlightSessionYoloWrites)
     }
