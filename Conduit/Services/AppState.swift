@@ -742,11 +742,12 @@ final class AppState: ObservableObject {
     private let sessionYoloStore: SessionYoloStore
     private var sessionYoloWriteRevision: UInt64 = 0
     private var sessionYoloWriteRevisions: [ChatScrollSessionKey: UInt64] = [:]
-    /// Sessions whose user-initiated YOLO write is awaiting its RPC. The
-    /// override store is only updated after the gateway accepts, so readers
-    /// (notably the resume re-assert) must not treat the store as current
-    /// while a write is in flight.
-    private var inFlightSessionYoloWrites: Set<ChatScrollSessionKey> = []
+    /// Sessions whose user-initiated YOLO write is awaiting its RPC, tracked
+    /// by reference count so overlapping writes for the same session each own
+    /// an independent registration. The override store is only updated after
+    /// the gateway accepts, so readers (notably the resume re-assert) must not
+    /// treat the store as current while any write is in flight.
+    private var inFlightSessionYoloWriteCounts: [ChatScrollSessionKey: Int] = [:]
     /// The last session-level `yolo` the gateway itself reported, distinct
     /// from `runtime.yolo`, which also folds in the profile floor and the
     /// stored override.
@@ -3504,14 +3505,31 @@ final class AppState: ObservableObject {
         )
     }
 
-    private func sessionYoloKeys(for sessionIDs: [String]) -> Set<ChatScrollSessionKey> {
-        Set(sessionIDs.map { ChatScrollSessionKey(profile: activeProfile, sessionID: $0) })
-            .filter(\.isValid)
+    /// Derives bookkeeping keys for an explicit profile. Callers must pass
+    /// the profile that owns the state being tracked; nothing here consults
+    /// mutable activeProfile.
+    private func sessionYoloKeys(
+        profile: String,
+        sessionIDs: [String]
+    ) -> Set<ChatScrollSessionKey> {
+        var keys = Set<ChatScrollSessionKey>()
+        for id in sessionIDs {
+            let candidate = ChatScrollSessionKey(profile: profile, sessionID: id)
+            if candidate.isValid { keys.insert(candidate) }
+        }
+        return keys
+    }
+
+    /// Current-state reads legitimately consult the active profile.
+    private func sessionYoloKeysForCurrentProfile(
+        sessionIDs: [String]
+    ) -> Set<ChatScrollSessionKey> {
+        sessionYoloKeys(profile: activeProfile, sessionIDs: sessionIDs)
     }
 
     private func sessionYoloWriteBaseline(for sessionID: String) -> SessionYoloWriteBaseline {
         let sessionIDs = [sessionID, canonicalSessionID(for: sessionID)].compactMap { $0 }
-        let keys = sessionYoloKeys(for: sessionIDs)
+        let keys = sessionYoloKeysForCurrentProfile(sessionIDs: sessionIDs)
         return SessionYoloWriteBaseline(
             revisions: Dictionary(uniqueKeysWithValues: keys.map { key in
                 (key, sessionYoloWriteRevisions[key] ?? 0)
@@ -3523,30 +3541,54 @@ final class AppState: ObservableObject {
         since baseline: SessionYoloWriteBaseline,
         sessionIDs: [String]
     ) -> Bool {
-        sessionYoloKeys(for: sessionIDs).contains { key in
+        sessionYoloKeysForCurrentProfile(sessionIDs: sessionIDs).contains { key in
             sessionYoloWriteRevisions[key, default: 0] > baseline.revisions[key, default: 0]
         }
     }
 
     private func recordSessionYoloWrite(for sessionIDs: [String]) {
         sessionYoloWriteRevision &+= 1
-        for key in sessionYoloKeys(for: sessionIDs) {
+        for key in sessionYoloKeysForCurrentProfile(sessionIDs: sessionIDs) {
             sessionYoloWriteRevisions[key] = sessionYoloWriteRevision
         }
     }
 
-    private func beginSessionYoloWrite(for sessionIDs: [String]) {
-        inFlightSessionYoloWrites.formUnion(sessionYoloKeys(for: sessionIDs))
-    }
-
-    private func endSessionYoloWrite(for sessionIDs: [String]) {
-        for key in sessionYoloKeys(for: sessionIDs) {
-            inFlightSessionYoloWrites.remove(key)
+    /// In-flight ownership is registered against explicit keys so the exact
+    /// entries created at operation start are the ones cleanup removes -
+    /// even when the active profile moved on while the RPC was suspended.
+    /// The reference-counted map supports overlapping writes for the same
+    /// session: each logical operation owns an independent registration, and
+    /// cleanup only removes the key when the last reference is released.
+    private func beginSessionYoloWrite(keys: Set<ChatScrollSessionKey>) {
+        for key in keys {
+            inFlightSessionYoloWriteCounts[key, default: 0] += 1
         }
     }
 
+    private func endSessionYoloWrite(keys: Set<ChatScrollSessionKey>) {
+        for key in keys {
+            let remaining = inFlightSessionYoloWriteCounts[key, default: 0] - 1
+            if remaining > 0 {
+                inFlightSessionYoloWriteCounts[key] = remaining
+            } else {
+                inFlightSessionYoloWriteCounts.removeValue(forKey: key)
+            }
+        }
+    }
+
+#if DEBUG
+    /// Test-only view of pending YOLO write ownership. Each entry maps a key
+    /// to the number of active operations holding it; a non-empty dictionary
+    /// after all operations settled means the bookkeeping leaked.
+    var inFlightSessionYoloWriteCountsForTesting: [ChatScrollSessionKey: Int] {
+        inFlightSessionYoloWriteCounts
+    }
+#endif
+
     private func hasInFlightSessionYoloWrite(sessionIDs: [String]) -> Bool {
-        !sessionYoloKeys(for: sessionIDs).isDisjoint(with: inFlightSessionYoloWrites)
+        sessionYoloKeysForCurrentProfile(sessionIDs: sessionIDs).contains { key in
+            (inFlightSessionYoloWriteCounts[key] ?? 0) > 0
+        }
     }
 
     private func applyRuntime(
@@ -5034,8 +5076,16 @@ final class AppState: ObservableObject {
         }
         guard let client, let sessionId = activeSessionId else { return false }
         let persistedSessionID = canonicalSessionID(for: sessionId) ?? sessionId
-        beginSessionYoloWrite(for: [sessionId, persistedSessionID])
-        defer { endSessionYoloWrite(for: [sessionId, persistedSessionID]) }
+        // Ownership is captured ONCE, before the await, from the originating
+        // submission profile. begin and the deferred cleanup therefore touch
+        // the exact same keys even if the active profile/session changes
+        // while the RPC is suspended (profile-switch bookkeeping leak).
+        let writeKeys = sessionYoloKeys(
+            profile: submissionContext.profile,
+            sessionIDs: [sessionId, persistedSessionID]
+        )
+        beginSessionYoloWrite(keys: writeKeys)
+        defer { endSessionYoloWrite(keys: writeKeys) }
         do {
             if let setSessionYolo = chatResumeLifecycleOperations.setSessionYolo {
                 try await setSessionYolo(client, sessionId, enabled)
