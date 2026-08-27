@@ -212,16 +212,64 @@ run_with_deadline() {
   wait "$runner"
 }
 
+# Bound a short-lived command with a wall-clock deadline. The reset path's
+# simctl calls can hang on a wedged CoreSimulatorService — precisely the state
+# the erase escalation targets — so they must not silently consume the job
+# cap. stdout+stderr are captured into $BOUNDED_OUTPUT; the return value is
+# the command's status, or 124 when the deadline killed it.
+BOUNDED_OUTPUT=""
+bounded_run() {
+  local budget="$1"
+  shift
+  local outfile="$LOG_DIR/bounded-$$.log"
+  local runner status grace
+  BOUNDED_OUTPUT=""
+  set -m
+  "$@" >"$outfile" 2>&1 &
+  runner=$!
+  set +m
+  local deadline=$(( $(date +%s) + budget ))
+  while kill -0 "$runner" 2>/dev/null; do
+    if [ "$(date +%s)" -ge "$deadline" ]; then
+      echo "::warning::bounded command exceeded its ${budget}s budget: $*"
+      kill -TERM -- "-$runner" 2>/dev/null || kill -TERM "$runner" 2>/dev/null || true
+      grace=3
+      while [ "$grace" -gt 0 ] && kill -0 "$runner" 2>/dev/null; do
+        sleep 1
+        grace=$(( grace - 1 ))
+      done
+      kill -KILL -- "-$runner" 2>/dev/null || kill -KILL "$runner" 2>/dev/null || true
+      wait "$runner" 2>/dev/null
+      rm -f "$outfile"
+      return 124
+    fi
+    sleep 2
+  done
+  status=0
+  wait "$runner" || status=$?
+  BOUNDED_OUTPUT="$(cat "$outfile" 2>/dev/null)"
+  rm -f "$outfile"
+  return "$status"
+}
+
 # Resolve the UDID of the device the destination names. Only used on the RETRY
 # path (erase/boot need one concrete device; simctl cannot take a name that
 # exists on multiple runtimes). Picks the newest iOS runtime that has a device
 # named $SIMULATOR_NAME — matching how xcodebuild resolves a name-only
 # destination. Runtime keys embed the version (…SimRuntime.iOS-26-5); the
-# major is two-digit, so plain lexical `sort -r` is safe.
+# newest pick compares MAJOR.MINOR NUMERICALLY (a plain lexical sort would
+# rank iOS-26-10 older than iOS-26-9 once minors go double-digit).
 simulator_udid() {
   local json runtime udid
-  json=$(xcrun simctl list devices available -j 2>/dev/null) || return 1
-  for runtime in $(printf '%s\n' "$json" | jq -r '.devices | keys[]' | grep 'SimRuntime\.iOS' | sort -r); do
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "::warning::jq not found on runner — cannot resolve simulator UDID for the targeted erase/boot; degrading to xcodebuild-managed boot"
+    return 1
+  fi
+  if ! bounded_run 60 xcrun simctl list devices available -j; then
+    return 1
+  fi
+  json="$BOUNDED_OUTPUT"
+  for runtime in $(printf '%s\n' "$json" | jq -r '.devices | keys[]' | grep 'SimRuntime\.iOS' | awk -F'iOS-' '{split($2, a, "-"); printf "%04d.%03d %s\n", a[1] + 0, a[2] + 0, $0}' | sort -rn | awk '{print $2}'); do
     udid=$(printf '%s\n' "$json" | jq -r --arg rt "$runtime" --arg n "$SIMULATOR_NAME" \
       '.devices[$rt][]? | select(.name == $n) | .udid' | head -n 1)
     if [ -n "$udid" ]; then
@@ -239,21 +287,26 @@ simulator_udid() {
 reset_and_boot_simulator() {
   local erase="${1:-0}"
   local udid
-  xcrun simctl shutdown all >/dev/null 2>&1 || true
+  # Every simctl call below is deadline-bounded: a wedged
+  # CoreSimulatorService must cost a bounded warning, not the whole job cap.
+  # On any bound/degrade the retry still happens — xcodebuild boots the
+  # destination itself.
+  bounded_run 60 xcrun simctl shutdown all >/dev/null 2>&1 || true
   if [ "$erase" -eq 1 ]; then
     echo "::warning::previous attempt timed out — erasing simulator before retry"
     if udid=$(simulator_udid); then
-      xcrun simctl erase "$udid" >/dev/null 2>&1 || true
+      bounded_run 180 xcrun simctl erase "$udid" >/dev/null 2>&1 || true
     else
       echo "::warning::could not resolve simulator UDID for erase — retrying without erase"
     fi
   fi
   sleep 3
   if udid=$(simulator_udid); then
-    xcrun simctl boot "$udid" 2>/dev/null || true
+    bounded_run 60 xcrun simctl boot "$udid" >/dev/null 2>&1 || true
     # Wait for a complete boot before handing the device to xcodebuild; a
-    # half-booted simulator wedges tests.
-    xcrun simctl bootstatus "$udid" -b -t 180 || true
+    # half-booted simulator wedges tests. bootstatus bounds itself with
+    # -t 180; the outer bound catches bootstatus itself hanging.
+    bounded_run 200 xcrun simctl bootstatus "$udid" -b -t 180 >/dev/null 2>&1 || true
   else
     echo "::warning::could not resolve simulator UDID — letting xcodebuild boot the destination itself"
   fi

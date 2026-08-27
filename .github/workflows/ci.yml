@@ -44,11 +44,12 @@ jobs:
     needs: shard-check
     runs-on: macos-26
     # Outer emergency bound only: setup + one build (900 s) + up to two
-    # 10-minute attempts + a worst-case erase/reboot reset must all fit, so a
-    # wedged lane can still use its in-script retry. The real watchdog is
-    # per-attempt inside scripts/ci-run-tests.sh
+    # 10-minute attempts + a worst-case erase/reboot reset must all fit with
+    # real slack, so a wedged lane can always finish its in-script retry
+    # under a script-level diagnosis instead of a truncating job kill. The
+    # real watchdog is per-attempt inside scripts/ci-run-tests.sh
     # (ATTEMPT_TIMEOUT_SECS, defaulted to 600 s for unit shards).
-    timeout-minutes: 45
+    timeout-minutes: 50
     strategy:
       fail-fast: false
       matrix:
@@ -95,10 +96,10 @@ jobs:
     needs: shard-check
     runs-on: macos-26
     # Outer emergency bound only: setup + one build (900 s) + up to two
-    # 20-minute attempts + a worst-case erase/reboot reset (per-attempt
-    # watchdog defaults to 1200 s for the ui lane — XCUITest lanes are
-    # inherently slower than unit shards).
-    timeout-minutes: 65
+    # 20-minute attempts + a worst-case erase/reboot reset must all fit with
+    # real slack (per-attempt watchdog defaults to 1200 s for the ui lane —
+    # XCUITest lanes are inherently slower than unit shards).
+    timeout-minutes: 70
     steps:
       - uses: actions/checkout@v7
 

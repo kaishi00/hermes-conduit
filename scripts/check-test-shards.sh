@@ -39,8 +39,11 @@ scan_classes() {
     | sed -E 's/^.*class[[:space:]]+([A-Za-z_][A-Za-z0-9_]*).*$/\1/' \
     | sort -u
 }
-unit_dir_classes="$(scan_classes "$ROOT/ConduitTests")"
-ui_dir_classes="$(scan_classes "$ROOT/ConduitUITests")"
+# Tolerate scan "failure" (grep exits 1 on zero matches, and with pipefail
+# that surfaces here): the -z "$on_disk" guard below owns the diagnostic, so
+# a renamed/empty target directory must not abort under set -e first.
+unit_dir_classes="$(scan_classes "$ROOT/ConduitTests" || true)"
+ui_dir_classes="$(scan_classes "$ROOT/ConduitUITests" || true)"
 on_disk="$(printf '%s\n%s\n' "$unit_dir_classes" "$ui_dir_classes" | sort -u)"
 
 if [ -z "$on_disk" ]; then
@@ -50,7 +53,9 @@ fi
 # 2. Assignments declared in the shard file. CRLF-normalized first so a
 #    Windows-authored checkout cannot poison class names with a trailing \r.
 shard_data="$(tr -d '\r' < "$SHARD_FILE")"
-malformed="$(printf '%s\n' "$shard_data" | awk '!/^[[:space:]]*(#|$)/ && NF != 2 {print NR": "$0}')"
+# Actions parses only the first physical line of a ::error:: annotation, so
+# the pipeline collapses embedded newlines into one ';'-joined line.
+malformed="$(printf '%s\n' "$shard_data" | awk '!/^[[:space:]]*(#|$)/ && NF != 2 {print NR": "$0}' | tr '\n' ';')"
 if [ -n "$malformed" ]; then
   die "malformed lines in test-shards.txt (expected '<lane> <ClassName>'): $malformed"
 fi
