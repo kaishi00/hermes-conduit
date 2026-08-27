@@ -275,12 +275,12 @@ final class CrossProfilePresentationCacheTests: XCTestCase {
             "ts-a1",
             "The outgoing profile's transcript metadata must be preserved across the switch"
         )
+        // Schema-proof persistence assertions: the parked flush's captured
+        // identity may never appear under work, work's own row (written by
+        // its post-switch resume) holds only its own transcript, and the
+        // final store contains exactly these two namespaced entries.
         let store = persistedCache(from: harness.defaults)
-        XCTAssertFalse(
-            store.keys.contains { $0.hasPrefix("work|") && !$0.hasSuffix(fixtures.session.id) },
-            "Work-namespace entries are limited to work's own sessions, got \(store.keys)"
-        )
-        XCTAssertEqual(store["work|session-a"], nil)
+        XCTAssertNil(store["work|session-a"])
         for (key, ids) in store where key.hasPrefix("work|") {
             XCTAssertEqual(
                 Set(ids),
@@ -288,8 +288,9 @@ final class CrossProfilePresentationCacheTests: XCTestCase {
                 "\(key) may only hold profile B's own transcript rows, got \(ids)"
             )
         }
-        XCTAssertTrue(
-            Set(store.keys).isSubset(of: ["default|session-a", "default|\(defaultSession.id)".lowercased(), "work|\(fixtures.session.id)".lowercased()]),
+        XCTAssertEqual(
+            Set(store.keys),
+            Set(["default|session-a", "work|" + fixtures.session.id.lowercased()]),
             "Unexpected cache namespaces after the switch: \(store.keys)"
         )
     }
@@ -322,12 +323,14 @@ final class CrossProfilePresentationCacheTests: XCTestCase {
         )
     }
 
-    /// Requirement-level guarantee: even when NO caller cancels or flushes, an
-    /// identity change fences the parked operation on its own. Changing
-    /// profiles through connect(with:profile:) never touches
-    /// `presentationCacheFlushTask`; only the epoch fence stands between the
-    /// stale task and profile B's namespace.
-    func testIdentityChangeAloneFencesStaleDeferredFlush() async {
+    /// The identity change inside connect(with:profile:) — a legitimate
+    /// profile-switch entry point that never touches
+    /// `presentationCacheFlushTask` itself — must uphold the same hard
+    /// boundary as switchProfile: the parked flush is cancelled by the
+    /// boundary flush inside setActiveProfile(_:), the outgoing profile's
+    /// latest transcript is preserved synchronously while it is still
+    /// active, and nothing from session A ever reaches work's namespace.
+    func testConnectProfileChangePreservesOutgoingAndFencesStaleFlush() async {
         let (gate, park) = makeGatePark()
         let fixtures = workSessionFixtures()
         let harness = makeHarness(
@@ -355,21 +358,94 @@ final class CrossProfilePresentationCacheTests: XCTestCase {
         XCTAssertNotNil(parkedOperation)
         await gate.waitUntilEngaged()
 
-        // Profile changes without any explicit flush/cancel around it.
+        // Profile changes through connect; the boundary lives inside
+        // setActiveProfile(_:), which no identity mutation can bypass.
         await harness.appState.connect(with: connection, profile: "work")
         XCTAssertEqual(harness.appState.activeProfile, "work")
 
         gate.release()
         await parkedOperation?.value
 
-        XCTAssertEqual(
-            cachedTimestamp(of: harness.cache, profile: "work", sessionID: "session-a"),
-            "",
-            "The fenced task must not deposit session-A presentation data into the work namespace"
-        )
+        let store = persistedCache(from: harness.defaults)
         XCTAssertNil(
-            persistedCache(from: harness.defaults)["work|session-a"],
-            "No work-namespaced entry may ever be created for the captured session"
+            store["work|session-a"],
+            "The stale task must not deposit session-A presentation data into the work namespace"
         )
+        // The connect boundary must also preserve the outgoing transcript
+        // synchronously while default was still active.
+        XCTAssertEqual(store["default|session-a"], ["a1"])
+        XCTAssertEqual(
+            cachedTimestamp(of: harness.cache, profile: "default", sessionID: "session-a"),
+            "ts-a1",
+            "The outgoing profile's transcript metadata must survive a connect-driven switch"
+        )
+    }
+
+    /// A failed switch that already flipped the identity must fence anything
+    /// scheduled mid-attempt, and rollback flushes the RESTORED previous
+    /// profile's transcript under its own namespace only — never leaving
+    /// partially-loaded target rows behind.
+    func testFailedSwitchRollbackFlushesOnlyRestoredProfileNamespace() async {
+        let (gate, park) = makeGatePark()
+        let fixtures = workSessionFixtures()
+        struct ForcedSwitchFailure: Error {}
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                connectClient: { _ in },
+                loadCatalog: { _, _ in [self.session(fixtures.session.id, profile: "work")] },
+                mintTicket: { _ in "profile-ticket" },
+                openSession: { _, sessionID in
+                    SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: fixtures.messages,
+                        snapshot: SessionRuntimeSnapshot(object: [:])
+                    )
+                },
+                refreshContext: { _, _ in },
+                loadBusyInputMode: { _ in throw ForcedSwitchFailure() }
+            ),
+            park: park
+        )
+        let connection = HermesConnection(baseUrl: "https://127.0.0.1:1", ticket: "saved-ticket")
+        harness.coordinator.rememberSessionID("session-a", for: "default")
+        harness.coordinator.rememberSessionID(fixtures.session.id, for: "work")
+        seedOutgoingTranscript(in: harness.appState, connection: connection, sessionID: "session-a")
+        harness.appState.installChatViewportSnapshotProvider(id: UUID()) {
+            ChatRenderedViewportSnapshot(
+                sessionKey: ChatScrollSessionKey(profile: "default", sessionID: "session-a"),
+                snapshot: ChatScrollSnapshot(anchorMessageID: "default-anchor", followsLatest: true)
+            )
+        }
+
+        // Parked flush under default/session-a before attempting the switch.
+        harness.appState.handleStreamEvent(.cwdUpdate(sessionId: "session-a", cwd: "/tmp/a"))
+        await gate.waitUntilEngaged()
+
+        let switched = await harness.appState.switchProfile(to: "work")
+
+        XCTAssertFalse(switched)
+        XCTAssertEqual(harness.appState.activeProfile, "default")
+        XCTAssertEqual(harness.appState.messages, self.outgoingTranscript)
+
+        gate.release()
+        await Task.yield()
+
+        // Mid-attempt resume work may legitimately have persisted work's own
+        // transcript under work before the failure; the rollback guarantees
+        // are: the restored profile's own entry survives intact, nothing
+        // foreign lands anywhere, and no other namespace leaks.
+        let store = persistedCache(from: harness.defaults)
+        XCTAssertTrue(
+            store.keys.isSubset(of: Set(["default|session-a", "work|" + fixtures.session.id.lowercased()])),
+            "A failed switch may only leave the two legitimate namespaces, got \(store.keys)"
+        )
+        XCTAssertEqual(store["default|session-a"], ["a1"])
+        for (key, ids) in store where key.hasPrefix("work|") {
+            XCTAssertEqual(
+                Set(ids),
+                Set(["work-message"]),
+                "\(key) may only hold work's own transcript rows, got \(ids)"
+            )
+        }
     }
 }

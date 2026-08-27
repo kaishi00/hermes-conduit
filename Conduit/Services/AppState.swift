@@ -877,23 +877,35 @@ final class AppState: ObservableObject {
         cacheMessagePresentation()
     }
 
-    /// Assigns the active profile and fences deferred presentation-cache
-    /// work: any coalesced flush scheduled while another profile was active
-    /// becomes stale the moment the identity changes. Call this instead of
-    /// assigning `activeProfile` directly so no mutation site can skip the
-    /// fence.
+    /// Assigns the active profile and enforces the hard presentation-cache
+    /// profile boundary: any coalesced flush scheduled while another profile
+    /// was active is flushed synchronously here — while the outgoing profile
+    /// is still active — and then fenced by the epoch bump, so no mutation
+    /// site can skip the boundary or lose the outgoing transcript. The
+    /// flush-before-bump ordering is what makes the epoch a complete fence;
+    /// `presentationCacheProfileEpoch` uses wrapping arithmetic because ~2^63
+    /// switches are unreachable, and the profile string is compared
+    /// independently in the task anyway, so a wrap can never resurrect a
+    /// stale flush. Both fence conditions in
+    /// `schedulePresentationCacheFlush` are deliberately redundant with this
+    /// single mutator (string equality is the readable guard; the epoch
+    /// catches A→B→A round-trips) — do not simplify either away.
     private func setActiveProfile(_ newValue: String) {
         guard newValue != activeProfile else { return }
+        flushPendingPresentationCache()
         activeProfile = newValue
         presentationCacheProfileEpoch &+= 1
     }
 
+#if DEBUG
     /// Deterministic-test access to the pending coalesced flush. Awaiting its
     /// value settles every deferred-write decision (cancelled, fenced, or
-    /// completed) without wall-clock timing.
+    /// completed) without wall-clock timing. Test-only plumbing; compiled out
+    /// of release builds.
     var presentationCacheFlushOperationForTesting: Task<Void, Never>? {
         presentationCacheFlushTask
     }
+#endif
 
     // MARK: - Persistence
 
@@ -6164,11 +6176,9 @@ final class AppState: ObservableObject {
             transitionGeneration = beginExplicitChatViewportTransition()
         }
         cancelChatResumeTransportRecovery()
-        // Hard profile boundary for deferred writes: cancel the debounced
-        // stream flush and write synchronously while the outgoing profile is
-        // still active. The latest transcript lands in its own namespace and
-        // no parked task survives the identity change below.
-        flushPendingPresentationCache()
+        // The hard profile boundary (synchronous outgoing-transcript flush +
+        // epoch fence) lives in setActiveProfile(_:), invoked below when the
+        // identity actually flips.
         cancelSecondaryProfileTitleRecovery()
 
         // Dismiss keyboard before switching profiles
@@ -6261,7 +6271,6 @@ final class AppState: ObservableObject {
             }
             errorMessage = "Could not switch workspace: \(error.localizedDescription)"
             clearPendingDecisionRestorationGuard()
-            setActiveProfile(previousProfile)
             // The pre-switch reset neutralized the approval state; restore it
             // with the rest of the previous profile or a failed switch loses
             // the floor while the previous profile is still the active one.
@@ -6276,6 +6285,13 @@ final class AppState: ObservableObject {
             projectsLoading = false
             restoreActiveSessionState(for: previousProfile)
             restorePinnedSessions(for: previousProfile)
+            // Restore the outgoing transcript state BEFORE flipping the
+            // identity back: setActiveProfile(_:)'s boundary flush persists
+            // whatever is in memory under the outgoing (previous) profile, so
+            // it must already describe that profile here — otherwise the
+            // partially-loaded target transcript would be written into the
+            // restored profile's namespace.
+            setActiveProfile(previousProfile)
             connection = savedConnection
             client?.disconnect()
             client = nil
