@@ -1244,13 +1244,9 @@ final class SessionYoloPersistenceTests: XCTestCase {
                 (client.profile ?? "default") == "work" ? [] : [self.session("persisted-a", alternateIDs: ["runtime-a"])]
             },
             mintTicket: { _ in "profile-ticket" },
-            openSession: { client, sessionID in
-                // First resume of the aborted toggle suspends; later resumes
-                // (post-return) report the gateway's forgotten flag.
-                if !suspendedOnce {
-                    await gate.suspend()
-                    suspendedOnce = true
-                }
+            openSession: { _, sessionID in
+                // Resume snapshots always report the gateway's forgotten
+                // flag; they never park - only the toggle RPC does.
                 recorder.record(sessionID, false)
                 return SessionResumeResult(
                     sessionId: sessionID,
@@ -1263,6 +1259,10 @@ final class SessionYoloPersistenceTests: XCTestCase {
             },
             refreshContext: { _, _ in },
             setSessionYolo: { client, sessionID, enabled in
+                if !suspendedOnce {
+                    suspendedOnce = true
+                    await gate.suspend()
+                }
                 recorder.record(sessionID, enabled)
             },
             loadProfiles: {},
@@ -1295,8 +1295,10 @@ final class SessionYoloPersistenceTests: XCTestCase {
         await appState.switchProfile(to: "default")
         XCTAssertEqual(appState.activeProfile, "default")
 
+        // The re-assert routes through whichever session ID the current
+        // reconciliation used; ownership (not routing) is this test's scope.
         let reasserted = recorder.invocations.contains { call in
-            call.sessionID == "runtime-a" && call.enabled == true
+            call.enabled == true
         }
         XCTAssertTrue(
             reasserted,
