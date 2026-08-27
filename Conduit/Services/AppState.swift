@@ -860,6 +860,7 @@ final class AppState: ObservableObject {
             // operation safe on its own so no caller can forget it.
             guard self.activeProfile == scheduledProfile,
                   self.presentationCacheProfileEpoch == scheduledEpoch else {
+                presentationCacheFlushTask = nil
                 return
             }
             self.cacheMessagePresentation(for: [sessionId])
@@ -888,8 +889,9 @@ final class AppState: ObservableObject {
     /// transition site (`switchProfile`, `connect(with:profile:)`) where
     /// that ownership is guaranteed. Both fence conditions in
     /// `schedulePresentationCacheFlush` are intentionally redundant — string
-    /// equality is the readable guard, the wrapping `&+= 1` (~2^63 switches,
-    /// unreachable) catches A→B→A round-trips — do not simplify either away.
+    /// equality is the readable guard, the wrapping `&+= 1` (overflows only
+    /// after ~9.2×10^18 switches — unreachable) catches A→B→A round-trips —
+    /// do not simplify either away.
     private func setActiveProfile(_ newValue: String) {
         guard newValue != activeProfile else { return }
         activeProfile = newValue
@@ -6291,12 +6293,14 @@ final class AppState: ObservableObject {
             projectsLoading = false
             restoreActiveSessionState(for: previousProfile)
             restorePinnedSessions(for: previousProfile)
-            // Restore the outgoing transcript state BEFORE flipping the
-            // identity back: setActiveProfile(_:)'s boundary flush persists
-            // whatever is in memory under the outgoing (previous) profile, so
-            // it must already describe that profile here — otherwise the
-            // partially-loaded target transcript would be written into the
-            // restored profile's namespace.
+            // restoreActiveSessionState/restorePinnedSessions are
+            // synchronous and cache-write-free; the pre-flight boundary
+            // flush (above) already persisted the outgoing transcript under
+            // the previous profile's namespace. setActiveProfile(_:)
+            // deliberately does NOT flush: flipping the identity back only
+            // re-arms the namespace and bumps the fence epoch, making any
+            // flush scheduled under the failed target during the aborted
+            // attempt stale.
             setActiveProfile(previousProfile)
             connection = savedConnection
             client?.disconnect()

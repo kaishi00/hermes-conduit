@@ -33,7 +33,10 @@ final class CrossProfilePresentationCacheTests: XCTestCase {
 
     /// One-shot cancellation-aware suspension used as the injected debounce
     /// sleep. `onCancel` releases the parked task so the coalesced operation
-    /// observes cancellation exactly like `Task.sleep` would.
+    /// observes cancellation exactly like `Task.sleep` would. Test-only
+    /// type, never shared across production concurrency domains;
+    /// `@unchecked Sendable` is sound because every field is guarded by
+    /// `lock`.
     private final class FlushDebounceGate: @unchecked Sendable {
         private let lock = NSLock()
         private var waiter: CheckedContinuation<Void, Never>?
@@ -383,7 +386,7 @@ final class CrossProfilePresentationCacheTests: XCTestCase {
     /// scheduled mid-attempt, and rollback flushes the RESTORED previous
     /// profile's transcript under its own namespace only — never leaving
     /// partially-loaded target rows behind.
-    func testFailedSwitchRollbackFlushesOnlyRestoredProfileNamespace() async {
+    func testFailedSwitchRollbackLeavesOnlyRestoredProfileNamespace() async {
         let (gate, park) = makeGatePark()
         let fixtures = workSessionFixtures()
         struct ForcedSwitchFailure: Error {}
@@ -440,6 +443,67 @@ final class CrossProfilePresentationCacheTests: XCTestCase {
             "A failed switch must leave only the restored profile's namespace, got \(store.keys)"
         )
         XCTAssertEqual(store["default|session-a"], ["a1"])
+        for (key, ids) in store where key.hasPrefix("work|") {
+            XCTAssertEqual(
+                Set(ids),
+                Set(["work-message"]),
+                "\(key) may only hold work's own transcript rows, got \(ids)"
+            )
+        }
+    }
+
+    /// The epoch fence's distinguishing case: default → work → back to
+    /// default while the original flush is still parked. The profile-string
+    /// guard alone would green-light the write after the round trip; only
+    /// the epoch check drops it. The two forward boundary flushes along the
+    /// way must have landed exactly each profile's own transcript.
+    func testStaleFlushIsFencedAcrossRoundTripBackToOriginProfile() async {
+        let (gate, park) = makeGatePark()
+        let defaultSession = session("session-a")
+        let fixtures = workSessionFixtures()
+        let harness = makeHarness(
+            lifecycleOperations: switchLifecycleOperations(
+                workCatalog: [fixtures.session]
+            ) { client in
+                (client.profile ?? "default") == "work" ? fixtures.messages : []
+            },
+            park: park
+        )
+        let connection = HermesConnection(baseUrl: "https://127.0.0.1:1", ticket: "saved-ticket")
+        harness.coordinator.rememberSessionID(defaultSession.id, for: "default")
+        harness.coordinator.rememberSessionID(fixtures.session.id, for: "work")
+        seedOutgoingTranscript(in: harness.appState, connection: connection, sessionID: defaultSession.id)
+        harness.appState.installChatViewportSnapshotProvider(id: UUID()) {
+            ChatRenderedViewportSnapshot(
+                sessionKey: ChatScrollSessionKey(profile: "default", sessionID: "session-a"),
+                snapshot: ChatScrollSnapshot(anchorMessageID: "default-anchor", followsLatest: true)
+            )
+        }
+
+        harness.appState.handleStreamEvent(.cwdUpdate(sessionId: defaultSession.id, cwd: "/tmp/a"))
+        let parkedOperation = harness.appState.presentationCacheFlushOperationForTesting
+        XCTAssertNotNil(parkedOperation)
+        await gate.waitUntilEngaged()
+
+        // Round trip inside the parked flush's lifetime.
+        await harness.appState.switchProfile(to: "work")
+        XCTAssertEqual(harness.appState.activeProfile, "work")
+        await harness.appState.switchProfile(to: "default")
+        XCTAssertEqual(harness.appState.activeProfile, "default")
+
+        gate.release()
+        await parkedOperation?.value
+
+        XCTAssertNil(
+            persistedCache(from: harness.defaults)["work|session-a"],
+            "The round-tripped flush must stay fenced despite the matching profile string"
+        )
+        XCTAssertEqual(
+            cachedTimestamp(of: harness.cache, profile: "default", sessionID: defaultSession.id),
+            "ts-a1",
+            "The original profile's transcript must survive the round trip"
+        )
+        let store = persistedCache(from: harness.defaults)
         for (key, ids) in store where key.hasPrefix("work|") {
             XCTAssertEqual(
                 Set(ids),
