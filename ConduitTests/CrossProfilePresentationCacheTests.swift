@@ -391,7 +391,9 @@ final class CrossProfilePresentationCacheTests: XCTestCase {
         struct ForcedSwitchFailure: Error {}
         let harness = makeHarness(
             lifecycleOperations: ChatResumeLifecycleOperations(
-                connectClient: { _ in },
+                // Fail AFTER the identity has already flipped so the
+                // rollback path exercises the mid-attempt fence + restore.
+                connectClient: { _ in throw ForcedSwitchFailure() },
                 loadCatalog: { _, _ in [self.session(fixtures.session.id, profile: "work")] },
                 mintTicket: { _ in "profile-ticket" },
                 openSession: { _, sessionID in
@@ -402,7 +404,7 @@ final class CrossProfilePresentationCacheTests: XCTestCase {
                     )
                 },
                 refreshContext: { _, _ in },
-                loadBusyInputMode: { _ in throw ForcedSwitchFailure() }
+                loadBusyInputMode: { _ in }
             ),
             park: park
         )
