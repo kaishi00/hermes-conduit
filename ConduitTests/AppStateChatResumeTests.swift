@@ -3411,6 +3411,70 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(harness.store.snapshot(for: workKey), .latest, file: file, line: line)
     }
 
+    /// Integration coverage for the production merge call shape: the
+    /// reconciliation path merges the resume result through
+    /// [resolvedId, requestedId]. Both aliases resolving to one logical
+    /// cached snapshot must enrich each gateway row exactly once with the
+    /// freshest metadata - never stale duplicated candidates.
+    func testReconciliationMergeDeduplicatesRequestedAndResolvedAliases() async {
+        let cacheSuite = "conduit.tests.alias-dedup-reconciliation-" + UUID().uuidString
+        guard let cacheDefaults = UserDefaults(suiteName: cacheSuite) else {
+            XCTFail("Could not create isolated UserDefaults suite")
+            return
+        }
+        let clock = DeterministicClock()
+        let cache = SessionPresentationCache(defaults: cacheDefaults, now: { clock.currentValue() })
+        defer {
+            cache.clear()
+            cacheDefaults.removePersistentDomain(forName: cacheSuite)
+        }
+        let harness = makeHarness(sessionPresentationCache: cache)
+
+        // An older generation saved long ago under the REQUESTED id...
+        let staleGeneration = (1...5).map { index in
+            ChatMessage(
+                id: "gen-row-" + String(index),
+                role: .assistant,
+                content: "Reconciled digest " + String(index),
+                timestamp: "stale-" + String(index)
+            )
+        }
+        cache.save(staleGeneration, profile: "default", sessionIDs: ["stored-a"])
+        clock.advance()
+        // ...and the live writes kept the RESOLVED id current.
+        let freshGeneration = (1...5).map { index in
+            ChatMessage(
+                id: "gen-row-" + String(index),
+                role: .assistant,
+                content: "Reconciled digest " + String(index),
+                timestamp: "fresh-" + String(index)
+            )
+        }
+        cache.save(freshGeneration, profile: "default", sessionIDs: ["runtime-a"])
+
+        // Publish a reconciliation whose requested session is stored-a; the
+        // gateway then resumes it under the resolved runtime id.
+        let active = session("stored-a")
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        _ = publishRestoration(in: harness, session: active)
+
+        let resumeResult = SessionResumeResult(
+            sessionId: "runtime-a",
+            messages: (1...5).map { index in
+                ChatMessage(id: "gw-" + String(index), role: .assistant, content: "Reconciled digest " + String(index), timestamp: "")
+            },
+            snapshot: SessionRuntimeSnapshot(object: [:])
+        )
+
+        XCTAssertTrue(harness.appState.applyChatResume(resumeResult))
+
+        XCTAssertEqual(
+            harness.appState.messages.map(\.timestamp),
+            ["fresh-1", "fresh-2", "fresh-3", "fresh-4", "fresh-5"]
+        )
+    }
+
     private func makeHarness(
         behavior: ChatResumeBehavior = .continueWhereLeftOff,
         configureDefaults: (UserDefaults) -> Void = { _ in },
