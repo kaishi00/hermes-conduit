@@ -742,11 +742,12 @@ final class AppState: ObservableObject {
     private let sessionYoloStore: SessionYoloStore
     private var sessionYoloWriteRevision: UInt64 = 0
     private var sessionYoloWriteRevisions: [ChatScrollSessionKey: UInt64] = [:]
-    /// Sessions whose user-initiated YOLO write is awaiting its RPC. The
-    /// override store is only updated after the gateway accepts, so readers
-    /// (notably the resume re-assert) must not treat the store as current
-    /// while a write is in flight.
-    private var inFlightSessionYoloWrites: Set<ChatScrollSessionKey> = []
+    /// Sessions whose user-initiated YOLO write is awaiting its RPC, tracked
+    /// by reference count so overlapping writes for the same session each own
+    /// an independent registration. The override store is only updated after
+    /// the gateway accepts, so readers (notably the resume re-assert) must not
+    /// treat the store as current while any write is in flight.
+    private var inFlightSessionYoloWriteCounts: [ChatScrollSessionKey: Int] = [:]
     /// The last session-level `yolo` the gateway itself reported, distinct
     /// from `runtime.yolo`, which also folds in the profile floor and the
     /// stored override.
@@ -3555,27 +3556,39 @@ final class AppState: ObservableObject {
     /// In-flight ownership is registered against explicit keys so the exact
     /// entries created at operation start are the ones cleanup removes -
     /// even when the active profile moved on while the RPC was suspended.
+    /// The reference-counted map supports overlapping writes for the same
+    /// session: each logical operation owns an independent registration, and
+    /// cleanup only removes the key when the last reference is released.
     private func beginSessionYoloWrite(keys: Set<ChatScrollSessionKey>) {
-        inFlightSessionYoloWrites.formUnion(keys)
+        for key in keys {
+            inFlightSessionYoloWriteCounts[key, default: 0] += 1
+        }
     }
 
     private func endSessionYoloWrite(keys: Set<ChatScrollSessionKey>) {
         for key in keys {
-            inFlightSessionYoloWrites.remove(key)
+            let remaining = inFlightSessionYoloWriteCounts[key, default: 0] - 1
+            if remaining > 0 {
+                inFlightSessionYoloWriteCounts[key] = remaining
+            } else {
+                inFlightSessionYoloWriteCounts.removeValue(forKey: key)
+            }
         }
     }
 
 #if DEBUG
-    /// Test-only view of pending YOLO write ownership. A non-empty entry after
-    /// its operation settled means the bookkeeping leaked.
-    var inFlightSessionYoloWriteKeysForTesting: Set<ChatScrollSessionKey> {
-        inFlightSessionYoloWrites
+    /// Test-only view of pending YOLO write ownership. Each entry maps a key
+    /// to the number of active operations holding it; a non-empty dictionary
+    /// after all operations settled means the bookkeeping leaked.
+    var inFlightSessionYoloWriteCountsForTesting: [ChatScrollSessionKey: Int] {
+        inFlightSessionYoloWriteCounts
     }
 #endif
 
     private func hasInFlightSessionYoloWrite(sessionIDs: [String]) -> Bool {
-        !sessionYoloKeysForCurrentProfile(sessionIDs: sessionIDs)
-            .isDisjoint(with: inFlightSessionYoloWrites)
+        sessionYoloKeysForCurrentProfile(sessionIDs: sessionIDs).contains { key in
+            (inFlightSessionYoloWriteCounts[key] ?? 0) > 0
+        }
     }
 
     private func applyRuntime(

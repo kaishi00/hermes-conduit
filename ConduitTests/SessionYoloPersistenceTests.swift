@@ -1179,8 +1179,8 @@ final class SessionYoloPersistenceTests: XCTestCase {
         )
     }
 
-    private func formatKeys(_ keys: Set<ChatScrollSessionKey>) -> Set<String> {
-        Set(keys.map { $0.profile + "|" + $0.sessionID })
+    private func formatKeys(_ counts: [ChatScrollSessionKey: Int]) -> Set<String> {
+        Set(counts.keys.map { $0.profile + "|" + $0.sessionID })
     }
 
     /// THE leak: a YOLO write suspended under profile A while the app
@@ -1208,7 +1208,7 @@ final class SessionYoloPersistenceTests: XCTestCase {
         let operation = Task { await appState.setYoloMode(false) }
         await gate.waitUntilSuspended()
         XCTAssertFalse(
-            appState.inFlightSessionYoloWriteKeysForTesting.isEmpty,
+            appState.inFlightSessionYoloWriteCountsForTesting.isEmpty,
             "the suspended write should hold its ownership keys"
         )
 
@@ -1219,7 +1219,7 @@ final class SessionYoloPersistenceTests: XCTestCase {
         await operation.value
 
         XCTAssertEqual(
-            formatKeys(appState.inFlightSessionYoloWriteKeysForTesting),
+            formatKeys(appState.inFlightSessionYoloWriteCountsForTesting),
             Set(),
             "originating-profile in-flight keys must be removed after the op settles"
         )
@@ -1286,7 +1286,7 @@ final class SessionYoloPersistenceTests: XCTestCase {
         XCTAssertEqual(appState.activeProfile, "work")
         gate.resume()
         await operation.value
-        XCTAssertTrue(appState.inFlightSessionYoloWriteKeysForTesting.isEmpty)
+        XCTAssertTrue(appState.inFlightSessionYoloWriteCountsForTesting.isEmpty)
         XCTAssertFalse(recorder.invocations.contains { $0.enabled == true })
 
         // 3. Return to default. The return-switch resumes persisted-a with a
@@ -1305,7 +1305,7 @@ final class SessionYoloPersistenceTests: XCTestCase {
             "the persisted override must be re-asserted after returning; got \(recorder.invocations)"
         )
         XCTAssertTrue(appState.runtime.yolo)
-        XCTAssertTrue(appState.inFlightSessionYoloWriteKeysForTesting.isEmpty)
+        XCTAssertTrue(appState.inFlightSessionYoloWriteCountsForTesting.isEmpty)
     }
 
     private func makeAppState(
