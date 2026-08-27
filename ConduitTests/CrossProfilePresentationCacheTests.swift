@@ -188,16 +188,19 @@ final class CrossProfilePresentationCacheTests: XCTestCase {
         return cache.merge(probe, profile: profile, sessionIDs: [sessionID]).first?.timestamp ?? ""
     }
 
-    /// Set of persisted namespace keys ("<profile>|<session>") for exact
+    /// Persisted namespace contents as [cache-key -> message IDs] for exact
     /// namespace-level assertions. The production record shape is
     /// intentionally private; the storage version key pins this decoding.
-    private func persistedCacheKeys(from defaults: UserDefaults) -> Set<String> {
-        struct Entry: Decodable {}
+    private func persistedCache(from defaults: UserDefaults) -> [String: [String]] {
+        struct Entry: Decodable {
+            struct Row: Decodable { let id: String }
+            let messages: [Row]
+        }
         guard let data = defaults.data(forKey: "conduit.sessionPresentation.v1"),
               let map = try? JSONDecoder().decode([String: Entry].self, from: data) else {
-            return []
+            return [:]
         }
-        return Set(map.keys)
+        return map.mapValues { $0.messages.map(\.id) }
     }
 
     // MARK: - Tests
@@ -256,15 +259,13 @@ final class CrossProfilePresentationCacheTests: XCTestCase {
         await parkedOperation?.value
 
         // Step 6: profile B's cache must not hold anything keyed to A's
-        // session identity or A's transcript metadata.
+        // session identity. Profile B's own session row may legitimately
+        // exist (its resume flushes under its own namespace), but it may
+        // only contain profile B's own transcript.
         XCTAssertEqual(
             cachedTimestamp(of: harness.cache, profile: "work", sessionID: defaultSession.id),
             "",
             "A stale flush must never write profile A's transcript into profile B's namespace"
-        )
-        XCTAssertFalse(
-            persistedCacheKeys(from: harness.defaults).contains(where: { $0.hasPrefix("work|") }),
-            "No work-namespaced presentation entries may exist after a fresh switch"
         )
 
         // Step 7: profile A's latest transcript survived the switch because the
@@ -274,8 +275,23 @@ final class CrossProfilePresentationCacheTests: XCTestCase {
             "ts-a1",
             "The outgoing profile's transcript metadata must be preserved across the switch"
         )
-        let remainingKeys = persistedCacheKeys(from: harness.defaults)
-        XCTAssertEqual(remainingKeys, Set(["default|\(defaultSession.id)".lowercased()]))
+        let store = persistedCache(from: harness.defaults)
+        XCTAssertFalse(
+            store.keys.contains { $0.hasPrefix("work|") && !$0.hasSuffix(fixtures.session.id) },
+            "Work-namespace entries are limited to work's own sessions, got \(store.keys)"
+        )
+        XCTAssertEqual(store["work|session-a"], nil)
+        for (key, ids) in store where key.hasPrefix("work|") {
+            XCTAssertEqual(
+                Set(ids),
+                Set(["work-message"]),
+                "\(key) may only hold profile B's own transcript rows, got \(ids)"
+            )
+        }
+        XCTAssertTrue(
+            store.keys.isSubset(of: ["default|session-a", "default|\(defaultSession.id)".lowercased(), "work|\(fixtures.session.id)".lowercased()]),
+            "Unexpected cache namespaces after the switch: \(store.keys)"
+        )
     }
 
     /// Guard against overcorrecting: when the profile does not change, the
@@ -351,8 +367,8 @@ final class CrossProfilePresentationCacheTests: XCTestCase {
             "",
             "The fenced task must not deposit session-A presentation data into the work namespace"
         )
-        XCTAssertFalse(
-            persistedCacheKeys(from: harness.defaults).contains("work|session-a"),
+        XCTAssertNil(
+            persistedCache(from: harness.defaults)["work|session-a"],
             "No work-namespaced entry may ever be created for the captured session"
         )
     }
