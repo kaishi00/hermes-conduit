@@ -687,6 +687,16 @@ final class AppState: ObservableObject {
     /// Coalesces presentation-cache flushes during streaming so we
     /// don't serialize and write UserDefaults on every WebSocket frame.
     private var presentationCacheFlushTask: Task<Void, Never>?
+    /// Monotonic fence for deferred presentation-cache writes. Bumped when
+    /// the active profile identity changes so a coalesced flush scheduled
+    /// under one profile can never land in another profile's namespace.
+    private var presentationCacheProfileEpoch = 0
+    /// Injectable stand-in for the debounce sleep. Defaults to wall-clock
+    /// `Task.sleep`; deterministic tests park a pending flush mid-flight
+    /// through this seam instead of racing its timing.
+    private let presentationCacheDebounceSuspension: @Sendable (
+        Duration
+    ) async throws -> Void
     /// A resume without explicit active-turn confirmation can restore a
     /// decision card from local presentation data. Keep the card in memory for
     /// this AppState so another foreground resume can still show it, but strip
@@ -822,6 +832,12 @@ final class AppState: ObservableObject {
     /// so continuous streaming can never postpone a flush indefinitely.
     private func schedulePresentationCacheFlush(for sessionId: String) {
         presentationCacheFlushTask?.cancel()
+        // Capture the profile identity this deferred write belongs to. The
+        // task only keeps the session ID immutable; everything else it reads
+        // (messages, reconciliation IDs, restoration guards) is live state.
+        let scheduledProfile = activeProfile
+        let scheduledEpoch = presentationCacheProfileEpoch
+        let suspendForDebounce = presentationCacheDebounceSuspension
         let now = Date()
         let sinceLastFlush = lastPresentationCacheFlushDate
             .map { now.timeIntervalSince($0) }
@@ -831,11 +847,21 @@ final class AppState: ObservableObject {
         let delay: Duration = sinceLastFlush >= 5 ? .zero : .seconds(2)
         presentationCacheFlushTask = Task { [weak self] in
             do {
-                try await Task.sleep(for: delay)
+                try await suspendForDebounce(delay)
             } catch {
                 return
             }
             guard !Task.isCancelled, let self else { return }
+            // Stale-execution fence: if the app switched profiles while this
+            // flush was parked, the captured session ID no longer describes
+            // the live transcript, and writing through the now-active cache
+            // namespace would cross-contaminate profiles. switchProfile also
+            // flushes and cancels before switching; this guard keeps the
+            // operation safe on its own so no caller can forget it.
+            guard self.activeProfile == scheduledProfile,
+                  self.presentationCacheProfileEpoch == scheduledEpoch else {
+                return
+            }
             self.cacheMessagePresentation(for: [sessionId])
             self.lastPresentationCacheFlushDate = Date()
             self.presentationCacheFlushTask = nil
@@ -849,6 +875,24 @@ final class AppState: ObservableObject {
         presentationCacheFlushTask = nil
         lastPresentationCacheFlushDate = Date()
         cacheMessagePresentation()
+    }
+
+    /// Assigns the active profile and fences deferred presentation-cache
+    /// work: any coalesced flush scheduled while another profile was active
+    /// becomes stale the moment the identity changes. Call this instead of
+    /// assigning `activeProfile` directly so no mutation site can skip the
+    /// fence.
+    private func setActiveProfile(_ newValue: String) {
+        guard newValue != activeProfile else { return }
+        activeProfile = newValue
+        presentationCacheProfileEpoch &+= 1
+    }
+
+    /// Deterministic-test access to the pending coalesced flush. Awaiting its
+    /// value settles every deferred-write decision (cancelled, fenced, or
+    /// completed) without wall-clock timing.
+    var presentationCacheFlushOperationForTesting: Task<Void, Never>? {
+        presentationCacheFlushTask
     }
 
     // MARK: - Persistence
@@ -927,8 +971,12 @@ final class AppState: ObservableObject {
         reconnectExecutor: ChatResumeReconnectExecutor? = nil,
         chatResumeLifecycleOperations: ChatResumeLifecycleOperations = .live,
         sessionPresentationCache: SessionPresentationCache = .shared,
-        sessionYoloStore: SessionYoloStore? = nil
+        sessionYoloStore: SessionYoloStore? = nil,
+        presentationCacheDebounceSuspension: (@Sendable (Duration) async throws -> Void)? = nil
     ) {
+        self.presentationCacheDebounceSuspension =
+            presentationCacheDebounceSuspension
+            ?? { duration in try await Task.sleep(for: duration) }
         self.defaults = defaults
         self.sessionPresentationCache = sessionPresentationCache
         self.sessionYoloStore = sessionYoloStore ?? SessionYoloStore(defaults: defaults)
@@ -1874,7 +1922,9 @@ final class AppState: ObservableObject {
             archivedSessions = []
             slashCommands = Self.builtInSlashCommands
         }
-        activeProfile = profile
+        // Fence deferred presentation-cache writes created under the
+        // previous profile before transcripts change over.
+        setActiveProfile(profile)
         restoreActiveSessionState(for: profile)
         restorePinnedSessions(for: profile)
         defaults.set(profile, forKey: activeProfileKey)
@@ -6114,7 +6164,11 @@ final class AppState: ObservableObject {
             transitionGeneration = beginExplicitChatViewportTransition()
         }
         cancelChatResumeTransportRecovery()
-        cacheMessagePresentation()
+        // Hard profile boundary for deferred writes: cancel the debounced
+        // stream flush and write synchronously while the outgoing profile is
+        // still active. The latest transcript lands in its own namespace and
+        // no parked task survives the identity change below.
+        flushPendingPresentationCache()
         cancelSecondaryProfileTitleRecovery()
 
         // Dismiss keyboard before switching profiles
@@ -6156,7 +6210,9 @@ final class AppState: ObservableObject {
             connection = freshConnection
             client = nextClient
             clearPendingDecisionRestorationGuard()
-            activeProfile = target
+            // Fence any residual deferred cache write scheduled under the
+            // outgoing profile before identities and namespaces change over.
+            setActiveProfile(target)
             sessions = []
             cronSessions = []
             archivedSessions = []
@@ -6205,7 +6261,7 @@ final class AppState: ObservableObject {
             }
             errorMessage = "Could not switch workspace: \(error.localizedDescription)"
             clearPendingDecisionRestorationGuard()
-            activeProfile = previousProfile
+            setActiveProfile(previousProfile)
             // The pre-switch reset neutralized the approval state; restore it
             // with the rest of the previous profile or a failed switch loses
             // the floor while the previous profile is still the active one.
