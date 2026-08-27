@@ -32,7 +32,7 @@ final class YoloProfileSwitchBookkeepingTests: XCTestCase {
         )
     }
 
-    private func session(_ id: String) -> SessionSummary {
+    private func session(_ id: String, alternateIDs: [String] = []) -> SessionSummary {
         SessionSummary(
             id: id,
             alternateIds: [],
