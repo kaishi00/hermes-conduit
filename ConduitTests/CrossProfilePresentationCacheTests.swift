@@ -112,6 +112,7 @@ final class CrossProfilePresentationCacheTests: XCTestCase {
             defaults.removePersistentDomain(forName: suiteName)
         }
         let store = ChatResumeStore(defaults: defaults)
+        store.setBehavior(.continueWhereLeftOff)
         let coordinator = ChatResumeCoordinator(store: store)
         let cache = SessionPresentationCache(defaults: defaults)
         let appState = AppState(
@@ -135,11 +136,14 @@ final class CrossProfilePresentationCacheTests: XCTestCase {
     }
 
     private func switchLifecycleOperations(
+        workCatalog: [SessionSummary],
         openMessages: @MainActor @escaping (HermesClient) -> [ChatMessage]
     ) -> ChatResumeLifecycleOperations {
         ChatResumeLifecycleOperations(
             connectClient: { _ in },
-            loadCatalog: { _, _ in [] },
+            loadCatalog: { client, _ in
+                (client.profile ?? "default") == "work" ? workCatalog : []
+            },
             mintTicket: { _ in "profile-ticket" },
             openSession: { client, sessionID in
                 SessionResumeResult(
@@ -207,7 +211,9 @@ final class CrossProfilePresentationCacheTests: XCTestCase {
         let defaultSession = session("session-a")
         let fixtures = workSessionFixtures()
         let harness = makeHarness(
-            lifecycleOperations: switchLifecycleOperations { client in
+            lifecycleOperations: switchLifecycleOperations(
+                workCatalog: [fixtures.session]
+            ) { client in
                 (client.profile ?? "default") == "work" ? fixtures.messages : []
             },
             park: park
