@@ -311,7 +311,7 @@ final class SessionPresentationCacheTests: XCTestCase {
 
         XCTAssertEqual(merged[0].tool?.input, "fresh-input-1")
         XCTAssertEqual(merged[1].tool?.input, "fresh-input-2")
-        XCTAssertEqual(merged[0].timestamp, "freshts-1")
+        XCTAssertEqual(merged[0].timestamp, "fresh-ts-1")
         cache.clear(profile: profile)
     }
 
