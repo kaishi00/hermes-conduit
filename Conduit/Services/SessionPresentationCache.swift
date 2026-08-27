@@ -433,6 +433,13 @@ final class SessionPresentationCache {
         let existingUnconfirmedAt = ids.lazy
             .compactMap { store[self.key(profile: profile, sessionID: $0)]?.unconfirmedPendingDecisionAt }
             .first
+        #if DEBUG
+        if true { // TEMP-DIAG
+            let rows = freshRecords.prefix(3).map { $0.id }
+            print("[SAVE-TRACE] profile=\(profile) ids=\(ids) rows=\(rows)")
+            print(Thread.callStackSymbols.prefix(12).joined(separator: "\n"))
+        }
+        #endif
         let unconfirmedAt = unconfirmedPendingDecisionKeys.isEmpty
             ? nil
             : (existingUnconfirmedAt ?? now())
