@@ -289,7 +289,7 @@ final class CrossProfilePresentationCacheTests: XCTestCase {
             )
         }
         XCTAssertTrue(
-            store.keys.isSubset(of: ["default|session-a", "default|\(defaultSession.id)".lowercased(), "work|\(fixtures.session.id)".lowercased()]),
+            Set(store.keys).isSubset(of: ["default|session-a", "default|\(defaultSession.id)".lowercased(), "work|\(fixtures.session.id)".lowercased()]),
             "Unexpected cache namespaces after the switch: \(store.keys)"
         )
     }
