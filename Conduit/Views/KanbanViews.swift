@@ -90,6 +90,256 @@ enum KanbanCardDeletePolicy {
     }
 }
 
+/// Issue #98 (Kanban selection chrome on narrow iPhones): pure presentation
+/// policy for the V3C multi-select header and the bottom bulk-action bar.
+/// Extracted so the responsive decisions — which chrome variant renders,
+/// what each bulk action shows, and how counts pluralize — stay
+/// deterministic and regression-testable without dragging the whole board
+/// screen into a test harness.
+enum KanbanSelectionChromePolicy {
+    /// Which top-row chrome is visible. Selection mode REPLACES the ordinary
+    /// interactive board controls instead of sharing their row: at iPhone
+    /// widths "Cancel" plus "N tasks selected" cannot coexist with the board
+    /// picker / overflow / refresh / add buttons without wrapping into
+    /// character fragments (issue #98).
+    enum HeaderVariant: Equatable {
+        case standardBoardControls
+        case compactSelection
+    }
+
+    static func headerVariant(isSelectionActive: Bool) -> HeaderVariant {
+        isSelectionActive ? .compactSelection : .standardBoardControls
+    }
+
+    /// Exiting selection mode is an idle-time action only: while a bulk
+    /// operation is in flight (`bulkBusy`) Cancel stays inert so an exit can
+    /// never race the in-flight mutation's frozen-context bookkeeping.
+    static func allowsCancelExit(bulkBusy: Bool) -> Bool {
+        !bulkBusy
+    }
+
+    /// ONE logical single-line label — never a vertical letter column.
+    static func selectedCountLabel(count: Int) -> String {
+        count == 1 ? "1 task selected" : "\(count) tasks selected"
+    }
+
+    /// One bulk-action control in the bottom bar. `title == nil` renders it
+    /// icon-only (the compact width variant).
+    struct BulkActionDescriptor: Equatable, Identifiable {
+        enum Kind: Equatable {
+            case move
+            case assign
+            case more
+        }
+
+        let kind: Kind
+        /// Visible text; nil means icon-only.
+        let title: String?
+        let systemImage: String
+
+        var id: Kind { kind }
+
+        /// Stable automation identifier shared by BOTH variants so tests (and
+        /// UI automation) see identical semantics for full and compact bars.
+        var accessibilityIdentifier: String {
+            switch kind {
+            case .move: return "kanban.bulk.move"
+            case .assign: return "kanban.bulk.assign"
+            case .more: return "kanban.bulk.more"
+            }
+        }
+    }
+
+    /// Roomy variant: icon + title per action.
+    static let fullBulkActions: [BulkActionDescriptor] = [
+        BulkActionDescriptor(kind: .move, title: "Move", systemImage: "arrow.left.arrow.right"),
+        BulkActionDescriptor(kind: .assign, title: "Assign", systemImage: "person.fill.badge.plus"),
+        BulkActionDescriptor(kind: .more, title: "More", systemImage: "ellipsis.circle"),
+    ]
+
+    /// Compact variant (narrow widths): the SAME actions, icon-only.
+    static let compactBulkActions: [BulkActionDescriptor] = [
+        BulkActionDescriptor(kind: .move, title: nil, systemImage: "arrow.left.arrow.right"),
+        BulkActionDescriptor(kind: .assign, title: nil, systemImage: "person.fill.badge.plus"),
+        BulkActionDescriptor(kind: .more, title: nil, systemImage: "ellipsis.circle"),
+    ]
+
+    /// VoiceOver text — deliberately IDENTICAL for both variants: the labels,
+    /// not visual titles, carry the meaning when icons stand alone. The noun
+    /// is singular for exactly one selected task, plural otherwise.
+    static func bulkAccessibilityLabel(_ kind: BulkActionDescriptor.Kind, selectedCount: Int) -> String {
+        let noun = selectedCount == 1 ? "task" : "tasks"
+        switch kind {
+        case .move:
+            return "Move \(selectedCount) selected \(noun)"
+        case .assign:
+            return "Assign \(selectedCount) selected \(noun)"
+        case .more:
+            return "More actions for \(selectedCount) selected \(noun)"
+        }
+    }
+}
+
+/// Issue #98: one bulk-action control SHARED by both responsive variants of
+/// the bottom bar (labeled when roomy, icon-only when narrow). Accessibility
+/// semantics are variant-independent by construction.
+struct KanbanBulkBarButtonItem: View {
+    let descriptor: KanbanSelectionChromePolicy.BulkActionDescriptor
+    let selectedCount: Int
+
+    var body: some View {
+        Group {
+            if let title = descriptor.title {
+                Label(title, systemImage: descriptor.systemImage)
+            } else {
+                Image(systemName: descriptor.systemImage)
+                    // Icon-only still needs a comfortable tap target even
+                    // though it draws less ink; 36pt keeps the compact row
+                    // single-line at phone widths while honoring most of the
+                    // HIG touch-target guidance.
+                    .padding(.horizontal, 4)
+                    .frame(minWidth: 36, minHeight: 36)
+                    .contentShape(Rectangle())
+            }
+        }
+        .accessibilityIdentifier(descriptor.accessibilityIdentifier)
+        .accessibilityLabel(
+            KanbanSelectionChromePolicy.bulkAccessibilityLabel(descriptor.kind, selectedCount: selectedCount)
+        )
+    }
+}
+
+/// Issue #98: the DEDICATED compact selection-mode header row. It REPLACES
+/// the ordinary board header entirely while selection is active, so the row
+/// never re-contests its width against the board picker / overflow /
+/// refresh / add controls. Cancel stays an idle-only action (`bulkBusy`
+/// keeps it disabled); the count remains ONE logical label.
+struct KanbanSelectionHeaderBar: View {
+    let selectedCount: Int
+    let bulkBusy: Bool
+    let onCancel: () -> Void
+
+    private var countLabel: String {
+        KanbanSelectionChromePolicy.selectedCountLabel(count: selectedCount)
+    }
+
+    var body: some View {
+        // Review-gate refinement: the WHOLE row shares one glass capsule,
+        // mirroring the legacy selection pill and the search/filter bar
+        // idiom, instead of glassing the Cancel button alone.
+        HStack(spacing: 8) {
+            Button {
+                // Belt-and-suspenders alongside .disabled(bulkBusy) below:
+                // the idle-only contract is pinned independently by
+                // testCancelExitIsIdleOnlyAndStaysBlockedWhileBulkBusy.
+                if KanbanSelectionChromePolicy.allowsCancelExit(bulkBusy: bulkBusy) {
+                    onCancel()
+                }
+            } label: {
+                Text("Cancel")
+                    .font(.subheadline.weight(.semibold))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .contentShape(Rectangle())
+            }
+            .disabled(bulkBusy)
+            .accessibilityIdentifier("kanban.selection.cancel")
+            .accessibilityLabel("Exit selection mode")
+
+            Spacer(minLength: 8)
+
+            HStack(spacing: 6) {
+                Text(countLabel)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                    .accessibilityLabel(countLabel)
+                if bulkBusy {
+                    ProgressView().controlSize(.small)
+                }
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .conduitGlassControl(cornerRadius: 14)
+        .accessibilityIdentifier("kanban.selection.header")
+    }
+}
+
+/// Issue #98: the responsive bulk-action group from the bottom bar —
+/// labeled actions when horizontal space allows, icon-only otherwise
+/// (`ViewThatFits` instead of wrapping every title into fragments). Both
+/// candidates carry THE SAME Move / Assign / More semantics with identical
+/// accessibility labels and identifiers; the caller keeps ownership of
+/// staging payloads and of the overflow menu content.
+struct KanbanBulkActionsCluster<MoreMenu: View>: View {
+    let selectedCount: Int
+    /// Resolved by the caller; equivalent to the pre-#98 per-control
+    /// predicate (a control is enabled exactly when "!canRunBulk || bulkBusy"
+    /// is false).
+    let controlsEnabled: Bool
+    let onMove: () -> Void
+    let onAssign: () -> Void
+    let moreMenuContent: MoreMenu
+
+    init(
+        selectedCount: Int,
+        controlsEnabled: Bool,
+        onMove: @escaping () -> Void,
+        onAssign: @escaping () -> Void,
+        @ViewBuilder moreMenuContent: () -> MoreMenu
+    ) {
+        self.selectedCount = selectedCount
+        self.controlsEnabled = controlsEnabled
+        self.onMove = onMove
+        self.onAssign = onAssign
+        self.moreMenuContent = moreMenuContent()
+    }
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                ForEach(KanbanSelectionChromePolicy.fullBulkActions) { action in
+                    control(action)
+                }
+            }
+            // Fallback spacing is kept EQUAL (not wider) than the primary
+            // candidate: under extreme width pressure ViewThatFits falls
+            // back to the LAST candidate, so the fallback must never be the
+            // wider one. Bare icons keep separation via their own padding.
+            HStack(spacing: 12) {
+                ForEach(KanbanSelectionChromePolicy.compactBulkActions) { action in
+                    control(action)
+                }
+            }
+        }
+    }
+
+    /// ONE shared control factory for both responsive variants: identical
+    /// gating and accessibility semantics whether labeled or icon-only.
+    @ViewBuilder
+    private func control(_ action: KanbanSelectionChromePolicy.BulkActionDescriptor) -> some View {
+        switch action.kind {
+        case .move:
+            Button(action: onMove) {
+                KanbanBulkBarButtonItem(descriptor: action, selectedCount: selectedCount)
+            }
+            .disabled(!controlsEnabled)
+        case .assign:
+            Button(action: onAssign) {
+                KanbanBulkBarButtonItem(descriptor: action, selectedCount: selectedCount)
+            }
+            .disabled(!controlsEnabled)
+        case .more:
+            Menu {
+                moreMenuContent
+            } label: {
+                KanbanBulkBarButtonItem(descriptor: action, selectedCount: selectedCount)
+            }
+            .disabled(!controlsEnabled)
+        }
+    }
+}
+
 struct KanbanView: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var store = KanbanStore()
@@ -796,63 +1046,71 @@ struct KanbanView: View {
         HStack(spacing: 10) {
             Text(selectedCountLabel)
                 .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
                 .accessibilityLabel(selectedCountLabel)
             Spacer()
             if bulkBusy {
                 ProgressView().controlSize(.small)
             }
-            Button {
-                // Placeholder payload: the Move sheet composes the real
-                // destination from the FROZEN staged selection.
-                stageBulk(.move(""))
-            } label: {
-                Label("Move", systemImage: "arrow.left.arrow.right")
-            }
-            .disabled(!canRunBulk || bulkBusy)
-            .accessibilityLabel("Move \(selectedTaskIDs.count) selected tasks")
-            Button {
-                // Placeholder payload: the Assign sheet composes the choice.
-                stageBulk(.assign(nil))
-            } label: {
-                Label("Assign", systemImage: "person.fill.badge.plus")
-            }
-            .disabled(!canRunBulk || bulkBusy)
-            .accessibilityLabel("Assign \(selectedTaskIDs.count) selected tasks")
-            Menu {
-                Button {
-                    // BLOCKER fix: Priority MUST route through the same
-                    // staging path as every other action - the sheet then
-                    // composes from the frozen stage and can never reuse a
-                    // stale stage from an earlier Archive/Delete flow. The
-                    // payload value is a placeholder (Apply re-freezes it).
-                    stageBulk(.priority(0))
-                } label: {
-                    Label("Set Priority…", systemImage: "number")
+            // Issue #98: adapt to available horizontal width instead of
+            // wrapping every action label into character fragments. Roomy:
+            // icon + title; narrow: icon-only — SAME actions, SAME staging,
+            // SAME accessibility labels in both variants.
+            KanbanBulkActionsCluster(
+                selectedCount: selectedTaskIDs.count,
+                // Equivalent to the pre-#98 per-control predicate:
+                // "enabled" ⇔ canRunBulk && !bulkBusy (i.e. disabled unless
+                // the staged selection is owned, non-empty, and no bulk op
+                // is in flight).
+                controlsEnabled: canRunBulk && !bulkBusy,
+                onMove: {
+                    // Placeholder payload: the Move sheet composes the real
+                    // destination from the FROZEN staged selection.
+                    stageBulk(.move(""))
+                },
+                onAssign: {
+                    // Placeholder payload: the Assign sheet composes the choice.
+                    stageBulk(.assign(nil))
+                },
+                moreMenuContent: {
+                    bulkOverflowMenuContent
                 }
-                .disabled(!canRunBulk || bulkBusy)
-                Button {
-                    stageBulk(.archive)
-                } label: {
-                    Label("Archive…", systemImage: "archivebox")
-                }
-                .disabled(!canRunBulk || bulkBusy)
-                Button(role: .destructive) {
-                    stageBulk(.delete)
-                } label: {
-                    Label("Delete…", systemImage: "trash")
-                }
-                .disabled(!canRunBulk || bulkBusy)
-            } label: {
-                Label("More", systemImage: "ellipsis.circle")
-            }
-            .disabled(!canRunBulk || bulkBusy)
-            .accessibilityLabel("More actions for \(selectedTaskIDs.count) selected tasks")
+            )
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 9)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .padding(.horizontal, 10)
         .padding(.bottom, 2)
+    }
+
+    /// Overflow actions behind "More" (Priority / Archive / Delete). Staging
+    /// paths preserved verbatim from the pre-#98 implementation.
+    @ViewBuilder
+    private var bulkOverflowMenuContent: some View {
+        Button {
+            // BLOCKER fix: Priority MUST route through the same
+            // staging path as every other action - the sheet then
+            // composes from the frozen stage and can never reuse a
+            // stale stage from an earlier Archive/Delete flow. The
+            // payload value is a placeholder (Apply re-freezes it).
+            stageBulk(.priority(0))
+        } label: {
+            Label("Set Priority…", systemImage: "number")
+        }
+        .disabled(!canRunBulk || bulkBusy)
+        Button {
+            stageBulk(.archive)
+        } label: {
+            Label("Archive…", systemImage: "archivebox")
+        }
+        .disabled(!canRunBulk || bulkBusy)
+        Button(role: .destructive) {
+            stageBulk(.delete)
+        } label: {
+            Label("Delete…", systemImage: "trash")
+        }
+        .disabled(!canRunBulk || bulkBusy)
     }
 
     private var selectedCountLabel: String {
@@ -1271,6 +1529,30 @@ struct KanbanView: View {
 
     @ViewBuilder
     private var header: some View {
+        // Issue #98: selection mode REPLACES the ordinary interactive board
+        // chrome instead of coexisting inside one row. The old layout kept
+        // picker / overflow / refresh / add controls alongside "Cancel" +
+        // "N tasks selected", which on iPhone widths wrapped into unreadable
+        // character fragments.
+        switch KanbanSelectionChromePolicy.headerVariant(isSelectionActive: isSelectionActive) {
+        case .compactSelection:
+            KanbanSelectionHeaderBar(
+                selectedCount: selectedTaskIDs.count,
+                bulkBusy: bulkBusy,
+                onCancel: { exitSelectionMode() }
+            )
+        case .standardBoardControls:
+            standardBoardHeader
+        }
+
+        if !isSelectionActive {
+            searchAndFilterBar
+        }
+    }
+
+    /// The ordinary interactive header (normal mode). Visually unchanged by
+    /// the issue #98 fix.
+    private var standardBoardHeader: some View {
         HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Kanban")
@@ -1368,42 +1650,21 @@ struct KanbanView: View {
             .accessibilityLabel("Kanban board actions")
             .disabled(bulkBusy || isSelectionActive)
 
-            if !isSelectionActive {
-                // V3C: multi-select entry - a primary board action, reachable
-                // in one tap (never hidden inside two drop-down menus).
-                Button {
-                    enterSelectionMode()
-                } label: {
-                    Image(systemName: "checkmark.circle")
-                        .frame(width: 36, height: 36)
-                }
-                .buttonStyle(.plain)
-                .conduitGlassControl(cornerRadius: 14)
-                .accessibilityLabel("Select tasks")
-                .accessibilityHint("Enter selection mode to run bulk operations")
-                .disabled(store.isMutating || !store.isSelectedSnapshotLoaded || loadedBoardMetadata == nil || bulkBusy)
-            } else {
-                // Selection mode header: Cancel | N Selected (+ busy).
-                HStack(spacing: 10) {
-                    Button {
-                        if !bulkBusy { exitSelectionMode() }
-                    } label: {
-                        Text("Cancel")
-                            .font(.subheadline.weight(.semibold))
-                    }
-                    .disabled(bulkBusy)
-                    .accessibilityLabel("Exit selection mode")
-                    Text(selectedCountLabel)
-                        .font(.subheadline.weight(.semibold))
-                        .accessibilityLabel(selectedCountLabel)
-                    if bulkBusy {
-                        ProgressView().controlSize(.small)
-                    }
-                }
-                .padding(.horizontal, 11)
-                .padding(.vertical, 6)
-                .conduitGlassControl(cornerRadius: 14)
+            // V3C: multi-select entry - a primary board action, reachable in
+            // one tap (never hidden inside two drop-down menus). Rendered by
+            // the STANDARD header only; while selection is active the whole
+            // row is replaced by the compact selection header (issue #98).
+            Button {
+                enterSelectionMode()
+            } label: {
+                Image(systemName: "checkmark.circle")
+                    .frame(width: 36, height: 36)
             }
+            .buttonStyle(.plain)
+            .conduitGlassControl(cornerRadius: 14)
+            .accessibilityLabel("Select tasks")
+            .accessibilityHint("Enter selection mode to run bulk operations")
+            .disabled(store.isMutating || !store.isSelectedSnapshotLoaded || loadedBoardMetadata == nil || bulkBusy)
 
             Button {
                 Task { await store.refresh(includeArchived: includeArchived) }
@@ -1432,40 +1693,43 @@ struct KanbanView: View {
             .disabled(store.board == nil || store.isMutating || !store.isSelectedSnapshotLoaded || isSelectionActive)
             .accessibilityLabel("New Kanban task")
         }
+    }
 
-        if !isSelectionActive {
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
-                TextField("Search tasks", text: $searchText)
-                    .textFieldStyle(.plain)
-                if !searchText.isEmpty {
-                    Button { searchText = "" } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.tertiary)
-                    }
-                    .buttonStyle(.plain)
-                }
-                // V3B: assignee/tenant/Show Archived/grouping live behind ONE
-                // compact filter button instead of crowding the header.
-                Button {
-                    showFilters = true
-                } label: {
-                    Image(systemName: filtersActive
-                        ? "line.3.horizontal.decrease.circle.fill"
-                        : "line.3.horizontal.decrease.circle")
-                        .foregroundStyle(filtersActive ? Color.conduitAccent : Color.secondary)
-                        .frame(width: 32, height: 32)
+    /// V3B search + filters row. Hidden while selection mode is active:
+    /// selection chrome owns the top area (issue #98), and search/filters
+    /// are inert for multi-select anyway.
+    private var searchAndFilterBar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+            TextField("Search tasks", text: $searchText)
+                .textFieldStyle(.plain)
+            if !searchText.isEmpty {
+                Button { searchText = "" } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.tertiary)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(filtersActive ? "Filters active — open filters" : "Open filters")
-                .accessibilityHint("Shows assignee, tenant, archived, and running grouping options")
-                .disabled(!store.isSelectedSnapshotLoaded)
             }
-            .padding(.horizontal, 12)
-            .frame(height: 40)
-            .conduitGlassControl(cornerRadius: 15)
+            // V3B: assignee/tenant/Show Archived/grouping live behind ONE
+            // compact filter button instead of crowding the header.
+            Button {
+                showFilters = true
+            } label: {
+                Image(systemName: filtersActive
+                    ? "line.3.horizontal.decrease.circle.fill"
+                    : "line.3.horizontal.decrease.circle")
+                    .foregroundStyle(filtersActive ? Color.conduitAccent : Color.secondary)
+                    .frame(width: 32, height: 32)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(filtersActive ? "Filters active — open filters" : "Open filters")
+            .accessibilityHint("Shows assignee, tenant, archived, and running grouping options")
+            .disabled(!store.isSelectedSnapshotLoaded)
         }
+        .padding(.horizontal, 12)
+        .frame(height: 40)
+        .conduitGlassControl(cornerRadius: 15)
     }
 
     /// Active-filter indication for the filter button (sheet-driven filters:
