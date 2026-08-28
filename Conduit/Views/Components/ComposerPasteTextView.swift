@@ -204,6 +204,7 @@ final class ImagePasteTextView: UITextView {
         if let returnPress = presses.first(where: { Self.isReturnKeyPress($0) }) {
             let shiftPressed = hardwareShiftHeld
                 || Self.shiftIsPressed(event: event, key: returnPress.key)
+                || Self.shiftIsHeld(in: event?.allPresses ?? [])
             // Consume only the Return press, and only when the composer
             // actually acted. Every other case (setting off, Shift-Return,
             // marked text / IME composition, non-submittable composer,
@@ -220,6 +221,8 @@ final class ImagePasteTextView: UITextView {
 
     override func pressesEnded(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
         foldHardwareShift(presses, pressed: false)
+        // Forward the original set: UIKit tracks press lifecycle across the
+        // whole sequence, not just the keys this shortcut cares about.
         super.pressesEnded(presses, with: event)
     }
 
@@ -228,7 +231,27 @@ final class ImagePasteTextView: UITextView {
         // release tracked Shift state exactly like a normal key-up, or the
         // shortcut would keep believing Shift is held.
         foldHardwareShift(presses, pressed: false)
+        // Forward the original set: UIKit tracks press lifecycle across the
+        // whole sequence, not just the keys this shortcut cares about.
         super.pressesCancelled(presses, with: event)
+    }
+
+    /// Whether any currently-down Shift press exists anywhere in the press
+    /// event. Covers keyboards that deliver the Shift key-down in a separate,
+    /// later event than Return, where the per-press modifiers and the local
+    /// fold would not yet show the chord.
+    static func shiftIsHeld(in presses: Set<UIPress>) -> Bool {
+        presses.contains { press in
+            press.key?.keyCode == .keyboardLeftShift || press.key?.keyCode == .keyboardRightShift
+        }
+    }
+
+    override func resignFirstResponder() -> Bool {
+        // A focus change mid-chord means the key-up will go to a different
+        // responder; drop the tracked Shift so the next plain Return is not
+        // misread as Shift-Return.
+        heldShiftKeys.removeAll()
+        return super.resignFirstResponder()
     }
 
     /// Folds physical Shift presses into the tracked chord state. Cancellations
