@@ -149,8 +149,37 @@ final class TranscriptPerformanceFixtureTests: XCTestCase {
 
     /// Lets SwiftUI updates that belong to THIS test (e.g. the settle tick
     /// below) complete before the next counter window opens.
-    private func settleCurrentTestUpdates() {
-        RunLoop.current.run(until: Date().addingTimeInterval(0.15))
+    ///
+    /// A fixed 150ms drain is not enough on slow CI simulators: lazy mounting
+    /// of the settled transcript can still be in flight, and the queued
+    /// first-time body mounts then land inside the measurement window where
+    /// they are indistinguishable from streaming re-evaluations. Drain until
+    /// every counter has been quiet for two consecutive passes instead
+    /// (bounded, so a real regression still fails fast).
+    private func settleCurrentTestUpdates(maxPasses: Int = 60) {
+        func totals() -> [Int] {
+            return [
+                TranscriptPerf.settledMessageBubbleBodyEvaluations,
+                TranscriptPerf.settledMarkdownTextBodyEvaluations,
+                TranscriptPerf.selectableTextViewUpdateCalls,
+                TranscriptPerf.selectableTextViewTextRebuilds,
+                TranscriptPerf.textKitMeasurementCalls,
+                TranscriptPerf.rowFramePreferenceUpdates,
+                TranscriptPerf.layoutMetricsChangedCalls,
+                TranscriptPerf.transcriptChangedCalls,
+            ]
+        }
+        var quietStreak = 0
+        for _ in 0..<maxPasses {
+            let before = totals()
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+            if before == totals() {
+                quietStreak += 1
+                if quietStreak >= 2 { return }
+            } else {
+                quietStreak = 0
+            }
+        }
     }
 
     /// Hosts the full ChatView in a retained, live window.
