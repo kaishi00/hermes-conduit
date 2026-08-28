@@ -6,26 +6,54 @@ on:
   pull_request:
     branches: [main]
 
-# Cancel superseded runs on the same PR/branch
+# Cancel superseded runs: one group per PR number (pull_request events) or per
+# branch ref (push events). Different PRs and different branches therefore
+# never cancel one another.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: read
 
-jobs:
-  test:
-    name: Build & Test
-    runs-on: macos-26
-    # Outer emergency limit only — wedge detection lives in
-    # scripts/ci-run-tests.sh (per-attempt wall-clock budget, temporarily
-    # defaulted to 20 min as a cold-run ceiling). Headroom is tight when a
-    # second full-length attempt is needed; the 45-min cap remains the
-    # ultimate bound, and it exists for the residual cases the budget cannot
-    # reach (e.g. a wedged CoreSimulatorService blocking simctl itself).
-    timeout-minutes: 45
+env:
+  # Known simulator, used directly as the xcodebuild destination — no
+  # `simctl list` enumeration on the happy path. Name-only (no OS pin)
+  # tracks the newest iOS runtime on the runner image. macos-26 images ship
+  # the iPhone 17 family; if an image refresh renames devices, override here
+  # (failure steps dump the full device list to pick a new name from).
+  SIMULATOR_NAME: "iPhone 17 Pro"
 
+jobs:
+  # Cheap guard before spending macOS minutes: every test class must be
+  # assigned to exactly one lane in scripts/test-shards.txt.
+  shard-check:
+    name: Shard coverage check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Verify shard assignments
+        run: bash scripts/check-test-shards.sh
+
+  # Unit tests: four static shards of ConduitTests run concurrently. One
+  # slow/flaky shard resets and retries ITSELF only — the other shards'
+  # results are kept (fail-fast: false).
+  unit:
+    name: Unit tests — shard ${{ matrix.shard }}
+    needs: shard-check
+    runs-on: macos-26
+    # Outer emergency bound only: setup + one build (900 s) + up to two
+    # 10-minute attempts + a worst-case erase/reboot reset must all fit with
+    # real slack, so a wedged lane can always finish its in-script retry
+    # under a script-level diagnosis instead of a truncating job kill. The
+    # real watchdog is per-attempt inside scripts/ci-run-tests.sh
+    # (ATTEMPT_TIMEOUT_SECS, defaulted to 600 s for unit shards).
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [a, b, c, d]
     steps:
       - uses: actions/checkout@v7
 
@@ -38,54 +66,66 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate
 
-      - name: List available simulators
-        run: xcrun simctl list devices available
+      - name: Run unit-test shard ${{ matrix.shard }}
+        # build-for-testing once, then test-without-building with a
+        # per-attempt watchdog; a retry resets the simulator and re-runs ONLY
+        # this shard against the already-built products.
+        run: bash scripts/ci-run-tests.sh "unit-${{ matrix.shard }}"
 
-      - name: Pick simulator
+      - name: Dump simulator state (failure diagnostics)
+        if: failure()
         run: |
-          set -euo pipefail
-          # macOS images change available devices across versions, so avoid
-          # hardcoding a simulator model that may not exist on the runner.
-          SIMULATOR=$(xcrun simctl list devices available -j | \
-            python3 -c "
-          import json, sys
-          data = json.load(sys.stdin)
-          for runtime, devices in data['devices'].items():
-              if 'iOS' not in runtime:
-                  continue
-              for device in devices:
-                  if 'iPhone' in device['name']:
-                      print(device['udid'])
-                      sys.exit(0)
-          sys.exit(1)
-          ")
-
-          if [ -z "$SIMULATOR" ]; then
-            echo "::error::No iPhone simulator found"
-            exit 1
-          fi
-
-          echo "Using simulator UDID: $SIMULATOR"
-          echo "SIMULATOR=$SIMULATOR" >> "$GITHUB_ENV"
-
-      - name: Run tests
-        # scripts/ci-run-tests.sh owns the retry loop. Each attempt gets its
-        # own wall-clock budget (default 1200 s = 20 min, a temporary
-        # cold-run ceiling; healthy runs take 7-13 min) so a hung test or
-        # wedged simulator is killed and retried instead of stalling until
-        # the 45-min job timeout — which remains the outer emergency limit,
-        # not the wedge-detection mechanism. See the script header for the
-        # exact worst-case caveat. The script also boots the simulator before
-        # every attempt, streams raw xcodebuild output into this step's log,
-        # and leaves per-attempt logs + any partial .xcresult bundles for the
-        # upload step below.
-        run: bash scripts/ci-run-tests.sh
+          xcrun simctl list runtimes available || true
+          xcrun simctl list devices available
 
       - name: Upload test results on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: TestResults.xcresult
+          name: test-results-unit-${{ matrix.shard }}
+          path: |
+            TestResults.xcresult
+            TestResults-retry.xcresult
+            ci-logs/
+          if-no-files-found: ignore
+
+  # UI tests: a dedicated lane so ConduitUITests instability can never force
+  # the unit-test shards to rerun (and vice versa).
+  ui:
+    name: UI tests
+    needs: shard-check
+    runs-on: macos-26
+    # Outer emergency bound only: setup + one build (900 s) + up to two
+    # 20-minute attempts + a worst-case erase/reboot reset must all fit with
+    # real slack (per-attempt watchdog defaults to 1200 s for the ui lane —
+    # XCUITest lanes are inherently slower than unit shards).
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Run UI tests
+        run: bash scripts/ci-run-tests.sh ui
+
+      - name: Dump simulator state (failure diagnostics)
+        if: failure()
+        run: |
+          xcrun simctl list runtimes available || true
+          xcrun simctl list devices available
+
+      - name: Upload test results on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-ui
           path: |
             TestResults.xcresult
             TestResults-retry.xcresult
