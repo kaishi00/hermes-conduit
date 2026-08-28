@@ -185,8 +185,10 @@ reset_and_boot_simulator() {
   if udid=$(simulator_udid); then
     bounded_run 60 xcrun simctl boot "$udid" || true
     # Wait for a complete boot before handing the device to xcodebuild; a
-    # half-booted simulator wedges tests.
-    bounded_run 200 xcrun simctl bootstatus "$udid" -b -t 180 || true
+    # half-booted simulator wedges tests. bootstatus has no timeout flag on
+    # Xcode 26 (usage: bootstatus <device> [-bcd]) - the outer bounded_run
+    # supplies the deadline.
+    bounded_run 200 xcrun simctl bootstatus "$udid" -b || true
   else
     echo "::warning::could not resolve simulator UDID - letting xcodebuild boot the destination itself"
   fi
