@@ -7,8 +7,9 @@
 //  UIKit text-view branch that consumes (or forwards) the Return press,
 //  and the default-off persistence of the preference. UIPress/UIKey have
 //  no public initializers, so the pressesBegan branch is exercised through
-//  the extracted handleReturnKeyPress(shiftPressed:) entry point with the
-//  key-code/modifier classification pinned separately.
+//  the extracted handleReturnKeyPress(shiftPressed:) entry point, with the
+//  modifier classification pinned directly and consumption additionally
+//  gated on the composer's callback reporting that it acted.
 //
 
 import Foundation
@@ -83,7 +84,7 @@ final class ComposerReturnKeyTests: XCTestCase {
         view.returnKeySends = true
         view.canSubmitFromReturn = true
         var submitCount = 0
-        view.onSubmitFromReturn = { submitCount += 1 }
+        view.onSubmitFromReturn = { submitCount += 1; return true }
 
         XCTAssertTrue(view.handleReturnKeyPress(shiftPressed: false))
         XCTAssertEqual(submitCount, 1)
@@ -94,7 +95,7 @@ final class ComposerReturnKeyTests: XCTestCase {
         view.returnKeySends = true
         view.canSubmitFromReturn = true
         var submitCount = 0
-        view.onSubmitFromReturn = { submitCount += 1 }
+        view.onSubmitFromReturn = { submitCount += 1; return true }
 
         // A false return means the press was not consumed and falls through
         // to the default newline insertion.
@@ -107,7 +108,7 @@ final class ComposerReturnKeyTests: XCTestCase {
         view.returnKeySends = true
         view.canSubmitFromReturn = false
         var submitCount = 0
-        view.onSubmitFromReturn = { submitCount += 1 }
+        view.onSubmitFromReturn = { submitCount += 1; return true }
 
         XCTAssertFalse(view.handleReturnKeyPress(shiftPressed: false))
         XCTAssertEqual(submitCount, 0)
@@ -118,10 +119,40 @@ final class ComposerReturnKeyTests: XCTestCase {
         view.returnKeySends = false
         view.canSubmitFromReturn = true
         var submitCount = 0
-        view.onSubmitFromReturn = { submitCount += 1 }
+        view.onSubmitFromReturn = { submitCount += 1; return true }
 
         XCTAssertFalse(view.handleReturnKeyPress(shiftPressed: false))
         XCTAssertEqual(submitCount, 0)
+    }
+
+    func testDeclinedComposerCallbackForwardsPressInsteadOfConsuming() {
+        // Even when the policy classifies submit, a declined composer action
+        // must report the press as NOT consumed so pressesBegan forwards it
+        // and the default newline insertion still happens.
+        let view = ImagePasteTextView()
+        view.returnKeySends = true
+        view.canSubmitFromReturn = true
+        var submitCount = 0
+        view.onSubmitFromReturn = { submitCount += 1; return false }
+
+        XCTAssertFalse(view.handleReturnKeyPress(shiftPressed: false))
+        XCTAssertEqual(submitCount, 1)
+    }
+
+    func testMissingCallbackReportsPressAsNotConsumed() {
+        // Defensive: with no callback wired (plain UITextView-style use),
+        // a submit classification must not report consumption.
+        let view = ImagePasteTextView()
+        view.returnKeySends = true
+        view.canSubmitFromReturn = true
+
+        XCTAssertFalse(view.handleReturnKeyPress(shiftPressed: false))
+    }
+
+    func testShiftClassificationIsFalseWhenNoEventAndNoKey() {
+        // Pins the nil-safety of the modifier sources: with neither the
+        // presses event nor the key reporting modifiers, Shift is not held.
+        XCTAssertFalse(ImagePasteTextView.shiftIsPressed(event: nil, key: nil))
     }
 
     func testTextViewDefaultsPreserveLegacyReturnBehavior() {
