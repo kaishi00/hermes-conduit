@@ -169,8 +169,8 @@ jobs:
     name: "Unit - ${{ matrix.lane }}"
     needs: [plan, build]
     runs-on: macos-26
-    # Outer emergency ceiling only: the lane watchdog + one bounded isolation
-    # pass both fit underneath it with real slack (see plan-tests.py).
+    # Outer emergency ceiling only: attempt 1 + attempt 2 + a full isolation
+    # pass plus bounded resets all fit underneath it (see plan-tests.py).
     timeout-minutes: ${{ matrix.job_timeout_min }}
     strategy:
       fail-fast: false
