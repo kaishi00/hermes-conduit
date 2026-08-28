@@ -140,7 +140,6 @@ xcodebuild_test() {
     -retry-tests-on-failure \
     -test-iterations "$iters" \
     -parallel-testing-enabled NO \
-    -parallelize-tests-amongst-destinations NO \
     "$@"
 }
 
