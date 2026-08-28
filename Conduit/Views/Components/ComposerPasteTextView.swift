@@ -193,8 +193,10 @@ final class ImagePasteTextView: UITextView {
     /// Ground-truth Shift state folded from the keyboard's own Shift press
     /// events. Some Bluetooth keyboards report chord modifiers with a lag on
     /// the event/key modifier surfaces, so the physical Shift press itself is
-    /// tracked as well.
-    private var hardwareShiftHeld = false
+    /// tracked as well. Left and right Shift are tracked independently so a
+    /// released key cannot clear a still-held second Shift.
+    private var heldShiftKeys: Set<UIKeyboardHIDUsage> = []
+    private var hardwareShiftHeld: Bool { !heldShiftKeys.isEmpty }
 
     override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
         foldHardwareShift(presses, pressed: true)
@@ -204,8 +206,9 @@ final class ImagePasteTextView: UITextView {
                 || Self.shiftIsPressed(event: event, key: returnPress.key)
             // Consume only the Return press, and only when the composer
             // actually acted. Every other case (setting off, Shift-Return,
-            // non-submittable composer, declined callback) is forwarded with
-            // the remaining presses so default text behavior is preserved.
+            // marked text / IME composition, non-submittable composer,
+            // declined callback) is forwarded with the remaining presses so
+            // UIKit's normal text-input behavior is preserved.
             if handleReturnKeyPress(shiftPressed: shiftPressed) {
                 forwarding.remove(returnPress)
             }
@@ -220,25 +223,59 @@ final class ImagePasteTextView: UITextView {
         super.pressesEnded(presses, with: event)
     }
 
-    /// Folds physical Shift presses into the tracked chord state.
+    override func pressesCancelled(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        // A cancelled sequence (e.g. the system ends chord tracking) must
+        // release tracked Shift state exactly like a normal key-up, or the
+        // shortcut would keep believing Shift is held.
+        foldHardwareShift(presses, pressed: false)
+        super.pressesCancelled(presses, with: event)
+    }
+
+    /// Folds physical Shift presses into the tracked chord state. Cancellations
+    /// are treated like key-ups: the press is no longer held either way.
     private func foldHardwareShift(_ presses: Set<UIPress>, pressed: Bool) {
-        for press in presses
-        where press.key?.keyCode == .keyboardLeftShift || press.key?.keyCode == .keyboardRightShift {
-            hardwareShiftHeld = pressed
-        }
+        heldShiftKeys = Self.updatedShiftState(
+            heldShiftKeys,
+            keyCodes: Set(presses.compactMap { $0.key?.keyCode }),
+            isPressed: pressed
+        )
+    }
+
+    /// Pure Shift-chord state transition over key codes, extracted so the
+    /// begin/end/cancel bookkeeping is unit-testable without synthesizing
+    /// UIPress events. Unknown key codes are ignored; cancellations and
+    /// key-ups both release their keys.
+    static func updatedShiftState(
+        _ held: Set<UIKeyboardHIDUsage>,
+        keyCodes: Set<UIKeyboardHIDUsage>,
+        isPressed: Bool
+    ) -> Set<UIKeyboardHIDUsage> {
+        let shiftCodes: Set<UIKeyboardHIDUsage> = [.keyboardLeftShift, .keyboardRightShift]
+        let touched = keyCodes.intersection(shiftCodes)
+        return isPressed ? held.union(touched) : held.subtracting(touched)
     }
 
     /// Applies the Return shortcut policy for one Return key press and
-    /// reports whether the press was consumed as a submit. Consumption
-    /// additionally requires the composer's callback to report that it
-    /// acted; anything else returns false so the caller forwards the press.
-    /// Internal so tests can drive the exact pressesBegan branch without
-    /// synthesizing UIPress or UIKey events (neither exposes an initializer).
+    /// reports whether the press was consumed as a submit. While the text
+    /// view holds IME marked text, Return belongs to the composition and the
+    /// shortcut always declines. Consumption additionally requires the
+    /// composer's callback to report that it acted; anything else returns
+    /// false so the caller forwards the press. Internal so tests can drive
+    /// the exact pressesBegan branch without synthesizing UIPress or UIKey
+    /// events (neither exposes an initializer).
     @discardableResult
     func handleReturnKeyPress(shiftPressed: Bool) -> Bool {
+        handleReturnKeyPress(shiftPressed: shiftPressed, hasMarkedText: markedTextRange != nil)
+    }
+
+    /// Test seam for the same decision path with the marked-text state passed
+    /// explicitly, since a live IME composition cannot be synthesized in unit
+    /// tests.
+    func handleReturnKeyPress(shiftPressed: Bool, hasMarkedText: Bool) -> Bool {
         let decision = ComposerReturnKey.decision(
             returnKeySends: returnKeySends,
             shiftPressed: shiftPressed,
+            hasMarkedText: hasMarkedText,
             canSubmit: canSubmitFromReturn
         )
         guard decision == .submit, let onSubmit = onSubmitFromReturn else { return false }

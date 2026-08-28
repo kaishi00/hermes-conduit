@@ -35,14 +35,14 @@ final class ComposerReturnKeyTests: XCTestCase {
     func testSettingOffPlainReturnInsertsNewline() {
         // Existing users must keep the default: Return never submits.
         XCTAssertEqual(
-            ComposerReturnKey.decision(returnKeySends: false, shiftPressed: false, canSubmit: true),
+            ComposerReturnKey.decision(returnKeySends: false, shiftPressed: false, hasMarkedText: false, canSubmit: true),
             .insertNewline
         )
     }
 
     func testSettingOnPlainReturnWithSubmittableComposerSubmits() {
         XCTAssertEqual(
-            ComposerReturnKey.decision(returnKeySends: true, shiftPressed: false, canSubmit: true),
+            ComposerReturnKey.decision(returnKeySends: true, shiftPressed: false, hasMarkedText: false, canSubmit: true),
             .submit
         )
     }
@@ -50,7 +50,7 @@ final class ComposerReturnKeyTests: XCTestCase {
     func testSettingOnShiftReturnInsertsNewline() {
         // Shift-Return must never send, even with a submittable composer.
         XCTAssertEqual(
-            ComposerReturnKey.decision(returnKeySends: true, shiftPressed: true, canSubmit: true),
+            ComposerReturnKey.decision(returnKeySends: true, shiftPressed: true, hasMarkedText: false, canSubmit: true),
             .insertNewline
         )
     }
@@ -59,7 +59,18 @@ final class ComposerReturnKeyTests: XCTestCase {
         // Synchronizing, disabled, stop-only, or empty states must not get
         // Return swallowed: fall back to the default newline behavior.
         XCTAssertEqual(
-            ComposerReturnKey.decision(returnKeySends: true, shiftPressed: false, canSubmit: false),
+            ComposerReturnKey.decision(returnKeySends: true, shiftPressed: false, hasMarkedText: false, canSubmit: false),
+            .insertNewline
+        )
+    }
+
+    func testSettingOnPlainReturnWithMarkedTextInsertsNewline() {
+        // IME composition owns Return while marked text is active (Japanese/
+        // Chinese candidates confirm on Return). The shortcut must decline
+        // even with everything else favorable, leaving the key to UIKit's
+        // normal multistage text input.
+        XCTAssertEqual(
+            ComposerReturnKey.decision(returnKeySends: true, shiftPressed: false, hasMarkedText: true, canSubmit: true),
             .insertNewline
         )
     }
@@ -155,6 +166,23 @@ final class ComposerReturnKeyTests: XCTestCase {
         XCTAssertFalse(ImagePasteTextView.shiftIsPressed(event: nil, key: nil))
     }
 
+    func testMarkedTextForwardsReturnInsteadOfSubmitting() {
+        // IME composition: with marked text active, a plain Return on a
+        // submittable composer must NOT submit and must report the press as
+        // NOT consumed, so pressesBegan forwards it to UIKit's normal
+        // text-input handling (candidate confirmation). A live IME session
+        // cannot be synthesized in unit tests, so the marked-text state is
+        // passed through the same decision seam pressesBegan uses.
+        let view = ImagePasteTextView()
+        view.returnKeySends = true
+        view.canSubmitFromReturn = true
+        var submitCount = 0
+        view.onSubmitFromReturn = { submitCount += 1; return true }
+
+        XCTAssertFalse(view.handleReturnKeyPress(shiftPressed: false, hasMarkedText: true))
+        XCTAssertEqual(submitCount, 0)
+    }
+
     func testTextViewDefaultsPreserveLegacyReturnBehavior() {
         // Fresh text views (and every existing construction site that does
         // not know about the shortcut) must behave exactly as before.
@@ -178,6 +206,49 @@ final class ComposerReturnKeyTests: XCTestCase {
         XCTAssertFalse(view.returnKeySends)
         XCTAssertFalse(view.canSubmitFromReturn)
         XCTAssertNil(view.onSubmitFromReturn)
+    }
+
+    // MARK: - Held-Shift chord state (begin / end / cancel)
+
+    func testCancelledShiftPressReleasesTrackedState() {
+        // pressesCancelled must clear a held Shift exactly like pressesEnded,
+        // or the shortcut would keep believing Shift is held after the system
+        // cancels the press sequence.
+        var held = ImagePasteTextView.updatedShiftState(
+            [],
+            keyCodes: [.keyboardLeftShift],
+            isPressed: true
+        )
+        XCTAssertEqual(held, [.keyboardLeftShift])
+
+        held = ImagePasteTextView.updatedShiftState(held, keyCodes: [.keyboardLeftShift], isPressed: false)
+        XCTAssertTrue(held.isEmpty)
+    }
+
+    func testSecondShiftSurvivesReleasingOneKey() {
+        // Left and right Shift are tracked independently: releasing one while
+        // the other is still physically held keeps the chord active.
+        var held = ImagePasteTextView.updatedShiftState(
+            [],
+            keyCodes: [.keyboardLeftShift, .keyboardRightShift],
+            isPressed: true
+        )
+        XCTAssertEqual(held, [.keyboardLeftShift, .keyboardRightShift])
+
+        held = ImagePasteTextView.updatedShiftState(held, keyCodes: [.keyboardLeftShift], isPressed: false)
+        XCTAssertEqual(held, [.keyboardRightShift])
+    }
+
+    func testShiftStateIgnoresNonShiftKeyCodes() {
+        var held = ImagePasteTextView.updatedShiftState(
+            [],
+            keyCodes: [.keyboardA, .keyboardReturnOrEnter],
+            isPressed: true
+        )
+        XCTAssertTrue(held.isEmpty)
+
+        held = ImagePasteTextView.updatedShiftState(held, keyCodes: [.keyboardA], isPressed: false)
+        XCTAssertTrue(held.isEmpty)
     }
 
     // MARK: - Preference default and persistence

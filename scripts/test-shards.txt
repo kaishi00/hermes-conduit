@@ -29,6 +29,7 @@ unit-a ChatTitleScrollTests
 unit-a ChatViewFollowCorrectionTests
 unit-a ChatViewportControllerTests
 unit-a ComposerPasteTextViewTests
+unit-a ComposerReturnKeyTests
 unit-a InterfaceOrientationTests
 unit-a MarkdownFallbackTests
 unit-a MarkdownLargeDocumentTests

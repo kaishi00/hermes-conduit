@@ -26,14 +26,18 @@ enum ComposerReturnKey {
     /// Pure shortcut policy:
     /// - With the preference off, Return keeps its default newline behavior.
     /// - Shift-Return always inserts a newline, even when the shortcut is on.
+    /// - While multistage text input (IME) has marked text active, Return
+    ///   belongs to the composition (confirming candidates); the shortcut
+    ///   never fires and the press is left to UIKit's normal text input.
     /// - A non-submittable composer never swallows Return; it falls back to
     ///   the default newline behavior instead.
     static func decision(
         returnKeySends: Bool,
         shiftPressed: Bool,
+        hasMarkedText: Bool,
         canSubmit: Bool
     ) -> Decision {
-        guard returnKeySends, !shiftPressed, canSubmit else { return .insertNewline }
+        guard returnKeySends, !shiftPressed, !hasMarkedText, canSubmit else { return .insertNewline }
         return .submit
     }
 
