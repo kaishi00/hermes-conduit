@@ -1,0 +1,9 @@
+# Keep line endings deterministic across platforms.
+# Shell scripts MUST stay LF or macOS/Linux CI will break.
+*.sh text eol=lf
+*.py text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf
+*.swift text
