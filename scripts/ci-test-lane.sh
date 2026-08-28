@@ -129,16 +129,22 @@ estimate_for() {
 
 # Shared invocation: test-without-building from the downloaded products.
 # Extra args (after the 4 named ones) are additional -only-testing filters.
+# Native retry flags are only valid with more than one iteration ("Must
+# specify -test-iterations with more than 1 iteration"), so isolation runs
+# (iters=1) omit them.
 xcodebuild_test() {
   local budget="$1" log="$2" bundle="$3" iters="$4"
   shift 4
+  local retry_flags=()
+  if [ "$iters" -gt 1 ]; then
+    retry_flags=(-retry-tests-on-failure -test-iterations "$iters")
+  fi
   run_with_deadline "$budget" "$log" \
     test-without-building \
     -xctestrun "$XCRUN_FILE" \
     -destination "$DESTINATION" \
     -resultBundlePath "$bundle" \
-    -retry-tests-on-failure \
-    -test-iterations "$iters" \
+    "${retry_flags[@]}" \
     -parallel-testing-enabled NO \
     "$@"
 }
