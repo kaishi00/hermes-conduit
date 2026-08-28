@@ -156,7 +156,7 @@ final class TranscriptPerformanceFixtureTests: XCTestCase {
     /// they are indistinguishable from streaming re-evaluations. Drain until
     /// every counter has been quiet for two consecutive passes instead
     /// (bounded, so a real regression still fails fast).
-    private func settleCurrentTestUpdates(maxPasses: Int = 60) {
+    private func settleCurrentTestUpdates(maxQuietSeconds: TimeInterval = 1.2, cap: TimeInterval = 15.0) {
         func totals() -> [Int] {
             return [
                 TranscriptPerf.settledMessageBubbleBodyEvaluations,
@@ -169,15 +169,22 @@ final class TranscriptPerformanceFixtureTests: XCTestCase {
                 TranscriptPerf.transcriptChangedCalls,
             ]
         }
-        var quietStreak = 0
-        for _ in 0..<maxPasses {
-            let before = totals()
-            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
-            if before == totals() {
-                quietStreak += 1
-                if quietStreak >= 2 { return }
+        // Require a sustained quiet period, not a single quiet pass: cold CI
+        // simulators trickle lazy-mount commits for seconds.
+        var quietFor: TimeInterval = 0
+        var elapsed: TimeInterval = 0
+        var last = totals()
+        let step: TimeInterval = 0.1
+        while elapsed < cap {
+            RunLoop.current.run(until: Date().addingTimeInterval(step))
+            elapsed += step
+            let current = totals()
+            if current == last {
+                quietFor += step
+                if quietFor >= maxQuietSeconds { return }
             } else {
-                quietStreak = 0
+                quietFor = 0
+                last = current
             }
         }
     }
@@ -302,10 +309,28 @@ final class TranscriptPerformanceFixtureTests: XCTestCase {
         // Let lazy mounting fully settle: the first pass mounts the visible
         // screenful and LazyVStack prefetches neighbor rows on subsequent
         // turns — each a legitimate FIRST render of a new row, not a
-        // re-render of an existing one.
+        // re-render of an existing one. Cold CI simulators trickle those
+        // prefetches over seconds, so capture the baseline only once the
+        // counter has been quiet for over a second.
         host.view.setNeedsLayout()
         host.view.layoutIfNeeded()
         RunLoop.current.run(until: Date())
+        var quietFor: TimeInterval = 0
+        var settleElapsed: TimeInterval = 0
+        var lastCount = TranscriptPerf.settledMarkdownTextBodyEvaluations
+        let settleStep: TimeInterval = 0.1
+        while settleElapsed < 15 {
+            RunLoop.current.run(until: Date().addingTimeInterval(settleStep))
+            settleElapsed += settleStep
+            let current = TranscriptPerf.settledMarkdownTextBodyEvaluations
+            if current == lastCount {
+                quietFor += settleStep
+                if quietFor >= 1.2 { break }
+            } else {
+                quietFor = 0
+                lastCount = current
+            }
+        }
         let initialEvaluations = TranscriptPerf.settledMarkdownTextBodyEvaluations
         XCTAssertGreaterThan(
             initialEvaluations, 0,
