@@ -39,6 +39,22 @@ enum TranscriptPerf {
         #endif
     }
 
+    /// Record a performance event with a short context string. When
+    /// CONDUIT_PERF_TRACE=1 is set (CI diagnostics), each settled-body
+    /// evaluation logs its context so a polluted measurement window can be
+    /// traced to the exact rows involved. DEBUG builds only.
+    @inline(__always)
+    static func note(_ event: Event, context: String) {
+        #if DEBUG
+        note(event)
+        if event == .settledMarkdownBody,
+           ProcessInfo.processInfo.environment["CONDUIT_PERF_TRACE"] == "1" {
+            let snippet = context.prefix(48)
+            NSLog("CONDUIT_PERF_TRACE settledMarkdownBody: \(snippet)")
+        }
+        #endif
+    }
+
     enum Event {
         case settledBubbleBody
         case settledMarkdownBody

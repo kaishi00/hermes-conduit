@@ -208,6 +208,7 @@ jobs:
         env:
           CLASS_TIMEOUT_MIN_S: "180"
           CLASS_TIMEOUT_MULTIPLIER: "4.0"
+          CONDUIT_PERF_TRACE: "1"
           LANE_NAME: "${{ matrix.lane }}"
           LANE_TARGET: "${{ matrix.target }}"
           LANE_CLASSES: "${{ matrix.classes }}"
@@ -272,6 +273,7 @@ jobs:
         env:
           CLASS_TIMEOUT_MIN_S: "180"
           CLASS_TIMEOUT_MULTIPLIER: "4.0"
+          CONDUIT_PERF_TRACE: "1"
           UI_CLASSES: "${{ needs.plan.outputs.ui-classes }}"
           UI_CLASS_ESTIMATES: "${{ needs.plan.outputs.ui-estimates }}"
           UI_PREDICTED: "${{ needs.plan.outputs.ui-predicted }}"
