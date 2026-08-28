@@ -32,6 +32,9 @@ struct ComposerBar: View {
     @State private var documentImportContext: AsyncAttachmentContext?
     @State private var attachmentGeneration: UInt64 = 0
     @State private var suppressNextTextChangeSuggestions = false
+    /// Local, device-only input preference. Defaults to off so existing
+    /// users keep Return inserting a newline after updating.
+    @AppStorage(ComposerReturnKey.preferenceKey) private var returnKeySends = false
     @Namespace private var glassNamespace
 
     struct AsyncAttachmentContext: Equatable {
@@ -332,7 +335,10 @@ struct ComposerBar: View {
                         onPastedImageError: { message in
                             handlePastedImageError(message, editorIdentity: currentEditorIdentity)
                         },
-                        editorIdentity: editorIdentity
+                        editorIdentity: editorIdentity,
+                        returnKeySends: returnKeySends,
+                        canSubmitFromReturn: ComposerReturnKey.canSubmit(action: action),
+                        onSubmitFromReturn: { submitFromReturnKey() }
                     )
                     .id(editorIdentity)
                     .padding(.horizontal, 5)
@@ -579,6 +585,16 @@ struct ComposerBar: View {
         .padding(.horizontal, 14)
         .padding(.top, 7)
         .padding(.bottom, 1)
+    }
+
+    /// Return-shortcut entry point. Invokes the exact same submission path
+    /// as the composer action button, but only for typed-message actions
+    /// (send/steer/interrupt): Return never acts as the stop-only control.
+    /// The gate is re-checked here so the existing composer action state —
+    /// not the text view — stays authoritative.
+    private func submitFromReturnKey() {
+        guard ComposerReturnKey.canSubmit(action: action) else { return }
+        submit()
     }
 
     private func submit() {

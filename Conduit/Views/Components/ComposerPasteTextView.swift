@@ -27,6 +27,17 @@ struct ComposerPasteTextView: UIViewRepresentable {
     let onPastedImage: (PastedImage) -> Void
     let onPastedImageError: (String) -> Void
     let editorIdentity: UUID
+    /// Hardware-keyboard Return behavior. When true, a plain Return press
+    /// submits through the composer action path; Shift-Return and every
+    /// non-submittable state keep the default newline insertion.
+    var returnKeySends: Bool = false
+    /// Live composer verdict on whether the Return shortcut may currently
+    /// fire. ComposerBar computes this from the existing action state; the
+    /// text view never approximates it.
+    var canSubmitFromReturn: Bool = false
+    /// Invoked on the main thread when a Return press classifies as submit.
+    /// ComposerBar stays the owner of the actual send/steer/interrupt action.
+    var onSubmitFromReturn: (() -> Void)? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -53,6 +64,9 @@ struct ComposerPasteTextView: UIViewRepresentable {
         }
         view.onPastedImage = onPastedImage
         view.onPastedImageError = onPastedImageError
+        view.returnKeySends = returnKeySends
+        view.canSubmitFromReturn = canSubmitFromReturn
+        view.onSubmitFromReturn = onSubmitFromReturn
         return view
     }
 
@@ -71,6 +85,9 @@ struct ComposerPasteTextView: UIViewRepresentable {
         }
         uiView.onPastedImage = onPastedImage
         uiView.onPastedImageError = onPastedImageError
+        uiView.returnKeySends = returnKeySends
+        uiView.canSubmitFromReturn = canSubmitFromReturn
+        uiView.onSubmitFromReturn = onSubmitFromReturn
         uiView.setNeedsLayout()
         if isFocused, !uiView.isFirstResponder { uiView.becomeFirstResponder() }
         if !isFocused, uiView.isFirstResponder { uiView.resignFirstResponder() }
@@ -136,6 +153,9 @@ struct ComposerPasteTextView: UIViewRepresentable {
                 textView.onContentHeightChange = nil
                 textView.onPastedImage = nil
                 textView.onPastedImageError = nil
+                textView.returnKeySends = false
+                textView.canSubmitFromReturn = false
+                textView.onSubmitFromReturn = nil
             }
             if textView.isFirstResponder {
                 textView.resignFirstResponder()
@@ -159,6 +179,59 @@ final class ImagePasteTextView: UITextView {
     var minimumReportedHeight: CGFloat = 44
     var maximumReportedHeight: CGFloat = 160
     private var lastReportedHeight: CGFloat = 0
+
+    // Hardware-keyboard Return shortcut. pressesBegan only classifies the
+    // keystroke; the send-vs-newline policy lives in ComposerReturnKey and
+    // the actual composer action stays in ComposerBar. The software
+    // keyboard's Return key does not produce UIPress events, so it keeps its
+    // existing newline behavior untouched.
+    var returnKeySends = false
+    var canSubmitFromReturn = false
+    var onSubmitFromReturn: (() -> Void)?
+
+    override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        if let returnPress = presses.first(where: { Self.isReturnKeyPress($0) }),
+           handleReturnKeyPress(
+               shiftPressed: Self.shiftIsPressed(event: event, key: returnPress.key)
+           ) {
+            // Consumed as a submit. Not forwarding to super is what prevents
+            // the newline from being inserted; every other case (setting off,
+            // Shift-Return, non-submittable composer) falls through to the
+            // default text behavior below.
+            return
+        }
+        super.pressesBegan(presses, with: event)
+    }
+
+    /// Applies the Return shortcut policy for one Return key press and
+    /// reports whether the press was consumed as a submit. Internal so tests
+    /// can drive the exact pressesBegan branch without synthesizing UIPress
+    /// or UIKey events (neither exposes an initializer).
+    @discardableResult
+    func handleReturnKeyPress(shiftPressed: Bool) -> Bool {
+        let decision = ComposerReturnKey.decision(
+            returnKeySends: returnKeySends,
+            shiftPressed: shiftPressed,
+            canSubmit: canSubmitFromReturn
+        )
+        guard decision == .submit else { return false }
+        onSubmitFromReturn?()
+        return true
+    }
+
+    /// Pure keystroke classification, extracted so the key-code match is
+    /// unit-testable without hardware key events.
+    static func isReturnKeyPress(_ press: UIPress) -> Bool {
+        press.key?.keyCode == .keyboardReturnOrEnter
+    }
+
+    /// Shift detection for a Return press. UIPressesEvent and UIKey can
+    /// report modifiers independently, so both sources are consulted; either
+    /// reporting Shift means the user wants a newline.
+    static func shiftIsPressed(event: UIPressesEvent?, key: UIKey?) -> Bool {
+        (event?.modifierFlags.contains(.shift) ?? false)
+            || (key?.modifierFlags.contains(.shift) ?? false)
+    }
 
     override init(frame: CGRect, textContainer: NSTextContainer?) {
         super.init(frame: frame, textContainer: textContainer)
