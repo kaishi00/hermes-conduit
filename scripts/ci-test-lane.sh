@@ -61,13 +61,16 @@ if [ ! -f "$XCRUN_FILE" ]; then
   exit 1
 fi
 case "$KIND" in unit|ui) ;; *) echo "::error::--kind must be unit or ui"; exit 2 ;; esac
-for pair in "$PREDICTED_S:--predicted" "$TIMEOUT_S:--timeout" "$ITERATIONS:--iterations"; do
+for pair in "$TIMEOUT_S:--timeout" "$ITERATIONS:--iterations"; do
   value="${pair%%:*}"
   flag="${pair#*:}"
   case "$value" in
-    ''|*[!0-9.]*) echo "::error::$flag must be a positive number, got '$value'"; exit 2 ;;
+    ''|*[!0-9]*) echo "::error::$flag must be a positive integer, got '$value'"; exit 2 ;;
   esac
 done
+case "$PREDICTED_S" in
+  ''|*[!0-9.]*) echo "::error::--predicted must be a positive number, got '$PREDICTED_S'"; exit 2 ;;
+esac
 
 CLASS_TIMEOUT_MIN_S="${CLASS_TIMEOUT_MIN_S:-180}"
 CLASS_TIMEOUT_MULTIPLIER="${CLASS_TIMEOUT_MULTIPLIER:-4.0}"
@@ -234,6 +237,7 @@ if [ "$status1" -eq 124 ]; then
   # A hang can leave simulator services wedged in ways a reboot does not
   # clear (pasteboard daemon history) - erase before the retry.
   erase_for_retry=1
+  ERASE_USED=1
 fi
 echo "lane $LANE: attempt 1 ended without test results (exit $status1) - resetting simulator and retrying once"
 RESET_USED=1

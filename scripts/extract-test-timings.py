@@ -242,7 +242,7 @@ def lane_result(args) -> int:
         return None
 
     obs = load_side_file(args.observations)
-    if obs is not None:
+    if obs is not None and isinstance(obs.get("classes", {}), dict):
         result["class_seconds"] = obs.get("classes", {})
     detail = load_side_file(args.detail)
     if detail is not None:
@@ -414,7 +414,10 @@ def aggregate(args) -> int:
     # --- Slowest classes -------------------------------------------------------
     merged: dict = {}
     for res in results.values():
-        for cls, secs in (res.get("class_seconds") or {}).items():
+        class_seconds = res.get("class_seconds")
+        if not isinstance(class_seconds, dict):
+            continue
+        for cls, secs in class_seconds.items():
             merged[cls] = max(secs, merged.get(cls, 0.0))
     if merged:
         lines.append("## Slowest test classes (this run)")

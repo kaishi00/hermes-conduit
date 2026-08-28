@@ -510,7 +510,11 @@ def audit_xctestrun(xctestrun_path: str, workspace_root: str) -> tuple:
             m = FILE_URL_RE.match(s)
             if m:
                 from urllib.parse import unquote
-                candidates.add(unquote(m.group(1)))
+                path = unquote(m.group(1))
+                if not path.startswith("/"):
+                    # file://host/path form: strip the netloc
+                    path = "/" + path.split("/", 1)[-1] if "/" in path else "/"
+                candidates.add(path)
         if s.startswith("/"):
             candidates.add(s)
         # Mid-string absolute paths (e.g. embedded in a command-line value)
