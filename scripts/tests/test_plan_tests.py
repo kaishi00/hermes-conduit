@@ -189,9 +189,9 @@ class PlanningTests(unittest.TestCase):
             _d, plan = plan_from_tree(root, estimates)
             lane = plan["unit_lanes"][0]
             self.assertEqual(lane["predicted_s"], 200.0)
-            self.assertEqual(lane["timeout_s"], 500)  # 200 * 2.5
+            self.assertEqual(lane["timeout_s"], 600)  # floor wins: max(600, 500)
             self.assertEqual(
-                plan["ui_lane"]["timeout_s"], 420)  # floor wins: max(420, 150)
+                plan["ui_lane"]["timeout_s"], 600)  # floor wins: max(600, 150)
 
     def test_job_ceiling_covers_worst_in_script_path(self):
         # Ceiling must fit attempt1 + attempt2 + a full isolation pass plus

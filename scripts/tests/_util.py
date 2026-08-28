@@ -49,10 +49,10 @@ def default_cfg(**overrides):
         "min_lanes": 4,
         "max_lanes": 8,
         "target_budget_s": 240.0,
-        "lane_timeout_min_s": 300,
+        "lane_timeout_min_s": 600,
         "timeout_multiplier": 2.5,
-        "ui_timeout_min_s": 420,
-        "job_timeout_margin_s": 600,
+        "ui_timeout_min_s": 600,
+        "job_timeout_margin_s": 1200,
     }
     cfg.update(overrides)
     return cfg

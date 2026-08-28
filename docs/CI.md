@@ -94,8 +94,8 @@ imbalance is reported in the plan summary and the CI Test Report.
 
 The `.xctestrun` file embeds absolute paths. Instead of rewriting them
 fragilely, the build uses a **workspace-anchored DerivedData path**
-(`$GITHUB_WORKSPACE/.ci-derived-data`, i.e.
-`/Users/runner/work/<repo>/<repo>/.ci-derived-data`), which is byte-identical
+(`$GITHUB_WORKSPACE/ci-derived-data`, i.e.
+`/Users/runner/work/<repo>/<repo>/ci-derived-data`), which is byte-identical
 on every GitHub-hosted runner of this repository. The whole `Build/` tree is
 uploaded as an artifact and each lane restores it to the same absolute path
 before running `test-without-building` - no compilation downstream.
@@ -163,6 +163,6 @@ python3 -m unittest discover -s scripts/tests
 
 ## Local run directories
 
-The CI workspace uses `.ci-derived-data/`, `.ci-lane/`, `.ci-artifacts/`,
-`.ci-timing/`, `.ci-report/`, `.ci-update/` (all gitignored); the same paths
+The CI workspace uses `ci-derived-data/`, `ci-lane/`, `ci-artifacts/`,
+`ci-timing/`, `ci-report/`, `ci-update/` (all gitignored); the same paths
 work for local rehearsal of the scripts.

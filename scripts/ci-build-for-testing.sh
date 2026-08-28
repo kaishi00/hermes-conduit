@@ -18,9 +18,9 @@ SCHEME="Conduit"
 # Workspace-anchored by default: GITHUB_WORKSPACE is byte-identical across
 # GitHub-hosted runners for the same repository, which is what makes the
 # absolute paths inside the .xctestrun portable without rewriting anything.
-DERIVED_DATA_PATH="${DERIVED_DATA_PATH:-$PWD/.ci-derived-data}"
+DERIVED_DATA_PATH="${DERIVED_DATA_PATH:-$PWD/ci-derived-data}"
 BUILD_TIMEOUT_SECS="${BUILD_TIMEOUT_SECS:-900}"
-LOG_DIR=".ci-lane/build"
+LOG_DIR="ci-lane/build"
 mkdir -p "$LOG_DIR"
 
 SIMULATOR_NAME="${SIMULATOR_NAME:-iPhone 17 Pro}"

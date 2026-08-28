@@ -42,7 +42,7 @@ env:
   # GitHub-hosted runners for this repo (/Users/runner/work/<repo>/<repo>),
   # so absolute paths inside the .xctestrun stay valid after the artifact
   # round-trip - no path rewriting involved.
-  DERIVED_DATA_PATH: "${{ github.workspace }}/.ci-derived-data"
+  DERIVED_DATA_PATH: "${{ github.workspace }}/ci-derived-data"
 
 jobs:
   plan:
@@ -64,7 +64,7 @@ jobs:
       - name: Restore timing history (read-only; PR runs never save it)
         uses: actions/cache/restore@v4
         with:
-          path: .ci-timing
+          path: ci-timing
           key: timing-history-v1-${{ github.run_number }}
           restore-keys: |
             timing-history-v1-
@@ -73,8 +73,8 @@ jobs:
         run: |
           set -euo pipefail
           HISTORY_ARG=""
-          if [ -f .ci-timing/timing-history.json ]; then
-            HISTORY_ARG="--history .ci-timing/timing-history.json"
+          if [ -f ci-timing/timing-history.json ]; then
+            HISTORY_ARG="--history ci-timing/timing-history.json"
           fi
           # Cheap Linux guard: every discovered XCTestCase class must be
           # planned exactly once (replaces the static shard-coverage check).
@@ -87,32 +87,32 @@ jobs:
         run: |
           set -euo pipefail
           HISTORY_ARG=""
-          if [ -f .ci-timing/timing-history.json ]; then
-            HISTORY_ARG="--history .ci-timing/timing-history.json"
+          if [ -f ci-timing/timing-history.json ]; then
+            HISTORY_ARG="--history ci-timing/timing-history.json"
           fi
-          mkdir -p .ci-artifacts
+          mkdir -p ci-artifacts
           python3 scripts/plan-tests.py plan --repo-root . \
             --baseline scripts/test-timings.json $HISTORY_ARG \
-            --out .ci-artifacts/plan.json \
-            --matrix-out .ci-artifacts/unit-matrix.json \
-            --summary-out .ci-artifacts/plan-summary.md
-          echo "matrix=$(jq -c . .ci-artifacts/unit-matrix.json)" >> "$GITHUB_OUTPUT"
-          echo "lane-count=$(jq -r '.lane_count' .ci-artifacts/plan.json)" >> "$GITHUB_OUTPUT"
-          echo "ui-classes=$(jq -r '.ui_lane.classes | join(",")' .ci-artifacts/plan.json)" >> "$GITHUB_OUTPUT"
-          echo "ui-estimates=$(jq -r '.ui_lane.class_estimates // ""' .ci-artifacts/plan.json)" >> "$GITHUB_OUTPUT"
-          echo "ui-target=$(jq -r '.ui_lane.target // ""' .ci-artifacts/plan.json)" >> "$GITHUB_OUTPUT"
-          echo "ui-predicted=$(jq -r '.ui_lane.predicted_s // 0' .ci-artifacts/plan.json)" >> "$GITHUB_OUTPUT"
-          echo "ui-timeout=$(jq -r '.ui_lane.timeout_s // 600' .ci-artifacts/plan.json)" >> "$GITHUB_OUTPUT"
-          echo "ui-job-timeout=$(jq -r '.ui_lane.job_timeout_min // 25' .ci-artifacts/plan.json)" >> "$GITHUB_OUTPUT"
+            --out ci-artifacts/plan.json \
+            --matrix-out ci-artifacts/unit-matrix.json \
+            --summary-out ci-artifacts/plan-summary.md
+          echo "matrix=$(jq -c . ci-artifacts/unit-matrix.json)" >> "$GITHUB_OUTPUT"
+          echo "lane-count=$(jq -r '.lane_count' ci-artifacts/plan.json)" >> "$GITHUB_OUTPUT"
+          echo "ui-classes=$(jq -r '.ui_lane.classes | join(",")' ci-artifacts/plan.json)" >> "$GITHUB_OUTPUT"
+          echo "ui-estimates=$(jq -r '.ui_lane.class_estimates // ""' ci-artifacts/plan.json)" >> "$GITHUB_OUTPUT"
+          echo "ui-target=$(jq -r '.ui_lane.target // ""' ci-artifacts/plan.json)" >> "$GITHUB_OUTPUT"
+          echo "ui-predicted=$(jq -r '.ui_lane.predicted_s // 0' ci-artifacts/plan.json)" >> "$GITHUB_OUTPUT"
+          echo "ui-timeout=$(jq -r '.ui_lane.timeout_s // 600' ci-artifacts/plan.json)" >> "$GITHUB_OUTPUT"
+          echo "ui-job-timeout=$(jq -r '.ui_lane.job_timeout_min // 25' ci-artifacts/plan.json)" >> "$GITHUB_OUTPUT"
 
       - name: Plan summary
-        run: cat .ci-artifacts/plan-summary.md >> "$GITHUB_STEP_SUMMARY"
+        run: cat ci-artifacts/plan-summary.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload plan
         uses: actions/upload-artifact@v4
         with:
           name: plan
-          path: .ci-artifacts/
+          path: ci-artifacts/
           retention-days: 7
 
   build:
@@ -158,7 +158,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: build-products
-          path: .ci-derived-data/Build
+          path: ci-derived-data/Build
           retention-days: 1
           if-no-files-found: error
 
@@ -167,7 +167,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: build-meta
-          path: .ci-lane/build/
+          path: ci-lane/build/
           retention-days: 7
           if-no-files-found: ignore
 
@@ -225,7 +225,7 @@ jobs:
             --timeout "$LANE_TIMEOUT" \
             --iterations 3 \
             --xctestrun "$XCRUN_FILE" \
-            --result-dir ".ci-lane/$LANE_NAME"
+            --result-dir "ci-lane/$LANE_NAME"
 
       - name: Dump simulator state (failure diagnostics)
         if: failure()
@@ -238,7 +238,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: lane-${{ matrix.lane }}
-          path: .ci-lane/
+          path: ci-lane/
           retention-days: 7
           if-no-files-found: error
 
@@ -287,7 +287,7 @@ jobs:
             --timeout "$UI_TIMEOUT" \
             --iterations 2 \
             --xctestrun "$XCRUN_FILE" \
-            --result-dir .ci-lane/ui
+            --result-dir ci-lane/ui
 
       - name: Dump simulator state (failure diagnostics)
         if: failure()
@@ -300,7 +300,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: lane-ui
-          path: .ci-lane/
+          path: ci-lane/
           retention-days: 7
           if-no-files-found: error
 
@@ -317,14 +317,14 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: plan
-          path: .ci-report/plan
+          path: ci-report/plan
         continue-on-error: true
 
       - name: Download build metadata
         uses: actions/download-artifact@v4
         with:
           name: build-meta
-          path: .ci-report/build
+          path: ci-report/build
         continue-on-error: true
 
       - name: Download lane results
@@ -333,22 +333,22 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           pattern: lane-*
-          path: .ci-report/lanes
+          path: ci-report/lanes
         continue-on-error: true
 
       - name: Build CI Test Report
         if: always()
         run: |
           python3 scripts/extract-test-timings.py aggregate \
-            --plan .ci-report/plan/plan.json \
-            --lanes-dir .ci-report/lanes \
-            --build-result .ci-report/build/build-result.json \
-            --out .ci-report/summary.md || true
-          if [ -f .ci-report/plan/plan-summary.md ]; then
-            cat .ci-report/plan/plan-summary.md >> "$GITHUB_STEP_SUMMARY"
+            --plan ci-report/plan/plan.json \
+            --lanes-dir ci-report/lanes \
+            --build-result ci-report/build/build-result.json \
+            --out ci-report/summary.md || true
+          if [ -f ci-report/plan/plan-summary.md ]; then
+            cat ci-report/plan/plan-summary.md >> "$GITHUB_STEP_SUMMARY"
           fi
-          if [ -f .ci-report/summary.md ]; then
-            cat .ci-report/summary.md >> "$GITHUB_STEP_SUMMARY"
+          if [ -f ci-report/summary.md ]; then
+            cat ci-report/summary.md >> "$GITHUB_STEP_SUMMARY"
           fi
 
   timing-history-update:
@@ -369,7 +369,7 @@ jobs:
       - name: Restore current timing history
         uses: actions/cache/restore@v4
         with:
-          path: .ci-timing
+          path: ci-timing
           key: timing-history-v1-${{ github.run_number }}
           restore-keys: |
             timing-history-v1-
@@ -378,54 +378,54 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: plan
-          path: .ci-update/plan
+          path: ci-update/plan
         continue-on-error: true
 
       - name: Download lane observations
         uses: actions/download-artifact@v4
         with:
           pattern: lane-*
-          path: .ci-update/lanes
+          path: ci-update/lanes
         continue-on-error: true
 
       - name: Merge fresh timings into history (EWMA)
         run: |
           set -euo pipefail
-          if [ ! -f .ci-update/plan/plan.json ]; then
+          if [ ! -f ci-update/plan/plan.json ]; then
             echo "plan artifact missing; skipping timing history update"
             exit 0
           fi
-          mkdir -p .ci-timing
-          OBS=$(find .ci-update/lanes -name observations.json 2>/dev/null | sort)
+          mkdir -p ci-timing
+          OBS=$(find ci-update/lanes -name observations.json 2>/dev/null | sort)
           if [ -z "$OBS" ]; then
             echo "no lane observations found - keeping previous history"
             exit 0
           fi
           HIST=""
-          if [ -f .ci-timing/timing-history.json ]; then
-            HIST="--history .ci-timing/timing-history.json"
+          if [ -f ci-timing/timing-history.json ]; then
+            HIST="--history ci-timing/timing-history.json"
           fi
           # OBS must expand to separate paths here; no spaces on runners.
           python3 scripts/update-timing-history.py \
             $OBS \
-            --inventory .ci-update/plan/plan.json \
+            --inventory ci-update/plan/plan.json \
             $HIST \
-            --out .ci-timing/timing-history.json
+            --out ci-timing/timing-history.json
 
       - name: Save updated timing history
-        if: hashFiles('.ci-timing/timing-history.json') != ''
+        if: hashFiles('ci-timing/timing-history.json') != ''
         # Re-runs of the same workflow run reuse the run_number key; saving to
         # an existing key is an acceptable no-op, not a failure.
         continue-on-error: true
         uses: actions/cache/save@v4
         with:
-          path: .ci-timing
+          path: ci-timing
           key: timing-history-v1-${{ github.run_number }}
 
       - name: Upload timing history (durable backup)
-        if: hashFiles('.ci-timing/timing-history.json') != ''
+        if: hashFiles('ci-timing/timing-history.json') != ''
         uses: actions/upload-artifact@v4
         with:
           name: timing-history
-          path: .ci-timing/timing-history.json
+          path: ci-timing/timing-history.json
           retention-days: 90
