@@ -248,6 +248,33 @@ class AggregateTests(unittest.TestCase):
             self.assertEqual(rc, ext.EXIT_OK)
             self.assertNotIn("Overall wall clock", out.read_text(encoding="utf-8"))
 
+    def test_report_tolerates_mixed_null_actual_durations(self):
+        # A lane result without a measured duration (actual_s: null) must not
+        # crash the imbalance math and must be reported as incomplete.
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._write_plan(tmp)
+            d1 = Path(tmp) / "unit-1"
+            d1.mkdir(parents=True, exist_ok=True)
+            doc1 = {"lane": "unit-1", "status": "pass", "actual_s": 4.0,
+                    "predicted_s": 5.0, "started_at": "2026-08-29T10:00:00Z",
+                    "finished_at": "2026-08-29T10:02:00Z",
+                    "flaky": [], "failures": [], "class_seconds": {}}
+            (d1 / "lane-result.json").write_text(json.dumps(doc1), encoding="utf-8")
+            d2 = Path(tmp) / "unit-2"
+            d2.mkdir(parents=True, exist_ok=True)
+            doc2 = {"lane": "unit-2", "status": "pass", "actual_s": None,
+                    "predicted_s": 5.0, "started_at": "2026-08-29T10:00:00Z",
+                    "finished_at": "2026-08-29T10:02:00Z",
+                    "flaky": [], "failures": [], "class_seconds": {}}
+            (d2 / "lane-result.json").write_text(json.dumps(doc2), encoding="utf-8")
+            out = Path(tmp) / "summary.md"
+            args = SimpleNamespace(plan=str(plan), lanes_dir=str(tmp),
+                                   build_result="", out=str(out))
+            rc = ext.aggregate(args)
+            self.assertEqual(rc, ext.EXIT_OK)
+            text = out.read_text(encoding="utf-8")
+            self.assertIn("incomplete", text)
+
     def test_report_is_tolerant_to_missing_lane_results(self):
         with tempfile.TemporaryDirectory() as tmp:
             plan = self._write_plan(tmp)

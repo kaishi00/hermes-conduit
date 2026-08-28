@@ -70,8 +70,9 @@ def update(history: dict, observations_docs: list, inventory: set,
             continue
         for name in sorted(doc.get("classes", {})):
             observed = doc["classes"][name]
-            if not isinstance(observed, (int, float)) or observed <= 0:
-                warn(f"ignoring non-positive observation for {name!r}")
+            # bool is an int subclass in Python: True must never become 1.0s.
+            if isinstance(observed, bool) or not isinstance(observed, (int, float)) or observed <= 0:
+                warn(f"ignoring non-numeric/non-positive observation for {name!r}")
                 continue
             if inventory and name not in inventory:
                 warn(f"observation for {name!r} is not in the planner inventory; ignored")

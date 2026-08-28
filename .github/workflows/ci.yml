@@ -353,6 +353,26 @@ jobs:
             cat ci-report/summary.md >> "$GITHUB_STEP_SUMMARY"
           fi
 
+  # Single stable branch-protection check. The number of dynamic unit lanes
+  # can change run to run, so individual lane jobs must never be required
+  # directly - require "CI Gate" instead (see docs/CI.md).
+  ci-gate:
+    name: CI Gate
+    needs: [plan, build, unit, ui]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Enforce final CI verdict
+        run: |
+          python3 scripts/ci-gate.py \
+            --plan "${{ needs.plan.result }}" \
+            --build "${{ needs.build.result }}" \
+            --unit "${{ needs.unit.result }}" \
+            --ui "${{ needs.ui.result }}"
+
   timing-history-update:
     name: Update timing history
     needs: [plan, unit, ui]
@@ -408,8 +428,10 @@ jobs:
             HIST="--history ci-timing/timing-history.json"
           fi
           # OBS must expand to separate paths here; no spaces on runners.
+          # The flags below must mirror update-timing-history.py's CLI exactly
+          # (scripts/tests/test_timing_history.py pins this contract).
           python3 scripts/update-timing-history.py \
-            $OBS \
+            --observations $OBS \
             --inventory ci-update/plan/plan.json \
             $HIST \
             --out ci-timing/timing-history.json

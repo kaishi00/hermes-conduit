@@ -456,12 +456,14 @@ def matrix_json(plan: dict) -> str:
 # xctestrun portability audit
 # ---------------------------------------------------------------------------
 
+# Runner-image-stable locations. Deliberately NOT "/private/var/": a
+# per-runner temp path under /private/var/folders/... exists only on the
+# machine that built the artifact and must fail the portability audit.
 SYSTEM_PATH_PREFIXES = (
     "/Applications/",   # Xcode toolchain
     "/System/",
     "/usr/",
     "/Library/",        # Xcode support components
-    "/private/var/",    # runner temp
     "/opt/",
 )
 

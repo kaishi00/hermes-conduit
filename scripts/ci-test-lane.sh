@@ -135,16 +135,18 @@ estimate_for() {
 xcodebuild_test() {
   local budget="$1" log="$2" bundle="$3" iters="$4"
   shift 4
-  local retry_flags=()
+  # A string (not an array) so an empty retry set stays bash-3.2-safe under
+  # "set -u"; the contents are script-controlled flags without spaces.
+  local retry_args=""
   if [ "$iters" -gt 1 ]; then
-    retry_flags=(-retry-tests-on-failure -test-iterations "$iters")
+    retry_args="-retry-tests-on-failure -test-iterations $iters"
   fi
   run_with_deadline "$budget" "$log" \
     test-without-building \
     -xctestrun "$XCRUN_FILE" \
     -destination "$DESTINATION" \
     -resultBundlePath "$bundle" \
-    "${retry_flags[@]}" \
+    $retry_args \
     -parallel-testing-enabled NO \
     "$@"
 }
@@ -209,6 +211,93 @@ finish_lane() { # $1=status $2=attempts_json $3=isolation_json $4=exit_code
   exit "$4"
 }
 
+# Class-granular isolation. $1 = attempts JSON prefix, open-ended (no closing
+# bracket), e.g. '[{"n": 1, "mode": "lane", "status": "timeout"'. Erase/reset
+# must already have been performed by the caller.
+run_isolation() {
+  echo "::warning::lane $LANE entering class-granular isolation (budget "${ISOLATION_BUDGET_S}"s)"
+
+  # Heaviest estimates first: a hanging class is usually also a slow one, and
+  # unknown/new classes go first so unmeasured code is diagnosed before
+  # well-understood fast classes. Bounded by ISOLATION_BUDGET_S overall.
+  ISOLATION_ORDER=$(CLASSES="$CLASSES" CLASS_ESTIMATES="$CLASS_ESTIMATES" python3 -c "
+import os
+classes = [c for c in os.environ.get('CLASSES', '').split(',') if c]
+est = {}
+for pair in os.environ.get('CLASS_ESTIMATES', '').split(','):
+    if '=' in pair:
+        name, value = pair.split('=', 1)
+        try:
+            est[name] = float(value)
+        except ValueError:
+            pass
+classes.sort(key=lambda c: (-est.get(c, 1e9), c))
+print(chr(10).join(classes))
+")
+
+  ISOLATION_LINES="$RESULT_DIR/isolation-classes.txt"
+  : > "$ISOLATION_LINES"
+  iso_start=$(date +%s)
+  for cls in $ISOLATION_ORDER; do
+    remaining=$(( ISOLATION_BUDGET_S - ($(date +%s) - iso_start) ))
+    if [ "$remaining" -lt 60 ]; then
+      echo "$cls|not_diagnosed|0" >> "$ISOLATION_LINES"
+      echo "isolation: budget exhausted before $cls"
+      continue
+    fi
+    est="$(estimate_for "$cls" || true)"
+    [ -z "$est" ] && est="$DEFAULT_ESTIMATE_S"
+    cls_timeout=$(awk -v m="$CLASS_TIMEOUT_MIN_S" -v k="$CLASS_TIMEOUT_MULTIPLIER" -v e="$est" -v r="$remaining" 'BEGIN { t = m; if (e * k > t) t = e * k; if (t > r) t = r; printf "%d", t }')
+    cls_start=$(date +%s)
+    cstatus=0
+    echo "::group::isolation: $cls (budget "${cls_timeout}"s)"
+    xcodebuild_test "$cls_timeout" "$LOG_DIR/iso-$cls.log" "$RESULT_DIR/iso-$cls.xcresult" 1 \
+      "-only-testing:$TARGET/$cls" || cstatus=$?
+    echo "::endgroup::"
+    cls_secs=$(( $(date +%s) - cls_start ))
+    if [ "$cstatus" -eq 0 ]; then
+      echo "$cls|pass|$cls_secs" >> "$ISOLATION_LINES"
+    elif [ "$cstatus" -eq 124 ]; then
+      echo "$cls|timeout|$cls_secs" >> "$ISOLATION_LINES"
+      if [ -z "$HUNG_CLASS" ]; then HUNG_CLASS="$cls"; fi
+      echo "::error::isolation: $cls HUNG (exceeded its "${cls_timeout}"s class budget)"
+    else
+      echo "$cls|fail|$cls_secs" >> "$ISOLATION_LINES"
+      echo "::error::isolation: $cls FAILED (exit $cstatus)"
+    fi
+  done
+
+  ISOLATION_JSON=$(ISOLATION_LINES="$ISOLATION_LINES" ISOLATION_BUDGET_S="$ISOLATION_BUDGET_S" python3 -c "
+import json, os
+classes = []
+with open(os.environ['ISOLATION_LINES']) as fh:
+    for line in fh:
+        line = line.strip()
+        if not line:
+            continue
+        name, status, secs = line.split('|')
+        classes.append({'class': name, 'status': status, 'seconds': float(secs)})
+print(json.dumps({'budget_s': int(os.environ['ISOLATION_BUDGET_S']), 'classes': classes}))
+")
+
+  # Verdict: a class that hung or failed is the lane's identified culprit; if
+  # every isolated class passed after the erase, the original event was a
+  # transient simulator/environment wedge - recovered, but prominently
+  # reported. Any undiagnosed class fails the lane (coverage guarantee).
+  if [ -n "$HUNG_CLASS" ]; then
+    finish_lane "timeout" "$1"'}, {"mode": "isolation", "status": "hung"}]' "$ISOLATION_JSON" 1
+  fi
+  if grep -q '|fail|' "$ISOLATION_LINES"; then
+    finish_lane "fail" "$1"'}, {"mode": "isolation", "status": "class-failed"}]' "$ISOLATION_JSON" 1
+  fi
+  if grep -q '|not_diagnosed|' "$ISOLATION_LINES"; then
+    echo "::error::lane $LANE isolation ended with undiagnosed classes - failing the lane so the unexecuted tests are visible"
+    finish_lane "timeout" "$1"'}, {"mode": "isolation", "status": "incomplete"}]' "$ISOLATION_JSON" 1
+  fi
+  echo "::warning::lane $LANE: every isolated class passed after erase/reset - original event classified as a recovered transient simulator/environment wedge"
+  finish_lane "pass" "$1"'}, {"mode": "isolation", "status": "all-classes-passed"}]' "$ISOLATION_JSON" 0
+}
+
 # --- attempt 1 ----------------------------------------------------------------
 bounded_run 60 xcrun simctl shutdown all || true  # bounded: a wedged CoreSimulatorService must not stall attempt 1
 
@@ -233,20 +322,30 @@ if [ "$status1" -ne 124 ] && [ "$FAIL_COUNT" -gt 0 ]; then
   finish_lane "fail" '[{"n": 1, "mode": "lane", "status": "test-failures"}]' "" 1
 fi
 
-# --- bounded infrastructure recovery (one reset + one full-lane retry) --------
-erase_for_retry=0
+# --- TIMEOUT: diagnose immediately, no second full-lane attempt ---------------
+# A watchdog kill is positive identification of a hang (or an environment too
+# slow for the lane to finish): erase/reset and go straight to class-granular
+# isolation instead of consuming another whole-lane watchdog.
 if [ "$status1" -eq 124 ]; then
-  echo "::warning::lane $LANE attempt 1 exceeded its "${TIMEOUT_S}"s watchdog (hang suspected)"
+  echo "::warning::lane $LANE attempt 1 exceeded its "${TIMEOUT_S}"s watchdog - erasing simulator and entering class-granular isolation"
   diag="$LOG_DIR/simctl-devices-after-timeout-attempt-1.txt"
   bounded_run 45 xcrun simctl list devices >"$diag" 2>&1 || true
-  # A hang can leave simulator services wedged in ways a reboot does not
-  # clear (pasteboard daemon history) - erase before the retry.
-  erase_for_retry=1
+  RESET_USED=1
   ERASE_USED=1
+  reset_and_boot_simulator 1
+  run_isolation '[{"n": 1, "mode": "lane", "status": "timeout"'
 fi
-echo "lane $LANE: attempt 1 ended without test results (exit $status1) - resetting simulator and retrying once"
-RESET_USED=1
-reset_and_boot_simulator "$erase_for_retry"
+
+# --- classify the non-timeout failure ----------------------------------------
+# count_failures: >0 ordinary test failures; 0 exited nonzero with every test
+# passing (confidently infrastructure); -1 the XCTest result could not be
+# classified. Timing/result extraction is best-effort and must never decide
+# test correctness, so an unclassifiable failure is NEVER retried into a
+# green lane - it fails here.
+if [ "$FAIL_COUNT" -eq -1 ]; then
+  echo "::error::lane $LANE failed (exit $status1) and its XCTest result could not be classified - failing the lane instead of retrying"
+  finish_lane "fail" '[{"n": 1, "mode": "lane", "status": "unclassified"}]' "" 1
+fi
 
 bundle2="$RESULT_DIR/attempt-2.xcresult"
 status2=0
@@ -261,103 +360,25 @@ fi
 
 extract_bundle "$bundle2"
 FAIL_COUNT2=$(count_failures)
-ATTEMPTS='[{"n": 1, "mode": "lane", "status": "'
-if [ "$status1" -eq 124 ]; then ATTEMPTS="${ATTEMPTS}timeout"; else ATTEMPTS="${ATTEMPTS}infra-error"; fi
-ATTEMPTS="${ATTEMPTS}"'"}, {"n": 2, "mode": "lane-retry", "status": "'
-if [ "$status2" -eq 124 ]; then ATTEMPTS="${ATTEMPTS}timeout"; else ATTEMPTS="${ATTEMPTS}infra-error"; fi
-ATTEMPTS="${ATTEMPTS}"'"}]'
+if [ "$status2" -eq 124 ]; then
+  echo "::warning::lane $LANE retry attempt exceeded its "${TIMEOUT_S}"s watchdog - erasing simulator and entering class-granular isolation"
+  diag2="$LOG_DIR/simctl-devices-after-timeout-attempt-2.txt"
+  bounded_run 45 xcrun simctl list devices >"$diag2" 2>&1 || true
+  RESET_USED=1
+  ERASE_USED=1
+  reset_and_boot_simulator 1
+  run_isolation '[{"n": 1, "mode": "lane", "status": "infra-error"}, {"n": 2, "mode": "lane-retry", "status": "timeout"'
+fi
 
-if [ "$status2" -ne 124 ] && [ "$FAIL_COUNT2" -gt 0 ]; then
+if [ "$FAIL_COUNT2" -gt 0 ]; then
   echo "lane $LANE: "${FAIL_COUNT2}" test(s) failed after reset retry"
-  finish_lane "fail" "$ATTEMPTS" "" 1
+  finish_lane "fail" '[{"n": 1, "mode": "lane", "status": "infra-error"}, {"n": 2, "mode": "lane-retry", "status": "test-failures"}]' "" 1
 fi
 
-if [ "$status2" -ne 124 ]; then
-  echo "::error::lane $LANE failed twice without producing test results (exit $status1, then $status2) - runner/simulator environment failure"
-  finish_lane "error" "$ATTEMPTS" "" 1
+if [ "$FAIL_COUNT2" -eq -1 ]; then
+  echo "::error::lane $LANE failed again (exit $status2) and its XCTest result could not be classified - failing the lane without further retry"
+  finish_lane "error" '[{"n": 1, "mode": "lane", "status": "infra-error"}, {"n": 2, "mode": "lane-retry", "status": "unclassified"}]' "" 1
 fi
 
-# --- hang isolation: class granularity, bounded -------------------------------
-echo "::warning::lane $LANE timed out twice - entering class-granular isolation (budget "${ISOLATION_BUDGET_S}"s)"
-ERASE_USED=1
-reset_and_boot_simulator 1
-
-# Heaviest estimates first: a hanging class is usually also a slow one, and
-# unknown/new classes go first so unmeasured code is diagnosed before
-# well-understood fast classes. Bounded by ISOLATION_BUDGET_S overall.
-ISOLATION_ORDER=$(CLASSES="$CLASSES" CLASS_ESTIMATES="$CLASS_ESTIMATES" python3 -c "
-import os
-classes = [c for c in os.environ.get('CLASSES', '').split(',') if c]
-est = {}
-for pair in os.environ.get('CLASS_ESTIMATES', '').split(','):
-    if '=' in pair:
-        name, value = pair.split('=', 1)
-        try:
-            est[name] = float(value)
-        except ValueError:
-            pass
-classes.sort(key=lambda c: (-est.get(c, 1e9), c))
-print(chr(10).join(classes))
-")
-
-ISOLATION_LINES="$RESULT_DIR/isolation-classes.txt"
-: > "$ISOLATION_LINES"
-iso_start=$(date +%s)
-for cls in $ISOLATION_ORDER; do
-  remaining=$(( ISOLATION_BUDGET_S - ($(date +%s) - iso_start) ))
-  if [ "$remaining" -lt 60 ]; then
-    echo "$cls|not_diagnosed|0" >> "$ISOLATION_LINES"
-    echo "isolation: budget exhausted before $cls"
-    continue
-  fi
-  est="$(estimate_for "$cls" || true)"
-  [ -z "$est" ] && est="$DEFAULT_ESTIMATE_S"
-  cls_timeout=$(awk -v m="$CLASS_TIMEOUT_MIN_S" -v k="$CLASS_TIMEOUT_MULTIPLIER" -v e="$est" -v r="$remaining" 'BEGIN { t = m; if (e * k > t) t = e * k; if (t > r) t = r; printf "%d", t }')
-  cls_start=$(date +%s)
-  cstatus=0
-  echo "::group::isolation: $cls (budget "${cls_timeout}"s)"
-  xcodebuild_test "$cls_timeout" "$LOG_DIR/iso-$cls.log" "$RESULT_DIR/iso-$cls.xcresult" 1 \
-    "-only-testing:$TARGET/$cls" || cstatus=$?
-  echo "::endgroup::"
-  cls_secs=$(( $(date +%s) - cls_start ))
-  if [ "$cstatus" -eq 0 ]; then
-    echo "$cls|pass|$cls_secs" >> "$ISOLATION_LINES"
-  elif [ "$cstatus" -eq 124 ]; then
-    echo "$cls|timeout|$cls_secs" >> "$ISOLATION_LINES"
-    if [ -z "$HUNG_CLASS" ]; then HUNG_CLASS="$cls"; fi
-    echo "::error::isolation: $cls HUNG (exceeded its "${cls_timeout}"s class budget)"
-  else
-    echo "$cls|fail|$cls_secs" >> "$ISOLATION_LINES"
-    echo "::error::isolation: $cls FAILED (exit $cstatus)"
-  fi
-done
-
-ISOLATION_JSON=$(ISOLATION_LINES="$ISOLATION_LINES" ISOLATION_BUDGET_S="$ISOLATION_BUDGET_S" python3 -c "
-import json, os
-classes = []
-with open(os.environ['ISOLATION_LINES']) as fh:
-    for line in fh:
-        line = line.strip()
-        if not line:
-            continue
-        name, status, secs = line.split('|')
-        classes.append({'class': name, 'status': status, 'seconds': float(secs)})
-print(json.dumps({'budget_s': int(os.environ['ISOLATION_BUDGET_S']), 'classes': classes}))
-")
-
-# Verdict: a class that hung or failed is the lane's identified culprit; if
-# every isolated class passed after the erase, the original hang was a
-# transient simulator wedge and the lane counts as recovered (visibly).
-if [ -n "$HUNG_CLASS" ]; then
-  finish_lane "timeout" "$ATTEMPTS" "$ISOLATION_JSON" 1
-fi
-if grep -q '|fail|' "$ISOLATION_LINES"; then
-  finish_lane "fail" "$ATTEMPTS" "$ISOLATION_JSON" 1
-fi
-if grep -q '|not_diagnosed|' "$ISOLATION_LINES"; then
-  # Coverage guarantee: classes the isolation budget never ran to completion
-  # cannot count as green. The lane fails with the undiagnosed set named.
-  echo "::error::lane $LANE isolation ended with undiagnosed classes - failing the lane so the unexecuted tests are visible"
-  finish_lane "timeout" "$ATTEMPTS" "$ISOLATION_JSON" 1
-fi
-finish_lane "pass" '[{"n": 1, "mode": "lane", "status": "timeout"}, {"n": 2, "mode": "lane-retry", "status": "timeout"}, {"n": 3, "mode": "isolation", "status": "all-classes-passed"}]' "$ISOLATION_JSON" 0
+echo "::error::lane $LANE failed twice with zero failing tests (exit $status1, then $status2) - runner/simulator environment failure"
+finish_lane "error" '[{"n": 1, "mode": "lane", "status": "infra-error"}, {"n": 2, "mode": "lane-retry", "status": "infra-error"}]' "" 1

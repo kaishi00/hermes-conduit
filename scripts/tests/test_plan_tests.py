@@ -290,23 +290,36 @@ class XctestrunAuditTests(unittest.TestCase):
     def test_workspace_and_system_paths_pass(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = self._plist(tmp, [
-                "/Users/runner/work/hermes-conduit/hermes-conduit/.ci-derived-data/Build/Products/a.app",
+                "/Users/runner/work/hermes-conduit/hermes-conduit/ci-derived-data/Build/Products/a.app",
                 "/Applications/Xcode.app/Contents/Developer/usr/bin/xctest",
             ])
-            violations, checked = planner.audit_xctestrun(path, "/Users/runner/work/hermes-conduit/hermes-conduit")
+            violations, checked = planner.audit_xctestrun(
+                path, "/Users/runner/work/hermes-conduit/hermes-conduit")
             self.assertEqual(violations, [])
             self.assertEqual(checked, 2)
+
+    def test_private_var_temp_path_is_rejected(self):
+        # /private/var/folders/... is per-runner temp state: a build product
+        # resolved there exists only on the machine that built the artifact.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._plist(tmp, [
+                "/private/var/folders/zz/abc/T/x/Y/d/e/Applications/iOS/TestBuild/Products/a.app",
+                "/Users/runner/work/hermes-conduit/hermes-conduit/ci-derived-data/Build/Products/b.app",
+            ])
+            violations, _checked = planner.audit_xctestrun(
+                path, "/Users/runner/work/hermes-conduit/hermes-conduit")
+            self.assertEqual(len(violations), 1)
+            self.assertTrue(violations[0].startswith("/private/var/"))
 
     def test_foreign_absolute_path_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = self._plist(tmp, [
-                "/Users/runner/work/hermes-conduit/hermes-conduit/.ci-derived-data/Build/Products/a.app",
+                "/Users/runner/work/hermes-conduit/hermes-conduit/ci-derived-data/Build/Products/a.app",
                 "/Users/someone/else/private/b.xctest",
             ])
             violations, _checked = planner.audit_xctestrun(
                 path, "/Users/runner/work/hermes-conduit/hermes-conduit")
             self.assertEqual(violations, ["/Users/someone/else/private/b.xctest"])
-
 
 if __name__ == "__main__":
     unittest.main()

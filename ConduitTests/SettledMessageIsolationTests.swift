@@ -118,6 +118,7 @@ final class SettledMessageIsolationTests: XCTestCase {
             + TranscriptPerf.textKitMeasurementCalls
             + TranscriptPerf.selectableTextViewUpdateCalls
         let settleStep: TimeInterval = 0.1
+        var baselineSettled = false
         while settleElapsed < 10 {
             RunLoop.current.run(until: Date().addingTimeInterval(settleStep))
             settleElapsed += settleStep
@@ -126,11 +127,20 @@ final class SettledMessageIsolationTests: XCTestCase {
                 + TranscriptPerf.selectableTextViewUpdateCalls
             if current == lastTotal {
                 quietFor += settleStep
-                if quietFor >= 1.2 { break }
+                if quietFor >= 1.2 {
+                    baselineSettled = true
+                    break
+                }
             } else {
                 quietFor = 0
                 lastTotal = current
             }
+        }
+        // Without a settled baseline the stay-at-zero assertion would race
+        // against the still-draining first-mount commit.
+        guard baselineSettled else {
+            XCTFail("counters never reached a quiet state; the measurement window would be meaningless on this runner")
+            return
         }
         let initialSTVUpdates = TranscriptPerf.selectableTextViewUpdateCalls
         XCTAssertGreaterThan(TranscriptPerf.settledMarkdownTextBodyEvaluations, 0, "initial mount must render the markdown")

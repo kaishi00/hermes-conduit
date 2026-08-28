@@ -49,8 +49,9 @@ enum TranscriptPerf {
         note(event)
         if event == .settledMarkdownBody,
            ProcessInfo.processInfo.environment["CONDUIT_PERF_TRACE"] == "1" {
-            let snippet = context.prefix(48)
-            NSLog("CONDUIT_PERF_TRACE settledMarkdownBody: \(snippet)")
+            // Constant format string: source content must never be
+            // interpolated into the format itself.
+            NSLog("CONDUIT_PERF_TRACE settledMarkdownBody: %@", String(context.prefix(48)))
         }
         #endif
     }

@@ -435,13 +435,25 @@ def aggregate(args) -> int:
         imb_p = (max(preds) - min(preds)) / avg_p * 100 if avg_p else 0.0
         lines.append(f"- Predicted lane imbalance: **{imb_p:.1f}%** (from the timing plan)")
         if any_actual:
+            # Only numeric durations participate; a None actual (lane result
+            # without a measured duration) must never reach max/min/sum.
+            def _numeric(value):
+                return isinstance(value, (int, float)) and not isinstance(value, bool)
+
             actuals = [
-                results[l["lane"]]["actual_s"] for l in lanes if l["lane"] in results
+                results[l["lane"]]["actual_s"] for l in lanes
+                if l["lane"] in results and _numeric(results[l["lane"]].get("actual_s"))
             ]
-            if len(actuals) == len(lanes) and actuals:
+            if actuals and len(actuals) == len(lanes):
                 avg_a = sum(actuals) / len(actuals)
                 imb_a = (max(actuals) - min(actuals)) / avg_a * 100 if avg_a else 0.0
                 lines.append(f"- Actual lane imbalance: **{imb_a:.1f}%**")
+            else:
+                lines.append(
+                    f"- Actual lane imbalance: incomplete "
+                    f"({len(actuals)}/{len(lanes)} lanes reported a numeric "
+                    "duration); omitted"
+                )
 
     starts, ends = [], []
     for res in results.values():

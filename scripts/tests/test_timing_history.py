@@ -150,6 +150,16 @@ class PruneAndSafetyTests(unittest.TestCase):
                                                 "--decay-new", "0.25"])
             self.assertNotEqual(proc.returncode, 0)
 
+    def test_boolean_observation_rejected(self):
+        # Python treats True as an int; a JSON true must never become 1.0s.
+        with tempfile.TemporaryDirectory() as tmp:
+            inv = inventory_file(tmp, ["AlphaTests"])
+            obs = [write_json(Path(tmp) / "o1.json", {
+                "schema_version": 1, "classes": {"AlphaTests": True}})]
+            proc, doc = run_update(tmp, obs, inv, None)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertNotIn("AlphaTests", doc["classes"])
+
     def test_ui_inventory_included(self):
         with tempfile.TemporaryDirectory() as tmp:
             inv = inventory_file(tmp, ["AlphaTests"], ["SelectionObserverUITests"])

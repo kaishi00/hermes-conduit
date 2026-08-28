@@ -107,41 +107,53 @@ lane time. If Xcode ever produces inherently non-portable products, the audit
 is the documented tripwire: revert to per-lane `build-for-testing` and keep
 the rest of CI v2.
 
-## Retry and failure domains
-
-1. **Ordinary test failure** - attempt 1 runs with Xcode-native
-   `-retry-tests-on-failure -test-iterations 3`, which re-executes only the
-   failing tests. Surviving failures fail the lane; healthy classes never
-   rerun. Tests that passed after a retry are reported prominently as
-   **FLAKE WARNING** in the summary (green-after-retry stays the policy, but
-   the flake is visible).
-2. **Infrastructure failure** - an invocation that dies without any test
-   results (simulator crash, runner exit) gets exactly one bounded recovery:
-   reset the simulator, retry the lane once.
-3. **Hang / timeout** - a different failure mode. After the watchdog kills
-   the xcodebuild process group, the simulator is reset **with erase** before
-   the one full-lane retry; if that retry times out too, the lane enters
-   **isolation**: classes re-run one at a time (heaviest estimate first,
-   each under `max(180s, 4 x estimate)`, bounded by the isolation budget).
-   The lane result names the class that hung ("Class C TIMEOUT, Class D
-   PASS" style). Recovery-to-green is only legitimate when the isolation pass
-   completed every class successfully; any undiagnosed class fails the lane
-   so unexecuted tests stay visible.
+2. **Unclassifiable failure** - if an invocation exits nonzero and the
+   XCTest result cannot be classified (timing/result extraction failed),
+   the lane FAILS immediately. Timing extraction is best-effort and must
+   never decide test correctness, so an unclassifiable failure is never
+   retried into a green lane.
+3. **Infrastructure failure** - an invocation that exits nonzero with a
+   KNOWN zero failing-test count (simulator crash, runner exit) gets
+   exactly one bounded recovery: reset the simulator, retry the lane once.
+   If that retry times out, handling falls through to isolation (4); if it
+   fails again without test results, the lane errors out.
+4. **Hang / timeout** - a different failure mode. After the watchdog kills
+   the xcodebuild process group, the simulator is reset **with erase** and
+   the lane enters **isolation immediately** (no second full-lane attempt):
+   classes re-run one at a time (heaviest estimate first, each under
+   `max(180s, 4 x estimate)`, bounded by the isolation budget). The lane
+   result names the class that hung ("Class C TIMEOUT, Class D PASS"
+   style). Recovery-to-green is only legitimate when the isolation pass
+   completed every class successfully; any undiagnosed class fails the
+   lane so unexecuted tests stay visible.
 
 ## Watchdogs
 
 `timeout = max(min_timeout, ceil(predicted x 2.5))` with a 300 s floor for
-unit lanes (420 s for UI). The outer GitHub job ceiling is
-`ceil((2 x watchdog + 600s) / 60)` minutes - the watchdog plus a full
-isolation pass plus setup/download slack - so the ceiling can never preempt
-legitimate in-script recovery (the script watchdogs are the real
-enforcement).
+unit lanes (600 s for both unit and UI after the first measured runs). The
+outer GitHub job ceiling is `ceil((3 x watchdog + 1200s) / 60)` minutes -
+attempt 1 + attempt 2 + a full isolation pass plus two bounded simulator
+resets and setup/download slack - so the ceiling can never preempt legitimate
+in-script recovery (the script watchdogs are the real enforcement).
 
 Every `simctl` operation is deadline-bounded; the process-group watchdog kill
 (xcodebuild + xctest + simulator agents) is preserved from the previous
 architecture.
 
 ## Observability
+## CI Gate (branch protection)
+
+The `CI Gate` job is the single stable required status check for branch
+protection. It passes only when:
+
+* `plan`, `build` and every dynamic `unit` lane succeed, and
+* `ui` succeeds (or is skipped because the repo contains no UI tests).
+
+The number of dynamic unit lanes can change between runs, so lane jobs must
+never be pinned individually. Configure repository branch protection to
+require **CI Gate**, replacing the obsolete **Build & Test** check from the
+previous architecture. The `Report` job is best-effort and must not be used
+as a required check.
 
 Every run ends with a **CI Test Report** step summary: build duration,
 per-lane predicted vs actual runtimes, UI lane result, retries/flake
