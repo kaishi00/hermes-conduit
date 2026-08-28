@@ -46,7 +46,7 @@ TARGET_LANE_BUDGET_S = 240.0       # scale-out threshold per lane
 LANE_TIMEOUT_MIN_S = 300           # healthy lanes never get less than 5 min
 LANE_TIMEOUT_MULTIPLIER = 2.5      # headroom over prediction
 UI_TIMEOUT_MIN_S = 420             # UI lane floor (simulator interaction overhead)
-JOB_TIMEOUT_MARGIN_S = 600         # setup/download/reset slack above 2x watchdog
+JOB_TIMEOUT_MARGIN_S = 1200        # reset/erase overhead + setup/download slack
 UNIT_TARGET = "ConduitTests"
 UI_TARGET = "ConduitUITests"
 
@@ -62,7 +62,9 @@ FIRST_IDENT_RE = re.compile(r"\s*([A-Za-z_]\w*)")
 
 
 def warn(msg: str) -> None:
-    print(f"::warning::plan-tests: {msg}", file=sys.stderr)
+    # GitHub Actions parses workflow commands from STDOUT only; stderr would
+    # never render as an annotation.
+    print(f"::warning::plan-tests: {msg}")
 
 
 # ---------------------------------------------------------------------------
@@ -99,8 +101,10 @@ def discover_test_classes(repo_root: str) -> dict:
         "helpers": [],                   # [{"name","file","line"}]
         "errors": [], "warnings": [],
     }
-    all_classes = {}   # name -> superclass (per repo; names unique per module)
-    direct = set()     # classes declaring ': XCTestCase' directly
+    # Targets are separate Swift modules: superclass resolution is per target
+    # so one target's base class can never redirect the other's ancestry.
+    all_classes = {UNIT_TARGET: {}, UI_TARGET: {}}
+    direct = {UNIT_TARGET: set(), UI_TARGET: set()}
     file_hits = {UNIT_TARGET: [], UI_TARGET: []}
 
     for target in (UNIT_TARGET, UI_TARGET):
@@ -118,36 +122,40 @@ def discover_test_classes(repo_root: str) -> dict:
                     continue
                 name, superclass = decl
                 rel = os.path.relpath(path, repo_root).replace(os.sep, "/")
-                all_classes.setdefault(name, superclass)
+                all_classes[target].setdefault(name, superclass)
                 if superclass == "XCTestCase":
-                    direct.add(name)
+                    direct[target].add(name)
                 file_hits[target].append(
                     {"name": name, "file": rel, "line": lineno,
                      "has_test_func": has_test_func}
                 )
 
-    def is_xctestcase(name: str) -> bool:
+    def is_xctestcase(target: str, name: str) -> bool:
+        classes = all_classes[target]
         seen = set()
         cur = name
         while cur and cur not in seen:
             seen.add(cur)
             if cur == "XCTestCase":
                 return True
-            cur = all_classes.get(cur, "")
+            cur = classes.get(cur, "")
         return False
 
     # Plannable = runs tests in the XCTest runtime:
-    #   * direct XCTestCase subclasses (repo convention), or
-    #   * *Tests-named classes inheriting XCTestCase transitively (a real
-    #     suite inheriting shared test methods from an in-tree base).
+    #   * *Tests-named classes that resolve to XCTestCase (direct or
+    #     transitive) - the repo convention for real suites, or
+    #   * direct XCTestCase subclasses with visible test methods and an
+    #     unconventional name (kept planned, with a warning).
     # Everything else that merely resolves to XCTestCase (mocks, fakes, test
-    # helpers such as MockGateway/FakeSocket) enumerates zero tests and is
-    # excluded from lanes exactly as the static shard system excluded it.
+    # helpers such as MockGateway/FakeSocket, with or without a direct
+    # XCTestCase inheritance but no Tests suffix and no visible test methods)
+    # enumerates zero tests and is excluded from lanes exactly as the static
+    # shard system excluded it.
     for target, bucket in ((UNIT_TARGET, "unit"), (UI_TARGET, "ui")):
         seen_names = {}
         for entry in file_hits[target]:
             name = entry["name"]
-            resolves = is_xctestcase(name)
+            resolves = is_xctestcase(target, name)
             if not resolves and name.endswith("Tests"):
                 result["errors"].append(
                     "malformed test declaration: {0} in {1}:{2} looks like a test "
@@ -158,7 +166,10 @@ def discover_test_classes(repo_root: str) -> dict:
                 continue
             if not resolves:
                 continue  # unrelated helper class
-            if name not in direct and not name.endswith("Tests"):
+            is_suite = name.endswith("Tests") or entry["has_test_func"]
+            if not is_suite:
+                # Zero visible test methods + unconventional name: a mock or
+                # support type. -only-testing would match zero tests for it.
                 result["helpers"].append(
                     {"name": name, "file": entry["file"], "line": entry["line"]}
                 )
@@ -253,11 +264,12 @@ def timeout_for(predicted: float, floor_s: float, multiplier: float) -> int:
 
 
 def job_timeout_min(lane_timeout_s: int, cfg: dict) -> int:
-    """Outer job ceiling: worst case is the lane attempt + a full isolation
-    pass (both bounded by lane_timeout_s), plus fixed setup/download margin.
-    Watchdogs inside the runner script are the real enforcement; this only
-    guarantees the ceiling can never preempt legitimate in-script recovery."""
-    total = 2 * lane_timeout_s + cfg["job_timeout_margin_s"]
+    """Outer job ceiling: worst in-script path is attempt 1 + attempt 2 + a
+    full isolation pass (each bounded by lane_timeout_s) plus two bounded
+    simulator resets and setup/download slack. Watchdogs inside the runner
+    script are the real enforcement; this only guarantees the ceiling can
+    never preempt legitimate in-script recovery."""
+    total = 3 * lane_timeout_s + cfg["job_timeout_margin_s"]
     return int(math.ceil(total / 60.0))
 
 
@@ -303,6 +315,8 @@ def build_plan(discovery: dict, cfg: dict, estimates: dict) -> dict:
             "lane": "ui",
             "target": UI_TARGET,
             "classes": ui_names,
+            "class_estimates": ",".join(
+                "{0}={1:.1f}".format(c, ui_est[c]) for c in ui_names),
             "predicted_s": round(predicted, 1),
             "timeout_s": timeout,
             "job_timeout_min": job_timeout_min(timeout, cfg),
@@ -463,28 +477,50 @@ def _walk_strings(obj):
             yield from _walk_strings(v)
 
 
+EMBEDDED_ABS_PATH_RE = re.compile(r'(?<![\w])/(?:Users|Volumes)/[^\s\x22\x27]+')
+FILE_URL_RE = re.compile(r'file://([^\s\x22\x27]+)')
+
+
 def audit_xctestrun(xctestrun_path: str, workspace_root: str) -> tuple:
     """Return (violations, paths_checked). A violation is an absolute path in
     the .xctestrun that points outside the workspace root (and outside known
     system locations) — such a path cannot resolve on a different runner."""
-    with open(xctestrun_path, "rb") as fh:
-        plist = plistlib.load(fh)
+    try:
+        with open(xctestrun_path, "rb") as fh:
+            plist = plistlib.load(fh)
+    except (OSError, plistlib.InvalidFileException) as exc:
+        raise ValueError(f"unreadable .xctestrun ({exc})")
     # Paths inside .xctestrun are POSIX (macOS); compare textually so the
     # audit itself stays portable (tests run on ubuntu/Windows too).
     import posixpath
     ws = posixpath.normpath(workspace_root).rstrip("/") or "/"
     prefix = ws + "/"
+
+    def violation(path: str) -> bool:
+        path = path.rstrip("/")
+        if path == ws or path.startswith(prefix):
+            return False
+        return not any(path.startswith(p) for p in SYSTEM_PATH_PREFIXES)
+
     violations = set()
     checked = 0
     for s in _walk_strings(plist):
-        if not s.startswith("/"):
-            continue
-        checked += 1
-        if s == ws or s.startswith(prefix):
-            continue
-        if any(s.startswith(p) for p in SYSTEM_PATH_PREFIXES):
-            continue
-        violations.add(s)
+        candidates = set()
+        if s.startswith("file://"):
+            m = FILE_URL_RE.match(s)
+            if m:
+                from urllib.parse import unquote
+                candidates.add(unquote(m.group(1)))
+        if s.startswith("/"):
+            candidates.add(s)
+        # Mid-string absolute paths (e.g. embedded in a command-line value)
+        # can pin the run to one runner; scan the risky home/volume roots.
+        for m in EMBEDDED_ABS_PATH_RE.finditer(s):
+            candidates.add(m.group(0))
+        for path in candidates:
+            checked += 1
+            if violation(path):
+                violations.add(path)
     return sorted(violations), checked
 
 
@@ -507,14 +543,22 @@ def _cfg_from_args(a) -> dict:
 
 def _load_history_or_baseline(a, discovery) -> tuple:
     warns = []
+    def resolve(path):
+        # A relative --baseline/--history is resolved against --repo-root, so
+        # the tool behaves the same no matter which directory it runs from.
+        if path and not os.path.isabs(path):
+            joined = os.path.join(a.repo_root, path)
+            if os.path.exists(joined):
+                return joined
+        return path
     if a.history:
-        estimates, w = load_estimates(a.history, "history")
+        estimates, w = load_estimates(resolve(a.history), "history")
         warns.extend(w)
         if estimates:
             return estimates, warns, "timing history"
         if not w:
             warns.append("history file contained no usable entries; using baseline")
-    estimates, w = load_estimates(a.baseline, "baseline")
+    estimates, w = load_estimates(resolve(a.baseline), "baseline")
     warns.extend(w)
     if estimates:
         return estimates, warns, "checked-in baseline"

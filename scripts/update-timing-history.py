@@ -59,17 +59,15 @@ def try_load_history(path) -> tuple:
         return {}, [f"history file corrupt ({exc}); starting from empty history"]
 
 
-def os_path_exists(path: str) -> bool:
-    import os
-    return os.path.exists(path)
-
-
 def update(history: dict, observations_docs: list, inventory: set,
            decay_prev: float, decay_new: float, outlier_ratio: float) -> tuple:
     updated = dict(history)
     changed = {}
     pruned = 0
     for doc in observations_docs:
+        if not isinstance(doc, dict) or not isinstance(doc.get("classes", {}), dict):
+            warn("skipping observation document with unexpected schema")
+            continue
         for name in sorted(doc.get("classes", {})):
             observed = doc["classes"][name]
             if not isinstance(observed, (int, float)) or observed <= 0:
@@ -119,11 +117,15 @@ def main(argv=None) -> int:
 
     try:
         plan = load_json(args.inventory)
+        if not isinstance(plan, dict) or not isinstance(plan.get("inventory", {}), dict):
+            raise ValueError("'inventory' is not an object")
         inventory = set(plan.get("inventory", {}).get("unit", [])) | set(
             plan.get("inventory", {}).get("ui", []))
     except (OSError, ValueError, json.JSONDecodeError) as exc:
-        warn(f"inventory unreadable ({exc}); nothing to merge")
-        return 1
+        # Timing updates are strictly best-effort: a missing/corrupt inventory
+        # must not fail the main-branch CI job that runs this merge.
+        warn(f"inventory unreadable ({exc}); keeping history unchanged")
+        return 0
 
     docs = []
     for path in args.observations:

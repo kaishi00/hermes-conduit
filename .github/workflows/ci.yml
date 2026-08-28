@@ -53,6 +53,7 @@ jobs:
       matrix: "${{ steps.plan.outputs.matrix }}"
       lane-count: "${{ steps.plan.outputs.lane-count }}"
       ui-classes: "${{ steps.plan.outputs.ui-classes }}"
+      ui-estimates: "${{ steps.plan.outputs.ui-estimates }}"
       ui-target: "${{ steps.plan.outputs.ui-target }}"
       ui-predicted: "${{ steps.plan.outputs.ui-predicted }}"
       ui-timeout: "${{ steps.plan.outputs.ui-timeout }}"
@@ -95,9 +96,10 @@ jobs:
             --out .ci-artifacts/plan.json \
             --matrix-out .ci-artifacts/unit-matrix.json \
             --summary-out .ci-artifacts/plan-summary.md
-          echo "matrix=$(cat .ci-artifacts/unit-matrix.json)" >> "$GITHUB_OUTPUT"
+          echo "matrix=$(jq -c . .ci-artifacts/unit-matrix.json)" >> "$GITHUB_OUTPUT"
           echo "lane-count=$(jq -r '.lane_count' .ci-artifacts/plan.json)" >> "$GITHUB_OUTPUT"
           echo "ui-classes=$(jq -r '.ui_lane.classes | join(",")' .ci-artifacts/plan.json)" >> "$GITHUB_OUTPUT"
+          echo "ui-estimates=$(jq -r '.ui_lane.class_estimates // ""' .ci-artifacts/plan.json)" >> "$GITHUB_OUTPUT"
           echo "ui-target=$(jq -r '.ui_lane.target // ""' .ci-artifacts/plan.json)" >> "$GITHUB_OUTPUT"
           echo "ui-predicted=$(jq -r '.ui_lane.predicted_s // 0' .ci-artifacts/plan.json)" >> "$GITHUB_OUTPUT"
           echo "ui-timeout=$(jq -r '.ui_lane.timeout_s // 600' .ci-artifacts/plan.json)" >> "$GITHUB_OUTPUT"
@@ -194,21 +196,30 @@ jobs:
             --xctestrun "$XCRUN_FILE" --workspace-root "$GITHUB_WORKSPACE"
 
       - name: Run unit lane
+        # Matrix values enter through the environment, never through bash
+        # template interpolation, so even a hostile class name cannot become
+        # code execution in the runner.
         env:
           CLASS_TIMEOUT_MIN_S: "180"
           CLASS_TIMEOUT_MULTIPLIER: "4.0"
+          LANE_NAME: "${{ matrix.lane }}"
+          LANE_TARGET: "${{ matrix.target }}"
+          LANE_CLASSES: "${{ matrix.classes }}"
+          LANE_CLASS_ESTIMATES: "${{ matrix.class_estimates }}"
+          LANE_PREDICTED: "${{ matrix.predicted_s }}"
+          LANE_TIMEOUT: "${{ matrix.timeout_s }}"
         run: |
           bash scripts/ci-test-lane.sh \
             --kind unit \
-            --lane "${{ matrix.lane }}" \
-            --target "${{ matrix.target }}" \
-            --classes "${{ matrix.classes }}" \
-            --class-estimates "${{ matrix.class_estimates }}" \
-            --predicted "${{ matrix.predicted_s }}" \
-            --timeout "${{ matrix.timeout_s }}" \
+            --lane "$LANE_NAME" \
+            --target "$LANE_TARGET" \
+            --classes "$LANE_CLASSES" \
+            --class-estimates "$LANE_CLASS_ESTIMATES" \
+            --predicted "$LANE_PREDICTED" \
+            --timeout "$LANE_TIMEOUT" \
             --iterations 3 \
             --xctestrun "$XCRUN_FILE" \
-            --result-dir ".ci-lane/${{ matrix.lane }}"
+            --result-dir ".ci-lane/$LANE_NAME"
 
       - name: Dump simulator state (failure diagnostics)
         if: failure()
@@ -255,14 +266,19 @@ jobs:
         env:
           CLASS_TIMEOUT_MIN_S: "180"
           CLASS_TIMEOUT_MULTIPLIER: "4.0"
+          UI_CLASSES: "${{ needs.plan.outputs.ui-classes }}"
+          UI_CLASS_ESTIMATES: "${{ needs.plan.outputs.ui-estimates }}"
+          UI_PREDICTED: "${{ needs.plan.outputs.ui-predicted }}"
+          UI_TIMEOUT: "${{ needs.plan.outputs.ui-timeout }}"
         run: |
           bash scripts/ci-test-lane.sh \
             --kind ui \
             --lane ui \
             --target "${{ needs.plan.outputs.ui-target }}" \
-            --classes "${{ needs.plan.outputs.ui-classes }}" \
-            --predicted "${{ needs.plan.outputs.ui-predicted }}" \
-            --timeout "${{ needs.plan.outputs.ui-timeout }}" \
+            --classes "$UI_CLASSES" \
+            --class-estimates "$UI_CLASS_ESTIMATES" \
+            --predicted "$UI_PREDICTED" \
+            --timeout "$UI_TIMEOUT" \
             --iterations 2 \
             --xctestrun "$XCRUN_FILE" \
             --result-dir .ci-lane/ui
@@ -306,11 +322,12 @@ jobs:
         continue-on-error: true
 
       - name: Download lane results
+        # No merge-multiple: each artifact extracts into its own name-derived
+        # directory (lane-unit-1/...), so same-named files can never collide.
         uses: actions/download-artifact@v4
         with:
           pattern: lane-*
           path: .ci-report/lanes
-          merge-multiple: true
         continue-on-error: true
 
       - name: Build CI Test Report
@@ -363,12 +380,15 @@ jobs:
         with:
           pattern: lane-*
           path: .ci-update/lanes
-          merge-multiple: true
         continue-on-error: true
 
       - name: Merge fresh timings into history (EWMA)
         run: |
           set -euo pipefail
+          if [ ! -f .ci-update/plan/plan.json ]; then
+            echo "plan artifact missing; skipping timing history update"
+            exit 0
+          fi
           mkdir -p .ci-timing
           OBS=$(find .ci-update/lanes -name observations.json 2>/dev/null | sort)
           if [ -z "$OBS" ]; then

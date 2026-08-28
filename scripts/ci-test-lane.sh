@@ -61,6 +61,13 @@ if [ ! -f "$XCRUN_FILE" ]; then
   exit 1
 fi
 case "$KIND" in unit|ui) ;; *) echo "::error::--kind must be unit or ui"; exit 2 ;; esac
+for pair in "$PREDICTED_S:--predicted" "$TIMEOUT_S:--timeout" "$ITERATIONS:--iterations"; do
+  value="${pair%%:*}"
+  flag="${pair#*:}"
+  case "$value" in
+    ''|*[!0-9.]*) echo "::error::$flag must be a positive number, got '$value'"; exit 2 ;;
+  esac
+done
 
 CLASS_TIMEOUT_MIN_S="${CLASS_TIMEOUT_MIN_S:-180}"
 CLASS_TIMEOUT_MULTIPLIER="${CLASS_TIMEOUT_MULTIPLIER:-4.0}"
@@ -219,14 +226,18 @@ if [ "$status1" -ne 124 ] && [ "$FAIL_COUNT" -gt 0 ]; then
 fi
 
 # --- bounded infrastructure recovery (one reset + one full-lane retry) --------
+erase_for_retry=0
 if [ "$status1" -eq 124 ]; then
   echo "::warning::lane $LANE attempt 1 exceeded its "${TIMEOUT_S}"s watchdog (hang suspected)"
   diag="$LOG_DIR/simctl-devices-after-timeout-attempt-1.txt"
   bounded_run 45 xcrun simctl list devices >"$diag" 2>&1 || true
+  # A hang can leave simulator services wedged in ways a reboot does not
+  # clear (pasteboard daemon history) - erase before the retry.
+  erase_for_retry=1
 fi
 echo "lane $LANE: attempt 1 ended without test results (exit $status1) - resetting simulator and retrying once"
 RESET_USED=1
-reset_and_boot_simulator 0
+reset_and_boot_simulator "$erase_for_retry"
 
 bundle2="$RESULT_DIR/attempt-2.xcresult"
 status2=0
@@ -335,6 +346,9 @@ if grep -q '|fail|' "$ISOLATION_LINES"; then
   finish_lane "fail" "$ATTEMPTS" "$ISOLATION_JSON" 1
 fi
 if grep -q '|not_diagnosed|' "$ISOLATION_LINES"; then
-  echo "::warning::isolation budget ended with undiagnosed classes for lane $LANE; treating as recovered (no hang reproduced)"
+  # Coverage guarantee: classes the isolation budget never ran to completion
+  # cannot count as green. The lane fails with the undiagnosed set named.
+  echo "::error::lane $LANE isolation ended with undiagnosed classes - failing the lane so the unexecuted tests are visible"
+  finish_lane "timeout" "$ATTEMPTS" "$ISOLATION_JSON" 1
 fi
 finish_lane "pass" '[{"n": 1, "mode": "lane", "status": "timeout"}, {"n": 2, "mode": "lane-retry", "status": "timeout"}, {"n": 3, "mode": "isolation", "status": "all-classes-passed"}]' "$ISOLATION_JSON" 0

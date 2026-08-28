@@ -72,6 +72,22 @@ class EwmaTests(unittest.TestCase):
             # clamped to prev*ratio = 50, then ewma: .75*10 + .25*50 = 20
             self.assertAlmostEqual(doc["classes"]["AlphaTests"], 20.0)
 
+    def test_max_seconds_caps_after_repeated_outliers(self):
+        # A permanently slow runner drags estimates up 25% per run, clamped to
+        # prev*5 each time; the absolute cap must still hold in the output.
+        with tempfile.TemporaryDirectory() as tmp:
+            inv = inventory_file(tmp, ["AlphaTests"])
+            obs = [observation_file(tmp, "o1.json", {"AlphaTests": 10000.0})]
+            args = ["--max-seconds", "600"]
+            hist = None
+            seen = []
+            for round_no in range(12):
+                proc, doc = run_update(tmp, obs, inv, hist, extra_args=args)
+                hist = Path(tmp) / ("h" + str(round_no) + ".json")
+                hist.write_text(json.dumps(doc), encoding="utf-8")
+                seen.append(doc["classes"]["AlphaTests"])
+            self.assertLessEqual(max(seen), 600.0 + 1e-9)
+
     def test_one_slow_runner_does_not_reshape_history(self):
         with tempfile.TemporaryDirectory() as tmp:
             inv = inventory_file(tmp, ["AlphaTests", "BetaTests"])

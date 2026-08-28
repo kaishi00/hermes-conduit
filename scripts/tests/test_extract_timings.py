@@ -93,6 +93,15 @@ class ExtractFromDocTests(unittest.TestCase):
         out = ext.extract_from_doc(unit_doc(suite), "x.xcresult")
         self.assertEqual(out["classes"], {"STests": 0.5})
 
+    def test_nested_suites_attribute_to_nearest_suite(self):
+        inner = {"nodeType": "Test Suite", "name": "InnerSuite", "result": "Passed",
+                 "children": [case_node("t()", 0.5)]}
+        outer = {"nodeType": "Test Suite", "name": "OuterSuite", "result": "Passed",
+                 "children": [case_node("t2()", 1.0), inner]}
+        out = ext.extract_from_doc(unit_doc(outer), "x.xcresult")
+        # nearest enclosing suite wins: t2 -> OuterSuite, t -> InnerSuite
+        self.assertEqual(out["classes"], {"OuterSuite": 1.0, "InnerSuite": 0.5})
+
     def test_missing_testnodes_raises_schema_error(self):
         with self.assertRaises(RuntimeError):
             ext.extract_from_doc({"unexpected": {}}, "x.xcresult")
@@ -106,9 +115,12 @@ class LaneResultTests(unittest.TestCase):
     def test_lane_result_assembly(self):
         with tempfile.TemporaryDirectory() as tmp:
             obs = Path(tmp) / "observations.json"
-            obs.write_text(json.dumps({"classes": {"AlphaTests": 3.0}}), encoding="utf-8")
+            obs.write_text(json.dumps({
+                "schema_version": 1, "classes": {"AlphaTests": 3.0},
+            }), encoding="utf-8")
             detail = Path(tmp) / "detail.json"
             detail.write_text(json.dumps({
+                "schema_version": 1,
                 "failures": [{"test": "AlphaTests/testBad()"}],
                 "retried": [{"test": "testBad()", "class": "AlphaTests"}],
             }), encoding="utf-8")
@@ -182,6 +194,29 @@ class AggregateTests(unittest.TestCase):
                            "FLAKE WARNING", "Slowest test classes"):
                 self.assertIn(needle, text)
 
+    def test_lane_result_ignores_corrupt_side_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            obs = Path(tmp) / "observations.json"
+            obs.write_text("{ not json", encoding="utf-8")
+            detail = Path(tmp) / "detail.json"
+            detail.write_text('{"schema_version": 1, "failures": [], "retried": []}', encoding="utf-8")
+            out = Path(tmp) / "lane-result.json"
+            args = SimpleNamespace(
+                lane="unit-1", kind="unit", target="ConduitTests",
+                classes="AlphaTests", status="pass",
+                predicted_s=5.0, timeout_s=300, actual_s=4.0,
+                started_at="2026-08-29T00:00:00Z",
+                attempts_json="[not valid json",
+                isolation_json="", simulator_reset=False,
+                simulator_erase=False, hung_class="",
+                observations=str(obs), detail=str(detail), out=str(out))
+            rc = ext.lane_result(args)
+            self.assertEqual(rc, ext.EXIT_OK)
+            doc = json.loads(out.read_text(encoding="utf-8"))
+            self.assertNotIn("class_seconds", doc)  # corrupt side file ignored
+            self.assertEqual(doc["attempts"], [])   # malformed attempts ignored
+            self.assertEqual(doc["status"], "pass")
+
     def test_hang_is_reported_prominently(self):
         with tempfile.TemporaryDirectory() as tmp:
             plan = self._write_plan(tmp)
@@ -195,6 +230,23 @@ class AggregateTests(unittest.TestCase):
             text = out.read_text(encoding="utf-8")
             self.assertIn("HANG identified by isolation mode", text)
             self.assertIn("BetaTests", text)
+
+    def test_report_tolerates_malformed_timestamps(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._write_plan(tmp)
+            d = Path(tmp) / "unit-1"
+            d.mkdir(parents=True)
+            doc = {"lane": "unit-1", "status": "pass", "actual_s": 4.0,
+                   "predicted_s": 5.0, "started_at": "not-a-timestamp",
+                   "finished_at": "also-bad", "flaky": [], "failures": [],
+                   "class_seconds": {}}
+            (d / "lane-result.json").write_text(json.dumps(doc), encoding="utf-8")
+            out = Path(tmp) / "summary.md"
+            args = SimpleNamespace(plan=str(plan), lanes_dir=str(tmp),
+                                   build_result="", out=str(out))
+            rc = ext.aggregate(args)
+            self.assertEqual(rc, ext.EXIT_OK)
+            self.assertNotIn("Overall wall clock", out.read_text(encoding="utf-8"))
 
     def test_report_is_tolerant_to_missing_lane_results(self):
         with tempfile.TemporaryDirectory() as tmp:

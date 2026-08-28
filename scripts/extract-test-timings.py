@@ -85,8 +85,6 @@ def _walk_bundle(bundle: dict, stats: dict, problems: list) -> None:
                 return
             cls = suite_stack[-1]
             seconds = _duration_seconds(node)
-            stats["class_seconds"].setdefault(cls, 0.0)
-            stats["class_seconds"][cls] += seconds
             key = f"{cls}/{name}"
             stats["attempts"].setdefault(key, {"class": cls, "test": name, "attempts": []})
             stats["attempts"][key]["attempts"].append(
@@ -154,6 +152,14 @@ def extract_from_doc(data: dict, xcresult_label: str) -> dict:
     for att in attempts:
         att["final"] = att["attempts"][-1]["result"] if att["attempts"] else "Unknown"
         att["attempts_count"] = len(att["attempts"])
+    # Class duration = sum of each test's LAST attempt (native retry reruns
+    # only failed tests, so summing every attempt would inflate flaky classes
+    # and skew the LPT lane balance).
+    class_seconds: dict = {}
+    for att in attempts:
+        if att["attempts"]:
+            cls = att["class"]
+            class_seconds[cls] = class_seconds.get(cls, 0.0) + att["attempts"][-1]["seconds"]
     failures = [
         {"class": a["class"], "test": a["test"], "attempts": a["attempts"]}
         for a in attempts
@@ -169,7 +175,7 @@ def extract_from_doc(data: dict, xcresult_label: str) -> dict:
 
     if not bundles_seen:
         raise RuntimeError("no test bundle nodes found in xcresult")
-    if not stats["class_seconds"] and not attempts:
+    if not class_seconds and not attempts:
         # A run can legitimately contain zero tests, but never in our CI.
         raise RuntimeError("xcresult contained no test cases")
 
@@ -181,11 +187,11 @@ def extract_from_doc(data: dict, xcresult_label: str) -> dict:
         "generated_at": now_iso(),
         "xcresult": os.path.basename(str(xcresult_label).rstrip("/")),
         "bundles": bundles_seen,
-        "classes": {k: round(v, 3) for k, v in sorted(stats["class_seconds"].items())},
+        "classes": {k: round(v, 3) for k, v in sorted(class_seconds.items())},
         "attempts": sorted(attempts, key=lambda a: (a["class"], a["test"])),
         "failures": failures,
         "retried": flaky,
-        "counts": {"classes": len(stats["class_seconds"]), "cases": total_cases},
+        "counts": {"classes": len(class_seconds), "cases": total_cases},
     }
     return doc
 
@@ -207,20 +213,39 @@ def lane_result(args) -> int:
         "actual_s": round(args.actual_s, 1) if args.actual_s is not None else None,
         "started_at": args.started_at,
         "finished_at": now_iso(),
-        "attempts": json.loads(args.attempts_json) if args.attempts_json else [],
+        "attempts": [],
         "simulator_reset": bool(args.simulator_reset),
         "simulator_erase": bool(args.simulator_erase),
         "hung_class": args.hung_class or None,
-        "isolation": json.loads(args.isolation_json) if args.isolation_json else None,
+        "isolation": None,
     }
-    # Merge extraction outputs when available (flaky/failures/class timings).
-    if args.observations and os.path.exists(args.observations):
-        with open(args.observations, encoding="utf-8") as fh:
-            obs = json.load(fh)
+    # Every external input is best-effort: this script assembles the canonical
+    # lane result, so malformed side data must never crash a green lane.
+    for field, raw in (("attempts", args.attempts_json), ("isolation", args.isolation_json)):
+        if raw:
+            try:
+                result[field] = json.loads(raw)
+            except json.JSONDecodeError as exc:
+                warn(f"lane-result: malformed {field} JSON ignored ({exc})")
+
+    def load_side_file(path):
+        if path and os.path.exists(path):
+            try:
+                with open(path, encoding="utf-8") as fh:
+                    doc = json.load(fh)
+                if not isinstance(doc, dict) or "schema_version" not in doc:
+                    warn(f"lane-result: ignoring unrecognized side file {path}")
+                    return None
+                return doc
+            except (OSError, json.JSONDecodeError) as exc:
+                warn(f"lane-result: unreadable side file {path} ignored ({exc})")
+        return None
+
+    obs = load_side_file(args.observations)
+    if obs is not None:
         result["class_seconds"] = obs.get("classes", {})
-    if args.detail and os.path.exists(args.detail):
-        with open(args.detail, encoding="utf-8") as fh:
-            detail = json.load(fh)
+    detail = load_side_file(args.detail)
+    if detail is not None:
         result["failures"] = detail.get("failures", [])
         result["flaky"] = detail.get("retried", [])
 
@@ -261,7 +286,10 @@ def aggregate(args) -> int:
                 path = os.path.join(root, fname)
                 try:
                     doc = _load_json(path)
-                    results[doc.get("lane", path)] = doc
+                    lane_name = doc.get("lane", path)
+                    if lane_name in results:
+                        warn(f"duplicate lane result for {lane_name!r} ({path}); keeping the last one")
+                    results[lane_name] = doc
                 except (OSError, json.JSONDecodeError) as exc:
                     warn(f"unreadable lane result {path}: {exc}")
 
@@ -296,13 +324,13 @@ def aggregate(args) -> int:
     lines.append("")
     lines.append("| Lane | Predicted | Actual | Status | Classes |")
     lines.append("|---|---|---|---|---|")
-    any_actual = True
+    any_actual = False
     for lane in lanes:
         name = lane.get("lane")
         res = results.get(name, {})
         actual = res.get("actual_s")
-        if actual is None:
-            any_actual = False
+        if actual is not None:
+            any_actual = True
         lines.append(
             f"| {name} | {_fmt_secs(lane.get('predicted_s'))} | {_fmt_secs(actual)} "
             f"| {res.get('status', 'no result')} | {len(lane.get('classes', []))} |"
@@ -422,11 +450,18 @@ def aggregate(args) -> int:
         starts.append(build["started_at"])
     if build and build.get("finished_at"):
         ends.append(build["finished_at"])
+    total = None
     if starts and ends:
         def parse(ts):
-            return datetime.datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ")
-        span = max(parse(t) for t in ends) - min(parse(t) for t in starts)
-        total = int(span.total_seconds())
+            try:
+                return datetime.datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ")
+            except (TypeError, ValueError):
+                return None
+        parsed_starts = [t for t in map(parse, starts) if t is not None]
+        parsed_ends = [t for t in map(parse, ends) if t is not None]
+        if parsed_starts and parsed_ends:
+            total = int((max(parsed_ends) - min(parsed_starts)).total_seconds())
+    if total is not None:
         lines.append(
             f"- Overall wall clock (build start -> last lane finish): "
             f"**{_fmt_secs(total)}**"
@@ -488,8 +523,18 @@ def main(argv=None) -> int:
 def _cmd_extract(a) -> int:
     try:
         doc = extract(a.xcresult)
-    except RuntimeError as exc:
+    except (RuntimeError, OSError) as exc:
         warn(f"timing extraction failed safely: {exc}")
+        # Never leave a stale observations/detail file behind: the lane runner
+        # treats these as optional, and an old file from a previous attempt
+        # could silently poison the lane result (and, downstream, the EWMA
+        # timing history) with timings from a different invocation.
+        for stale in (a.observations, a.detail):
+            if stale and os.path.exists(stale):
+                try:
+                    os.remove(stale)
+                except OSError as exc2:
+                    warn(f"could not remove stale output {stale}: {exc2}")
         return EXIT_SCHEMA
     if a.observations:
         slim = {

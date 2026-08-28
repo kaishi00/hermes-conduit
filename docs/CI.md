@@ -119,13 +119,14 @@ the rest of CI v2.
    results (simulator crash, runner exit) gets exactly one bounded recovery:
    reset the simulator, retry the lane once.
 3. **Hang / timeout** - a different failure mode. After the watchdog kills
-   the xcodebuild process group and the simulator is reset **with erase**,
-   the lane enters **isolation**: classes re-run one at a time (heaviest
-   estimate first, each under `max(180s, 4 x estimate)`, bounded by the lane
-   budget). The lane result names the class that hung
-   ("Class C TIMEOUT, Class D PASS" style). If every isolated class passes
-   after the erase, the original hang was a transient simulator wedge and the
-   lane counts as recovered - visibly, in the attempts chain.
+   the xcodebuild process group, the simulator is reset **with erase** before
+   the one full-lane retry; if that retry times out too, the lane enters
+   **isolation**: classes re-run one at a time (heaviest estimate first,
+   each under `max(180s, 4 x estimate)`, bounded by the isolation budget).
+   The lane result names the class that hung ("Class C TIMEOUT, Class D
+   PASS" style). Recovery-to-green is only legitimate when the isolation pass
+   completed every class successfully; any undiagnosed class fails the lane
+   so unexecuted tests stay visible.
 
 ## Watchdogs
 

@@ -71,13 +71,13 @@ class DiscoveryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(make_repo(Path(tmp), ["RealTests"], [], extra_files=content))
             discovery, plan = plan_from_tree(root)
-            # TestSupportBase directly inherits XCTestCase: exactly like the
-            # static shard guard, the planner plans it. Only the indirect,
-            # non-Tests-suffixed mock is a helper with zero runnable tests.
+            # Zero-test XCTestCase subclasses without a Tests suffix (direct or
+            # indirect) enumerate zero tests at runtime, so they are helpers,
+            # not lanes: -only-testing entries for them would match nothing.
+            self.assertEqual(plan["inventory"]["unit"], ["RealTests"])
             self.assertEqual(
-                sorted(plan["inventory"]["unit"]), ["RealTests", "TestSupportBase"])
-            self.assertEqual(
-                [h["name"] for h in discovery["helpers"]], ["MockGateway"])
+                sorted(h["name"] for h in discovery["helpers"]),
+                ["MockGateway", "TestSupportBase"])
 
     def test_directory_decides_target_not_name(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -192,6 +192,41 @@ class PlanningTests(unittest.TestCase):
             self.assertEqual(lane["timeout_s"], 500)  # 200 * 2.5
             self.assertEqual(
                 plan["ui_lane"]["timeout_s"], 420)  # floor wins: max(420, 150)
+
+    def test_job_ceiling_covers_worst_in_script_path(self):
+        # Ceiling must fit attempt1 + attempt2 + a full isolation pass plus
+        # two bounded simulator resets (3*T + margin) - and stay under
+        # GitHub's 6-hour hard limit in every configurable case.
+        for timeout in (300, 500, 900, 1800):
+            cfg = default_cfg()
+            ceiling_s = planner.job_timeout_min(timeout, cfg) * 60
+            worst_case = 3 * timeout + cfg["job_timeout_margin_s"]
+            self.assertGreaterEqual(ceiling_s, worst_case,
+                                    f"ceiling too small for T={timeout}")
+            self.assertLess(ceiling_s, 6 * 3600)
+
+    def test_lane_count_edges(self):
+        cfg = default_cfg()
+        self.assertEqual(planner.lane_count_for(0.0, 0, cfg), 0)     # no classes
+        self.assertEqual(planner.lane_count_for(20.0, 1, cfg), 1)    # 1 class
+        self.assertEqual(planner.lane_count_for(60.0, 3, cfg), 3)    # fewer than min
+        self.assertEqual(planner.lane_count_for(2000.0, 9, cfg), 8)  # saturates at max
+        self.assertEqual(planner.lane_count_for(961.0, 9, cfg), 5)   # ceil(961/240)=5
+
+    def test_history_wins_over_baseline(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(make_repo(Path(tmp), ["AlphaTests"], []))
+            baseline = Path(tmp) / "baseline.json"
+            baseline.write_text(json.dumps({"classes": {"AlphaTests": 3.0}}), encoding="utf-8")
+            history = Path(tmp) / "history.json"
+            history.write_text(json.dumps({"classes": {"AlphaTests": 33.0}}), encoding="utf-8")
+            discovery = planner.discover_test_classes(str(root))
+            a = type("A", (), {"repo_root": str(root), "history": str(history),
+                               "baseline": str(baseline)})()
+            estimates, _warns, source = planner._load_history_or_baseline(a, discovery)
+            self.assertEqual(source, "timing history")
+            plan = planner.build_plan(discovery, default_cfg(), estimates)
+            self.assertEqual(plan["estimates"]["AlphaTests"], 33.0)
 
 
 class CliTests(unittest.TestCase):
