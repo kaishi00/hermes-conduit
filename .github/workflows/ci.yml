@@ -388,6 +388,9 @@ jobs:
 
       - name: Save updated timing history
         if: hashFiles('.ci-timing/timing-history.json') != ''
+        # Re-runs of the same workflow run reuse the run_number key; saving to
+        # an existing key is an acceptable no-op, not a failure.
+        continue-on-error: true
         uses: actions/cache/save@v4
         with:
           path: .ci-timing
