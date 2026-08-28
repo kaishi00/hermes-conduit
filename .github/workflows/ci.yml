@@ -144,17 +144,23 @@ jobs:
           python3 scripts/plan-tests.py audit-xctestrun \
             --xctestrun "$XCRUN_FILE" --workspace-root "$GITHUB_WORKSPACE"
 
+      - name: Prune intermediates from the products tree
+        run: |
+          set -euo pipefail
+          rm -rf "$DERIVED_DATA_PATH/Build/Intermediates.noindex" \
+                 "$DERIVED_DATA_PATH/Index" \
+                 "$DERIVED_DATA_PATH/Logs"
+
       - name: Upload build products (consumed by every lane)
+        # Relative path (mirrors the working metadata upload); the artifact
+        # keeps the Build/... structure, and lanes restore it under
+        # $DERIVED_DATA_PATH/Build so the .xctestrun's absolute paths hold.
         uses: actions/upload-artifact@v4
         with:
           name: build-products
-          path: "${{ env.DERIVED_DATA_PATH }}"
+          path: .ci-derived-data/Build
           retention-days: 1
           if-no-files-found: error
-          exclude: |
-            Build/Intermediates.noindex/**
-            Logs/**
-            Index/**
 
       - name: Upload build metadata
         if: always()
@@ -185,7 +191,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: build-products
-          path: "${{ env.DERIVED_DATA_PATH }}"
+          path: "${{ env.DERIVED_DATA_PATH }}/Build"
 
       - name: Verify restored .xctestrun paths
         run: |
@@ -252,7 +258,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: build-products
-          path: "${{ env.DERIVED_DATA_PATH }}"
+          path: "${{ env.DERIVED_DATA_PATH }}/Build"
 
       - name: Verify restored .xctestrun paths
         run: |
