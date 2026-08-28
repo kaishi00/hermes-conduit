@@ -737,7 +737,12 @@ private struct ChatSettingsDetail: View {
                     ResponseBehaviorSettings(initialMode: busyInputMode, save: persistBusyInputMode)
                 }
             ),
-            trailingSection: AnyView(DeviceHapticsSettings())
+            trailingSection: AnyView(
+                VStack(spacing: 14) {
+                    ComposerReturnKeySettings()
+                    DeviceHapticsSettings()
+                }
+            )
         )
         .navigationTitle("Chat")
         .task { options = await loadOptions() }
@@ -752,6 +757,30 @@ private struct ChatSettingsDetail: View {
         .init(key: "display.memory_notifications", label: "Self-improvement updates", help: "Choose whether Conduit follows Hermes, always shows, or never shows maintenance updates.", control: .labeledOptions([(value: "default", label: "Use Hermes default"), (value: "on", label: "Always show"), (value: "off", label: "Never show")], defaultValue: "default")),
         .init(key: "agent.image_input_mode", label: "Image attachments", help: "How Hermes supplies images to a model.", control: .options(["auto", "native", "text"], defaultValue: "auto")),
     ]
+}
+
+/// Local, device-only composer input preference. Stored in UserDefaults via
+/// @AppStorage; never part of the Hermes profile configuration.
+private struct ComposerReturnKeySettings: View {
+    @AppStorage(ComposerReturnKey.preferenceKey) private var returnKeySends = false
+
+    var body: some View {
+        ConduitSettingsSection(
+            title: "Keyboard",
+            symbol: "keyboard",
+            tint: .conduitAura
+        ) {
+            Text("Press Return to send. Use Shift-Return for a new line.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Text("Hardware keyboards only. The on-screen keyboard's Return key keeps inserting a new line.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Toggle("Return key sends", isOn: $returnKeySends)
+                .tint(.conduitAccent)
+                .accessibilityHint("Applies to hardware keyboards only. The on-screen keyboard's Return key is unchanged.")
+        }
+    }
 }
 
 private struct DeviceHapticsSettings: View {

@@ -27,6 +27,19 @@ struct ComposerPasteTextView: UIViewRepresentable {
     let onPastedImage: (PastedImage) -> Void
     let onPastedImageError: (String) -> Void
     let editorIdentity: UUID
+    /// Hardware-keyboard Return behavior. When true, a plain Return press
+    /// submits through the composer action path; Shift-Return and every
+    /// non-submittable state keep the default newline insertion.
+    var returnKeySends: Bool = false
+    /// Live composer verdict on whether the Return shortcut may currently
+    /// fire. ComposerBar computes this from the existing action state; the
+    /// text view never approximates it.
+    var canSubmitFromReturn: Bool = false
+    /// Invoked on the main thread when a Return press classifies as submit.
+    /// Returns whether the composer actually acted: only then is the Return
+    /// press consumed; a declined action keeps the default text behavior.
+    /// ComposerBar stays the owner of the actual send/steer/interrupt action.
+    var onSubmitFromReturn: (() -> Bool)? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -53,6 +66,9 @@ struct ComposerPasteTextView: UIViewRepresentable {
         }
         view.onPastedImage = onPastedImage
         view.onPastedImageError = onPastedImageError
+        view.returnKeySends = returnKeySends
+        view.canSubmitFromReturn = canSubmitFromReturn
+        view.onSubmitFromReturn = onSubmitFromReturn
         return view
     }
 
@@ -71,6 +87,9 @@ struct ComposerPasteTextView: UIViewRepresentable {
         }
         uiView.onPastedImage = onPastedImage
         uiView.onPastedImageError = onPastedImageError
+        uiView.returnKeySends = returnKeySends
+        uiView.canSubmitFromReturn = canSubmitFromReturn
+        uiView.onSubmitFromReturn = onSubmitFromReturn
         uiView.setNeedsLayout()
         if isFocused, !uiView.isFirstResponder { uiView.becomeFirstResponder() }
         if !isFocused, uiView.isFirstResponder { uiView.resignFirstResponder() }
@@ -136,6 +155,9 @@ struct ComposerPasteTextView: UIViewRepresentable {
                 textView.onContentHeightChange = nil
                 textView.onPastedImage = nil
                 textView.onPastedImageError = nil
+                textView.returnKeySends = false
+                textView.canSubmitFromReturn = false
+                textView.onSubmitFromReturn = nil
             }
             if textView.isFirstResponder {
                 textView.resignFirstResponder()
@@ -159,6 +181,147 @@ final class ImagePasteTextView: UITextView {
     var minimumReportedHeight: CGFloat = 44
     var maximumReportedHeight: CGFloat = 160
     private var lastReportedHeight: CGFloat = 0
+
+    // Hardware-keyboard Return shortcut. pressesBegan only classifies the
+    // keystroke; the send-vs-newline policy lives in ComposerReturnKey and
+    // the actual composer action stays in ComposerBar. The software
+    // keyboard's Return key does not produce UIPress events, so it keeps its
+    // existing newline behavior untouched.
+    var returnKeySends = false
+    var canSubmitFromReturn = false
+    var onSubmitFromReturn: (() -> Bool)?
+    /// Ground-truth Shift state folded from the keyboard's own Shift press
+    /// events. Some Bluetooth keyboards report chord modifiers with a lag on
+    /// the event/key modifier surfaces, so the physical Shift press itself is
+    /// tracked as well. Left and right Shift are tracked independently so a
+    /// released key cannot clear a still-held second Shift.
+    private var heldShiftKeys: Set<UIKeyboardHIDUsage> = []
+    private var hardwareShiftHeld: Bool { !heldShiftKeys.isEmpty }
+
+    override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        foldHardwareShift(presses, pressed: true)
+        var forwarding = presses
+        if let returnPress = presses.first(where: { Self.isReturnKeyPress($0) }) {
+            let shiftPressed = hardwareShiftHeld
+                || Self.shiftIsPressed(event: event, key: returnPress.key)
+                || Self.shiftIsHeld(in: event?.allPresses ?? [])
+            // Consume only the Return press, and only when the composer
+            // actually acted. Every other case (setting off, Shift-Return,
+            // marked text / IME composition, non-submittable composer,
+            // declined callback) is forwarded with the remaining presses so
+            // UIKit's normal text-input behavior is preserved.
+            if handleReturnKeyPress(shiftPressed: shiftPressed) {
+                forwarding.remove(returnPress)
+            }
+        }
+        if !forwarding.isEmpty {
+            super.pressesBegan(forwarding, with: event)
+        }
+    }
+
+    override func pressesEnded(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        foldHardwareShift(presses, pressed: false)
+        // Forward the original set: UIKit tracks press lifecycle across the
+        // whole sequence, not just the keys this shortcut cares about.
+        super.pressesEnded(presses, with: event)
+    }
+
+    override func pressesCancelled(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        // A cancelled sequence (e.g. the system ends chord tracking) must
+        // release tracked Shift state exactly like a normal key-up, or the
+        // shortcut would keep believing Shift is held.
+        foldHardwareShift(presses, pressed: false)
+        // Forward the original set: UIKit tracks press lifecycle across the
+        // whole sequence, not just the keys this shortcut cares about.
+        super.pressesCancelled(presses, with: event)
+    }
+
+    /// Whether any currently-down Shift press exists anywhere in the press
+    /// event. Covers keyboards that deliver the Shift key-down in a separate,
+    /// later event than Return, where the per-press modifiers and the local
+    /// fold would not yet show the chord.
+    static func shiftIsHeld(in presses: Set<UIPress>) -> Bool {
+        presses.contains { press in
+            press.key?.keyCode == .keyboardLeftShift || press.key?.keyCode == .keyboardRightShift
+        }
+    }
+
+    override func resignFirstResponder() -> Bool {
+        // A focus change mid-chord means the key-up will go to a different
+        // responder; drop the tracked Shift so the next plain Return is not
+        // misread as Shift-Return.
+        heldShiftKeys.removeAll()
+        return super.resignFirstResponder()
+    }
+
+    /// Folds physical Shift presses into the tracked chord state. Cancellations
+    /// are treated like key-ups: the press is no longer held either way.
+    private func foldHardwareShift(_ presses: Set<UIPress>, pressed: Bool) {
+        heldShiftKeys = Self.updatedShiftState(
+            heldShiftKeys,
+            keyCodes: Set(presses.compactMap { $0.key?.keyCode }),
+            isPressed: pressed
+        )
+    }
+
+    /// Pure Shift-chord state transition over key codes, extracted so the
+    /// begin/end/cancel bookkeeping is unit-testable without synthesizing
+    /// UIPress events. Unknown key codes are ignored; cancellations and
+    /// key-ups both release their keys.
+    static func updatedShiftState(
+        _ held: Set<UIKeyboardHIDUsage>,
+        keyCodes: Set<UIKeyboardHIDUsage>,
+        isPressed: Bool
+    ) -> Set<UIKeyboardHIDUsage> {
+        let shiftCodes: Set<UIKeyboardHIDUsage> = [.keyboardLeftShift, .keyboardRightShift]
+        let touched = keyCodes.intersection(shiftCodes)
+        return isPressed ? held.union(touched) : held.subtracting(touched)
+    }
+
+    /// Applies the Return shortcut policy for one Return key press and
+    /// reports whether the press was consumed as a submit. While the text
+    /// view holds IME marked text, Return belongs to the composition and the
+    /// shortcut always declines. Consumption additionally requires the
+    /// composer's callback to report that it acted; anything else returns
+    /// false so the caller forwards the press. Internal so tests can drive
+    /// the exact pressesBegan branch without synthesizing UIPress or UIKey
+    /// events (neither exposes an initializer).
+    @discardableResult
+    func handleReturnKeyPress(shiftPressed: Bool) -> Bool {
+        handleReturnKeyPress(shiftPressed: shiftPressed, hasMarkedText: markedTextRange != nil)
+    }
+
+    /// Test seam for the same decision path with the marked-text state passed
+    /// explicitly, since a live IME composition cannot be synthesized in unit
+    /// tests.
+    func handleReturnKeyPress(shiftPressed: Bool, hasMarkedText: Bool) -> Bool {
+        let decision = ComposerReturnKey.decision(
+            returnKeySends: returnKeySends,
+            shiftPressed: shiftPressed,
+            hasMarkedText: hasMarkedText,
+            canSubmit: canSubmitFromReturn
+        )
+        guard decision == .submit, let onSubmit = onSubmitFromReturn else { return false }
+        return onSubmit()
+    }
+
+    /// Pure keystroke classification for hardware Return presses. Covers the
+    /// main Return key plus the keypad/alternate Enter keys on extended
+    /// keyboards, so every physical Enter variant behaves consistently.
+    static func isReturnKeyPress(_ press: UIPress) -> Bool {
+        guard let keyCode = press.key?.keyCode else { return false }
+        return keyCode == .keyboardReturnOrEnter
+            || keyCode == .keyboardReturn
+            || keyCode == .keypadEnter
+    }
+
+    /// Shift detection for a Return press. UIPressesEvent and UIKey can
+    /// report modifiers independently, so both sources are consulted; either
+    /// reporting Shift means the user wants a newline.
+    static func shiftIsPressed(event: UIPressesEvent?, key: UIKey?) -> Bool {
+        (event?.modifierFlags.contains(.shift) ?? false)
+            || (key?.modifierFlags.contains(.shift) ?? false)
+    }
 
     override init(frame: CGRect, textContainer: NSTextContainer?) {
         super.init(frame: frame, textContainer: textContainer)
