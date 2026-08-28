@@ -76,7 +76,7 @@ fi
 # Lane membership comes from the readable shard file; each class becomes one
 # -only-testing:<target>/<class> argument.
 CLASSES=()
-while read -r lane cls; do
+while read -r lane cls _; do
   case "$lane" in ''|'#'*) continue ;; esac
   # A lane with no class would generate a bogus -only-testing:<target>/ arg.
   if [ -z "$cls" ]; then
@@ -217,6 +217,9 @@ run_with_deadline() {
 # the erase escalation targets — so they must not silently consume the job
 # cap. stdout+stderr are captured into $BOUNDED_OUTPUT; the return value is
 # the command's status, or 124 when the deadline killed it.
+# NOTE: BOUNDED_OUTPUT is set in the CALLER's shell — readable after a plain
+# call, but NOT across a $( ) subshell boundary (simulator_udid consumes it
+# inside its own). Keep that constraint in mind when adding call sites.
 BOUNDED_OUTPUT=""
 bounded_run() {
   local budget="$1"
@@ -240,6 +243,9 @@ bounded_run() {
       done
       kill -KILL -- "-$runner" 2>/dev/null || kill -KILL "$runner" 2>/dev/null || true
       wait "$runner" 2>/dev/null
+      # Best-effort: keep whatever the killed command already wrote so
+      # callers (e.g. timeout diagnostics) can preserve partial output.
+      BOUNDED_OUTPUT="$(cat "$outfile" 2>/dev/null)"
       rm -f "$outfile"
       return 124
     fi
@@ -291,22 +297,22 @@ reset_and_boot_simulator() {
   # CoreSimulatorService must cost a bounded warning, not the whole job cap.
   # On any bound/degrade the retry still happens — xcodebuild boots the
   # destination itself.
-  bounded_run 60 xcrun simctl shutdown all >/dev/null 2>&1 || true
+  bounded_run 60 xcrun simctl shutdown all || true
   if [ "$erase" -eq 1 ]; then
     echo "::warning::previous attempt timed out — erasing simulator before retry"
     if udid=$(simulator_udid); then
-      bounded_run 180 xcrun simctl erase "$udid" >/dev/null 2>&1 || true
+      bounded_run 180 xcrun simctl erase "$udid" || true
     else
       echo "::warning::could not resolve simulator UDID for erase — retrying without erase"
     fi
   fi
   sleep 3
   if udid=$(simulator_udid); then
-    bounded_run 60 xcrun simctl boot "$udid" >/dev/null 2>&1 || true
+    bounded_run 60 xcrun simctl boot "$udid" || true
     # Wait for a complete boot before handing the device to xcodebuild; a
     # half-booted simulator wedges tests. bootstatus bounds itself with
     # -t 180; the outer bound catches bootstatus itself hanging.
-    bounded_run 200 xcrun simctl bootstatus "$udid" -b -t 180 >/dev/null 2>&1 || true
+    bounded_run 200 xcrun simctl bootstatus "$udid" -b -t 180 || true
   else
     echo "::warning::could not resolve simulator UDID — letting xcodebuild boot the destination itself"
   fi
@@ -348,7 +354,7 @@ for attempt in $(seq 1 "$ATTEMPTS"); do
     # Fresh runner VMs start with devices shut down and clean; a blanket
     # shutdown is cheap and guarantees xcodebuild cold-boots the destination.
     # No simctl enumeration on the happy path.
-    xcrun simctl shutdown all >/dev/null 2>&1 || true
+    bounded_run 60 xcrun simctl shutdown all || true # bounded: a wedged CoreSimulatorService must not stall the lane before attempt 1
   else
     bundle="TestResults-retry.xcresult"
     # A wedged or half-booted simulator is the one failure mode an in-test
@@ -380,7 +386,23 @@ for attempt in $(seq 1 "$ATTEMPTS"); do
   # capture device state and leave the partial result bundle for upload.
   if [ "$status" -eq 124 ]; then
     erase_before_retry=1
-    xcrun simctl list devices > "$LOG_DIR/simctl-devices-after-timeout-attempt-${attempt}.txt" 2>&1 || true
+    # Best-effort failure-only diagnostics: this runs right after a
+    # simulator/test timeout — exactly when CoreSimulatorService is most
+    # likely unhealthy — so it is deadline-bounded and must never delay the
+    # shard-local retry. Partial output from a killed dump is preserved.
+    diag="$LOG_DIR/simctl-devices-after-timeout-attempt-${attempt}.txt"
+    diag_status=0
+    bounded_run 45 xcrun simctl list devices || diag_status=$?
+    # Always materialize the artifact (even an empty capture) so the failure
+    # bundle is consistent.
+    printf '%s\n' "${BOUNDED_OUTPUT:-<no output captured before failure/deadline>}" > "$diag"
+    if [ "$diag_status" -ne 0 ]; then
+      if [ "$diag_status" -eq 124 ]; then
+        echo "::warning::timeout diagnostic 'simctl list devices' did not complete within 45s — partial output in $diag; continuing to retry"
+      else
+        echo "::warning::timeout diagnostic 'simctl list devices' failed (exit $diag_status) — output in $diag; continuing to retry"
+      fi
+    fi
   fi
 done
 
