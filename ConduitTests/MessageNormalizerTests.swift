@@ -1170,11 +1170,163 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertTrue(MessageNormalizer.hasCompactionSummaryPrefix(
             "\n\t  [context summary]: legacy opening\n" + hugeTail
         ))
+        XCTAssertTrue(MessageNormalizer.hasCompactionSummaryPrefix(
+            "[Recent Summary (d0, node 342)]\n" + hugeTail
+        ))
+        // The Recent Summary anchor includes the opening parenthesis, so a
+        // different bracketed notice with the same words stays visible.
+        XCTAssertFalse(MessageNormalizer.hasCompactionSummaryPrefix(
+            "[Recent Summary quoted without the node anchor]?\n" + hugeTail
+        ))
         XCTAssertFalse(MessageNormalizer.hasCompactionSummaryPrefix(
             "Can you explain how context compaction works?\n" + hugeTail
         ))
         XCTAssertFalse(MessageNormalizer.hasCompactionSummaryPrefix("   \n\t"))
         XCTAssertFalse(MessageNormalizer.hasCompactionSummaryPrefix(""))
+    }
+
+    // MARK: - Hermes "Recent Summary" headers (third compaction generation)
+
+    func testPersistedRecentSummaryHeaderIsOmittedForUserRecord() {
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(101),
+                "role": .string("user"),
+                "content": .string("[Recent Summary (d0, node 342)]\nEarlier the user asked about the deploy pipeline.")
+            ])
+        ])
+
+        XCTAssertTrue(messages.isEmpty)
+    }
+
+    func testPersistedRecentSummaryHeaderIsOmittedRegardlessOfRole() {
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(102),
+                "role": .string("assistant"),
+                "content": .string("[Recent Summary (d0, node 342)]\nSummary of the assistant's prior turns.")
+            ])
+        ])
+
+        XCTAssertTrue(messages.isEmpty)
+    }
+
+    func testRecentSummaryHeaderWithLeadingWhitespaceIsOmitted() {
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(103),
+                "role": .string("user"),
+                "content": .string("   \n\t[Recent Summary (d0, node 342)]\nSummary follows.")
+            ])
+        ])
+
+        XCTAssertTrue(messages.isEmpty)
+    }
+
+    func testRecentSummaryHeaderAcceptsArbitraryDepthAndNodeNumbers() {
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(104),
+                "role": .string("user"),
+                "content": .string("[Recent Summary (d1, node 17)]\nSummary A.")
+            ]),
+            .object([
+                "id": .number(105),
+                "role": .string("assistant"),
+                "content": .string("[Recent Summary (d12, node 9001)]\nSummary B.")
+            ])
+        ])
+
+        XCTAssertTrue(messages.isEmpty)
+    }
+
+    func testRecentSummaryHeaderIsCaseInsensitive() {
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(106),
+                "role": .string("user"),
+                "content": .string("[recent summary (d0, node 342)]\nSummary follows.")
+            ])
+        ])
+
+        XCTAssertTrue(messages.isEmpty)
+    }
+
+    func testOrdinaryRecentSummaryDiscussionIsNotHidden() {
+        let content = "Can you explain what [Recent Summary (d0, node 342)] means?"
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(107),
+                "role": .string("user"),
+                "content": .string(content)
+            ])
+        ])
+
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages[0].role, .user)
+        XCTAssertEqual(messages[0].content, content)
+    }
+
+    func testRecentSummaryMentionLaterInMessageIsNotHidden() {
+        // Detection stays start-anchored: a header quoted later inside a
+        // normal message belongs to the user's own text.
+        let content = "My transcript shows a header like\n"
+            + "[Recent Summary (d0, node 342)]\n"
+            + "mid-session — what produces it?"
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(108),
+                "role": .string("user"),
+                "content": .string(content)
+            ])
+        ])
+
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages[0].role, .user)
+        XCTAssertEqual(messages[0].content, content)
+    }
+
+    func testLargeRecentSummaryNeverReachesChatMessages() {
+        // A multi-megabyte Recent Summary must be dropped by the bounded
+        // prefix check alone — no flag, no merged delimiter in the body —
+        // so it never reaches the Markdown/UI rendering pipeline.
+        let hugeSummary = "[Recent Summary (d2, node 1188)]\n"
+            + String(repeating: "The session covered implementation details and open questions. ", count: 30_000)
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(109),
+                "role": .string("user"),
+                "content": .string(hugeSummary)
+            ]),
+            .object([
+                "id": .number(110),
+                "role": .string("assistant"),
+                "content": .string("Still here after the recent summary was dropped.")
+            ])
+        ])
+
+        XCTAssertEqual(messages.map(\.role), [.assistant])
+        XCTAssertEqual(messages.first?.content, "Still here after the recent summary was dropped.")
+    }
+
+    func testMergedRecentSummaryBehindWrapperNeverReachesChatMessages() {
+        // Second compaction: a merged row whose retained prefix is itself a
+        // generation-3 summary must be dropped after the delimiter split,
+        // not kept as a visible bubble above the newest summary.
+        let merged = "[PRIOR CONTEXT — for reference only; not a new message]\n"
+            + "[Recent Summary (d0, node 342)]\n"
+            + "Earlier turns, compacted.\n"
+            + "[END OF PRIOR CONTEXT — COMPACTION SUMMARY BELOW]\n"
+            + "Newest compacted turns."
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(111),
+                "role": .string("user"),
+                "content": .string(merged)
+            ])
+        ])
+
+        XCTAssertTrue(messages.isEmpty)
     }
 
     func testInterruptedIdenticalCorrectionDoesNotCreateASecondUserBubble() {

@@ -1664,8 +1664,8 @@ enum MessageNormalizer {
     private static let priorContextWrapperHeader =
         "[PRIOR CONTEXT — for reference only; not a new message]"
 
-    /// Hermes emits two generations of compaction headers, and the reload
-    /// path can drop the `_compressed_summary` flag while keeping the
+    /// Hermes emits multiple generations of compaction headers, and the
+    /// reload path can drop the `_compressed_summary` flag while keeping the
     /// recognizable text. Match case-insensitively like the other Hermes
     /// bracketed notices, anchored at the start of the content so ordinary
     /// discussion of "context compaction" is never mistaken for a summary.
@@ -1680,6 +1680,7 @@ enum MessageNormalizer {
         let head = content[headStart...].prefix(32).lowercased()
         return head.hasPrefix("[context compaction")
             || head.hasPrefix("[context summary]:")
+            || head.hasPrefix("[recent summary (")
     }
 
     /// Normalizes the gateway's native clarification event. Current Hermes
