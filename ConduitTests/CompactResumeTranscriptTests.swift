@@ -278,13 +278,199 @@ final class CompactResumeTranscriptTests: XCTestCase {
         )
     }
 
-    func testLegacyFallbackHydratesSessionExceedingTransportBound() async throws {
-        // The issue-sanctioned legacy fallback (history source unavailable)
-        // must deterministically hydrate a transcript far larger than the new
-        // 4 MiB socket bound as well: the durable rows arrive through the
-        // fallback resume, and the assertion proves the fixture really is
-        // bigger than the transport bound without pushing traffic over a
-        // live WebSocket.
+    /// Drives one reconciliation against a history source that fails with
+    /// `failure` and asserts the transient-failure contract: the session
+    /// still opens via exactly one legacy resume, and the fallback can never
+    /// cascade (the legacy call itself never triggers a second one).
+    private func assertTransientHistoryFailureFallsBackExactlyOnce(
+        _ failure: Error,
+        expectedLegacyContent: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async throws {
+        let recorder = ResumeCallRecorder()
+        let active = session("stored-transient")
+        let harness = try makeHarness(
+            openSession: { _, sessionID, compact in
+                recorder.record(sessionID: sessionID, compact: compact)
+                if compact {
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                }
+                return SessionResumeResult(
+                    sessionId: sessionID,
+                    messages: [
+                        ChatMessage(
+                            id: "legacy-1",
+                            role: .assistant,
+                            content: expectedLegacyContent,
+                            timestamp: "2026-09-01T08:00:00Z"
+                        )
+                    ],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { _, _ in .failed(failure) }
+        )
+        harness.appState.sessions = [active]
+
+        let opened = await harness.appState.openSession("stored-transient")
+
+        XCTAssertTrue(opened, "\(failure) must fall back instead of failing the resume", file: file, line: line)
+        XCTAssertEqual(
+            recorder.calls.map { $0.compact },
+            [true, false],
+            "\(failure) must trigger exactly one legacy resume",
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(
+            harness.appState.messages.map { $0.content },
+            [expectedLegacyContent],
+            file: file,
+            line: line
+        )
+    }
+
+    func testTransientHistoryFailuresFallBackExactlyOnce() async throws {
+        // 429 / 5xx / status-0 WebKit failures / bridge readiness-timeout are
+        // temporary availability problems: preserve session access through
+        // exactly one legacy resume instead of failing the restore.
+        let transientFailures: [Error] = [
+            DashboardTicketBridgeError.http(status: 429, detail: "Too Many Requests"),
+            DashboardTicketBridgeError.http(status: 500, detail: "Internal error"),
+            DashboardTicketBridgeError.http(status: 503, detail: "Service Unavailable"),
+            DashboardTicketBridgeError.http(status: 0, detail: "Failed to fetch"),
+            DashboardTicketBridgeError.notReady,
+        ]
+        for failure in transientFailures {
+            try await assertTransientHistoryFailureFallsBackExactlyOnce(
+                failure,
+                expectedLegacyContent: "Legacy transcript"
+            )
+        }
+    }
+
+    func testStructuralHistoryEndpointGapsFallBackExactlyOnce() async throws {
+        // Gateways predating the history endpoint fall back cleanly as well.
+        for status in [404, 410, 501] {
+            try await assertTransientHistoryFailureFallsBackExactlyOnce(
+                DashboardTicketBridgeError.http(status: status, detail: "missing endpoint"),
+                expectedLegacyContent: "Legacy transcript"
+            )
+        }
+    }
+
+    func testDelayedHistoryHydrationAvoidsLegacyResume() async throws {
+        // A history source that is not usable at the instant reconciliation
+        // starts but becomes usable inside the bounded readiness window
+        // hydrates normally — the legacy resume must not fire.
+        let recorder = ResumeCallRecorder()
+        let active = session("stored-a", alternateIDs: ["runtime-a"])
+        let harness = try makeHarness(
+            openSession: { _, sessionID, compact in
+                recorder.record(sessionID: sessionID, compact: compact)
+                return SessionResumeResult(
+                    sessionId: "runtime-a",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { _, _ in
+                try? await Task.sleep(for: .milliseconds(150))
+                return .payload([
+                    "session_id": "stored-a",
+                    "messages": [[
+                        "id": 1,
+                        "role": "user",
+                        "content": "Late hydration",
+                        "timestamp": "2026-09-01T10:00:00Z"
+                    ]]
+                ])
+            }
+        )
+        harness.appState.sessions = [active]
+
+        let opened = await harness.appState.openSession("stored-a")
+
+        XCTAssertTrue(opened)
+        XCTAssertEqual(
+            recorder.calls.map { $0.compact },
+            [true],
+            "Hydration that succeeds inside the bounded window must not trigger the legacy resume"
+        )
+        XCTAssertEqual(harness.appState.messages.first?.content, "Late hydration")
+    }
+
+    func testColdDashboardBridgeStillBeginsWithCompactResume() async throws {
+        // Regression for the cold-launch hole: a dashboard bridge that exists
+        // but is not ready yet must NOT push the resume onto the legacy
+        // full-transcript path immediately. The resume begins compact, the
+        // transcript fetch waits inside requestJSON's bounded readiness poll,
+        // and a bridge that never becomes usable degrades to exactly one
+        // legacy resume. A modern gateway therefore never receives a legacy
+        // full-transcript request just because the bridge was cold.
+        let recorder = ResumeCallRecorder()
+        let active = session("stored-cold")
+        let harness = try makeHarness(
+            openSession: { _, sessionID, compact in
+                recorder.record(sessionID: sessionID, compact: compact)
+                return SessionResumeResult(
+                    sessionId: sessionID,
+                    messages: [
+                        ChatMessage(
+                            id: "restored",
+                            role: .assistant,
+                            content: "Restored",
+                            timestamp: "1"
+                        )
+                    ],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            additionalOperations: { ops in
+                ops.connectClient = { _ in }
+                ops.loadCatalog = { _, _ in [active] }
+                ops.loadProfiles = {}
+                ops.loadBusyInputMode = { _ in }
+                ops.loadProfileDisplayPreferences = {}
+                ops.loadSlashCommands = {}
+            }
+        )
+        harness.coordinator.rememberSessionID(active.id, for: "default")
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+
+        await harness.appState.connect(
+            with: HermesConnection(baseUrl: "https://one.example", ticket: "cold-ticket")
+        )
+
+        XCTAssertTrue(harness.appState.isConnected)
+        XCTAssertEqual(
+            recorder.calls.map { $0.compact },
+            [true, false],
+            "A cold bridge must begin compact and fall back to at most one legacy resume"
+        )
+        XCTAssertEqual(harness.appState.messages.map { $0.content }, ["Restored"])
+    }
+
+    func testLegacyFallbackMergeHandlesLargeTranscriptAtAppStateLevel() async throws {
+        // AppState-merge-level scope ONLY: this injects a large transcript
+        // through the lifecycle seam, bypassing HermesClient, JSON-RPC
+        // serialization, and URLSessionWebSocketTask entirely. It proves the
+        // reconciliation and merge layers handle a big transcript without
+        // duplication — it makes NO claim about transport size.
+        //
+        // Transport bound: a legacy resume response larger than the 4 MiB
+        // `URLSessionWebSocketTask.maximumMessageSize` cannot traverse the
+        // socket at all (verified by
+        // HermesClientTests/testProductionTransportRaisesWebSocketMessageLimit).
+        // The supported path for transcripts of that scale is the compact
+        // resume + REST hydration
+        // (testLargeSessionResumeShipsNoTranscriptOverWebSocket).
         let filler = String(repeating: "x", count: 10_000)
         let recorder = ResumeCallRecorder()
         let count = 450
@@ -296,9 +482,11 @@ final class CompactResumeTranscriptTests: XCTestCase {
                 timestamp: "2026-09-01T10:\(String(format: "%02d", index % 60)):00Z"
             )
         }
+        // The fixture is deliberately large so any row loss or duplication in
+        // the merge path is observable at scale.
         let payloadBytes = legacyMessages
             .reduce(0) { $0 + $1.content.utf8.count }
-        XCTAssertGreaterThan(payloadBytes, 4 * 1024 * 1024, "The fixture must exceed the new transport bound")
+        XCTAssertGreaterThan(payloadBytes, 4 * 1024 * 1024)
 
         let active = session("stored-gateway-old")
         let harness = try makeHarness(
@@ -394,29 +582,41 @@ final class CompactResumeTranscriptTests: XCTestCase {
 
     // MARK: - Unavailable-source classification
 
-    func testHistorySourceUnavailableClassificationMatchesOnlyUsableSourceGaps() {
-        // Structural endpoint gaps and a not-yet-usable bridge fall back to
-        // the legacy resume…
+    func testHistorySourceUnavailableClassification() {
+        // Structural endpoint gaps fall back to the legacy resume…
+        for status in [404, 410, 501] {
+            XCTAssertTrue(
+                AppState.historySourceIsUnavailable(
+                    DashboardTicketBridgeError.http(status: status, detail: "missing")
+                ),
+                "status \(status) must be classified as unavailable"
+            )
+        }
+        // …as do transient availability problems: rate limiting, any 5xx,
+        // status-0 WebKit/network failures, and a bridge (or request) that
+        // outlived its bounded readiness strategy.
         XCTAssertTrue(AppState.historySourceIsUnavailable(
-            DashboardTicketBridgeError.http(status: 404, detail: "Not Found")
+            DashboardTicketBridgeError.http(status: 429, detail: "Too Many Requests")
         ))
+        for status in [500, 502, 503, 504] {
+            XCTAssertTrue(
+                AppState.historySourceIsUnavailable(
+                    DashboardTicketBridgeError.http(status: status, detail: "server error")
+                ),
+                "status \(status) must be classified as unavailable"
+            )
+        }
         XCTAssertTrue(AppState.historySourceIsUnavailable(
-            DashboardTicketBridgeError.http(status: 410, detail: "Gone")
-        ))
-        XCTAssertTrue(AppState.historySourceIsUnavailable(
-            DashboardTicketBridgeError.http(status: 501, detail: "Not Implemented")
+            DashboardTicketBridgeError.http(status: 0, detail: "Failed to fetch")
         ))
         XCTAssertTrue(AppState.historySourceIsUnavailable(DashboardTicketBridgeError.notReady))
-        // …while transient or environmental failures do not.
-        XCTAssertFalse(AppState.historySourceIsUnavailable(
-            DashboardTicketBridgeError.http(status: 500, detail: "Internal error")
-        ))
-        XCTAssertFalse(AppState.historySourceIsUnavailable(
-            DashboardTicketBridgeError.http(status: 0, detail: "network failure")
-        ))
+        // Authentication and unclassified failures must surface instead.
         XCTAssertFalse(AppState.historySourceIsUnavailable(DashboardTicketBridgeError.signInRequired))
         XCTAssertFalse(AppState.historySourceIsUnavailable(
-            DashboardTicketBridgeError.requestFailed("Dashboard request failed (500).")
+            DashboardTicketBridgeError.http(status: 400, detail: "Bad Request")
+        ))
+        XCTAssertFalse(AppState.historySourceIsUnavailable(
+            DashboardTicketBridgeError.requestFailed("Could not encode dashboard request.")
         ))
     }
 
@@ -424,8 +624,9 @@ final class CompactResumeTranscriptTests: XCTestCase {
 
     private func makeHarness(
         openSession: @escaping @MainActor (HermesClient, String, Bool) async throws -> SessionResumeResult,
-        persistedTranscript: (@MainActor (String, String) async -> PersistedTranscriptFetchOutcome)? = nil
-    ) throws -> (appState: AppState, defaults: UserDefaults) {
+        persistedTranscript: (@MainActor (String, String) async -> PersistedTranscriptFetchOutcome)? = nil,
+        additionalOperations: (inout ChatResumeLifecycleOperations) -> Void = { _ in }
+    ) throws -> (appState: AppState, coordinator: ChatResumeCoordinator, defaults: UserDefaults) {
         let suite = "CompactResumeTranscriptTests.\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suite) else {
             throw FixtureError.unusableSuite
@@ -437,24 +638,25 @@ final class CompactResumeTranscriptTests: XCTestCase {
         }
         addTeardownBlock { cacheDefaults.removePersistentDomain(forName: cacheSuite) }
 
-        let store = ChatResumeStore(defaults: defaults)
+        var operations = ChatResumeLifecycleOperations(
+            openSession: openSession,
+            persistedTranscript: persistedTranscript
+        )
+        additionalOperations(&operations)
+        let coordinator = ChatResumeCoordinator(store: ChatResumeStore(defaults: defaults))
         let appState = AppState(
             defaults: defaults,
-            chatResumeCoordinator: ChatResumeCoordinator(store: store),
+            chatResumeCoordinator: coordinator,
             recoverySequence: ChatResumeRecoverySequence(),
             loadSavedConnection: false,
             clearSessionPresentationCache: {},
-            chatResumeLifecycleOperations: ChatResumeLifecycleOperations(
-                openSession: openSession,
-                persistedTranscript: persistedTranscript,
-                refreshContext: { _, _ in }
-            ),
+            chatResumeLifecycleOperations: operations,
             sessionPresentationCache: SessionPresentationCache(defaults: cacheDefaults)
         )
         let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
         appState.connection = connection
         appState.client = HermesClient(connection: connection, profile: "default")
-        return (appState, defaults)
+        return (appState, coordinator, defaults)
     }
 
     private func session(

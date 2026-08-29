@@ -1661,7 +1661,11 @@ final class AppStateChatResumeTests: XCTestCase {
         await connecting.value
 
         XCTAssertEqual(catalogLoadCount, 2)
-        XCTAssertEqual(openedSessionIDs, [active.id])
+        // The dashboard bridge created by connect() is cold, so the resume
+        // begins compact (omit_messages) and — the bridge never becoming
+        // ready inside the bounded readiness poll — degrades to exactly one
+        // legacy resume for the same session (issue #106 follow-up).
+        XCTAssertEqual(openedSessionIDs, [active.id, active.id])
         XCTAssertEqual(harness.appState.activeSessionId, active.id)
         XCTAssertEqual(harness.appState.messages, restoredMessages)
         XCTAssertTrue(harness.appState.isConnected)

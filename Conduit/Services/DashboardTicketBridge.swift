@@ -122,11 +122,15 @@ enum DashboardCookiePersistence {
 enum DashboardTicketBridgeError: LocalizedError {
     case notReady
     case signInRequired
+    /// Local/dashboard-message failures that never produced an HTTP status
+    /// (request encoding, ticket-mint details). HTTP failures travel as
+    /// `.http(status:detail:)` instead.
     case requestFailed(String)
     /// Non-auth HTTP failure carrying the gateway's status code, so callers
-    /// can recognize structural gaps (404/410/501 — e.g. a gateway without
-    /// the session-messages endpoint) and fall back deliberately instead of
-    /// treating them like transient server errors.
+    /// can recognize structural gaps (404/410 — e.g. a gateway without the
+    /// session-messages endpoint) and transient trouble (429/5xx/408, status
+    /// 0) and fall back deliberately instead of treating them like unrelated
+    /// server errors.
     case http(status: Int, detail: String)
 
     var errorDescription: String? {
@@ -195,9 +199,7 @@ final class DashboardTicketBridge: NSObject {
     let webView: WKWebView
     let cloudflareAccess: CloudflareAccessCredentials?
 
-    /// Readable so callers can pick a request strategy up front (e.g. skip a
-    /// compact resume that would depend on this bridge) without mutating it.
-    private(set) var isReady = false
+    private var isReady = false
     /// Whether the current dashboard page load has terminally failed (as
     /// opposed to still being in flight on a slow link). Retry logic only
     /// reloads a failed load — restarting an in-progress one would abort a

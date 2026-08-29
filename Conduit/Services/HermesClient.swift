@@ -426,6 +426,11 @@ final class HermesClient: ObservableObject {
     static let requestTimeout: TimeInterval = 30
     static let promptSubmitTimeout: TimeInterval = 180 // 3 minutes
     static let titleGenerationTimeout: TimeInterval = 90
+    /// The legacy full-transcript resume is the RPC most likely to carry the
+    /// largest payload over the slowest connections (issue #106 follow-up),
+    /// so it gets a bounded-but-generous budget instead of the ordinary
+    /// request timeout.
+    static let legacyResumeTimeout: TimeInterval = 60
 
     init(
         connection: HermesConnection,
@@ -781,9 +786,16 @@ final class HermesClient: ObservableObject {
     /// Resume variant that carries the persisted transcript inside the RPC
     /// response. Used when compact resume cannot be hydrated (missing bridge,
     /// a gateway without the history endpoint, or history rows that resolved
-    /// to a foreign session).
+    /// to a foreign session). Its response is the largest ordinary payload in
+    /// the app, so it uses the dedicated `legacyResumeTimeout`.
     func openSessionLegacy(_ sessionId: String) async throws -> SessionResumeResult {
         try await resumeSession(sessionId, omitMessages: false)
+    }
+
+    /// Compact responses are tiny, so they ride the ordinary request budget;
+    /// the legacy transcript response gets the generous bounded budget.
+    static func resumeTimeout(omitMessages: Bool) -> TimeInterval {
+        omitMessages ? requestTimeout : legacyResumeTimeout
     }
 
     private func resumeSession(_ sessionId: String, omitMessages: Bool) async throws -> SessionResumeResult {
@@ -795,7 +807,11 @@ final class HermesClient: ObservableObject {
         if omitMessages {
             params["omit_messages"] = true
         }
-        let result = try await rpc("session.resume", params: params)
+        let result = try await rpc(
+            "session.resume",
+            params: params,
+            timeout: Self.resumeTimeout(omitMessages: omitMessages)
+        )
         let object = result.objectValue ?? [:]
         let resolvedId = object["session_id"]?.stringValue ?? sessionId
         let messages = MessageNormalizer.normalizeMessages(

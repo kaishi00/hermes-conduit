@@ -204,6 +204,18 @@ final class HermesClientTests: XCTestCase {
         )
     }
 
+    func testLegacyResumeUsesDedicatedTimeoutBudget() {
+        // The legacy full-transcript resume carries the largest ordinary
+        // payload in the app, so it gets the bounded-but-generous 60 s
+        // budget; the compact resume rides the ordinary 30 s request
+        // timeout (issue #106 follow-up).
+        XCTAssertEqual(HermesClient.resumeTimeout(omitMessages: true), HermesClient.requestTimeout)
+        XCTAssertEqual(HermesClient.requestTimeout, 30)
+        XCTAssertEqual(HermesClient.resumeTimeout(omitMessages: false), HermesClient.legacyResumeTimeout)
+        XCTAssertEqual(HermesClient.legacyResumeTimeout, 60)
+        XCTAssertGreaterThan(HermesClient.legacyResumeTimeout, HermesClient.requestTimeout)
+    }
+
     func testOpenSessionRequestsCompactResumeWithoutTranscriptPayload() async throws {
         let transport = FakeTransport()
         let socket = FakeSocket()

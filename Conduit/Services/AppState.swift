@@ -2664,14 +2664,17 @@ final class AppState: ObservableObject {
             // response; the HTTP endpoint reads the timestamped rows from
             // state.db and hydrates the conversation instead.
             let bridge = dashboardTicketBridge
-            // Request the compact projection only when a history source can
-            // hydrate the transcript without a second round trip: a dashboard
-            // bridge that is ready to serve requests, or a test seam standing
-            // in for one. A cold bridge resumes with the transcript carried in
-            // the RPC response, exactly as pre-compact builds did — and so do
-            // the legacy fallbacks below (gateway without the history route),
-            // whose response size is bounded only by the socket limit.
-            let compactResume = chatResumeLifecycleOperations.persistedTranscript != nil || bridge?.isReady == true
+            // Prefer the compact projection whenever a history source exists
+            // to hydrate the transcript — the dashboard bridge, or a test seam
+            // standing in for one. A cold bridge does not change the flavor:
+            // requestJSON's bounded readiness poll (30 × 100 ms) waits for the
+            // page inside the concurrent transcript fetch, so the compact
+            // resume is never delayed by that wait, and a bridge still not
+            // usable afterwards degrades to the single legacy resume. The
+            // legacy resume — cold bridge, gateway without the history route —
+            // carries the transcript in the RPC response, whose size is
+            // bounded by the socket limit (the pre-compact behavior).
+            let compactResume = chatResumeLifecycleOperations.persistedTranscript != nil || bridge != nil
             async let resumedSession = openChatResumeSession(
                 sessionId,
                 using: client,
@@ -2680,8 +2683,7 @@ final class AppState: ObservableObject {
             async let transcriptOutcome = persistedTranscriptOutcome(
                 sessionId: sessionId,
                 profile: profile,
-                using: bridge,
-                enabled: compactResume
+                using: bridge
             )
 
             var result = try await resumedSession
@@ -6088,12 +6090,8 @@ final class AppState: ObservableObject {
     private func persistedTranscriptOutcome(
         sessionId: String,
         profile: String,
-        using bridge: DashboardTicketBridge?,
-        enabled: Bool
+        using bridge: DashboardTicketBridge?
     ) async -> PersistedTranscriptOutcome {
-        // The caller passes `enabled` false when the resume already carries
-        // the transcript (no hydration needed), so no history request runs.
-        guard enabled else { return .unavailable }
         let fetchOutcome: PersistedTranscriptFetchOutcome
         if let persistedTranscript = chatResumeLifecycleOperations.persistedTranscript {
             fetchOutcome = await persistedTranscript(sessionId, profile)
@@ -6104,21 +6102,13 @@ final class AppState: ObservableObject {
                     path: sessionMessagesPath(sessionId: sessionId, profile: profile)
                 ))
             } catch {
-                // Older gateways can omit the endpoint, and a freshly created
-                // (or reloading) bridge is not ready to serve requests yet.
-                // Both leave the resume without a usable history source, so
-                // the legacy resume that carries the transcript remains a
-                // safe fallback in those cases; unrelated failures must
-                // surface instead. Note the bridge caps REST response size
-                // (DataURLLimits.maxJSONResponseBytes), so an oversized
-                // transcript also surfaces here rather than silently
+                // requestJSON's readiness poll is the bounded wait for a cold
+                // or reloading bridge; whatever it raises is classified with
+                // the seam-sourced failures below. Note the bridge caps REST
+                // response size (DataURLLimits.maxJSONResponseBytes), so an
+                // oversized transcript also lands here rather than silently
                 // degrading the resume.
-                if Self.historySourceIsUnavailable(error) {
-                    sessionCatalogLog.debug("Persisted transcript endpoint unavailable for \(sessionId, privacy: .public)")
-                    return .unavailable
-                }
-                sessionCatalogLog.debug("Persisted transcript unavailable for \(sessionId, privacy: .public): \(error.localizedDescription, privacy: .public)")
-                return .failed(error)
+                fetchOutcome = .failed(error)
             }
         }
 
@@ -6126,6 +6116,17 @@ final class AppState: ObservableObject {
         case .unavailable:
             return .unavailable
         case .failed(let error):
+            // One classification for both the bridge fetch and the seam:
+            // structural endpoint gaps, a bridge that never became ready
+            // inside its bounded poll, and transient transport trouble
+            // (429, 5xx, status-0 WebKit/network failures, request timeouts)
+            // degrade to the single legacy resume; authentication and every
+            // other failure must surface instead of silently degrading.
+            if Self.historySourceIsUnavailable(error) {
+                sessionCatalogLog.debug("Persisted transcript unavailable for \(sessionId, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                return .unavailable
+            }
+            sessionCatalogLog.debug("Persisted transcript failed for \(sessionId, privacy: .public): \(error.localizedDescription, privacy: .public)")
             return .failed(error)
         case .payload(let response):
             // The dashboard server returns `messages`; the API-server variant
@@ -6146,17 +6147,29 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// A history source that is structurally absent (404/410/501 from the
-    /// history route) or not currently usable (the bridge's WebKit page is
-    /// still loading or reloading) cannot hydrate the transcript right now,
-    /// so the legacy resume is the correct fallback. Every other failure is
-    /// transient or environmental (network, auth, server error) and must
-    /// propagate instead of silently degrading the resume.
+    /// Classifies a history-fetch failure for the resume fallback. Everything
+    /// that leaves the resume without a usable transcript *right now*
+    /// degrades to the single legacy resume:
+    ///
+    ///  - structural endpoint gaps — 404/410 (the gateway predates the
+    ///    messages route);
+    ///  - a bridge that did not become ready within its bounded readiness
+    ///    poll, or a request that outlived its deadline (both funnel into
+    ///    `.notReady` by the bridge's error contract);
+    ///  - transient transport trouble — HTTP 408/429, any 5xx (which
+    ///    subsumes 501), and status 0 (WebKit-level network/abort failures,
+    ///    including response caps).
+    ///
+    /// Client-originated request/bridge timeouts always arrive through one of
+    /// the status-0/`.notReady` funnels above; other authentication (401/403 →
+    /// `.signInRequired`) and every unlisted error is a real failure that must
+    /// propagate instead of silently degrading the resume into a fallback.
     nonisolated static func historySourceIsUnavailable(_ error: Error) -> Bool {
         if case DashboardTicketBridgeError.notReady = error { return true }
         guard case let DashboardTicketBridgeError.http(status, _) = error else { return false }
         switch status {
-        case 404, 410, 501: return true
+        case 0, 404, 408, 410, 429: return true
+        case 500...599: return true
         default: return false
         }
     }
