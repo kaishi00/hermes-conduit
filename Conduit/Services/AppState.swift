@@ -2180,11 +2180,12 @@ final class AppState: ObservableObject {
         }
 
         do {
-            let ticket = try await NativeAuthClient(baseURL: credentials.baseURL, cloudflareAccess: KeychainHelper.loadCloudflareAccess(for: credentials.baseURL)).connect(
+            let authenticatedConnection = try await NativeAuthClient(baseURL: credentials.baseURL, cloudflareAccess: KeychainHelper.loadCloudflareAccess(for: credentials.baseURL)).connect(
                 username: credentials.username,
                 password: credentials.password
             )
-            await connect(with: HermesConnection(baseUrl: credentials.baseURL, ticket: ticket), profile: activeProfile)
+            authenticatedConnection.commitCookies()
+            await connect(with: HermesConnection(baseUrl: credentials.baseURL, ticket: authenticatedConnection.ticket), profile: activeProfile)
         } catch {
             // A rejected saved password falls back to the native login screen
             // without erasing it, allowing the user to correct the account.
@@ -3926,16 +3927,17 @@ final class AppState: ObservableObject {
                 if let credentials = KeychainHelper.loadCredentials(),
                    credentials.baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/")) == savedConnection.baseUrl.trimmingCharacters(in: CharacterSet(charactersIn: "/")) {
                     do {
-                        let ticket = try await NativeAuthClient(baseURL: credentials.baseURL, cloudflareAccess: KeychainHelper.loadCloudflareAccess(for: credentials.baseURL)).connect(
+                        let authenticatedConnection = try await NativeAuthClient(baseURL: credentials.baseURL, cloudflareAccess: KeychainHelper.loadCloudflareAccess(for: credentials.baseURL)).connect(
                             username: credentials.username,
                             password: credentials.password
                         )
                         guard refreshTransportContinuation() else { return }
+                        authenticatedConnection.commitCookies()
                         // URLSession and WebKit have separate cookie stores.
                         // Reload the bridge so it receives the fresh session.
                         dashboardTicketBridge?.reload()
                         await connect(
-                            with: HermesConnection(baseUrl: credentials.baseURL, ticket: ticket),
+                            with: HermesConnection(baseUrl: credentials.baseURL, ticket: authenticatedConnection.ticket),
                             profile: activeProfile,
                             syncPurpose: continuationPurpose,
                             cancelsResumeRestoration: false,
