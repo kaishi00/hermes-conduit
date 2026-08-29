@@ -28,5 +28,23 @@ Package.resolved
 TestResults*.xcresult
 ci-logs/
 
+# CI v2 local run directories (the CI workspace uses the same paths)
+ci-derived-data/
+ci-lane/
+ci-artifacts/
+ci-timing/
+ci-report/
+ci-update/
+.scratch-obs/
+__pycache__/
+
 # Agent-session artifacts (stray SDD reports previously leaked in via a PR)
 .superpowers/
+
+# Local agent workspace (machine-specific, not for the public repo)
+AGENTS.md
+.ios-test.json
+.dsh/
+.zcode/
+workflows/
+.test-runs/

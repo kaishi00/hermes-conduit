@@ -109,6 +109,39 @@ final class SettledMessageIsolationTests: XCTestCase {
         // first-mount transaction on a slow/cold runner otherwise lands
         // inside the window and reads as a spurious re-evaluation.
         drainUntil(2.0) { TranscriptPerf.settledMarkdownTextBodyEvaluations > 0 }
+        // The first body evaluation is followed by a late trait-sync commit
+        // on slow/cold runners; wait until the counters go quiet for over a
+        // second so that commit lands BEFORE the measurement window arms.
+        var quietFor: TimeInterval = 0
+        var settleElapsed: TimeInterval = 0
+        var lastTotal = TranscriptPerf.settledMarkdownTextBodyEvaluations
+            + TranscriptPerf.textKitMeasurementCalls
+            + TranscriptPerf.selectableTextViewUpdateCalls
+        let settleStep: TimeInterval = 0.1
+        var baselineSettled = false
+        while settleElapsed < 10 {
+            RunLoop.current.run(until: Date().addingTimeInterval(settleStep))
+            settleElapsed += settleStep
+            let current = TranscriptPerf.settledMarkdownTextBodyEvaluations
+                + TranscriptPerf.textKitMeasurementCalls
+                + TranscriptPerf.selectableTextViewUpdateCalls
+            if current == lastTotal {
+                quietFor += settleStep
+                if quietFor >= 1.2 {
+                    baselineSettled = true
+                    break
+                }
+            } else {
+                quietFor = 0
+                lastTotal = current
+            }
+        }
+        // Without a settled baseline the stay-at-zero assertion would race
+        // against the still-draining first-mount commit.
+        guard baselineSettled else {
+            XCTFail("counters never reached a quiet state; the measurement window would be meaningless on this runner")
+            return
+        }
         let initialSTVUpdates = TranscriptPerf.selectableTextViewUpdateCalls
         XCTAssertGreaterThan(TranscriptPerf.settledMarkdownTextBodyEvaluations, 0, "initial mount must render the markdown")
 

@@ -1,14 +1,31 @@
 name: CI
 
+# CI v2 - timing-aware dynamic test lanes for Hermes Conduit.
+#
+# Architecture (docs/CI.md):
+#   plan     (ubuntu, cheap)  validate inventory, run planner regression
+#                             tests, balance test classes into a dynamic
+#                             number of timing-weighted lanes, emit matrix.
+#   build    (macos, once)    build-for-testing exactly once into a
+#                             workspace-anchored DerivedData path; audit the
+#                             generated .xctestrun for absolute-path
+#                             portability; upload products as an artifact.
+#   unit/ui  (macos, matrix)  test-without-building from the downloaded
+#                             products; measured watchdogs; native flake
+#                             retry; hang isolation at class granularity.
+#   report   (ubuntu, always) aggregate lane results into the step summary.
+#   timing-history-update (main only) EWMA-merge fresh per-class timings into
+#                             the timing-history cache.
+#
+# A compilation failure fails the build job and never spawns test lanes.
+# Cancellation of superseded runs is preserved per-PR/per-branch.
+
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
 
-# Cancel superseded runs: one group per PR number (pull_request events) or per
-# branch ref (push events). Different PRs and different branches therefore
-# never cancel one another.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -17,117 +34,422 @@ permissions:
   contents: read
 
 env:
-  # Known simulator, used directly as the xcodebuild destination — no
-  # `simctl list` enumeration on the happy path. Name-only (no OS pin)
-  # tracks the newest iOS runtime on the runner image. macos-26 images ship
-  # the iPhone 17 family; if an image refresh renames devices, override here
-  # (failure steps dump the full device list to pick a new name from).
+  # Known simulator, used directly as the xcodebuild destination - no
+  # 'simctl list' enumeration on the happy path. macos-26 images ship the
+  # iPhone 17 family; override here if an image refresh renames devices.
   SIMULATOR_NAME: "iPhone 17 Pro"
+  # Workspace-anchored DerivedData: GITHUB_WORKSPACE is byte-identical across
+  # GitHub-hosted runners for this repo (/Users/runner/work/<repo>/<repo>),
+  # so absolute paths inside the .xctestrun stay valid after the artifact
+  # round-trip - no path rewriting involved.
+  DERIVED_DATA_PATH: "${{ github.workspace }}/ci-derived-data"
 
 jobs:
-  # Cheap guard before spending macOS minutes: every test class must be
-  # assigned to exactly one lane in scripts/test-shards.txt.
-  shard-check:
-    name: Shard coverage check
+  plan:
+    name: Plan & validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      matrix: "${{ steps.plan.outputs.matrix }}"
+      lane-count: "${{ steps.plan.outputs.lane-count }}"
+      ui-classes: "${{ steps.plan.outputs.ui-classes }}"
+      ui-estimates: "${{ steps.plan.outputs.ui-estimates }}"
+      ui-target: "${{ steps.plan.outputs.ui-target }}"
+      ui-predicted: "${{ steps.plan.outputs.ui-predicted }}"
+      ui-timeout: "${{ steps.plan.outputs.ui-timeout }}"
+      ui-job-timeout: "${{ steps.plan.outputs.ui-job-timeout }}"
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Restore timing history (read-only; PR runs never save it)
+        uses: actions/cache/restore@v4
+        with:
+          path: ci-timing
+          key: timing-history-v1-${{ github.run_number }}
+          restore-keys: |
+            timing-history-v1-
+
+      - name: Validate inventory + planner regression tests
+        run: |
+          set -euo pipefail
+          HISTORY_ARG=""
+          if [ -f ci-timing/timing-history.json ]; then
+            HISTORY_ARG="--history ci-timing/timing-history.json"
+          fi
+          # Cheap Linux guard: every discovered XCTestCase class must be
+          # planned exactly once (replaces the static shard-coverage check).
+          python3 scripts/plan-tests.py validate --repo-root . \
+            --baseline scripts/test-timings.json $HISTORY_ARG
+          python3 -m unittest discover -s scripts/tests -p 'test_*.py'
+
+      - name: Generate execution plan
+        id: plan
+        run: |
+          set -euo pipefail
+          HISTORY_ARG=""
+          if [ -f ci-timing/timing-history.json ]; then
+            HISTORY_ARG="--history ci-timing/timing-history.json"
+          fi
+          mkdir -p ci-artifacts
+          python3 scripts/plan-tests.py plan --repo-root . \
+            --baseline scripts/test-timings.json $HISTORY_ARG \
+            --out ci-artifacts/plan.json \
+            --matrix-out ci-artifacts/unit-matrix.json \
+            --summary-out ci-artifacts/plan-summary.md
+          echo "matrix=$(jq -c . ci-artifacts/unit-matrix.json)" >> "$GITHUB_OUTPUT"
+          echo "lane-count=$(jq -r '.lane_count' ci-artifacts/plan.json)" >> "$GITHUB_OUTPUT"
+          echo "ui-classes=$(jq -r '.ui_lane.classes | join(",")' ci-artifacts/plan.json)" >> "$GITHUB_OUTPUT"
+          echo "ui-estimates=$(jq -r '.ui_lane.class_estimates // ""' ci-artifacts/plan.json)" >> "$GITHUB_OUTPUT"
+          echo "ui-target=$(jq -r '.ui_lane.target // ""' ci-artifacts/plan.json)" >> "$GITHUB_OUTPUT"
+          echo "ui-predicted=$(jq -r '.ui_lane.predicted_s // 0' ci-artifacts/plan.json)" >> "$GITHUB_OUTPUT"
+          echo "ui-timeout=$(jq -r '.ui_lane.timeout_s // 600' ci-artifacts/plan.json)" >> "$GITHUB_OUTPUT"
+          echo "ui-job-timeout=$(jq -r '.ui_lane.job_timeout_min // 25' ci-artifacts/plan.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Plan summary
+        run: cat ci-artifacts/plan-summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: plan
+          path: ci-artifacts/
+          retention-days: 7
+
+  build:
+    name: Build test products
+    needs: plan
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build for testing (exactly once)
+        env:
+          BUILD_TIMEOUT_SECS: 900
+        run: bash scripts/ci-build-for-testing.sh
+
+      - name: Audit .xctestrun portability
+        run: |
+          set -euo pipefail
+          XCRUN_FILE=$(ls -t "$DERIVED_DATA_PATH"/Build/Products/*.xctestrun | head -n 1)
+          python3 scripts/plan-tests.py audit-xctestrun \
+            --xctestrun "$XCRUN_FILE" --workspace-root "$GITHUB_WORKSPACE"
+
+      - name: Prune intermediates from the products tree
+        run: |
+          set -euo pipefail
+          rm -rf "$DERIVED_DATA_PATH/Build/Intermediates.noindex" \
+                 "$DERIVED_DATA_PATH/Index" \
+                 "$DERIVED_DATA_PATH/Logs"
+
+      - name: Upload build products (consumed by every lane)
+        # Relative path (mirrors the working metadata upload); the artifact
+        # keeps the Build/... structure, and lanes restore it under
+        # $DERIVED_DATA_PATH/Build so the .xctestrun's absolute paths hold.
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-products
+          path: ci-derived-data/Build
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Upload build metadata
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-meta
+          path: ci-lane/build/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  unit:
+    name: "Unit - ${{ matrix.lane }}"
+    needs: [plan, build]
+    runs-on: macos-26
+    # Outer emergency ceiling only: attempt 1 + attempt 2 + a full isolation
+    # pass plus bounded resets all fit underneath it (see plan-tests.py).
+    timeout-minutes: ${{ matrix.job_timeout_min }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Download shared build products
+        uses: actions/download-artifact@v4
+        with:
+          name: build-products
+          path: "${{ env.DERIVED_DATA_PATH }}/Build"
+
+      - name: Verify restored .xctestrun paths
+        run: |
+          set -euo pipefail
+          XCRUN_FILE=$(ls -t "$DERIVED_DATA_PATH"/Build/Products/*.xctestrun | head -n 1)
+          echo "XCRUN_FILE=$XCRUN_FILE" >> "$GITHUB_ENV"
+          python3 scripts/plan-tests.py audit-xctestrun \
+            --xctestrun "$XCRUN_FILE" --workspace-root "$GITHUB_WORKSPACE"
+
+      - name: Run unit lane
+        # Matrix values enter through the environment, never through bash
+        # template interpolation, so even a hostile class name cannot become
+        # code execution in the runner.
+        env:
+          CLASS_TIMEOUT_MIN_S: "180"
+          CLASS_TIMEOUT_MULTIPLIER: "4.0"
+          CONDUIT_PERF_TRACE: "1"
+          LANE_NAME: "${{ matrix.lane }}"
+          LANE_TARGET: "${{ matrix.target }}"
+          LANE_CLASSES: "${{ matrix.classes }}"
+          LANE_CLASS_ESTIMATES: "${{ matrix.class_estimates }}"
+          LANE_PREDICTED: "${{ matrix.predicted_s }}"
+          LANE_TIMEOUT: "${{ matrix.timeout_s }}"
+        run: |
+          bash scripts/ci-test-lane.sh \
+            --kind unit \
+            --lane "$LANE_NAME" \
+            --target "$LANE_TARGET" \
+            --classes "$LANE_CLASSES" \
+            --class-estimates "$LANE_CLASS_ESTIMATES" \
+            --predicted "$LANE_PREDICTED" \
+            --timeout "$LANE_TIMEOUT" \
+            --iterations 3 \
+            --xctestrun "$XCRUN_FILE" \
+            --result-dir "ci-lane/$LANE_NAME"
+
+      - name: Dump simulator state (failure diagnostics)
+        if: failure()
+        run: |
+          xcrun simctl list runtimes available || true
+          xcrun simctl list devices available
+
+      - name: Upload lane results for report and timing history
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-${{ matrix.lane }}
+          path: ci-lane/
+          retention-days: 7
+          if-no-files-found: error
+
+  ui:
+    name: UI tests
+    needs: [plan, build]
+    if: needs.plan.outputs.ui-classes != ''
+    runs-on: macos-26
+    timeout-minutes: ${{ fromJSON(needs.plan.outputs.ui-job-timeout) }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Download shared build products
+        uses: actions/download-artifact@v4
+        with:
+          name: build-products
+          path: "${{ env.DERIVED_DATA_PATH }}/Build"
+
+      - name: Verify restored .xctestrun paths
+        run: |
+          set -euo pipefail
+          XCRUN_FILE=$(ls -t "$DERIVED_DATA_PATH"/Build/Products/*.xctestrun | head -n 1)
+          echo "XCRUN_FILE=$XCRUN_FILE" >> "$GITHUB_ENV"
+          python3 scripts/plan-tests.py audit-xctestrun \
+            --xctestrun "$XCRUN_FILE" --workspace-root "$GITHUB_WORKSPACE"
+
+      - name: Run UI lane
+        env:
+          CLASS_TIMEOUT_MIN_S: "180"
+          CLASS_TIMEOUT_MULTIPLIER: "4.0"
+          CONDUIT_PERF_TRACE: "1"
+          UI_CLASSES: "${{ needs.plan.outputs.ui-classes }}"
+          UI_CLASS_ESTIMATES: "${{ needs.plan.outputs.ui-estimates }}"
+          UI_PREDICTED: "${{ needs.plan.outputs.ui-predicted }}"
+          UI_TIMEOUT: "${{ needs.plan.outputs.ui-timeout }}"
+        run: |
+          bash scripts/ci-test-lane.sh \
+            --kind ui \
+            --lane ui \
+            --target "${{ needs.plan.outputs.ui-target }}" \
+            --classes "$UI_CLASSES" \
+            --class-estimates "$UI_CLASS_ESTIMATES" \
+            --predicted "$UI_PREDICTED" \
+            --timeout "$UI_TIMEOUT" \
+            --iterations 2 \
+            --xctestrun "$XCRUN_FILE" \
+            --result-dir ci-lane/ui
+
+      - name: Dump simulator state (failure diagnostics)
+        if: failure()
+        run: |
+          xcrun simctl list runtimes available || true
+          xcrun simctl list devices available
+
+      - name: Upload lane results for report and timing history
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-ui
+          path: ci-lane/
+          retention-days: 7
+          if-no-files-found: error
+
+  report:
+    name: Report
+    needs: [plan, build, unit, ui]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Download plan
+        uses: actions/download-artifact@v4
+        with:
+          name: plan
+          path: ci-report/plan
+        continue-on-error: true
+
+      - name: Download build metadata
+        uses: actions/download-artifact@v4
+        with:
+          name: build-meta
+          path: ci-report/build
+        continue-on-error: true
+
+      - name: Download lane results
+        # No merge-multiple: each artifact extracts into its own name-derived
+        # directory (lane-unit-1/...), so same-named files can never collide.
+        uses: actions/download-artifact@v4
+        with:
+          pattern: lane-*
+          path: ci-report/lanes
+        continue-on-error: true
+
+      - name: Build CI Test Report
+        if: always()
+        run: |
+          python3 scripts/extract-test-timings.py aggregate \
+            --plan ci-report/plan/plan.json \
+            --lanes-dir ci-report/lanes \
+            --build-result ci-report/build/build-result.json \
+            --out ci-report/summary.md || true
+          if [ -f ci-report/plan/plan-summary.md ]; then
+            cat ci-report/plan/plan-summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -f ci-report/summary.md ]; then
+            cat ci-report/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  # Single stable branch-protection check. The number of dynamic unit lanes
+  # can change run to run, so individual lane jobs must never be required
+  # directly - require "CI Gate" instead (see docs/CI.md).
+  ci-gate:
+    name: CI Gate
+    needs: [plan, build, unit, ui]
+    if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
-      - name: Verify shard assignments
-        run: bash scripts/check-test-shards.sh
 
-  # Unit tests: four static shards of ConduitTests run concurrently. One
-  # slow/flaky shard resets and retries ITSELF only — the other shards'
-  # results are kept (fail-fast: false).
-  unit:
-    name: Unit tests — shard ${{ matrix.shard }}
-    needs: shard-check
-    runs-on: macos-26
-    # Outer emergency bound only: setup + one build (900 s) + up to two
-    # 10-minute attempts + a worst-case erase/reboot reset must all fit with
-    # real slack, so a wedged lane can always finish its in-script retry
-    # under a script-level diagnosis instead of a truncating job kill. The
-    # real watchdog is per-attempt inside scripts/ci-run-tests.sh
-    # (ATTEMPT_TIMEOUT_SECS, defaulted to 600 s for unit shards).
-    timeout-minutes: 50
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [a, b, c, d]
+      - name: Enforce final CI verdict
+        run: |
+          python3 scripts/ci-gate.py \
+            --plan "${{ needs.plan.result }}" \
+            --build "${{ needs.build.result }}" \
+            --unit "${{ needs.unit.result }}" \
+            --ui "${{ needs.ui.result }}"
+
+  timing-history-update:
+    name: Update timing history
+    needs: [plan, unit, ui]
+    # Only successful main runs evolve the estimates; PR runs never write.
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      !cancelled() &&
+      needs.plan.result == 'success' &&
+      needs.unit.result == 'success' &&
+      (needs.ui.result == 'success' || needs.ui.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
 
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode.app
+      - name: Restore current timing history
+        uses: actions/cache/restore@v4
+        with:
+          path: ci-timing
+          key: timing-history-v1-${{ github.run_number }}
+          restore-keys: |
+            timing-history-v1-
 
-      - name: Install xcodegen
-        run: brew install xcodegen
+      - name: Download plan
+        uses: actions/download-artifact@v4
+        with:
+          name: plan
+          path: ci-update/plan
+        continue-on-error: true
 
-      - name: Generate Xcode project
-        run: xcodegen generate
+      - name: Download lane observations
+        uses: actions/download-artifact@v4
+        with:
+          pattern: lane-*
+          path: ci-update/lanes
+        continue-on-error: true
 
-      - name: Run unit-test shard ${{ matrix.shard }}
-        # build-for-testing once, then test-without-building with a
-        # per-attempt watchdog; a retry resets the simulator and re-runs ONLY
-        # this shard against the already-built products.
-        run: bash scripts/ci-run-tests.sh "unit-${{ matrix.shard }}"
-
-      - name: Dump simulator state (failure diagnostics)
-        if: failure()
+      - name: Merge fresh timings into history (EWMA)
         run: |
-          xcrun simctl list runtimes available || true
-          xcrun simctl list devices available
+          set -euo pipefail
+          if [ ! -f ci-update/plan/plan.json ]; then
+            echo "plan artifact missing; skipping timing history update"
+            exit 0
+          fi
+          mkdir -p ci-timing
+          OBS=$(find ci-update/lanes -name observations.json 2>/dev/null | sort)
+          if [ -z "$OBS" ]; then
+            echo "no lane observations found - keeping previous history"
+            exit 0
+          fi
+          HIST=""
+          if [ -f ci-timing/timing-history.json ]; then
+            HIST="--history ci-timing/timing-history.json"
+          fi
+          # OBS must expand to separate paths here; no spaces on runners.
+          # The flags below must mirror update-timing-history.py's CLI exactly
+          # (scripts/tests/test_timing_history.py pins this contract).
+          python3 scripts/update-timing-history.py \
+            --observations $OBS \
+            --inventory ci-update/plan/plan.json \
+            $HIST \
+            --out ci-timing/timing-history.json
 
-      - name: Upload test results on failure
-        if: failure()
+      - name: Save updated timing history
+        if: hashFiles('ci-timing/timing-history.json') != ''
+        # Re-runs of the same workflow run reuse the run_number key; saving to
+        # an existing key is an acceptable no-op, not a failure.
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: ci-timing
+          key: timing-history-v1-${{ github.run_number }}
+
+      - name: Upload timing history (durable backup)
+        if: hashFiles('ci-timing/timing-history.json') != ''
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-unit-${{ matrix.shard }}
-          path: |
-            TestResults.xcresult
-            TestResults-retry.xcresult
-            ci-logs/
-          if-no-files-found: ignore
-
-  # UI tests: a dedicated lane so ConduitUITests instability can never force
-  # the unit-test shards to rerun (and vice versa).
-  ui:
-    name: UI tests
-    needs: shard-check
-    runs-on: macos-26
-    # Outer emergency bound only: setup + one build (900 s) + up to two
-    # 20-minute attempts + a worst-case erase/reboot reset must all fit with
-    # real slack (per-attempt watchdog defaults to 1200 s for the ui lane —
-    # XCUITest lanes are inherently slower than unit shards).
-    timeout-minutes: 70
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode.app
-
-      - name: Install xcodegen
-        run: brew install xcodegen
-
-      - name: Generate Xcode project
-        run: xcodegen generate
-
-      - name: Run UI tests
-        run: bash scripts/ci-run-tests.sh ui
-
-      - name: Dump simulator state (failure diagnostics)
-        if: failure()
-        run: |
-          xcrun simctl list runtimes available || true
-          xcrun simctl list devices available
-
-      - name: Upload test results on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results-ui
-          path: |
-            TestResults.xcresult
-            TestResults-retry.xcresult
-            ci-logs/
-          if-no-files-found: ignore
+          name: timing-history
+          path: ci-timing/timing-history.json
+          retention-days: 90

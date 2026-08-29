@@ -149,8 +149,48 @@ final class TranscriptPerformanceFixtureTests: XCTestCase {
 
     /// Lets SwiftUI updates that belong to THIS test (e.g. the settle tick
     /// below) complete before the next counter window opens.
-    private func settleCurrentTestUpdates() {
-        RunLoop.current.run(until: Date().addingTimeInterval(0.15))
+    ///
+    /// A fixed 150ms drain is not enough on slow CI simulators: lazy mounting
+    /// of the settled transcript can still be in flight, and the queued
+    /// first-time body mounts then land inside the measurement window where
+    /// they are indistinguishable from streaming re-evaluations. Drain until
+    /// every counter has been quiet for `maxQuietSeconds` instead.
+    ///
+    /// Returns false when the quiet period was never reached within the cap
+    /// - callers MUST fail the test in that case: measuring while the
+    /// transcript is still mounting would make the assertions meaningless.
+    private func settleCurrentTestUpdates(maxQuietSeconds: TimeInterval = 1.2, cap: TimeInterval = 15.0) -> Bool {
+        func totals() -> [Int] {
+            return [
+                TranscriptPerf.settledMessageBubbleBodyEvaluations,
+                TranscriptPerf.settledMarkdownTextBodyEvaluations,
+                TranscriptPerf.selectableTextViewUpdateCalls,
+                TranscriptPerf.selectableTextViewTextRebuilds,
+                TranscriptPerf.textKitMeasurementCalls,
+                TranscriptPerf.rowFramePreferenceUpdates,
+                TranscriptPerf.layoutMetricsChangedCalls,
+                TranscriptPerf.transcriptChangedCalls,
+            ]
+        }
+        // Require a sustained quiet period, not a single quiet pass: cold CI
+        // simulators trickle lazy-mount commits for seconds.
+        var quietFor: TimeInterval = 0
+        var elapsed: TimeInterval = 0
+        var last = totals()
+        let step: TimeInterval = 0.1
+        while elapsed < cap {
+            RunLoop.current.run(until: Date().addingTimeInterval(step))
+            elapsed += step
+            let current = totals()
+            if current == last {
+                quietFor += step
+                if quietFor >= maxQuietSeconds { return true }
+            } else {
+                quietFor = 0
+                last = current
+            }
+        }
+        return false
     }
 
     /// Hosts the full ChatView in a retained, live window.
@@ -209,7 +249,11 @@ final class TranscriptPerformanceFixtureTests: XCTestCase {
         // additional lazy row as layout adjusts. Steady-state work is what
         // the acceptance criterion bounds, so measure from the second tick.
         streamTicks(1, appState: appState, host: host)
-        settleCurrentTestUpdates()
+        let settled = settleCurrentTestUpdates()
+        guard settled else {
+            XCTFail("counter window never reached a quiet state; measurement would be meaningless on this runner")
+            return
+        }
 
         TranscriptPerf.reset()
         streamTicks(10, appState: appState, host: host)
@@ -242,7 +286,11 @@ final class TranscriptPerformanceFixtureTests: XCTestCase {
 
         let host = mountChat(appState: appState, streaming: "Initial streaming frame")
         streamTicks(1, appState: appState, host: host)
-        settleCurrentTestUpdates()
+        let settled = settleCurrentTestUpdates()
+        guard settled else {
+            XCTFail("counter window never reached a quiet state; measurement would be meaningless on this runner")
+            return
+        }
 
         TranscriptPerf.reset()
         streamTicks(10, appState: appState, host: host)
@@ -273,10 +321,38 @@ final class TranscriptPerformanceFixtureTests: XCTestCase {
         // Let lazy mounting fully settle: the first pass mounts the visible
         // screenful and LazyVStack prefetches neighbor rows on subsequent
         // turns — each a legitimate FIRST render of a new row, not a
-        // re-render of an existing one.
+        // re-render of an existing one. Cold CI simulators trickle those
+        // prefetches over seconds, so capture the baseline only once the
+        // counter has been quiet for over a second.
         host.view.setNeedsLayout()
         host.view.layoutIfNeeded()
         RunLoop.current.run(until: Date())
+        var quietFor: TimeInterval = 0
+        var settleElapsed: TimeInterval = 0
+        var lastCount = TranscriptPerf.settledMarkdownTextBodyEvaluations
+        let settleStep: TimeInterval = 0.1
+        var baselineSettled = false
+        while settleElapsed < 15 {
+            RunLoop.current.run(until: Date().addingTimeInterval(settleStep))
+            settleElapsed += settleStep
+            let current = TranscriptPerf.settledMarkdownTextBodyEvaluations
+            if current == lastCount {
+                quietFor += settleStep
+                if quietFor >= 1.2 {
+                    baselineSettled = true
+                    break
+                }
+            } else {
+                quietFor = 0
+                lastCount = current
+            }
+        }
+        // Without a settled baseline the "no second render pass" assertion
+        // would race against still-in-flight lazy mounts on slow runners.
+        guard baselineSettled else {
+            XCTFail("lazy mounting never reached a quiet state; the first-appearance baseline would be meaningless on this runner")
+            return
+        }
         let initialEvaluations = TranscriptPerf.settledMarkdownTextBodyEvaluations
         XCTAssertGreaterThan(
             initialEvaluations, 0,
