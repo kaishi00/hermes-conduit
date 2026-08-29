@@ -640,8 +640,9 @@ private struct LargeDocumentPreparingView: View {
 
 /// Memoizes a flow chunk's attributed string so unrelated body
 /// re-evaluations never re-run the Foundation parses. The memo identity is
-/// explicit: Dynamic Type category (fonts bake into the string) and the
-/// accent-surface flag (colors bake in).
+/// explicit: Dynamic Type category (fonts bake into the string), the
+/// selected chat text size (fonts bake into the string — issue #85), and
+/// the accent-surface flag (colors bake in).
 ///
 /// Invariant for the remaining inputs: `foregroundStyle` is tied 1:1 to
 /// `usesAccentSurface` at every call site (`.primary`/`false` and
@@ -653,6 +654,7 @@ private struct LargeDocumentPreparingView: View {
 final class LargeFlowChunkBox {
     private var cachedText: NSAttributedString?
     private var cachedCategory: UIContentSizeCategory?
+    private var cachedChatTextSize: ChatTextSize?
     private var cachedUsesAccentSurface: Bool?
 
     @MainActor
@@ -661,10 +663,12 @@ final class LargeFlowChunkBox {
         references: MarkdownReferenceContext,
         foregroundStyle: Color,
         usesAccentSurface: Bool,
-        contentCategory: UIContentSizeCategory = UIApplication.shared.preferredContentSizeCategory
+        contentCategory: UIContentSizeCategory = UIApplication.shared.preferredContentSizeCategory,
+        chatTextSize: ChatTextSize = .default
     ) -> NSAttributedString? {
         if let cachedText,
            cachedCategory == contentCategory,
+           cachedChatTextSize == chatTextSize,
            cachedUsesAccentSurface == usesAccentSurface {
             return cachedText
         }
@@ -673,10 +677,12 @@ final class LargeFlowChunkBox {
             references: references,
             foregroundStyle: foregroundStyle,
             usesAccentSurface: usesAccentSurface,
-            newestCharacterOpacities: []
+            newestCharacterOpacities: [],
+            chatTextSize: chatTextSize
         )
         cachedText = text
         cachedCategory = contentCategory
+        cachedChatTextSize = chatTextSize
         cachedUsesAccentSurface = usesAccentSurface
         return text
     }
@@ -697,6 +703,7 @@ struct LargeFlowChunkView: View {
     let selectionSegment: MarkdownSelectionSegmentDescriptor?
 
     @Environment(\.sizeCategory) private var sizeCategory
+    @Environment(\.chatTextSize) private var chatTextSize
 
     /// Per-view memo box: identity comes from the enclosing ForEach index
     /// (keyed by source identity), so it survives re-evaluations and dies
@@ -709,11 +716,12 @@ struct LargeFlowChunkView: View {
             references: references,
             foregroundStyle: foregroundStyle,
             usesAccentSurface: usesAccentSurface,
-            contentCategory: UIContentSizeCategory(sizeCategory)
+            contentCategory: UIContentSizeCategory(sizeCategory),
+            chatTextSize: chatTextSize
         ) {
             SelectableTextView(
                 attributedText: attributed,
-                font: .preferredFont(forTextStyle: .body),
+                font: ChatTypography.font(for: .body, chatSize: chatTextSize),
                 textColor: usesAccentSurface ? .white : UIColor(foregroundStyle),
                 lineSpacing: 4,
                 linkColor: usesAccentSurface ? .white : .link,
@@ -958,6 +966,21 @@ struct LargeCodeBlockView: View {
     }
 }
 
+/// Stable identity for a large-code slice's highlight+presentation pass.
+/// Extracted so the cache-invalidation contract is unit-testable: a chat
+/// text-size change MUST produce a different identity (the highlighted
+/// attributed string bakes the pass's default font in when bridged), while
+/// everything else staying equal keeps the previous identity.
+enum LargeCodeSliceIdentity {
+    static func identity(
+        source: String,
+        sizeCategory: ContentSizeCategory,
+        chatTextSize: ChatTextSize
+    ) -> String {
+        "\(source.hashValue)-\(sizeCategory)-chat:\(chatTextSize.cacheIdentity)"
+    }
+}
+
 /// One bounded slice of a large code block: plain monospaced text
 /// immediately, tokenized highlighting swapped in when the off-main pass
 /// completes. Each slice is independently selectable.
@@ -969,13 +992,18 @@ private struct LargeCodeSliceView: View {
 
     @State private var highlighted: NSAttributedString?
     @Environment(\.sizeCategory) private var sizeCategory
+    @Environment(\.chatTextSize) private var chatTextSize
 
     private var font: UIFont {
-        .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .footnote).pointSize, weight: .regular)
+        ChatTypography.font(for: .blockCode, chatSize: chatTextSize)
     }
 
     private var sliceIdentity: String {
-        "\(source.hashValue)-\(sizeCategory)"
+        LargeCodeSliceIdentity.identity(
+            source: source,
+            sizeCategory: sizeCategory,
+            chatTextSize: chatTextSize
+        )
     }
 
     var body: some View {

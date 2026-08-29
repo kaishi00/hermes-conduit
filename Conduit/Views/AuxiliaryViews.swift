@@ -739,6 +739,7 @@ private struct ChatSettingsDetail: View {
             ),
             trailingSection: AnyView(
                 VStack(spacing: 14) {
+                    ChatTextSizeSettings()
                     ComposerReturnKeySettings()
                     DeviceHapticsSettings()
                 }
@@ -757,6 +758,61 @@ private struct ChatSettingsDetail: View {
         .init(key: "display.memory_notifications", label: "Self-improvement updates", help: "Choose whether Conduit follows Hermes, always shows, or never shows maintenance updates.", control: .labeledOptions([(value: "default", label: "Use Hermes default"), (value: "on", label: "Always show"), (value: "off", label: "Never show")], defaultValue: "default")),
         .init(key: "agent.image_input_mode", label: "Image attachments", help: "How Hermes supplies images to a model.", control: .options(["auto", "native", "text"], defaultValue: "auto")),
     ]
+}
+
+/// Local, device-only chat text-size preference (issue #85). Stored in
+/// UserDefaults via @AppStorage with the same lifetime as
+/// ComposerReturnKey — never part of the Hermes profile configuration and
+/// never synchronized anywhere. A five-position stepped slider: the change
+/// is live (the visible transcript re-renders as the slider moves), there
+/// is no Save button, and `Default` keeps today's appearance.
+private struct ChatTextSizeSettings: View {
+    @AppStorage(ChatTypography.preferenceKey) private var chatTextSizeRaw = ChatTypography.defaultSize.rawValue
+
+    private var selected: ChatTextSize {
+        ChatTypography.resolve(rawValue: chatTextSizeRaw)
+    }
+
+    var body: some View {
+        ConduitSettingsSection(
+            title: "Chat text size",
+            symbol: "textformat.size",
+            tint: .conduitAura
+        ) {
+            Text("Readable conversation content only — messages, lists, tables, and code. Buttons, timestamps, and the rest of the interface keep their size, and iOS Dynamic Type still applies on top.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("A")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                    Spacer()
+                    Text("A")
+                        .font(.system(size: 22, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                }
+                Slider(
+                    value: Binding(
+                        get: { Double(selected.rawValue) },
+                        set: { chatTextSizeRaw = Int($0.rounded()) }
+                    ),
+                    in: 0...Double(ChatTextSize.allCases.count - 1),
+                    step: 1
+                )
+                .tint(.conduitAccent)
+                .accessibilityLabel("Chat text size")
+                .accessibilityValue(selected.displayName)
+                .accessibilityHint("Five steps from smallest to largest. Applies to conversation text immediately.")
+                Text(selected.displayName)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+            }
+        }
+    }
 }
 
 /// Local, device-only composer input preference. Stored in UserDefaults via

@@ -244,35 +244,40 @@ final class SettledMessageIsolationTests: XCTestCase {
             displayName: "Hermes",
             avatarURL: nil,
             gatewayResolver: resolver,
-            sizeCategory: .large
+            sizeCategory: .large,
+            chatTextSize: .default
         )
         let sameInputs = SettledAssistantMessageContent(
             message: markdownMessage(),
             displayName: "Hermes",
             avatarURL: nil,
             gatewayResolver: resolver,
-            sizeCategory: .large
+            sizeCategory: .large,
+            chatTextSize: .default
         )
         let differentResolver = SettledAssistantMessageContent(
             message: markdownMessage(),
             displayName: "Hermes",
             avatarURL: nil,
             gatewayResolver: otherResolver,
-            sizeCategory: .large
+            sizeCategory: .large,
+            chatTextSize: .default
         )
         let differentMessage = SettledAssistantMessageContent(
             message: markdownMessage(id: "m2"),
             displayName: "Hermes",
             avatarURL: nil,
             gatewayResolver: resolver,
-            sizeCategory: .large
+            sizeCategory: .large,
+            chatTextSize: .default
         )
         let differentSizeCategory = SettledAssistantMessageContent(
             message: markdownMessage(),
             displayName: "Hermes",
             avatarURL: nil,
             gatewayResolver: resolver,
-            sizeCategory: .extraExtraLarge
+            sizeCategory: .extraExtraLarge,
+            chatTextSize: .default
         )
 
         XCTAssertEqual(a, sameInputs, "equal message + same resolver identity must compare equal")
