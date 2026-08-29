@@ -9,15 +9,24 @@
 #      which re-executes only the failing tests. If failures survive those
 #      iterations the lane fails with the failing tests identified - the
 #      healthy classes are never rerun.
-#   2. One bounded infrastructure recovery: if an invocation dies without any
-#      reported test failure (simulator crash, runner exit, ...), the lane
-#      resets the simulator once and retries the whole lane.
-#   3. Hangs/timeouts are a different failure mode. After killing the hung
-#      process group and resetting (with erase) the simulator, the lane enters
-#      ISOLATION: classes are re-run one at a time, heaviest-estimate first,
-#      each under its own bounded watchdog, until the isolation budget is
-#      spent. The lane result names the class that hung instead of silently
-#      consuming another full lane budget.
+#   2. An invocation that exits nonzero with a KNOWN zero failing-test count
+#      is confidently an infrastructure failure (simulator crash, runner
+#      exit, ...): the lane resets the simulator once and retries the whole
+#      lane. If a retry times out, it falls through to isolation (4).
+#   3. An invocation whose XCTest result CANNOT be classified (timing/result
+#      extraction failed) is a FAILURE. Timing extraction is best-effort and
+#      must never decide test correctness, so an unclassifiable failure is
+#      never retried into a green lane.
+#   4. The FIRST watchdog timeout goes directly to diagnosis: kill the
+#      process group, collect diagnostics, erase/reset the simulator, then
+#      re-run classes one at a time (heaviest estimate first, per-class
+#      watchdogs, bounded by the isolation budget). No second full-lane
+#      attempt is made after a genuine timeout, and isolation STOPS at the
+#      first class-level hang: later classes are recorded as not_diagnosed
+#      so a contaminated simulator cannot produce misleading secondary
+#      failures. The lane result names the class that hung; recovery-to-
+#      green is only legitimate when every isolated class completed
+#      successfully (a transient environment wedge, prominently reported).
 #
 # Every simctl operation is deadline-bounded (ci-lib.sh). Bash 3.2 compatible.
 set -uo pipefail
@@ -164,7 +173,7 @@ extract_bundle() { # $1 = xcresult bundle
   fi
 }
 
-# Number of failed tests in the extraction detail; -1 = unknown.
+# Number of failed tests in the extraction detail; -1 = unknown/unclassified.
 count_failures() {
   python3 -c "
 import json, sys
@@ -213,7 +222,10 @@ finish_lane() { # $1=status $2=attempts_json $3=isolation_json $4=exit_code
 
 # Class-granular isolation. $1 = attempts JSON prefix, open-ended (no closing
 # bracket), e.g. '[{"n": 1, "mode": "lane", "status": "timeout"'. Erase/reset
-# must already have been performed by the caller.
+# must already have been performed by the caller. Isolation STOPS at the
+# first confirmed class-level hang: the culprit is identified and the
+# simulator may be contaminated, so later classes are recorded as
+# not_diagnosed instead of being executed on it.
 run_isolation() {
   echo "::warning::lane $LANE entering class-granular isolation (budget "${ISOLATION_BUDGET_S}"s)"
 
@@ -261,10 +273,23 @@ print(chr(10).join(classes))
       echo "$cls|timeout|$cls_secs" >> "$ISOLATION_LINES"
       if [ -z "$HUNG_CLASS" ]; then HUNG_CLASS="$cls"; fi
       echo "::error::isolation: $cls HUNG (exceeded its "${cls_timeout}"s class budget)"
+      # The culprit is identified and the timed-out invocation may have
+      # left the simulator contaminated: stop isolation immediately instead
+      # of risking misleading secondary failures on later classes.
+      break
     else
       echo "$cls|fail|$cls_secs" >> "$ISOLATION_LINES"
       echo "::error::isolation: $cls FAILED (exit $cstatus)"
     fi
+  done
+
+  # Classes never reached (isolation stopped at the confirmed hang, or the
+  # budget was spent) are recorded as not_diagnosed so the report shows
+  # exactly what was skipped - they must never appear as passed and must
+  # never become fake failures.
+  for cls in $ISOLATION_ORDER; do
+    grep -q "^$cls|" "$ISOLATION_LINES" \
+      || echo "$cls|not_diagnosed|0" >> "$ISOLATION_LINES"
   done
 
   ISOLATION_JSON=$(ISOLATION_LINES="$ISOLATION_LINES" ISOLATION_BUDGET_S="$ISOLATION_BUDGET_S" python3 -c "

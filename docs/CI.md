@@ -121,11 +121,13 @@ the rest of CI v2.
    the xcodebuild process group, the simulator is reset **with erase** and
    the lane enters **isolation immediately** (no second full-lane attempt):
    classes re-run one at a time (heaviest estimate first, each under
-   `max(180s, 4 x estimate)`, bounded by the isolation budget). The lane
-   result names the class that hung ("Class C TIMEOUT, Class D PASS"
-   style). Recovery-to-green is only legitimate when the isolation pass
-   completed every class successfully; any undiagnosed class fails the
-   lane so unexecuted tests stay visible.
+   `max(180s, 4 x estimate)`, bounded by the isolation budget). Isolation
+   STOPS at the first confirmed class-level hang - the culprit is
+   identified and later classes are recorded as `not_diagnosed` instead of
+   running on a potentially contaminated simulator ("Class C TIMEOUT;"
+   "Classes D, E not diagnosed" style). Recovery-to-green is only
+   legitimate when every isolated class completed successfully; any
+   undiagnosed class fails the lane so unexecuted tests stay visible.
 
 ## Watchdogs
 
