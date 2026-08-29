@@ -3,6 +3,68 @@ import XCTest
 @testable import Conduit
 
 final class NativeAuthClientTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        NativeAuthURLProtocol.reset()
+    }
+
+    override func tearDown() {
+        NativeAuthURLProtocol.reset()
+        super.tearDown()
+    }
+
+    func testPasswordLoginCarriesReturnedSessionCookieIntoTicketRequest() async throws {
+        let client = NativeAuthClient(
+            baseURL: "http://192.168.1.200:9119",
+            sessionConfiguration: makeSessionConfiguration()
+        )
+
+        let connection = try await client.connect(username: "chris", password: "correct-password")
+
+        XCTAssertEqual(connection.ticket, "fresh-ticket")
+        XCTAssertEqual(
+            NativeAuthURLProtocol.requestHeader(forPath: "/api/auth/ws-ticket", name: "Cookie"),
+            "hermes_session_at=test-access-token"
+        )
+    }
+
+    func testNativeAuthenticationDisablesAutomaticCookieAttachment() {
+        let configuration = makeSessionConfiguration()
+
+        _ = NativeAuthClient(
+            baseURL: "http://192.168.1.201:9119",
+            sessionConfiguration: configuration
+        )
+
+        XCTAssertFalse(configuration.httpShouldSetCookies)
+    }
+
+    func testTicketRequestDoesNotFallBackToUnrelatedSharedCookie() async throws {
+        let baseURL = "http://192.168.1.201:9119"
+        NativeAuthURLProtocol.seedSharedCookie(
+            name: "hermes_session_at",
+            value: "stale-access-token",
+            baseURL: baseURL
+        )
+        let client = NativeAuthClient(
+            baseURL: baseURL,
+            sessionConfiguration: makeSessionConfiguration()
+        )
+
+        do {
+            _ = try await client.connect(username: "chris", password: "correct-password")
+            return XCTFail("Expected the ticket request without an applicable login cookie to be rejected")
+        } catch let error as AuthClientError {
+            guard case .ticketFailed(let detail) = error else {
+                return XCTFail("Expected ticket failure, got \(error)")
+            }
+            XCTAssertEqual(detail, "Unauthorized")
+        }
+        XCTAssertNil(
+            NativeAuthURLProtocol.requestHeader(forPath: "/api/auth/ws-ticket", name: "Cookie")
+        )
+    }
+
     func testProviderDiscoveryRedirectFallsBackToWebView() async throws {
         let client = NativeAuthClient(
             baseURL: "https://redirect.example",
@@ -101,10 +163,13 @@ private final class NativeAuthURLProtocol: URLProtocol {
 
     private static let recordLock = NSLock()
     private static var responseRecords: [ResponseRecord] = []
+    private static var requestRecords: [URLRequest] = []
 
     override class func canInit(with request: URLRequest) -> Bool {
         guard let host = request.url?.host else { return false }
         return [
+            "192.168.1.200",
+            "192.168.1.201",
             "redirect.example",
             "providers.example",
             "server-error.example",
@@ -123,6 +188,7 @@ private final class NativeAuthURLProtocol: URLProtocol {
             client?.urlProtocol(self, didFailWithError: URLError(.badURL))
             return
         }
+        Self.record(request: request)
         let fixture = fixture(for: request)
         Self.record(
             host: url.host ?? "",
@@ -165,9 +231,46 @@ private final class NativeAuthURLProtocol: URLProtocol {
         return responseRecords.filter { $0.host == host }.count
     }
 
+    static func requestHeader(forPath path: String, name: String) -> String? {
+        recordLock.lock()
+        defer { recordLock.unlock() }
+        return requestRecords.last(where: { $0.url?.path == path })?.value(forHTTPHeaderField: name)
+    }
+
+    static func reset() {
+        recordLock.lock()
+        responseRecords.removeAll()
+        requestRecords.removeAll()
+        recordLock.unlock()
+        let fixtureHosts = Set(["192.168.1.200", "192.168.1.201"])
+        for cookie in HTTPCookieStorage.shared.cookies ?? [] {
+            let domain = cookie.domain.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "."))
+            if fixtureHosts.contains(domain) {
+                HTTPCookieStorage.shared.deleteCookie(cookie)
+            }
+        }
+    }
+
+    static func seedSharedCookie(name: String, value: String, baseURL: String) {
+        guard let host = URL(string: baseURL)?.host,
+              let cookie = HTTPCookie(properties: [
+                .name: name,
+                .value: value,
+                .domain: host,
+                .path: "/"
+              ]) else { return }
+        HTTPCookieStorage.shared.setCookie(cookie)
+    }
+
     private static func record(host: String, statusCode: Int?, headers: [String: String]) {
         recordLock.lock()
         responseRecords.append(ResponseRecord(host: host, statusCode: statusCode, headers: headers))
+        recordLock.unlock()
+    }
+
+    private static func record(request: URLRequest) {
+        recordLock.lock()
+        requestRecords.append(request)
         recordLock.unlock()
     }
 
@@ -181,6 +284,53 @@ private final class NativeAuthURLProtocol: URLProtocol {
         guard let host = request.url?.host else { return nil }
 
         switch host {
+        case "192.168.1.201":
+            switch request.url?.path {
+            case "/auth/password-login":
+                return Fixture(
+                    statusCode: 200,
+                    headers: [
+                        "Content-Type": "application/json",
+                        "Set-Cookie": "auth_only=must-not-reach-ticket; Path=/auth; HttpOnly"
+                    ],
+                    body: Data(#"{"ok":true,"next":"/"}"#.utf8)
+                )
+            case "/api/auth/ws-ticket":
+                return Fixture(
+                    statusCode: 401,
+                    headers: ["Content-Type": "application/json"],
+                    body: Data(#"{"detail":"Unauthorized"}"#.utf8)
+                )
+            default:
+                return nil
+            }
+        case "192.168.1.200":
+            switch request.url?.path {
+            case "/auth/password-login":
+                return Fixture(
+                    statusCode: 200,
+                    headers: [
+                        "Content-Type": "application/json",
+                        "Set-Cookie": "hermes_session_at=test-access-token; Path=/; HttpOnly; SameSite=Lax, auth_only=must-not-leak; Path=/auth; HttpOnly"
+                    ],
+                    body: Data(#"{"ok":true,"next":"/"}"#.utf8)
+                )
+            case "/api/auth/ws-ticket":
+                guard request.value(forHTTPHeaderField: "Cookie") == "hermes_session_at=test-access-token" else {
+                    return Fixture(
+                        statusCode: 401,
+                        headers: ["Content-Type": "application/json"],
+                        body: Data(#"{"detail":"Unauthorized"}"#.utf8)
+                    )
+                }
+                return Fixture(
+                    statusCode: 200,
+                    headers: ["Content-Type": "application/json"],
+                    body: Data(#"{"ticket":"fresh-ticket"}"#.utf8)
+                )
+            default:
+                return nil
+            }
         case "redirect.example":
             return Fixture(
                 statusCode: 302,
