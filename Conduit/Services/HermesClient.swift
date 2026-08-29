@@ -18,6 +18,10 @@
 //    controls.
 //  - Use resumed.messages from session.resume RPC, including any in-flight
 //    transcript state, rather than deriving liveness from message roles.
+//    Since the compact resume (issue #106) the default openSession suppresses
+//    that transcript (omit_messages) and AppState hydrates the persisted rows
+//    over REST; openSessionLegacy is the variant whose response still carries
+//    the messages.
 //  - Do NOT merge gateway RPC session.list into the UI list — it reads from
 //    the main DB containing ALL profiles. Use profile-scoped endpoint only.
 //
@@ -336,6 +340,15 @@ protocol HermesWebSocketTransport: AnyObject {
 /// Production transport: one `URLSession` per socket, delegate-driven
 /// handshake. Behaviour is identical to the client's pre-seam connect().
 final class URLSessionWebSocketTransport: HermesWebSocketTransport {
+    /// Explicit incoming-message bound for the production socket. URLSession's
+    /// own default (1 MiB) closes the connection with close code 1009 as soon
+    /// as a single WebSocket message exceeds it, which is how resuming a large
+    /// session — one huge `session.resume` frame — used to kill Conduit's
+    /// connection in a reconnect loop (issue #106). 4 MiB comfortably covers
+    /// legitimate control payloads while staying bounded; the compact resume
+    /// keeps transcript-sized payloads off the socket entirely.
+    static let maximumMessageSize = 4 * 1024 * 1024
+
     private var session: URLSession?
     private var delegate: WebSocketOpenDelegate?
 
@@ -352,7 +365,9 @@ final class URLSessionWebSocketTransport: HermesWebSocketTransport {
         let session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
         self.session = session
         self.delegate = delegate
-        return session.webSocketTask(with: request)
+        let task = session.webSocketTask(with: request)
+        task.maximumMessageSize = Self.maximumMessageSize
+        return task
     }
 
     func invalidate() {
@@ -411,6 +426,11 @@ final class HermesClient: ObservableObject {
     static let requestTimeout: TimeInterval = 30
     static let promptSubmitTimeout: TimeInterval = 180 // 3 minutes
     static let titleGenerationTimeout: TimeInterval = 90
+    /// The legacy full-transcript resume is the RPC most likely to carry the
+    /// largest payload over the slowest connections (issue #106 follow-up),
+    /// so it gets a bounded-but-generous budget instead of the ordinary
+    /// request timeout.
+    static let legacyResumeTimeout: TimeInterval = 60
 
     init(
         connection: HermesConnection,
@@ -751,12 +771,47 @@ final class HermesClient: ObservableObject {
         _ = try await rpc("session.list", params: nil, timeout: 8)
     }
 
+    /// Resumes a session with the compact projection: `omit_messages` asks
+    /// the gateway to suppress the persisted transcript copy in the response
+    /// (`messages: []`) because the caller hydrates it through the
+    /// authenticated REST history route, exactly like Hermes Desktop. Older
+    /// gateways read `session.resume` params loosely and simply ignore the
+    /// unknown flag, degrading to the historical full response. AppState owns
+    /// the REST hydration and falls back to `openSessionLegacy` when no
+    /// usable history source exists.
     func openSession(_ sessionId: String) async throws -> SessionResumeResult {
-        let result = try await rpc("session.resume", params: [
+        try await resumeSession(sessionId, omitMessages: true)
+    }
+
+    /// Resume variant that carries the persisted transcript inside the RPC
+    /// response. Used when compact resume cannot be hydrated (missing bridge,
+    /// a gateway without the history endpoint, or history rows that resolved
+    /// to a foreign session). Its response is the largest ordinary payload in
+    /// the app, so it uses the dedicated `legacyResumeTimeout`.
+    func openSessionLegacy(_ sessionId: String) async throws -> SessionResumeResult {
+        try await resumeSession(sessionId, omitMessages: false)
+    }
+
+    /// Compact responses are tiny, so they ride the ordinary request budget;
+    /// the legacy transcript response gets the generous bounded budget.
+    static func resumeTimeout(omitMessages: Bool) -> TimeInterval {
+        omitMessages ? requestTimeout : legacyResumeTimeout
+    }
+
+    private func resumeSession(_ sessionId: String, omitMessages: Bool) async throws -> SessionResumeResult {
+        var params: [String: Any] = [
             "session_id": sessionId,
             "cols": 96,
             "source": "desktop"
-        ])
+        ]
+        if omitMessages {
+            params["omit_messages"] = true
+        }
+        let result = try await rpc(
+            "session.resume",
+            params: params,
+            timeout: Self.resumeTimeout(omitMessages: omitMessages)
+        )
         let object = result.objectValue ?? [:]
         let resolvedId = object["session_id"]?.stringValue ?? sessionId
         let messages = MessageNormalizer.normalizeMessages(

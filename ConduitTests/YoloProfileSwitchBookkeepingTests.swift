@@ -82,7 +82,7 @@ final class YoloProfileSwitchBookkeepingTests: XCTestCase {
             connectClient: { _ in },
             loadCatalog: { _, _ in [] },
             mintTicket: { _ in "profile-ticket" },
-            openSession: { _, sessionID in
+            openSession: { _, sessionID, _ in
                 SessionResumeResult(
                     sessionId: sessionID,
                     messages: [],
@@ -220,7 +220,7 @@ final class YoloProfileSwitchBookkeepingTests: XCTestCase {
             connectClient: { _ in },
             loadCatalog: { _, _ in [] },
             mintTicket: { _ in "profile-ticket" },
-            openSession: { _, sessionID in
+            openSession: { _, sessionID, _ in
                 SessionResumeResult(
                     sessionId: sessionID,
                     messages: [],

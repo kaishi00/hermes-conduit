@@ -176,7 +176,169 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
+    // MARK: - session.resume transport bound (issue #106)
+
+    func testProductionTransportRaisesWebSocketMessageLimit() {
+        // URLSessionWebSocketTask's platform default receive limit closes the
+        // socket with close code 1009 as soon as a single message exceeds it,
+        // which is how resuming large sessions used to disconnect Conduit in
+        // a loop. The production transport must install the explicit bounded
+        // 4 MiB limit on the real socket.
+        let transport = URLSessionWebSocketTransport()
+        defer { transport.invalidate() }
+        let request = URLRequest(url: URL(string: "wss://gateway.example/api/ws")!)
+        let socket = transport.makeSocket(
+            request: request,
+            onOpen: { _ in },
+            onCloseBeforeOpen: { _ in }
+        )
+
+        let task = socket as? URLSessionWebSocketTask
+        XCTAssertNotNil(task, "The production transport must produce a URLSessionWebSocketTask")
+        XCTAssertEqual(task?.maximumMessageSize, URLSessionWebSocketTransport.maximumMessageSize)
+        XCTAssertEqual(URLSessionWebSocketTransport.maximumMessageSize, 4 * 1024 * 1024)
+        XCTAssertNotEqual(
+            URLSessionWebSocketTransport.maximumMessageSize,
+            1_048_576,
+            "The limit must not remain at the platform default"
+        )
+    }
+
+    func testLegacyResumeUsesDedicatedTimeoutBudget() {
+        // The legacy full-transcript resume carries the largest ordinary
+        // payload in the app, so it gets the bounded-but-generous 60 s
+        // budget; the compact resume rides the ordinary 30 s request
+        // timeout (issue #106 follow-up).
+        XCTAssertEqual(HermesClient.resumeTimeout(omitMessages: true), HermesClient.requestTimeout)
+        XCTAssertEqual(HermesClient.requestTimeout, 30)
+        XCTAssertEqual(HermesClient.resumeTimeout(omitMessages: false), HermesClient.legacyResumeTimeout)
+        XCTAssertEqual(HermesClient.legacyResumeTimeout, 60)
+        XCTAssertGreaterThan(HermesClient.legacyResumeTimeout, HermesClient.requestTimeout)
+    }
+
+    func testOpenSessionRequestsCompactResumeWithoutTranscriptPayload() async throws {
+        let transport = FakeTransport()
+        let socket = FakeSocket()
+        transport.nextSocket = { socket }
+        let client = makeClient(transport: transport)
+        let connectTask = Task { try? await client.connect() }
+        transport.open(socket)
+        try await awaitCompletion(of: connectTask, "connect() to complete after the handshake")
+
+        let sent = Gate()
+        socket.onSend = { sent.signal() }
+        let openTask = Task<SessionResumeResult, Error> { try await client.openSession("sess-large") }
+        try await sent.wait("the session.resume request to be sent")
+
+        let request = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(try XCTUnwrap(socket.sentTexts.last).utf8)) as? [String: Any]
+        )
+        XCTAssertEqual(request["method"] as? String, "session.resume")
+        let params = try XCTUnwrap(request["params"] as? [String: Any])
+        XCTAssertEqual(params["session_id"] as? String, "sess-large")
+        XCTAssertEqual(
+            params["omit_messages"] as? Bool,
+            true,
+            "The compact resume must ask the gateway to omit the persisted transcript"
+        )
+        XCTAssertEqual(params["cols"] as? Int, 96)
+        XCTAssertEqual(params["source"] as? String, "desktop")
+
+        let id = try XCTUnwrap(request["id"] as? Int)
+        let response: [String: Any] = [
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": [
+                "session_id": "sess-large",
+                "messages": [Any](),
+                "info": ["running": false]
+            ]
+        ]
+        socket.deliver(String(data: try JSONSerialization.data(withJSONObject: response), encoding: .utf8)!)
+
+        let result = try await awaitResult(of: openTask, "the compact session.resume response")
+        XCTAssertTrue(result.messages.isEmpty, "The compact response must carry no transcript")
+        XCTAssertEqual(result.sessionId, "sess-large")
+        client.disconnect()
+    }
+
+    func testOpenSessionLegacyCarriesTranscriptInResponse() async throws {
+        let transport = FakeTransport()
+        let socket = FakeSocket()
+        transport.nextSocket = { socket }
+        let client = makeClient(transport: transport)
+        let connectTask = Task { try? await client.connect() }
+        transport.open(socket)
+        try await awaitCompletion(of: connectTask, "connect() to complete after the handshake")
+
+        let sent = Gate()
+        socket.onSend = { sent.signal() }
+        let openTask = Task<SessionResumeResult, Error> { try await client.openSessionLegacy("sess-full") }
+        try await sent.wait("the legacy session.resume request to be sent")
+
+        let request = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(try XCTUnwrap(socket.sentTexts.last).utf8)) as? [String: Any]
+        )
+        let params = try XCTUnwrap(request["params"] as? [String: Any])
+        XCTAssertEqual(params["session_id"] as? String, "sess-full")
+        XCTAssertNil(params["omit_messages"], "The legacy resume must not suppress the transcript")
+
+        let id = try XCTUnwrap(request["id"] as? Int)
+        let response: [String: Any] = [
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": [
+                "session_id": "sess-full",
+                "messages": [
+                    ["role": "user", "content": "Hello", "timestamp": "2026-09-01T10:00:00Z"],
+                    ["role": "assistant", "content": "Hi there", "timestamp": "2026-09-01T10:00:05Z"]
+                ],
+                "info": ["running": false]
+            ]
+        ]
+        socket.deliver(String(data: try JSONSerialization.data(withJSONObject: response), encoding: .utf8)!)
+
+        let result = try await awaitResult(of: openTask, "the legacy session.resume response")
+        XCTAssertEqual(result.messages.map({ $0.role }), [.user, .assistant])
+        XCTAssertEqual(result.messages.first?.content, "Hello")
+        XCTAssertEqual(result.messages.first?.timestamp, "2026-09-01T10:00:00Z")
+        client.disconnect()
+    }
+
     // MARK: - Helpers
+
+    private final class ResultBox<T>: @unchecked Sendable {
+        var value: Result<T, Error>?
+    }
+
+    /// Bounded wait for a spawned throwing task, returning its result. The
+    /// Task-side counterpart of `Gate.wait`: a wedged phase fails the
+    /// test naming `phase` instead of suspending forever.
+    private func awaitResult<T>(
+        of task: Task<T, Error>,
+        _ phase: String,
+        timeout: TimeInterval = 10,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async throws -> T {
+        let finished = Gate()
+        let box = ResultBox<T>()
+        let watcher = Task<Void, Never>.detached(priority: .userInitiated) {
+            do {
+                box.value = .success(try await task.value)
+            } catch {
+                box.value = .failure(error)
+            }
+            finished.signal()
+        }
+        defer { watcher.cancel() }
+        try await finished.wait(phase, timeout: timeout, file: file, line: line)
+        guard let stored = box.value else {
+            XCTFail("Expected a result for \(phase)", file: file, line: line)
+            throw TestSyncTimedOut(phase: phase)
+        }
+        return try stored.get()
+    }
 
     private func makeClient(transport: FakeTransport) -> HermesClient {
         HermesClient(
@@ -309,6 +471,10 @@ private final class FakeSocket: HermesWebSocket {
     private(set) var resumed = false
     var onResume: (() -> Void)?
     var onReceivePending: (() -> Void)?
+    private(set) var sentTexts: [String] = []
+    /// Signalled after each outbound text frame so tests can await the
+    /// JSON-RPC request before answering it.
+    var onSend: (() -> Void)?
 
     private var receiveContinuation: CheckedContinuation<URLSessionWebSocketTask.Message, Error>?
 
@@ -329,6 +495,10 @@ private final class FakeSocket: HermesWebSocket {
     }
 
     func send(_ message: URLSessionWebSocketTask.Message, completionHandler: @escaping @Sendable (Error?) -> Void) {
+        if case .string(let text) = message {
+            sentTexts.append(text)
+            onSend?()
+        }
         completionHandler(nil)
     }
 

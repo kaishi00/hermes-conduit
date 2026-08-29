@@ -30,7 +30,8 @@ struct ChatResumeLifecycleOperations {
     var connectClient: (@MainActor (HermesClient) async throws -> Void)?
     var loadCatalog: (@MainActor (HermesClient, Bool) async throws -> [SessionSummary])?
     var mintTicket: (@MainActor (String) async throws -> String)?
-    var openSession: (@MainActor (HermesClient, String) async throws -> SessionResumeResult)?
+    var openSession: (@MainActor (HermesClient, String, Bool) async throws -> SessionResumeResult)?
+    var persistedTranscript: (@MainActor (String, String) async -> PersistedTranscriptFetchOutcome)?
     var branchSession: (@MainActor (
         HermesClient,
         String,
@@ -66,7 +67,8 @@ struct ChatResumeLifecycleOperations {
         connectClient: (@MainActor (HermesClient) async throws -> Void)? = nil,
         loadCatalog: (@MainActor (HermesClient, Bool) async throws -> [SessionSummary])? = nil,
         mintTicket: (@MainActor (String) async throws -> String)? = nil,
-        openSession: (@MainActor (HermesClient, String) async throws -> SessionResumeResult)? = nil,
+        openSession: (@MainActor (HermesClient, String, Bool) async throws -> SessionResumeResult)? = nil,
+        persistedTranscript: (@MainActor (String, String) async -> PersistedTranscriptFetchOutcome)? = nil,
         branchSession: (@MainActor (
             HermesClient,
             String,
@@ -102,6 +104,7 @@ struct ChatResumeLifecycleOperations {
         self.loadCatalog = loadCatalog
         self.mintTicket = mintTicket
         self.openSession = openSession
+        self.persistedTranscript = persistedTranscript
         self.branchSession = branchSession
         self.setSessionTitle = setSessionTitle
         self.refreshContext = refreshContext
@@ -120,6 +123,33 @@ struct ChatResumeLifecycleOperations {
     }
 
     static let live = ChatResumeLifecycleOperations()
+}
+
+/// Raw result of fetching a session's persisted history — the dashboard
+/// messages endpoint's JSON payload exactly as returned, still to be parsed
+/// by AppState's production normalizer path.
+enum PersistedTranscriptFetchOutcome {
+    case payload([String: Any])
+    /// No usable history source: no dashboard bridge, or the gateway predates
+    /// the messages endpoint. The caller falls back to the resume RPC that
+    /// carries the transcript itself.
+    case unavailable
+    /// An unrelated history failure (network, authentication, unexpected
+    /// payload). It must surface to the caller instead of silently degrading
+    /// the resume into a fallback.
+    case failed(Error)
+}
+
+/// Parsed readiness of the persisted transcript for a resume reconciliation.
+enum PersistedTranscriptOutcome {
+    case hydrated(PersistedSessionTranscript)
+    case unavailable
+    case failed(Error)
+}
+
+struct PersistedSessionTranscript {
+    let resolvedSessionId: String?
+    let messages: [ChatMessage]
 }
 
 struct ComposerSubmissionContext: Equatable {
@@ -763,11 +793,6 @@ final class AppState: ObservableObject {
         /// catalog. Empty or unusable responses must remain mergeable with
         /// the previous snapshot instead of evicting it.
         let isAuthoritative: Bool
-    }
-
-    private struct PersistedSessionTranscript {
-        let resolvedSessionId: String?
-        let messages: [ChatMessage]
     }
 
     private struct TitleGenerationSettings {
@@ -2634,22 +2659,71 @@ final class AppState: ObservableObject {
 
         do {
             // Match Hermes Desktop: fetch the durable transcript and resume the
-            // live runtime concurrently. `session.resume` intentionally uses a
-            // compact projection which omits persisted timestamps, while the
-            // HTTP endpoint reads the timestamped rows from state.db.
+            // live runtime concurrently. The compact resume (`omit_messages`)
+            // keeps the whole persisted transcript out of the WebSocket
+            // response; the HTTP endpoint reads the timestamped rows from
+            // state.db and hydrates the conversation instead.
             let bridge = dashboardTicketBridge
+            // Prefer the compact projection whenever a history source exists
+            // to hydrate the transcript — the dashboard bridge, or a test seam
+            // standing in for one. A cold bridge does not change the flavor:
+            // requestJSON's bounded readiness poll (30 × 100 ms) waits for the
+            // page inside the concurrent transcript fetch, so the compact
+            // resume is never delayed by that wait, and a bridge still not
+            // usable afterwards degrades to the single legacy resume. The
+            // legacy resume — cold bridge, gateway without the history route —
+            // carries the transcript in the RPC response, whose size is
+            // bounded by the socket limit (the pre-compact behavior).
+            let compactResume = chatResumeLifecycleOperations.persistedTranscript != nil || bridge != nil
             async let resumedSession = openChatResumeSession(
                 sessionId,
-                using: client
+                using: client,
+                compact: compactResume
             )
-            async let persistedTranscript = dashboardSessionTranscript(
+            async let transcriptOutcome = persistedTranscriptOutcome(
                 sessionId: sessionId,
                 profile: profile,
                 using: bridge
             )
 
-            let result = try await resumedSession
-            let transcript = await persistedTranscript
+            var result = try await resumedSession
+            var transcript: PersistedSessionTranscript?
+            if compactResume {
+                switch await transcriptOutcome {
+                case .hydrated(let persisted):
+                    // The endpoint may resolve a runtime ID to its stored
+                    // session ID; only rows belonging to this session may
+                    // hydrate the transcript. A foreign identity means the
+                    // history source is unusable for this resume — request
+                    // the transcript through the resume RPC instead.
+                    if transcriptMatchesSession(
+                        persisted,
+                        requestedSessionId: sessionId,
+                        resumedSessionId: result.sessionId
+                    ) {
+                        transcript = persisted
+                    } else {
+                        result = try await openChatResumeSession(
+                            sessionId,
+                            using: client,
+                            compact: false
+                        )
+                    }
+                case .unavailable:
+                    // No usable history source (missing bridge, or a gateway
+                    // predating the messages endpoint): re-resume carrying
+                    // the transcript, exactly as pre-compact builds did.
+                    result = try await openChatResumeSession(
+                        sessionId,
+                        using: client,
+                        compact: false
+                    )
+                case .failed(let error):
+                    // An unrelated history failure must not be papered over by
+                    // a legacy resume that would hide it: surface it instead.
+                    throw error
+                }
+            }
             guard automaticChatResumeWorkIsCurrent(
                     automaticWorkToken,
                     syncOperationID: automaticSyncOperationID
@@ -2691,9 +2765,16 @@ final class AppState: ObservableObject {
                     sessionIDs: [sessionId, result.sessionId, transcript.resolvedSessionId].compactMap { $0 }
                 )
             }
-            let shouldUsePersistedTranscript = !result.snapshot.hasLiveProjection
-                && transcriptMatches
-                && (transcript.map { !$0.messages.isEmpty || result.messages.isEmpty } ?? false)
+            // A compact resume ships no persisted transcript, so the REST rows
+            // are the durable base even while a turn is live: the in-flight
+            // projection rides on top through the streaming bubble, matching
+            // Desktop's cache-as-base rendering. A resume that carried
+            // messages keeps the historical precedence where a live projection
+            // wins over the REST read.
+            let resumeCarriedTranscript = !result.messages.isEmpty
+            let shouldUsePersistedTranscript = transcriptMatches
+                && (transcript.map { !$0.messages.isEmpty || !resumeCarriedTranscript } ?? false)
+                && (!result.snapshot.hasLiveProjection || !resumeCarriedTranscript)
             let presentationResult: SessionResumeResult
             if let transcript, shouldUsePersistedTranscript {
                 presentationResult = SessionResumeResult(
@@ -2862,12 +2943,16 @@ final class AppState: ObservableObject {
 
     private func openChatResumeSession(
         _ sessionID: String,
-        using client: HermesClient
+        using client: HermesClient,
+        compact: Bool
     ) async throws -> SessionResumeResult {
         if let openSession = chatResumeLifecycleOperations.openSession {
-            return try await openSession(client, sessionID)
+            return try await openSession(client, sessionID, compact)
         }
-        return try await client.openSession(sessionID)
+        if compact {
+            return try await client.openSession(sessionID)
+        }
+        return try await client.openSessionLegacy(sessionID)
     }
 
     private func refreshChatResumeContext(
@@ -5995,36 +6080,97 @@ final class AppState: ObservableObject {
             .caseInsensitiveCompare(rhs.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame
     }
 
-    /// Mirrors Hermes Desktop's `/api/sessions/{id}/messages` prefetch. The
-    /// dashboard server returns `messages`; the API-server variant returns
-    /// `data`, so accept both public Hermes response shapes.
-    private func dashboardSessionTranscript(
+    /// Mirrors Hermes Desktop's `/api/sessions/{id}/messages` prefetch:
+    /// fetches the session's persisted transcript through the dashboard
+    /// history route (or the test seam standing in for it) and parses it with
+    /// the production normalizer path. The typed outcome lets the resume
+    /// reconciliation distinguish a missing history source — which triggers
+    /// the legacy full-transcript resume — from an unrelated failure, which
+    /// must surface instead of silently degrading.
+    private func persistedTranscriptOutcome(
         sessionId: String,
         profile: String,
         using bridge: DashboardTicketBridge?
-    ) async -> PersistedSessionTranscript? {
-        guard let bridge else { return nil }
+    ) async -> PersistedTranscriptOutcome {
+        let fetchOutcome: PersistedTranscriptFetchOutcome
+        if let persistedTranscript = chatResumeLifecycleOperations.persistedTranscript {
+            fetchOutcome = await persistedTranscript(sessionId, profile)
+        } else {
+            guard let bridge else { return .unavailable }
+            do {
+                fetchOutcome = .payload(try await bridge.requestJSON(
+                    path: sessionMessagesPath(sessionId: sessionId, profile: profile)
+                ))
+            } catch {
+                // requestJSON's readiness poll is the bounded wait for a cold
+                // or reloading bridge; whatever it raises is classified with
+                // the seam-sourced failures below. Note the bridge caps REST
+                // response size (DataURLLimits.maxJSONResponseBytes), so an
+                // oversized transcript also lands here rather than silently
+                // degrading the resume.
+                fetchOutcome = .failed(error)
+            }
+        }
 
-        do {
-            let response = try await bridge.requestJSON(
-                path: sessionMessagesPath(sessionId: sessionId, profile: profile)
-            )
+        switch fetchOutcome {
+        case .unavailable:
+            return .unavailable
+        case .failed(let error):
+            // One classification for both the bridge fetch and the seam:
+            // structural endpoint gaps, a bridge that never became ready
+            // inside its bounded poll, and transient transport trouble
+            // (429, 5xx, status-0 WebKit/network failures, request timeouts)
+            // degrade to the single legacy resume; authentication and every
+            // other failure must surface instead of silently degrading.
+            if Self.historySourceIsUnavailable(error) {
+                sessionCatalogLog.debug("Persisted transcript unavailable for \(sessionId, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                return .unavailable
+            }
+            sessionCatalogLog.debug("Persisted transcript failed for \(sessionId, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            return .failed(error)
+        case .payload(let response):
+            // The dashboard server returns `messages`; the API-server variant
+            // returns `data`, so accept both public Hermes response shapes.
             let rawMessages = ["messages", "data", "_array"]
                 .compactMap { response[$0] as? [Any] }
                 .first
-            guard let rawMessages else { return nil }
+            guard let rawMessages else {
+                return .failed(HermesError.invalidResponse)
+            }
 
             let resolvedSessionId = (response["session_id"] as? String)
                 ?? (response["sessionId"] as? String)
-            return PersistedSessionTranscript(
+            return .hydrated(PersistedSessionTranscript(
                 resolvedSessionId: resolvedSessionId,
                 messages: MessageNormalizer.normalizeMessages(rawMessages.map(AnyCodable.from))
-            )
-        } catch {
-            // Older gateways can omit the endpoint. The compact resume path and
-            // presentation cache remain a safe fallback in that case.
-            sessionCatalogLog.debug("Persisted transcript unavailable for \(sessionId, privacy: .public): \(error.localizedDescription, privacy: .public)")
-            return nil
+            ))
+        }
+    }
+
+    /// Classifies a history-fetch failure for the resume fallback. Everything
+    /// that leaves the resume without a usable transcript *right now*
+    /// degrades to the single legacy resume:
+    ///
+    ///  - structural endpoint gaps — 404/410 (the gateway predates the
+    ///    messages route);
+    ///  - a bridge that did not become ready within its bounded readiness
+    ///    poll, or a request that outlived its deadline (both funnel into
+    ///    `.notReady` by the bridge's error contract);
+    ///  - transient transport trouble — HTTP 408/429, any 5xx (which
+    ///    subsumes 501), and status 0 (WebKit-level network/abort failures,
+    ///    including response caps).
+    ///
+    /// Client-originated request/bridge timeouts always arrive through one of
+    /// the status-0/`.notReady` funnels above; other authentication (401/403 →
+    /// `.signInRequired`) and every unlisted error is a real failure that must
+    /// propagate instead of silently degrading the resume into a fallback.
+    nonisolated static func historySourceIsUnavailable(_ error: Error) -> Bool {
+        if case DashboardTicketBridgeError.notReady = error { return true }
+        guard case let DashboardTicketBridgeError.http(status, _) = error else { return false }
+        switch status {
+        case 0, 404, 408, 410, 429: return true
+        case 500...599: return true
+        default: return false
         }
     }
 

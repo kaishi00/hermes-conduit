@@ -122,7 +122,16 @@ enum DashboardCookiePersistence {
 enum DashboardTicketBridgeError: LocalizedError {
     case notReady
     case signInRequired
+    /// Local/dashboard-message failures that never produced an HTTP status
+    /// (request encoding, ticket-mint details). HTTP failures travel as
+    /// `.http(status:detail:)` instead.
     case requestFailed(String)
+    /// Non-auth HTTP failure carrying the gateway's status code, so callers
+    /// can recognize structural gaps (404/410 — e.g. a gateway without the
+    /// session-messages endpoint) and transient trouble (429/5xx/408, status
+    /// 0) and fall back deliberately instead of treating them like unrelated
+    /// server errors.
+    case http(status: Int, detail: String)
 
     var errorDescription: String? {
         switch self {
@@ -132,6 +141,8 @@ enum DashboardTicketBridgeError: LocalizedError {
             return "Dashboard sign-in has expired."
         case .requestFailed(let message):
             return message
+        case .http(_, let detail):
+            return detail
         }
     }
 }
@@ -795,7 +806,7 @@ extension DashboardTicketBridge: WKScriptMessageHandler {
             return
         }
         let detail = payload["error"] as? String ?? "Dashboard request failed (\(status))."
-        continuation.resume(throwing: DashboardTicketBridgeError.requestFailed(detail))
+        continuation.resume(throwing: DashboardTicketBridgeError.http(status: status, detail: detail))
     }
 }
 
