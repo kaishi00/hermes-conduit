@@ -346,7 +346,7 @@ final class ChatReturnSurfaceTests: XCTestCase {
                     return [self.session("stored-a")]
                 },
                 mintTicket: { _ in throw ReturnSurfaceTestError.mintUnavailable },
-                openSession: { _, sessionID in
+                openSession: { _, sessionID, _ in
                     SessionResumeResult(
                         sessionId: sessionID,
                         messages: [
@@ -412,7 +412,7 @@ final class ChatReturnSurfaceTests: XCTestCase {
         let harness = makeHarness(
             surface: .sessions,
             lifecycleOperations: ChatResumeLifecycleOperations(
-                openSession: { _, sessionID in
+                openSession: { _, sessionID, _ in
                     SessionResumeResult(
                         sessionId: sessionID,
                         messages: [

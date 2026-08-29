@@ -123,6 +123,11 @@ enum DashboardTicketBridgeError: LocalizedError {
     case notReady
     case signInRequired
     case requestFailed(String)
+    /// Non-auth HTTP failure carrying the gateway's status code, so callers
+    /// can recognize structural gaps (404/410/501 — e.g. a gateway without
+    /// the session-messages endpoint) and fall back deliberately instead of
+    /// treating them like transient server errors.
+    case http(status: Int, detail: String)
 
     var errorDescription: String? {
         switch self {
@@ -132,6 +137,8 @@ enum DashboardTicketBridgeError: LocalizedError {
             return "Dashboard sign-in has expired."
         case .requestFailed(let message):
             return message
+        case .http(_, let detail):
+            return detail
         }
     }
 }
@@ -188,7 +195,9 @@ final class DashboardTicketBridge: NSObject {
     let webView: WKWebView
     let cloudflareAccess: CloudflareAccessCredentials?
 
-    private var isReady = false
+    /// Readable so callers can pick a request strategy up front (e.g. skip a
+    /// compact resume that would depend on this bridge) without mutating it.
+    private(set) var isReady = false
     /// Whether the current dashboard page load has terminally failed (as
     /// opposed to still being in flight on a slow link). Retry logic only
     /// reloads a failed load — restarting an in-progress one would abort a
@@ -795,7 +804,7 @@ extension DashboardTicketBridge: WKScriptMessageHandler {
             return
         }
         let detail = payload["error"] as? String ?? "Dashboard request failed (\(status))."
-        continuation.resume(throwing: DashboardTicketBridgeError.requestFailed(detail))
+        continuation.resume(throwing: DashboardTicketBridgeError.http(status: status, detail: detail))
     }
 }
 

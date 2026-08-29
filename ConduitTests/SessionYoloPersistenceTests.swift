@@ -229,7 +229,7 @@ final class SessionYoloPersistenceTests: XCTestCase {
         let openGate = SessionYoloResumeGate()
         let operations = ChatResumeLifecycleOperations(
             loadCatalog: { _, _ in [self.session("session-a")] },
-            openSession: { _, sessionID in
+            openSession: { _, sessionID, _ in
                 await openGate.suspend()
                 return SessionResumeResult(
                     sessionId: sessionID,
@@ -282,7 +282,7 @@ final class SessionYoloPersistenceTests: XCTestCase {
         let recorder = YoloSetCallRecorder()
         let operations = ChatResumeLifecycleOperations(
             loadCatalog: { _, _ in [self.session("session-a")] },
-            openSession: { _, sessionID in
+            openSession: { _, sessionID, _ in
                 await openGate.suspend()
                 return SessionResumeResult(
                     sessionId: sessionID,
@@ -340,7 +340,7 @@ final class SessionYoloPersistenceTests: XCTestCase {
         let openGate = SessionYoloResumeGate()
         let operations = ChatResumeLifecycleOperations(
             loadCatalog: { _, _ in [self.session("session-a")] },
-            openSession: { _, sessionID in
+            openSession: { _, sessionID, _ in
                 await openGate.suspend()
                 return SessionResumeResult(
                     sessionId: sessionID,
@@ -485,7 +485,7 @@ final class SessionYoloPersistenceTests: XCTestCase {
         let recorder = YoloSetCallRecorder()
         let operations = ChatResumeLifecycleOperations(
             loadCatalog: { _, _ in [self.session("session-a")] },
-            openSession: { _, sessionID in
+            openSession: { _, sessionID, _ in
                 SessionResumeResult(
                     sessionId: sessionID,
                     messages: [],
@@ -523,7 +523,7 @@ final class SessionYoloPersistenceTests: XCTestCase {
         let recorder = YoloSetCallRecorder()
         let operations = ChatResumeLifecycleOperations(
             loadCatalog: { _, _ in [self.session("session-a")] },
-            openSession: { _, sessionID in
+            openSession: { _, sessionID, _ in
                 SessionResumeResult(
                     sessionId: sessionID,
                     messages: [],
@@ -561,7 +561,7 @@ final class SessionYoloPersistenceTests: XCTestCase {
         let recorder = YoloSetCallRecorder()
         let operations = ChatResumeLifecycleOperations(
             loadCatalog: { _, _ in [self.session("session-a")] },
-            openSession: { _, sessionID in
+            openSession: { _, sessionID, _ in
                 SessionResumeResult(
                     sessionId: sessionID,
                     messages: [],
@@ -598,7 +598,7 @@ final class SessionYoloPersistenceTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         let operations = ChatResumeLifecycleOperations(
             loadCatalog: { _, _ in [self.session("session-a")] },
-            openSession: { _, sessionID in
+            openSession: { _, sessionID, _ in
                 SessionResumeResult(
                     sessionId: sessionID,
                     messages: [],
@@ -641,7 +641,7 @@ final class SessionYoloPersistenceTests: XCTestCase {
         let recorder = YoloSetCallRecorder()
         let operations = ChatResumeLifecycleOperations(
             loadCatalog: { _, _ in [self.session("session-a")] },
-            openSession: { _, sessionID in
+            openSession: { _, sessionID, _ in
                 SessionResumeResult(
                     sessionId: sessionID,
                     messages: [],
@@ -731,7 +731,7 @@ final class SessionYoloPersistenceTests: XCTestCase {
         let recorder = YoloSetCallRecorder()
         let operations = ChatResumeLifecycleOperations(
             loadCatalog: { _, _ in [self.session("session-a")] },
-            openSession: { _, sessionID in
+            openSession: { _, sessionID, _ in
                 SessionResumeResult(
                     sessionId: sessionID,
                     messages: [],
@@ -858,7 +858,7 @@ final class SessionYoloPersistenceTests: XCTestCase {
         let recorder = YoloSetCallRecorder()
         let operations = ChatResumeLifecycleOperations(
             loadCatalog: { _, _ in [self.session("session-a")] },
-            openSession: { _, sessionID in
+            openSession: { _, sessionID, _ in
                 SessionResumeResult(
                     sessionId: sessionID,
                     messages: [],
@@ -899,7 +899,7 @@ final class SessionYoloPersistenceTests: XCTestCase {
         let openGate = SessionYoloResumeGate()
         let operations = ChatResumeLifecycleOperations(
             loadCatalog: { _, _ in [self.session("session-a")] },
-            openSession: { _, sessionID in
+            openSession: { _, sessionID, _ in
                 await openGate.suspend()
                 return SessionResumeResult(
                     sessionId: sessionID,
@@ -959,7 +959,7 @@ final class SessionYoloPersistenceTests: XCTestCase {
         let recorder = YoloSetCallRecorder()
         let operations = ChatResumeLifecycleOperations(
             loadCatalog: { _, _ in [self.session("session-a")] },
-            openSession: { _, sessionID in
+            openSession: { _, sessionID, _ in
                 await openGate.suspend()
                 return SessionResumeResult(
                     sessionId: sessionID,
@@ -1014,7 +1014,7 @@ final class SessionYoloPersistenceTests: XCTestCase {
         let recorder = YoloSetCallRecorder()
         let operations = ChatResumeLifecycleOperations(
             loadCatalog: { _, _ in [self.session("session-a")] },
-            openSession: { _, sessionID in
+            openSession: { _, sessionID, _ in
                 SessionResumeResult(
                     sessionId: sessionID,
                     messages: [],
@@ -1087,7 +1087,7 @@ final class SessionYoloPersistenceTests: XCTestCase {
         let recorder = YoloSetCallRecorder()
         let operations = ChatResumeLifecycleOperations(
             loadCatalog: { _, _ in [self.session("session-a")] },
-            openSession: { _, sessionID in
+            openSession: { _, sessionID, _ in
                 await openGate.suspend()
                 return SessionResumeResult(
                     sessionId: sessionID,
@@ -1163,7 +1163,7 @@ final class SessionYoloPersistenceTests: XCTestCase {
             connectClient: { _ in },
             loadCatalog: { _, _ in [] },
             mintTicket: { _ in "profile-ticket" },
-            openSession: { _, sessionID in
+            openSession: { _, sessionID, _ in
                 SessionResumeResult(
                     sessionId: sessionID,
                     messages: [],
@@ -1244,7 +1244,7 @@ final class SessionYoloPersistenceTests: XCTestCase {
                 (client.profile ?? "default") == "work" ? [] : [self.session("persisted-a", alternateIDs: ["runtime-a"])]
             },
             mintTicket: { _ in "profile-ticket" },
-            openSession: { _, sessionID in
+            openSession: { _, sessionID, _ in
                 // Resume snapshots always report the gateway's forgotten
                 // flag; they never park - only the toggle RPC does.
                 recorder.record(sessionID, false)

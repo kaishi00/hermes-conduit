@@ -480,7 +480,7 @@ final class AppStateReasoningStreamTests: XCTestCase {
             ChatMessage(id: "new-1", role: .assistant, content: "Other session", timestamp: "1")
         ]
         let state = makeAppState(lifecycleOperations: ChatResumeLifecycleOperations(
-            openSession: { _, sessionID in
+            openSession: { _, sessionID, _ in
                 SessionResumeResult(
                     sessionId: sessionID,
                     messages: replacementMessages,

@@ -12,7 +12,7 @@ final class AppStateChatResumeTests: XCTestCase {
         let harness = makeHarness(
             lifecycleOperations: ChatResumeLifecycleOperations(
                 loadCatalog: { _, _ in [staleCatalog] },
-                openSession: { _, sessionID in
+                openSession: { _, sessionID, _ in
                     SessionResumeResult(
                         sessionId: sessionID,
                         messages: newerMessages,
@@ -76,7 +76,7 @@ final class AppStateChatResumeTests: XCTestCase {
         let gates = SessionOpenGates(sessionIDs: sessionIDs)
         let harness = makeHarness(
             lifecycleOperations: ChatResumeLifecycleOperations(
-                openSession: { _, sessionID in
+                openSession: { _, sessionID, _ in
                     await gates.suspend(sessionID)
                     return SessionResumeResult(
                         sessionId: sessionID,
@@ -127,7 +127,7 @@ final class AppStateChatResumeTests: XCTestCase {
         let harness = makeHarness(
             lifecycleOperations: ChatResumeLifecycleOperations(
                 loadCatalog: { _, _ in [active] },
-                openSession: { _, sessionID in
+                openSession: { _, sessionID, _ in
                     await openGate.suspend()
                     return SessionResumeResult(
                         sessionId: sessionID,
@@ -188,7 +188,7 @@ final class AppStateChatResumeTests: XCTestCase {
         let harness = makeHarness(
             lifecycleOperations: ChatResumeLifecycleOperations(
                 loadCatalog: { _, _ in [active] },
-                openSession: { _, sessionID in
+                openSession: { _, sessionID, _ in
                     await openGate.suspend()
                     return SessionResumeResult(
                         sessionId: sessionID,
@@ -230,7 +230,7 @@ final class AppStateChatResumeTests: XCTestCase {
         let harness = makeHarness(
             lifecycleOperations: ChatResumeLifecycleOperations(
                 loadCatalog: { _, _ in [active] },
-                openSession: { _, sessionID in
+                openSession: { _, sessionID, _ in
                     await openGate.suspend()
                     return SessionResumeResult(
                         sessionId: sessionID,
@@ -300,7 +300,7 @@ final class AppStateChatResumeTests: XCTestCase {
         let harness = makeHarness(
             lifecycleOperations: ChatResumeLifecycleOperations(
                 loadCatalog: { _, _ in [active] },
-                openSession: { _, sessionID in
+                openSession: { _, sessionID, _ in
                     await openGate.suspend()
                     return SessionResumeResult(
                         sessionId: sessionID,
@@ -351,7 +351,7 @@ final class AppStateChatResumeTests: XCTestCase {
         let harness = makeHarness(
             lifecycleOperations: ChatResumeLifecycleOperations(
                 loadCatalog: { _, _ in [active] },
-                openSession: { _, sessionID in
+                openSession: { _, sessionID, _ in
                     await openGate.suspend()
                     return SessionResumeResult(
                         sessionId: sessionID,
@@ -410,7 +410,7 @@ final class AppStateChatResumeTests: XCTestCase {
         let harness = makeHarness(
             lifecycleOperations: ChatResumeLifecycleOperations(
                 loadCatalog: { _, _ in [active] },
-                openSession: { _, _ in
+                openSession: { _, _, _ in
                     await openGate.suspend()
                     return SessionResumeResult(
                         sessionId: "runtime-a",
@@ -470,7 +470,7 @@ final class AppStateChatResumeTests: XCTestCase {
         let harness = makeHarness(
             lifecycleOperations: ChatResumeLifecycleOperations(
                 loadCatalog: { _, _ in [previous] },
-                openSession: { _, _ in
+                openSession: { _, _, _ in
                     return SessionResumeResult(
                         sessionId: resumedSessionID,
                         messages: [],
@@ -511,7 +511,7 @@ final class AppStateChatResumeTests: XCTestCase {
         let openGate = ControlledSuspension()
         let harness = makeHarness(
             lifecycleOperations: ChatResumeLifecycleOperations(
-                openSession: { _, sessionID in
+                openSession: { _, sessionID, _ in
                     await openGate.suspend()
                     return SessionResumeResult(
                         sessionId: sessionID,
@@ -545,7 +545,7 @@ final class AppStateChatResumeTests: XCTestCase {
         let secondGate = ControlledSuspension()
         let harness = makeHarness(
             lifecycleOperations: ChatResumeLifecycleOperations(
-                openSession: { _, sessionID in
+                openSession: { _, sessionID, _ in
                     if sessionID == "stored-b" {
                         await firstGate.suspend()
                     } else {
@@ -603,7 +603,7 @@ final class AppStateChatResumeTests: XCTestCase {
                     await secondCatalogGate.suspend()
                     return [self.session("stored-c")]
                 },
-                openSession: { _, sessionID in
+                openSession: { _, sessionID, _ in
                     SessionResumeResult(
                         sessionId: sessionID,
                         messages: sessionID == "stored-c" ? secondMessages : firstMessages,
@@ -688,7 +688,7 @@ final class AppStateChatResumeTests: XCTestCase {
         let harness = makeHarness(
             lifecycleOperations: ChatResumeLifecycleOperations(
                 loadCatalog: { _, _ in [self.session("stored-a")] },
-                openSession: { _, sessionID in
+                openSession: { _, sessionID, _ in
                     SessionResumeResult(
                         sessionId: sessionID,
                         messages: transcript,
@@ -742,7 +742,7 @@ final class AppStateChatResumeTests: XCTestCase {
         let harness = makeHarness(
             lifecycleOperations: ChatResumeLifecycleOperations(
                 loadCatalog: { _, _ in [self.session("stored-a")] },
-                openSession: { _, sessionID in
+                openSession: { _, sessionID, _ in
                     SessionResumeResult(
                         sessionId: sessionID,
                         messages: transcript,
@@ -1004,7 +1004,7 @@ final class AppStateChatResumeTests: XCTestCase {
         let harness = makeHarness(
             lifecycleOperations: ChatResumeLifecycleOperations(
                 loadCatalog: { _, _ in [self.session("stored-a")] },
-                openSession: { _, sessionID in
+                openSession: { _, sessionID, _ in
                     SessionResumeResult(
                         sessionId: sessionID,
                         messages: transcript,
@@ -1060,7 +1060,7 @@ final class AppStateChatResumeTests: XCTestCase {
                     }
                     return [self.session("stored-current")]
                 },
-                openSession: { _, sessionID in
+                openSession: { _, sessionID, _ in
                     if sessionID == "stored-current" {
                         await newerOpenGate.suspend()
                     }
@@ -1173,7 +1173,7 @@ final class AppStateChatResumeTests: XCTestCase {
                     }
                     return [self.session("stored-current")]
                 },
-                openSession: { _, sessionID in
+                openSession: { _, sessionID, _ in
                     SessionResumeResult(
                         sessionId: sessionID,
                         messages: sessionID == "stored-current" ? currentMessages : staleMessages,
@@ -1218,7 +1218,7 @@ final class AppStateChatResumeTests: XCTestCase {
     func testAuthoritativeEmptyTranscriptSettlesFromScopedRevisionZeroLayout() async {
         let harness = makeHarness(
             lifecycleOperations: ChatResumeLifecycleOperations(
-                openSession: { _, sessionID in
+                openSession: { _, sessionID, _ in
                     SessionResumeResult(
                         sessionId: sessionID,
                         messages: [],
@@ -1276,7 +1276,7 @@ final class AppStateChatResumeTests: XCTestCase {
         )
         let harness = makeHarness(
             lifecycleOperations: ChatResumeLifecycleOperations(
-                openSession: { _, sessionID in
+                openSession: { _, sessionID, _ in
                     SessionResumeResult(
                         sessionId: sessionID,
                         messages: authoritativeMessages,
@@ -1345,7 +1345,7 @@ final class AppStateChatResumeTests: XCTestCase {
                     await notificationCatalogGate.suspend()
                     return [self.session("stored-b")]
                 },
-                openSession: { _, sessionID in
+                openSession: { _, sessionID, _ in
                     SessionResumeResult(
                         sessionId: sessionID,
                         messages: sessionID == "stored-c" ? messagesC : messagesB,
@@ -1623,7 +1623,7 @@ final class AppStateChatResumeTests: XCTestCase {
                     }
                     return [active]
                 },
-                openSession: { _, sessionID in
+                openSession: { _, sessionID, _ in
                     openedSessionIDs.append(sessionID)
                     return SessionResumeResult(
                         sessionId: sessionID,
@@ -1690,7 +1690,7 @@ final class AppStateChatResumeTests: XCTestCase {
                     return [active]
                 },
                 mintTicket: { _ in "refreshed-ticket" },
-                openSession: { _, sessionID in
+                openSession: { _, sessionID, _ in
                     openCount += 1
                     if openCount == 1 {
                         await openGate.suspend()
@@ -1759,7 +1759,7 @@ final class AppStateChatResumeTests: XCTestCase {
         let harness = makeHarness(
             lifecycleOperations: ChatResumeLifecycleOperations(
                 loadCatalog: { _, _ in [] },
-                openSession: { _, sessionID in
+                openSession: { _, sessionID, _ in
                     SessionResumeResult(
                         sessionId: sessionID,
                         messages: messages,
@@ -1805,7 +1805,7 @@ final class AppStateChatResumeTests: XCTestCase {
         let harness = makeHarness(
             lifecycleOperations: ChatResumeLifecycleOperations(
                 loadCatalog: { _, _ in [] },
-                openSession: { _, sessionID in
+                openSession: { _, sessionID, _ in
                     SessionResumeResult(
                         sessionId: sessionID,
                         messages: newMessages,
@@ -1860,7 +1860,7 @@ final class AppStateChatResumeTests: XCTestCase {
         let gate = ControlledSuspension()
         let harness = makeHarness(
             lifecycleOperations: ChatResumeLifecycleOperations(
-                openSession: { _, sessionID in
+                openSession: { _, sessionID, _ in
                     await gate.suspend()
                     return SessionResumeResult(
                         sessionId: sessionID,
@@ -1916,7 +1916,7 @@ final class AppStateChatResumeTests: XCTestCase {
         let harness = makeHarness(
             lifecycleOperations: ChatResumeLifecycleOperations(
                 loadCatalog: { _, _ in [] },
-                openSession: { _, _ in throw ControlledLifecycleError.failed },
+                openSession: { _, _, _ in throw ControlledLifecycleError.failed },
                 branchSession: { _, _, _, _, _ in
                     (sessionId: "branch-runtime", storedSessionId: "branch-stored", profile: "default")
                 },
@@ -1961,7 +1961,7 @@ final class AppStateChatResumeTests: XCTestCase {
         let harness = makeHarness(
             lifecycleOperations: ChatResumeLifecycleOperations(
                 loadCatalog: { _, _ in [] },
-                openSession: { _, sessionID in
+                openSession: { _, sessionID, _ in
                     if sessionID == "branch-runtime" {
                         await branchGate.suspend()
                     }
@@ -2780,7 +2780,7 @@ final class AppStateChatResumeTests: XCTestCase {
                     loadCatalogCount += 1
                     return [destination]
                 },
-                openSession: { _, sessionID in
+                openSession: { _, sessionID, _ in
                     openSessionCount += 1
                     return SessionResumeResult(
                         sessionId: sessionID,
@@ -2944,7 +2944,7 @@ final class AppStateChatResumeTests: XCTestCase {
         let harness = makeHarness(
             lifecycleOperations: ChatResumeLifecycleOperations(
                 loadCatalog: { _, _ in [origin] },
-                openSession: { _, sessionID in
+                openSession: { _, sessionID, _ in
                     openedSessionIDs.append(sessionID)
                     return SessionResumeResult(
                         sessionId: "runtime-recovered",
@@ -2991,7 +2991,7 @@ final class AppStateChatResumeTests: XCTestCase {
         let harness = makeHarness(
             lifecycleOperations: ChatResumeLifecycleOperations(
                 loadCatalog: { _, _ in [origin] },
-                openSession: { _, _ in
+                openSession: { _, _, _ in
                     SessionResumeResult(
                         sessionId: "runtime-recovered",
                         messages: [],
@@ -3170,7 +3170,7 @@ final class AppStateChatResumeTests: XCTestCase {
         let harness = makeHarness(
             lifecycleOperations: ChatResumeLifecycleOperations(
                 loadCatalog: { _, _ in [origin] },
-                openSession: { _, _ in
+                openSession: { _, _, _ in
                     SessionResumeResult(
                         sessionId: "runtime-recovered",
                         messages: [],
@@ -3301,7 +3301,7 @@ final class AppStateChatResumeTests: XCTestCase {
                     }
                     return "profile-ticket"
                 },
-                openSession: { client, sessionID in
+                openSession: { client, sessionID, _ in
                     let profile = client.profile ?? "default"
                     openedProfiles.append(profile)
                     return SessionResumeResult(

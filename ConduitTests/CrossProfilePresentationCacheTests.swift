@@ -148,7 +148,7 @@ final class CrossProfilePresentationCacheTests: XCTestCase {
                 (client.profile ?? "default") == "work" ? workCatalog : []
             },
             mintTicket: { _ in "profile-ticket" },
-            openSession: { client, sessionID in
+            openSession: { client, sessionID, _ in
                 SessionResumeResult(
                     sessionId: sessionID,
                     messages: openMessages(client),
@@ -339,7 +339,7 @@ final class CrossProfilePresentationCacheTests: XCTestCase {
                 connectClient: { _ in },
                 loadCatalog: { _, _ in [self.session(fixtures.session.id, profile: "work")] },
                 mintTicket: { _ in "connect-ticket" },
-                openSession: { _, sessionID in
+                openSession: { _, sessionID, _ in
                     SessionResumeResult(
                         sessionId: sessionID,
                         messages: fixtures.messages,
@@ -397,7 +397,7 @@ final class CrossProfilePresentationCacheTests: XCTestCase {
                 connectClient: { _ in throw ForcedSwitchFailure() },
                 loadCatalog: { _, _ in [self.session(fixtures.session.id, profile: "work")] },
                 mintTicket: { _ in "profile-ticket" },
-                openSession: { _, sessionID in
+                openSession: { _, sessionID, _ in
                     SessionResumeResult(
                         sessionId: sessionID,
                         messages: fixtures.messages,
