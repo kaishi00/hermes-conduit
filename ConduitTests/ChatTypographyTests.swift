@@ -14,10 +14,26 @@
 //  side so any accidental app-wide scaling surfaces as a failure.
 //
 
+import Combine
 import SwiftUI
 import UIKit
 import XCTest
 @testable import Conduit
+
+/// Drives the chat-size environment for mounted-view tests so a test can
+/// flip the preference after mount (exactly what the Settings slider does).
+private final class ChatSizeEmitter: ObservableObject {
+    @Published var chatSize: ChatTextSize = .default
+}
+
+private struct ChatSizeInjector<Content: View>: View {
+    @ObservedObject var emitter: ChatSizeEmitter
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        content().environment(\.chatTextSize, emitter.chatSize)
+    }
+}
 
 final class ChatTypographyTests: XCTestCase {
 
@@ -433,6 +449,173 @@ final class ChatTypographyTests: XCTestCase {
         )
     }
 
+    private func largeHighlightedSource() -> String {
+        // Cross the large-code threshold so LargeCodeBlockView slices the
+        // source into highlighted slices.
+        let line = "let value = compute(\"token\", 42) // comment continuation\n"
+        var source = ""
+        while source.utf8.count < MarkdownLargeDocumentPolicy.codeBlockThresholdBytes + 2_000 {
+            source += line
+        }
+        return source
+    }
+
+    /// Distinct foreground colors in one attributed string — the plain
+    /// rendering path carries exactly one; tokenized highlighting carries
+    /// several.
+    private func distinctForegroundColors(of attributed: NSAttributedString) -> Int {
+        var colors = Set<UIColor>()
+        attributed.enumerateAttribute(
+            .foregroundColor,
+            in: NSRange(location: 0, length: attributed.length),
+            options: []
+        ) { value, _, _ in
+            if let color = value as? UIColor { colors.insert(color) }
+        }
+        return colors.count
+    }
+
+    private func allFontSizes(of attributed: NSAttributedString) -> Set<CGFloat> {
+        var sizes = Set<CGFloat>()
+        attributed.enumerateAttribute(
+            .font,
+            in: NSRange(location: 0, length: attributed.length),
+            options: []
+        ) { value, _, _ in
+            if let font = value as? UIFont { sizes.insert(font.pointSize) }
+        }
+        return sizes
+    }
+
+    /// Review-gate WARNING coverage, mounted at the view level: after the
+    /// highlight pass completes the mounted preview slice renders tokenized
+    /// at the CURRENT size, and after a chat-size identity change it must
+    /// re-render at the NEW size — a SwiftUI-invisible state mutation (the
+    /// in-place-mutation blocker) would leave the old-size tokens mounted
+    /// forever, which this test fails on. (Exercises the collapsed preview
+    /// slice path; the expanded path shares the same state object.)
+    @MainActor
+    func testLargeCodeSliceTypographyFollowsIdentityChange() throws {
+        let emitter = ChatSizeEmitter()
+        let source = largeHighlightedSource()
+        let view = ChatSizeInjector(emitter: emitter) {
+            LargeCodeBlockView(
+                source: source,
+                language: "swift",
+                usesAccentSurface: false
+            )
+        }
+
+        let host = UIHostingController(rootView: view)
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = host
+        window.isHidden = false
+        defer {
+            window.isHidden = true
+            window.rootViewController = nil
+        }
+        host.view.setNeedsLayout()
+        host.view.layoutIfNeeded()
+
+        func pump(_ seconds: TimeInterval) {
+            let deadline = Date().addingTimeInterval(seconds)
+            while Date() < deadline {
+                RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+                host.view.setNeedsLayout()
+                host.view.layoutIfNeeded()
+            }
+        }
+
+        func codeAttributedStrings() -> [NSAttributedString] {
+            allTextViewsDeep(in: host.view)
+                .compactMap { ($0 as? UITextView)?.attributedText }
+                .filter { $0.length > 0 }
+        }
+
+        // Wait for the first highlight pass: some slice must render
+        // tokenized (multiple token colors).
+        pump(4.0)
+        var tokenizedColors = 0
+        var oldSizes = Set<CGFloat>()
+        for attributed in codeAttributedStrings() {
+            let colors = distinctForegroundColors(of: attributed)
+            if colors >= 2 {
+                tokenizedColors = max(tokenizedColors, colors)
+                oldSizes.formUnion(allFontSizes(of: attributed))
+            }
+        }
+        XCTAssertGreaterThanOrEqual(tokenizedColors, 2,
+                                    "the first highlight pass must render tokenized slices")
+        XCTAssertFalse(oldSizes.isEmpty)
+
+        // Change the preference the way the Settings slider does. Every
+        // mounted slice must end up at the NEW size — the old-size tokens
+        // may appear only transiently, never persist.
+        emitter.chatSize = .largest
+        pump(4.0)
+
+        let newSize = ChatTypography.font(for: .blockCode, chatSize: .largest).pointSize
+        let attributedStrings = codeAttributedStrings()
+        XCTAssertFalse(attributedStrings.isEmpty, "slices must stay mounted after the size change")
+        for attributed in attributedStrings {
+            let sizes = allFontSizes(of: attributed)
+            XCTAssertFalse(
+                sizes.contains { size in
+                    oldSizes.contains { abs(size - $0) < 0.01 }
+                },
+                "no mounted slice may keep the previous size's fonts after the identity change"
+            )
+            for size in sizes {
+                XCTAssertEqual(size, newSize, accuracy: 0.5,
+                               "every slice must render at the selected chat size")
+            }
+        }
+    }
+
+    // MARK: - Large-code highlight invalidation (review-gate fix)
+
+    /// A typography/source identity change must invalidate the stored
+    /// highlighted attributed string immediately — the view falls back to
+    /// plain text at the new font while the replacement pass runs. Stale
+    /// passes are refused by the view's live `sliceIdentity ==
+    /// passIdentity` guard before the state is ever touched; this test pins
+    /// the state machine's own contract underneath that guard.
+    @MainActor
+    func testHighlightStateInvalidatesDisplayedResultOnIdentityChange() {
+        var state = LargeCodeSliceHighlightState()
+        let oldSizeResult = NSAttributedString(
+            string: "old",
+            attributes: [.font: UIFont.systemFont(ofSize: 10)]
+        )
+
+        // First pass for identity A: sync the identity, then record.
+        XCTAssertFalse(state.invalidateIfIdentityChanged(to: "A"), "nothing is stored yet")
+        state.syncAndStore(oldSizeResult, passIdentity: "A")
+        XCTAssertEqual(state.highlighted?.string, "old")
+        XCTAssertEqual(state.displayedIdentity, "A")
+
+        // The identity changes (chat size / Dynamic Type / source): the
+        // old-size result must drop immediately.
+        XCTAssertTrue(state.invalidateIfIdentityChanged(to: "B"))
+        XCTAssertNil(state.highlighted, "the stale highlighted result must not stay mounted")
+
+        // The replacement pass for the new identity converges + stores in
+        // one mutation. (A stale pass is refused by the view's live
+        // `sliceIdentity == passIdentity` guard before this is ever
+        // reached, so it can never resurrect a superseded result.)
+        state.syncAndStore(NSAttributedString(string: "new"), passIdentity: "B")
+        XCTAssertEqual(state.highlighted?.string, "new")
+
+        // Same-identity re-store (a retried pass) is fine.
+        state.syncAndStore(NSAttributedString(string: "retry"), passIdentity: "B")
+        XCTAssertEqual(state.highlighted?.string, "retry")
+
+        // An unchanged identity is a no-op (no needless invalidation, no
+        // display churn while only unrelated inputs move).
+        XCTAssertFalse(state.invalidateIfIdentityChanged(to: "B"))
+        XCTAssertEqual(state.highlighted?.string, "retry")
+    }
+
     // MARK: - Settled-row Equatable gates
 
     private func assistantMessage() -> ChatMessage {
@@ -535,23 +718,34 @@ final class ChatTypographyTests: XCTestCase {
             let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
             window.rootViewController = host
             window.isHidden = false
-            host.view.setNeedsLayout()
-            host.view.layoutIfNeeded()
-            // The width probe settles a frame after the first layout pass.
-            let settled = XCTestExpectation(description: "width probe settles")
-            DispatchQueue.main.async { settled.fulfill() }
-            wait(for: [settled], timeout: 2)
-            host.view.setNeedsLayout()
-            host.view.layoutIfNeeded()
-
             defer {
                 window.isHidden = true
                 window.rootViewController = nil
             }
 
-            let textViews = allTextViewsDeep(in: host.view).compactMap { $0 as? UITextView }
-            XCTAssertFalse(textViews.isEmpty, "mounted table must contain text views")
-            return textViews.map { $0.frame.width }.sorted()
+            // The width probe's state lands through SwiftUI preference/
+            // state propagation, which can need more than one layout pass
+            // under CI load. Re-layout and re-check within a bounded number
+            // of passes until the mounted widths are usable and stable —
+            // no arbitrary sleeps, no reliance on a single main-queue hop.
+            var previous: [CGFloat] = []
+            var settledWidths: [CGFloat]?
+            for _ in 0..<10 {
+                host.view.setNeedsLayout()
+                host.view.layoutIfNeeded()
+                let widths = allTextViewsDeep(in: host.view)
+                    .compactMap { ($0 as? UITextView)?.frame.width }
+                    .sorted()
+                if !widths.isEmpty, widths.allSatisfy({ $0 > 0 }), widths == previous {
+                    settledWidths = widths
+                    break
+                }
+                previous = widths
+                RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+            }
+            let widths = try XCTUnwrap(settledWidths, "table widths never settled")
+            XCTAssertFalse(widths.isEmpty, "mounted table must contain text views")
+            return widths
         }
 
         let atDefault = try mountedTextViewWidths(chatTextSize: .default)

@@ -5,6 +5,66 @@ import SwiftUI
 
 final class ChatTextSelectionTests: XCTestCase {
     @MainActor
+    func testSelectionGeometryTracksTypographyReflow() throws {
+        // Issue #85: a chat text-size change reflows transcript text; the
+        // selection geometry (caret rects) must track the reflowed layout
+        // instead of reporting stale positions from the previous font, and
+        // the selection itself must survive the reflow.
+        let textView = SelectableTextView.makeTextView()
+        let sample = "line one for the probe\nline two for the probe\nline three for the probe\nline four for the probe"
+        textView.attributedText = NSAttributedString(
+            string: sample,
+            attributes: [.font: UIFont.systemFont(ofSize: 12)]
+        )
+        textView.frame = CGRect(x: 0, y: 0, width: 220, height: 400)
+        textView.setNeedsLayout()
+        textView.layoutIfNeeded()
+
+        let selection = NSRange(location: (sample as NSString).length - 12, length: 10)
+        textView.selectedRange = selection
+        let smallRange = try XCTUnwrap(textView.selectedTextRange)
+        let smallEndCaret = textView.caretRect(for: smallRange.end)
+        let smallFittedHeight = textView.sizeThatFits(
+            CGSize(width: 220, height: 10_000)
+        ).height
+
+        // Reflow at the larger chat size (same text, larger font). UITextKit
+        // resets the selection on text replacement, so the same range is
+        // re-applied — what the app effectively does when the coordinator
+        // re-resolves the selection against the reflowed layout.
+        textView.attributedText = NSAttributedString(
+            string: sample,
+            attributes: [.font: UIFont.systemFont(ofSize: 20)]
+        )
+        textView.setNeedsLayout()
+        textView.layoutIfNeeded()
+        textView.selectedRange = selection
+
+        XCTAssertEqual(textView.selectedRange.length, selection.length,
+                       "the selection must remain expressible after the reflow")
+        let largeRange = try XCTUnwrap(textView.selectedTextRange)
+        let largeStart = textView.caretRect(for: largeRange.start)
+        let largeEnd = textView.caretRect(for: largeRange.end)
+        let largeFittedHeight = textView.sizeThatFits(
+            CGSize(width: 220, height: 10_000)
+        ).height
+
+        XCTAssertGreaterThan(largeFittedHeight, smallFittedHeight,
+                             "the larger typography must actually reflow the content")
+        XCTAssertGreaterThan(
+            abs(largeEnd.minY - smallEndCaret.minY), 0.5,
+            "the selection endpoint must track the reflowed layout, not the previous font's geometry"
+        )
+        for (label, rect) in [("start", largeStart), ("end", largeEnd)] {
+            XCTAssertGreaterThan(rect.height, 0, "\(label) caret must stay non-degenerate after the reflow")
+            XCTAssertGreaterThanOrEqual(rect.minX, 0, "\(label) caret must stay inside the container")
+            XCTAssertGreaterThanOrEqual(rect.minY, 0, "\(label) caret must stay inside the container")
+            XCTAssertLessThanOrEqual(rect.maxY, largeFittedHeight + 1,
+                                     "\(label) caret must not point past the reflowed content")
+        }
+    }
+
+    @MainActor
     func testSelectableTextViewDefaultsToNoSelectionCoordinatorHooks() {
         let view = SelectableTextView(text: "plain text")
 

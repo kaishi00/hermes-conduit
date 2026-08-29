@@ -157,13 +157,6 @@ enum ChatTypography {
         scaledFont(baseFont(for: role, compatibleWith: traits), chatSize: chatSize)
     }
 
-    /// The point size of a role's resolved font — for the few SwiftUI-native
-    /// Text/Image sites inside transcript content (list markers) that cannot
-    /// take a UIFont directly. Reads the live system size at call time.
-    static func pointSize(for role: Role, chatSize: ChatTextSize) -> CGFloat {
-        font(for: role, chatSize: chatSize).pointSize
-    }
-
     /// The unscaled (Dynamic Type only) base font for a role. Kept separate
     /// so `Default` resolution is exactly the historical font.
     static func baseFont(

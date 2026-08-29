@@ -1409,6 +1409,11 @@ struct SystemBubble: View {
     }
 }
 
+/// Review activity summary. Intentionally OUTSIDE the chat text-size
+/// preference (issue #85): these status/activity cards — like tool cards —
+/// are not ordinary transcript Markdown and keep their fixed typography.
+/// (Of the system-message surfaces, only `SystemBubble`'s Markdown body
+/// follows `ChatTypography`.)
 private struct ReviewSummaryCard: View {
     let activity: ReviewActivity
     let timestamp: String
@@ -1489,6 +1494,9 @@ private struct ReviewSummaryCard: View {
     }
 }
 
+/// Model-change summary. Intentionally OUTSIDE the chat text-size
+/// preference (issue #85) — a status/activity card with fixed typography;
+/// see ReviewSummaryCard.
 private struct ModelChangeSummaryCard: View {
     let model: String
     let provider: String
