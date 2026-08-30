@@ -8534,16 +8534,22 @@ final class AppState: ObservableObject {
     /// aloud / voice conversation mutual exclusion can be exercised with
     /// mock controllers. `readAloudGatewayBridge` is set to the same bridge
     /// so a mock read aloud gateway installed on the controller counts as
-    /// current and is not replaced by a real one at tap time.
+    /// current and is not replaced by a real one at tap time. Pass
+    /// `transcriptionMode` / `appleSpeechAvailability` to pin the route the
+    /// capability checks consult; nil leaves the current value.
     func installVoiceCapabilityStateForTesting(
         bridge: DashboardTicketBridge,
         snapshot: VoiceCapabilitySnapshot,
-        isVoiceEnabled: Bool
+        isVoiceEnabled: Bool,
+        transcriptionMode: VoiceTranscriptionMode? = nil,
+        appleSpeechAvailability: AppleSpeechRecognitionAvailability? = nil
     ) {
         dashboardTicketBridge = bridge
         readAloudGatewayBridge = bridge
         voiceCapabilitySnapshot = snapshot
         self.isVoiceEnabled = isVoiceEnabled
+        if let transcriptionMode { voiceTranscriptionMode = transcriptionMode }
+        if let appleSpeechAvailability { self.appleSpeechAvailability = appleSpeechAvailability }
     }
 
     private func loadVoiceProfilePreferences(profile: String) -> VoiceProfilePreferences {
