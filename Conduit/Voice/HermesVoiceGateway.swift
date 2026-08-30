@@ -14,8 +14,9 @@ final class HermesVoiceGateway: VoiceGatewayService {
     static let transcriptionMinimumRequestTimeoutMilliseconds = 180_000
     static let transcriptionMaximumRequestTimeoutMilliseconds = 600_000
     /// The payload is the base64 audio data URL itself, so its length tracks
-    /// clip size; 0.1ms per character budgets roughly 2s of timeout per 1s of
-    /// audio before the cap clamps it.
+    /// clip size. Conduit records 16kHz mono 16-bit WAV (~42.7k base64
+    /// characters per second of audio), so 0.1ms per character budgets ~4.3s
+    /// of timeout per 1s of audio before the cap clamps it.
     static let transcriptionTimeoutMillisecondsPerDataURLCharacter = 0.1
 
     static func transcriptionRequestTimeoutMilliseconds(dataURLCharacterCount: Int) -> Int {
@@ -38,12 +39,15 @@ final class HermesVoiceGateway: VoiceGatewayService {
     }
 
     func transcribe(_ audio: VoiceCapturedAudio) async throws -> String {
+        // Base64 encoding is expensive for long recordings — build the data
+        // URL once and reuse it for both the payload and the timeout budget.
+        let dataURL = audio.dataURL
         let response = try await bridge.requestJSON(
             path: "/api/audio/transcribe" + profileQuery,
             method: "POST",
-            body: ["data_url": audio.dataURL, "mime_type": "audio/wav"],
+            body: ["data_url": dataURL, "mime_type": "audio/wav"],
             timeoutMilliseconds: Self.transcriptionRequestTimeoutMilliseconds(
-                dataURLCharacterCount: audio.dataURL.utf8.count
+                dataURLCharacterCount: dataURL.utf8.count
             )
         )
         if let error = response["error"] as? String, !error.isEmpty { throw DashboardTicketBridgeError.requestFailed(error) }
