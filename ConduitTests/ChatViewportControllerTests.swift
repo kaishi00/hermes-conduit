@@ -542,6 +542,10 @@ final class ChatViewportControllerTests: XCTestCase {
                 scrollCommands(effects).isEmpty,
                 "a typography reflow must not scroll a browsing user"
             )
+            XCTAssertNil(
+                browsing.pendingFollowCorrection,
+                "a relatch correction must never be scheduled while browsing"
+            )
         }
     }
 

@@ -490,10 +490,12 @@ final class ChatTypographyTests: XCTestCase {
     /// Review-gate WARNING coverage, mounted at the view level: after the
     /// highlight pass completes the mounted preview slice renders tokenized
     /// at the CURRENT size, and after a chat-size identity change it must
-    /// re-render at the NEW size — a SwiftUI-invisible state mutation (the
-    /// in-place-mutation blocker) would leave the old-size tokens mounted
-    /// forever, which this test fails on. (Exercises the collapsed preview
-    /// slice path; the expanded path shares the same state object.)
+    /// re-render at the NEW size. The stricter render-eligibility invariant
+    /// (highlighted content from a previous identity is never renderable
+    /// under the current one) is enforced by the view's identity guard and
+    /// pinned by testHighlightedResultIsOnlyEligibleForItsOwnIdentity.
+    /// (Exercises the collapsed preview slice path; the expanded slices use
+    /// the same state type and guard.)
     @MainActor
     func testLargeCodeSliceTypographyFollowsIdentityChange() throws {
         let emitter = ChatSizeEmitter()
@@ -614,6 +616,41 @@ final class ChatTypographyTests: XCTestCase {
         // display churn while only unrelated inputs move).
         XCTAssertFalse(state.invalidateIfIdentityChanged(to: "B"))
         XCTAssertEqual(state.highlighted?.string, "retry")
+    }
+
+    /// Render-eligibility invariant (review fix): a highlighted result is
+    /// renderable ONLY under the identity it was produced for. This covers
+    /// the one body evaluation between an identity change and onChange
+    /// delivery — a result from a previous identity must never be mounted
+    /// under the live identity; the view renders plain text instead.
+    @MainActor
+    func testHighlightedResultIsOnlyEligibleForItsOwnIdentity() {
+        var state = LargeCodeSliceHighlightState()
+
+        // Live identity A, result stored under A: eligible.
+        state.invalidateIfIdentityChanged(to: "A")
+        state.syncAndStore(NSAttributedString(string: "a-tokens"), passIdentity: "A")
+        XCTAssertEqual(
+            state.highlightedText(for: "A")?.string, "a-tokens",
+            "the result is eligible under its own identity"
+        )
+
+        // Live identity B, stored result still from A: NOT eligible — the
+        // render-time guard routes the view to the plain-text path.
+        XCTAssertNil(
+            state.highlightedText(for: "B"),
+            "a result from a previous identity must never be renderable under the current one"
+        )
+
+        // Once invalidation lands (onChange), B has no stored result either.
+        state.invalidateIfIdentityChanged(to: "B")
+        XCTAssertNil(state.highlighted)
+        XCTAssertNil(state.highlightedText(for: "B"))
+
+        // A result stored under B is eligible under B and nowhere else.
+        state.syncAndStore(NSAttributedString(string: "b-tokens"), passIdentity: "B")
+        XCTAssertEqual(state.highlightedText(for: "B")?.string, "b-tokens")
+        XCTAssertNil(state.highlightedText(for: "A"))
     }
 
     // MARK: - Settled-row Equatable gates

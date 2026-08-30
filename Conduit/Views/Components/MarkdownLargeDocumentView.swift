@@ -1018,6 +1018,17 @@ struct LargeCodeSliceHighlightState {
         invalidateIfIdentityChanged(to: passIdentity)
         highlighted = text
     }
+
+    /// The highlighted result eligible for display under `identity` — nil
+    /// unless the stored result belongs to EXACTLY that identity. This is
+    /// the render-time final guard: between an identity change and the
+    /// `onChange` invalidation there is one body evaluation where the
+    /// stored result still carries the previous identity, and it must
+    /// never be mounted under the new one (the view renders the plain
+    /// path at the current font instead).
+    func highlightedText(for identity: String) -> NSAttributedString? {
+        displayedIdentity == identity ? highlighted : nil
+    }
 }
 
 /// One bounded slice of a large code block: plain monospaced text
@@ -1047,7 +1058,12 @@ private struct LargeCodeSliceView: View {
 
     var body: some View {
         Group {
-            if let highlighted = highlightState.highlighted {
+            // Render-time final guard: the highlighted attributed string is
+            // mounted ONLY while its recorded identity exactly matches the
+            // live sliceIdentity. In the one body evaluation between an
+            // identity change and onChange delivery, the mismatch routes to
+            // the plain-text path at the current font instead.
+            if let highlighted = highlightState.highlightedText(for: sliceIdentity) {
                 SelectableTextView(
                     attributedText: highlighted,
                     font: font,
@@ -1084,8 +1100,8 @@ private struct LargeCodeSliceView: View {
             // staleness protections are `.task(id:)` cancellation (fires on
             // any identity change) and the synchronous `onChange`
             // invalidation above; the snapshot comparison plus the
-            // MainActor-confined continuation keep the record path single
-            //turn and auditable.
+            // MainActor-confined continuation keep the record path to a
+            // single turn, auditable in one place.
             let passIdentity = sliceIdentity
             let highlightedResult = await SyntaxHighlighter.highlightAsync(
                 currentSource,
@@ -1094,7 +1110,11 @@ private struct LargeCodeSliceView: View {
             // Everything from here on runs on the main actor (the .task
             // closure inherits this MainActor view's context), so the state
             // write below is a single main-actor mutation.
-            guard !Task.isCancelled, sliceIdentity == passIdentity, !highlightedResult.characters.isEmpty else { return }
+            // The empty-result check is defensive (a non-empty source always
+            // yields a non-empty result today); an empty outcome falls back
+            // to the plain path instead of mounting an empty text view.
+            guard !Task.isCancelled, sliceIdentity == passIdentity,
+                  !highlightedResult.characters.isEmpty else { return }
             // Convergence + record in one state write (see syncAndStore).
             let bridged = SelectableTextView.bridge(
                 highlightedResult,
