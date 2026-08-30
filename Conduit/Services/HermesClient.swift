@@ -1700,20 +1700,16 @@ enum MessageNormalizer {
     }
 
     /// `display_content` is the authoritative visible payload whenever the
-    /// field exists — including an explicit empty string, which must never
-    /// fall back to the physical carrier. A JSON null is treated as absent:
-    /// no current Hermes write path emits one, and a broken projection should
-    /// not silently hide a genuine message. Non-textual scalars (a stray
-    /// bool/number) are malformed rather than an intentional empty
-    /// projection, so they degrade to the physical carrier too.
+    /// field exists — including an explicit empty string, JSON null, or an
+    /// odd scalar, all of which resolve to authoritative empty text rather
+    /// than a fallback. Field presence is the authority boundary: once the
+    /// field exists, the physical carrier must never resurface, because a
+    /// malformed projection falling back to physical content could expose
+    /// model-facing internal rows. Nil return therefore means exactly
+    /// "field absent".
     private static func projectedDisplayContent(in obj: [String: AnyCodable]) -> String? {
         guard let value = obj["display_content"] else { return nil }
-        switch value {
-        case .string, .array, .object:
-            return extractContent(value)
-        default:
-            return nil
-        }
+        return extractContent(value)
     }
 
     /// `display_metadata` may arrive as a JSON object (current servers) or as
@@ -1732,9 +1728,13 @@ enum MessageNormalizer {
     }
 
     /// Upstream persists `task_count` on `async_delegation_complete` rows so
-    /// clients can phrase the completion notice.
+    /// clients can phrase the completion notice. The count goes through
+    /// `doubleValue` + `Int(exactly:)` so non-representable numbers (1e100,
+    /// NaN, fractional) degrade to the generic notice instead of trapping
+    /// normalization — malformed metadata must never fail hydration.
     private static func delegationCompleteNotice(metadata: AnyCodable?) -> String {
-        guard let taskCount = displayMetadataObject(metadata)?["task_count"]?.intValue,
+        guard let count = displayMetadataObject(metadata)?["task_count"]?.doubleValue,
+              let taskCount = Int(exactly: count),
               taskCount > 0 else {
             return "Background agent work finished"
         }
@@ -1753,12 +1753,11 @@ enum MessageNormalizer {
         systemNotice: String?,
         rawVisible: String
     ) -> String {
-        let projectedNotice: String? = {
-            guard let projected, !projected.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                return nil
-            }
-            return projected
-        }()
+        // `projected` is non-nil only when the `display_content` field
+        // exists, and its value — including an explicit empty string — is
+        // authoritative: trimming an empty projection back into absence
+        // would fall through to canned labels or the physical carrier,
+        // which must never resurface.
         switch kind {
         case .hidden:
             // Defense in depth: hidden rows are dropped before content work.
@@ -1770,8 +1769,8 @@ enum MessageNormalizer {
             // model-change card detection and keeps that presentation. A
             // marker the card regex cannot parse is still model scaffold, so
             // it degrades to the canned label rather than rendering raw.
-            if let projectedNotice {
-                return projectedNotice
+            if let projected {
+                return projected
             }
             if let modelChange {
                 return "[Model has been changed to \(modelChange.provider)/\(modelChange.model)]"
@@ -1780,16 +1779,22 @@ enum MessageNormalizer {
         case .personalitySwitch:
             // The physical marker embeds the full persona prompt; surface a
             // canned label instead, like Hermes Desktop does.
-            return projectedNotice ?? "Personality changed"
+            return projected ?? "Personality changed"
         case .autoContinue:
-            return projectedNotice ?? "Resumed interrupted turn"
+            return projected ?? "Resumed interrupted turn"
         case .asyncDelegationComplete:
-            return projectedNotice ?? delegationCompleteNotice(metadata: metadata)
+            return projected ?? delegationCompleteNotice(metadata: metadata)
         case .internalNotification:
             // The row content is the operational notice itself (wake events,
-            // background completions); show it as a system notice, with a
-            // `[System: …]` wrapper stripped when present.
-            let visible = projectedNotice ?? systemNotice ?? rawVisible
+            // background completions); show it as a system notice. An
+            // explicit projection — including an empty one — is authoritative
+            // and rendered verbatim; the canned label is only for rows that
+            // have no projection at all, and the `[System: …]` strip applies
+            // only to that no-projection fallback.
+            if let projected {
+                return projected
+            }
+            let visible = systemNotice ?? rawVisible
             return visible.isEmpty ? "System notification" : visible
         }
     }

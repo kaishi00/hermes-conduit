@@ -1710,6 +1710,7 @@ final class MessageNormalizerTests: XCTestCase {
             .object(["task_count": .string("two")]),
             .object(["task_count": .number(0)]),
             .object(["task_count": .number(-1)]),
+            .object(["task_count": .number(2.5)]),
             .null
         ]
         for (index, metadata) in variants.enumerated() {
@@ -1858,21 +1859,93 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertTrue(messages.isEmpty)
     }
 
-    func testMalformedScalarDisplayContentDegradesToPhysicalCarrier() {
-        // Only a textual projection is authoritative; a stray scalar is
-        // malformed rather than an intentional empty projection.
+    func testMalformedScalarDisplayContentNeverFallsBackToPhysicalCarrier() {
+        // Field presence is the authority boundary: a stray scalar is an
+        // explicit (odd) projection resolving to empty text, never a reason
+        // to reveal the physical carrier.
         let messages = MessageNormalizer.normalizeMessages([
             .object([
                 "id": .number(341),
                 "role": .string("user"),
-                "content": .string("Genuine ask."),
-                "display_content": .number(5)
+                "content": .string("DO NOT SHOW PHYSICAL"),
+                "display_content": .number(42)
             ])
         ])
 
         XCTAssertEqual(messages.count, 1)
         XCTAssertEqual(messages[0].role, .user)
-        XCTAssertEqual(messages[0].content, "Genuine ask.")
+        XCTAssertEqual(messages[0].content, "")
+        XCTAssertFalse(
+            messages.contains { $0.content.contains("DO NOT SHOW PHYSICAL") },
+            "The physical content must never resurface behind a malformed projection"
+        )
+    }
+
+    func testExplicitNullDisplayContentNeverFallsBackToPhysicalContent() {
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(342),
+                "role": .string("user"),
+                "content": .string("DO NOT SHOW PHYSICAL"),
+                "display_content": .null
+            ])
+        ])
+
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages[0].role, .user)
+        XCTAssertEqual(messages[0].content, "")
+        XCTAssertFalse(
+            messages.contains { $0.content.contains("DO NOT SHOW PHYSICAL") },
+            "An explicit null projection must not expose the physical content"
+        )
+    }
+
+    func testExplicitEmptyProjectionOnTimelineKindRemainsAuthoritative() {
+        // For synthetic kinds an empty projection must not be trimmed back
+        // into absence: that would substitute canned labels or fall through
+        // to the physical synthetic payload.
+        let rows: [(Double, String, String)] = [
+            (343, "internal_notification", "DO NOT SHOW PHYSICAL"),
+            (344, "auto_continue", "AUTO CONTINUE INTERNAL SCAFFOLD"),
+            (346, "model_switch", "DO NOT SHOW PHYSICAL"),
+            (347, "personality_switch", "DO NOT SHOW PHYSICAL"),
+            (348, "async_delegation_complete", "DO NOT SHOW PHYSICAL")
+        ]
+        for (id, kind, carrier) in rows {
+            let messages = MessageNormalizer.normalizeMessages([
+                .object([
+                    "id": .number(id),
+                    "role": .string("user"),
+                    "content": .string(carrier),
+                    "display_kind": .string(kind),
+                    "display_content": .string("")
+                ])
+            ])
+
+            XCTAssertEqual(messages.count, 1, kind)
+            XCTAssertEqual(messages[0].role, .system, kind)
+            XCTAssertEqual(messages[0].content, "", kind)
+            XCTAssertFalse(
+                messages.contains { $0.content.contains(carrier) },
+                "\(kind): the physical payload must never resurface"
+            )
+        }
+    }
+
+    func testHugeTaskCountDegradesToGenericNoticeWithoutTrapping() {
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(345),
+                "role": .string("user"),
+                "content": .string("Background delegation report scaffold"),
+                "display_kind": .string("async_delegation_complete"),
+                "display_metadata": .object(["task_count": .number(1e100)])
+            ])
+        ])
+
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages[0].role, .system)
+        XCTAssertEqual(messages[0].content, "Background agent work finished")
     }
 
     private func message(
