@@ -69,11 +69,12 @@ struct NativeAuthClient {
             ?? baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         self.cloudflareAccess = cloudflareAccess
         let configuration = sessionConfiguration ?? URLSessionConfiguration.default
-        configuration.httpCookieAcceptPolicy = .always
-        configuration.httpCookieStorage = HTTPCookieStorage.shared
-        // Every Cookie header is built from this login's captured cookies.
-        // Automatic handling would let a stale shared-jar cookie authenticate
-        // when the current login returned no cookie applicable to the route.
+        // Every Cookie header is built from this login's captured cookies:
+        // never let URLSession auto-accept response cookies into a jar or
+        // send from one. The shared jar is written only by
+        // NativeAuthConnection.commitCookies().
+        configuration.httpCookieAcceptPolicy = .never
+        configuration.httpCookieStorage = HTTPCookieStorage()
         configuration.httpShouldSetCookies = false
         // Endpoint identity is derived from the normalized base URL because
         // deployments may mount the gateway under a path prefix
@@ -176,6 +177,14 @@ struct NativeAuthClient {
 
     func connect(username: String, password: String) async throws -> NativeAuthConnection {
         let authenticatedCookies = try await login(username: username, password: password)
+        guard !authenticatedCookies.isEmpty else {
+            // Exact-host acceptance drops domain-scoped and foreign cookies.
+            // Fail here so an operator sees why, instead of an
+            // indistinguishable ticket 401 downstream.
+            throw AuthClientError.ticketFailed(
+                "Login succeeded but no host-scoped session cookie was accepted"
+            )
+        }
         return try await mintWsTicket(authenticatedCookies: authenticatedCookies)
     }
 
@@ -246,7 +255,9 @@ struct NativeAuthClient {
     }
 }
 
-private enum NativeAuthCookiePolicy {
+/// Cookie capture/publication policy for native authentication. Internal so
+/// the test target can exercise header-representation handling directly.
+enum NativeAuthCookiePolicy {
     static func acceptedCookies(from response: HTTPURLResponse) -> [HTTPCookie] {
         guard let responseURL = response.url else { return [] }
         // Duplicate Set-Cookie headers are collected in response order and

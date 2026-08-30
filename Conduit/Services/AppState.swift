@@ -2186,6 +2186,10 @@ final class AppState: ObservableObject {
             )
             authenticatedConnection.commitCookies()
             await connect(with: HermesConnection(baseUrl: credentials.baseURL, ticket: authenticatedConnection.ticket), profile: activeProfile)
+        } catch is CancellationError {
+            // Intentional cancellation (e.g. a superseded connect) is not a
+            // login failure; fall back to the login screen silently.
+            showLogin = true
         } catch {
             // A rejected saved password falls back to the native login screen
             // without erasing it, allowing the user to correct the account.

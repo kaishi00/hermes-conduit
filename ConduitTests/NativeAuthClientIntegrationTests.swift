@@ -74,6 +74,14 @@ final class NativeAuthClientIntegrationTests: XCTestCase {
             "The accepted ticket response rotation must be committed for the WebKit bridge."
         )
         XCTAssertFalse(
+            hasLoopbackCookie(name: "secure_only", value: "must-not-cross-http"),
+            "A Secure cookie set over plain HTTP must never be published."
+        )
+        XCTAssertFalse(
+            hasLoopbackCookie(name: "expired", value: "must-not-survive"),
+            "An expired cookie must never be published."
+        )
+        XCTAssertFalse(
             (HTTPCookieStorage.shared.cookies ?? []).contains {
                 $0.domain.trimmingCharacters(in: CharacterSet(charactersIn: ".")) == "conduit-auth-poison.invalid"
             },
@@ -454,6 +462,40 @@ final class NativeAuthClientIntegrationTests: XCTestCase {
             server.lastRequest(path: "/api/auth/ws-ticket")?.headers["cookie"],
             "hermes_session_at=final-new"
         )
+    }
+
+    func testProviderDiscoveryFollowsAllowedSameOriginRedirect() async throws {
+        // Pins pre-existing semantics: an allowed same-origin redirect on
+        // /api/auth/providers is consumed by the real URLSession stack, and
+        // provider discovery parses the final landing response. This is the
+        // behavior PR #109 was (incorrectly) claimed to have changed.
+        let server = try LoopbackHTTPServer.start { request in
+            switch request.path {
+            case "/api/auth/providers":
+                return LoopbackHTTPResponse(
+                    status: 302,
+                    headers: [("Location", "/api/auth/providers/redirected")],
+                    body: Data()
+                )
+            case "/api/auth/providers/redirected":
+                return .json(
+                    status: 200,
+                    body: #"{"providers":[{"name":"basic","supports_password":true}]}"#
+                )
+            default:
+                return .json(status: 404, body: #"{"detail":"Not found"}"#)
+            }
+        }
+        defer { server.stop() }
+
+        let providers = try await NativeAuthClient(
+            baseURL: "http://127.0.0.1:\(server.port)",
+            sessionConfiguration: realSessionConfiguration()
+        ).authProviders()
+
+        XCTAssertEqual(providers.count, 1)
+        XCTAssertEqual(providers.first?["name"] as? String, "basic")
+        XCTAssertNotNil(server.lastRequest(path: "/api/auth/providers/redirected"))
     }
 
     private func realSessionConfiguration() -> URLSessionConfiguration {

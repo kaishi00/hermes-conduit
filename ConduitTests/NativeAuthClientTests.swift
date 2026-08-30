@@ -173,37 +173,59 @@ final class NativeAuthClientTests: XCTestCase {
         }
     }
 
-    func testArraySetCookieRepresentationParsesAllCookiesAndLatestWins() async throws {
-        let client = NativeAuthClient(
-            baseURL: "https://array-cookies.example",
-            sessionConfiguration: makeSessionConfiguration()
-        )
+    func testArraySetCookieRepresentationParsesEachValueIndividually() throws {
+        // Model the array-style duplicate Set-Cookie representation
+        // Foundation's real transport can expose, which HTTPURLResponse's
+        // public initializer cannot construct directly.
+        let response = try XCTUnwrap(ArrayHeaderHTTPURLResponse(
+            url: URL(string: "https://array.example/dashboard")!,
+            statusCode: 200,
+            fields: [
+                "Content-Type": "application/json",
+                "Set-Cookie": [
+                    "first=one; Path=/",
+                    "hermes_session_at=second; Path=/"
+                ]
+            ]
+        ))
 
-        let connection = try await client.connect(username: "chris", password: "correct-password")
+        let names = NativeAuthCookiePolicy.acceptedCookies(from: response).map(\.name)
 
-        XCTAssertEqual(connection.ticket, "array-ticket")
-        XCTAssertEqual(
-            NativeAuthURLProtocol.requestHeader(forPath: "/api/auth/ws-ticket", name: "Cookie"),
-            "hermes_session_at=array-second",
-            "Duplicate Set-Cookie values exposed as an array must each parse, with the later rotation winning."
-        )
+        XCTAssertEqual(names, ["first", "hermes_session_at"])
     }
 
-    func testProviderDiscoveryFollowsAllowedSameOriginRedirect() async throws {
-        // Pins pre-existing semantics: an allowed same-origin redirect on
-        // /api/auth/providers is consumed by URLSession, and provider
-        // discovery parses the final landing response.
+    func testAcceptedCookiesKeepsFoundationParserAuthorityForCombinedString() throws {
+        // A single comma-joined Set-Cookie value still goes through
+        // HTTPCookie's parser, including values with Expires commas.
+        let response = try XCTUnwrap(HTTPURLResponse(
+            url: URL(string: "https://array.example/")!,
+            statusCode: 200,
+            httpVersion: nil,
+            headerFields: [
+                "Set-Cookie": "a=1; Path=/, b=2; Path=/; Expires=Wed, 09 Jun 2100 10:18:14 GMT"
+            ]
+        ))
+
+        let names = NativeAuthCookiePolicy.acceptedCookies(from: response).map(\.name)
+
+        XCTAssertEqual(names, ["a", "b"])
+    }
+
+    func testConnectFailsDiagnosablyWhenLoginYieldsNoAcceptedCookie() async throws {
         let client = NativeAuthClient(
-            baseURL: "https://same-origin.example",
+            baseURL: "https://cookieless.example",
             sessionConfiguration: makeSessionConfiguration()
         )
 
-        let providers = try await client.authProviders()
-
-        XCTAssertEqual(providers.count, 1)
-        XCTAssertEqual(providers[0]["name"] as? String, "basic")
-        XCTAssertEqual(NativeAuthURLProtocol.requestCount(forPath: "/api/auth/providers"), 1)
-        XCTAssertEqual(NativeAuthURLProtocol.requestCount(forPath: "/api/auth/providers/redirected"), 1)
+        do {
+            _ = try await client.connect(username: "chris", password: "correct-password")
+            XCTFail("Expected connect to fail when no host-scoped session cookie is accepted")
+        } catch let error as AuthClientError {
+            guard case .ticketFailed(let detail) = error else {
+                return XCTFail("Expected ticket failure, got \(error)")
+            }
+            XCTAssertEqual(detail, "Login succeeded but no host-scoped session cookie was accepted")
+        }
     }
 
     private func makeSessionConfiguration() -> URLSessionConfiguration {
@@ -236,8 +258,7 @@ private final class NativeAuthURLProtocol: URLProtocol {
             "multiple.example",
             "tenant.cloudflareaccess.com",
             "cancel.example",
-            "array-cookies.example",
-            "same-origin.example"
+            "cookieless.example"
         ].contains(host)
     }
 
@@ -298,12 +319,6 @@ private final class NativeAuthURLProtocol: URLProtocol {
         return responseRecords.filter { $0.host == host }.count
     }
 
-    static func requestCount(forPath path: String) -> Int {
-        recordLock.lock()
-        defer { recordLock.unlock() }
-        return requestRecords.filter { $0.url?.path == path }.count
-    }
-
     static func requestHeader(forPath path: String, name: String) -> String? {
         recordLock.lock()
         defer { recordLock.unlock() }
@@ -319,8 +334,7 @@ private final class NativeAuthURLProtocol: URLProtocol {
             "192.168.1.200",
             "192.168.1.201",
             "cancel.example",
-            "array-cookies.example",
-            "same-origin.example"
+            "cookieless.example"
         ])
         for cookie in HTTPCookieStorage.shared.cookies ?? [] {
             let domain = cookie.domain.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "."))
@@ -341,14 +355,9 @@ private final class NativeAuthURLProtocol: URLProtocol {
         HTTPCookieStorage.shared.setCookie(cookie)
     }
 
-    private static func record(host: String, statusCode: Int?, headers: [AnyHashable: Any]) {
-        let stringHeaders = headers.reduce(into: [String: String]()) { result, entry in
-            if let key = entry.key as? String, let value = entry.value as? String {
-                result[key] = value
-            }
-        }
+    private static func record(host: String, statusCode: Int?, headers: [String: String]) {
         recordLock.lock()
-        responseRecords.append(ResponseRecord(host: host, statusCode: statusCode, headers: stringHeaders))
+        responseRecords.append(ResponseRecord(host: host, statusCode: statusCode, headers: headers))
         recordLock.unlock()
     }
 
@@ -360,9 +369,7 @@ private final class NativeAuthURLProtocol: URLProtocol {
 
     private struct Fixture {
         let statusCode: Int
-        // AnyHashable/Any so fixtures can model header representations beyond
-        // plain strings (e.g. duplicate Set-Cookie values exposed as arrays).
-        let headers: [AnyHashable: Any]
+        let headers: [String: String]
         let body: Data
     }
 
@@ -431,48 +438,19 @@ private final class NativeAuthURLProtocol: URLProtocol {
             return Fixture(statusCode: 500, headers: [:], body: Data(#"{"error":"origin unavailable"}"#.utf8))
         case "multiple.example":
             return Fixture(statusCode: 300, headers: [:], body: Data())
-        case "array-cookies.example":
+        case "cookieless.example":
             switch request.url?.path {
             case "/auth/password-login":
-                // Model the array-style duplicate Set-Cookie representation
-                // Foundation can expose, instead of a combined string.
+                // Only a foreign-domain cookie: exact-host acceptance must
+                // drop it, leaving the transaction with no usable cookie.
                 return Fixture(
                     statusCode: 200,
                     headers: [
                         "Content-Type": "application/json",
-                        "Set-Cookie": [
-                            "hermes_session_at=array-first; Path=/",
-                            "hermes_session_at=array-second; Path=/"
-                        ]
+                        "Set-Cookie": "foreign_session=unusable; Domain=cookieless-poison.invalid; Path=/"
                     ],
                     body: Data(#"{"ok":true,"next":"/"}"#.utf8)
                 )
-            case "/api/auth/ws-ticket":
-                guard request.value(forHTTPHeaderField: "Cookie") == "hermes_session_at=array-second" else {
-                    return Fixture(
-                        statusCode: 401,
-                        headers: ["Content-Type": "application/json"],
-                        body: Data(#"{"detail":"Unauthorized"}"#.utf8)
-                    )
-                }
-                return Fixture(
-                    statusCode: 200,
-                    headers: ["Content-Type": "application/json"],
-                    body: Data(#"{"ticket":"array-ticket"}"#.utf8)
-                )
-            default:
-                return nil
-            }
-        case "same-origin.example":
-            switch request.url?.path {
-            case "/api/auth/providers":
-                return Fixture(
-                    statusCode: 302,
-                    headers: ["Location": "/api/auth/providers/redirected"],
-                    body: Data()
-                )
-            case "/api/auth/providers/redirected":
-                return Fixture(statusCode: 200, headers: [:], body: providerBody())
             default:
                 return nil
             }
@@ -489,5 +467,26 @@ private final class NativeAuthURLProtocol: URLProtocol {
 
     private func providerBody() -> Data {
         Data(#"{"providers":[{"name":"basic","supports_password":true}]}"#.utf8)
+    }
+}
+
+/// Stands in for the array-valued `allHeaderFields` that Foundation's real
+/// transport can produce for duplicate Set-Cookie headers; the public
+/// HTTPURLResponse initializer only accepts string values.
+private final class ArrayHeaderHTTPURLResponse: HTTPURLResponse {
+    private let customFields: [AnyHashable: Any]
+
+    init?(url: URL, statusCode: Int, fields: [AnyHashable: Any]) {
+        self.customFields = fields
+        super.init(url: url, statusCode: statusCode, httpVersion: nil, headerFields: nil)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
+    override var allHeaderFields: [AnyHashable: Any] {
+        customFields
     }
 }
