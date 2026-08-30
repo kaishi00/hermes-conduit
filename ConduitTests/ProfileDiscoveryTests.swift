@@ -271,10 +271,34 @@ final class ProfileDiscoveryTests: XCTestCase {
 
     func testAuthoritativeResponseRemovingActiveProfileRehomesToDefault() async throws {
         seedKnownProfiles(["default", "profile2"], activeProfile: "profile2")
+        // Stale per-profile bookkeeping and catalog state belonging to the
+        // deleted profile, used to probe the hard-boundary side effects.
+        defaults.set(
+            try JSONEncoder().encode(["profile2": ["pin-1"], "default": []]),
+            forKey: "conduit.pinnedSessionIdsByProfile.v1"
+        )
+        defaults.set(
+            try JSONEncoder().encode(["profile2": "old title"]),
+            forKey: "conduit.activeSessionTitlesByProfile.v1"
+        )
         let appState = makeAppState(profileDiscoveryLoader: {
             ["profiles": ["profile3", "default"]]
         })
         appState.installDashboardTicketBridgeForTesting(makeBridge("https://one.example"))
+        appState.sessions = [
+            SessionSummary(
+                id: "profile2-session",
+                alternateIds: [],
+                title: "profile2-session",
+                model: "Hermes",
+                updatedLabel: "now",
+                profile: "profile2",
+                source: .chat,
+                isActive: false,
+                isArchived: false,
+                lineageRootId: nil
+            )
+        ]
 
         await appState.loadProfiles()
 
@@ -284,6 +308,21 @@ final class ProfileDiscoveryTests: XCTestCase {
         XCTAssertEqual(appState.profiles, ["default", "profile3"])
         XCTAssertEqual(appState.activeProfile, "default")
         XCTAssertEqual(defaults.string(forKey: Self.activeProfileKey), "default")
+        // Hard-boundary side effects: the deleted profile's catalog state is
+        // cleared, its persisted bookkeeping is pruned so a later
+        // re-creation starts fresh, and the fallback's state is restored.
+        XCTAssertTrue(appState.sessions.isEmpty)
+        XCTAssertEqual(appState.activeSessionTitle, "New conversation")
+        // persistPinnedSessions stores JSON data, mirroring the init load.
+        let persistedPins = try JSONDecoder().decode(
+            [String: [String]].self,
+            from: defaults.data(forKey: "conduit.pinnedSessionIdsByProfile.v1") ?? Data()
+        )
+        XCTAssertEqual(persistedPins, ["default": []])
+        XCTAssertEqual(
+            defaults.dictionary(forKey: "conduit.activeSessionTitlesByProfile.v1") as? [String: String],
+            [:]
+        )
     }
 
     func testAuthoritativeResponseContainingActiveProfileKeepsItWithoutReset() async throws {

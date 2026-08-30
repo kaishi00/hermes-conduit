@@ -6572,9 +6572,21 @@ final class AppState: ObservableObject {
             // empty-payload paths already union `activeProfile` in, so only
             // this branch can need the correction.
             if !names.isEmpty, !nextProfiles.contains(activeProfile) {
+                // orderedProfiles always unions "default" into a non-empty
+                // names list, so the fallback is unconditionally "default";
+                // the contains-check stays as cheap defense-in-depth against
+                // a future change to that union invariant.
                 adoptAuthoritativeFallbackProfile(
                     nextProfiles.contains("default") ? "default" : nextProfiles[0]
                 )
+                // The abandoned profile-scoped connect/reconnect work can no
+                // longer commit (its identity fences now fail), so converge
+                // the transport onto the corrected profile. Fire-and-forget:
+                // never awaited inside discovery, and idempotent — the next
+                // discovery contains the fallback and will not re-adopt.
+                if isConnected {
+                    Task { await reconnect() }
+                }
             }
         } catch {
             guard dashboardTicketBridge === bridge else { return }
@@ -6598,17 +6610,19 @@ final class AppState: ObservableObject {
     /// fallback using the same local hard-boundary sequence as the forward
     /// profile transition in `connect(with:profile:)`: flush the outgoing
     /// transcript under its presentation-cache namespace, clear the
-    /// profile-scoped catalogs, fence-flip the identity, restore the
+    /// profile-scoped catalogs and transcript, fence-flip the identity,
+    /// prune the deleted profile's persisted bookkeeping, restore the
     /// fallback's remembered session/pinned state, and persist the
     /// correction under `activeProfileKey`.
     ///
     /// Deliberately NOT the interactive `switchProfile(to:reusing:)` flow:
     /// that re-resolves the whole connection and would nest reconnects and
-    /// capability loads inside this discovery call site. The currently
-    /// connected client keeps serving until the next natural reconnect,
-    /// which will target the corrected profile; catalog reads are filtered
-    /// and path-prefixed by the explicit profile, so no cross-profile
-    /// transcript or cache state leaks in the meantime.
+    /// capability loads inside this discovery call site. Callers schedule a
+    /// fire-and-forget `reconnect()` when the transport is live so the
+    /// client converges onto the corrected profile; every catalog read is
+    /// filtered and path-prefixed by the explicit profile, so no
+    /// cross-profile transcript or cache state leaks in the window before
+    /// that reconnect lands.
     private func adoptAuthoritativeFallbackProfile(_ fallback: String) {
         guard fallback != activeProfile else { return }
         flushPendingPresentationCache()
@@ -6616,6 +6630,23 @@ final class AppState: ObservableObject {
         cronSessions = []
         archivedSessions = []
         slashCommands = Self.builtInSlashCommands
+        // The in-memory transcript, streaming text, and reasoning state all
+        // belong to the deleted profile's session; the flush above already
+        // persisted them under that profile's namespace. Showing them under
+        // the fallback's restored session identity would mislabel them, and
+        // the unguarded presentation-cache writes on user actions would
+        // persist them there. Same reset set as the other hard boundaries
+        // (prepareChatResumeForConnection, sign-out).
+        messages = []
+        clearStreamingText()
+        resetReasoningTurn()
+        // Drop the deleted profile's persisted local bookkeeping so a later
+        // re-creation with the same name starts fresh instead of
+        // resurrecting obsolete titles and pins.
+        activeSessionTitlesByProfile.removeValue(forKey: activeProfile)
+        pinnedSessionIDsByProfile.removeValue(forKey: activeProfile)
+        persistActiveSessionTitles()
+        persistPinnedSessions()
         setActiveProfile(fallback)
         restoreActiveSessionState(for: fallback)
         restorePinnedSessions(for: fallback)
