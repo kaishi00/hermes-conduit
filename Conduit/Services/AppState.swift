@@ -6546,15 +6546,25 @@ final class AppState: ObservableObject {
             // old connection must not overwrite the live list, and must not
             // repopulate a persisted cache that
             // prepareChatResumeForConnection(to:) already cleared with the
-            // previous server's profile names.
+            // previous server's profile names. Discarded silently — profile
+            // discovery has no retry loop to feed an error into.
             guard dashboardTicketBridge === bridge else { return }
             let values = response["profiles"] as? [Any] ?? []
             let names = values.compactMap { value -> String? in
                 if let name = value as? String { return name }
                 return (value as? [String: Any])?["name"] as? String
             }
-            profiles = orderedProfiles(names + ["default"])
-            defaults.set(profiles, forKey: knownProfilesKey)
+            // A 200 with no profile names is a degraded payload (dashboard
+            // mid-restart, partial deploy, proxy), not authoritative evidence
+            // that every profile vanished — Hermes always has `default`. The
+            // next line would otherwise collapse the picker and persist that
+            // degraded list over the complete cache, the exact bug this
+            // function exists to prevent, just via a 200 instead of an error.
+            let nextProfiles = names.isEmpty
+                ? orderedProfiles(profiles + [activeProfile, "default"])
+                : orderedProfiles(names + ["default"])
+            profiles = nextProfiles
+            defaults.set(nextProfiles, forKey: knownProfilesKey)
         } catch {
             guard dashboardTicketBridge === bridge else { return }
             // Profile discovery is additive and monotonic. A failed refresh

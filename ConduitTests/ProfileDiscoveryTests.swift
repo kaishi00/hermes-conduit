@@ -195,7 +195,6 @@ final class ProfileDiscoveryTests: XCTestCase {
     }
 
     func testLateResponseAfterServerChangeDoesNotRepopulateProfileState() async throws {
-        defaults.set("https://one.example", forKey: "conduit.dashboardURL")
         seedKnownProfiles(["default", "one-only"], activeProfile: "default")
         let gate = ProfileResponseGate()
         let appState = makeAppState(profileDiscoveryLoader: { try await gate.wait() })
@@ -215,6 +214,53 @@ final class ProfileDiscoveryTests: XCTestCase {
 
         XCTAssertTrue(appState.profiles.isEmpty)
         assertPersistedKnownProfiles(nil)
+    }
+
+    func testLateFailureAfterServerChangeDoesNotRepopulateProfileState() async throws {
+        seedKnownProfiles(["default", "one-only"], activeProfile: "default")
+        let gate = ProfileResponseGate()
+        let appState = makeAppState(profileDiscoveryLoader: { try await gate.wait() })
+        appState.rememberDashboardURL("https://one.example")
+        appState.installDashboardTicketBridgeForTesting(makeBridge("https://one.example"))
+
+        let discovery = Task { await appState.loadProfiles() }
+        await gate.waitUntilEntered()
+
+        // The failure branch carries the same commit gate: without it, a late
+        // error from the old connection would "recover" by repopulating the
+        // just-wiped state with the previous server-era minimum set.
+        XCTAssertTrue(appState.prepareChatResumeForConnection(to: "https://two.example"))
+        appState.installDashboardTicketBridgeForTesting(makeBridge("https://two.example"))
+        gate.resume(.failure(DiscoveryError.transient))
+        await discovery.value
+
+        XCTAssertTrue(appState.profiles.isEmpty)
+        assertPersistedKnownProfiles(nil)
+    }
+
+    func testDegenerateEmptySuccessKeepsKnownProfiles() async throws {
+        seedKnownProfiles(["default", "profile2"], activeProfile: "profile2")
+        let appState = makeAppState(profileDiscoveryLoader: {
+            ["profiles": []]
+        })
+        appState.installDashboardTicketBridgeForTesting(makeBridge("https://one.example"))
+
+        // A 200 whose payload lists no profiles (dashboard mid-restart,
+        // partial deploy) is degraded, not authoritative: it must not shrink
+        // the known set or persist a degraded cache.
+        await appState.loadProfiles()
+
+        XCTAssertEqual(appState.profiles, ["default", "profile2"])
+        assertPersistedKnownProfiles(["default", "profile2"])
+
+        // Same for a payload missing the key entirely.
+        let missingKeyState = makeAppState(profileDiscoveryLoader: { [:] })
+        missingKeyState.installDashboardTicketBridgeForTesting(makeBridge("https://one.example"))
+
+        await missingKeyState.loadProfiles()
+
+        XCTAssertEqual(missingKeyState.profiles, ["default", "profile2"])
+        assertPersistedKnownProfiles(["default", "profile2"])
     }
 }
 
