@@ -255,7 +255,9 @@ final class ProfileDiscoveryTests: XCTestCase {
         XCTAssertEqual(appState.profiles, ["default", "profile2"])
         assertPersistedKnownProfiles(["default", "profile2"])
 
-        // Same for a payload missing the key entirely.
+        // Same for a payload missing the key entirely. Seeded explicitly so
+        // this half does not depend on state the first half persisted.
+        seedKnownProfiles(["default", "profile2"], activeProfile: "profile2")
         let missingKeyState = makeAppState(profileDiscoveryLoader: { [:] })
         missingKeyState.installDashboardTicketBridgeForTesting(makeBridge("https://one.example"))
 
@@ -263,6 +265,72 @@ final class ProfileDiscoveryTests: XCTestCase {
 
         XCTAssertEqual(missingKeyState.profiles, ["default", "profile2"])
         assertPersistedKnownProfiles(["default", "profile2"])
+    }
+
+    // MARK: - Authoritative success re-homes a deleted active profile
+
+    func testAuthoritativeResponseRemovingActiveProfileRehomesToDefault() async throws {
+        seedKnownProfiles(["default", "profile2"], activeProfile: "profile2")
+        let appState = makeAppState(profileDiscoveryLoader: {
+            ["profiles": ["profile3", "default"]]
+        })
+        appState.installDashboardTicketBridgeForTesting(makeBridge("https://one.example"))
+
+        await appState.loadProfiles()
+
+        // The server's list is authoritative (profile2 was deleted
+        // externally); the active profile must transition to a valid
+        // fallback instead of lingering outside the visible list.
+        XCTAssertEqual(appState.profiles, ["default", "profile3"])
+        XCTAssertEqual(appState.activeProfile, "default")
+        XCTAssertEqual(defaults.string(forKey: Self.activeProfileKey), "default")
+    }
+
+    func testAuthoritativeResponseContainingActiveProfileKeepsItWithoutReset() async throws {
+        seedKnownProfiles(["default", "profile2"], activeProfile: "profile2")
+        let appState = makeAppState(profileDiscoveryLoader: {
+            ["profiles": ["profile3", "default", "profile2"]]
+        })
+        appState.installDashboardTicketBridgeForTesting(makeBridge("https://one.example"))
+        // Probe for an unnecessary reset: profile-scoped catalog state
+        // installed under the still-valid active profile must survive.
+        appState.sessions = [
+            SessionSummary(
+                id: "profile2-session",
+                alternateIds: [],
+                title: "profile2-session",
+                model: "Hermes",
+                updatedLabel: "now",
+                profile: "profile2",
+                source: .chat,
+                isActive: false,
+                isArchived: false,
+                lineageRootId: nil
+            )
+        ]
+
+        await appState.loadProfiles()
+
+        XCTAssertEqual(appState.profiles, ["default", "profile2", "profile3"])
+        XCTAssertEqual(appState.activeProfile, "profile2")
+        XCTAssertEqual(defaults.string(forKey: Self.activeProfileKey), "profile2")
+        XCTAssertEqual(appState.sessions.count, 1)
+    }
+
+    func testAuthoritativeResponseDeletingNonActiveProfilePropagates() async throws {
+        seedKnownProfiles(["default", "profile2"], activeProfile: "default")
+        let appState = makeAppState(profileDiscoveryLoader: {
+            ["profiles": ["default"]]
+        })
+        appState.installDashboardTicketBridgeForTesting(makeBridge("https://one.example"))
+
+        await appState.loadProfiles()
+
+        // Authoritative deletions still propagate; the active profile is
+        // unaffected because it remains server-valid.
+        XCTAssertEqual(appState.profiles, ["default"])
+        XCTAssertEqual(appState.activeProfile, "default")
+        assertPersistedKnownProfiles(["default"])
     }
 }
 

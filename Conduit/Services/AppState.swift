@@ -6565,6 +6565,17 @@ final class AppState: ObservableObject {
                 : orderedProfiles(names + ["default"])
             profiles = nextProfiles
             defaults.set(nextProfiles, forKey: knownProfilesKey)
+            // A non-empty response is authoritative: if the server no longer
+            // knows the active profile (deleted externally), re-home onto a
+            // valid fallback instead of leaving `activeProfile ∉ profiles` —
+            // a state the profile picker cannot represent. The degraded and
+            // empty-payload paths already union `activeProfile` in, so only
+            // this branch can need the correction.
+            if !names.isEmpty, !nextProfiles.contains(activeProfile) {
+                adoptAuthoritativeFallbackProfile(
+                    nextProfiles.contains("default") ? "default" : nextProfiles[0]
+                )
+            }
         } catch {
             guard dashboardTicketBridge === bridge else { return }
             // Profile discovery is additive and monotonic. A failed refresh
@@ -6580,6 +6591,35 @@ final class AppState: ObservableObject {
             profiles = merged
             defaults.set(merged, forKey: knownProfilesKey)
         }
+    }
+
+    /// Authoritative discovery reported a server that no longer contains the
+    /// active profile (e.g. it was deleted externally). Re-home onto a valid
+    /// fallback using the same local hard-boundary sequence as the forward
+    /// profile transition in `connect(with:profile:)`: flush the outgoing
+    /// transcript under its presentation-cache namespace, clear the
+    /// profile-scoped catalogs, fence-flip the identity, restore the
+    /// fallback's remembered session/pinned state, and persist the
+    /// correction under `activeProfileKey`.
+    ///
+    /// Deliberately NOT the interactive `switchProfile(to:reusing:)` flow:
+    /// that re-resolves the whole connection and would nest reconnects and
+    /// capability loads inside this discovery call site. The currently
+    /// connected client keeps serving until the next natural reconnect,
+    /// which will target the corrected profile; catalog reads are filtered
+    /// and path-prefixed by the explicit profile, so no cross-profile
+    /// transcript or cache state leaks in the meantime.
+    private func adoptAuthoritativeFallbackProfile(_ fallback: String) {
+        guard fallback != activeProfile else { return }
+        flushPendingPresentationCache()
+        sessions = []
+        cronSessions = []
+        archivedSessions = []
+        slashCommands = Self.builtInSlashCommands
+        setActiveProfile(fallback)
+        restoreActiveSessionState(for: fallback)
+        restorePinnedSessions(for: fallback)
+        defaults.set(fallback, forKey: activeProfileKey)
     }
 
     /// Hermes blocks a clarify/approval prompt for only ~5 minutes server-side
