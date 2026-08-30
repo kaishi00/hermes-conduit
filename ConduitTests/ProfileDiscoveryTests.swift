@@ -195,10 +195,12 @@ final class ProfileDiscoveryTests: XCTestCase {
     }
 
     func testLateResponseAfterServerChangeDoesNotRepopulateProfileState() async throws {
+        // Seeded before AppState init: the stored dashboard URL is where a
+        // cold launch's baseline server identity is captured from.
+        defaults.set("https://one.example", forKey: "conduit.dashboardURL")
         seedKnownProfiles(["default", "one-only"], activeProfile: "default")
         let gate = ProfileResponseGate()
         let appState = makeAppState(profileDiscoveryLoader: { try await gate.wait() })
-        appState.rememberDashboardURL("https://one.example")
         appState.installDashboardTicketBridgeForTesting(makeBridge("https://one.example"))
 
         let discovery = Task { await appState.loadProfiles() }
@@ -217,10 +219,10 @@ final class ProfileDiscoveryTests: XCTestCase {
     }
 
     func testLateFailureAfterServerChangeDoesNotRepopulateProfileState() async throws {
+        defaults.set("https://one.example", forKey: "conduit.dashboardURL")
         seedKnownProfiles(["default", "one-only"], activeProfile: "default")
         let gate = ProfileResponseGate()
         let appState = makeAppState(profileDiscoveryLoader: { try await gate.wait() })
-        appState.rememberDashboardURL("https://one.example")
         appState.installDashboardTicketBridgeForTesting(makeBridge("https://one.example"))
 
         let discovery = Task { await appState.loadProfiles() }
