@@ -3,6 +3,11 @@ import Network
 import XCTest
 @testable import Conduit
 
+/// These suites intentionally exercise `HTTPCookieStorage.shared` because the
+/// production bridge consumes the shared cookie store. Fixture domains are
+/// disjoint from other test classes (loopback hosts here) and setUp/tearDown
+/// scrub exactly those domains, so parallel class execution cannot
+/// cross-contaminate the jar.
 final class NativeAuthClientIntegrationTests: XCTestCase {
     override func setUp() {
         super.setUp()
@@ -114,6 +119,189 @@ final class NativeAuthClientIntegrationTests: XCTestCase {
             server.lastRequest(path: "/api/auth/ws-ticket")?.headers["cookie"],
             "hermes_session_at=redirect-access"
         )
+    }
+
+    func testPathPrefixedBaseURLCarriesSessionCookieThroughRedirectAndTicket() async throws {
+        let server = try LoopbackHTTPServer.start { request in
+            switch request.path {
+            case "/hermes/auth/password-login":
+                return LoopbackHTTPResponse(
+                    status: 302,
+                    headers: [
+                        ("Location", "/hermes/auth/password-complete"),
+                        ("Set-Cookie", "hermes_session_at=prefix-redirect-access; Path=/; HttpOnly; SameSite=Lax")
+                    ],
+                    body: Data()
+                )
+            case "/hermes/auth/password-complete":
+                guard request.headers["cookie"] == "hermes_session_at=prefix-redirect-access" else {
+                    return .json(status: 401, body: #"{"detail":"Redirect cookie missing"}"#)
+                }
+                return .json(status: 200, body: #"{"ok":true,"next":"/"}"#)
+            case "/hermes/api/auth/ws-ticket":
+                guard request.headers["cookie"] == "hermes_session_at=prefix-redirect-access" else {
+                    return .json(status: 401, body: #"{"detail":"Unauthorized"}"#)
+                }
+                return .json(status: 200, body: #"{"ticket":"prefix-ticket"}"#)
+            default:
+                return .json(status: 404, body: #"{"detail":"Not found"}"#)
+            }
+        }
+        defer { server.stop() }
+
+        // A stale cookie that would match every request must never stand in
+        // for the current transaction's cookie.
+        seedLoopbackCookie(name: "hermes_session_at", value: "stale-prefix-access")
+
+        let connection = try await NativeAuthClient(
+            baseURL: "http://127.0.0.1:\(server.port)/hermes",
+            sessionConfiguration: realSessionConfiguration()
+        ).connect(username: "chris", password: "correct-password")
+
+        XCTAssertEqual(connection.ticket, "prefix-ticket")
+        XCTAssertEqual(
+            server.lastRequest(path: "/hermes/auth/password-complete")?.headers["cookie"],
+            "hermes_session_at=prefix-redirect-access",
+            "The redirect landing must receive the login cookie even with URLSession cookie handling disabled."
+        )
+        XCTAssertEqual(
+            server.lastRequest(path: "/hermes/api/auth/ws-ticket")?.headers["cookie"],
+            "hermes_session_at=prefix-redirect-access",
+            "The ticket request must carry exactly the current transaction's cookie, not the stale shared one."
+        )
+        XCTAssertFalse(
+            hasLoopbackSession(value: "prefix-redirect-access"),
+            "A valid but uncommitted transaction must not publish its cookies."
+        )
+        connection.commitCookies()
+        XCTAssertTrue(
+            hasLoopbackSession(value: "prefix-redirect-access"),
+            "The accepted transaction's cookie must be committed."
+        )
+        XCTAssertFalse(
+            hasLoopbackSession(value: "stale-prefix-access"),
+            "Committing the new session must supersede the stale shared cookie."
+        )
+    }
+
+    func testCookiePathBoundaryRejectsNaivePrefixMatch() async throws {
+        // A cookie scoped to Path=/api/auth/ws must NOT apply to
+        // /api/auth/ws-ticket: the character after the cookie path is "-",
+        // not "/". A naive hasPrefix matcher would leak it.
+        let server = try LoopbackHTTPServer.start { request in
+            switch request.path {
+            case "/auth/password-login":
+                return .json(
+                    status: 200,
+                    headers: [("Set-Cookie", "hermes_session_at=ws-scoped; Path=/api/auth/ws")],
+                    body: #"{"ok":true,"next":"/"}"#
+                )
+            case "/api/auth/ws-ticket":
+                if request.headers["cookie"] != nil {
+                    return .json(status: 500, body: #"{"detail":"boundary check leaked a cookie"}"#)
+                }
+                return .json(status: 200, body: #"{"ticket":"boundary-ticket"}"#)
+            default:
+                return .json(status: 404, body: #"{"detail":"Not found"}"#)
+            }
+        }
+        defer { server.stop() }
+
+        let connection = try await NativeAuthClient(
+            baseURL: "http://127.0.0.1:\(server.port)",
+            sessionConfiguration: realSessionConfiguration()
+        ).connect(username: "chris", password: "correct-password")
+
+        XCTAssertEqual(connection.ticket, "boundary-ticket")
+        XCTAssertNil(
+            server.lastRequest(path: "/api/auth/ws-ticket")?.headers["cookie"],
+            "A Path=/api/auth/ws cookie must not reach /api/auth/ws-ticket."
+        )
+    }
+
+    func testParentCookiePathAppliesToDeeperTicketPath() async throws {
+        // Path=/api is a legitimate parent of /api/auth/ws-ticket and must
+        // still apply.
+        let server = try LoopbackHTTPServer.start { request in
+            switch request.path {
+            case "/auth/password-login":
+                return .json(
+                    status: 200,
+                    headers: [("Set-Cookie", "hermes_session_at=api-scoped; Path=/api")],
+                    body: #"{"ok":true,"next":"/"}"#
+                )
+            case "/api/auth/ws-ticket":
+                guard request.headers["cookie"] == "hermes_session_at=api-scoped" else {
+                    return .json(status: 401, body: #"{"detail":"Unauthorized"}"#)
+                }
+                return .json(status: 200, body: #"{"ticket":"parent-path-ticket"}"#)
+            default:
+                return .json(status: 404, body: #"{"detail":"Not found"}"#)
+            }
+        }
+        defer { server.stop() }
+
+        let connection = try await NativeAuthClient(
+            baseURL: "http://127.0.0.1:\(server.port)",
+            sessionConfiguration: realSessionConfiguration()
+        ).connect(username: "chris", password: "correct-password")
+
+        XCTAssertEqual(connection.ticket, "parent-path-ticket")
+        XCTAssertEqual(
+            server.lastRequest(path: "/api/auth/ws-ticket")?.headers["cookie"],
+            "hermes_session_at=api-scoped"
+        )
+    }
+
+    func testCommitSkipsExpiredParsedCookiesInsteadOfDeletingSharedEntries() async throws {
+        let server = try LoopbackHTTPServer.start { request in
+            switch request.path {
+            case "/auth/password-login":
+                return .json(
+                    status: 200,
+                    headers: [("Set-Cookie", "hermes_session_at=expired-flow-access; Path=/; HttpOnly")],
+                    body: #"{"ok":true,"next":"/"}"#
+                )
+            case "/api/auth/ws-ticket":
+                guard request.headers["cookie"] == "hermes_session_at=expired-flow-access" else {
+                    return .json(status: 401, body: #"{"detail":"Unauthorized"}"#)
+                }
+                return .json(
+                    status: 200,
+                    headers: [
+                        ("Set-Cookie", "hermes_session_at=expired-flow-rotated; Path=/; HttpOnly"),
+                        ("Set-Cookie", "rotation_guard=dropped; Path=/; Expires=Wed, 09 Jun 2000 10:18:14 GMT")
+                    ],
+                    body: #"{"ticket":"expired-flow-ticket"}"#
+                )
+            default:
+                return .json(status: 404, body: #"{"detail":"Not found"}"#)
+            }
+        }
+        defer { server.stop() }
+
+        // The ticket response "rotates" rotation_guard to an expired value
+        // that shares its identity (name/domain/path) with a live shared-jar
+        // cookie. Publication must skip the expired parse, not delete the
+        // jar entry it collides with.
+        seedLoopbackCookie(name: "rotation_guard", value: "keepme")
+
+        let connection = try await NativeAuthClient(
+            baseURL: "http://127.0.0.1:\(server.port)",
+            sessionConfiguration: realSessionConfiguration()
+        ).connect(username: "chris", password: "correct-password")
+
+        XCTAssertEqual(connection.ticket, "expired-flow-ticket")
+        XCTAssertFalse(
+            hasLoopbackCookie(name: "rotation_guard", value: "dropped"),
+            "An expired parsed cookie must never be published."
+        )
+        connection.commitCookies()
+        XCTAssertTrue(
+            hasLoopbackCookie(name: "rotation_guard", value: "keepme"),
+            "Skipping an expired parse must not delete the shared entry it collides with."
+        )
+        XCTAssertTrue(hasLoopbackSession(value: "expired-flow-rotated"))
     }
 
     func testConcurrentRedirectedLoginsCannotExchangeSessionCookies() async throws {
@@ -276,8 +464,12 @@ final class NativeAuthClientIntegrationTests: XCTestCase {
     }
 
     private func hasLoopbackSession(value: String) -> Bool {
+        hasLoopbackCookie(name: "hermes_session_at", value: value)
+    }
+
+    private func hasLoopbackCookie(name: String, value: String) -> Bool {
         (HTTPCookieStorage.shared.cookies ?? []).contains {
-            $0.name == "hermes_session_at"
+            $0.name == name
                 && $0.value == value
                 && $0.domain.trimmingCharacters(in: CharacterSet(charactersIn: ".")) == "127.0.0.1"
         }

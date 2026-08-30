@@ -2,6 +2,11 @@ import Foundation
 import XCTest
 @testable import Conduit
 
+/// These tests intentionally touch `HTTPCookieStorage.shared` because the
+/// production bridge consumes the shared cookie store. Fixture hosts are
+/// disjoint from the loopback integration suites, and reset() (setUp/tearDown)
+/// scrubs exactly the fixture domains, so parallel class execution cannot
+/// cross-contaminate the jar.
 final class NativeAuthClientTests: XCTestCase {
     override func setUp() {
         super.setUp()
@@ -147,6 +152,60 @@ final class NativeAuthClientTests: XCTestCase {
         XCTAssertEqual(providers[0]["name"] as? String, "basic")
     }
 
+    func testCancelledConnectSurfacesAsCancellationError() async throws {
+        let client = NativeAuthClient(
+            baseURL: "https://cancel.example",
+            sessionConfiguration: makeSessionConfiguration()
+        )
+
+        let operation = Task { try await client.connect(username: "chris", password: "correct-password") }
+        // Give the URLSessionTask time to start against the never-completing
+        // fixture; the holder also cancels tasks installed after cancellation.
+        try await Task.sleep(nanoseconds: 100_000_000)
+        operation.cancel()
+
+        do {
+            _ = try await operation.value
+            XCTFail("Expected the cancelled connect to throw")
+        } catch {
+            XCTAssertTrue(error is CancellationError, "Expected CancellationError, got \(error)")
+            XCTAssertFalse(error is AuthClientError, "Cancellation must not surface as an authentication failure")
+        }
+    }
+
+    func testArraySetCookieRepresentationParsesAllCookiesAndLatestWins() async throws {
+        let client = NativeAuthClient(
+            baseURL: "https://array-cookies.example",
+            sessionConfiguration: makeSessionConfiguration()
+        )
+
+        let connection = try await client.connect(username: "chris", password: "correct-password")
+
+        XCTAssertEqual(connection.ticket, "array-ticket")
+        XCTAssertEqual(
+            NativeAuthURLProtocol.requestHeader(forPath: "/api/auth/ws-ticket", name: "Cookie"),
+            "hermes_session_at=array-second",
+            "Duplicate Set-Cookie values exposed as an array must each parse, with the later rotation winning."
+        )
+    }
+
+    func testProviderDiscoveryFollowsAllowedSameOriginRedirect() async throws {
+        // Pins pre-existing semantics: an allowed same-origin redirect on
+        // /api/auth/providers is consumed by URLSession, and provider
+        // discovery parses the final landing response.
+        let client = NativeAuthClient(
+            baseURL: "https://same-origin.example",
+            sessionConfiguration: makeSessionConfiguration()
+        )
+
+        let providers = try await client.authProviders()
+
+        XCTAssertEqual(providers.count, 1)
+        XCTAssertEqual(providers[0]["name"] as? String, "basic")
+        XCTAssertEqual(NativeAuthURLProtocol.requestCount(forPath: "/api/auth/providers"), 1)
+        XCTAssertEqual(NativeAuthURLProtocol.requestCount(forPath: "/api/auth/providers/redirected"), 1)
+    }
+
     private func makeSessionConfiguration() -> URLSessionConfiguration {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [NativeAuthURLProtocol.self]
@@ -175,7 +234,10 @@ private final class NativeAuthURLProtocol: URLProtocol {
             "server-error.example",
             "headers.example",
             "multiple.example",
-            "tenant.cloudflareaccess.com"
+            "tenant.cloudflareaccess.com",
+            "cancel.example",
+            "array-cookies.example",
+            "same-origin.example"
         ].contains(host)
     }
 
@@ -189,6 +251,11 @@ private final class NativeAuthURLProtocol: URLProtocol {
             return
         }
         Self.record(request: request)
+        if url.host == "cancel.example" {
+            // Never completes: the cancellation test cancels the task while
+            // this request is in flight.
+            return
+        }
         let fixture = fixture(for: request)
         Self.record(
             host: url.host ?? "",
@@ -231,6 +298,12 @@ private final class NativeAuthURLProtocol: URLProtocol {
         return responseRecords.filter { $0.host == host }.count
     }
 
+    static func requestCount(forPath path: String) -> Int {
+        recordLock.lock()
+        defer { recordLock.unlock() }
+        return requestRecords.filter { $0.url?.path == path }.count
+    }
+
     static func requestHeader(forPath path: String, name: String) -> String? {
         recordLock.lock()
         defer { recordLock.unlock() }
@@ -242,7 +315,13 @@ private final class NativeAuthURLProtocol: URLProtocol {
         responseRecords.removeAll()
         requestRecords.removeAll()
         recordLock.unlock()
-        let fixtureHosts = Set(["192.168.1.200", "192.168.1.201"])
+        let fixtureHosts = Set([
+            "192.168.1.200",
+            "192.168.1.201",
+            "cancel.example",
+            "array-cookies.example",
+            "same-origin.example"
+        ])
         for cookie in HTTPCookieStorage.shared.cookies ?? [] {
             let domain = cookie.domain.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "."))
             if fixtureHosts.contains(domain) {
@@ -262,9 +341,14 @@ private final class NativeAuthURLProtocol: URLProtocol {
         HTTPCookieStorage.shared.setCookie(cookie)
     }
 
-    private static func record(host: String, statusCode: Int?, headers: [String: String]) {
+    private static func record(host: String, statusCode: Int?, headers: [AnyHashable: Any]) {
+        let stringHeaders = headers.reduce(into: [String: String]()) { result, entry in
+            if let key = entry.key as? String, let value = entry.value as? String {
+                result[key] = value
+            }
+        }
         recordLock.lock()
-        responseRecords.append(ResponseRecord(host: host, statusCode: statusCode, headers: headers))
+        responseRecords.append(ResponseRecord(host: host, statusCode: statusCode, headers: stringHeaders))
         recordLock.unlock()
     }
 
@@ -276,7 +360,9 @@ private final class NativeAuthURLProtocol: URLProtocol {
 
     private struct Fixture {
         let statusCode: Int
-        let headers: [String: String]
+        // AnyHashable/Any so fixtures can model header representations beyond
+        // plain strings (e.g. duplicate Set-Cookie values exposed as arrays).
+        let headers: [AnyHashable: Any]
         let body: Data
     }
 
@@ -345,6 +431,51 @@ private final class NativeAuthURLProtocol: URLProtocol {
             return Fixture(statusCode: 500, headers: [:], body: Data(#"{"error":"origin unavailable"}"#.utf8))
         case "multiple.example":
             return Fixture(statusCode: 300, headers: [:], body: Data())
+        case "array-cookies.example":
+            switch request.url?.path {
+            case "/auth/password-login":
+                // Model the array-style duplicate Set-Cookie representation
+                // Foundation can expose, instead of a combined string.
+                return Fixture(
+                    statusCode: 200,
+                    headers: [
+                        "Content-Type": "application/json",
+                        "Set-Cookie": [
+                            "hermes_session_at=array-first; Path=/",
+                            "hermes_session_at=array-second; Path=/"
+                        ]
+                    ],
+                    body: Data(#"{"ok":true,"next":"/"}"#.utf8)
+                )
+            case "/api/auth/ws-ticket":
+                guard request.value(forHTTPHeaderField: "Cookie") == "hermes_session_at=array-second" else {
+                    return Fixture(
+                        statusCode: 401,
+                        headers: ["Content-Type": "application/json"],
+                        body: Data(#"{"detail":"Unauthorized"}"#.utf8)
+                    )
+                }
+                return Fixture(
+                    statusCode: 200,
+                    headers: ["Content-Type": "application/json"],
+                    body: Data(#"{"ticket":"array-ticket"}"#.utf8)
+                )
+            default:
+                return nil
+            }
+        case "same-origin.example":
+            switch request.url?.path {
+            case "/api/auth/providers":
+                return Fixture(
+                    statusCode: 302,
+                    headers: ["Location": "/api/auth/providers/redirected"],
+                    body: Data()
+                )
+            case "/api/auth/providers/redirected":
+                return Fixture(statusCode: 200, headers: [:], body: providerBody())
+            default:
+                return nil
+            }
         case "headers.example":
             let hasExpectedHeaders = request.value(forHTTPHeaderField: "CF-Access-Client-Id") == "test-client-id"
                 && request.value(forHTTPHeaderField: "CF-Access-Client-Secret") == "test-client-secret"

@@ -75,7 +75,12 @@ struct NativeAuthClient {
         // Automatic handling would let a stale shared-jar cookie authenticate
         // when the current login returned no cookie applicable to the route.
         configuration.httpShouldSetCookies = false
-        let redirectDelegate = SecureRedirectDelegate()
+        // Endpoint identity is derived from the normalized base URL because
+        // deployments may mount the gateway under a path prefix
+        // (https://example.com/hermes → /hermes/auth/password-login).
+        let redirectDelegate = SecureRedirectDelegate(
+            passwordLoginURL: try? Self.endpointURL(baseURL: self.baseURL, path: "/auth/password-login")
+        )
         self.redirectDelegate = redirectDelegate
         self.session = URLSession(configuration: configuration, delegate: redirectDelegate, delegateQueue: nil)
     }
@@ -132,11 +137,9 @@ struct NativeAuthClient {
     }
 
     func mintWsTicket(authenticatedCookies: [HTTPCookie]) async throws -> NativeAuthConnection {
-        var request = try request(path: "/api/auth/ws-ticket")
+        let ticketURL = try endpointURL(path: "/api/auth/ws-ticket")
+        var request = request(url: ticketURL)
         request.httpMethod = "POST"
-        guard let ticketURL = request.url else {
-            throw AuthClientError.invalidURL
-        }
 
         // Scope only this login's cookies. No shared-jar read occurs here, so a
         // stale or concurrent session can never replace an empty/missing match.
@@ -177,11 +180,23 @@ struct NativeAuthClient {
     }
 
     private func request(path: String) throws -> URLRequest {
+        request(url: try endpointURL(path: path))
+    }
+
+    private func request(url: URL) -> URLRequest {
+        cloudflareAccess?.applying(to: URLRequest(url: url)) ?? URLRequest(url: url)
+    }
+
+    private func endpointURL(path: String) throws -> URL {
+        try Self.endpointURL(baseURL: baseURL, path: path)
+    }
+
+    private static func endpointURL(baseURL: String, path: String) throws -> URL {
         guard let normalized = try? ConnectionURLPolicy.normalizedBaseURL(baseURL),
               let url = URL(string: "\(normalized)\(path)") else {
             throw AuthClientError.invalidURL
         }
-        return cloudflareAccess?.applying(to: URLRequest(url: url)) ?? URLRequest(url: url)
+        return url
     }
 
     private func perform(_ request: URLRequest) async throws -> NativeAuthHTTPResult {
@@ -193,7 +208,16 @@ struct NativeAuthClient {
                         for: holder.taskIdentifier
                     )
                     if let error {
-                        continuation.resume(throwing: error)
+                        // Cancelling the wrapping Swift task cancels the
+                        // URLSessionTask, which reports URLError(.cancelled).
+                        // Callers branch on CancellationError to stay silent,
+                        // so restore that taxonomy without touching other
+                        // transport errors.
+                        if let urlError = error as? URLError, urlError.code == .cancelled {
+                            continuation.resume(throwing: CancellationError())
+                        } else {
+                            continuation.resume(throwing: error)
+                        }
                         return
                     }
                     guard let data, let response else {
@@ -225,17 +249,39 @@ struct NativeAuthClient {
 private enum NativeAuthCookiePolicy {
     static func acceptedCookies(from response: HTTPURLResponse) -> [HTTPCookie] {
         guard let responseURL = response.url else { return [] }
-        // HTTPURLResponse exposes duplicate response headers in its canonical
-        // combined form. Foundation's parser handles multiple Set-Cookie lines,
-        // including Expires commas; the real-transport tests pin that behavior.
-        let fields = response.allHeaderFields.reduce(into: [String: String]()) { result, entry in
-            guard let name = entry.key as? String else { return }
-            result[name] = String(describing: entry.value)
+        // Duplicate Set-Cookie headers are collected in response order and
+        // parsed individually: Foundation has exposed duplicate header values
+        // as arrays on some runtimes, and comma-joining would corrupt
+        // Expires dates. HTTPCookie remains the authority for cookie syntax,
+        // including Expires commas.
+        var setCookieValues: [String] = []
+        for entry in response.allHeaderFields {
+            guard let name = (entry.key as? String)?.lowercased(),
+                  name == "set-cookie" else { continue }
+            appendSetCookieValues(entry.value, to: &setCookieValues)
         }
-        return HTTPCookie.cookies(
-            withResponseHeaderFields: fields,
-            for: responseURL
-        ).filter { accepts($0, from: responseURL) }
+        let cookies = setCookieValues.flatMap {
+            HTTPCookie.cookies(withResponseHeaderFields: ["Set-Cookie": $0], for: responseURL)
+        }
+        return cookies.filter { accepts($0, from: responseURL) }
+    }
+
+    private static func appendSetCookieValues(_ value: Any, to result: inout [String]) {
+        switch value {
+        case let string as String:
+            if !string.isEmpty { result.append(string) }
+        case let strings as [String]:
+            for string in strings where !string.isEmpty {
+                result.append(string)
+            }
+        case let nested as [Any]:
+            for item in nested {
+                appendSetCookieValues(item, to: &result)
+            }
+        default:
+            let description = String(describing: value)
+            if !description.isEmpty { result.append(description) }
+        }
     }
 
     static func merged(_ cookies: [HTTPCookie]) -> [HTTPCookie] {
@@ -257,11 +303,11 @@ private enum NativeAuthCookiePolicy {
 
     static func persist(_ cookies: [HTTPCookie]) {
         for cookie in cookies {
-            if let expires = cookie.expiresDate, expires <= Date() {
-                HTTPCookieStorage.shared.deleteCookie(cookie)
-            } else {
-                HTTPCookieStorage.shared.setCookie(cookie)
-            }
+            // These are transaction-local parses that may never have entered
+            // the shared jar, so an expired value is skipped rather than
+            // deleting a jar entry this transaction does not own.
+            if let expires = cookie.expiresDate, expires <= Date() { continue }
+            HTTPCookieStorage.shared.setCookie(cookie)
         }
     }
 
@@ -365,6 +411,14 @@ private final class URLSessionTaskHolder: @unchecked Sendable {
 private final class SecureRedirectDelegate: NSObject, URLSessionTaskDelegate {
     private let lock = NSLock()
     private var cookiesByTask: [Int: [HTTPCookie]] = [:]
+    /// The configured password-login endpoint, including any base-URL path
+    /// prefix (https://example.com/hermes → /hermes/auth/password-login).
+    private let passwordLoginURL: URL?
+
+    init(passwordLoginURL: URL?) {
+        self.passwordLoginURL = passwordLoginURL
+        super.init()
+    }
 
     func urlSession(
         _ session: URLSession,
@@ -385,7 +439,7 @@ private final class SecureRedirectDelegate: NSObject, URLSessionTaskDelegate {
         // URLSession cookie handling is disabled, so a password-login landing
         // receives only this task's accepted redirect cookies. Other request
         // types retain their original explicit headers unchanged.
-        guard task.originalRequest?.url?.path == "/auth/password-login" else {
+        guard isPasswordLoginTask(task) else {
             completionHandler(request)
             return
         }
@@ -398,6 +452,16 @@ private final class SecureRedirectDelegate: NSObject, URLSessionTaskDelegate {
             redirectedRequest.setValue(value, forHTTPHeaderField: name)
         }
         completionHandler(redirectedRequest)
+    }
+
+    /// Compares the task's original request against the exact configured
+    /// endpoint. A fixed absolute path comparison would miss deployments
+    /// mounted under a base-URL path prefix.
+    private func isPasswordLoginTask(_ task: URLSessionTask) -> Bool {
+        guard let expected = passwordLoginURL,
+              let original = task.originalRequest?.url else { return false }
+        return original.path == expected.path
+            && ConnectionURLPolicy.originMatches(original, expected: expected)
     }
 
     func takeCookies(for taskIdentifier: Int?) -> [HTTPCookie] {
