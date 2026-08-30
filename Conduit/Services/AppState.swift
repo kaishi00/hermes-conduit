@@ -755,6 +755,10 @@ final class AppState: ObservableObject {
     private let sessionTitleRecoveryTracker = SessionTitleRecoveryTracker()
     private let sessionRenameOperationsOverride: SessionRenameOperation.Operations?
     private let sessionCatalogLoaderOverride: ((Bool) async throws -> [SessionSummary])?
+    /// Test seam mirroring `sessionCatalogLoader`: overrides the dashboard
+    /// `/api/profiles` fetch inside `loadProfiles()` so success, failure, and
+    /// late-response ordering can be modeled without a live WebKit bridge.
+    private let profileDiscoveryLoaderOverride: (@MainActor () async throws -> [String: Any])?
     private var reconnectAttempts = 0
     /// Whether the UI scene is active. Backgrounded scene updates must
     /// complete within ~10s of wall clock before the watchdog kills the app
@@ -1006,6 +1010,7 @@ final class AppState: ObservableObject {
         },
         sessionRenameOperations: SessionRenameOperation.Operations? = nil,
         sessionCatalogLoader: ((Bool) async throws -> [SessionSummary])? = nil,
+        profileDiscoveryLoader: (@MainActor () async throws -> [String: Any])? = nil,
         reconnectScheduler: ChatResumeReconnectScheduler? = nil,
         reconnectExecutor: ChatResumeReconnectExecutor? = nil,
         chatResumeLifecycleOperations: ChatResumeLifecycleOperations = .live,
@@ -1025,6 +1030,7 @@ final class AppState: ObservableObject {
         self.clearSessionPresentationCache = clearSessionPresentationCache
         sessionRenameOperationsOverride = sessionRenameOperations
         sessionCatalogLoaderOverride = sessionCatalogLoader
+        profileDiscoveryLoaderOverride = profileDiscoveryLoader
         self.reconnectScheduler = reconnectScheduler ?? scheduleChatResumeReconnectTask
         self.reconnectExecutor = reconnectExecutor
         self.chatResumeLifecycleOperations = chatResumeLifecycleOperations
@@ -1057,6 +1063,16 @@ final class AppState: ObservableObject {
            let stored = try? JSONDecoder().decode([String: [String]].self, from: data) {
             pinnedSessionIDsByProfile = stored
         }
+        // Hydrate the visible profile list from the persisted known-profile
+        // cache before any discovery runs. A cold launch must not present an
+        // effectively empty list — starting from `[]` is what let a single
+        // failed /api/profiles refresh collapse the picker to one entry and
+        // persist that degraded list over the complete cache. The union also
+        // heals a cache a pre-fix build already degraded: `default` and the
+        // remembered active profile are re-added on first launch.
+        profiles = orderedProfiles(
+            (defaults.stringArray(forKey: knownProfilesKey) ?? []) + [activeProfile, "default"]
+        )
         restoreActiveSessionState(for: activeProfile)
         restorePinnedSessions(for: activeProfile)
         if shouldLoadSavedConnection {
@@ -6516,9 +6532,22 @@ final class AppState: ObservableObject {
     }
 
     func loadProfiles() async {
-        guard let dashboardTicketBridge else { return }
+        guard let bridge = dashboardTicketBridge else { return }
         do {
-            let response = try await dashboardTicketBridge.requestJSON(path: "/api/profiles")
+            let response: [String: Any]
+            if let profileDiscoveryLoaderOverride {
+                response = try await profileDiscoveryLoaderOverride()
+            } else {
+                response = try await bridge.requestJSON(path: "/api/profiles")
+            }
+            // Commit gate, same identity pattern as the dashboard catalog
+            // loader: a bridge swapped mid-request (server change, re-login,
+            // disconnect) makes this response foreign. A late reply from an
+            // old connection must not overwrite the live list, and must not
+            // repopulate a persisted cache that
+            // prepareChatResumeForConnection(to:) already cleared with the
+            // previous server's profile names.
+            guard dashboardTicketBridge === bridge else { return }
             let values = response["profiles"] as? [Any] ?? []
             let names = values.compactMap { value -> String? in
                 if let name = value as? String { return name }
@@ -6527,10 +6556,19 @@ final class AppState: ObservableObject {
             profiles = orderedProfiles(names + ["default"])
             defaults.set(profiles, forKey: knownProfilesKey)
         } catch {
-            // Profile discovery is additive. A working chat must not be
-            // replaced by an error just because an older dashboard lacks it.
-            if profiles.isEmpty { profiles = orderedProfiles([activeProfile]) }
-            defaults.set(profiles, forKey: knownProfilesKey)
+            guard dashboardTicketBridge === bridge else { return }
+            // Profile discovery is additive and monotonic. A failed refresh
+            // (bridge still loading, dashboard restart, transient 5xx) must
+            // never shrink the visible list or overwrite a complete persisted
+            // cache with a degraded fallback — that degradation is exactly
+            // how a known profile "disappeared" from the picker until the
+            // next successful discovery or a logout/login cycle. Union with
+            // the current list so the active profile and the `default`
+            // invariant are always represented, then persist the union (a
+            // no-op write when the cache is already complete).
+            let merged = orderedProfiles(profiles + [activeProfile, "default"])
+            profiles = merged
+            defaults.set(merged, forKey: knownProfilesKey)
         }
     }
 
@@ -8550,6 +8588,13 @@ final class AppState: ObservableObject {
         self.isVoiceEnabled = isVoiceEnabled
         if let transcriptionMode { voiceTranscriptionMode = transcriptionMode }
         if let appleSpeechAvailability { self.appleSpeechAvailability = appleSpeechAvailability }
+    }
+
+    /// Test-only: installs a dashboard bridge (and nothing else) so profile
+    /// discovery can exercise its bridge-identity commit gate — modeled
+    /// connection swaps — without the voice capability snapshot plumbing.
+    func installDashboardTicketBridgeForTesting(_ bridge: DashboardTicketBridge) {
+        dashboardTicketBridge = bridge
     }
 
     private func loadVoiceProfilePreferences(profile: String) -> VoiceProfilePreferences {
