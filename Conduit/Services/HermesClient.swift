@@ -1247,6 +1247,25 @@ extension AnyCodable {
 
 // MARK: - Message Normalization
 
+/// Hermes' persisted display-projection contract. Some model-facing records —
+/// model switches, personality pivots, auto-continuations, background-agent
+/// completions, internal wake notices — are persisted as `role=user` rows so
+/// strict OpenAI-compatible providers accept them mid-history, while
+/// `display_kind` tells clients they are not human-authored messages and
+/// `display_content` overrides the physical `content` with the text that
+/// should actually be visible. The recognized values mirror Hermes Desktop's
+/// transcript hydration; an unrecognized value is deliberately given no
+/// display semantics so a future kind can never delete or reinterpret an
+/// ordinary visible row.
+private enum HermesDisplayKind: String {
+    case hidden
+    case modelSwitch = "model_switch"
+    case personalitySwitch = "personality_switch"
+    case autoContinue = "auto_continue"
+    case asyncDelegationComplete = "async_delegation_complete"
+    case internalNotification = "internal_notification"
+}
+
 enum MessageNormalizer {
 
     static func normalizeProjects(_ payload: AnyCodable, profile: String?) -> [ProjectSummary] {
@@ -1474,6 +1493,19 @@ enum MessageNormalizer {
                 ?? dataMessage
                 ?? [:]
             let obj = envelope.merging(nested) { _, nestedValue in nestedValue }
+
+            // Hermes' display projection is resolved before any content work.
+            // A hidden row is pure model-facing scaffolding (compaction
+            // handoffs, interrupted-turn checkpoints) that can be
+            // multi-megabyte, so it is dropped before Markdown, compaction
+            // scans, reasoning extraction, or tool interpretation — and
+            // regardless of its physical role.
+            let displayKind = HermesDisplayKind(
+                rawValue: (obj["display_kind"]?.stringValue ?? "")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+            if displayKind == .hidden { continue }
+
             let rawRole = (obj["role"]?.stringValue ?? obj["type"]?.stringValue ?? "").lowercased()
             let isToolResult = rawRole == "tool" || rawRole.contains("tool_result") || rawRole.contains("tool-result")
             var role: MessageRole
@@ -1493,28 +1525,68 @@ enum MessageNormalizer {
                 ?? obj["message_id"]?.descriptiveStringValue
                 ?? String(index)
 
+            // `display_content` replaces the physical payload for
+            // conversational rows. Tool results keep their legacy handling:
+            // upstream only ever projects conversational rows, and a tool
+            // output that merely contains display-like fields must not be
+            // rewritten. The `??` keeps the physical carrier un-extracted
+            // whenever a projection exists.
+            let projectedContent = isToolResult ? nil : projectedDisplayContent(in: obj)
             let extractedContent = isToolResult
                 ? extractToolOutput(obj)
-                : extractContent(obj["content"] ?? obj["text"] ?? .null)
+                : projectedContent ?? extractContent(obj["content"] ?? obj["text"] ?? .null)
             // Compaction bookkeeping is removed before role/system/runtime
             // normalization so no summary text — standalone or merged onto a
             // real prompt — can reach a ChatMessage and the renderer.
-            guard let rawContent = visibleContentRemovingCompaction(
-                from: obj,
-                content: extractedContent,
-                isToolResult: isToolResult
-            ) else {
+            //
+            // With an explicit display projection the physical carrier is
+            // never scanned and the projected text is never re-judged: the
+            // legacy delimiter search, the `_compressed_summary` flag, and
+            // the summary-prefix guard cannot discard authentic
+            // `display_content` (ordering matters here — the compatibility
+            // filters are only for rows lacking display metadata).
+            let rawContent: String?
+            if let projected = projectedContent {
+                rawContent = projected
+            } else {
+                rawContent = visibleContentRemovingCompaction(
+                    from: obj,
+                    content: extractedContent,
+                    isToolResult: isToolResult
+                )
+            }
+            guard let rawContent else {
                 continue
             }
             let modelChange = modelChangeActivity(fromText: rawContent)
             let systemNotice = systemNoticeText(fromText: rawContent)
-            if modelChange != nil || systemNotice != nil { role = .system }
+            // A known synthetic display kind never renders as a human turn,
+            // even when its persisted role is `user` and its text matches no
+            // legacy marker. Unknown kinds keep ordinary normalization.
+            if modelChange != nil || systemNotice != nil || (displayKind != nil && !isToolResult) {
+                role = .system
+            }
             let userContent: (content: String, rawContent: String?, attachments: [Attachment]?) = role == .user
                 ? splitUserImageReferences(rawContent, messageId: id)
                 : (content: rawContent, rawContent: nil, attachments: nil)
-            let content = modelChange.map {
-                "[Model has been changed to \($0.provider)/\($0.model)]"
-            } ?? systemNotice ?? userContent.content
+            let content: String
+            if let displayKind, !isToolResult {
+                // `displayKind` is non-nil here only for the known synthetic
+                // timeline kinds: hidden rows were already dropped and
+                // unknown values fail raw-value decoding above.
+                content = timelineNoticeContent(
+                    for: displayKind,
+                    projected: projectedContent,
+                    metadata: obj["display_metadata"],
+                    modelChange: modelChange,
+                    systemNotice: systemNotice,
+                    rawVisible: rawContent
+                )
+            } else {
+                content = modelChange.map {
+                    "[Model has been changed to \($0.provider)/\($0.model)]"
+                } ?? systemNotice ?? userContent.content
+            }
 
             let reasoning = role == .assistant ? extractContent(obj["reasoning"] ?? obj["reasoning_content"] ?? .null) : nil
             // This deliberately follows Desktop's persisted-transcript parser:
@@ -1584,7 +1656,12 @@ enum MessageNormalizer {
                 ))
             }
 
-            let review = role == .system ? reviewActivity(from: obj, eventSessionId: nil) : nil
+            // Timeline-projected rows are never self-improvement reviews, and
+            // skipping detection also keeps their physical carrier
+            // un-extracted.
+            let review = role == .system && displayKind == nil
+                ? reviewActivity(from: obj, eventSessionId: nil)
+                : nil
             let base = ChatMessage(
                 id: id,
                 role: role,
@@ -1594,7 +1671,8 @@ enum MessageNormalizer {
                 author: extractAuthor(obj),
                 reasoning: nil,
                 review: review,
-                attachments: userContent.attachments
+                attachments: userContent.attachments,
+                displayKind: displayKind?.rawValue
             )
 
             // External session history occasionally includes a role-less
@@ -1619,6 +1697,101 @@ enum MessageNormalizer {
         }
 
         return collapseDuplicateInterruptCorrections(in: messages)
+    }
+
+    /// `display_content` is the authoritative visible payload whenever the
+    /// field exists — including an explicit empty string, which must never
+    /// fall back to the physical carrier. A JSON null is treated as absent:
+    /// no current Hermes write path emits one, and a broken projection should
+    /// not silently hide a genuine message. Non-textual scalars (a stray
+    /// bool/number) are malformed rather than an intentional empty
+    /// projection, so they degrade to the physical carrier too.
+    private static func projectedDisplayContent(in obj: [String: AnyCodable]) -> String? {
+        guard let value = obj["display_content"] else { return nil }
+        switch value {
+        case .string, .array, .object:
+            return extractContent(value)
+        default:
+            return nil
+        }
+    }
+
+    /// `display_metadata` may arrive as a JSON object (current servers) or as
+    /// unparsed JSON text (older backends). Anything malformed degrades to
+    /// nil so a bad sidecar can never fail session normalization.
+    private static func displayMetadataObject(_ value: AnyCodable?) -> [String: AnyCodable]? {
+        guard let value else { return nil }
+        if let object = value.objectValue { return object }
+        guard let text = value.stringValue,
+              let data = text.data(using: .utf8),
+              let parsed = try? JSONSerialization.jsonObject(with: data),
+              let object = parsed as? [String: Any] else {
+            return nil
+        }
+        return object.mapValues { AnyCodable.from($0) }
+    }
+
+    /// Upstream persists `task_count` on `async_delegation_complete` rows so
+    /// clients can phrase the completion notice.
+    private static func delegationCompleteNotice(metadata: AnyCodable?) -> String {
+        guard let taskCount = displayMetadataObject(metadata)?["task_count"]?.intValue,
+              taskCount > 0 else {
+            return "Background agent work finished"
+        }
+        return taskCount == 1 ? "1 background agent finished" : "\(taskCount) background agents finished"
+    }
+
+    /// Final visible text for a row Hermes tags with a known synthetic
+    /// display kind. These rows are timeline events — Hermes Desktop renders
+    /// canned labels for them — so the physical scaffold text is never shown
+    /// unless an explicit `display_content` projection supplies better copy.
+    private static func timelineNoticeContent(
+        for kind: HermesDisplayKind,
+        projected: String?,
+        metadata: AnyCodable?,
+        modelChange: (model: String, provider: String)?,
+        systemNotice: String?,
+        rawVisible: String
+    ) -> String {
+        let projectedNotice: String? = {
+            guard let projected, !projected.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                return nil
+            }
+            return projected
+        }()
+        switch kind {
+        case .hidden:
+            // Defense in depth: hidden rows are dropped before content work.
+            // Never echo the physical carrier if that invariant ever breaks.
+            return "Hidden system event"
+        case .modelSwitch:
+            // An explicit projection outranks the marker-derived card text;
+            // without one, the persisted marker matches Conduit's existing
+            // model-change card detection and keeps that presentation. A
+            // marker the card regex cannot parse is still model scaffold, so
+            // it degrades to the canned label rather than rendering raw.
+            if let projectedNotice {
+                return projectedNotice
+            }
+            if let modelChange {
+                return "[Model has been changed to \(modelChange.provider)/\(modelChange.model)]"
+            }
+            return "Model changed"
+        case .personalitySwitch:
+            // The physical marker embeds the full persona prompt; surface a
+            // canned label instead, like Hermes Desktop does.
+            return projectedNotice ?? "Personality changed"
+        case .autoContinue:
+            return projectedNotice ?? "Resumed interrupted turn"
+        case .asyncDelegationComplete:
+            return projectedNotice ?? delegationCompleteNotice(metadata: metadata)
+        case .internalNotification:
+            // The row content is the operational notice itself (wake events,
+            // background completions); show it as a system notice, with a
+            // `[System: …]` wrapper stripped when present.
+            let visible = projectedNotice ?? systemNotice ?? rawVisible
+            return visible.isEmpty ? "System notification" : visible
+        }
     }
 
     static func modelChangeActivity(fromText text: String) -> (model: String, provider: String)? {

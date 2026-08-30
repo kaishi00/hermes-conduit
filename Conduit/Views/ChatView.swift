@@ -1369,7 +1369,11 @@ struct SystemBubble: View {
     let message: ChatMessage
 
     private var isRuntimeNotice: Bool {
-        MessageNormalizer.systemNoticeText(fromText: message.rawContent ?? message.content) != nil
+        // Rows Hermes projected onto the timeline via `display_kind` are
+        // runtime notices by construction, even though their projected text
+        // (e.g. "Resumed interrupted turn") matches no legacy marker.
+        message.displayKind != nil
+            || MessageNormalizer.systemNoticeText(fromText: message.rawContent ?? message.content) != nil
     }
 
     var body: some View {

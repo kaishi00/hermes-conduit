@@ -305,6 +305,69 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
+    func testLegacyResumeAppliesDisplayProjectionToPersistedRows() async throws {
+        // REST hydration and the legacy `session.resume` transcript must
+        // enforce the same Hermes display contract: synthetic rows tagged
+        // with `display_kind` never become human user bubbles, and hidden
+        // scaffolding disappears entirely.
+        let transport = FakeTransport()
+        let socket = FakeSocket()
+        transport.nextSocket = { socket }
+        let client = makeClient(transport: transport)
+        let connectTask = Task { try? await client.connect() }
+        transport.open(socket)
+        try await awaitCompletion(of: connectTask, "connect() to complete after the handshake")
+
+        let sent = Gate()
+        socket.onSend = { sent.signal() }
+        let openTask = Task<SessionResumeResult, Error> { try await client.openSessionLegacy("sess-display") }
+        try await sent.wait("the legacy session.resume request to be sent")
+
+        let request = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(try XCTUnwrap(socket.sentTexts.last).utf8)) as? [String: Any]
+        )
+        let id = try XCTUnwrap(request["id"] as? Int)
+        let response: [String: Any] = [
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": [
+                "session_id": "sess-display",
+                "messages": [
+                    ["role": "user", "content": "Ship the release.", "timestamp": "2026-09-01T10:00:00Z"],
+                    [
+                        "role": "user",
+                        "content": "INTERNAL MODEL SCAFFOLD — do not render",
+                        "display_kind": "hidden",
+                        "timestamp": "2026-09-01T10:00:01Z"
+                    ],
+                    [
+                        "role": "user",
+                        "content": "[System note: Your previous turn was interrupted mid-run. Continuing.]",
+                        "display_kind": "auto_continue",
+                        "timestamp": "2026-09-01T10:00:02Z"
+                    ],
+                    [
+                        "role": "user",
+                        "content": "Background delegation report scaffold",
+                        "display_kind": "async_delegation_complete",
+                        "display_metadata": ["task_count": 2],
+                        "timestamp": "2026-09-01T10:00:03Z"
+                    ]
+                ],
+                "info": ["running": false]
+            ]
+        ]
+        socket.deliver(String(data: try JSONSerialization.data(withJSONObject: response), encoding: .utf8)!)
+
+        let result = try await awaitResult(of: openTask, "the legacy session.resume response")
+        XCTAssertEqual(result.messages.map({ $0.role }), [.user, .system, .system])
+        XCTAssertEqual(
+            result.messages.map { $0.content },
+            ["Ship the release.", "Resumed interrupted turn", "2 background agents finished"]
+        )
+        client.disconnect()
+    }
+
     // MARK: - Helpers
 
     private final class ResultBox<T>: @unchecked Sendable {

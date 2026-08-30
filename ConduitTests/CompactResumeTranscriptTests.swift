@@ -100,6 +100,123 @@ final class CompactResumeTranscriptTests: XCTestCase {
         XCTAssertEqual(harness.appState.messages[2].timestamp, "2026-09-01T10:00:06Z")
     }
 
+    // MARK: - Hermes display projection on the reload path
+
+    /// Regression for the transcript-leak finding: the REST history route
+    /// returns the physical persisted rows plus display-projection metadata,
+    /// and several synthetic row families (model switches, auto-continues,
+    /// hidden compaction carriers) ride as `role=user`. The compact-resume
+    /// hydration must apply Hermes' display contract so none of them become
+    /// human-authored user bubbles after a session reload.
+    func testCompactResumeAppliesDisplayProjectionToSyntheticRows() async throws {
+        let active = session("stored-a", alternateIDs: ["runtime-a"])
+        let modelSwitchMarker = "[System: The active model for this chat has changed to GLM-5.3-Flash via provider zai. From this point forward, use this runtime metadata when answering questions about what model/provider is active.]"
+        let harness = try makeHarness(
+            openSession: { _, _, _ in
+                SessionResumeResult(
+                    sessionId: "runtime-a",
+                    messages: [],  // compact projection: transcript omitted
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { _, _ in
+                // Raw history payload exactly as the dashboard messages
+                // endpoint returns it, including a hidden scaffolding row, an
+                // auto-continue pivot, and a display_content compaction
+                // carrier alongside the genuine conversation.
+                .payload([
+                    "session_id": "stored-a",
+                    "messages": [
+                        [
+                            "id": 1,
+                            "role": "user",
+                            "content": "Ship the release.",
+                            "timestamp": "2026-09-01T10:00:00Z"
+                        ],
+                        [
+                            "id": 2,
+                            "role": "user",
+                            "content": "INTERNAL MODEL SCAFFOLD — do not render",
+                            "display_kind": "hidden",
+                            "timestamp": "2026-09-01T10:00:01Z"
+                        ],
+                        [
+                            "id": 3,
+                            "role": "user",
+                            "content": "[System note: Your previous turn was interrupted mid-run. Continuing from the checkpoint.]",
+                            "display_kind": "auto_continue",
+                            "timestamp": "2026-09-01T10:00:02Z"
+                        ],
+                        [
+                            "id": 4,
+                            "role": "user",
+                            "content": "Pull the logs before triage.\n\n"
+                                + "[END OF PRIOR CONTEXT — COMPACTION SUMMARY BELOW]\n\n"
+                                + "[CONTEXT COMPACTION 12:04]\nCompacted prior turns.",
+                            "display_content": "Pull the logs before triage.",
+                            "timestamp": "2026-09-01T10:00:03Z"
+                        ],
+                        [
+                            "id": 5,
+                            "role": "user",
+                            "content": modelSwitchMarker,
+                            "display_kind": "model_switch",
+                            "timestamp": "2026-09-01T10:00:04Z"
+                        ],
+                        [
+                            "id": 6,
+                            "role": "assistant",
+                            "content": "Shipping it now.",
+                            "timestamp": "2026-09-01T10:00:05Z"
+                        ]
+                    ]
+                ])
+            }
+        )
+        harness.appState.sessions = [active]
+
+        let opened = await harness.appState.openSession("stored-a")
+
+        XCTAssertTrue(opened)
+
+        // The genuine conversation survives, the hidden row disappears, the
+        // auto-continue and model-switch pivots become timeline events, and
+        // the display_content carrier shows its projected ask instead of the
+        // physical compaction payload.
+        XCTAssertEqual(
+            harness.appState.messages.map { $0.role },
+            [.user, .system, .user, .system, .assistant]
+        )
+        XCTAssertEqual(
+            harness.appState.messages.map { $0.content },
+            [
+                "Ship the release.",
+                "Resumed interrupted turn",
+                "Pull the logs before triage.",
+                "[Model has been changed to zai/GLM-5.3-Flash]",
+                "Shipping it now."
+            ]
+        )
+        // No synthetic row may end up authored as the human user.
+        XCTAssertEqual(
+            harness.appState.messages.filter { $0.role == .user }.map { $0.content },
+            ["Ship the release.", "Pull the logs before triage."]
+        )
+        XCTAssertFalse(
+            harness.appState.messages.contains { $0.content.contains("INTERNAL MODEL SCAFFOLD") }
+                || harness.appState.messages.contains { $0.content.contains("COMPACTION") }
+                || harness.appState.messages.contains { $0.content.contains("System note") },
+            "No model-facing scaffold text may reach the visible transcript"
+        )
+        // The model-switch row keeps the card presentation ChatView derives
+        // from rawContent.
+        XCTAssertNotNil(
+            MessageNormalizer.modelChangeActivity(
+                fromText: harness.appState.messages[3].rawContent ?? harness.appState.messages[3].content
+            )
+        )
+    }
+
     // MARK: - Live projection preservation
 
     func testCompactResumeKeepsRunningInflightProjectionOnPersistedBase() async throws {
