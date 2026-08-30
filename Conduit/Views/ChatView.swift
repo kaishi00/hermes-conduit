@@ -96,6 +96,18 @@ struct ChatView: View {
         viewport.renderedScrollScope
     }
 
+    /// The chat-only text-size preference (issue #85). Local, device-only
+    /// @AppStorage like ComposerReturnKey — never synced to Hermes or the
+    /// profile. Injected once here so every transcript Markdown path
+    /// (settled, streaming, large-document, tables, code) resolves the same
+    /// typography, while non-chat subtrees keep the `.default` environment
+    /// value and today's appearance.
+    @AppStorage(ChatTypography.preferenceKey) private var chatTextSizeRaw = ChatTypography.defaultSize.rawValue
+
+    private var chatTextSize: ChatTextSize {
+        ChatTypography.resolve(rawValue: chatTextSizeRaw)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // Message list
@@ -115,6 +127,7 @@ struct ChatView: View {
             // Composer + control bar
             ComposerBar()
         }
+        .environment(\.chatTextSize, chatTextSize)
         .background(Color.clear)
         .overlay(alignment: .top) {
             if appState.isOpeningNotificationSession {
@@ -881,6 +894,7 @@ struct UserBubble: View {
     let message: ChatMessage
     let gatewayResolver: GatewayMediaDataURLResolver?
     @Environment(\.sizeCategory) private var sizeCategory
+    @Environment(\.chatTextSize) private var chatTextSize
 
     var body: some View {
         HStack {
@@ -889,7 +903,8 @@ struct UserBubble: View {
                 UserMessageContent(
                     message: message,
                     gatewayResolver: gatewayResolver,
-                    sizeCategory: sizeCategory
+                    sizeCategory: sizeCategory,
+                    chatTextSize: chatTextSize
                 )
                     .equatable()
 
@@ -903,17 +918,23 @@ struct UserBubble: View {
 /// Settled user-row content: Markdown plus attachment previews. Equatable
 /// over the message and the stable gateway resolver so streaming publishes
 /// cannot re-evaluate it (same contract as
-/// SettledAssistantMessageContent).
-private struct UserMessageContent: View, Equatable {
+/// SettledAssistantMessageContent). Internal (not private) so the gate
+/// contract is directly testable.
+struct UserMessageContent: View, Equatable {
     let message: ChatMessage
     let gatewayResolver: GatewayMediaDataURLResolver?
     /// Explicit Dynamic Type input — see SettledAssistantMessageContent.
     let sizeCategory: ContentSizeCategory
+    /// Explicit chat text-size input (issue #85): a preference change must
+    /// re-open the gate and re-render, while ordinary streaming publishes —
+    /// which leave both explicit inputs equal — keep the isolation.
+    let chatTextSize: ChatTextSize
 
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.message == rhs.message
             && lhs.gatewayResolver === rhs.gatewayResolver
             && lhs.sizeCategory == rhs.sizeCategory
+            && lhs.chatTextSize == rhs.chatTextSize
     }
 
     var body: some View {
@@ -1162,6 +1183,11 @@ struct SettledAssistantMessageContent: View, Equatable {
     /// UIKit trait collections, layout direction through TextKit — and do
     /// not require body re-evaluation.
     let sizeCategory: ContentSizeCategory
+    /// Explicit chat text-size input (issue #85): equality describes every
+    /// typography input, so a preference change re-opens the gate and
+    /// re-renders (the render cache keys on the chat-size identity), while
+    /// unrelated streaming publishes — equal inputs — stay gated.
+    let chatTextSize: ChatTextSize
 
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.message == rhs.message
@@ -1169,6 +1195,7 @@ struct SettledAssistantMessageContent: View, Equatable {
             && lhs.avatarURL == rhs.avatarURL
             && lhs.gatewayResolver === rhs.gatewayResolver
             && lhs.sizeCategory == rhs.sizeCategory
+            && lhs.chatTextSize == rhs.chatTextSize
     }
 
     var body: some View {
@@ -1308,6 +1335,7 @@ struct AssistantBubble: View {
     let gatewayResolver: GatewayMediaDataURLResolver?
     @EnvironmentObject var appState: AppState
     @Environment(\.sizeCategory) private var sizeCategory
+    @Environment(\.chatTextSize) private var chatTextSize
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -1316,7 +1344,8 @@ struct AssistantBubble: View {
                 displayName: appState.profileDisplayName(appState.activeProfile),
                 avatarURL: appState.profileAvatarURL(for: appState.activeProfile),
                 gatewayResolver: gatewayResolver,
-                sizeCategory: sizeCategory
+                sizeCategory: sizeCategory,
+                chatTextSize: chatTextSize
             )
             .equatable()
 
@@ -1380,6 +1409,11 @@ struct SystemBubble: View {
     }
 }
 
+/// Review activity summary. Intentionally OUTSIDE the chat text-size
+/// preference (issue #85): these status/activity cards — like tool cards —
+/// are not ordinary transcript Markdown and keep their fixed typography.
+/// (Of the system-message surfaces, only `SystemBubble`'s Markdown body
+/// follows `ChatTypography`.)
 private struct ReviewSummaryCard: View {
     let activity: ReviewActivity
     let timestamp: String
@@ -1460,6 +1494,9 @@ private struct ReviewSummaryCard: View {
     }
 }
 
+/// Model-change summary. Intentionally OUTSIDE the chat text-size
+/// preference (issue #85) — a status/activity card with fixed typography;
+/// see ReviewSummaryCard.
 private struct ModelChangeSummaryCard: View {
     let model: String
     let provider: String
@@ -1501,13 +1538,16 @@ private struct ModelChangeSummaryCard: View {
 
 /// Settled reasoning-row content, gated the same way as assistant/user
 /// content: identical presentation inputs skip body evaluation during
-/// unrelated AppState publishes.
-private struct SettledThinkingCardContent: View, Equatable {
+/// unrelated AppState publishes. Internal (not private) so the gate
+/// contract is directly testable.
+struct SettledThinkingCardContent: View, Equatable {
     let message: ChatMessage
     let displayName: String
     let avatarURL: URL?
     /// Explicit Dynamic Type input — see SettledAssistantMessageContent.
     let sizeCategory: ContentSizeCategory
+    /// Explicit chat text-size input — see SettledAssistantMessageContent.
+    let chatTextSize: ChatTextSize
     @State private var expanded = false
 
     static func == (lhs: Self, rhs: Self) -> Bool {
@@ -1515,6 +1555,7 @@ private struct SettledThinkingCardContent: View, Equatable {
             && lhs.displayName == rhs.displayName
             && lhs.avatarURL == rhs.avatarURL
             && lhs.sizeCategory == rhs.sizeCategory
+            && lhs.chatTextSize == rhs.chatTextSize
     }
 
     var body: some View {
@@ -1527,7 +1568,7 @@ private struct SettledThinkingCardContent: View, Equatable {
             DisclosureGroup(isExpanded: $expanded) {
                 SelectableTextView(
                     text: message.content,
-                    font: .preferredFont(forTextStyle: .callout),
+                    font: ChatTypography.font(for: .thinking, chatSize: chatTextSize),
                     textColor: .secondaryLabel
                 )
                     .padding(.top, 4)
@@ -1553,6 +1594,7 @@ struct ThinkingCard: View {
     let message: ChatMessage
     @EnvironmentObject var appState: AppState
     @Environment(\.sizeCategory) private var sizeCategory
+    @Environment(\.chatTextSize) private var chatTextSize
 
     var body: some View {
         if appState.displayPreferences.showReasoning, !message.content.isEmpty {
@@ -1560,7 +1602,8 @@ struct ThinkingCard: View {
                 message: message,
                 displayName: appState.profileDisplayName(appState.activeProfile),
                 avatarURL: appState.profileAvatarURL(for: appState.activeProfile),
-                sizeCategory: sizeCategory
+                sizeCategory: sizeCategory,
+                chatTextSize: chatTextSize
             )
             .equatable()
         }

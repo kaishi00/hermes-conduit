@@ -33,6 +33,12 @@ struct MarkdownText: View {
     /// snapshot that would be dead the moment the next delta arrives.
     var isStreaming: Bool = false
 
+    /// The selected chat text size (issue #85): a first-class rendering
+    /// input, injected at the chat root. Streaming and settled content read
+    /// the same value, so the whole stream stays at one size. The
+    /// `.default` environment default keeps non-chat subtrees untouched.
+    @Environment(\.chatTextSize) private var chatTextSize
+
     var body: some View {
         // Path fork is centralized here: ordinary messages keep the exact
         // fast cached path below; pathological ones (see
@@ -58,7 +64,8 @@ struct MarkdownText: View {
             recognizesGatewayMedia: gatewayMediaDataURL != nil,
             foregroundStyle: foregroundStyle,
             usesAccentSurface: usesAccentSurface,
-            isStreaming: isStreaming
+            isStreaming: isStreaming,
+            chatTextSize: chatTextSize
         )
         let selectionSegments = rendering.selectableText == nil
             ? MarkdownSelectionSegmentPlan.descriptors(for: rendering.blocks)
@@ -72,7 +79,7 @@ struct MarkdownText: View {
                         to: baseText,
                         baseColor: usesAccentSurface ? .white : UIColor(foregroundStyle)
                     ),
-                    font: .preferredFont(forTextStyle: .body),
+                    font: ChatTypography.font(for: .body, chatSize: chatTextSize),
                     textColor: usesAccentSurface ? .white : UIColor(foregroundStyle),
                     lineSpacing: 4,
                     linkColor: usesAccentSurface ? .white : .link
@@ -218,7 +225,7 @@ private final class MarkdownSelectionHighlightView: UIView {
 /// exact pathological Markdown this bounding exists for used to re-walk
 /// every table's cells on each SwiftUI body re-evaluation just to
 /// rediscover the same budget (see MarkdownRichContentPolicy).
-private final class MarkdownRendering {
+final class MarkdownRendering {
     let blocks: [MarkdownBlock]
     /// The message's link reference definitions; block views need them to
     /// resolve reference-style links when re-parsing each fragment.
@@ -249,7 +256,7 @@ private final class MarkdownRendering {
 /// style so settled messages render from cache and only genuinely new content
 /// pays for parsing. Streaming-tail fades stay per-frame but are applied to a
 /// copy of the cached base rather than triggering a rebuild.
-private enum MarkdownRenderCache {
+enum MarkdownRenderCache {
     private static let cache: NSCache<NSString, MarkdownRendering> = {
         let cache = NSCache<NSString, MarkdownRendering>()
         cache.countLimit = 256
@@ -263,7 +270,8 @@ private enum MarkdownRenderCache {
         recognizesGatewayMedia: Bool,
         foregroundStyle: Color,
         usesAccentSurface: Bool,
-        isStreaming: Bool
+        isStreaming: Bool,
+        chatTextSize: ChatTextSize
     ) -> MarkdownRendering {
         // `foregroundStyle` is deliberately absent from the key: only two
         // values are ever passed (.primary / .white), each uniquely tied to
@@ -277,14 +285,18 @@ private enum MarkdownRenderCache {
             "MarkdownRenderCache keys on usesAccentSurface, not foregroundStyle; a new style needs an explicit key token."
         )
 
-        // Fonts resolve against the current Dynamic Type size, so a size change
-        // must miss the cache rather than serve stale metrics. Reading
-        // preferredContentSizeCategory touches UIApplication.shared, hence the
-        // @MainActor isolation on this function.
+        // Fonts resolve against the current Dynamic Type size AND the
+        // selected chat text size (issue #85), so either change must miss the
+        // cache rather than serve stale metrics. The chat-size identity is
+        // the persisted enum position, so re-tuning the scale factors later
+        // needs no cache migration. Reading preferredContentSizeCategory
+        // touches UIApplication.shared, hence the @MainActor isolation on
+        // this function.
         let key = [
             recognizesGatewayMedia ? "1" : "0",
             usesAccentSurface ? "1" : "0",
             UIApplication.shared.preferredContentSizeCategory.rawValue,
+            chatTextSize.cacheIdentity,
             source
         ].joined(separator: "|") as NSString
 
@@ -298,7 +310,8 @@ private enum MarkdownRenderCache {
                 references: document.references,
                 foregroundStyle: foregroundStyle,
                 usesAccentSurface: usesAccentSurface,
-                newestCharacterOpacities: []
+                newestCharacterOpacities: [],
+                chatTextSize: chatTextSize
             )
         )
         // While streaming, `source` changes every frame, so a cached entry is
@@ -373,11 +386,15 @@ enum MarkdownSelectionFormatter {
         references: MarkdownReferenceContext = .empty,
         foregroundStyle: Color,
         usesAccentSurface: Bool,
-        newestCharacterOpacities: [Double]
+        newestCharacterOpacities: [Double],
+        chatTextSize: ChatTextSize = .default
     ) -> NSAttributedString? {
         guard !blocks.isEmpty, blocks.allSatisfy(\.isSelectableFlowBlock) else { return nil }
 
-        let bodyFont = UIFont.preferredFont(forTextStyle: .body)
+        // All fonts resolve through ChatTypography (issue #85): the selected
+        // chat size scales ON TOP of the current Dynamic Type size, and
+        // `.default` reproduces the historical fonts exactly.
+        let bodyFont = ChatTypography.font(for: .body, chatSize: chatTextSize)
         let textColor = usesAccentSurface ? UIColor.white : UIColor(foregroundStyle)
         let linkColor = usesAccentSurface ? UIColor.white : UIColor.link
         let result = NSMutableAttributedString()
@@ -390,7 +407,8 @@ enum MarkdownSelectionFormatter {
                 textColor: textColor,
                 linkColor: linkColor,
                 usesAccentSurface: usesAccentSurface,
-                foregroundStyle: foregroundStyle
+                foregroundStyle: foregroundStyle,
+                chatTextSize: chatTextSize
             ) else {
                 return nil
             }
@@ -418,14 +436,15 @@ enum MarkdownSelectionFormatter {
         textColor: UIColor,
         linkColor: UIColor,
         usesAccentSurface: Bool,
-        foregroundStyle: Color
+        foregroundStyle: Color,
+        chatTextSize: ChatTextSize
     ) -> NSAttributedString? {
         switch block {
         case .heading(let level, let text):
             return inline(
                 text,
                 references: references,
-                font: headingFont(level),
+                font: headingFont(level, chatTextSize: chatTextSize),
                 textColor: textColor,
                 linkColor: linkColor
             )
@@ -441,7 +460,8 @@ enum MarkdownSelectionFormatter {
                 bodyFont: bodyFont,
                 textColor: textColor,
                 linkColor: linkColor,
-                markerColor: usesAccentSurface ? .white : UIColor(Color.conduitAccent)
+                markerColor: usesAccentSurface ? .white : UIColor(Color.conduitAccent),
+                chatTextSize: chatTextSize
             )
 
         case .orderedList(let items):
@@ -452,7 +472,8 @@ enum MarkdownSelectionFormatter {
                 bodyFont: bodyFont,
                 textColor: textColor,
                 linkColor: linkColor,
-                markerColor: usesAccentSurface ? .white : UIColor(Color.conduitAccent)
+                markerColor: usesAccentSurface ? .white : UIColor(Color.conduitAccent),
+                chatTextSize: chatTextSize
             )
 
         case .quote(let lines):
@@ -460,7 +481,7 @@ enum MarkdownSelectionFormatter {
             let quoteColor = usesAccentSurface
                 ? UIColor.white.withAlphaComponent(0.90)
                 : UIColor(foregroundStyle).withAlphaComponent(0.90)
-            let quoteFont = bodyFont.withTraits(.traitItalic)
+            let quoteFont = ChatTypography.font(for: .quote, chatSize: chatTextSize)
 
             for (index, line) in lines.enumerated() {
                 if index > 0 {
@@ -490,7 +511,8 @@ enum MarkdownSelectionFormatter {
         bodyFont: UIFont,
         textColor: UIColor,
         linkColor: UIColor,
-        markerColor: UIColor
+        markerColor: UIColor,
+        chatTextSize: ChatTextSize
     ) -> NSAttributedString {
         let result = NSMutableAttributedString()
         let markerFont = bodyFont.withTraits(.traitBold)
@@ -539,8 +561,8 @@ enum MarkdownSelectionFormatter {
         return SelectableTextView.bridge(attributed, defaultFont: font, defaultColor: textColor, linkColor: linkColor)
     }
 
-    private static func headingFont(_ level: Int) -> UIFont {
-        MarkdownHeading.font(for: level)
+    private static func headingFont(_ level: Int, chatTextSize: ChatTextSize) -> UIFont {
+        MarkdownHeading.font(for: level, chatTextSize: chatTextSize)
     }
 
     /// Applies the streaming-tail fade to a copy, leaving the shared cached
@@ -603,13 +625,16 @@ enum MarkdownTableAlignment {
 /// Shared heading font logic used by both MarkdownSelectionFormatter
 /// and MarkdownBlockView to prevent divergence.
 enum MarkdownHeading {
+    /// Heading font at the selected chat text size. The style mapping and
+    /// bold trait live in ChatTypography so the SwiftUI block renderer and
+    /// the attributed-string formatter can never diverge.
+    static func font(for level: Int, chatTextSize: ChatTextSize) -> UIFont {
+        ChatTypography.font(for: .heading(level: level), chatSize: chatTextSize)
+    }
+
+    /// Historical entry point: today's typography at the default chat size.
     static func font(for level: Int) -> UIFont {
-        switch level {
-        case 1: UIFont.preferredFont(forTextStyle: .title2).withTraits(.traitBold)
-        case 2: UIFont.preferredFont(forTextStyle: .title3).withTraits(.traitBold)
-        case 3: UIFont.preferredFont(forTextStyle: .headline).withTraits(.traitBold)
-        default: UIFont.preferredFont(forTextStyle: .subheadline).withTraits(.traitBold)
-        }
+        font(for: level, chatTextSize: .default)
     }
 }
 
@@ -622,6 +647,7 @@ struct MarkdownBlockView: View {
     let selectionCoordinator: MarkdownSelectionCoordinator?
     let selectionSegments: [MarkdownSelectionSegmentDescriptor]
     let newestCharacterOpacities: [Double]
+    @Environment(\.chatTextSize) private var chatTextSize
 
     var body: some View {
         switch block {
@@ -787,7 +813,7 @@ struct MarkdownBlockView: View {
     }
 
     private func headingFont(_ level: Int) -> UIFont {
-        MarkdownHeading.font(for: level)
+        MarkdownHeading.font(for: level, chatTextSize: chatTextSize)
     }
 
     private var blockDescriptor: MarkdownSelectionSegmentDescriptor? {
@@ -893,7 +919,9 @@ private struct InlineMarkdown: View {
     let source: String
     let foregroundStyle: Color
     let usesAccentSurface: Bool
-    var font: UIFont = .preferredFont(forTextStyle: .body)
+    /// Explicit role font (headings, table cells); nil resolves the body
+    /// role through ChatTypography at the selected chat text size.
+    var font: UIFont?
     var lineSpacing: CGFloat = 0
     var maximumNumberOfLines: Int = 0
     var textAlignment: NSTextAlignment = .natural
@@ -902,6 +930,11 @@ private struct InlineMarkdown: View {
     var selectionSegment: MarkdownSelectionSegmentDescriptor?
     var trailingCharacterOpacities: [Double] = []
     @Environment(\.markdownReferences) private var references
+    @Environment(\.chatTextSize) private var chatTextSize
+
+    private var effectiveFont: UIFont {
+        font ?? ChatTypography.font(for: .body, chatSize: chatTextSize)
+    }
 
     private var attributed: AttributedString {
         InlineMarkdownContent.attributed(
@@ -915,7 +948,7 @@ private struct InlineMarkdown: View {
     var body: some View {
         SelectableTextView(
             attributedText: attributed,
-            font: font,
+            font: effectiveFont,
             textColor: usesAccentSurface ? .white : UIColor(foregroundStyle),
             lineSpacing: lineSpacing,
             maximumNumberOfLines: maximumNumberOfLines,
@@ -937,6 +970,21 @@ private struct MarkdownList: View {
     let selectionCoordinator: MarkdownSelectionCoordinator?
     let selectionSegments: [MarkdownSelectionSegmentDescriptor]
     var trailingCharacterOpacities: [Double] = []
+    @Environment(\.chatTextSize) private var chatTextSize
+    @Environment(\.sizeCategory) private var sizeCategory
+
+    /// Marker glyphs resolve Dynamic Type through the environment category
+    /// (rather than a size frozen at body-evaluation time), so a system
+    /// text-size change re-resolves them wherever the list re-evaluates.
+    private var markerFont: UIFont {
+        ChatTypography.font(
+            for: .body,
+            chatSize: chatTextSize,
+            compatibleWith: UITraitCollection(
+                preferredContentSizeCategory: UIContentSizeCategory(sizeCategory)
+            )
+        )
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
@@ -945,15 +993,16 @@ private struct MarkdownList: View {
                 HStack(alignment: .firstTextBaseline, spacing: 9) {
                     if let task {
                         Image(systemName: task.complete ? "checkmark.square.fill" : "square")
+                            .font(.system(size: markerFont.pointSize))
                             .foregroundStyle(task.complete
                                              ? (usesAccentSurface ? Color.white : Color.conduitAccent)
                                              : (usesAccentSurface ? Color.white.opacity(0.82) : Color.secondary))
-                            .frame(width: 16, alignment: .trailing)
+                            .frame(width: ChatTypography.dimension(16, chatSize: chatTextSize), alignment: .trailing)
                     } else {
                         Text(ordered ? "\(index + 1)." : "•")
-                            .font(.body.weight(.semibold))
+                            .font(.system(size: markerFont.pointSize, weight: .semibold))
                             .foregroundStyle(usesAccentSurface ? Color.white.opacity(0.92) : Color.conduitAccent)
-                            .frame(width: ordered ? 24 : 12, alignment: .trailing)
+                            .frame(width: ChatTypography.dimension(ordered ? 24 : 12, chatSize: chatTextSize), alignment: .trailing)
                     }
                     InlineMarkdown(
                         source: task?.text ?? item,
@@ -979,6 +1028,7 @@ private struct MarkdownQuote: View {
     let selectionCoordinator: MarkdownSelectionCoordinator?
     let selectionSegments: [MarkdownSelectionSegmentDescriptor]
     var trailingCharacterOpacities: [Double] = []
+    @Environment(\.chatTextSize) private var chatTextSize
 
     private var callout: (kind: String, text: String)? {
         guard let first = lines.first, let marker = MarkdownParser.calloutMarker(first.text) else { return nil }
@@ -1012,7 +1062,7 @@ private struct MarkdownQuote: View {
                             source: line.text,
                             foregroundStyle: foregroundStyle.opacity(0.90),
                             usesAccentSurface: usesAccentSurface,
-                            font: UIFont.preferredFont(forTextStyle: .body).withTraits(.traitItalic),
+                            font: ChatTypography.font(for: .quote, chatSize: chatTextSize),
                             lineSpacing: 3,
                             selectionCoordinator: selectionCoordinator,
                             selectionSegment: selectionSegments.indices.contains(index) ? selectionSegments[index] : nil,
@@ -1146,18 +1196,23 @@ enum MarkdownTableLayout {
         headers: [String],
         rows: [[String]],
         availableWidth: CGFloat,
-        references: MarkdownReferenceContext = .empty
+        references: MarkdownReferenceContext = .empty,
+        chatTextSize: ChatTextSize = .default
     ) -> [CGFloat] {
         let columnCount = max(headers.count, rows.map(\.count).max() ?? 0)
         guard columnCount > 0 else { return [] }
 
-        // Fonts resolve against the current Dynamic Type size, so the widths
-        // key on the content category just like MarkdownRenderCache, on the
-        // viewport width that feeds the fit-or-shrink decision, and on the
-        // reference definitions (they change how cell source measures).
+        // Fonts resolve against the current Dynamic Type size AND the
+        // selected chat text size (issue #85), so the widths key on the
+        // content category just like MarkdownRenderCache, on the chat-size
+        // identity, on the viewport width that feeds the fit-or-shrink
+        // decision, and on the reference definitions (they change how cell
+        // source measures). A chat-size change must never serve stale
+        // measurements from the previous size.
         let key = (
             [
                 UIApplication.shared.preferredContentSizeCategory.rawValue,
+                chatTextSize.cacheIdentity,
                 String(format: "%.1f", availableWidth),
                 references.definitionsMarkdown
             ]
@@ -1167,8 +1222,8 @@ enum MarkdownTableLayout {
 
         if let cached = cache.object(forKey: key) as? [CGFloat] { return cached }
 
-        let headerFont = UIFont.preferredFont(forTextStyle: .caption1).withTraits(.traitBold)
-        let bodyFont = UIFont.preferredFont(forTextStyle: .footnote)
+        let headerFont = ChatTypography.font(for: .tableHeader, chatSize: chatTextSize)
+        let bodyFont = ChatTypography.font(for: .tableBody, chatSize: chatTextSize)
 
         var ideals = [CGFloat](repeating: 0, count: columnCount)
         for (index, header) in headers.enumerated() {
@@ -1271,7 +1326,9 @@ private struct MarkdownTableWidthProbe: View {
     }
 }
 
-private struct MarkdownTable: View {
+/// The ordinary (non-paged) table presentation. Internal (not private) so
+/// the chat-size wiring into column measurement is directly testable.
+struct MarkdownTable: View {
     let headers: [String]
     let alignments: [MarkdownTableAlignment]
     let rows: [[String]]
@@ -1287,13 +1344,15 @@ private struct MarkdownTable: View {
     /// later, once the width is known.
     @State private var availableWidth: CGFloat = 0
     @Environment(\.markdownReferences) private var references
+    @Environment(\.chatTextSize) private var chatTextSize
 
     private var columnWidths: [CGFloat] {
         MarkdownTableLayout.columnWidths(
             headers: headers,
             rows: rows,
             availableWidth: availableWidth,
-            references: references
+            references: references,
+            chatTextSize: chatTextSize
         )
     }
 
@@ -1357,6 +1416,7 @@ struct MarkdownTableRowView: View {
     let usesAccentSurface: Bool
     let selectionCoordinator: MarkdownSelectionCoordinator?
     let segmentFor: (Int) -> MarkdownSelectionSegmentDescriptor?
+    @Environment(\.chatTextSize) private var chatTextSize
 
     var body: some View {
         HStack(spacing: 0) {
@@ -1368,9 +1428,10 @@ struct MarkdownTableRowView: View {
                     source: cell,
                     foregroundStyle: foregroundStyle,
                     usesAccentSurface: usesAccentSurface,
-                    font: isHeader
-                        ? UIFont.preferredFont(forTextStyle: .caption1).withTraits(.traitBold)
-                        : UIFont.preferredFont(forTextStyle: .footnote),
+                    font: ChatTypography.font(
+                        for: isHeader ? .tableHeader : .tableBody,
+                        chatSize: chatTextSize
+                    ),
                     textAlignment: alignments.indices.contains(index) ? alignments[index].nsText : .natural,
                     // The exact shared column width — a single-value range keeps
                     // the cell's measured/committed height deterministic from the
@@ -1417,6 +1478,7 @@ struct LargeMarkdownTable: View {
     /// cap-and-scroll fallback re-resolves a frame later.
     @State private var availableWidth: CGFloat = 0
     @Environment(\.markdownReferences) private var references
+    @Environment(\.chatTextSize) private var chatTextSize
 
     init(
         headers: [String],
@@ -1458,7 +1520,8 @@ struct LargeMarkdownTable: View {
                 $0.map { MarkdownLargeDocumentPolicy.boundedDisplayText($0, maxBytes: ceiling) }
             },
             availableWidth: availableWidth,
-            references: references
+            references: references,
+            chatTextSize: chatTextSize
         )
     }
 
@@ -1539,6 +1602,7 @@ struct GuardedSourceCard: View {
     let guardBytes: Int
 
     @State private var copied = false
+    @Environment(\.chatTextSize) private var chatTextSize
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -1553,7 +1617,7 @@ struct GuardedSourceCard: View {
             }
             SelectableTextView(
                 text: String(source.prefix(2_000)),
-                font: .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1).pointSize, weight: .regular),
+                font: ChatTypography.font(for: .sourceCode, chatSize: chatTextSize),
                 textColor: .label,
                 maximumNumberOfLines: 5
             )
@@ -1940,6 +2004,13 @@ struct ChatCodeBlock: View {
     var selectionCoordinator: MarkdownSelectionCoordinator?
     var selectionSegment: MarkdownSelectionSegmentDescriptor?
     @State private var copied = false
+    @Environment(\.chatTextSize) private var chatTextSize
+
+    /// Code content scales with the chat text size (issue #85); the
+    /// language label and Copy button above stay interface chrome.
+    private var codeFont: UIFont {
+        ChatTypography.font(for: .blockCode, chatSize: chatTextSize)
+    }
 
     private var normalizedLanguage: String { MarkdownLanguage.normalized(language) }
 
@@ -1968,7 +2039,7 @@ struct ChatCodeBlock: View {
                     if usesAccentSurface {
                         SelectableTextView(
                             text: source,
-                            font: .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .footnote).pointSize, weight: .regular),
+                            font: codeFont,
                             textColor: UIColor.white.withAlphaComponent(0.96),
                             lineSpacing: 3,
                             wrapsLines: false,
@@ -1978,7 +2049,7 @@ struct ChatCodeBlock: View {
                     } else {
                         SelectableTextView(
                             attributedText: SyntaxHighlighter.highlight(source, language: normalizedLanguage),
-                            font: .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .footnote).pointSize, weight: .regular),
+                            font: codeFont,
                             textColor: .label,
                             lineSpacing: 3,
                             wrapsLines: false,
@@ -2034,6 +2105,7 @@ private struct RenderCard: View {
     let actionTitle: String
     let actionIcon: String
     let action: () -> Void
+    @Environment(\.chatTextSize) private var chatTextSize
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -2050,7 +2122,7 @@ private struct RenderCard: View {
                 .tint(.conduitAccent)
             SelectableTextView(
                 text: source,
-                font: .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1).pointSize, weight: .regular),
+                font: ChatTypography.font(for: .sourceCode, chatSize: chatTextSize),
                 textColor: .label,
                 maximumNumberOfLines: 5
             )
@@ -2072,6 +2144,7 @@ private struct MarkupPreview: Identifiable {
 private struct MarkupPreviewSheet: View {
     let preview: MarkupPreview
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.chatTextSize) private var chatTextSize
 
     var body: some View {
         NavigationStack {
@@ -2082,7 +2155,7 @@ private struct MarkupPreviewSheet: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     SelectableTextView(
                         text: preview.source,
-                        font: .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1).pointSize, weight: .regular),
+                        font: ChatTypography.font(for: .sourceCode, chatSize: chatTextSize),
                         textColor: .label,
                         wrapsLines: false
                     )
@@ -2574,6 +2647,10 @@ enum SyntaxHighlighter {
         return cache
     }()
 
+    /// NOTE: deliberately NOT keyed on the chat text size (issue #85): the
+    /// tokenizer bakes colors only — fonts are applied when the result is
+    /// bridged into an NSAttributedString with a caller-supplied default
+    /// font — so one highlighted value serves every typography.
     static func highlight(_ source: String, language: String) -> AttributedString {
         let key = "\(language)|\(source)" as NSString
         if let cached = cache.object(forKey: key) { return cached.value }

@@ -514,6 +514,41 @@ final class ChatViewportControllerTests: XCTestCase {
         )).isEmpty)
     }
 
+    func testChatTextSizeReflowDoesNotScrollWhileBrowsing() {
+        // Issue #85: changing the chat text size reflows the transcript and
+        // reaches the viewport ONLY as layout-metric ticks — it is never a
+        // transcript change (appState.messages is untouched) — so a user
+        // scrolled away from the bottom must not be thrown to the bottom
+        // when the rows resize under them.
+        var browsing = makeController(following: keyA)
+        _ = dragBegan(&browsing, sessionKey: keyA)
+        _ = browsing.userDragGestureEnded()
+
+        // The reflow lands as successive geometry ticks with the content
+        // bottom far below the viewport (rows grew taller). No tick may
+        // scroll a browsing user away-from-bottom. (A scheduled relatch
+        // correction dies silently in this mode — followCorrectionDue
+        // requires .followingLatest — so there is no second-order scroll
+        // path to guard here.)
+        for bottomMarkerMaxY: CGFloat in [1000, 1400, 2000] {
+            let effects = browsing.layoutMetricsChanged(
+                facts: layoutFacts(
+                    bottomMarkerMaxY: bottomMarkerMaxY,
+                    viewportMaxY: 800,
+                    scope: browsing.renderedScrollScope
+                )
+            )
+            XCTAssertTrue(
+                scrollCommands(effects).isEmpty,
+                "a typography reflow must not scroll a browsing user"
+            )
+            XCTAssertNil(
+                browsing.pendingFollowCorrection,
+                "a relatch correction must never be scheduled while browsing"
+            )
+        }
+    }
+
     func testLayoutTickNearBottomWhileBrowsingRelatchesWithoutScrolling() {
         var controller = makeController(following: keyA)
         _ = dragBegan(&controller, sessionKey: keyA)

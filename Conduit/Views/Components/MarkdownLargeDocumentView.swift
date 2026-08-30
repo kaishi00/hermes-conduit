@@ -640,8 +640,9 @@ private struct LargeDocumentPreparingView: View {
 
 /// Memoizes a flow chunk's attributed string so unrelated body
 /// re-evaluations never re-run the Foundation parses. The memo identity is
-/// explicit: Dynamic Type category (fonts bake into the string) and the
-/// accent-surface flag (colors bake in).
+/// explicit: Dynamic Type category (fonts bake into the string), the
+/// selected chat text size (fonts bake into the string — issue #85), and
+/// the accent-surface flag (colors bake in).
 ///
 /// Invariant for the remaining inputs: `foregroundStyle` is tied 1:1 to
 /// `usesAccentSurface` at every call site (`.primary`/`false` and
@@ -653,6 +654,7 @@ private struct LargeDocumentPreparingView: View {
 final class LargeFlowChunkBox {
     private var cachedText: NSAttributedString?
     private var cachedCategory: UIContentSizeCategory?
+    private var cachedChatTextSize: ChatTextSize?
     private var cachedUsesAccentSurface: Bool?
 
     @MainActor
@@ -661,10 +663,12 @@ final class LargeFlowChunkBox {
         references: MarkdownReferenceContext,
         foregroundStyle: Color,
         usesAccentSurface: Bool,
-        contentCategory: UIContentSizeCategory = UIApplication.shared.preferredContentSizeCategory
+        contentCategory: UIContentSizeCategory = UIApplication.shared.preferredContentSizeCategory,
+        chatTextSize: ChatTextSize = .default
     ) -> NSAttributedString? {
         if let cachedText,
            cachedCategory == contentCategory,
+           cachedChatTextSize == chatTextSize,
            cachedUsesAccentSurface == usesAccentSurface {
             return cachedText
         }
@@ -673,10 +677,12 @@ final class LargeFlowChunkBox {
             references: references,
             foregroundStyle: foregroundStyle,
             usesAccentSurface: usesAccentSurface,
-            newestCharacterOpacities: []
+            newestCharacterOpacities: [],
+            chatTextSize: chatTextSize
         )
         cachedText = text
         cachedCategory = contentCategory
+        cachedChatTextSize = chatTextSize
         cachedUsesAccentSurface = usesAccentSurface
         return text
     }
@@ -697,6 +703,7 @@ struct LargeFlowChunkView: View {
     let selectionSegment: MarkdownSelectionSegmentDescriptor?
 
     @Environment(\.sizeCategory) private var sizeCategory
+    @Environment(\.chatTextSize) private var chatTextSize
 
     /// Per-view memo box: identity comes from the enclosing ForEach index
     /// (keyed by source identity), so it survives re-evaluations and dies
@@ -709,11 +716,12 @@ struct LargeFlowChunkView: View {
             references: references,
             foregroundStyle: foregroundStyle,
             usesAccentSurface: usesAccentSurface,
-            contentCategory: UIContentSizeCategory(sizeCategory)
+            contentCategory: UIContentSizeCategory(sizeCategory),
+            chatTextSize: chatTextSize
         ) {
             SelectableTextView(
                 attributedText: attributed,
-                font: .preferredFont(forTextStyle: .body),
+                font: ChatTypography.font(for: .body, chatSize: chatTextSize),
                 textColor: usesAccentSurface ? .white : UIColor(foregroundStyle),
                 lineSpacing: 4,
                 linkColor: usesAccentSurface ? .white : .link,
@@ -958,6 +966,71 @@ struct LargeCodeBlockView: View {
     }
 }
 
+/// Stable identity for a large-code slice's highlight+presentation pass.
+/// Extracted so the cache-invalidation contract is unit-testable: a chat
+/// text-size change MUST produce a different identity (the highlighted
+/// attributed string bakes the pass's default font in when bridged), while
+/// everything else staying equal keeps the previous identity.
+enum LargeCodeSliceIdentity {
+    static func identity(
+        source: String,
+        sizeCategory: ContentSizeCategory,
+        chatTextSize: ChatTextSize
+    ) -> String {
+        "\(source.hashValue)-\(sizeCategory)-chat:\(chatTextSize.cacheIdentity)"
+    }
+}
+
+/// One large-code slice's highlighted result together with the slice
+/// identity it was produced under. A typography/source identity change
+/// invalidates the stored highlighted result immediately (issue #85 review
+/// fix): its baked font attributes belong to the old size, so the view must
+/// fall back to plain text at the new font while the replacement highlight
+/// pass runs — an old-size highlighted string must never stay mounted
+/// during the transition.
+///
+/// Deliberately a VALUE type: the view holds it in `@State`, and SwiftUI
+/// only observes writes through the state wrapper — a reference type
+/// mutated in place would never trigger the swap-in/invalidation renders.
+struct LargeCodeSliceHighlightState {
+    private(set) var highlighted: NSAttributedString?
+    /// The slice identity the currently stored result belongs to.
+    private(set) var displayedIdentity: String?
+
+    /// Invalidates the stored highlighted result when the slice identity
+    /// changed. Returns true when a stored result was invalidated.
+    @discardableResult
+    mutating func invalidateIfIdentityChanged(to newIdentity: String) -> Bool {
+        guard displayedIdentity != newIdentity else { return false }
+        displayedIdentity = newIdentity
+        guard highlighted != nil else { return false }
+        highlighted = nil
+        return true
+    }
+
+    /// Convergence + record for a completed highlight pass in ONE mutation
+    /// (one `@State` write → one render): syncs the tracked identity to the
+    /// completed pass and stores the result. The view's live
+    /// `sliceIdentity == passIdentity` guard is the outer stale protection;
+    /// a pass that lost an identity race is cancelled or refused before
+    /// reaching here.
+    mutating func syncAndStore(_ text: NSAttributedString, passIdentity: String) {
+        invalidateIfIdentityChanged(to: passIdentity)
+        highlighted = text
+    }
+
+    /// The highlighted result eligible for display under `identity` — nil
+    /// unless the stored result belongs to EXACTLY that identity. This is
+    /// the render-time final guard: between an identity change and the
+    /// `onChange` invalidation there is one body evaluation where the
+    /// stored result still carries the previous identity, and it must
+    /// never be mounted under the new one (the view renders the plain
+    /// path at the current font instead).
+    func highlightedText(for identity: String) -> NSAttributedString? {
+        displayedIdentity == identity ? highlighted : nil
+    }
+}
+
 /// One bounded slice of a large code block: plain monospaced text
 /// immediately, tokenized highlighting swapped in when the off-main pass
 /// completes. Each slice is independently selectable.
@@ -967,20 +1040,30 @@ private struct LargeCodeSliceView: View {
     let usesAccentSurface: Bool
     var maximumNumberOfLines: Int = 0
 
-    @State private var highlighted: NSAttributedString?
+    @State private var highlightState = LargeCodeSliceHighlightState()
     @Environment(\.sizeCategory) private var sizeCategory
+    @Environment(\.chatTextSize) private var chatTextSize
 
     private var font: UIFont {
-        .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .footnote).pointSize, weight: .regular)
+        ChatTypography.font(for: .blockCode, chatSize: chatTextSize)
     }
 
     private var sliceIdentity: String {
-        "\(source.hashValue)-\(sizeCategory)"
+        LargeCodeSliceIdentity.identity(
+            source: source,
+            sizeCategory: sizeCategory,
+            chatTextSize: chatTextSize
+        )
     }
 
     var body: some View {
         Group {
-            if let highlighted {
+            // Render-time final guard: the highlighted attributed string is
+            // mounted ONLY while its recorded identity exactly matches the
+            // live sliceIdentity. In the one body evaluation between an
+            // identity change and onChange delivery, the mismatch routes to
+            // the plain-text path at the current font instead.
+            if let highlighted = highlightState.highlightedText(for: sliceIdentity) {
                 SelectableTextView(
                     attributedText: highlighted,
                     font: font,
@@ -999,6 +1082,13 @@ private struct LargeCodeSliceView: View {
                 )
             }
         }
+        // A typography/source identity change must never keep the previous
+        // highlighted attributed string mounted: clear it synchronously so
+        // the plain path renders at the new font while highlighting
+        // recomputes.
+        .onChange(of: sliceIdentity) { _, newIdentity in
+            highlightState.invalidateIfIdentityChanged(to: newIdentity)
+        }
         .task(id: sliceIdentity) {
             // Accent-surface (user-bubble) code never highlights, matching
             // the ordinary ChatCodeBlock behavior.
@@ -1006,21 +1096,33 @@ private struct LargeCodeSliceView: View {
             let currentSource = source
             let currentLanguage = language
             let currentFont = font
-            // Snapshot the identity the pass started under; comparing
-            // against the live property is what actually drops stale
-            // results when the view was re-created mid-pass.
+            // Snapshot the identity the pass started under. The authoritative
+            // staleness protections are `.task(id:)` cancellation (fires on
+            // any identity change) and the synchronous `onChange`
+            // invalidation above; the snapshot comparison plus the
+            // MainActor-confined continuation keep the record path to a
+            // single turn, auditable in one place.
             let passIdentity = sliceIdentity
             let highlightedResult = await SyntaxHighlighter.highlightAsync(
                 currentSource,
                 language: currentLanguage
             )
-            guard !Task.isCancelled, sliceIdentity == passIdentity else { return }
-            self.highlighted = SelectableTextView.bridge(
+            // Everything from here on runs on the main actor (the .task
+            // closure inherits this MainActor view's context), so the state
+            // write below is a single main-actor mutation.
+            // The empty-result check is defensive (a non-empty source always
+            // yields a non-empty result today); an empty outcome falls back
+            // to the plain path instead of mounting an empty text view.
+            guard !Task.isCancelled, sliceIdentity == passIdentity,
+                  !highlightedResult.characters.isEmpty else { return }
+            // Convergence + record in one state write (see syncAndStore).
+            let bridged = SelectableTextView.bridge(
                 highlightedResult,
                 defaultFont: currentFont,
                 defaultColor: .label,
                 linkColor: .link
             )
+            highlightState.syncAndStore(bridged, passIdentity: passIdentity)
         }
     }
 }
