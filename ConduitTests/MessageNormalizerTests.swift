@@ -1353,6 +1353,601 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertEqual(messages.last?.content, "Response interrupted by a user correction.")
     }
 
+    // MARK: - Hermes display projection (display_kind / display_content)
+
+    /// Hermes persists some model-facing rows as `role=user` for provider
+    /// history semantics while `display_kind`/`display_content` tell clients
+    /// how they must actually be presented. Conduit must honor that contract
+    /// at the normalization boundary instead of mapping the physical role
+    /// straight onto a human user bubble.
+
+    func testHiddenUserRowIsDroppedEntirely() {
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(301),
+                "role": .string("user"),
+                "content": .string("INTERNAL MODEL SCAFFOLD"),
+                "display_kind": .string("hidden")
+            ])
+        ])
+
+        XCTAssertTrue(messages.isEmpty)
+    }
+
+    func testHiddenAssistantRowIsDroppedEntirely() {
+        // Hiding is a property of the row, not of its physical role.
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(302),
+                "role": .string("assistant"),
+                "content": .string("Interrupted-turn checkpoint payload"),
+                "display_kind": .string("hidden")
+            ])
+        ])
+
+        XCTAssertTrue(messages.isEmpty)
+    }
+
+    func testHiddenRowWithDisplayContentIsStillDropped() {
+        // Explicit hiding wins over any projection: upstream only co-locates
+        // these when the row must not be shown at all.
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(303),
+                "role": .string("user"),
+                "content": .string("internal carrier"),
+                "display_content": .string("Supposedly visible"),
+                "display_kind": .string("hidden")
+            ])
+        ])
+
+        XCTAssertTrue(messages.isEmpty)
+    }
+
+    func testHiddenRowIsDroppedBeforeLargeBodyIsProcessed() {
+        // The hidden verdict must come from the metadata alone — a
+        // multi-megabyte model-facing body is never scanned or copied.
+        let hugeBody = "[CONTEXT COMPACTION 12:04]\n"
+            + String(repeating: "Compacted scaffold body. ", count: 30_000)
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(304),
+                "role": .string("user"),
+                "content": .string(hugeBody),
+                "display_kind": .string("hidden")
+            ]),
+            .object([
+                "id": .number(305),
+                "role": .string("assistant"),
+                "content": .string("Neighbor row survives.")
+            ])
+        ])
+
+        XCTAssertEqual(messages.map(\.content), ["Neighbor row survives."])
+    }
+
+    func testDisplayContentOverridesPhysicalCarrier() {
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(306),
+                "role": .string("user"),
+                "content": .string("internal summary scaffold\n\nREAL ASK"),
+                "display_content": .string("REAL ASK")
+            ])
+        ])
+
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages[0].role, .user)
+        XCTAssertEqual(messages[0].content, "REAL ASK")
+        XCTAssertFalse(messages[0].content.contains("scaffold"))
+    }
+
+    func testDisplayContentWinsOverCompactionCarrierWithoutDroppingTheRow() {
+        // Ordering: the physical content contains a legacy compaction
+        // delimiter, but the explicit projection is authoritative — the row
+        // must present the projected prompt, not be discarded wholesale.
+        let carrier = "Pull the logs before triage.\n\n"
+            + "[END OF PRIOR CONTEXT — COMPACTION SUMMARY BELOW]\n\n"
+            + "[CONTEXT COMPACTION 12:04]\n"
+            + String(repeating: "Summary body. ", count: 2_000)
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(307),
+                "role": .string("user"),
+                "content": .string(carrier),
+                "display_content": .string("Pull the logs before triage.")
+            ])
+        ])
+
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages[0].role, .user)
+        XCTAssertEqual(messages[0].content, "Pull the logs before triage.")
+    }
+
+    func testDisplayContentWinsOverCompressedSummaryFlag() {
+        // The REST projection keeps `_compressed_summary` metadata on a
+        // recovered carrier row; the flag must not discard the projected ask.
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(308),
+                "role": .string("user"),
+                "content": .string("Summary of prior turns."),
+                "metadata": .object(["_compressed_summary": .bool(true)]),
+                "display_content": .string("The actual recovered ask.")
+            ])
+        ])
+
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages[0].content, "The actual recovered ask.")
+    }
+
+    func testDisplayContentWinsEvenWhenProjectedTextStartsWithACompactionHeader() {
+        // The compatibility filters never re-judge projected text: only rows
+        // lacking display metadata are subject to the summary-prefix guard.
+        let projected = "[CONTEXT COMPACTION 12:04]\nServer-declared visible text."
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(330),
+                "role": .string("user"),
+                "content": .string("physical carrier"),
+                "display_content": .string(projected)
+            ])
+        ])
+
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages[0].role, .user)
+        XCTAssertEqual(messages[0].content, projected)
+    }
+
+    func testExplicitEmptyDisplayContentNeverFallsBackToPhysicalContent() {
+        // Field presence — not a non-empty value — makes the projection
+        // authoritative. The genuinely empty row follows the existing
+        // empty-message rules, but the physical carrier must never reappear.
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(309),
+                "role": .string("user"),
+                "content": .string("DO NOT SHOW ME"),
+                "display_content": .string("")
+            ])
+        ])
+
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages[0].role, .user)
+        XCTAssertEqual(messages[0].content, "")
+        XCTAssertFalse(
+            messages.contains { $0.content.contains("DO NOT SHOW ME") },
+            "The physical content must never resurface behind an empty projection"
+        )
+    }
+
+    func testAutoContinueKindProjectsToSystemTimelineNotice() {
+        let scaffold = "[System note: Your previous turn was interrupted mid-run. Resuming from the last checkpoint.]"
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(310),
+                "role": .string("user"),
+                "content": .string(scaffold),
+                "display_kind": .string("auto_continue")
+            ])
+        ])
+
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages[0].role, .system)
+        XCTAssertEqual(messages[0].displayKind, "auto_continue")
+        XCTAssertEqual(messages[0].content, "Resumed interrupted turn")
+        XCTAssertFalse(messages[0].content.contains("System note"))
+    }
+
+    func testModelSwitchKindKeepsExistingModelChangePresentation() {
+        // The persisted marker rides as role=user; display_kind makes the
+        // timeline outcome explicit while the existing model-change card
+        // detection (driven by rawContent in ChatView) keeps working.
+        let marker = "[System: The active model for this chat has changed to GLM-5.3-Flash via provider zai. From this point forward, use this runtime metadata when answering questions about what model/provider is active.]"
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(311),
+                "role": .string("user"),
+                "content": .string(marker),
+                "display_kind": .string("model_switch")
+            ])
+        ])
+
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages[0].role, .system)
+        XCTAssertEqual(messages[0].displayKind, "model_switch")
+        XCTAssertEqual(messages[0].content, "[Model has been changed to zai/GLM-5.3-Flash]")
+        XCTAssertNotNil(
+            MessageNormalizer.modelChangeActivity(fromText: messages[0].rawContent ?? messages[0].content),
+            "ChatView's model-change card detection must still fire for the projected row"
+        )
+    }
+
+    func testModelSwitchKindWithUnrecognizedTextFallsBackToCannedNotice() {
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(312),
+                "role": .string("user"),
+                "content": .string("model runtime pivot"),
+                "display_kind": .string("model_switch")
+            ])
+        ])
+
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages[0].role, .system)
+        XCTAssertEqual(messages[0].content, "Model changed")
+    }
+
+    func testModelSwitchKindPrefersExplicitDisplayContentOverMarkerCard() {
+        // When Hermes explicitly projects display content onto a model_switch
+        // row, that copy is authoritative even over the marker-derived card.
+        let marker = "[System: The active model for this chat has changed to GLM-5.3-Flash via provider zai. From this point forward, use this runtime metadata when answering questions about what model/provider is active.]"
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(331),
+                "role": .string("user"),
+                "content": .string(marker),
+                "display_content": .string("Switched to GLM-5.3-Flash via zai."),
+                "display_kind": .string("model_switch")
+            ])
+        ])
+
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages[0].role, .system)
+        XCTAssertEqual(messages[0].content, "Switched to GLM-5.3-Flash via zai.")
+    }
+
+    func testKnownKindOnAssistantRowStillProjectsToTimeline() {
+        // Upstream only ever tags user rows, but the projection is a property
+        // of the row: a known synthetic kind never stays a human turn.
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(332),
+                "role": .string("assistant"),
+                "content": .string("[System note: Your previous turn was interrupted mid-run.]"),
+                "display_kind": .string("auto_continue")
+            ])
+        ])
+
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages[0].role, .system)
+        XCTAssertEqual(messages[0].content, "Resumed interrupted turn")
+    }
+
+    func testDisplayKindMatchingToleratesSurroundingWhitespaceOnly() {
+        // Whitespace around the canonical value is trimmed; case is matched
+        // exactly like Hermes Desktop, so casing drift stays conservative.
+        let trimmed = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(333),
+                "role": .string("user"),
+                "content": .string("scaffold"),
+                "display_kind": .string("  hidden  ")
+            ])
+        ])
+        let wrongCase = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(334),
+                "role": .string("assistant"),
+                "content": .string("Visible assistant text"),
+                "display_kind": .string("Hidden")
+            ])
+        ])
+
+        XCTAssertTrue(trimmed.isEmpty)
+        XCTAssertEqual(wrongCase.count, 1)
+        XCTAssertEqual(wrongCase[0].role, .assistant)
+    }
+
+    func testPersonalitySwitchKindProjectsToTimelineNoticeWithoutPersonaScaffold() {
+        let marker = "[System: The user has changed the assistant's personality. From this point forward, adopt the following persona and respond accordingly: You are a terse pirate first mate.]"
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(313),
+                "role": .string("user"),
+                "content": .string(marker),
+                "display_kind": .string("personality_switch")
+            ])
+        ])
+
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages[0].role, .system)
+        XCTAssertEqual(messages[0].displayKind, "personality_switch")
+        XCTAssertEqual(messages[0].content, "Personality changed")
+        XCTAssertFalse(messages[0].content.contains("pirate"))
+    }
+
+    func testAsyncDelegationCompleteUsesObjectMetadataTaskCount() {
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(314),
+                "role": .string("user"),
+                "content": .string("Background delegation report scaffold"),
+                "display_kind": .string("async_delegation_complete"),
+                "display_metadata": .object(["task_count": .number(2)])
+            ])
+        ])
+
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages[0].role, .system)
+        XCTAssertEqual(messages[0].content, "2 background agents finished")
+        XCTAssertFalse(messages[0].content.contains("scaffold"))
+    }
+
+    func testAsyncDelegationCompleteUsesSingularForOneTask() {
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(315),
+                "role": .string("user"),
+                "content": .string("Background delegation report scaffold"),
+                "display_kind": .string("async_delegation_complete"),
+                "display_metadata": .object(["task_count": .number(1)])
+            ])
+        ])
+
+        XCTAssertEqual(messages[0].content, "1 background agent finished")
+    }
+
+    func testAsyncDelegationCompleteParsesJSONStringMetadata() {
+        // Older backends serve display_metadata as unparsed JSON text.
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(316),
+                "role": .string("user"),
+                "content": .string("Background delegation report scaffold"),
+                "display_kind": .string("async_delegation_complete"),
+                "display_metadata": .string("{\"task_count\": 3, \"failed_count\": 0}")
+            ])
+        ])
+
+        XCTAssertEqual(messages[0].content, "3 background agents finished")
+    }
+
+    func testAsyncDelegationCompleteMalformedMetadataDegradesToGenericNotice() {
+        let variants: [AnyCodable] = [
+            .string("{definitely not json"),
+            .array([.number(1), .number(2)]),
+            .object(["task_count": .string("two")]),
+            .object(["task_count": .number(0)]),
+            .object(["task_count": .number(-1)]),
+            .object(["task_count": .number(2.5)]),
+            .null
+        ]
+        for (index, metadata) in variants.enumerated() {
+            let messages = MessageNormalizer.normalizeMessages([
+                .object([
+                    "id": .number(Double(320 + index)),
+                    "role": .string("user"),
+                    "content": .string("Background delegation report scaffold"),
+                    "display_kind": .string("async_delegation_complete"),
+                    "display_metadata": metadata
+                ])
+            ])
+
+            XCTAssertEqual(messages.count, 1, "variant \(index) must still produce its notice")
+            XCTAssertEqual(messages[0].role, .system, "variant \(index) must not stay a user bubble")
+            XCTAssertEqual(
+                messages[0].content,
+                "Background agent work finished",
+                "variant \(index) must degrade to the generic label"
+            )
+        }
+    }
+
+    func testInternalNotificationKindNeverRendersAsHumanUser() {
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(324),
+                "role": .string("user"),
+                "content": .string("Background watch fired: nightly build finished."),
+                "display_kind": .string("internal_notification")
+            ])
+        ])
+
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages[0].role, .system)
+        XCTAssertEqual(messages[0].displayKind, "internal_notification")
+        XCTAssertEqual(messages[0].content, "Background watch fired: nightly build finished.")
+    }
+
+    func testInternalNotificationKindStripsSystemWrapper() {
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(325),
+                "role": .string("user"),
+                "content": .string("[System: Resume wake-up notice for the scheduled task.]"),
+                "display_kind": .string("internal_notification")
+            ])
+        ])
+
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages[0].role, .system)
+        XCTAssertEqual(messages[0].content, "Resume wake-up notice for the scheduled task.")
+    }
+
+    func testUnknownDisplayKindPreservesTheRowConservatively() {
+        // A future kind must neither crash normalization nor delete or
+        // reinterpret an otherwise ordinary visible row.
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(326),
+                "role": .string("assistant"),
+                "content": .string("Visible assistant text"),
+                "display_kind": .string("future_kind")
+            ])
+        ])
+
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages[0].role, .assistant)
+        XCTAssertEqual(messages[0].content, "Visible assistant text")
+        XCTAssertNil(messages[0].displayKind)
+    }
+
+    func testUnknownDisplayKindStillHonorsDisplayContent() {
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(327),
+                "role": .string("user"),
+                "content": .string("physical carrier"),
+                "display_content": .string("Projected ask"),
+                "display_kind": .string("future_kind")
+            ])
+        ])
+
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages[0].role, .user)
+        XCTAssertEqual(messages[0].content, "Projected ask")
+    }
+
+    func testToolRowsKeepLegacyHandlingAgainstDisplayFields() {
+        // A tool row carrying display-shaped fields must not be rewritten:
+        // upstream only ever projects conversational rows, so the tool card
+        // keeps its own output exactly.
+        let output = "grep results:\n[END OF PRIOR CONTEXT — COMPACTION SUMMARY BELOW]\nmatched 3 lines"
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(328),
+                "role": .string("tool"),
+                "tool_call_id": .string("call-301"),
+                "tool_name": .string("run_grep"),
+                "content": .string(output),
+                "display_content": .string("Tampered projection"),
+                "display_kind": .string("model_switch")
+            ])
+        ])
+
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages[0].role, .tool)
+        XCTAssertEqual(messages[0].tool?.output, output)
+        XCTAssertEqual(messages[0].tool?.name, "run_grep")
+        XCTAssertNil(messages[0].displayKind)
+    }
+
+    func testHiddenToolRowIsStillDropped() {
+        // Hiding is explicit presentation semantics for the row and applies
+        // regardless of physical role — the same rule the gateway's resume
+        // projection applies to every role.
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(329),
+                "role": .string("tool"),
+                "tool_call_id": .string("call-302"),
+                "tool_name": .string("read_file"),
+                "content": .string("internal checkpoint payload"),
+                "display_kind": .string("hidden")
+            ])
+        ])
+
+        XCTAssertTrue(messages.isEmpty)
+    }
+
+    func testKindRowWithoutProjectionYieldsToLegacyCompactionFilter() {
+        // Precedence pin: a synthetic row lacking display_content still goes
+        // through the legacy filters, so a pure summary carrier is dropped
+        // whole instead of being replaced by the canned notice.
+        let carrier = "[CONTEXT COMPACTION 12:04]\n"
+            + String(repeating: "Summary body. ", count: 2_000)
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(340),
+                "role": .string("user"),
+                "content": .string(carrier),
+                "display_kind": .string("auto_continue")
+            ])
+        ])
+
+        XCTAssertTrue(messages.isEmpty)
+    }
+
+    func testMalformedScalarDisplayContentNeverFallsBackToPhysicalCarrier() {
+        // Field presence is the authority boundary: a stray scalar is an
+        // explicit (odd) projection resolving to empty text, never a reason
+        // to reveal the physical carrier.
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(341),
+                "role": .string("user"),
+                "content": .string("DO NOT SHOW PHYSICAL"),
+                "display_content": .number(42)
+            ])
+        ])
+
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages[0].role, .user)
+        XCTAssertEqual(messages[0].content, "")
+        XCTAssertFalse(
+            messages.contains { $0.content.contains("DO NOT SHOW PHYSICAL") },
+            "The physical content must never resurface behind a malformed projection"
+        )
+    }
+
+    func testExplicitNullDisplayContentNeverFallsBackToPhysicalContent() {
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(342),
+                "role": .string("user"),
+                "content": .string("DO NOT SHOW PHYSICAL"),
+                "display_content": .null
+            ])
+        ])
+
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages[0].role, .user)
+        XCTAssertEqual(messages[0].content, "")
+        XCTAssertFalse(
+            messages.contains { $0.content.contains("DO NOT SHOW PHYSICAL") },
+            "An explicit null projection must not expose the physical content"
+        )
+    }
+
+    func testExplicitEmptyProjectionOnTimelineKindRemainsAuthoritative() {
+        // For synthetic kinds an empty projection must not be trimmed back
+        // into absence: that would substitute canned labels or fall through
+        // to the physical synthetic payload.
+        let rows: [(Double, String, String)] = [
+            (343, "internal_notification", "DO NOT SHOW PHYSICAL"),
+            (344, "auto_continue", "AUTO CONTINUE INTERNAL SCAFFOLD"),
+            (346, "model_switch", "DO NOT SHOW PHYSICAL"),
+            (347, "personality_switch", "DO NOT SHOW PHYSICAL"),
+            (348, "async_delegation_complete", "DO NOT SHOW PHYSICAL")
+        ]
+        for (id, kind, carrier) in rows {
+            let messages = MessageNormalizer.normalizeMessages([
+                .object([
+                    "id": .number(id),
+                    "role": .string("user"),
+                    "content": .string(carrier),
+                    "display_kind": .string(kind),
+                    "display_content": .string("")
+                ])
+            ])
+
+            XCTAssertEqual(messages.count, 1, kind)
+            XCTAssertEqual(messages[0].role, .system, kind)
+            XCTAssertEqual(messages[0].content, "", kind)
+            XCTAssertFalse(
+                messages.contains { $0.content.contains(carrier) },
+                "\(kind): the physical payload must never resurface"
+            )
+        }
+    }
+
+    func testHugeTaskCountDegradesToGenericNoticeWithoutTrapping() {
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(345),
+                "role": .string("user"),
+                "content": .string("Background delegation report scaffold"),
+                "display_kind": .string("async_delegation_complete"),
+                "display_metadata": .object(["task_count": .number(1e100)])
+            ])
+        ])
+
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages[0].role, .system)
+        XCTAssertEqual(messages[0].content, "Background agent work finished")
+    }
+
     private func message(
         id: Double,
         role: String,

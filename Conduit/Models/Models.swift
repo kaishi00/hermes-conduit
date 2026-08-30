@@ -171,6 +171,12 @@ struct ChatMessage: Identifiable, Equatable {
     var approval: ApprovalActivity?
     var attachments: [Attachment]?
     var code: String?
+    /// Canonical Hermes `display_kind` when the persisted row arrived with
+    /// explicit synthetic-timeline projection (`model_switch`, `auto_continue`,
+    /// …). Nil for ordinary rows. Normalization already reduced the row to its
+    /// final display role/content; this only lets the timeline UI style the
+    /// notice without re-deriving it from text.
+    let displayKind: String?
 
     // Non-codable because it contains closures in some uses; serialization
     // is handled by the gateway, not by us. We construct these from RPC results.
@@ -188,7 +194,8 @@ struct ChatMessage: Identifiable, Equatable {
         clarify: ClarifyActivity? = nil,
         approval: ApprovalActivity? = nil,
         attachments: [Attachment]? = nil,
-        code: String? = nil
+        code: String? = nil,
+        displayKind: String? = nil
     ) {
         self.id = id
         self.role = role
@@ -203,6 +210,7 @@ struct ChatMessage: Identifiable, Equatable {
         self.approval = approval
         self.attachments = attachments
         self.code = code
+        self.displayKind = displayKind
     }
 }
 
