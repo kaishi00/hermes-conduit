@@ -228,6 +228,59 @@ final class NativeAuthClientTests: XCTestCase {
         }
     }
 
+    func testPersistExpiredCookieDeletesOnlyMatchingCanonicalIdentity() throws {
+        let storage = HTTPCookieStorage.shared
+        func makeCookie(_ name: String, _ value: String, _ domain: String, _ path: String, expires: Date? = nil) -> HTTPCookie {
+            var properties: [HTTPCookiePropertyKey: Any] = [
+                .name: name,
+                .value: value,
+                .domain: domain,
+                .path: path
+            ]
+            if let expires { properties[.expires] = expires }
+            return HTTPCookie(properties: properties)!
+        }
+
+        // Stored cookies under a fixture domain (scrubbed by reset()).
+        let storedSession = makeCookie("persist_probe", "stale", "192.168.1.200", "/")
+        let otherPath = makeCookie("persist_probe", "other-path", "192.168.1.200", "/other")
+        let unrelated = makeCookie("persist_probe_unrelated", "keep-me", "192.168.1.200", "/")
+        for cookie in [storedSession, otherPath, unrelated] {
+            storage.setCookie(cookie)
+        }
+
+        // Expired parse whose domain uses the dotted canonical spelling of
+        // the same host, targeting the exact stored identity.
+        let expired = makeCookie(
+            "persist_probe",
+            "",
+            ".192.168.1.200",
+            "/",
+            expires: Date(timeIntervalSinceNow: -60)
+        )
+        NativeAuthCookiePolicy.persist([expired])
+
+        XCTAssertFalse(
+            storage.cookies?.contains { $0.name == "persist_probe" && $0.path == "/" } ?? false,
+            "An expired Set-Cookie must delete the stored cookie with the same canonical identity."
+        )
+        XCTAssertNotNil(
+            storage.cookies?.first { $0.name == "persist_probe" && $0.path == "/other" },
+            "Deletion must be scoped to the exact path identity."
+        )
+        XCTAssertNotNil(
+            storage.cookies?.first { $0.name == "persist_probe_unrelated" },
+            "Unrelated stored cookies must survive."
+        )
+
+        // A non-expired rotation with the same identity replaces normally.
+        NativeAuthCookiePolicy.persist([makeCookie("persist_probe", "fresh", "192.168.1.200", "/")])
+        XCTAssertEqual(
+            storage.cookies?.first { $0.name == "persist_probe" && $0.path == "/" }?.value,
+            "fresh"
+        )
+    }
+
     private func makeSessionConfiguration() -> URLSessionConfiguration {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [NativeAuthURLProtocol.self]

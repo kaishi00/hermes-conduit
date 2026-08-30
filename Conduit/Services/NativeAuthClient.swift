@@ -313,12 +313,21 @@ enum NativeAuthCookiePolicy {
     }
 
     static func persist(_ cookies: [HTTPCookie]) {
+        let now = Date()
         for cookie in cookies {
-            // These are transaction-local parses that may never have entered
-            // the shared jar, so an expired value is skipped rather than
-            // deleting a jar entry this transaction does not own.
-            if let expires = cookie.expiresDate, expires <= Date() { continue }
-            HTTPCookieStorage.shared.setCookie(cookie)
+            guard let expires = cookie.expiresDate, expires <= now else {
+                HTTPCookieStorage.shared.setCookie(cookie)
+                continue
+            }
+            // An expired Set-Cookie is the server retiring that cookie
+            // identity. Delete the matching stored cookies (name + canonical
+            // domain + path) without inserting the expired parse itself, so
+            // a committed transaction fully determines the shared state.
+            let identity = CookieIdentity(cookie)
+            for storedCookie in HTTPCookieStorage.shared.cookies ?? []
+                where CookieIdentity(storedCookie) == identity {
+                HTTPCookieStorage.shared.deleteCookie(storedCookie)
+            }
         }
     }
 

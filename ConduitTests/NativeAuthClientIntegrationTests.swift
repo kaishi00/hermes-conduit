@@ -261,26 +261,27 @@ final class NativeAuthClientIntegrationTests: XCTestCase {
         )
     }
 
-    func testCommitSkipsExpiredParsedCookiesInsteadOfDeletingSharedEntries() async throws {
+    func testCommitHonorsExpiredCookieDeletionForMatchingIdentity() async throws {
         let server = try LoopbackHTTPServer.start { request in
             switch request.path {
             case "/auth/password-login":
                 return .json(
                     status: 200,
-                    headers: [("Set-Cookie", "hermes_session_at=expired-flow-access; Path=/; HttpOnly")],
+                    headers: [("Set-Cookie", "hermes_session_at=identity-flow-access; Path=/; HttpOnly")],
                     body: #"{"ok":true,"next":"/"}"#
                 )
             case "/api/auth/ws-ticket":
-                guard request.headers["cookie"] == "hermes_session_at=expired-flow-access" else {
+                guard request.headers["cookie"] == "hermes_session_at=identity-flow-access" else {
                     return .json(status: 401, body: #"{"detail":"Unauthorized"}"#)
                 }
+                // The ticket response retires the session cookie with an
+                // expired Set-Cookie for the exact login identity.
                 return .json(
                     status: 200,
                     headers: [
-                        ("Set-Cookie", "hermes_session_at=expired-flow-rotated; Path=/; HttpOnly"),
-                        ("Set-Cookie", "rotation_guard=dropped; Path=/; Expires=Wed, 09 Jun 2000 10:18:14 GMT")
+                        ("Set-Cookie", "hermes_session_at=; Path=/; Expires=Wed, 09 Jun 2000 10:18:14 GMT")
                     ],
-                    body: #"{"ticket":"expired-flow-ticket"}"#
+                    body: #"{"ticket":"identity-flow-ticket"}"#
                 )
             default:
                 return .json(status: 404, body: #"{"detail":"Not found"}"#)
@@ -288,28 +289,46 @@ final class NativeAuthClientIntegrationTests: XCTestCase {
         }
         defer { server.stop() }
 
-        // The ticket response "rotates" rotation_guard to an expired value
-        // that shares its identity (name/domain/path) with a live shared-jar
-        // cookie. Publication must skip the expired parse, not delete the
-        // jar entry it collides with.
-        seedLoopbackCookie(name: "rotation_guard", value: "keepme")
+        // Jar before authentication: a stale session with the exact identity
+        // the expired response targets, a same-name cookie under a different
+        // path, and an unrelated cookie.
+        seedLoopbackCookie(name: "hermes_session_at", value: "stale-session")
+        seedLoopbackCookie(name: "hermes_session_at", value: "other-path", path: "/other")
+        seedLoopbackCookie(name: "unrelated_cookie", value: "keep-me")
 
         let connection = try await NativeAuthClient(
             baseURL: "http://127.0.0.1:\(server.port)",
             sessionConfiguration: realSessionConfiguration()
         ).connect(username: "chris", password: "correct-password")
 
-        XCTAssertEqual(connection.ticket, "expired-flow-ticket")
-        XCTAssertFalse(
-            hasLoopbackCookie(name: "rotation_guard", value: "dropped"),
-            "An expired parsed cookie must never be published."
-        )
-        connection.commitCookies()
+        XCTAssertEqual(connection.ticket, "identity-flow-ticket")
         XCTAssertTrue(
-            hasLoopbackCookie(name: "rotation_guard", value: "keepme"),
-            "Skipping an expired parse must not delete the shared entry it collides with."
+            hasLoopbackCookie(name: "hermes_session_at", value: "stale-session"),
+            "Nothing may be published or deleted before commitCookies()."
         )
-        XCTAssertTrue(hasLoopbackSession(value: "expired-flow-rotated"))
+
+        connection.commitCookies()
+
+        XCTAssertFalse(
+            hasLoopbackCookie(name: "hermes_session_at", value: "stale-session"),
+            "The expired rotation must delete the stored cookie with the same identity."
+        )
+        XCTAssertFalse(
+            hasLoopbackCookie(name: "hermes_session_at", value: ""),
+            "The expired replacement itself must not be stored."
+        )
+        XCTAssertFalse(
+            hasLoopbackCookie(name: "hermes_session_at", path: "/"),
+            "Deletion, not rotation: no cookie may remain at the retired identity."
+        )
+        XCTAssertTrue(
+            hasLoopbackCookie(name: "hermes_session_at", value: "other-path"),
+            "Deletion must be scoped to the exact path identity."
+        )
+        XCTAssertTrue(
+            hasLoopbackCookie(name: "unrelated_cookie", value: "keep-me"),
+            "Unrelated cookies must survive."
+        )
     }
 
     func testConcurrentRedirectedLoginsCannotExchangeSessionCookies() async throws {
@@ -517,12 +536,20 @@ final class NativeAuthClientIntegrationTests: XCTestCase {
         }
     }
 
-    private func seedLoopbackCookie(name: String, value: String) {
+    private func hasLoopbackCookie(name: String, path: String) -> Bool {
+        (HTTPCookieStorage.shared.cookies ?? []).contains {
+            $0.name == name
+                && $0.path == path
+                && $0.domain.trimmingCharacters(in: CharacterSet(charactersIn: ".")) == "127.0.0.1"
+        }
+    }
+
+    private func seedLoopbackCookie(name: String, value: String, path: String = "/") {
         guard let cookie = HTTPCookie(properties: [
             .name: name,
             .value: value,
             .domain: "127.0.0.1",
-            .path: "/"
+            .path: path
         ]) else {
             return XCTFail("Could not create loopback fixture cookie")
         }
