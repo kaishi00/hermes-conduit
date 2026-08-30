@@ -2,7 +2,74 @@ import Foundation
 import XCTest
 @testable import Conduit
 
+/// These tests intentionally touch `HTTPCookieStorage.shared` because the
+/// production bridge consumes the shared cookie store. Fixture hosts are
+/// disjoint from the loopback integration suites, and reset() (setUp/tearDown)
+/// scrubs exactly the fixture domains, so parallel class execution cannot
+/// cross-contaminate the jar.
 final class NativeAuthClientTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        NativeAuthURLProtocol.reset()
+    }
+
+    override func tearDown() {
+        NativeAuthURLProtocol.reset()
+        super.tearDown()
+    }
+
+    func testPasswordLoginCarriesReturnedSessionCookieIntoTicketRequest() async throws {
+        let client = NativeAuthClient(
+            baseURL: "http://192.168.1.200:9119",
+            sessionConfiguration: makeSessionConfiguration()
+        )
+
+        let connection = try await client.connect(username: "chris", password: "correct-password")
+
+        XCTAssertEqual(connection.ticket, "fresh-ticket")
+        XCTAssertEqual(
+            NativeAuthURLProtocol.requestHeader(forPath: "/api/auth/ws-ticket", name: "Cookie"),
+            "hermes_session_at=test-access-token"
+        )
+    }
+
+    func testNativeAuthenticationDisablesAutomaticCookieAttachment() {
+        let configuration = makeSessionConfiguration()
+
+        _ = NativeAuthClient(
+            baseURL: "http://192.168.1.201:9119",
+            sessionConfiguration: configuration
+        )
+
+        XCTAssertFalse(configuration.httpShouldSetCookies)
+    }
+
+    func testTicketRequestDoesNotFallBackToUnrelatedSharedCookie() async throws {
+        let baseURL = "http://192.168.1.201:9119"
+        NativeAuthURLProtocol.seedSharedCookie(
+            name: "hermes_session_at",
+            value: "stale-access-token",
+            baseURL: baseURL
+        )
+        let client = NativeAuthClient(
+            baseURL: baseURL,
+            sessionConfiguration: makeSessionConfiguration()
+        )
+
+        do {
+            _ = try await client.connect(username: "chris", password: "correct-password")
+            return XCTFail("Expected the ticket request without an applicable login cookie to be rejected")
+        } catch let error as AuthClientError {
+            guard case .ticketFailed(let detail) = error else {
+                return XCTFail("Expected ticket failure, got \(error)")
+            }
+            XCTAssertEqual(detail, "Unauthorized")
+        }
+        XCTAssertNil(
+            NativeAuthURLProtocol.requestHeader(forPath: "/api/auth/ws-ticket", name: "Cookie")
+        )
+    }
+
     func testProviderDiscoveryRedirectFallsBackToWebView() async throws {
         let client = NativeAuthClient(
             baseURL: "https://redirect.example",
@@ -85,6 +152,135 @@ final class NativeAuthClientTests: XCTestCase {
         XCTAssertEqual(providers[0]["name"] as? String, "basic")
     }
 
+    func testCancelledConnectSurfacesAsCancellationError() async throws {
+        let client = NativeAuthClient(
+            baseURL: "https://cancel.example",
+            sessionConfiguration: makeSessionConfiguration()
+        )
+
+        let operation = Task { try await client.connect(username: "chris", password: "correct-password") }
+        // Give the URLSessionTask time to start against the never-completing
+        // fixture; the holder also cancels tasks installed after cancellation.
+        try await Task.sleep(nanoseconds: 100_000_000)
+        operation.cancel()
+
+        do {
+            _ = try await operation.value
+            XCTFail("Expected the cancelled connect to throw")
+        } catch {
+            XCTAssertTrue(error is CancellationError, "Expected CancellationError, got \(error)")
+            XCTAssertFalse(error is AuthClientError, "Cancellation must not surface as an authentication failure")
+        }
+    }
+
+    func testArraySetCookieRepresentationParsesEachValueIndividually() throws {
+        // Model the array-style duplicate Set-Cookie representation
+        // Foundation's real transport can expose, which HTTPURLResponse's
+        // public initializer cannot construct directly.
+        let response = try XCTUnwrap(ArrayHeaderHTTPURLResponse(
+            url: URL(string: "https://array.example/dashboard")!,
+            statusCode: 200,
+            fields: [
+                "Content-Type": "application/json",
+                "Set-Cookie": [
+                    "first=one; Path=/",
+                    "hermes_session_at=second; Path=/"
+                ]
+            ]
+        ))
+
+        let names = NativeAuthCookiePolicy.acceptedCookies(from: response).map(\.name)
+
+        XCTAssertEqual(names, ["first", "hermes_session_at"])
+    }
+
+    func testAcceptedCookiesKeepsFoundationParserAuthorityForCombinedString() throws {
+        // A single comma-joined Set-Cookie value still goes through
+        // HTTPCookie's parser, including values with Expires commas.
+        let response = try XCTUnwrap(HTTPURLResponse(
+            url: URL(string: "https://array.example/")!,
+            statusCode: 200,
+            httpVersion: nil,
+            headerFields: [
+                "Set-Cookie": "a=1; Path=/, b=2; Path=/; Expires=Wed, 09 Jun 2100 10:18:14 GMT"
+            ]
+        ))
+
+        let names = NativeAuthCookiePolicy.acceptedCookies(from: response).map(\.name)
+
+        XCTAssertEqual(names, ["a", "b"])
+    }
+
+    func testConnectFailsDiagnosablyWhenLoginYieldsNoAcceptedCookie() async throws {
+        let client = NativeAuthClient(
+            baseURL: "https://cookieless.example",
+            sessionConfiguration: makeSessionConfiguration()
+        )
+
+        do {
+            _ = try await client.connect(username: "chris", password: "correct-password")
+            XCTFail("Expected connect to fail when no host-scoped session cookie is accepted")
+        } catch let error as AuthClientError {
+            guard case .ticketFailed(let detail) = error else {
+                return XCTFail("Expected ticket failure, got \(error)")
+            }
+            XCTAssertEqual(detail, "Login succeeded but no host-scoped session cookie was accepted")
+        }
+    }
+
+    func testPersistExpiredCookieDeletesOnlyMatchingCanonicalIdentity() throws {
+        let storage = HTTPCookieStorage.shared
+        func makeCookie(_ name: String, _ value: String, _ domain: String, _ path: String, expires: Date? = nil) -> HTTPCookie {
+            var properties: [HTTPCookiePropertyKey: Any] = [
+                .name: name,
+                .value: value,
+                .domain: domain,
+                .path: path
+            ]
+            if let expires { properties[.expires] = expires }
+            return HTTPCookie(properties: properties)!
+        }
+
+        // Stored cookies under a fixture domain (scrubbed by reset()).
+        let storedSession = makeCookie("persist_probe", "stale", "192.168.1.200", "/")
+        let otherPath = makeCookie("persist_probe", "other-path", "192.168.1.200", "/other")
+        let unrelated = makeCookie("persist_probe_unrelated", "keep-me", "192.168.1.200", "/")
+        for cookie in [storedSession, otherPath, unrelated] {
+            storage.setCookie(cookie)
+        }
+
+        // Expired parse whose domain uses the dotted canonical spelling of
+        // the same host, targeting the exact stored identity.
+        let expired = makeCookie(
+            "persist_probe",
+            "",
+            ".192.168.1.200",
+            "/",
+            expires: Date(timeIntervalSinceNow: -60)
+        )
+        NativeAuthCookiePolicy.persist([expired])
+
+        XCTAssertFalse(
+            storage.cookies?.contains { $0.name == "persist_probe" && $0.path == "/" } ?? false,
+            "An expired Set-Cookie must delete the stored cookie with the same canonical identity."
+        )
+        XCTAssertNotNil(
+            storage.cookies?.first { $0.name == "persist_probe" && $0.path == "/other" },
+            "Deletion must be scoped to the exact path identity."
+        )
+        XCTAssertNotNil(
+            storage.cookies?.first { $0.name == "persist_probe_unrelated" },
+            "Unrelated stored cookies must survive."
+        )
+
+        // A non-expired rotation with the same identity replaces normally.
+        NativeAuthCookiePolicy.persist([makeCookie("persist_probe", "fresh", "192.168.1.200", "/")])
+        XCTAssertEqual(
+            storage.cookies?.first { $0.name == "persist_probe" && $0.path == "/" }?.value,
+            "fresh"
+        )
+    }
+
     private func makeSessionConfiguration() -> URLSessionConfiguration {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [NativeAuthURLProtocol.self]
@@ -101,16 +297,21 @@ private final class NativeAuthURLProtocol: URLProtocol {
 
     private static let recordLock = NSLock()
     private static var responseRecords: [ResponseRecord] = []
+    private static var requestRecords: [URLRequest] = []
 
     override class func canInit(with request: URLRequest) -> Bool {
         guard let host = request.url?.host else { return false }
         return [
+            "192.168.1.200",
+            "192.168.1.201",
             "redirect.example",
             "providers.example",
             "server-error.example",
             "headers.example",
             "multiple.example",
-            "tenant.cloudflareaccess.com"
+            "tenant.cloudflareaccess.com",
+            "cancel.example",
+            "cookieless.example"
         ].contains(host)
     }
 
@@ -121,6 +322,12 @@ private final class NativeAuthURLProtocol: URLProtocol {
     override func startLoading() {
         guard let url = request.url else {
             client?.urlProtocol(self, didFailWithError: URLError(.badURL))
+            return
+        }
+        Self.record(request: request)
+        if url.host == "cancel.example" {
+            // Never completes: the cancellation test cancels the task while
+            // this request is in flight.
             return
         }
         let fixture = fixture(for: request)
@@ -165,9 +372,51 @@ private final class NativeAuthURLProtocol: URLProtocol {
         return responseRecords.filter { $0.host == host }.count
     }
 
+    static func requestHeader(forPath path: String, name: String) -> String? {
+        recordLock.lock()
+        defer { recordLock.unlock() }
+        return requestRecords.last(where: { $0.url?.path == path })?.value(forHTTPHeaderField: name)
+    }
+
+    static func reset() {
+        recordLock.lock()
+        responseRecords.removeAll()
+        requestRecords.removeAll()
+        recordLock.unlock()
+        let fixtureHosts = Set([
+            "192.168.1.200",
+            "192.168.1.201",
+            "cancel.example",
+            "cookieless.example"
+        ])
+        for cookie in HTTPCookieStorage.shared.cookies ?? [] {
+            let domain = cookie.domain.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "."))
+            if fixtureHosts.contains(domain) {
+                HTTPCookieStorage.shared.deleteCookie(cookie)
+            }
+        }
+    }
+
+    static func seedSharedCookie(name: String, value: String, baseURL: String) {
+        guard let host = URL(string: baseURL)?.host,
+              let cookie = HTTPCookie(properties: [
+                .name: name,
+                .value: value,
+                .domain: host,
+                .path: "/"
+              ]) else { return }
+        HTTPCookieStorage.shared.setCookie(cookie)
+    }
+
     private static func record(host: String, statusCode: Int?, headers: [String: String]) {
         recordLock.lock()
         responseRecords.append(ResponseRecord(host: host, statusCode: statusCode, headers: headers))
+        recordLock.unlock()
+    }
+
+    private static func record(request: URLRequest) {
+        recordLock.lock()
+        requestRecords.append(request)
         recordLock.unlock()
     }
 
@@ -181,6 +430,53 @@ private final class NativeAuthURLProtocol: URLProtocol {
         guard let host = request.url?.host else { return nil }
 
         switch host {
+        case "192.168.1.201":
+            switch request.url?.path {
+            case "/auth/password-login":
+                return Fixture(
+                    statusCode: 200,
+                    headers: [
+                        "Content-Type": "application/json",
+                        "Set-Cookie": "auth_only=must-not-reach-ticket; Path=/auth; HttpOnly"
+                    ],
+                    body: Data(#"{"ok":true,"next":"/"}"#.utf8)
+                )
+            case "/api/auth/ws-ticket":
+                return Fixture(
+                    statusCode: 401,
+                    headers: ["Content-Type": "application/json"],
+                    body: Data(#"{"detail":"Unauthorized"}"#.utf8)
+                )
+            default:
+                return nil
+            }
+        case "192.168.1.200":
+            switch request.url?.path {
+            case "/auth/password-login":
+                return Fixture(
+                    statusCode: 200,
+                    headers: [
+                        "Content-Type": "application/json",
+                        "Set-Cookie": "hermes_session_at=test-access-token; Path=/; HttpOnly; SameSite=Lax, auth_only=must-not-leak; Path=/auth; HttpOnly"
+                    ],
+                    body: Data(#"{"ok":true,"next":"/"}"#.utf8)
+                )
+            case "/api/auth/ws-ticket":
+                guard request.value(forHTTPHeaderField: "Cookie") == "hermes_session_at=test-access-token" else {
+                    return Fixture(
+                        statusCode: 401,
+                        headers: ["Content-Type": "application/json"],
+                        body: Data(#"{"detail":"Unauthorized"}"#.utf8)
+                    )
+                }
+                return Fixture(
+                    statusCode: 200,
+                    headers: ["Content-Type": "application/json"],
+                    body: Data(#"{"ticket":"fresh-ticket"}"#.utf8)
+                )
+            default:
+                return nil
+            }
         case "redirect.example":
             return Fixture(
                 statusCode: 302,
@@ -195,6 +491,22 @@ private final class NativeAuthURLProtocol: URLProtocol {
             return Fixture(statusCode: 500, headers: [:], body: Data(#"{"error":"origin unavailable"}"#.utf8))
         case "multiple.example":
             return Fixture(statusCode: 300, headers: [:], body: Data())
+        case "cookieless.example":
+            switch request.url?.path {
+            case "/auth/password-login":
+                // Only a foreign-domain cookie: exact-host acceptance must
+                // drop it, leaving the transaction with no usable cookie.
+                return Fixture(
+                    statusCode: 200,
+                    headers: [
+                        "Content-Type": "application/json",
+                        "Set-Cookie": "foreign_session=unusable; Domain=cookieless-poison.invalid; Path=/"
+                    ],
+                    body: Data(#"{"ok":true,"next":"/"}"#.utf8)
+                )
+            default:
+                return nil
+            }
         case "headers.example":
             let hasExpectedHeaders = request.value(forHTTPHeaderField: "CF-Access-Client-Id") == "test-client-id"
                 && request.value(forHTTPHeaderField: "CF-Access-Client-Secret") == "test-client-secret"
@@ -208,5 +520,26 @@ private final class NativeAuthURLProtocol: URLProtocol {
 
     private func providerBody() -> Data {
         Data(#"{"providers":[{"name":"basic","supports_password":true}]}"#.utf8)
+    }
+}
+
+/// Stands in for the array-valued `allHeaderFields` that Foundation's real
+/// transport can produce for duplicate Set-Cookie headers; the public
+/// HTTPURLResponse initializer only accepts string values.
+private final class ArrayHeaderHTTPURLResponse: HTTPURLResponse {
+    private let customFields: [AnyHashable: Any]
+
+    init?(url: URL, statusCode: Int, fields: [AnyHashable: Any]) {
+        self.customFields = fields
+        super.init(url: url, statusCode: statusCode, httpVersion: nil, headerFields: nil)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
+    override var allHeaderFields: [AnyHashable: Any] {
+        customFields
     }
 }

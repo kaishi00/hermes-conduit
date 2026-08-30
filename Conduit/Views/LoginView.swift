@@ -238,7 +238,7 @@ struct LoginView: View {
                 return
             }
 
-            let ticket = try await client.connect(username: username, password: password)
+            let authenticatedConnection = try await client.connect(username: username, password: password)
             if saveCredentials {
                 KeychainHelper.saveCredentials(DashboardCredentials(
                     baseURL: serverUrl,
@@ -250,7 +250,8 @@ struct LoginView: View {
                 KeychainHelper.clearCredentials()
             }
             if let access { KeychainHelper.saveCloudflareAccess(access, origin: serverUrl) } else { KeychainHelper.clearCloudflareAccess() }
-            await appState.connect(with: HermesConnection(baseUrl: serverUrl, ticket: ticket))
+            authenticatedConnection.commitCookies()
+            await appState.connect(with: HermesConnection(baseUrl: serverUrl, ticket: authenticatedConnection.ticket))
         } catch is CancellationError {
             return
         } catch {
