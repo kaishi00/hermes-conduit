@@ -83,6 +83,82 @@ struct ChatView: View {
         appState.chatResumeRestorationRequest != nil
     }
 
+    /// The bounded persisted-history window reports older pages behind the
+    /// loaded tail. Only offered while the window belongs to the active
+    /// profile and there is a hydrated transcript to extend.
+    private var transcriptBackfillAvailable: Bool {
+        guard let window = appState.persistedTranscriptWindow,
+              window.canLoadEarlier,
+              window.profile == appState.activeProfile,
+              !appState.messages.isEmpty else {
+            return false
+        }
+        return true
+    }
+
+    private var transcriptBackfillIsLoading: Bool {
+        appState.persistedTranscriptWindow?.isLoadingEarlier == true
+    }
+
+    /// Transcript-top affordance for bounded history: fetches the next older
+    /// page and prepends it. The currently visible row is captured as the
+    /// viewport anchor before the fetch so the prepend lands without moving
+    /// the user's position. Label-exposed for accessibility — never
+    /// icon-only — and the loading state is announced by the combined
+    /// progress row.
+    private var transcriptTopBackfillControl: some View {
+        Group {
+            if transcriptBackfillIsLoading {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Loading earlier messages")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .accessibilityElement(children: .combine)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 4)
+            } else {
+                Button {
+                    // A second tap while the first backfill is in flight
+                    // must not overwrite the armed anchor (the single-flight
+                    // guard in AppState would then discard nothing and the
+                    // discharge below would kill the first request's anchor).
+                    guard !transcriptBackfillIsLoading else { return }
+                    ChatViewportTrace.shared.log("event loadEarlier")
+                    let armedKey = renderedScrollSessionKey ?? activeScrollSessionKey
+                    viewport.olderPageBackfillRequested(
+                        anchorMessageID: viewport.stableTopMessageID,
+                        sessionKey: armedKey
+                    )
+                    Task { @MainActor in
+                        let didPrepend = await appState.loadEarlierMessages()
+                        if !didPrepend {
+                            // Nothing landed (short page, transient failure,
+                            // all-duplicate page): discharge the anchor so it
+                            // can never re-pin on a later unrelated change.
+                            // Scoped to the session this tap armed — a stale
+                            // task must not clobber a newer conversation's
+                            // anchor.
+                            viewport.prependAnchorDischarged(matching: armedKey)
+                        }
+                    }
+                } label: {
+                    Label("Load earlier messages", systemImage: "clock.arrow.circlepath")
+                        .font(.footnote.weight(.semibold))
+                        .labelStyle(.titleAndIcon)
+                }
+                .buttonStyle(.plain)
+                .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.12))
+                .accessibilityLabel("Load earlier messages")
+                .accessibilityHint("Fetches the next older page of this conversation")
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 4)
+            }
+        }
+    }
+
     /// Latest global frames + transcript order of rendered stable rows for
     /// the current scope. Only message rows report frames (streaming/typing/
     /// markers never do), so ephemeral identifiers cannot enter stable-top
@@ -158,6 +234,10 @@ struct ChatView: View {
                 Color.clear
                     .frame(height: 1)
                     .id(topAnchor)
+
+                if transcriptBackfillAvailable {
+                    transcriptTopBackfillControl
+                }
 
                 if appState.messages.isEmpty {
                     EmptyChatState().padding(.top, 60)
@@ -749,6 +829,8 @@ struct ChatView: View {
             case .top(let anchorID, _):
                 proxy.scrollTo(anchorID, anchor: .top)
             case .message(let id):
+                proxy.scrollTo(id, anchor: .top)
+            case .prependAnchor(let id):
                 proxy.scrollTo(id, anchor: .top)
             }
         }

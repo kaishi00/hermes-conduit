@@ -633,6 +633,10 @@ final class CompactResumeTranscriptTests: XCTestCase {
         XCTAssertEqual(harness.appState.messages.count, count)
         XCTAssertEqual(harness.appState.messages.first?.content, "Row 0 \(filler)")
         XCTAssertEqual(harness.appState.messages.last?.content, "Row \(count - 1) \(filler)")
+        XCTAssertNil(
+            harness.appState.persistedTranscriptWindow,
+            "A legacy full-transcript resume leaves no window: there is no older page to fetch"
+        )
     }
 
     func testHistoryFailureSurfacesWithoutLegacyFallback() async throws {
@@ -727,6 +731,12 @@ final class CompactResumeTranscriptTests: XCTestCase {
             DashboardTicketBridgeError.http(status: 0, detail: "Failed to fetch")
         ))
         XCTAssertTrue(AppState.historySourceIsUnavailable(DashboardTicketBridgeError.notReady))
+        // A known-oversized one-shot history response is a typed condition,
+        // not transport trouble: it must surface its controlled compatibility
+        // error instead of retrying the giant transcript over the WebSocket.
+        XCTAssertFalse(AppState.historySourceIsUnavailable(
+            DashboardTicketBridgeError.oversizedResponse(limit: DataURLLimits.maxJSONResponseBytes)
+        ))
         // Authentication and unclassified failures must surface instead.
         XCTAssertFalse(AppState.historySourceIsUnavailable(DashboardTicketBridgeError.signInRequired))
         XCTAssertFalse(AppState.historySourceIsUnavailable(
@@ -737,11 +747,734 @@ final class CompactResumeTranscriptTests: XCTestCase {
         ))
     }
 
+    /// Backfill affordance retirement is structural-only: 404/410/5xx and a
+    /// bridge that never became ready retire "Load earlier messages"; every
+    /// transient transport trouble (408/429/status-0) and unclassified or
+    /// auth failures stay tap-retryable.
+    func testBackfillStructuralRetirementClassification() {
+        for status in [404, 410, 500, 502, 503] {
+            XCTAssertTrue(
+                AppState.historySourceIsStructurallyGone(
+                    DashboardTicketBridgeError.http(status: status, detail: "gone")
+                ),
+                "status \(status) must retire the affordance"
+            )
+        }
+        XCTAssertTrue(AppState.historySourceIsStructurallyGone(DashboardTicketBridgeError.notReady))
+        for status in [0, 408, 429] {
+            XCTAssertFalse(
+                AppState.historySourceIsStructurallyGone(
+                    DashboardTicketBridgeError.http(status: status, detail: "transient")
+                ),
+                "status \(status) must stay tap-retryable"
+            )
+        }
+        XCTAssertFalse(AppState.historySourceIsStructurallyGone(DashboardTicketBridgeError.signInRequired))
+        XCTAssertFalse(AppState.historySourceIsStructurallyGone(
+            DashboardTicketBridgeError.oversizedResponse(limit: DataURLLimits.maxJSONResponseBytes)
+        ))
+        XCTAssertFalse(AppState.historySourceIsStructurallyGone(
+            DashboardTicketBridgeError.requestFailed("Could not encode dashboard request.")
+        ))
+    }
+
+    // MARK: - Bounded persisted-history pagination
+
+    /// Large-session invariant: a session with thousands of persisted rows
+    /// opens by transferring and normalizing exactly one bounded page, and
+    /// the pagination echo reports older history behind it.
+    func testPaginatedHistoryHydratesOnlyNewestPage() async throws {
+        let recorder = ResumeCallRecorder()
+        let active = session("stored-a", alternateIDs: ["runtime-a"])
+        let harness = try makeHarness(
+            openSession: { _, sessionID, compact in
+                recorder.record(sessionID: sessionID, compact: compact)
+                return SessionResumeResult(
+                    sessionId: "runtime-a",
+                    messages: [],  // compact projection: transcript omitted
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { _, _ in
+                // The session holds 2,000 persisted rows; the paginated
+                // endpoint answers with only the newest 120 plus its
+                // pagination echo.
+                self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1880..<2000), offset: 0)
+            }
+        )
+        harness.appState.sessions = [active]
+
+        let opened = await harness.appState.openSession("stored-a")
+
+        XCTAssertTrue(opened)
+        XCTAssertEqual(
+            recorder.calls.map { $0.compact },
+            [true],
+            "A paginated-history session must resume compactly — no full transcript over the WebSocket"
+        )
+        XCTAssertEqual(harness.appState.messages.count, 120, "Only the requested page may be normalized and published")
+        XCTAssertEqual(harness.appState.messages.first?.content, "Row 1880")
+        XCTAssertEqual(harness.appState.messages.last?.content, "Row 1999")
+        let window = harness.appState.persistedTranscriptWindow
+        XCTAssertEqual(window?.requestedSessionID, "stored-a")
+        XCTAssertEqual(window?.profile, "default")
+        XCTAssertEqual(window?.resolvedSessionID, "stored-a")
+        XCTAssertEqual(window?.nextOffset, 120)
+        XCTAssertEqual(window?.canLoadEarlier, true, "A full page means older history may still exist")
+        XCTAssertEqual(window?.isLoadingEarlier, false)
+    }
+
+    /// Backfill: "Load earlier messages" fetches the next older page under
+    /// the same tail-anchored contract and prepends it. Rows persisted while
+    /// the conversation was open shift the offset origin, so the page
+    /// overlaps rows already held — the prepend must deduplicate them without
+    /// disturbing the loaded tail.
+    func testLoadEarlierPrependsOlderPageWithOverlapDeduplicated() async throws {
+        let backfillCalls = Counter()
+        let active = session("stored-a", alternateIDs: ["runtime-a"])
+        let harness = try makeHarness(
+            openSession: { _, _, compact in
+                XCTAssertTrue(compact)
+                return SessionResumeResult(
+                    sessionId: "runtime-a",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { _, _ in
+                self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1880..<2000), offset: 0)
+            },
+            loadEarlierTranscriptPage: { sessionId, profile, offset in
+                backfillCalls.value += 1
+                XCTAssertEqual(sessionId, "stored-a", "The backfill must stay scoped to the requested session")
+                XCTAssertEqual(profile, "default", "The backfill must stay scoped to the requesting profile")
+                XCTAssertEqual(offset, 120)
+                // Ten rows persisted since the tail hydration shifted the
+                // offset origin: the page overlaps 110 already-held rows and
+                // adds ten genuinely older ones.
+                return self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1870..<1990), offset: offset)
+            }
+        )
+        harness.appState.sessions = [active]
+        let opened = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(opened)
+        XCTAssertEqual(harness.appState.messages.count, 120)
+
+        await harness.appState.loadEarlierMessages()
+
+        XCTAssertEqual(backfillCalls.value, 1)
+        let messages = harness.appState.messages
+        XCTAssertEqual(messages.count, 120 + 120 - 110, "The overlapping prefix must be deduplicated, the loaded tail kept")
+        XCTAssertEqual(messages.first?.content, "Row 1870")
+        XCTAssertEqual(messages.last?.content, "Row 1999")
+        let ids = messages.map { $0.id }
+        XCTAssertEqual(Set(ids).count, ids.count, "No duplicate user messages, tool cards, or timeline events may result")
+        let numericIDs = ids.compactMap { Double($0) }
+        XCTAssertEqual(numericIDs, numericIDs.sorted(), "Prepended pages must keep the transcript chronological")
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.nextOffset, 240)
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.canLoadEarlier, true)
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.isLoadingEarlier, false)
+    }
+
+    /// A short page means the beginning of the persisted transcript has been
+    /// reached: the affordance retires and repeated taps issue no further
+    /// requests.
+    func testShortBackfillPageMarksTranscriptFullyBackfilled() async throws {
+        let backfillCalls = Counter()
+        let active = session("stored-a", alternateIDs: ["runtime-a"])
+        let harness = try makeHarness(
+            openSession: { _, _, _ in
+                SessionResumeResult(
+                    sessionId: "runtime-a",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { _, _ in
+                self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1880..<2000), offset: 0)
+            },
+            loadEarlierTranscriptPage: { _, _, offset in
+                backfillCalls.value += 1
+                XCTAssertEqual(offset, 120)
+                return self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1843..<1880), offset: offset)
+            }
+        )
+        harness.appState.sessions = [active]
+        let opened = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(opened)
+
+        await harness.appState.loadEarlierMessages()
+        XCTAssertEqual(harness.appState.messages.count, 157)
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.canLoadEarlier, false, "A short page proves the beginning was reached")
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.nextOffset, 157)
+
+        // Repeated taps after the terminal page must not issue more requests.
+        await harness.appState.loadEarlierMessages()
+        await harness.appState.loadEarlierMessages()
+        XCTAssertEqual(backfillCalls.value, 1)
+    }
+
+    /// A backfill resolving after a session switch belongs to a conversation
+    /// nobody is viewing: it must be discarded whole, leaving the newly
+    /// active session untouched.
+    func testStaleBackfillDiscardedAfterSessionSwitch() async throws {
+        let backfillStarted = Flag()
+        let activeA = session("stored-a", alternateIDs: ["runtime-a"])
+        let activeB = session("stored-b", alternateIDs: ["runtime-b"])
+        let harness = try makeHarness(
+            openSession: { _, _, _ in
+                SessionResumeResult(
+                    sessionId: "runtime-a",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { sessionId, _ in
+                if sessionId == "stored-a" {
+                    return self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1880..<2000), offset: 0)
+                }
+                return self.tailPagePayload(
+                    sessionId: "stored-b",
+                    rows: self.syntheticRows(0..<2),
+                    offset: 0
+                )
+            },
+            loadEarlierTranscriptPage: { sessionId, _, offset in
+                backfillStarted.isOn = true
+                XCTAssertEqual(sessionId, "stored-a")
+                try? await Task.sleep(for: .milliseconds(250))
+                return self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1760..<1880), offset: offset)
+            }
+        )
+        harness.appState.sessions = [activeA, activeB]
+        let openedA = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(openedA)
+
+        let backfill = Task { await harness.appState.loadEarlierMessages() }
+        for _ in 0..<1_000 where !backfillStarted.isOn {
+            await Task.yield()
+        }
+        XCTAssertTrue(backfillStarted.isOn, "The backfill fetch must have started")
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.isLoadingEarlier, true)
+
+        let openedB = await harness.appState.openSession("stored-b")
+        XCTAssertTrue(openedB)
+        await backfill
+
+        XCTAssertEqual(harness.appState.messages.count, 2, "Session B must be completely unchanged by the stale page")
+        XCTAssertEqual(harness.appState.messages.first?.content, "Row 0")
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.requestedSessionID, "stored-b")
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.isLoadingEarlier, false)
+        XCTAssertFalse(
+            harness.appState.messages.contains { $0.id == "1760" },
+            "No row from the stale session-A page may leak into session B"
+        )
+    }
+
+    /// Backfilled pages carry the same display-contract rows as the initial
+    /// hydration (hidden compaction carriers, display_content asks,
+    /// model-switch and auto-continue pivots); the projection must stay
+    /// correct after a prepend.
+    func testCompactedDisplayRowsProjectCorrectlyInBackfilledPage() async throws {
+        let modelSwitchMarker = "[System: The active model for this chat has changed to GLM-5.3-Flash via provider zai. From this point forward, use this runtime metadata when answering questions about what model/provider is active.]"
+        let active = session("stored-a", alternateIDs: ["runtime-a"])
+        let harness = try makeHarness(
+            openSession: { _, _, _ in
+                SessionResumeResult(
+                    sessionId: "runtime-a",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { _, _ in
+                self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1880..<2000), offset: 0)
+            },
+            loadEarlierTranscriptPage: { _, _, offset in
+                var hiddenRow = self.transcriptRow(900, role: "user", content: "INTERNAL MODEL SCAFFOLD — do not render")
+                hiddenRow["display_kind"] = "hidden"
+                var autoContinueRow = self.transcriptRow(901, role: "user", content: "[System note: Your previous turn was interrupted mid-run. Continuing from the checkpoint.]")
+                autoContinueRow["display_kind"] = "auto_continue"
+                var displayCarrierRow = self.transcriptRow(902, role: "user", content: "Older ask.\n\n[END OF PRIOR CONTEXT — COMPACTION SUMMARY BELOW]")
+                displayCarrierRow["display_content"] = "Older ask."
+                var modelSwitchRow = self.transcriptRow(903, role: "user", content: modelSwitchMarker)
+                modelSwitchRow["display_kind"] = "model_switch"
+                return .payload([
+                    "session_id": "stored-a",
+                    "messages": [
+                        hiddenRow,
+                        autoContinueRow,
+                        displayCarrierRow,
+                        modelSwitchRow,
+                        self.transcriptRow(904, role: "user", content: "Older human turn"),
+                        self.transcriptRow(905, role: "assistant", content: "Older assistant turn"),
+                    ],
+                    "pagination": ["limit": 120, "offset": offset, "order": "latest", "returned": 6]
+                ])
+            }
+        )
+        harness.appState.sessions = [active]
+        let opened = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(opened)
+
+        await harness.appState.loadEarlierMessages()
+
+        let messages = harness.appState.messages
+        XCTAssertEqual(messages.count, 120 + 6 - 1, "The hidden carrier row disappears; every visible projection stays")
+        XCTAssertEqual(
+            messages.prefix(5).map { $0.role },
+            [.system, .user, .system, .user, .assistant]
+        )
+        XCTAssertEqual(
+            messages.prefix(5).map { $0.content },
+            [
+                "Resumed interrupted turn",
+                "Older ask.",
+                "[Model has been changed to zai/GLM-5.3-Flash]",
+                "Older human turn",
+                "Older assistant turn"
+            ]
+        )
+        XCTAssertFalse(
+            messages.contains { $0.content.contains("SCAFFOLD") || $0.content.contains("COMPACTION SUMMARY") },
+            "No model-facing scaffold text may surface through a backfilled page"
+        )
+        XCTAssertEqual(messages.last?.content, "Row 1999", "The loaded tail must remain intact after the prepend")
+    }
+
+    /// Legacy one-shot backend: no pagination metadata means the complete
+    /// transcript — accepted as the compatibility path, with no window and
+    /// therefore no load-earlier affordance. (The large-session legacy merge
+    /// is additionally covered by
+    /// testLargeSessionResumeShipsNoTranscriptOverWebSocket.)
+    func testLegacyOneShotResponseHydratesFullyWithoutWindow() async throws {
+        let active = session("stored-a", alternateIDs: ["runtime-a"])
+        let harness = try makeHarness(
+            openSession: { _, _, _ in
+                SessionResumeResult(
+                    sessionId: "runtime-a",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { _, _ in
+                .payload([
+                    "session_id": "stored-a",
+                    "messages": self.syntheticRows(0..<300)
+                ])
+            }
+        )
+        harness.appState.sessions = [active]
+
+        let opened = await harness.appState.openSession("stored-a")
+
+        XCTAssertTrue(opened)
+        XCTAssertEqual(harness.appState.messages.count, 300)
+        XCTAssertNil(
+            harness.appState.persistedTranscriptWindow,
+            "A one-shot transcript leaves no window: there is no older page to fetch"
+        )
+    }
+
+    /// A pagination echo WITHOUT the `order=latest` tail contract describes a
+    /// backend whose offsets page from the oldest end. Honoring those offsets
+    /// would walk forward from row zero and never reach the newest rows, so
+    /// the transcript is re-read one-shot — the exact request pre-pagination
+    /// Conduit made — and treated as the legacy contract.
+    func testPaginationEchoWithoutLatestOrderFallsBackToOneShot() async throws {
+        let fetchCalls = Counter()
+        let active = session("stored-a", alternateIDs: ["runtime-a"])
+        let harness = try makeHarness(
+            openSession: { _, _, _ in
+                SessionResumeResult(
+                    sessionId: "runtime-a",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { _, _ in
+                fetchCalls.value += 1
+                if fetchCalls.value == 1 {
+                    // Oldest-anchored build: bounded request, no order echo.
+                    return self.tailPagePayload(
+                        sessionId: "stored-a",
+                        rows: self.syntheticRows(0..<3),
+                        offset: 0,
+                        limit: 120,
+                        order: nil
+                    )
+                }
+                // The unbounded re-read returns the complete transcript.
+                return .payload([
+                    "session_id": "stored-a",
+                    "messages": self.syntheticRows(0..<6)
+                ])
+            }
+        )
+        harness.appState.sessions = [active]
+
+        let opened = await harness.appState.openSession("stored-a")
+
+        XCTAssertTrue(opened)
+        XCTAssertEqual(fetchCalls.value, 2, "Exactly one bounded read and one one-shot re-read")
+        XCTAssertEqual(harness.appState.messages.count, 6)
+        XCTAssertEqual(harness.appState.messages.first?.content, "Row 0")
+        XCTAssertEqual(harness.appState.messages.last?.content, "Row 5")
+        XCTAssertNil(harness.appState.persistedTranscriptWindow)
+    }
+
+    /// An old backend answering a one-shot history that exceeds the client's
+    /// safe response bound must surface the controlled compatibility error —
+    /// never a retry of the same giant transcript over the bounded
+    /// WebSocket.
+    func testOversizedLegacyHistorySurfacesWithoutWebSocketRetry() async throws {
+        let recorder = ResumeCallRecorder()
+        let active = session("stored-a")
+        let harness = try makeHarness(
+            openSession: { _, sessionID, compact in
+                recorder.record(sessionID: sessionID, compact: compact)
+                return SessionResumeResult(
+                    sessionId: sessionID,
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { _, _ in
+                .failed(DashboardTicketBridgeError.oversizedResponse(
+                    limit: DataURLLimits.maxJSONResponseBytes
+                ))
+            }
+        )
+        harness.appState.sessions = [active]
+
+        let opened = await harness.appState.openSession("stored-a")
+
+        XCTAssertFalse(opened, "The oversized-history compatibility error must surface")
+        XCTAssertEqual(
+            recorder.calls.map { $0.compact },
+            [true],
+            "No legacy full-transcript WebSocket retry may follow an oversized history response"
+        )
+        XCTAssertTrue(
+            harness.appState.errorMessage?.contains("too large to load safely") == true,
+            "The surfaced error should be the controlled compatibility copy, got: \(harness.appState.errorMessage ?? "nil")"
+        )
+    }
+
+    /// Live resume over a paginated tail: the persisted newest page stays the
+    /// durable base and the inflight assistant continuation still rides the
+    /// streaming bubble as exactly the unpersisted suffix.
+    func testLiveResumeWithPaginatedTailKeepsInflightProjection() async throws {
+        let persistedPrefix = "Streaming the report now."
+        let inflightText = persistedPrefix + " The numbers section is next."
+        let active = session("stored-a", alternateIDs: ["runtime-a"])
+        let harness = try makeHarness(
+            openSession: { _, _, _ in
+                SessionResumeResult(
+                    sessionId: "runtime-a",
+                    messages: [],  // compact projection: transcript omitted
+                    snapshot: SessionRuntimeSnapshot(
+                        object: ["running": .bool(true)],
+                        inflight: .object(["assistant": .string(inflightText)])
+                    )
+                )
+            },
+            persistedTranscript: { _, _ in
+                .payload([
+                    "session_id": "stored-a",
+                    "messages": [
+                        self.transcriptRow(1, role: "user", content: "Write the report."),
+                        self.transcriptRow(2, role: "assistant", content: persistedPrefix)
+                    ],
+                    "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 2]
+                ])
+            }
+        )
+        harness.appState.sessions = [active]
+
+        let opened = await harness.appState.openSession("stored-a")
+
+        XCTAssertTrue(opened)
+        XCTAssertEqual(harness.appState.messages.map { $0.role }, [.user, .assistant])
+        XCTAssertEqual(harness.appState.messages[1].content, persistedPrefix)
+        XCTAssertEqual(
+            harness.appState.persistedTranscriptWindow?.nextOffset, 2,
+            "A short page under the paginated contract means the whole persisted history is loaded"
+        )
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.canLoadEarlier, false)
+        harness.appState.showSidebar = true
+        harness.appState.showSidebar = false
+        XCTAssertEqual(harness.appState.streamingText, "The numbers section is next.")
+        XCTAssertFalse(
+            harness.appState.messages.contains { $0.content.contains("The numbers section is next.") },
+            "The inflight continuation must ride the live bubble, not duplicate into rows"
+        )
+    }
+
+    /// A re-reconciliation re-reads only the newest page; the pages already
+    /// loaded through "Load earlier messages" must survive it via the tail
+    /// graft instead of being truncated away.
+    func testReconcileRefreshGraftsBackfilledPrefix() async throws {
+        let holdsRefreshedTail = Flag()
+        let active = session("stored-a", alternateIDs: ["runtime-a"])
+        let harness = try makeHarness(
+            openSession: { _, _, _ in
+                SessionResumeResult(
+                    sessionId: "runtime-a",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { _, _ in
+                if holdsRefreshedTail.isOn {
+                    // Twenty new rows persisted since the backfill: the
+                    // refreshed tail covers the newest 120 rows.
+                    return self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1900..<2020), offset: 0)
+                }
+                return self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1880..<2000), offset: 0)
+            },
+            loadEarlierTranscriptPage: { _, _, offset in
+                self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1760..<1880), offset: offset)
+            },
+            additionalOperations: { ops in
+                ops.connectClient = { _ in }
+                ops.loadCatalog = { _, _ in [active] }
+                ops.loadProfiles = {}
+                ops.loadBusyInputMode = { _ in }
+                ops.loadProfileDisplayPreferences = {}
+                ops.loadSlashCommands = {}
+            }
+        )
+        harness.appState.sessions = [active]
+        let opened = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(opened)
+
+        await harness.appState.loadEarlierMessages()
+        XCTAssertEqual(harness.appState.messages.count, 240)
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.nextOffset, 240)
+
+        // A reconnect re-reconciles the same session without clearing the
+        // transcript; the refreshed tail grafts onto the backfilled prefix.
+        holdsRefreshedTail.isOn = true
+        harness.coordinator.rememberSessionID("stored-a", for: "default")
+        await harness.appState.connect(
+            with: HermesConnection(baseUrl: "https://one.example", ticket: "graft-ticket")
+        )
+
+        XCTAssertEqual(harness.appState.messages.count, 140 + 120, "Older prefix (rows 1760–1899) plus the refreshed tail (rows 1900–2019)")
+        XCTAssertEqual(harness.appState.messages.first?.content, "Row 1760")
+        XCTAssertEqual(harness.appState.messages[139].content, "Row 1899")
+        XCTAssertEqual(harness.appState.messages[140].content, "Row 1900")
+        XCTAssertEqual(harness.appState.messages.last?.content, "Row 2019")
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.nextOffset, 120)
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.canLoadEarlier, true)
+    }
+
+    /// Pins the request contract: the production history request is an
+    /// explicit tail-anchored bounded page — never the implicit default and
+    /// never an unbounded one-shot — and older pages continue the same
+    /// contract at the next offset.
+    func testPersistedHistoryRequestContractIsBoundedTailPaging() {
+        XCTAssertEqual(PersistedTranscriptPagination.pageSize, 120)
+        XCTAssertEqual(
+            PersistedTranscriptPagination.tailQuery(offset: 0),
+            "?limit=120&offset=0&order=latest&include_compacted=true"
+        )
+        XCTAssertEqual(
+            PersistedTranscriptPagination.tailQuery(offset: 240),
+            "?limit=120&offset=240&order=latest&include_compacted=true"
+        )
+        XCTAssertEqual(PersistedTranscriptPagination.legacyQuery, "")
+        XCTAssertEqual(
+            AppState.sessionMessagesPath(
+                sessionId: "stored a",
+                profile: "default",
+                query: PersistedTranscriptPagination.tailQuery(offset: 0)
+            ),
+            "/api/sessions/stored%20a/messages?limit=120&offset=0&order=latest&include_compacted=true"
+        )
+        XCTAssertEqual(
+            AppState.sessionMessagesPath(
+                sessionId: "stored-a",
+                profile: "work",
+                query: PersistedTranscriptPagination.tailQuery(offset: 120)
+            ),
+            "/api/sessions/stored-a/messages?limit=120&offset=120&order=latest&include_compacted=true&profile=work"
+        )
+    }
+
+    /// A transient backfill failure (429, status-0, 408) stays retryable:
+    /// the affordance remains and a later tap succeeds. Only a structurally
+    /// gone history source (404/410/5xx, dead bridge) retires it — pinned by
+    /// testHistorySourceUnavailableClassification's structural counterpart.
+    func testTransientBackfillFailureStaysRetryable() async throws {
+        let backfillCalls = Counter()
+        let shouldFail = Flag()
+        let active = session("stored-a", alternateIDs: ["runtime-a"])
+        let harness = try makeHarness(
+            openSession: { _, _, _ in
+                SessionResumeResult(
+                    sessionId: "runtime-a",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { _, _ in
+                self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1880..<2000), offset: 0)
+            },
+            loadEarlierTranscriptPage: { _, _, offset in
+                backfillCalls.value += 1
+                if shouldFail.isOn {
+                    return .failed(DashboardTicketBridgeError.http(status: 429, detail: "Too Many Requests"))
+                }
+                return self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1760..<1880), offset: offset)
+            }
+        )
+        harness.appState.sessions = [active]
+        let opened = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(opened)
+
+        shouldFail.isOn = true
+        let didPrependFailure = await harness.appState.loadEarlierMessages()
+        XCTAssertFalse(didPrependFailure)
+        XCTAssertEqual(backfillCalls.value, 1)
+        XCTAssertEqual(
+            harness.appState.persistedTranscriptWindow?.canLoadEarlier,
+            true,
+            "A transient failure must keep the affordance retryable"
+        )
+        XCTAssertEqual(harness.appState.messages.count, 120, "A failed backfill must not touch the transcript")
+
+        shouldFail.isOn = false
+        let didPrependRetry = await harness.appState.loadEarlierMessages()
+        XCTAssertTrue(didPrependRetry)
+        XCTAssertEqual(backfillCalls.value, 2)
+        XCTAssertEqual(harness.appState.messages.count, 240)
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.canLoadEarlier, true)
+    }
+
+    /// A full page that dedupes to nothing (heavy offset drift) publishes no
+    /// transcript replacement but still advances coverage so the next tap
+    /// fetches genuinely older rows — and reports that nothing landed so the
+    /// viewport anchor is discharged rather than re-pinning later.
+    func testDuplicateOnlyPageAdvancesCoverageWithoutPrepending() async throws {
+        let active = session("stored-a", alternateIDs: ["runtime-a"])
+        let harness = try makeHarness(
+            openSession: { _, _, _ in
+                SessionResumeResult(
+                    sessionId: "runtime-a",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { _, _ in
+                self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1880..<2000), offset: 0)
+            },
+            loadEarlierTranscriptPage: { _, _, offset in
+                self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1880..<2000), offset: offset)
+            }
+        )
+        harness.appState.sessions = [active]
+        let opened = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(opened)
+
+        let didPrepend = await harness.appState.loadEarlierMessages()
+
+        XCTAssertFalse(didPrepend, "An all-duplicate page must not report a prepend")
+        XCTAssertEqual(harness.appState.messages.count, 120)
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.nextOffset, 240, "Coverage still advances past the held rows")
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.canLoadEarlier, true)
+    }
+
+    /// A malformed backfill payload retires the affordance without touching
+    /// the already-hydrated transcript.
+    func testMalformedBackfillPayloadRetiresAffordanceWithoutTouchingTranscript() async throws {
+        let active = session("stored-a", alternateIDs: ["runtime-a"])
+        let harness = try makeHarness(
+            openSession: { _, _, _ in
+                SessionResumeResult(
+                    sessionId: "runtime-a",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { _, _ in
+                self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1880..<2000), offset: 0)
+            },
+            loadEarlierTranscriptPage: { _, _, _ in
+                .payload(["session_id": "stored-a"])
+            }
+        )
+        harness.appState.sessions = [active]
+        let opened = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(opened)
+
+        let didPrepend = await harness.appState.loadEarlierMessages()
+
+        XCTAssertFalse(didPrepend)
+        XCTAssertEqual(harness.appState.messages.count, 120, "The transcript stays untouched")
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.canLoadEarlier, false, "A malformed page is a backfill dead end")
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.isLoadingEarlier, false)
+    }
+
+    /// The graft gate is alias-aware: a window opened under a runtime ID
+    /// survives a reconnect that reconciles under the catalog's stored ID.
+    func testGraftSurvivesRuntimeAliasReconcile() async throws {
+        let holdsRefreshedTail = Flag()
+        let active = session("stored-a", alternateIDs: ["runtime-a"])
+        let harness = try makeHarness(
+            openSession: { _, _, _ in
+                SessionResumeResult(
+                    sessionId: "runtime-a",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { _, _ in
+                if holdsRefreshedTail.isOn {
+                    return self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1900..<2020), offset: 0)
+                }
+                return self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1880..<2000), offset: 0)
+            },
+            loadEarlierTranscriptPage: { _, _, offset in
+                self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1760..<1880), offset: offset)
+            },
+            additionalOperations: { ops in
+                ops.connectClient = { _ in }
+                ops.loadCatalog = { _, _ in [active] }
+                ops.loadProfiles = {}
+                ops.loadBusyInputMode = { _ in }
+                ops.loadProfileDisplayPreferences = {}
+                ops.loadSlashCommands = {}
+            }
+        )
+        harness.appState.sessions = [active]
+        // Open under the runtime alias; the window is owned by "runtime-a".
+        let opened = await harness.appState.openSession("runtime-a")
+        XCTAssertTrue(opened)
+
+        await harness.appState.loadEarlierMessages()
+        XCTAssertEqual(harness.appState.messages.count, 240)
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.requestedSessionID, "runtime-a")
+
+        // The automatic reconnect reconciles under the catalog's stored ID;
+        // the alias-aware graft gate must still recognize the window.
+        holdsRefreshedTail.isOn = true
+        harness.coordinator.rememberSessionID("stored-a", for: "default")
+        await harness.appState.connect(
+            with: HermesConnection(baseUrl: "https://one.example", ticket: "alias-graft-ticket")
+        )
+
+        XCTAssertEqual(harness.appState.messages.count, 140 + 120, "Backfilled pages survive the alias reconcile")
+        XCTAssertEqual(harness.appState.messages.first?.content, "Row 1760")
+        XCTAssertEqual(harness.appState.messages.last?.content, "Row 2019")
+    }
+
     // MARK: - Harness
 
     private func makeHarness(
         openSession: @escaping @MainActor (HermesClient, String, Bool) async throws -> SessionResumeResult,
         persistedTranscript: (@MainActor (String, String) async -> PersistedTranscriptFetchOutcome)? = nil,
+        loadEarlierTranscriptPage: (@MainActor (String, String, Int) async -> PersistedTranscriptFetchOutcome)? = nil,
         additionalOperations: (inout ChatResumeLifecycleOperations) -> Void = { _ in }
     ) throws -> (appState: AppState, coordinator: ChatResumeCoordinator, defaults: UserDefaults) {
         let suite = "CompactResumeTranscriptTests.\(UUID().uuidString)"
@@ -757,7 +1490,8 @@ final class CompactResumeTranscriptTests: XCTestCase {
 
         var operations = ChatResumeLifecycleOperations(
             openSession: openSession,
-            persistedTranscript: persistedTranscript
+            persistedTranscript: persistedTranscript,
+            loadEarlierTranscriptPage: loadEarlierTranscriptPage
         )
         additionalOperations(&operations)
         let coordinator = ChatResumeCoordinator(store: ChatResumeStore(defaults: defaults))
@@ -792,5 +1526,61 @@ final class CompactResumeTranscriptTests: XCTestCase {
             isArchived: false,
             lineageRootId: nil
         )
+    }
+
+    // MARK: - Pagination fixtures
+
+    private final class Counter {
+        var value = 0
+    }
+
+    private final class Flag {
+        var isOn = false
+    }
+
+    /// One persisted transcript row exactly as the messages endpoint returns
+    /// it (numeric row id, chronological insertion order).
+    private func transcriptRow(
+        _ id: Int,
+        role: String,
+        content: String
+    ) -> [String: Any] {
+        [
+            "id": id,
+            "role": role,
+            "content": content,
+            "timestamp": String(format: "2026-09-01T%02d:%02d:00Z", 10 + (id / 60) % 10, id % 60)
+        ]
+    }
+
+    private func syntheticRows(_ range: Range<Int>) -> [[String: Any]] {
+        range.map { index in
+            transcriptRow(
+                index,
+                role: index.isMultiple(of: 2) ? "user" : "assistant",
+                content: "Row \(index)"
+            )
+        }
+    }
+
+    private func tailPagePayload(
+        sessionId: String,
+        rows: [[String: Any]],
+        offset: Int,
+        limit: Int? = 120,
+        order: String? = "latest"
+    ) -> PersistedTranscriptFetchOutcome {
+        var pagination: [String: Any] = ["offset": offset, "returned": rows.count]
+        if let limit {
+            pagination["limit"] = limit
+        }
+        if let order {
+            pagination["order"] = order
+        }
+        return .payload([
+            "session_id": sessionId,
+            "messages": rows,
+            "pagination": pagination
+        ])
     }
 }

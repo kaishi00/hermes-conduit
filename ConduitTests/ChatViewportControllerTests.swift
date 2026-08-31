@@ -2793,4 +2793,261 @@ extension ChatViewportControllerTests {
         XCTAssertTrue(inert.isEmpty)
         XCTAssertEqual(controller.generation, before)
     }
+
+    // MARK: - Older-page backfill anchoring
+
+    /// A controller in browsing ownership that armed the backfill anchor
+    /// emits exactly one unanimated prepend re-pin when the transcript
+    /// change carrying the older page lands, and never re-pins again.
+    func testBackfillAnchorPinsRowOnceWhenPrependLands() {
+        var controller = makeController(following: keyA)
+        _ = dragBegan(&controller, sessionKey: keyA)
+        _ = controller.userDragGestureEnded()
+        controller.olderPageBackfillRequested(anchorMessageID: "m5", sessionKey: keyA)
+
+        var messages = (0..<10).map { message("m\($0)", "row \($0)") }
+        let landed = controller.transcriptChanged(
+            messages: [message("m-older", "older row")] + messages,
+            transcriptRevision: 1,
+            viewportTransitionGeneration: 1,
+            activeSessionKey: keyA
+        )
+        let commands = scrollCommands(landed)
+        XCTAssertEqual(commands.count, 1, "The prepend landing emits exactly one re-pin")
+        guard case .prependAnchor(let anchorID)? = commands.first?.destination else {
+            return XCTFail("expected a prepend anchor command, got \(String(describing: commands.first?.destination))")
+        }
+        XCTAssertEqual(anchorID, "m5")
+        XCTAssertFalse(commands[0].animated, "The re-pin must be unanimated")
+        XCTAssertTrue(controller.isCommandCurrent(commands[0]), "The delayed re-pin retry re-validates against the same ownership")
+
+        // One-shot: the next transcript change (e.g. streaming growth) must
+        // not re-pin.
+        messages.append(message("m-new", "new row"))
+        let later = controller.transcriptChanged(
+            messages: messages,
+            transcriptRevision: 2,
+            viewportTransitionGeneration: 1,
+            activeSessionKey: keyA
+        )
+        XCTAssertTrue(scrollCommands(later).isEmpty, "The anchor is consumed by the first landing")
+    }
+
+    /// Following-latest never arms an anchor and never re-pins: content
+    /// inserted above cannot move the bottom-pinned viewport.
+    func testBackfillAnchorNeverArmsWhileFollowingLatest() {
+        var controller = makeController(following: keyA)
+        controller.olderPageBackfillRequested(anchorMessageID: "m5", sessionKey: keyA)
+        let effects = controller.transcriptChanged(
+            messages: [message("m-older", "older row"), message("m0", "row")],
+            transcriptRevision: 1,
+            viewportTransitionGeneration: 1,
+            activeSessionKey: keyA
+        )
+        let commands = scrollCommands(effects)
+        XCTAssertTrue(
+            commands.allSatisfy { command in
+                if case .prependAnchor = command.destination { return false }
+                return true
+            },
+            "No prepend re-pin may fire while following latest (bottom follow holds position)"
+        )
+    }
+
+    /// An armed anchor dies on a session switch or a fresh drag: the prepend
+    /// landing afterwards must not scroll for a conversation/gesture that
+    /// moved on.
+    func testBackfillAnchorDroppedOnSessionChangeAndNewDrag() {
+        var controller = makeController(following: keyA)
+        _ = dragBegan(&controller, sessionKey: keyA)
+        _ = controller.userDragGestureEnded()
+        controller.olderPageBackfillRequested(anchorMessageID: "m5", sessionKey: keyA)
+        // Session switch to an unrelated key disarms the anchor.
+        _ = controller.renderedSessionChanged(
+            to: keyB,
+            identity: identity(for: keyB),
+            viaNotification: false,
+            viewportTransitionGeneration: 1
+        )
+        let afterSwitch = controller.transcriptChanged(
+            messages: [message("m0", "row")],
+            transcriptRevision: 1,
+            viewportTransitionGeneration: 1,
+            activeSessionKey: keyB
+        )
+        XCTAssertTrue(
+            scrollCommands(afterSwitch).allSatisfy { command in
+                if case .prependAnchor = command.destination { return false }
+                return true
+            }
+        )
+
+        var controller2 = makeController(following: keyA)
+        _ = dragBegan(&controller2, sessionKey: keyA)
+        _ = controller2.userDragGestureEnded()
+        controller2.olderPageBackfillRequested(anchorMessageID: "m5", sessionKey: keyA)
+        _ = dragBegan(&controller2, sessionKey: keyA)
+        let afterDrag = controller2.transcriptChanged(
+            messages: [message("m0", "row")],
+            transcriptRevision: 1,
+            viewportTransitionGeneration: 1,
+            activeSessionKey: keyA
+        )
+        XCTAssertTrue(
+            scrollCommands(afterDrag).allSatisfy { command in
+                if case .prependAnchor = command.destination { return false }
+                return true
+            },
+            "A drag begun while the backfill was in flight disarms the anchor"
+        )
+    }
+
+    /// The re-pin's delayed retry dies once ownership generation moved on
+    /// (drag, explicit command, session switch).
+    func testPrependAnchorCommandCurrencyDiesWithGeneration() {
+        var controller = makeController(following: keyA)
+        _ = dragBegan(&controller, sessionKey: keyA)
+        _ = controller.userDragGestureEnded()
+        controller.olderPageBackfillRequested(anchorMessageID: "m5", sessionKey: keyA)
+        let effects = controller.transcriptChanged(
+            messages: [message("m-older", "older row"), message("m0", "row")],
+            transcriptRevision: 1,
+            viewportTransitionGeneration: 1,
+            activeSessionKey: keyA
+        )
+        guard let command = scrollCommands(effects).first,
+              case .prependAnchor = command.destination else {
+            return XCTFail("expected a prepend anchor command")
+        }
+        XCTAssertTrue(controller.isCommandCurrent(command))
+        _ = dragBegan(&controller, sessionKey: keyA)
+        XCTAssertFalse(
+            controller.isCommandCurrent(command),
+            "A generation bump after the landing kills the delayed re-pin"
+        )
+    }
+
+    /// An anchor armed for session A must not re-pin after the active
+    /// conversation became session B, even when the session-change observer
+    /// has not run yet (the one-update-turn disagreement between rendered
+    /// and active keys).
+    func testBackfillAnchorSkippedWhenActiveSessionMovedBeforeLanding() {
+        var controller = makeController(following: keyA)
+        _ = dragBegan(&controller, sessionKey: keyA)
+        _ = controller.userDragGestureEnded()
+        controller.olderPageBackfillRequested(anchorMessageID: "m5", sessionKey: keyA)
+        let effects = controller.transcriptChanged(
+            messages: [message("m0", "row")],
+            transcriptRevision: 1,
+            viewportTransitionGeneration: 1,
+            activeSessionKey: keyB
+        )
+        XCTAssertTrue(
+            scrollCommands(effects).allSatisfy { command in
+                if case .prependAnchor = command.destination { return false }
+                return true
+            },
+            "The anchor belongs to session A; no re-pin may fire against session B"
+        )
+    }
+
+    /// An armed anchor that outlived its backfill (nothing prepended) must
+    /// be dischargeable without scrolling, so a later unrelated transcript
+    /// change can never re-pin it. The discharge is scoped to the armed
+    /// session: a stale task must not clobber a newer conversation's anchor.
+    func testPrependAnchorDischargedWithoutPrependDoesNotPinLater() {
+        var controller = makeController(following: keyA)
+        _ = dragBegan(&controller, sessionKey: keyA)
+        _ = controller.userDragGestureEnded()
+        controller.olderPageBackfillRequested(anchorMessageID: "m5", sessionKey: keyA)
+        // A discharge naming a different session must not clobber the arm.
+        controller.prependAnchorDischarged(matching: keyB)
+        var effects = controller.transcriptChanged(
+            messages: [message("m-older", "older row"), message("m0", "row")],
+            transcriptRevision: 1,
+            viewportTransitionGeneration: 1,
+            activeSessionKey: keyA
+        )
+        XCTAssertEqual(
+            scrollCommands(effects).compactMap { command -> String? in
+                if case .prependAnchor(let id) = command.destination { return id }
+                return nil
+            },
+            ["m5"],
+            "The anchor survives a foreign-session discharge and still re-pins on the prepend"
+        )
+
+        var controller2 = makeController(following: keyA)
+        _ = dragBegan(&controller2, sessionKey: keyA)
+        _ = controller2.userDragGestureEnded()
+        controller2.olderPageBackfillRequested(anchorMessageID: "m5", sessionKey: keyA)
+        controller2.prependAnchorDischarged(matching: keyA)
+        effects = controller2.transcriptChanged(
+            messages: [message("m0", "row")],
+            transcriptRevision: 1,
+            viewportTransitionGeneration: 1,
+            activeSessionKey: keyA
+        )
+        XCTAssertTrue(
+            scrollCommands(effects).allSatisfy { command in
+                if case .prependAnchor = command.destination { return false }
+                return true
+            },
+            "A discharged anchor must not re-pin on a later unrelated transcript change"
+        )
+    }
+
+    /// Streaming growth (or any transcript change that does not replace the
+    /// front row) landing between the tap and the prepend must neither
+    /// consume the anchor nor re-pin early; only the prepend's front-row
+    /// replacement fires the re-pin.
+    func testBackfillAnchorSurvivesMidFlightSuffixChanges() {
+        var controller = makeController(following: keyA)
+        _ = dragBegan(&controller, sessionKey: keyA)
+        _ = controller.userDragGestureEnded()
+        // Rendered transcript before the tap (the cache already holds it).
+        _ = controller.transcriptChanged(
+            messages: [message("m0", "row 0"), message("m5", "row 5")],
+            transcriptRevision: 1,
+            viewportTransitionGeneration: 1,
+            activeSessionKey: keyA
+        )
+        controller.olderPageBackfillRequested(anchorMessageID: "m5", sessionKey: keyA)
+
+        // Mid-flight: an unrelated change updated content and appended a row
+        // behind the front row.
+        var effects = controller.transcriptChanged(
+            messages: [
+                message("m0", "row 0"),
+                message("m5", "row 5 (edited while backfill in flight)"),
+                message("m-new", "streaming row")
+            ],
+            transcriptRevision: 2,
+            viewportTransitionGeneration: 1,
+            activeSessionKey: keyA
+        )
+        XCTAssertTrue(
+            scrollCommands(effects).allSatisfy { command in
+                if case .prependAnchor = command.destination { return false }
+                return true
+            },
+            "A suffix change must not re-pin early or consume the anchor"
+        )
+
+        // The prepend lands: exactly one re-pin, anchored to m5.
+        effects = controller.transcriptChanged(
+            messages: [message("m-older", "older row"), message("m0", "row 0"), message("m5", "row 5 (edited while backfill in flight)"), message("m-new", "streaming row")],
+            transcriptRevision: 3,
+            viewportTransitionGeneration: 1,
+            activeSessionKey: keyA
+        )
+        XCTAssertEqual(
+            scrollCommands(effects).compactMap { command -> String? in
+                if case .prependAnchor(let id) = command.destination { return id }
+                return nil
+            },
+            ["m5"],
+            "The prepend still re-pins the originally visible row"
+        )
+    }
 }

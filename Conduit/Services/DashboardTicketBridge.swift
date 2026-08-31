@@ -132,6 +132,12 @@ enum DashboardTicketBridgeError: LocalizedError {
     /// 0) and fall back deliberately instead of treating them like unrelated
     /// server errors.
     case http(status: Int, detail: String)
+    /// The response exceeded the client's safe response bound
+    /// (`DataURLLimits.maxJSONResponseBytes`) before it could be parsed.
+    /// Distinguished from generic status-0 failures so callers can react to
+    /// a known-oversized history response without retrying the same giant
+    /// transcript over another transport.
+    case oversizedResponse(limit: Int)
 
     var errorDescription: String? {
         switch self {
@@ -143,6 +149,8 @@ enum DashboardTicketBridgeError: LocalizedError {
             return message
         case .http(_, let detail):
             return detail
+        case .oversizedResponse:
+            return "This conversation is too large to load safely with this Hermes version. Update Hermes to enable paginated conversation history."
         }
     }
 }
@@ -806,6 +814,18 @@ extension DashboardTicketBridge: WKScriptMessageHandler {
             return
         }
         let detail = payload["error"] as? String ?? "Dashboard request failed (\(status))."
+        // The injected fetch throws exactly one sentinel for a response that
+        // outgrew the safe bound (content-length or streamed bytes). It
+        // arrives here as a status-0 failure like every other JS-level
+        // error, but it is a known-oversized response, not transport
+        // trouble — give callers the typed condition so an oversized
+        // history read is never mistaken for a retryable network failure.
+        if status == 0, detail.contains("response_too_large") {
+            continuation.resume(throwing: DashboardTicketBridgeError.oversizedResponse(
+                limit: DataURLLimits.maxJSONResponseBytes
+            ))
+            return
+        }
         continuation.resume(throwing: DashboardTicketBridgeError.http(status: status, detail: detail))
     }
 }

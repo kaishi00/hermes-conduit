@@ -31,7 +31,17 @@ struct ChatResumeLifecycleOperations {
     var loadCatalog: (@MainActor (HermesClient, Bool) async throws -> [SessionSummary])?
     var mintTicket: (@MainActor (String) async throws -> String)?
     var openSession: (@MainActor (HermesClient, String, Bool) async throws -> SessionResumeResult)?
+    /// Seam for the initial persisted-history fetch. Receives BOTH the
+    /// bounded tail-page request and the legacy one-shot re-read (an echo
+    /// without the `order=latest` contract) — the query argument is built by
+    /// the production path builder and is not threaded through the seam, so
+    /// callables distinguish the two requests by call order (bounded first,
+    /// one-shot re-read second, at most once).
     var persistedTranscript: (@MainActor (String, String) async -> PersistedTranscriptFetchOutcome)?
+    /// Seam for older-page backfill requests only (`offset` = the window's
+    /// next offset). Distinct from `persistedTranscript` so backfill tests
+    /// never collide with initial-hydration fixtures.
+    var loadEarlierTranscriptPage: (@MainActor (String, String, Int) async -> PersistedTranscriptFetchOutcome)?
     var branchSession: (@MainActor (
         HermesClient,
         String,
@@ -69,6 +79,7 @@ struct ChatResumeLifecycleOperations {
         mintTicket: (@MainActor (String) async throws -> String)? = nil,
         openSession: (@MainActor (HermesClient, String, Bool) async throws -> SessionResumeResult)? = nil,
         persistedTranscript: (@MainActor (String, String) async -> PersistedTranscriptFetchOutcome)? = nil,
+        loadEarlierTranscriptPage: (@MainActor (String, String, Int) async -> PersistedTranscriptFetchOutcome)? = nil,
         branchSession: (@MainActor (
             HermesClient,
             String,
@@ -105,6 +116,7 @@ struct ChatResumeLifecycleOperations {
         self.mintTicket = mintTicket
         self.openSession = openSession
         self.persistedTranscript = persistedTranscript
+        self.loadEarlierTranscriptPage = loadEarlierTranscriptPage
         self.branchSession = branchSession
         self.setSessionTitle = setSessionTitle
         self.refreshContext = refreshContext
@@ -150,6 +162,10 @@ enum PersistedTranscriptOutcome {
 struct PersistedSessionTranscript {
     let resolvedSessionId: String?
     let messages: [ChatMessage]
+    /// Pagination echo of the response this transcript was parsed from.
+    /// Nil (or an echo without the `order=latest` tail contract) means the
+    /// backend served a one-shot full transcript.
+    var page: PersistedTranscriptPagination.PageInfo?
 }
 
 struct ComposerSubmissionContext: Equatable {
@@ -419,6 +435,11 @@ final class AppState: ObservableObject {
         }
     }
     @Published private(set) var activeSessionTitle = "New conversation"
+    /// Persisted-history pagination window of the active conversation.
+    /// Drives the "Load earlier messages" affordance; nil means the current
+    /// transcript is either a legacy one-shot hydration or not persisted-
+    /// history-backed at all, and no older pages exist to fetch.
+    @Published private(set) var persistedTranscriptWindow: PersistedTranscriptWindowState?
     @Published private(set) var isChatRefreshing = false
     @Published private(set) var chatResumeBehavior: ChatResumeBehavior = .continueWhereLeftOff
     @Published private(set) var chatReturnSurface: ChatReturnSurface = .conversation
@@ -1680,6 +1701,7 @@ final class AppState: ObservableObject {
         activeSessionId = nil
         activeSessionTitle = "New conversation"
         messages = []
+        persistedTranscriptWindow = nil
         clearStreamingText()
         resetReasoningTurn()
         activeSessionTitlesByProfile = [:]
@@ -2125,6 +2147,7 @@ final class AppState: ObservableObject {
         sessionCatalogCache.removeAll()
         pinnedSessionIDs = []
         messages = []
+        persistedTranscriptWindow = nil
         setActiveSessionState(id: nil, title: "New conversation")
         clearStreamingText()
         resetReasoningTurn()
@@ -2776,6 +2799,41 @@ final class AppState: ObservableObject {
                     resumedSessionId: result.sessionId
                 )
             } ?? false
+
+            // Persisted-history window bookkeeping. The window describes the
+            // REST-fetched display history only — runtime state above is
+            // untouched. A pagination echo carrying the `order=latest` tail
+            // contract opens the bounded window; a legacy one-shot hydration
+            // (or a hydration that failed the session-identity gate) leaves
+            // no window, because no older page exists to fetch.
+            //
+            // The refresh resets coverage to the fetched page even when the
+            // graft below kept older rows. The next backfills then retrace
+            // the backfilled prefix in page-sized increments, each deduped
+            // against held rows, until coverage catches up — harmless
+            // duplicate requests that self-correct, never gaps. Under-
+            // counting is the safe direction: trusting the prior coverage
+            // after a server-side rewrite could silently skip rows. A
+            // conversation that was already fully backfilled re-lights the
+            // affordance once and re-retires on its first terminal page.
+            //
+            // Capture the pre-reconcile transcript and window for the graft
+            // decision below before either is replaced.
+            let previousTranscriptMessages = messages
+            let priorWindow = persistedTranscriptWindow
+            if let transcript, transcriptMatches, let page = transcript.page,
+               page.honorsTailContract {
+                persistedTranscriptWindow = PersistedTranscriptWindowState(
+                    requestedSessionID: sessionId,
+                    profile: profile,
+                    pageSize: PersistedTranscriptPagination.pageSize,
+                    resolvedSessionID: transcript.resolvedSessionId ?? result.sessionId,
+                    nextOffset: page.rawReturned,
+                    canLoadEarlier: page.mayHaveOlderRows(fetchedRowCount: page.rawReturned)
+                )
+            } else {
+                persistedTranscriptWindow = nil
+            }
             if let transcript, transcriptMatches, result.snapshot.hasLiveProjection, !transcript.messages.isEmpty {
                 // Desktop keeps its live projection during an active turn. Seed
                 // the same durable presentation details first so the completed
@@ -2798,9 +2856,21 @@ final class AppState: ObservableObject {
                 && (!result.snapshot.hasLiveProjection || !resumeCarriedTranscript)
             let presentationResult: SessionResumeResult
             if let transcript, shouldUsePersistedTranscript {
+                // A re-reconciliation replaces only the newest page. Keep
+                // everything "Load earlier messages" already backfilled by
+                // re-anchoring the refreshed tail onto the older prefix;
+                // without this, any reconnect during a browsed long session
+                // would silently truncate the visible history back to one
+                // page.
+                let graftedTail = PersistedTranscriptWindow.grafting(
+                    refreshedTail: transcript.messages,
+                    ontoBackfilled: previousTranscriptMessages,
+                    window: priorWindowOwnsThisConversation(priorWindow, requestedSessionId: sessionId, profile: profile)
+                        ? priorWindow : nil
+                )
                 presentationResult = SessionResumeResult(
                     sessionId: result.sessionId,
-                    messages: transcript.messages,
+                    messages: graftedTail,
                     snapshot: result.snapshot
                 )
             } else {
@@ -2955,7 +3025,15 @@ final class AppState: ObservableObject {
                 return false
             }
             turnState = .reconnecting
-            errorMessage = "Failed to restore this conversation: \(error.localizedDescription)"
+            if case DashboardTicketBridgeError.oversizedResponse = error {
+                // A known-oversized one-shot history response from an old
+                // backend: retrying the same giant transcript over the
+                // bounded WebSocket is not a recovery. Surface the
+                // controlled compatibility error instead.
+                errorMessage = error.localizedDescription
+            } else {
+                errorMessage = "Failed to restore this conversation: \(error.localizedDescription)"
+            }
             settleReconciliation(token, automaticSyncOperationID: automaticSyncOperationID)
             chatResumeCoordinator.abandonPendingAutomaticSync()
             return false
@@ -3045,6 +3123,7 @@ final class AppState: ObservableObject {
             markChatViewportReplacement()
             setActiveSessionState(id: runtimeSessionID, title: "New conversation")
             messages = []
+            persistedTranscriptWindow = nil
             noteChatViewportTranscriptReplacement()
             clearStreamingText()
             activeAssistantMessageId = nil
@@ -4525,6 +4604,7 @@ final class AppState: ObservableObject {
         markChatViewportReplacement()
         setActiveSessionState(id: nil, title: "New conversation")
         messages = []
+        persistedTranscriptWindow = nil
         clearStreamingText()
         activeAssistantMessageId = nil
         resetReasoningTurn()
@@ -4603,6 +4683,7 @@ final class AppState: ObservableObject {
         let acceptedSessionIDs = knownSessionIDs(for: sessionId)
         setActiveSessionState(id: sessionId)
         messages = []
+        persistedTranscriptWindow = nil
         clearStreamingText()
         activeAssistantMessageId = nil
         resetReasoningTurn()
@@ -6109,30 +6190,25 @@ final class AppState: ObservableObject {
     /// reconciliation distinguish a missing history source — which triggers
     /// the legacy full-transcript resume — from an unrelated failure, which
     /// must surface instead of silently degrading.
+    ///
+    /// The request is explicitly bounded (tail-anchored page of
+    /// `PersistedTranscriptPagination.pageSize` rows) so the transport and
+    /// normalization cost of opening a conversation is bounded no matter how
+    /// large the session grew. A response that carries the `order=latest`
+    /// pagination echo answers under the paginated tail contract; one
+    /// without it is a legacy one-shot full transcript and hydrates as
+    /// before.
     private func persistedTranscriptOutcome(
         sessionId: String,
         profile: String,
         using bridge: DashboardTicketBridge?
     ) async -> PersistedTranscriptOutcome {
-        let fetchOutcome: PersistedTranscriptFetchOutcome
-        if let persistedTranscript = chatResumeLifecycleOperations.persistedTranscript {
-            fetchOutcome = await persistedTranscript(sessionId, profile)
-        } else {
-            guard let bridge else { return .unavailable }
-            do {
-                fetchOutcome = .payload(try await bridge.requestJSON(
-                    path: sessionMessagesPath(sessionId: sessionId, profile: profile)
-                ))
-            } catch {
-                // requestJSON's readiness poll is the bounded wait for a cold
-                // or reloading bridge; whatever it raises is classified with
-                // the seam-sourced failures below. Note the bridge caps REST
-                // response size (DataURLLimits.maxJSONResponseBytes), so an
-                // oversized transcript also lands here rather than silently
-                // degrading the resume.
-                fetchOutcome = .failed(error)
-            }
-        }
+        let fetchOutcome = await fetchPersistedHistoryPayload(
+            sessionId: sessionId,
+            profile: profile,
+            query: PersistedTranscriptPagination.tailQuery(offset: 0),
+            using: bridge
+        )
 
         switch fetchOutcome {
         case .unavailable:
@@ -6142,8 +6218,9 @@ final class AppState: ObservableObject {
             // structural endpoint gaps, a bridge that never became ready
             // inside its bounded poll, and transient transport trouble
             // (429, 5xx, status-0 WebKit/network failures, request timeouts)
-            // degrade to the single legacy resume; authentication and every
-            // other failure must surface instead of silently degrading.
+            // degrade to the single legacy resume; authentication, a known-
+            // oversized one-shot history response, and every other failure
+            // must surface instead of silently degrading.
             if Self.historySourceIsUnavailable(error) {
                 sessionCatalogLog.debug("Persisted transcript unavailable for \(sessionId, privacy: .public): \(error.localizedDescription, privacy: .public)")
                 return .unavailable
@@ -6151,22 +6228,90 @@ final class AppState: ObservableObject {
             sessionCatalogLog.debug("Persisted transcript failed for \(sessionId, privacy: .public): \(error.localizedDescription, privacy: .public)")
             return .failed(error)
         case .payload(let response):
-            // The dashboard server returns `messages`; the API-server variant
-            // returns `data`, so accept both public Hermes response shapes.
-            let rawMessages = ["messages", "data", "_array"]
-                .compactMap { response[$0] as? [Any] }
-                .first
-            guard let rawMessages else {
+            guard let rawMessages = Self.persistedMessageRows(in: response) else {
                 return .failed(HermesError.invalidResponse)
             }
+            let page = PersistedTranscriptPagination.parse(response, rawRowCount: rawMessages.count)
 
-            let resolvedSessionId = (response["session_id"] as? String)
-                ?? (response["sessionId"] as? String)
+            // A pagination echo WITHOUT the `order=latest` tail contract
+            // describes a backend that pages from the oldest end: honoring
+            // its offsets would walk the transcript forward from row zero
+            // and never reach the newest rows. Re-read one-shot — the exact
+            // request pre-pagination Conduit made — and treat the response
+            // as the legacy full transcript. Shape-detected from the echo,
+            // never version-sniffed, and performed at most once.
+            if let page, !page.honorsTailContract {
+                let oneShotOutcome = await fetchPersistedHistoryPayload(
+                    sessionId: sessionId,
+                    profile: profile,
+                    query: PersistedTranscriptPagination.legacyQuery,
+                    using: bridge
+                )
+                switch oneShotOutcome {
+                case .payload(let fullResponse):
+                    guard let fullRows = Self.persistedMessageRows(in: fullResponse) else {
+                        return .failed(HermesError.invalidResponse)
+                    }
+                    return .hydrated(PersistedSessionTranscript(
+                        resolvedSessionId: Self.resolvedSessionId(in: fullResponse) ?? Self.resolvedSessionId(in: response),
+                        messages: MessageNormalizer.normalizeMessages(fullRows.map(AnyCodable.from)),
+                        page: nil
+                    ))
+                case .unavailable:
+                    return .unavailable
+                case .failed(let error):
+                    if Self.historySourceIsUnavailable(error) {
+                        return .unavailable
+                    }
+                    return .failed(error)
+                }
+            }
+
+            // The dashboard server returns `messages`; the API-server variant
+            // returns `data`, so accept both public Hermes response shapes.
             return .hydrated(PersistedSessionTranscript(
-                resolvedSessionId: resolvedSessionId,
-                messages: MessageNormalizer.normalizeMessages(rawMessages.map(AnyCodable.from))
+                resolvedSessionId: Self.resolvedSessionId(in: response),
+                messages: MessageNormalizer.normalizeMessages(rawMessages.map(AnyCodable.from)),
+                page: page
             ))
         }
+    }
+
+    private func fetchPersistedHistoryPayload(
+        sessionId: String,
+        profile: String,
+        query: String,
+        using bridge: DashboardTicketBridge?
+    ) async -> PersistedTranscriptFetchOutcome {
+        if let persistedTranscript = chatResumeLifecycleOperations.persistedTranscript {
+            return await persistedTranscript(sessionId, profile)
+        }
+        guard let bridge else { return .unavailable }
+        do {
+            return .payload(try await bridge.requestJSON(
+                path: Self.sessionMessagesPath(sessionId: sessionId, profile: profile, query: query)
+            ))
+        } catch {
+            // requestJSON's readiness poll is the bounded wait for a cold
+            // or reloading bridge; whatever it raises is classified with
+            // the seam-sourced failures below. Note the bridge caps REST
+            // response size (DataURLLimits.maxJSONResponseBytes), so an
+            // oversized transcript also lands here rather than silently
+            // degrading the resume.
+            return .failed(error)
+        }
+    }
+
+    /// The dashboard server returns `messages`; the API-server variant
+    /// returns `data`, so accept both public Hermes response shapes.
+    nonisolated static func persistedMessageRows(in response: [String: Any]) -> [Any]? {
+        ["messages", "data", "_array"]
+            .compactMap { response[$0] as? [Any] }
+            .first
+    }
+
+    nonisolated static func resolvedSessionId(in response: [String: Any]) -> String? {
+        (response["session_id"] as? String) ?? (response["sessionId"] as? String)
     }
 
     /// Classifies a history-fetch failure for the resume fallback. Everything
@@ -6179,14 +6324,19 @@ final class AppState: ObservableObject {
     ///    poll, or a request that outlived its deadline (both funnel into
     ///    `.notReady` by the bridge's error contract);
     ///  - transient transport trouble — HTTP 408/429, any 5xx (which
-    ///    subsumes 501), and status 0 (WebKit-level network/abort failures,
-    ///    including response caps).
+    ///    subsumes 501), and status 0 (WebKit-level network/abort failures).
+    ///
+    /// A known-oversized one-shot history response is deliberately NOT
+    /// classified here: retrying the same giant transcript over the bounded
+    /// WebSocket is not a recovery, so the typed oversized condition
+    /// surfaces its controlled compatibility error instead.
     ///
     /// Client-originated request/bridge timeouts always arrive through one of
     /// the status-0/`.notReady` funnels above; other authentication (401/403 →
     /// `.signInRequired`) and every unlisted error is a real failure that must
     /// propagate instead of silently degrading the resume into a fallback.
     nonisolated static func historySourceIsUnavailable(_ error: Error) -> Bool {
+        if case DashboardTicketBridgeError.oversizedResponse = error { return false }
         if case DashboardTicketBridgeError.notReady = error { return true }
         guard case let DashboardTicketBridgeError.http(status, _) = error else { return false }
         switch status {
@@ -6196,9 +6346,192 @@ final class AppState: ObservableObject {
         }
     }
 
-    private func sessionMessagesPath(sessionId: String, profile: String) -> String {
+    /// Classifies a backfill failure for affordance retirement: only a
+    /// history source that is structurally gone retires "Load earlier
+    /// messages" — the endpoint disappeared (404/410), the bridge never
+    /// became ready, or the server is failing (5xx). Transient transport
+    /// trouble (408/429, status-0 WebKit failures) and every other failure
+    /// stay retryable through another explicit tap — a failed backfill never
+    /// loops on its own.
+    nonisolated static func historySourceIsStructurallyGone(_ error: Error) -> Bool {
+        if case DashboardTicketBridgeError.notReady = error { return true }
+        guard case let DashboardTicketBridgeError.http(status, _) = error else { return false }
+        switch status {
+        case 404, 410: return true
+        case 500...599: return true
+        default: return false
+        }
+    }
+
+    nonisolated static func sessionMessagesPath(
+        sessionId: String,
+        profile: String,
+        query: String
+    ) -> String {
         let encodedSessionId = sessionId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? sessionId
-        return dashboardPath("/api/sessions/\(encodedSessionId)/messages", profile: profile)
+        return DashboardPath.withProfile(
+            "/api/sessions/\(encodedSessionId)/messages\(query)",
+            profile: profile
+        )
+    }
+
+    private func priorWindowOwnsThisConversation(
+        _ window: PersistedTranscriptWindowState?,
+        requestedSessionId: String,
+        profile: String
+    ) -> Bool {
+        guard let window, window.profile == profile else { return false }
+        if window.requestedSessionID == requestedSessionId { return true }
+        // Alias-aware, exactly like the backfill ownership gate: the window
+        // may have been opened under a runtime ID while this reconcile runs
+        // under the catalog's stored ID (or vice versa).
+        return knownSessionIDs(for: requestedSessionId).contains(window.requestedSessionID)
+            || knownSessionIDs(for: window.requestedSessionID).contains(requestedSessionId)
+    }
+
+    /// Fetches the next older persisted-history page for the active
+    /// conversation and prepends it, keeping the user's visible position
+    /// stable (ChatView anchors the prepend through the viewport controller).
+    /// Strictly user-driven and single-flight: one explicit request at a
+    /// time, owned by the window identity captured at request time, and a
+    /// response from a session/profile that is no longer current is
+    /// discarded without touching state.
+    ///
+    /// Returns whether a prepend actually published — the view discharges
+    /// its viewport anchor when nothing landed, so an armed anchor can never
+    /// re-pin on some later unrelated transcript change.
+    @discardableResult
+    func loadEarlierMessages() async -> Bool {
+        guard let window = persistedTranscriptWindow,
+              window.canLoadEarlier,
+              !window.isLoadingEarlier,
+              persistedTranscriptWindowOwnershipIsCurrent(
+                requestedSessionId: window.requestedSessionID,
+                profile: window.profile
+              ) else {
+            return false
+        }
+        let requestSessionId = window.requestedSessionID
+        let profile = window.profile
+        let offset = window.nextOffset
+        var arming = window
+        arming.isLoadingEarlier = true
+        persistedTranscriptWindow = arming
+
+        let outcome = await fetchOlderTranscriptPage(
+            sessionId: requestSessionId,
+            profile: profile,
+            offset: offset
+        )
+
+        // Stale-response guard: the window must still be this exact
+        // request's window (same session, same profile, still loading, and
+        // no other fetch advanced it meanwhile). Anything else — session
+        // switch, profile switch, disconnect re-home — discards the page.
+        guard var current = persistedTranscriptWindow,
+              current.requestedSessionID == requestSessionId,
+              current.profile == profile,
+              current.isLoadingEarlier,
+              current.nextOffset == offset,
+              persistedTranscriptWindowOwnershipIsCurrent(
+                requestedSessionId: requestSessionId,
+                profile: profile
+              ) else {
+            return false
+        }
+        current.isLoadingEarlier = false
+        defer { persistedTranscriptWindow = current }
+
+        switch outcome {
+        case .payload(let response):
+            guard let rawRows = Self.persistedMessageRows(in: response) else {
+                // A malformed page is a backfill dead end, not a chat
+                // failure: stop offering older pages rather than erroring
+                // the already-hydrated conversation.
+                sessionCatalogLog.debug("Older-page backfill for \(requestSessionId, privacy: .public) returned a malformed payload; retiring the affordance")
+                current.canLoadEarlier = false
+                return false
+            }
+            let fetchedRowCount = rawRows.count
+            let page = PersistedTranscriptPagination.parse(response, rawRowCount: fetchedRowCount)
+            // Only pages still answering under the tail contract may splice
+            // into the transcript: a response whose echo lost `order=latest`
+            // carries oldest-anchored rows with unknown window semantics,
+            // and prepending them would break chronology. That response
+            // retires the affordance instead.
+            guard let page, page.honorsTailContract else {
+                sessionCatalogLog.debug("Older-page backfill for \(requestSessionId, privacy: .public) lost the tail contract; retiring the affordance")
+                current.canLoadEarlier = false
+                return false
+            }
+            var didPrepend = false
+            if fetchedRowCount > 0 {
+                let olderPage = MessageNormalizer.normalizeMessages(rawRows.map(AnyCodable.from))
+                if let merged = PersistedTranscriptWindow.prepending(olderPage, onto: messages) {
+                    messages = merged
+                    didPrepend = true
+                }
+            }
+            // A full page means older history may still exist; a short or
+            // empty page marks the transcript fully backfilled and retires
+            // the affordance. The offset advances by the fetched row count
+            // either way, which self-corrects drift: a page that deduped to
+            // nothing still moves the next request past the already-held
+            // rows.
+            current.nextOffset = offset + fetchedRowCount
+            current.canLoadEarlier = fetchedRowCount > 0
+                && page.mayHaveOlderRows(fetchedRowCount: fetchedRowCount)
+            return didPrepend
+        case .unavailable:
+            // The history source went away mid-conversation; there is no
+            // older page to offer.
+            current.canLoadEarlier = false
+            return false
+        case .failed(let error):
+            // Only a structurally gone history source retires the
+            // affordance; transient transport trouble stays retryable
+            // through another explicit tap — a failed backfill never loops
+            // on its own.
+            sessionCatalogLog.debug("Older-page backfill failed for \(requestSessionId, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            current.canLoadEarlier = !Self.historySourceIsStructurallyGone(error)
+            return false
+        }
+    }
+
+    private func fetchOlderTranscriptPage(
+        sessionId: String,
+        profile: String,
+        offset: Int
+    ) async -> PersistedTranscriptFetchOutcome {
+        if let loadEarlierTranscriptPage = chatResumeLifecycleOperations.loadEarlierTranscriptPage {
+            return await loadEarlierTranscriptPage(sessionId, profile, offset)
+        }
+        // Backfill never falls through to the initial-hydration seam: that
+        // seam cannot carry the offset, and a test wiring mistake would
+        // otherwise become a silent always-duplicate affordance.
+        guard let bridge = dashboardTicketBridge else { return .unavailable }
+        do {
+            return .payload(try await bridge.requestJSON(path: Self.sessionMessagesPath(
+                sessionId: sessionId,
+                profile: profile,
+                query: PersistedTranscriptPagination.tailQuery(offset: offset)
+            )))
+        } catch {
+            return .failed(error)
+        }
+    }
+
+    /// Ownership gate for the backfill: the window's session and profile
+    /// must still be the active conversation (alias-aware, since the
+    /// endpoint may resolve a runtime ID to its stored ID).
+    private func persistedTranscriptWindowOwnershipIsCurrent(
+        requestedSessionId: String,
+        profile: String
+    ) -> Bool {
+        guard profile == activeProfile, let activeId = activeSessionId else { return false }
+        if activeId == requestedSessionId { return true }
+        return knownSessionIDs(for: activeId).contains(requestedSessionId)
+            || knownSessionIDs(for: requestedSessionId).contains(activeId)
     }
 
     /// The endpoint may resolve a runtime ID to its stored session ID. Accept
@@ -6637,6 +6970,7 @@ final class AppState: ObservableObject {
         projectsLoading = false
         slashCommands = Self.builtInSlashCommands
         messages = []
+        persistedTranscriptWindow = nil
         clearStreamingText()
         resetReasoningTurn()
         // The next profile's approval mode is unknown until its first session
