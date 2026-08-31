@@ -266,6 +266,36 @@ final class NativeAuthClientTests: XCTestCase {
         ))
     }
 
+    func testHTTPLANDashboardNeverReceivesCloudflareHeadersDespiteConfiguredToken() async throws {
+        // A plain-HTTP trusted-LAN dashboard with a (stale or misconfigured)
+        // Cloudflare token still configured: ordinary local authentication
+        // must work, and none of the native requests may carry the
+        // credentials.
+        let client = NativeAuthClient(
+            baseURL: "http://192.168.1.202:9119",
+            cloudflareAccess: CloudflareAccessCredentials(
+                clientID: "lan-client-id",
+                clientSecret: "lan-client-secret"
+            ),
+            sessionConfiguration: makeSessionConfiguration()
+        )
+
+        _ = try await client.authProviders()
+        let connection = try await client.connect(username: "chris", password: "correct-password")
+
+        XCTAssertEqual(connection.ticket, "lan-ticket")
+        for path in ["/api/auth/providers", "/auth/password-login", "/api/auth/ws-ticket"] {
+            XCTAssertNil(
+                NativeAuthURLProtocol.requestHeader(forPath: path, name: "CF-Access-Client-Id"),
+                "\(path) over cleartext HTTP must not carry the service-token id"
+            )
+            XCTAssertNil(
+                NativeAuthURLProtocol.requestHeader(forPath: path, name: "CF-Access-Client-Secret"),
+                "\(path) over cleartext HTTP must not carry the service-token secret"
+            )
+        }
+    }
+
     func testCancelledConnectSurfacesAsCancellationError() async throws {
         let client = NativeAuthClient(
             baseURL: "https://cancel.example",
@@ -418,6 +448,7 @@ private final class NativeAuthURLProtocol: URLProtocol {
         return [
             "192.168.1.200",
             "192.168.1.201",
+            "192.168.1.202",
             "redirect.example",
             "providers.example",
             "server-error.example",
@@ -590,6 +621,30 @@ private final class NativeAuthURLProtocol: URLProtocol {
                     statusCode: 200,
                     headers: ["Content-Type": "application/json"],
                     body: Data(#"{"ticket":"fresh-ticket"}"#.utf8)
+                )
+            default:
+                return nil
+            }
+        case "192.168.1.202":
+            // Plain-HTTP LAN dashboard: succeeds for ordinary Hermes auth
+            // regardless of any configured Cloudflare token.
+            switch request.url?.path {
+            case "/api/auth/providers":
+                return Fixture(statusCode: 200, headers: [:], body: providerBody())
+            case "/auth/password-login":
+                return Fixture(
+                    statusCode: 200,
+                    headers: [
+                        "Content-Type": "application/json",
+                        "Set-Cookie": "hermes_session_at=lan-flow-token; Path=/; HttpOnly"
+                    ],
+                    body: Data(#"{"ok":true,"next":"/"}"#.utf8)
+                )
+            case "/api/auth/ws-ticket":
+                return Fixture(
+                    statusCode: 200,
+                    headers: ["Content-Type": "application/json"],
+                    body: Data(#"{"ticket":"lan-ticket"}"#.utf8)
                 )
             default:
                 return nil
