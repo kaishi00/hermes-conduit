@@ -1676,6 +1676,104 @@ final class CompactResumeTranscriptTests: XCTestCase {
         XCTAssertTrue(harness.appState.persistedTranscriptWindow?.hasBackfilledPrefix ?? false)
     }
 
+    /// A single assistant turn can carry any number of tool calls. A page
+    /// boundary splitting one 12-call run from its 12 result rows must
+    /// reconstruct every pair — no pair ceiling, no orphan standalone
+    /// results, one completed card per durable tool_call_id.
+    func testTwelveToolCallRunSplitAcrossPageBoundaryReconstructsFully() async throws {
+        let callCount = 12
+        let active = session("stored-a", alternateIDs: ["runtime-a"])
+        let harness = try makeHarness(
+            openSession: { _, _, _ in
+                SessionResumeResult(
+                    sessionId: "runtime-a",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { _, _ in
+                // Newer page: 12 unmatched result rows (their call row is on
+                // the older page) followed by the untouched loaded tail.
+                let resultRows = (1...callCount).map { index -> [String: Any] in
+                    var row = self.transcriptRow(1879 + index, role: "tool", content: "body \(index)")
+                    row["tool_call_id"] = "call_\(index)"
+                    row["name"] = "read_file"
+                    return row
+                }
+                let rows = resultRows + self.syntheticRows((1880 + callCount)..<2000)
+                return self.tailPagePayload(sessionId: "stored-a", rows: rows, offset: 0)
+            },
+            loadEarlierTranscriptPage: { _, _, offset in
+                // Older page: 111 conversational rows, then ONE assistant
+                // row carrying all 12 tool calls as its final row.
+                var callRow = self.transcriptRow(1879, role: "assistant", content: "")
+                callRow["tool_calls"] = (1...callCount).map { index in
+                    [
+                        "id": "call_\(index)",
+                        "type": "function",
+                        "function": [
+                            "name": "read_file",
+                            "arguments": "{\"path\": \"/tmp/row\(index)\"}"
+                        ]
+                    ]
+                }
+                let rows = self.syntheticRows(1768..<1879) + [callRow]
+                return self.tailPagePayload(sessionId: "stored-a", rows: rows, offset: offset)
+            }
+        )
+        harness.appState.sessions = [active]
+        let opened = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(opened)
+        // Every unmatched result hydrates as a standalone card on the newer
+        // page (their call row is not in that page).
+        XCTAssertEqual(harness.appState.messages.count, 120)
+        XCTAssertEqual(
+            harness.appState.messages.prefix(callCount).compactMap { $0.tool?.id },
+            (1...callCount).map { "call_\($0)" }
+        )
+
+        await harness.appState.loadEarlierMessages()
+
+        let messages = harness.appState.messages
+        XCTAssertEqual(
+            messages.count,
+            (111 + callCount) + (120 - callCount),
+            "123 adjusted older-page messages prepended onto the 108 held rows left after the 12 folds"
+        )
+        let callCards = messages.filter { $0.role == .tool && $0.tool?.id?.hasPrefix("call_") == true }
+        XCTAssertEqual(callCards.count, callCount, "Exactly one logical card per durable tool_call_id")
+        XCTAssertEqual(
+            Set(callCards.compactMap { $0.tool?.id }),
+            Set((1...callCount).map { "call_\($0)" }),
+            "No duplicate tool-call identities"
+        )
+        for index in 1...callCount {
+            let card = messages.first { $0.tool?.id == "call_\(index)" }
+            XCTAssertNotNil(card, "call_\(index) must have its card")
+            XCTAssertEqual(card?.id, "1879.0-tool-\(index - 1)")
+            XCTAssertEqual(card?.tool?.name, "read_file")
+            XCTAssertEqual(card?.tool?.input, "{\"path\": \"/tmp/row\(index)\"}")
+            XCTAssertEqual(card?.tool?.output, "body \(index)")
+            XCTAssertEqual(card?.tool?.status, .complete)
+        }
+        // The dropped standalone result cards occupied row ids 1880–1891.
+        let orphanIDs = Set((1880...(1879 + callCount)).map { "\($0).0" })
+        XCTAssertFalse(
+            messages.contains { orphanIDs.contains($0.id) },
+            "No orphan standalone result card may remain"
+        )
+        // Chronology stays intact across the fold, and the loaded newer
+        // tail after the tool results is untouched.
+        let rowIndexes = messages.compactMap { message -> Int? in
+            guard message.content.hasPrefix("Row ") else { return nil }
+            return Int(message.content.dropFirst(4))
+        }
+        XCTAssertEqual(rowIndexes, Array(1768...1878) + Array((1880 + callCount)...1999))
+        XCTAssertEqual(messages[110].content, "Row 1878", "Last conversational row before the call block")
+        XCTAssertEqual(messages[111 + callCount].content, "Row 1892", "The newer tail resumes immediately after the folded block")
+        XCTAssertTrue(harness.appState.persistedTranscriptWindow?.hasBackfilledPrefix ?? false)
+    }
+
     // MARK: - Harness
 
     private func makeHarness(

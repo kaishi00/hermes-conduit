@@ -214,11 +214,16 @@ enum PersistedTranscriptWindow {
     ) -> (olderPage: [ChatMessage], foldedFromHeld: Int) {
         var adjusted = olderPage
         var folded = 0
-        let maximumBoundaryPairs = 8
-        while folded < maximumBoundaryPairs {
+        // Bounded by the loaded inputs, with no arbitrary pair ceiling — a
+        // single assistant turn can carry any number of tool calls. Each
+        // iteration consumes exactly one held row and stops at the first
+        // held row that is not a foldable result, so the scan covers only
+        // the contiguous boundary region (at most the held transcript's
+        // length; call cards and their results are matched by durable ID,
+        // never by position or name).
+        while folded < held.count {
             let heldIndex = folded
-            guard heldIndex < held.count,
-                  held[heldIndex].role == .tool,
+            guard held[heldIndex].role == .tool,
                   let resultTool = held[heldIndex].tool,
                   resultTool.status == .complete,
                   let callID = resultTool.id, !callID.isEmpty,
