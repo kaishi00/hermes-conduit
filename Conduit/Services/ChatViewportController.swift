@@ -17,6 +17,9 @@ struct ChatViewportCommand: Equatable {
         case bottom(anchorID: String)
         case top(anchorID: String, request: Int)
         case message(id: String)
+        /// Re-pin the viewport to the row the user was looking at before an
+        /// older-history page was prepended above it.
+        case prependAnchor(id: String)
     }
 
     enum Retry: Equatable {
@@ -42,6 +45,16 @@ enum ChatViewportEffect: Equatable {
     /// executes it on a later MainActor turn (see
     /// ChatViewportController.followCorrectionDue).
     case scheduleFollowCorrection(ChatFollowCorrectionToken)
+}
+
+/// A "Load earlier messages" backfill that is in flight: the transcript row
+/// the user is currently looking at, captured at request time. When the
+/// transcript change carrying the prepended older page lands, the controller
+/// pins this row back to the viewport top so the prepend never visually
+/// jumps the transcript.
+struct ChatPrependAnchorRequest: Equatable {
+    let messageID: String?
+    let sessionKey: ChatScrollSessionKey?
 }
 
 /// Identity of one outstanding coalesced follow correction: the ownership
@@ -166,6 +179,9 @@ struct ChatViewportController: Equatable {
     private var followCorrectionContentBottom: CGFloat?
     private(set) var notificationHandoff: ChatViewportHandoffState?
     private(set) var restoration: RestorationState?
+    /// Armed while an older-page backfill is in flight; consumed by the
+    /// transcript change that carries the prepend.
+    private(set) var pendingPrependAnchor: ChatPrependAnchorRequest?
 
     let nearBottomTolerance: CGFloat
     let followDriftTolerance: CGFloat
@@ -290,6 +306,7 @@ struct ChatViewportController: Equatable {
             effects.append(contentsOf: invalidateDrag(hasActiveGesture: dragGestureActive))
             generation &+= 1
             pendingFollowCorrection = nil
+            pendingPrependAnchor = nil
             followCorrectionContentBottom = nil
         followCorrectionLastExecutionAt = nil
         }
@@ -327,6 +344,53 @@ struct ChatViewportController: Equatable {
         return []
     }
 
+    // MARK: - Older-page backfill anchoring
+
+    /// Arms the viewport to hold position across an older-history prepend.
+    /// `anchorMessageID` is the transcript row the user is currently looking
+    /// at (the controller's stable-top observation). When the transcript
+    /// change carrying the prepended page lands, exactly one unanimated
+    /// scroll re-pins that row to the viewport top.
+    ///
+    /// Following-latest never arms: content inserted above cannot move the
+    /// bottom-pinned viewport, so the existing follow system already holds
+    /// position. Restoration and notification handoff likewise own the
+    /// viewport and are not fought.
+    mutating func olderPageBackfillRequested(
+        anchorMessageID: String?,
+        sessionKey: ChatScrollSessionKey?
+    ) {
+        guard mode != .followingLatest,
+              restoration == nil,
+              notificationHandoff == nil else { return }
+        pendingPrependAnchor = ChatPrependAnchorRequest(
+            messageID: anchorMessageID,
+            sessionKey: sessionKey
+        )
+    }
+
+    /// Discharges an armed prepend anchor without scrolling: the backfill
+    /// finished without publishing a prepend (short page, transient failure,
+    /// all-duplicate page), so nothing may re-pin on a later unrelated
+    /// transcript change. Scoped to the session the view armed — a stale
+    /// task's discharge must not clobber a newer conversation's anchor.
+    mutating func prependAnchorDischarged(matching sessionKey: ChatScrollSessionKey?) {
+        guard let armed = pendingPrependAnchor else { return }
+        if armed.sessionKey == nil || identity.areEquivalent(armed.sessionKey, sessionKey) {
+            pendingPrependAnchor = nil
+        }
+    }
+
+    private func prependAnchorCommand(id: String) -> ChatViewportCommand {
+        ChatViewportCommand(
+            generation: generation,
+            sessionKey: activeSessionKey ?? renderedSessionKey,
+            destination: .prependAnchor(id: id),
+            animated: false,
+            retry: .delayed(milliseconds: 150)
+        )
+    }
+
     // MARK: - Transcript changes
 
     /// Ports the old onChange(messages) reassert policy: cache + revision
@@ -349,15 +413,57 @@ struct ChatViewportController: Equatable {
         if let activeSessionKey {
             self.activeSessionKey = activeSessionKey
         }
+        // The anchor is consumed only by a change that REPLACED the front
+        // row — the shape of a prepend landing. Any other mid-flight change
+        // (streaming growth, a turn completing, a reconcile tail graft that
+        // kept the prefix) must leave the anchor armed for the actual
+        // prepend, or the prepend would land unanchored and shift the
+        // transcript under the user.
+        let frontRowIDBefore = targetCache.targets.first?.id
         let update = targetCache.update(for: messages)
         renderedTranscriptRevision = transcriptRevision
         mirroredViewportTransitionGeneration = viewportTransitionGeneration
+        var effects: [ChatViewportEffect] = []
+        if let anchor = pendingPrependAnchor,
+           update != .unchanged,
+           targetCache.targets.first?.id != frontRowIDBefore,
+           // A true prepend RETAINS the previously-front row (prepending
+           // never drops held rows). A same-conversation rewrite that
+           // deleted the front row must not consume the anchor — the
+           // in-flight backfill's own landing (or the view's discharge)
+           // still owns it.
+           frontRowIDBefore == nil
+               || targetCache.targets.contains(where: { $0.id == frontRowIDBefore }) {
+            pendingPrependAnchor = nil
+            // Re-validate ownership at landing time: the backfill resolves
+            // after the tap, and the user may have dragged, scrolled, or
+            // switched sessions since. The anchor must still belong to BOTH
+            // the rendered and the active conversation (they can disagree
+            // for one update turn during a switch, before the session-change
+            // observer runs) and must still exist among the rendered rows —
+            // a rewrite can delete the captured row, and scrolling to it
+            // would be a dead no-op that leaves the prepend unanchored
+            // anyway. Following-latest holds position via the bottom pin; a
+            // live restoration owns the viewport outright. No anchor row
+            // means there is nothing stable to pin — the prepend simply
+            // lands.
+            if let messageID = anchor.messageID,
+               let anchorSession = anchor.sessionKey,
+               identity.areEquivalent(anchorSession, renderedSessionKey),
+               identity.areEquivalent(anchorSession, activeSessionKey ?? anchorSession),
+               targetCache.targets.contains(where: { $0.id == messageID }),
+               mode != .followingLatest,
+               restoration == nil,
+               notificationHandoff == nil {
+                effects.append(.scroll(prependAnchorCommand(id: messageID)))
+            }
+        }
         guard !isInitialSync,
               update != .unchanged,
               mode == .followingLatest,
               restoration == nil,
               notificationHandoff == nil,
-              !isOpeningNotificationSession else { return [] }
+              !isOpeningNotificationSession else { return effects }
         // The animated reassert owns the follow for this change (it carries
         // its own delayed retry); a coalesced correction pending from an
         // earlier drift tick would only fight the in-flight animation.
@@ -607,6 +713,7 @@ struct ChatViewportController: Equatable {
         generation &+= 1
         pendingDragEvaluation = nil
         pendingFollowCorrection = nil
+        pendingPrependAnchor = nil
         followCorrectionContentBottom = nil
         followCorrectionLastExecutionAt = nil
         restoration = nil
@@ -898,6 +1005,7 @@ struct ChatViewportController: Equatable {
 
     mutating func viewDisappeared() -> [ChatViewportEffect] {
         pendingFollowCorrection = nil
+        pendingPrependAnchor = nil
         followCorrectionContentBottom = nil
         followCorrectionLastExecutionAt = nil
         return abandonDrag()
@@ -918,6 +1026,12 @@ struct ChatViewportController: Equatable {
             return sessionMatches && currentRequest == request
         case .message:
             return sessionMatches && mode == .restoring && restoration != nil
+        case .prependAnchor:
+            // The delayed re-pin re-validates against session, mode, and
+            // the ownership generation already checked at the top of this
+            // method: a drag, explicit command, or session switch in the
+            // interim bumps the generation and kills it.
+            return sessionMatches && mode != .restoring && restoration == nil
         }
     }
 
@@ -940,6 +1054,7 @@ struct ChatViewportController: Equatable {
         _ = invalidateDrag(hasActiveGesture: dragGestureActive)
         generation &+= 1
         pendingFollowCorrection = nil
+        pendingPrependAnchor = nil
         followCorrectionContentBottom = nil
         followCorrectionLastExecutionAt = nil
     }
@@ -948,6 +1063,7 @@ struct ChatViewportController: Equatable {
         _ = invalidateDrag(hasActiveGesture: dragGestureActive)
         generation &+= 1
         pendingFollowCorrection = nil
+        pendingPrependAnchor = nil
         followCorrectionContentBottom = nil
         followCorrectionLastExecutionAt = nil
         restoration = nil
