@@ -107,12 +107,14 @@ struct NativeAuthClient {
         case 301, 302, 303, 307, 308:
             // The SecureRedirectDelegate cancels cross-origin redirects, so a
             // 3xx final response here is the edge bouncing us to its sign-in
-            // page. Without a token that is the expected interactive-auth
-            // signal (empty list → WebView fallback). With a configured
-            // service token it means Cloudflare rejected that token — say so
-            // instead of presenting the same login page that should have
-            // been bypassed.
-            if cloudflareAccess != nil,
+            // page. Without a configured token that is the expected
+            // interactive-auth signal (empty list → WebView fallback). With
+            // an actually configured service token it means Cloudflare
+            // rejected that token — say so instead of presenting the same
+            // login page that should have been bypassed. Match
+            // `applying(to:)`'s configuration state: a non-nil but empty
+            // credentials value sends no headers and must fall back too.
+            if cloudflareAccess?.isConfigured == true,
                Self.redirectsToCloudflareAccessLogin(http) {
                 throw AuthClientError.cloudflareServiceTokenRejected
             }

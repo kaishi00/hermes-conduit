@@ -277,7 +277,13 @@ struct LoginView: View {
     /// Trimmed-presence check so whitespace-only input is treated the same
     /// by the Connect button and by connect()'s guard.
     private var connectInputsArePresent: Bool {
-        !serverUrl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        Self.hasConnectableInput(serverURL: serverUrl, username: username, password: password)
+    }
+
+    /// Static seam for the trimmed-presence rule so the validation contract
+    /// is unit-testable without hosting the view.
+    static func hasConnectableInput(serverURL: String, username: String, password: String) -> Bool {
+        !serverURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !password.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
@@ -298,7 +304,15 @@ struct LoginView: View {
     @MainActor
     private func connect() async {
         let cleaned = serverUrl.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleaned.isEmpty else { return }
+        guard !cleaned.isEmpty else {
+            // The return-key chain can reach submit without the Connect
+            // button ever being enabled (e.g. a whitespace-only URL).
+            // Surface the standard invalid-URL feedback instead of a silent
+            // no-op.
+            error = ConnectionURLPolicyError.invalidURL.localizedDescription
+            focusedField = .server
+            return
+        }
         // The return-key chain can reach submit while an earlier field was
         // skipped (e.g. tapping straight into the Cloudflare Secret); land
         // focus on the missing field instead of a raw remote 401. The

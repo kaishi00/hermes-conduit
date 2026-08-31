@@ -152,6 +152,31 @@ final class NativeAuthClientTests: XCTestCase {
         XCTAssertEqual(providers[0]["name"] as? String, "basic")
     }
 
+    func testProviderDiscoveryUnconfiguredTokenObjectFallsBackToWebView() async throws {
+        // A non-nil but empty credentials value is unconfigured: it must
+        // send no Cloudflare headers and, on a Cloudflare redirect, follow
+        // the normal interactive WebView fallback instead of reporting the
+        // token rejected.
+        let client = NativeAuthClient(
+            baseURL: "https://cfreject.example",
+            cloudflareAccess: CloudflareAccessCredentials(clientID: "", clientSecret: "   "),
+            sessionConfiguration: makeSessionConfiguration()
+        )
+
+        let providers = try await client.authProviders()
+
+        XCTAssertTrue(providers.isEmpty, "Unconfigured credentials must keep the WebView fallback signal")
+        XCTAssertNil(
+            NativeAuthURLProtocol.requestHeader(forPath: "/api/auth/providers", name: "CF-Access-Client-Id"),
+            "Unconfigured credentials must send no service-token id"
+        )
+        XCTAssertNil(
+            NativeAuthURLProtocol.requestHeader(forPath: "/api/auth/providers", name: "CF-Access-Client-Secret"),
+            "Unconfigured credentials must send no service-token secret"
+        )
+        XCTAssertEqual(NativeAuthURLProtocol.requestCount(for: "tenant.cloudflareaccess.com"), 0)
+    }
+
     func testProviderDiscoveryThrowsTokenRejectedWhenCloudflareRedirectsDespiteServiceToken() async throws {
         let client = NativeAuthClient(
             baseURL: "https://cfreject.example",
