@@ -2800,40 +2800,13 @@ final class AppState: ObservableObject {
                 )
             } ?? false
 
-            // Persisted-history window bookkeeping. The window describes the
-            // REST-fetched display history only — runtime state above is
-            // untouched. A pagination echo carrying the `order=latest` tail
-            // contract opens the bounded window; a legacy one-shot hydration
-            // (or a hydration that failed the session-identity gate) leaves
-            // no window, because no older page exists to fetch.
-            //
-            // The refresh resets coverage to the fetched page even when the
-            // graft below kept older rows. The next backfills then retrace
-            // the backfilled prefix in page-sized increments, each deduped
-            // against held rows, until coverage catches up — harmless
-            // duplicate requests that self-correct, never gaps. Under-
-            // counting is the safe direction: trusting the prior coverage
-            // after a server-side rewrite could silently skip rows. A
-            // conversation that was already fully backfilled re-lights the
-            // affordance once and re-retires on its first terminal page.
-            //
             // Capture the pre-reconcile transcript and window for the graft
-            // decision below before either is replaced.
+            // decision below before either is replaced. The window write
+            // itself happens after the graft: whether the refreshed tail
+            // grafted onto the backfilled prefix determines whether the
+            // prefix-preservation fact survives into the refreshed window.
             let previousTranscriptMessages = messages
             let priorWindow = persistedTranscriptWindow
-            if let transcript, transcriptMatches, let page = transcript.page,
-               page.honorsTailContract {
-                persistedTranscriptWindow = PersistedTranscriptWindowState(
-                    requestedSessionID: sessionId,
-                    profile: profile,
-                    pageSize: PersistedTranscriptPagination.pageSize,
-                    resolvedSessionID: transcript.resolvedSessionId ?? result.sessionId,
-                    nextOffset: page.rawReturned,
-                    canLoadEarlier: page.mayHaveOlderRows(fetchedRowCount: page.rawReturned)
-                )
-            } else {
-                persistedTranscriptWindow = nil
-            }
             if let transcript, transcriptMatches, result.snapshot.hasLiveProjection, !transcript.messages.isEmpty {
                 // Desktop keeps its live projection during an active turn. Seed
                 // the same durable presentation details first so the completed
@@ -2854,27 +2827,69 @@ final class AppState: ObservableObject {
             let shouldUsePersistedTranscript = transcriptMatches
                 && (transcript.map { !$0.messages.isEmpty || !resumeCarriedTranscript } ?? false)
                 && (!result.snapshot.hasLiveProjection || !resumeCarriedTranscript)
+            let priorWindowForGraft = priorWindowOwnsThisConversation(
+                priorWindow,
+                requestedSessionId: sessionId,
+                profile: profile
+            ) ? priorWindow : nil
             let presentationResult: SessionResumeResult
+            var graftedBackfilledPrefix = false
             if let transcript, shouldUsePersistedTranscript {
                 // A re-reconciliation replaces only the newest page. Keep
                 // everything "Load earlier messages" already backfilled by
                 // re-anchoring the refreshed tail onto the older prefix;
                 // without this, any reconnect during a browsed long session
                 // would silently truncate the visible history back to one
-                // page.
-                let graftedTail = PersistedTranscriptWindow.grafting(
+                // page. The graft must survive REPEATED reconciles — the
+                // explicit hasBackfilledPrefix flag carries that fact, since
+                // the network coverage reset below erases the offset
+                // evidence after the first one.
+                let grafted = PersistedTranscriptWindow.grafting(
                     refreshedTail: transcript.messages,
                     ontoBackfilled: previousTranscriptMessages,
-                    window: priorWindowOwnsThisConversation(priorWindow, requestedSessionId: sessionId, profile: profile)
-                        ? priorWindow : nil
+                    window: priorWindowForGraft
                 )
                 presentationResult = SessionResumeResult(
                     sessionId: result.sessionId,
-                    messages: graftedTail,
+                    messages: grafted.messages,
                     snapshot: result.snapshot
                 )
+                graftedBackfilledPrefix = grafted.grafted
             } else {
                 presentationResult = result
+            }
+
+            // Persisted-history window bookkeeping. The window describes the
+            // REST-fetched display history only — runtime state above is
+            // untouched. A pagination echo carrying the `order=latest` tail
+            // contract opens the bounded window; a legacy one-shot hydration
+            // (or a hydration that failed the session-identity gate) leaves
+            // no window, because no older page exists to fetch. A graft that
+            // kept the backfilled prefix preserves that fact; a refreshed
+            // tail with no safe anchor is authoritative and resets it.
+            //
+            // The refresh resets coverage to the fetched page even when the
+            // graft kept older rows. The next backfills then retrace
+            // the backfilled prefix in page-sized increments, each deduped
+            // against held rows, until coverage catches up — harmless
+            // duplicate requests that self-correct, never gaps. Under-
+            // counting is the safe direction: trusting the prior coverage
+            // after a server-side rewrite could silently skip rows. A
+            // conversation that was already fully backfilled re-lights the
+            // affordance once and re-retires on its first terminal page.
+            if let transcript, transcriptMatches, let page = transcript.page,
+               page.honorsTailContract {
+                persistedTranscriptWindow = PersistedTranscriptWindowState(
+                    requestedSessionID: sessionId,
+                    profile: profile,
+                    pageSize: PersistedTranscriptPagination.pageSize,
+                    resolvedSessionID: transcript.resolvedSessionId ?? result.sessionId,
+                    nextOffset: page.rawReturned,
+                    canLoadEarlier: page.mayHaveOlderRows(fetchedRowCount: page.rawReturned),
+                    hasBackfilledPrefix: graftedBackfilledPrefix
+                )
+            } else {
+                persistedTranscriptWindow = nil
             }
 
             let resumeSessionIDs = [result.sessionId, reconciliation?.requestedSessionId]
@@ -3025,13 +3040,15 @@ final class AppState: ObservableObject {
                 return false
             }
             turnState = .reconnecting
-            if case DashboardTicketBridgeError.oversizedResponse = error {
-                // A known-oversized one-shot history response from an old
-                // backend: retrying the same giant transcript over the
-                // bounded WebSocket is not a recovery. Surface the
-                // controlled compatibility error instead.
+            switch error {
+            case is LegacyTranscriptOversizedError, DashboardTicketBridgeError.oversizedResponse:
+                // Oversized history responses carry their own user-facing
+                // copy: the legacy compatibility message for an old backend
+                // attempting the whole transcript, neutral copy for a
+                // bounded current-Hermes page with one enormous row (which
+                // must not claim the backend lacks pagination).
                 errorMessage = error.localizedDescription
-            } else {
+            default:
                 errorMessage = "Failed to restore this conversation: \(error.localizedDescription)"
             }
             settleReconciliation(token, automaticSyncOperationID: automaticSyncOperationID)
@@ -6214,13 +6231,12 @@ final class AppState: ObservableObject {
         case .unavailable:
             return .unavailable
         case .failed(let error):
-            // One classification for both the bridge fetch and the seam:
-            // structural endpoint gaps, a bridge that never became ready
-            // inside its bounded poll, and transient transport trouble
-            // (429, 5xx, status-0 WebKit/network failures, request timeouts)
-            // degrade to the single legacy resume; authentication, a known-
-            // oversized one-shot history response, and every other failure
-            // must surface instead of silently degrading.
+            // Only STRUCTURAL endpoint absence degrades to the single legacy
+            // resume. Transient trouble (429, 5xx, status-0 WebKit/network
+            // failures, request timeouts, a bridge that never became ready)
+            // surfaces instead: a slow or failing BOUNDED read must never
+            // silently become a full-transcript WebSocket transport (the
+            // giant-payload path compact resume exists to eliminate).
             if Self.historySourceIsUnavailable(error) {
                 sessionCatalogLog.debug("Persisted transcript unavailable for \(sessionId, privacy: .public): \(error.localizedDescription, privacy: .public)")
                 return .unavailable
@@ -6236,11 +6252,16 @@ final class AppState: ObservableObject {
             // A pagination echo WITHOUT the `order=latest` tail contract
             // describes a backend that pages from the oldest end: honoring
             // its offsets would walk the transcript forward from row zero
-            // and never reach the newest rows. Re-read one-shot — the exact
-            // request pre-pagination Conduit made — and treat the response
-            // as the legacy full transcript. Shape-detected from the echo,
+            // and never reach the newest rows. A paginated-contract page
+            // whose rows lack durable identity is equally unpageable —
+            // overlap dedup and the graft key on the persisted row ID, and
+            // id-less rows would normalize to page-local positional IDs.
+            // Either way, re-read one-shot — the exact request
+            // pre-pagination Conduit made — and treat the response as the
+            // legacy full transcript. Shape-detected from the response,
             // never version-sniffed, and performed at most once.
-            if let page, !page.honorsTailContract {
+            if let page, !(page.honorsTailContract
+                && PersistedTranscriptWindow.rowsHaveDurableIdentity(rawMessages)) {
                 let oneShotOutcome = await fetchPersistedHistoryPayload(
                     sessionId: sessionId,
                     profile: profile,
@@ -6260,6 +6281,13 @@ final class AppState: ObservableObject {
                 case .unavailable:
                     return .unavailable
                 case .failed(let error):
+                    if case DashboardTicketBridgeError.oversizedResponse = error {
+                        // The legacy one-shot transcript outgrew the safe
+                        // bound: an old backend attempted the entire
+                        // transcript. Surface the transcript-specific
+                        // compatibility copy.
+                        return .failed(LegacyTranscriptOversizedError(limit: DataURLLimits.maxJSONResponseBytes))
+                    }
                     if Self.historySourceIsUnavailable(error) {
                         return .unavailable
                     }
@@ -6314,51 +6342,29 @@ final class AppState: ObservableObject {
         (response["session_id"] as? String) ?? (response["sessionId"] as? String)
     }
 
-    /// Classifies a history-fetch failure for the resume fallback. Everything
-    /// that leaves the resume without a usable transcript *right now*
-    /// degrades to the single legacy resume:
+    /// Classifies a history-fetch failure as STRUCTURAL ENDPOINT ABSENCE —
+    /// the only condition that degrades the initial hydration to the single
+    /// legacy full-transcript resume, and the only one that retires the
+    /// backfill affordance:
     ///
-    ///  - structural endpoint gaps — 404/410 (the gateway predates the
-    ///    messages route);
-    ///  - a bridge that did not become ready within its bounded readiness
-    ///    poll, or a request that outlived its deadline (both funnel into
-    ///    `.notReady` by the bridge's error contract);
-    ///  - transient transport trouble — HTTP 408/429, any 5xx (which
-    ///    subsumes 501), and status 0 (WebKit-level network/abort failures).
+    ///  - 404/410 — the gateway predates the messages route (or the session
+    ///    is gone from it);
+    ///  - 501 — the endpoint is explicitly unimplemented.
     ///
-    /// A known-oversized one-shot history response is deliberately NOT
-    /// classified here: retrying the same giant transcript over the bounded
-    /// WebSocket is not a recovery, so the typed oversized condition
-    /// surfaces its controlled compatibility error instead.
-    ///
-    /// Client-originated request/bridge timeouts always arrive through one of
-    /// the status-0/`.notReady` funnels above; other authentication (401/403 →
-    /// `.signInRequired`) and every unlisted error is a real failure that must
-    /// propagate instead of silently degrading the resume into a fallback.
+    /// Everything else must NOT silently escalate to the unbounded legacy
+    /// transport: transient trouble (408/429, any other 5xx, status-0
+    /// WebKit/network failures), a bridge that did not become ready or a
+    /// request that outlived its deadline (both `.notReady`), an oversized
+    /// response, authentication, and every unlisted error surfaces instead.
+    /// This is the giant-session safety property: current Hermes can serve
+    /// the bounded `include_compacted=true` page slowly for heavily
+    /// compacted sessions until upstream bounding lands (#97440), so a slow
+    /// bounded read must fail boundedly and retry through reconnect — never
+    /// silently become "load the entire transcript over the WebSocket".
     nonisolated static func historySourceIsUnavailable(_ error: Error) -> Bool {
-        if case DashboardTicketBridgeError.oversizedResponse = error { return false }
-        if case DashboardTicketBridgeError.notReady = error { return true }
         guard case let DashboardTicketBridgeError.http(status, _) = error else { return false }
         switch status {
-        case 0, 404, 408, 410, 429: return true
-        case 500...599: return true
-        default: return false
-        }
-    }
-
-    /// Classifies a backfill failure for affordance retirement: only a
-    /// history source that is structurally gone retires "Load earlier
-    /// messages" — the endpoint disappeared (404/410), the bridge never
-    /// became ready, or the server is failing (5xx). Transient transport
-    /// trouble (408/429, status-0 WebKit failures) and every other failure
-    /// stay retryable through another explicit tap — a failed backfill never
-    /// loops on its own.
-    nonisolated static func historySourceIsStructurallyGone(_ error: Error) -> Bool {
-        if case DashboardTicketBridgeError.notReady = error { return true }
-        guard case let DashboardTicketBridgeError.http(status, _) = error else { return false }
-        switch status {
-        case 404, 410: return true
-        case 500...599: return true
+        case 404, 410, 501: return true
         default: return false
         }
     }
@@ -6452,6 +6458,25 @@ final class AppState: ObservableObject {
                 current.canLoadEarlier = false
                 return false
             }
+            // Response ownership: the page must still describe THIS
+            // conversation. The endpoint may resolve a runtime ID to its
+            // stored ID, so accept the requested ID, the window's resolved
+            // stored ID, and any known alias of the same conversation —
+            // never a foreign session's rows. A foreign response neither
+            // normalizes into the transcript nor advances coverage.
+            if let returnedId = Self.resolvedSessionId(in: response),
+               !returnedId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                var acceptedIds = knownSessionIDs(for: requestSessionId)
+                acceptedIds.insert(requestSessionId)
+                if let resolvedId = current.resolvedSessionID {
+                    acceptedIds.insert(resolvedId)
+                }
+                guard acceptedIds.contains(returnedId) else {
+                    sessionCatalogLog.debug("Older-page backfill for \(requestSessionId, privacy: .public) returned foreign session \(returnedId, privacy: .public); discarding and retiring the affordance")
+                    current.canLoadEarlier = false
+                    return false
+                }
+            }
             let fetchedRowCount = rawRows.count
             let page = PersistedTranscriptPagination.parse(response, rawRowCount: fetchedRowCount)
             // Only pages still answering under the tail contract may splice
@@ -6464,13 +6489,59 @@ final class AppState: ObservableObject {
                 current.canLoadEarlier = false
                 return false
             }
+            // Overlap dedup keys on the durable persisted row ID. A page
+            // whose rows lack one would normalize to page-local positional
+            // IDs that cannot survive across pages — refuse it before it can
+            // silently corrupt dedup.
+            guard PersistedTranscriptWindow.rowsHaveDurableIdentity(rawRows) else {
+                sessionCatalogLog.debug("Older-page backfill for \(requestSessionId, privacy: .public) returned rows without durable IDs; retiring the affordance")
+                current.canLoadEarlier = false
+                return false
+            }
             var didPrepend = false
             if fetchedRowCount > 0 {
-                let olderPage = MessageNormalizer.normalizeMessages(rawRows.map(AnyCodable.from))
-                if let merged = PersistedTranscriptWindow.prepending(olderPage, onto: messages) {
+                let normalizedPage = MessageNormalizer.normalizeMessages(rawRows.map(AnyCodable.from))
+                // A page boundary can split a tool call from its result row.
+                // Fold any trailing call cards back together with the
+                // matching held result cards by durable tool-call identity
+                // before prepending, so one logical tool run never renders
+                // as an orphan call card plus a duplicate standalone result.
+                let (olderPage, foldedFromHeld) = PersistedTranscriptWindow.reconcilingToolCallsAcrossBoundary(
+                    olderPage: normalizedPage,
+                    held: messages
+                )
+                let merged: [ChatMessage]?
+                if foldedFromHeld > 0 {
+                    let remainingHeld = messages.dropFirst(foldedFromHeld)
+                    if remainingHeld.isEmpty {
+                        // Every held row folded into the adjusted page (the
+                        // stale-response guard already proved this window is
+                        // current): the folded page itself is the whole
+                        // transcript. Never fall back to the unfolded page
+                        // here — that would resurrect the duplicate the fold
+                        // just removed.
+                        merged = olderPage.isEmpty ? nil : olderPage
+                    } else {
+                        merged = PersistedTranscriptWindow.prepending(olderPage, onto: Array(remainingHeld))
+                    }
+                } else {
+                    merged = nil
+                }
+                if let merged {
                     messages = merged
                     didPrepend = true
+                } else if let plain = PersistedTranscriptWindow.prepending(normalizedPage, onto: messages) {
+                    messages = plain
+                    didPrepend = true
                 }
+            }
+            if didPrepend {
+                // The visible transcript now starts with backfilled rows.
+                // The reconcile graft relies on this explicit fact to keep
+                // preserving the prefix across repeated reconciles — the
+                // network coverage reset below erases the offset evidence
+                // after the first one.
+                current.hasBackfilledPrefix = true
             }
             // A full page means older history may still exist; a short or
             // empty page marks the transcript fully backfilled and retires
@@ -6489,11 +6560,12 @@ final class AppState: ObservableObject {
             return false
         case .failed(let error):
             // Only a structurally gone history source retires the
-            // affordance; transient transport trouble stays retryable
-            // through another explicit tap — a failed backfill never loops
-            // on its own.
+            // affordance; transient trouble — rate limits, slow bounded
+            // reads, a temporarily cold bridge — stays retryable through
+            // another explicit tap. A failed backfill never loops on its
+            // own.
             sessionCatalogLog.debug("Older-page backfill failed for \(requestSessionId, privacy: .public): \(error.localizedDescription, privacy: .public)")
-            current.canLoadEarlier = !Self.historySourceIsStructurallyGone(error)
+            current.canLoadEarlier = !Self.historySourceIsUnavailable(error)
             return false
         }
     }

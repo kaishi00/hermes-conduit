@@ -396,12 +396,12 @@ final class CompactResumeTranscriptTests: XCTestCase {
     }
 
     /// Drives one reconciliation against a history source that fails with
-    /// `failure` and asserts the transient-failure contract: the session
-    /// still opens via exactly one legacy resume, and the fallback can never
-    /// cascade (the legacy call itself never triggers a second one).
-    private func assertTransientHistoryFailureFallsBackExactlyOnce(
+    /// `failure` and asserts the bounded-failure contract: a failing or slow
+    /// BOUNDED history request must never escalate into the legacy
+    /// full-transcript WebSocket resume. The restore surfaces the error
+    /// instead; the compact resume stays the only transport used.
+    private func assertTransientHistoryFailureSurfacesWithoutLegacyResume(
         _ failure: Error,
-        expectedLegacyContent: String,
         file: StaticString = #filePath,
         line: UInt = #line
     ) async throws {
@@ -410,23 +410,9 @@ final class CompactResumeTranscriptTests: XCTestCase {
         let harness = try makeHarness(
             openSession: { _, sessionID, compact in
                 recorder.record(sessionID: sessionID, compact: compact)
-                if compact {
-                    return SessionResumeResult(
-                        sessionId: sessionID,
-                        messages: [],
-                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
-                    )
-                }
                 return SessionResumeResult(
                     sessionId: sessionID,
-                    messages: [
-                        ChatMessage(
-                            id: "legacy-1",
-                            role: .assistant,
-                            content: expectedLegacyContent,
-                            timestamp: "2026-09-01T08:00:00Z"
-                        )
-                    ],
+                    messages: [],
                     snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                 )
             },
@@ -436,27 +422,32 @@ final class CompactResumeTranscriptTests: XCTestCase {
 
         let opened = await harness.appState.openSession("stored-transient")
 
-        XCTAssertTrue(opened, "\(failure) must fall back instead of failing the resume", file: file, line: line)
+        XCTAssertFalse(opened, "\(failure) must surface instead of silently degrading", file: file, line: line)
         XCTAssertEqual(
             recorder.calls.map { $0.compact },
-            [true, false],
-            "\(failure) must trigger exactly one legacy resume",
+            [true],
+            "\(failure) must not trigger any legacy full-transcript resume",
             file: file,
             line: line
         )
-        XCTAssertEqual(
-            harness.appState.messages.map { $0.content },
-            [expectedLegacyContent],
+        XCTAssertFalse(
+            harness.appState.errorMessage?.isEmpty ?? true,
+            "\(failure) must surface a visible restore error",
             file: file,
             line: line
         )
     }
 
-    func testTransientHistoryFailuresFallBackExactlyOnce() async throws {
-        // 429 / 5xx / status-0 WebKit failures / bridge readiness-timeout are
-        // temporary availability problems: preserve session access through
-        // exactly one legacy resume instead of failing the restore.
+    func testTransientHistoryFailuresSurfaceWithoutLegacyResume() async throws {
+        // A slow or failing BOUNDED history request must never become the
+        // giant-payload path: timeouts, rate limits, ordinary 5xx, status-0
+        // WebKit failures, and a bridge that outlived its readiness window
+        // all surface a retryable restore error instead of requesting the
+        // entire transcript over the WebSocket. (Current Hermes can serve
+        // the include_compacted page slowly for heavily compacted sessions
+        // until upstream #97440 bounds that work server-side.)
         let transientFailures: [Error] = [
+            DashboardTicketBridgeError.http(status: 408, detail: "Request Timeout"),
             DashboardTicketBridgeError.http(status: 429, detail: "Too Many Requests"),
             DashboardTicketBridgeError.http(status: 500, detail: "Internal error"),
             DashboardTicketBridgeError.http(status: 503, detail: "Service Unavailable"),
@@ -464,20 +455,56 @@ final class CompactResumeTranscriptTests: XCTestCase {
             DashboardTicketBridgeError.notReady,
         ]
         for failure in transientFailures {
-            try await assertTransientHistoryFailureFallsBackExactlyOnce(
-                failure,
-                expectedLegacyContent: "Legacy transcript"
-            )
+            try await assertTransientHistoryFailureSurfacesWithoutLegacyResume(failure)
         }
     }
 
     func testStructuralHistoryEndpointGapsFallBackExactlyOnce() async throws {
-        // Gateways predating the history endpoint fall back cleanly as well.
+        // Gateways predating the history endpoint are the one case where the
+        // legacy full-transcript resume remains the compatibility path: the
+        // endpoint cannot serve ANY page, bounded or not. Exactly one legacy
+        // resume, and the fallback never cascades.
         for status in [404, 410, 501] {
-            try await assertTransientHistoryFailureFallsBackExactlyOnce(
-                DashboardTicketBridgeError.http(status: status, detail: "missing endpoint"),
-                expectedLegacyContent: "Legacy transcript"
+            let recorder = ResumeCallRecorder()
+            let active = session("stored-structural")
+            let harness = try makeHarness(
+                openSession: { _, sessionID, compact in
+                    recorder.record(sessionID: sessionID, compact: compact)
+                    if compact {
+                        return SessionResumeResult(
+                            sessionId: sessionID,
+                            messages: [],
+                            snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                        )
+                    }
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [
+                            ChatMessage(
+                                id: "legacy-1",
+                                role: .assistant,
+                                content: "Legacy transcript",
+                                timestamp: "2026-09-01T08:00:00Z"
+                            )
+                        ],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                persistedTranscript: { _, _ in
+                    .failed(DashboardTicketBridgeError.http(status: status, detail: "missing endpoint"))
+                }
             )
+            harness.appState.sessions = [active]
+
+            let opened = await harness.appState.openSession("stored-structural")
+
+            XCTAssertTrue(opened, "status \(status) must fall back instead of failing the resume")
+            XCTAssertEqual(
+                recorder.calls.map { $0.compact },
+                [true, false],
+                "status \(status) must trigger exactly one legacy resume"
+            )
+            XCTAssertEqual(harness.appState.messages.map { $0.content }, ["Legacy transcript"])
         }
     }
 
@@ -522,14 +549,14 @@ final class CompactResumeTranscriptTests: XCTestCase {
         XCTAssertEqual(harness.appState.messages.first?.content, "Late hydration")
     }
 
-    func testColdDashboardBridgeStillBeginsWithCompactResume() async throws {
-        // Regression for the cold-launch hole: a dashboard bridge that exists
-        // but is not ready yet must NOT push the resume onto the legacy
-        // full-transcript path immediately. The resume begins compact, the
-        // transcript fetch waits inside requestJSON's bounded readiness poll,
-        // and a bridge that never becomes usable degrades to exactly one
-        // legacy resume. A modern gateway therefore never receives a legacy
-        // full-transcript request just because the bridge was cold.
+    func testColdDashboardBridgeBeginsCompactAndNeverEscalatesToLegacy() async throws {
+        // Regression for the cold-launch hole AND the giant-session safety
+        // property: a dashboard bridge that exists but is not ready yet must
+        // not push the resume onto the legacy full-transcript path — neither
+        // immediately nor after its bounded readiness window expires. The
+        // resume begins compact; a bridge that never becomes usable surfaces
+        // a retryable restore error instead of requesting the entire
+        // transcript over the WebSocket.
         let recorder = ResumeCallRecorder()
         let active = session("stored-cold")
         let harness = try makeHarness(
@@ -537,14 +564,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
                 recorder.record(sessionID: sessionID, compact: compact)
                 return SessionResumeResult(
                     sessionId: sessionID,
-                    messages: [
-                        ChatMessage(
-                            id: "restored",
-                            role: .assistant,
-                            content: "Restored",
-                            timestamp: "1"
-                        )
-                    ],
+                    messages: [],
                     snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                 )
             },
@@ -565,13 +585,18 @@ final class CompactResumeTranscriptTests: XCTestCase {
             with: HermesConnection(baseUrl: "https://one.example", ticket: "cold-ticket")
         )
 
-        XCTAssertTrue(harness.appState.isConnected)
-        XCTAssertEqual(
-            recorder.calls.map { $0.compact },
-            [true, false],
-            "A cold bridge must begin compact and fall back to at most one legacy resume"
+        XCTAssertFalse(
+            recorder.calls.isEmpty,
+            "The resume must have begun on the compact transport"
         )
-        XCTAssertEqual(harness.appState.messages.map { $0.content }, ["Restored"])
+        XCTAssertTrue(
+            recorder.calls.allSatisfy { $0.compact },
+            "A cold bridge must never trigger a legacy full-transcript resume, got: \(recorder.calls.map { $0.compact })"
+        )
+        XCTAssertFalse(
+            harness.appState.errorMessage?.isEmpty ?? true,
+            "The bounded history failure must surface to the user"
+        )
     }
 
     func testLegacyFallbackMergeHandlesLargeTranscriptAtAppStateLevel() async throws {
@@ -704,7 +729,9 @@ final class CompactResumeTranscriptTests: XCTestCase {
     // MARK: - Unavailable-source classification
 
     func testHistorySourceUnavailableClassification() {
-        // Structural endpoint gaps fall back to the legacy resume…
+        // ONLY structural endpoint absence degrades to the legacy resume /
+        // retires the backfill affordance: 404/410 gateways without the
+        // messages route, and 501 explicitly-unimplemented.
         for status in [404, 410, 501] {
             XCTAssertTrue(
                 AppState.historySourceIsUnavailable(
@@ -713,27 +740,20 @@ final class CompactResumeTranscriptTests: XCTestCase {
                 "status \(status) must be classified as unavailable"
             )
         }
-        // …as do transient availability problems: rate limiting, any 5xx,
-        // status-0 WebKit/network failures, and a bridge (or request) that
-        // outlived its bounded readiness strategy.
-        XCTAssertTrue(AppState.historySourceIsUnavailable(
-            DashboardTicketBridgeError.http(status: 429, detail: "Too Many Requests")
-        ))
-        for status in [500, 502, 503, 504] {
-            XCTAssertTrue(
+        // Transient transport trouble must SURFACE (initial hydration) or
+        // stay tap-retryable (backfill) instead of silently escalating into
+        // the unbounded legacy transcript transport: rate limits, timeouts,
+        // ordinary 5xx, status-0 WebKit failures, and a bridge that never
+        // became ready or a request that outlived its deadline.
+        for status in [0, 408, 429, 500, 502, 503, 504] {
+            XCTAssertFalse(
                 AppState.historySourceIsUnavailable(
-                    DashboardTicketBridgeError.http(status: status, detail: "server error")
+                    DashboardTicketBridgeError.http(status: status, detail: "transient")
                 ),
-                "status \(status) must be classified as unavailable"
+                "status \(status) must not be classified as unavailable"
             )
         }
-        XCTAssertTrue(AppState.historySourceIsUnavailable(
-            DashboardTicketBridgeError.http(status: 0, detail: "Failed to fetch")
-        ))
-        XCTAssertTrue(AppState.historySourceIsUnavailable(DashboardTicketBridgeError.notReady))
-        // A known-oversized one-shot history response is a typed condition,
-        // not transport trouble: it must surface its controlled compatibility
-        // error instead of retrying the giant transcript over the WebSocket.
+        XCTAssertFalse(AppState.historySourceIsUnavailable(DashboardTicketBridgeError.notReady))
         XCTAssertFalse(AppState.historySourceIsUnavailable(
             DashboardTicketBridgeError.oversizedResponse(limit: DataURLLimits.maxJSONResponseBytes)
         ))
@@ -747,35 +767,14 @@ final class CompactResumeTranscriptTests: XCTestCase {
         ))
     }
 
-    /// Backfill affordance retirement is structural-only: 404/410/5xx and a
-    /// bridge that never became ready retire "Load earlier messages"; every
-    /// transient transport trouble (408/429/status-0) and unclassified or
-    /// auth failures stay tap-retryable.
-    func testBackfillStructuralRetirementClassification() {
-        for status in [404, 410, 500, 502, 503] {
-            XCTAssertTrue(
-                AppState.historySourceIsStructurallyGone(
-                    DashboardTicketBridgeError.http(status: status, detail: "gone")
-                ),
-                "status \(status) must retire the affordance"
-            )
-        }
-        XCTAssertTrue(AppState.historySourceIsStructurallyGone(DashboardTicketBridgeError.notReady))
-        for status in [0, 408, 429] {
-            XCTAssertFalse(
-                AppState.historySourceIsStructurallyGone(
-                    DashboardTicketBridgeError.http(status: status, detail: "transient")
-                ),
-                "status \(status) must stay tap-retryable"
-            )
-        }
-        XCTAssertFalse(AppState.historySourceIsStructurallyGone(DashboardTicketBridgeError.signInRequired))
-        XCTAssertFalse(AppState.historySourceIsStructurallyGone(
-            DashboardTicketBridgeError.oversizedResponse(limit: DataURLLimits.maxJSONResponseBytes)
-        ))
-        XCTAssertFalse(AppState.historySourceIsStructurallyGone(
-            DashboardTicketBridgeError.requestFailed("Could not encode dashboard request.")
-        ))
+    /// The bridge-level oversized error is generic — it can arise from any
+    /// oversized dashboard response (workspace-file reads, catalogs), not
+    /// only transcript history — so its copy must be neutral.
+    /// Transcript-specific compatibility messaging is mapped in the
+    /// transcript layer (see the oversized-history tests below).
+    func testGenericOversizedBridgeErrorUsesNeutralCopy() {
+        let error = DashboardTicketBridgeError.oversizedResponse(limit: DataURLLimits.maxJSONResponseBytes)
+        XCTAssertEqual(error.errorDescription, "This response is too large to load safely.")
     }
 
     // MARK: - Bounded persisted-history pagination
@@ -874,6 +873,10 @@ final class CompactResumeTranscriptTests: XCTestCase {
         XCTAssertEqual(harness.appState.persistedTranscriptWindow?.nextOffset, 240)
         XCTAssertEqual(harness.appState.persistedTranscriptWindow?.canLoadEarlier, true)
         XCTAssertEqual(harness.appState.persistedTranscriptWindow?.isLoadingEarlier, false)
+        XCTAssertTrue(
+            harness.appState.persistedTranscriptWindow?.hasBackfilledPrefix ?? false,
+            "A published prepend must mark the backfilled prefix"
+        )
     }
 
     /// A short page means the beginning of the persisted transcript has been
@@ -933,9 +936,10 @@ final class CompactResumeTranscriptTests: XCTestCase {
                 if sessionId == "stored-a" {
                     return self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1880..<2000), offset: 0)
                 }
+                // Row ids start at 1: SQLite AUTOINCREMENT never produces 0.
                 return self.tailPagePayload(
                     sessionId: "stored-b",
-                    rows: self.syntheticRows(0..<2),
+                    rows: self.syntheticRows(1..<3),
                     offset: 0
                 )
             },
@@ -962,7 +966,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
         await backfill
 
         XCTAssertEqual(harness.appState.messages.count, 2, "Session B must be completely unchanged by the stale page")
-        XCTAssertEqual(harness.appState.messages.first?.content, "Row 0")
+        XCTAssertEqual(harness.appState.messages.first?.content, "Row 1")
         XCTAssertEqual(harness.appState.persistedTranscriptWindow?.requestedSessionID, "stored-b")
         XCTAssertEqual(harness.appState.persistedTranscriptWindow?.isLoadingEarlier, false)
         XCTAssertFalse(
@@ -1126,7 +1130,10 @@ final class CompactResumeTranscriptTests: XCTestCase {
     /// safe response bound must surface the controlled compatibility error —
     /// never a retry of the same giant transcript over the bounded
     /// WebSocket.
-    func testOversizedLegacyHistorySurfacesWithoutWebSocketRetry() async throws {
+    /// A bounded current-Hermes page that exceeds the safe response bound
+    /// (one enormous physical row) surfaces NEUTRAL copy — the backend does
+    /// have pagination, and no giant WebSocket retry may follow.
+    func testOversizedBoundedHistorySurfacesNeutralError() async throws {
         let recorder = ResumeCallRecorder()
         let active = session("stored-a")
         let harness = try makeHarness(
@@ -1148,6 +1155,59 @@ final class CompactResumeTranscriptTests: XCTestCase {
 
         let opened = await harness.appState.openSession("stored-a")
 
+        XCTAssertFalse(opened, "The oversized-response error must surface")
+        XCTAssertEqual(
+            recorder.calls.map { $0.compact },
+            [true],
+            "No legacy full-transcript WebSocket retry may follow an oversized history response"
+        )
+        XCTAssertEqual(
+            harness.appState.errorMessage,
+            "This response is too large to load safely.",
+            "A bounded page oversize must not claim the backend lacks pagination"
+        )
+    }
+
+    /// A legacy one-shot transcript (an old backend attempting the entire
+    /// conversation after the oldest-anchored echo was detected) that
+    /// exceeds the safe bound surfaces the transcript-specific
+    /// compatibility copy — and never retries over the WebSocket.
+    func testOversizedLegacyOneShotSurfacesCompatibilityCopy() async throws {
+        let fetchCalls = Counter()
+        let recorder = ResumeCallRecorder()
+        let active = session("stored-a")
+        let harness = try makeHarness(
+            openSession: { _, sessionID, compact in
+                recorder.record(sessionID: sessionID, compact: compact)
+                return SessionResumeResult(
+                    sessionId: sessionID,
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { _, _ in
+                fetchCalls.value += 1
+                if fetchCalls.value == 1 {
+                    // Oldest-anchored build: bounded request, no order echo.
+                    return self.tailPagePayload(
+                        sessionId: "stored-a",
+                        rows: self.syntheticRows(0..<3),
+                        offset: 0,
+                        limit: 120,
+                        order: nil
+                    )
+                }
+                // The one-shot re-read of the full transcript outgrew the
+                // safe bound.
+                return .failed(DashboardTicketBridgeError.oversizedResponse(
+                    limit: DataURLLimits.maxJSONResponseBytes
+                ))
+            }
+        )
+        harness.appState.sessions = [active]
+
+        let opened = await harness.appState.openSession("stored-a")
+
         XCTAssertFalse(opened, "The oversized-history compatibility error must surface")
         XCTAssertEqual(
             recorder.calls.map { $0.compact },
@@ -1155,8 +1215,8 @@ final class CompactResumeTranscriptTests: XCTestCase {
             "No legacy full-transcript WebSocket retry may follow an oversized history response"
         )
         XCTAssertTrue(
-            harness.appState.errorMessage?.contains("too large to load safely") == true,
-            "The surfaced error should be the controlled compatibility copy, got: \(harness.appState.errorMessage ?? "nil")"
+            harness.appState.errorMessage?.contains("Update Hermes to enable paginated conversation history") == true,
+            "A legacy one-shot oversize should carry the compatibility copy, got: \(harness.appState.errorMessage ?? "nil")"
         )
     }
 
@@ -1467,6 +1527,153 @@ final class CompactResumeTranscriptTests: XCTestCase {
         XCTAssertEqual(harness.appState.messages.count, 140 + 120, "Backfilled pages survive the alias reconcile")
         XCTAssertEqual(harness.appState.messages.first?.content, "Row 1760")
         XCTAssertEqual(harness.appState.messages.last?.content, "Row 2019")
+    }
+
+    /// A backfill response whose session_id belongs to another conversation
+    /// is rejected whole: no normalization into the transcript, no coverage
+    /// advance, affordance retired.
+    func testForeignBackfillResponseRejected() async throws {
+        let active = session("stored-a", alternateIDs: ["runtime-a"])
+        let harness = try makeHarness(
+            openSession: { _, _, _ in
+                SessionResumeResult(
+                    sessionId: "runtime-a",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { _, _ in
+                self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1880..<2000), offset: 0)
+            },
+            loadEarlierTranscriptPage: { _, _, offset in
+                self.tailPagePayload(sessionId: "stored-b", rows: self.syntheticRows(0..<120), offset: offset)
+            }
+        )
+        harness.appState.sessions = [active]
+        let opened = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(opened)
+
+        let didPrepend = await harness.appState.loadEarlierMessages()
+
+        XCTAssertFalse(didPrepend)
+        XCTAssertEqual(harness.appState.messages.count, 120, "Foreign rows must never reach the transcript")
+        XCTAssertFalse(harness.appState.messages.contains { $0.content == "Row 0" })
+        XCTAssertEqual(
+            harness.appState.persistedTranscriptWindow?.nextOffset, 120,
+            "Foreign responses must not advance pagination coverage"
+        )
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.canLoadEarlier, false)
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.isLoadingEarlier, false)
+    }
+
+    /// A backfill page whose rows lack durable persisted IDs would dedup on
+    /// page-local positional identities that cannot survive across pages —
+    /// refuse it instead of silently corrupting overlap dedup.
+    func testBackfillPageWithoutDurableIdsRetiresAffordance() async throws {
+        let active = session("stored-a", alternateIDs: ["runtime-a"])
+        let harness = try makeHarness(
+            openSession: { _, _, _ in
+                SessionResumeResult(
+                    sessionId: "runtime-a",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { _, _ in
+                self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1880..<2000), offset: 0)
+            },
+            loadEarlierTranscriptPage: { _, _, offset in
+                .payload([
+                    "session_id": "stored-a",
+                    "messages": [
+                        // Missing id entirely…
+                        ["role": "user", "content": "Id-less row", "timestamp": "2026-09-01T10:00:00Z"],
+                        // …and an empty-string id, which would likewise
+                        // collapse every such row onto one dedup key.
+                        ["id": "", "role": "user", "content": "Empty-id row", "timestamp": "2026-09-01T10:00:01Z"]
+                    ],
+                    "pagination": ["limit": 120, "offset": offset, "order": "latest", "returned": 2]
+                ])
+            }
+        )
+        harness.appState.sessions = [active]
+        let opened = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(opened)
+
+        let didPrepend = await harness.appState.loadEarlierMessages()
+
+        XCTAssertFalse(didPrepend)
+        XCTAssertEqual(harness.appState.messages.count, 120, "The transcript stays untouched")
+        XCTAssertFalse(harness.appState.messages.contains { $0.content == "Id-less row" })
+        XCTAssertFalse(harness.appState.messages.contains { $0.content == "Empty-id row" })
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.canLoadEarlier, false)
+        XCTAssertEqual(
+            harness.appState.persistedTranscriptWindow?.nextOffset, 120,
+            "No coverage advance for an unusable page"
+        )
+    }
+
+    /// A page boundary can split a tool call from its result row: the call
+    /// row is the last row of the older page, its result the first row of
+    /// the loaded newer page. One logical tool run must reconstruct — never
+    /// an orphan call card plus a duplicate standalone result.
+    func testToolCallSplitAcrossPageBoundaryReconstructsOneRun() async throws {
+        let active = session("stored-a", alternateIDs: ["runtime-a"])
+        let harness = try makeHarness(
+            openSession: { _, _, _ in
+                SessionResumeResult(
+                    sessionId: "runtime-a",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { _, _ in
+                var resultRow = self.transcriptRow(1880, role: "tool", content: "file body")
+                resultRow["tool_call_id"] = "call_123"
+                resultRow["name"] = "read_file"
+                let rows = [resultRow] + self.syntheticRows(1881..<2000)
+                return self.tailPagePayload(sessionId: "stored-a", rows: rows, offset: 0)
+            },
+            loadEarlierTranscriptPage: { _, _, offset in
+                var callRow = self.transcriptRow(1879, role: "assistant", content: "")
+                callRow["tool_calls"] = [[
+                    "id": "call_123",
+                    "type": "function",
+                    "function": [
+                        "name": "read_file",
+                        "arguments": "{\"path\": \"/tmp/row1879\"}"
+                    ]
+                ]]
+                let rows = self.syntheticRows(1760..<1879) + [callRow]
+                return self.tailPagePayload(sessionId: "stored-a", rows: rows, offset: offset)
+            }
+        )
+        harness.appState.sessions = [active]
+        let opened = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(opened)
+        // The unmatched result hydrates as a standalone card on the newer
+        // page (its call row is not in that page).
+        XCTAssertEqual(harness.appState.messages.count, 120)
+        XCTAssertEqual(harness.appState.messages.first?.role, .tool)
+        XCTAssertEqual(harness.appState.messages.first?.tool?.id, "call_123")
+
+        await harness.appState.loadEarlierMessages()
+
+        let messages = harness.appState.messages
+        XCTAssertEqual(messages.count, 120 + 120 - 1, "The standalone result card folds away into its call card")
+        let callCards = messages.filter { $0.tool?.id == "call_123" }
+        XCTAssertEqual(callCards.count, 1, "Exactly one card for the durable tool-call identity")
+        XCTAssertEqual(callCards.first?.id, "1879.0-tool-0")
+        XCTAssertEqual(callCards.first?.tool?.name, "read_file")
+        XCTAssertEqual(callCards.first?.tool?.input, "{\"path\": \"/tmp/row1879\"}")
+        XCTAssertEqual(callCards.first?.tool?.output, "file body")
+        XCTAssertEqual(callCards.first?.tool?.status, .complete)
+        XCTAssertFalse(
+            messages.contains { $0.id == "1880.0" },
+            "No orphan standalone result may remain"
+        )
+        XCTAssertEqual(messages.last?.content, "Row 1999", "The loaded tail stays intact")
+        XCTAssertTrue(harness.appState.persistedTranscriptWindow?.hasBackfilledPrefix ?? false)
     }
 
     // MARK: - Harness

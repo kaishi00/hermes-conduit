@@ -2910,7 +2910,7 @@ extension ChatViewportControllerTests {
         _ = controller.userDragGestureEnded()
         controller.olderPageBackfillRequested(anchorMessageID: "m5", sessionKey: keyA)
         let effects = controller.transcriptChanged(
-            messages: [message("m-older", "older row"), message("m0", "row")],
+            messages: [message("m-older", "older row"), message("m0", "row 0"), message("m5", "row 5")],
             transcriptRevision: 1,
             viewportTransitionGeneration: 1,
             activeSessionKey: keyA
@@ -2963,7 +2963,7 @@ extension ChatViewportControllerTests {
         // A discharge naming a different session must not clobber the arm.
         controller.prependAnchorDischarged(matching: keyB)
         var effects = controller.transcriptChanged(
-            messages: [message("m-older", "older row"), message("m0", "row")],
+            messages: [message("m-older", "older row"), message("m0", "row 0"), message("m5", "row 5")],
             transcriptRevision: 1,
             viewportTransitionGeneration: 1,
             activeSessionKey: keyA
@@ -2994,6 +2994,56 @@ extension ChatViewportControllerTests {
                 return true
             },
             "A discharged anchor must not re-pin on a later unrelated transcript change"
+        )
+    }
+
+    /// A same-conversation rewrite that DELETES the front row must neither
+    /// consume the anchor nor re-pin early (a true prepend retains the old
+    /// front row); the anchor stays armed for the in-flight backfill's own
+    /// landing, so a prefix-dropping rewrite can never strand it into
+    /// firing on an unrelated later update.
+    func testBackfillAnchorSurvivesFrontRowDeletionThenPrepends() {
+        var controller = makeController(following: keyA)
+        _ = dragBegan(&controller, sessionKey: keyA)
+        _ = controller.userDragGestureEnded()
+        _ = controller.transcriptChanged(
+            messages: [message("m0", "row 0"), message("m5", "row 5")],
+            transcriptRevision: 1,
+            viewportTransitionGeneration: 1,
+            activeSessionKey: keyA
+        )
+        controller.olderPageBackfillRequested(anchorMessageID: "m0", sessionKey: keyA)
+
+        // Mid-flight: a rewrite drops the front row entirely.
+        var effects = controller.transcriptChanged(
+            messages: [message("m5", "row 5")],
+            transcriptRevision: 2,
+            viewportTransitionGeneration: 1,
+            activeSessionKey: keyA
+        )
+        XCTAssertTrue(
+            scrollCommands(effects).allSatisfy { command in
+                if case .prependAnchor = command.destination { return false }
+                return true
+            },
+            "A prefix-dropping rewrite must not re-pin or consume the anchor"
+        )
+
+        // The backfill lands: the old front row is gone, so the anchor still
+        // must not fire for a row that no longer exists; the gate re-evaluates
+        // per landing and the view's discharge owns the cleanup.
+        effects = controller.transcriptChanged(
+            messages: [message("m-older", "older row"), message("m5", "row 5")],
+            transcriptRevision: 3,
+            viewportTransitionGeneration: 1,
+            activeSessionKey: keyA
+        )
+        XCTAssertTrue(
+            scrollCommands(effects).allSatisfy { command in
+                if case .prependAnchor = command.destination { return false }
+                return true
+            },
+            "The deleted anchor row must not be re-pinned"
         )
     }
 

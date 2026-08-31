@@ -92,12 +92,34 @@ struct PersistedTranscriptWindowState: Equatable {
     let profile: String
     let pageSize: Int
     var resolvedSessionID: String?
-    /// Number of newest persisted rows the local transcript covers. Advances
-    /// by the fetched row count of every page, which self-corrects the
-    /// offset drift that live rows create under `order=latest` paging.
+    /// Number of newest persisted rows the local transcript already covers.
+    /// Advances by the fetched row count of every page, which self-corrects
+    /// the offset drift that live rows create under `order=latest` paging.
+    /// Network coverage only — never used as evidence about what the visible
+    /// transcript contains.
     var nextOffset: Int
     var canLoadEarlier: Bool
     var isLoadingEarlier = false
+    /// The visible transcript starts with rows loaded through backfill.
+    /// Explicit state because the reconnect graft must keep preserving that
+    /// prefix across REPEATED reconciles, while the network coverage reset
+    /// below erases the offset evidence after the first one. Set when a
+    /// backfill prepends; kept by a reconcile that grafts onto the prefix;
+    /// cleared when a refreshed tail is authoritative (no safe anchor).
+    var hasBackfilledPrefix = false
+}
+
+/// A legacy one-shot transcript that exceeded the client's safe response
+/// bound. Distinguished from the bridge's generic oversized-response error
+/// so the transcript layer can surface the compatibility copy — an old
+/// backend attempting the entire transcript — without that copy leaking
+/// into unrelated oversized dashboard operations.
+struct LegacyTranscriptOversizedError: LocalizedError {
+    let limit: Int
+
+    var errorDescription: String? {
+        "This conversation is too large to load safely with this Hermes version. Update Hermes to enable paginated conversation history."
+    }
 }
 
 /// Pure row-algebra for older-page backfill.
@@ -152,18 +174,90 @@ enum PersistedTranscriptWindow {
     /// row locates where it begins inside the previous transcript and the
     /// older prefix is kept. When no anchor is found (compaction rewrite,
     /// session identity change) the refreshed tail is authoritative.
+    ///
+    /// Returns whether the graft applied, so the caller can carry the
+    /// backfilled-prefix fact into the refreshed window and keep preserving
+    /// the prefix across repeated reconciles.
     static func grafting(
         refreshedTail: [ChatMessage],
         ontoBackfilled previous: [ChatMessage],
         window: PersistedTranscriptWindowState?
-    ) -> [ChatMessage] {
-        guard let window, window.nextOffset > window.pageSize,
+    ) -> (messages: [ChatMessage], grafted: Bool) {
+        guard let window, window.hasBackfilledPrefix,
               !previous.isEmpty, !refreshedTail.isEmpty,
               let first = refreshedTail.first,
               let anchor = previous.firstIndex(where: { $0.id == first.id }),
               anchor > 0 else {
-            return refreshedTail
+            return (refreshedTail, false)
         }
-        return Array(previous[..<anchor]) + refreshedTail
+        return (Array(previous[..<anchor]) + refreshedTail, true)
+    }
+
+    /// Reconciles a tool call/result pair that a page boundary split apart.
+    /// The initial tail and each older page are normalized independently, so
+    /// when a call row is the last row of an older page and its result row
+    /// is the first row of the already-held newer page, the call normalizes
+    /// to an unanswered call card and the result to a standalone result card
+    /// — one logical tool run rendered as two. Both sides carry the durable
+    /// tool-call identity (`ToolActivity.id` = Hermes `tool_call_id`), so
+    /// the result is folded back into its call card by ID, never by visible
+    /// text, and the duplicate standalone card is dropped from the held
+    /// prefix.
+    ///
+    /// Returns the adjusted older page and how many leading held messages
+    /// were folded into it. The caller must only drop those held rows when
+    /// the prepend actually publishes (an empty held side means the session
+    /// was swapped mid-fetch and nothing may be dropped).
+    static func reconcilingToolCallsAcrossBoundary(
+        olderPage: [ChatMessage],
+        held: [ChatMessage]
+    ) -> (olderPage: [ChatMessage], foldedFromHeld: Int) {
+        var adjusted = olderPage
+        var folded = 0
+        let maximumBoundaryPairs = 8
+        while folded < maximumBoundaryPairs {
+            let heldIndex = folded
+            guard heldIndex < held.count,
+                  held[heldIndex].role == .tool,
+                  let resultTool = held[heldIndex].tool,
+                  resultTool.status == .complete,
+                  let callID = resultTool.id, !callID.isEmpty,
+                  let callIndex = adjusted.lastIndex(where: { message in
+                      guard message.role == .tool, let tool = message.tool else { return false }
+                      return tool.id == callID && (tool.output?.isEmpty ?? true)
+                  }),
+                  adjusted[callIndex].id != held[heldIndex].id else {
+                break
+            }
+            adjusted[callIndex].tool?.output = resultTool.output
+            adjusted[callIndex].tool?.status = .complete
+            folded += 1
+        }
+        return (adjusted, folded)
+    }
+
+    /// Paginated-contract pages are deduplicated and grafted by durable row
+    /// identity, so every row must carry one. Real Hermes persisted rows
+    /// always carry their SQLite `id`; a page without durable identity means
+    /// normalization would fall back to page-local positional IDs that
+    /// cannot survive across pages — reject it before it can silently
+    /// corrupt overlap dedup.
+    nonisolated static func rowsHaveDurableIdentity(_ rows: [Any]) -> Bool {
+        rows.allSatisfy { row in
+            guard let dict = row as? [String: Any] else { return false }
+            for key in ["id", "message_id"] {
+                switch dict[key] {
+                case let string as String where !string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty:
+                    return true
+                case let number as NSNumber where number.doubleValue != 0:
+                    // SQLite AUTOINCREMENT ids start at 1; zero is never a
+                    // real persisted row id.
+                    return true
+                default:
+                    continue
+                }
+            }
+            return false
+        }
     }
 }

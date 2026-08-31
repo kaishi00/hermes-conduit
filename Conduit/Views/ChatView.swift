@@ -25,6 +25,11 @@ struct ChatView: View {
     /// re-materialization in the hosted transcript fixture). The retry
     /// itself guarantees the animated command lands.
     @State private var armedAnimatedBottomRetry: ChatViewportCommand?
+    /// Lifecycle-aware backfill task: cancelled when the view disappears so
+    /// a late response cannot mutate viewport state after teardown. (The
+    /// session/profile staleness of the response itself is AppState's
+    /// concern — this is view-lifetime only.)
+    @State private var backfillViewportTask: Task<Void, Never>?
     @GestureState private var isDraggingChat = false
 
     private var renderedScrollSessionKey: ChatScrollSessionKey? { viewport.renderedSessionKey }
@@ -132,8 +137,10 @@ struct ChatView: View {
                         anchorMessageID: viewport.stableTopMessageID,
                         sessionKey: armedKey
                     )
-                    Task { @MainActor in
+                    backfillViewportTask?.cancel()
+                    backfillViewportTask = Task { @MainActor in
                         let didPrepend = await appState.loadEarlierMessages()
+                        guard !Task.isCancelled else { return }
                         if !didPrepend {
                             // Nothing landed (short page, transient failure,
                             // all-duplicate page): discharge the anchor so it
@@ -388,6 +395,7 @@ struct ChatView: View {
             }
             .onDisappear {
                 performViewportEffects(viewport.viewDisappeared(), using: proxy)
+                backfillViewportTask?.cancel()
                 appState.removeChatViewportSnapshotProvider(id: viewportSnapshotProviderID)
             }
             .task(id: appState.chatResumeRestorationRequest?.generation) {

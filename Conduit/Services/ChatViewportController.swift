@@ -440,14 +440,18 @@ struct ChatViewportController: Equatable {
             // switched sessions since. The anchor must still belong to BOTH
             // the rendered and the active conversation (they can disagree
             // for one update turn during a switch, before the session-change
-            // observer runs). Following-latest holds position via the bottom
-            // pin; a live restoration owns the viewport outright. No anchor
-            // row means there is nothing stable to pin — the prepend simply
+            // observer runs) and must still exist among the rendered rows —
+            // a rewrite can delete the captured row, and scrolling to it
+            // would be a dead no-op that leaves the prepend unanchored
+            // anyway. Following-latest holds position via the bottom pin; a
+            // live restoration owns the viewport outright. No anchor row
+            // means there is nothing stable to pin — the prepend simply
             // lands.
             if let messageID = anchor.messageID,
                let anchorSession = anchor.sessionKey,
                identity.areEquivalent(anchorSession, renderedSessionKey),
                identity.areEquivalent(anchorSession, activeSessionKey ?? anchorSession),
+               targetCache.targets.contains(where: { $0.id == messageID }),
                mode != .followingLatest,
                restoration == nil,
                notificationHandoff == nil {

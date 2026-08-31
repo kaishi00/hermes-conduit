@@ -1662,16 +1662,20 @@ final class AppStateChatResumeTests: XCTestCase {
 
         XCTAssertEqual(catalogLoadCount, 2)
         // The dashboard bridge created by connect() is cold, so the resume
-        // begins compact (omit_messages) and — the bridge never becoming
-        // ready inside the bounded readiness poll — degrades to exactly one
-        // legacy resume for the same session (issue #106 follow-up).
-        XCTAssertEqual(openedSessionIDs, [active.id, active.id])
+        // begins compact (omit_messages). A bridge that never becomes ready
+        // inside its bounded readiness poll must NOT escalate to the legacy
+        // full-transcript resume: the bounded history failure surfaces
+        // (turnState .reconnecting) and the bounded request retries through
+        // reconnect recovery instead — never a giant WebSocket transcript.
+        // The viewport-cancellation handoff under test is unchanged by that
+        // outcome.
+        XCTAssertEqual(openedSessionIDs, [active.id])
         XCTAssertEqual(harness.appState.activeSessionId, active.id)
-        XCTAssertEqual(harness.appState.messages, restoredMessages)
+        XCTAssertTrue(harness.appState.messages.isEmpty)
         XCTAssertTrue(harness.appState.isConnected)
         XCTAssertFalse(harness.appState.isConnecting)
-        XCTAssertEqual(harness.appState.turnState, .idle)
-        XCTAssertTrue(harness.appState.composerIsEnabled)
+        XCTAssertEqual(harness.appState.turnState, .reconnecting)
+        XCTAssertFalse(harness.appState.composerIsEnabled)
         XCTAssertNil(harness.appState.chatResumeRestorationRequest)
         XCTAssertEqual(scheduler.scheduledCount, 0)
     }

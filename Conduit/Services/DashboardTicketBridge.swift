@@ -150,7 +150,13 @@ enum DashboardTicketBridgeError: LocalizedError {
         case .http(_, let detail):
             return detail
         case .oversizedResponse:
-            return "This conversation is too large to load safely with this Hermes version. Update Hermes to enable paginated conversation history."
+            // Generic bridge-level copy: this error is raised for ANY
+            // dashboard response that exceeds the safe bound (workspace-file
+            // reads, catalogs, history), not exclusively transcripts.
+            // Transcript-specific messaging is mapped in the transcript
+            // layer, which knows whether the request was a legacy one-shot
+            // or a bounded current-Hermes page.
+            return "This response is too large to load safely."
         }
     }
 }
