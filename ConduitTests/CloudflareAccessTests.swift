@@ -1,6 +1,5 @@
 import Foundation
 import JavaScriptCore
-import WebKit
 import XCTest
 @testable import Conduit
 
@@ -55,33 +54,6 @@ final class CloudflareAccessTests: XCTestCase {
     func testIncompleteConfigurationIsAbsent() {
         XCTAssertNil(CloudflareAccessCredentials.from(clientID: "client-id", clientSecret: ""))
         XCTAssertNil(CloudflareAccessCredentials.from(clientID: "", clientSecret: "secret"))
-    }
-
-    // MARK: - WebView User Agent (issue #117 interactive verification)
-
-    func testUserAgentSuffixCarriesSafariVerificationTokens() {
-        let suffix = WebViewUserAgent.safariCompatibilitySuffix()
-        XCTAssertTrue(suffix.contains("Safari/604.1"), "Cloudflare's challenge scores a UA without the Safari token as automation: \(suffix)")
-        XCTAssertTrue(suffix.hasPrefix("Version/"), "Safari's Version token must be present: \(suffix)")
-        let osVersion = ProcessInfo.processInfo.operatingSystemVersion
-        XCTAssertTrue(
-            suffix.contains("Version/\(osVersion.majorVersion).\(osVersion.minorVersion)"),
-            "Version token should track the current OS: \(suffix)"
-        )
-        // Real Safari UAs never carry the OS patch level in the Version
-        // token; emitting one would fingerprint the UA as synthetic.
-        if osVersion.patchVersion > 0 {
-            XCTAssertFalse(
-                suffix.contains("Version/\(osVersion.majorVersion).\(osVersion.minorVersion)."),
-                "Version token must be major.minor only: \(suffix)"
-            )
-        }
-    }
-
-    func testUserAgentApplyTargetsConfigurationBeforeFirstLoad() {
-        let configuration = WKWebViewConfiguration()
-        WebViewUserAgent.apply(to: configuration)
-        XCTAssertEqual(configuration.applicationNameForUserAgent, WebViewUserAgent.safariCompatibilitySuffix())
     }
 
     // MARK: - Auth WebView initial request construction

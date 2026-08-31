@@ -32,16 +32,10 @@ struct LoginView: View {
 
     var body: some View {
         ZStack {
+            // Purely decorative: the scroll content fills the screen, so
+            // keyboard dismissal is owned by scroll-dismiss, the keyboard
+            // Done button, and moving focus between fields.
             ConduitBackdrop()
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    // Tapping the backdrop (outside any field or control) clears
-                    // focus so the keyboard dismisses and the Connect button is
-                    // reachable. The gesture lives on the background layer — not
-                    // the root — so it never competes with a text field's
-                    // first-responder touch (no two-tap-to-focus regression).
-                    focusedField = nil
-                }
 
             // The login form is a responsive scroll view inside a fixed
             // decorative layer: at compact iPhone heights with the keyboard
@@ -266,7 +260,7 @@ struct LoginView: View {
                         .frame(height: 50)
                 }
                 .foregroundStyle(.white)
-                .disabled(serverUrl.isEmpty || username.isEmpty || password.isEmpty || isConnecting)
+                .disabled(!connectInputsArePresent || isConnecting)
                 .conduitGlassControl(cornerRadius: 18, tint: .conduitAccent, prominent: true)
             }
             .padding(20)
@@ -278,6 +272,14 @@ struct LoginView: View {
                 .padding(.bottom, 16)
         }
         .padding(.horizontal, 24)
+    }
+
+    /// Trimmed-presence check so whitespace-only input is treated the same
+    /// by the Connect button and by connect()'s guard.
+    private var connectInputsArePresent: Bool {
+        !serverUrl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !password.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     /// Return-key behavior shared by every field: walk the focus chain
@@ -401,6 +403,51 @@ enum LoginField: Hashable, CaseIterable {
     }
 }
 
+// MARK: - Auth WebView navigation policy
+
+/// The authentication WebView's navigation boundary, extracted so the rules
+/// are unit-testable without hosting a WKWebView.
+///
+/// Main frames follow the strict dashboard policy: allowed transport only,
+/// unpinned sign-in may traverse the legitimate Cloudflare/IdP redirect
+/// chain, and once the dashboard origin pins, top-level navigation cannot
+/// escape it. Subframes additionally accept the `about:blank` /
+/// `about:srcdoc` documents Cloudflare's Turnstile WebView requirements
+/// name. Those documents inherit the parent page's origin, so script inside
+/// them could attempt a top-level navigation — but any such attempt
+/// re-enters this policy as a MAIN frame navigation, so the allowance never
+/// moves the main-frame dashboard-origin boundary.
+enum AuthWebViewNavigationPolicy {
+    enum Decision: Equatable {
+        case allow
+        case cancel
+    }
+
+    static func decide(
+        url: URL?,
+        isMainFrame: Bool,
+        hasPinnedDashboardOrigin: Bool,
+        expectedDashboardURL: URL?
+    ) -> Decision {
+        if !isMainFrame {
+            return ConnectionURLPolicy.isAllowedWebViewSubframeTransport(url) ? .allow : .cancel
+        }
+        guard ConnectionURLPolicy.isAllowedTransport(url) else { return .cancel }
+        if !hasPinnedDashboardOrigin {
+            // Passwordless/OAuth providers legitimately use a short
+            // cross-origin redirect chain during sign-in. The ticket
+            // message remains origin-pinned below, and navigation locks
+            // to the dashboard as soon as the authenticated route loads.
+            return .allow
+        }
+        guard let expectedDashboardURL,
+              ConnectionURLPolicy.originMatches(url, expected: expectedDashboardURL) else {
+            return .cancel
+        }
+        return .allow
+    }
+}
+
 // MARK: - Auth WebView
 
 struct AuthWebView: UIViewRepresentable {
@@ -412,7 +459,6 @@ struct AuthWebView: UIViewRepresentable {
     func makeUIView(context: Context) -> WKWebView {
         let normalized = try? ConnectionURLPolicy.normalizedBaseURL(url)
         let config = WKWebViewConfiguration()
-        WebViewUserAgent.apply(to: config)
         config.websiteDataStore = .default()
         config.userContentController.add(context.coordinator, name: "ticket")
         if let normalized,
@@ -562,30 +608,20 @@ struct AuthWebView: UIViewRepresentable {
             decidePolicyFor navigationAction: WKNavigationAction,
             decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
         ) {
-            guard ConnectionURLPolicy.isAllowedTransport(navigationAction.request.url) else {
-                decisionHandler(.cancel)
-                return
-            }
-            // Subframes may host an identity provider, but every top-level
-            // navigation must stay on the configured dashboard origin.
-            if let targetFrame = navigationAction.targetFrame, !targetFrame.isMainFrame {
+            // A nil targetFrame is treated as main-frame, matching the
+            // historical policy for the initial navigation.
+            let isMainFrame = navigationAction.targetFrame?.isMainFrame ?? true
+            switch AuthWebViewNavigationPolicy.decide(
+                url: navigationAction.request.url,
+                isMainFrame: isMainFrame,
+                hasPinnedDashboardOrigin: hasPinnedDashboardOrigin,
+                expectedDashboardURL: expectedURL
+            ) {
+            case .allow:
                 decisionHandler(.allow)
-                return
-            }
-            if !hasPinnedDashboardOrigin {
-                // Passwordless/OAuth providers legitimately use a short
-                // cross-origin redirect chain during sign-in. The ticket
-                // message remains origin-pinned below, and navigation locks
-                // to the dashboard as soon as the authenticated route loads.
-                decisionHandler(.allow)
-                return
-            }
-            guard let expectedURL,
-                  ConnectionURLPolicy.originMatches(navigationAction.request.url, expected: expectedURL) else {
+            case .cancel:
                 decisionHandler(.cancel)
-                return
             }
-            decisionHandler(.allow)
         }
     }
 }

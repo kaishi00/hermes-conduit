@@ -1,30 +1,4 @@
 import Foundation
-import WebKit
-
-/// Cloudflare's Access login page runs a Turnstile-backed verification that
-/// scores the bare WKWebView user agent as automation, so the interactive
-/// sign-in fails inside the app while the same login succeeds in Safari on
-/// the same device (issue #117). Appending the tokens Safari carries but a
-/// default WKWebView omits ("Version/… Safari/…") before the first load
-/// lets the legitimate Cloudflare/IdP flow verify. "Safari/604.1" is Apple's
-/// frozen WebKit build marker (an identity token, not an OS version — it has
-/// been constant across every iOS Safari release), and "Version/…" tracks
-/// the current OS; the device part of the UA keeps coming from WebKit
-/// itself. No credentials or navigation policy are affected.
-enum WebViewUserAgent {
-    static func safariCompatibilitySuffix() -> String {
-        let version = ProcessInfo.processInfo.operatingSystemVersion
-        // Safari's Version token is major.minor only — the OS patch level
-        // never appears in a real iOS UA, so omit it to stay byte-faithful.
-        return "Version/\(version.majorVersion).\(version.minorVersion) Safari/604.1"
-    }
-
-    /// Must run before the web view loads anything: WebKit ignores user-agent
-    /// changes once a page has started loading.
-    static func apply(to configuration: WKWebViewConfiguration) {
-        configuration.applicationNameForUserAgent = safariCompatibilitySuffix()
-    }
-}
 
 struct CloudflareAccessKeychainRecord: Codable, Equatable {
     let clientID: String

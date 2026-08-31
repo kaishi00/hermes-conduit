@@ -26,6 +26,34 @@ enum ConnectionURLPolicy {
         return scheme == "https" || (scheme == "http" && isInsecureTransportAllowed(host))
     }
 
+    /// The `about:` documents Cloudflare's Turnstile WebView requirements
+    /// call out ("Allow connections to `about:blank` and `about:srcdoc`").
+    /// Allowed only in SUBframes. Those documents inherit the parent page's
+    /// origin, so script inside them could attempt a top-level navigation —
+    /// but any such navigation is evaluated as a MAIN frame against the
+    /// strict transport/dashboard-origin rules, so this allowance never
+    /// widens the top-level boundary.
+    static func isTurnstileRequiredSubframeDocument(_ url: URL?) -> Bool {
+        // Classify from the absolute string: WebKit's own URL objects for
+        // these subframe navigations do not necessarily expose the document
+        // tail through `path`/`host` the way a string-constructed URL does
+        // (observed directly in the boundary tests).
+        guard var raw = url?.absoluteString.lowercased() else { return false }
+        guard raw.hasPrefix("about:") else { return false }
+        raw.removeFirst("about:".count)
+        // Strip any trailing slashes WebKit may append to about: URLs.
+        while raw.hasSuffix("/") { raw.removeLast() }
+        return raw == "blank" || raw == "srcdoc"
+    }
+
+    /// Transport policy for WebView SUBFRAME navigations: ordinary HTTP(S)
+    /// (identity providers, challenges.cloudflare.com) plus the about:
+    /// documents Turnstile requires. Everything else (custom schemes,
+    /// other about: variants, data:) is denied.
+    static func isAllowedWebViewSubframeTransport(_ url: URL?) -> Bool {
+        isAllowedTransport(url) || isTurnstileRequiredSubframeDocument(url)
+    }
+
     static func normalizedBaseURL(_ value: String) throws -> String {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty,
