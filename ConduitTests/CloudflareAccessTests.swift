@@ -1,5 +1,6 @@
 import Foundation
 import JavaScriptCore
+import WebKit
 import XCTest
 @testable import Conduit
 
@@ -54,6 +55,47 @@ final class CloudflareAccessTests: XCTestCase {
     func testIncompleteConfigurationIsAbsent() {
         XCTAssertNil(CloudflareAccessCredentials.from(clientID: "client-id", clientSecret: ""))
         XCTAssertNil(CloudflareAccessCredentials.from(clientID: "", clientSecret: "secret"))
+    }
+
+    // MARK: - WebView User Agent (issue #117 interactive verification)
+
+    func testUserAgentSuffixCarriesSafariVerificationTokens() {
+        let suffix = WebViewUserAgent.safariCompatibilitySuffix()
+        XCTAssertTrue(suffix.contains("Safari/604.1"), "Cloudflare's challenge scores a UA without the Safari token as automation: \(suffix)")
+        XCTAssertTrue(suffix.hasPrefix("Version/"), "Safari's Version token must be present: \(suffix)")
+        let osVersion = ProcessInfo.processInfo.operatingSystemVersion
+        XCTAssertTrue(
+            suffix.contains("Version/\(osVersion.majorVersion).\(osVersion.minorVersion)"),
+            "Version token should track the current OS: \(suffix)"
+        )
+    }
+
+    func testUserAgentApplyTargetsConfigurationBeforeFirstLoad() {
+        let configuration = WKWebViewConfiguration()
+        WebViewUserAgent.apply(to: configuration)
+        XCTAssertEqual(configuration.applicationNameForUserAgent, WebViewUserAgent.safariCompatibilitySuffix())
+    }
+
+    // MARK: - Auth WebView initial request construction
+
+    func testAuthWebViewInitialDashboardRequestCarriesServiceTokenHeaders() throws {
+        let request = try AuthWebView.dashboardRequest(
+            normalizedBaseURL: "https://hermes.example",
+            cloudflareAccess: CloudflareAccessCredentials(clientID: "web-id", clientSecret: "web-secret")
+        )
+        XCTAssertEqual(request.url?.absoluteString, "https://hermes.example/login")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "CF-Access-Client-Id"), "web-id")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "CF-Access-Client-Secret"), "web-secret")
+    }
+
+    func testAuthWebViewInitialDashboardRequestWithoutTokenStaysUnauthenticated() throws {
+        let request = try AuthWebView.dashboardRequest(
+            normalizedBaseURL: "https://hermes.example",
+            cloudflareAccess: nil
+        )
+        XCTAssertEqual(request.url?.absoluteString, "https://hermes.example/login")
+        XCTAssertNil(request.value(forHTTPHeaderField: "CF-Access-Client-Id"))
+        XCTAssertNil(request.value(forHTTPHeaderField: "CF-Access-Client-Secret"))
     }
 
     // MARK: - Fetch Injection Script

@@ -152,6 +152,120 @@ final class NativeAuthClientTests: XCTestCase {
         XCTAssertEqual(providers[0]["name"] as? String, "basic")
     }
 
+    func testProviderDiscoveryThrowsTokenRejectedWhenCloudflareRedirectsDespiteServiceToken() async throws {
+        let client = NativeAuthClient(
+            baseURL: "https://cfreject.example",
+            cloudflareAccess: CloudflareAccessCredentials(
+                clientID: "test-client-id",
+                clientSecret: "super-secret-value"
+            ),
+            sessionConfiguration: makeSessionConfiguration()
+        )
+
+        do {
+            _ = try await client.authProviders()
+            XCTFail("Expected the Cloudflare redirect despite a configured token to be a typed rejection")
+        } catch let error as AuthClientError {
+            guard case .cloudflareServiceTokenRejected = error else {
+                return XCTFail("Expected cloudflareServiceTokenRejected, got \(error)")
+            }
+            let message = error.errorDescription ?? ""
+            XCTAssertTrue(message.contains("Service Auth policy"), "Diagnostic must guide the operator: \(message)")
+            XCTAssertFalse(message.contains("super-secret-value"), "Diagnostic must never contain the secret")
+        }
+        // The rejected token must not be replayed against the Cloudflare
+        // login origin: the redirect delegate cancels it before any request.
+        XCTAssertEqual(NativeAuthURLProtocol.requestCount(for: "tenant.cloudflareaccess.com"), 0)
+        // And the configured token still goes to the dashboard origin only.
+        XCTAssertEqual(
+            NativeAuthURLProtocol.requestHeader(forPath: "/api/auth/providers", name: "CF-Access-Client-Id"),
+            "test-client-id"
+        )
+        XCTAssertEqual(
+            NativeAuthURLProtocol.requestHeader(forPath: "/api/auth/providers", name: "CF-Access-Client-Secret"),
+            "super-secret-value"
+        )
+    }
+
+    func testProviderDiscoveryNonCloudflareRedirectWithTokenStillFallsBackToWebView() async throws {
+        let client = NativeAuthClient(
+            baseURL: "https://ssoedge.example",
+            cloudflareAccess: CloudflareAccessCredentials(
+                clientID: "test-client-id",
+                clientSecret: "test-client-secret"
+            ),
+            sessionConfiguration: makeSessionConfiguration()
+        )
+
+        let providers = try await client.authProviders()
+
+        // A redirect from a non-Cloudflare edge is not evidence the service
+        // token was rejected; the WebView fallback must stay available.
+        XCTAssertTrue(providers.isEmpty)
+    }
+
+    func testServiceTokenAppliesToLoginAndTicketRequests() async throws {
+        let client = NativeAuthClient(
+            baseURL: "https://cftoken.example",
+            cloudflareAccess: CloudflareAccessCredentials(
+                clientID: "flow-client-id",
+                clientSecret: "flow-client-secret"
+            ),
+            sessionConfiguration: makeSessionConfiguration()
+        )
+
+        // The full shipped connect sequence: LoginView probes providers
+        // first, then connects natively, then mints the ticket.
+        _ = try await client.authProviders()
+        let connection = try await client.connect(username: "chris", password: "correct-password")
+
+        XCTAssertEqual(connection.ticket, "fresh-ticket")
+        for path in ["/api/auth/providers", "/auth/password-login", "/api/auth/ws-ticket"] {
+            XCTAssertEqual(
+                NativeAuthURLProtocol.requestHeader(forPath: path, name: "CF-Access-Client-Id"),
+                "flow-client-id",
+                "\(path) must carry the service-token id"
+            )
+            XCTAssertEqual(
+                NativeAuthURLProtocol.requestHeader(forPath: path, name: "CF-Access-Client-Secret"),
+                "flow-client-secret",
+                "\(path) must carry the service-token secret"
+            )
+        }
+    }
+
+    func testRedirectClassifierOnlyMatchesCloudflareAccessLoginOrigins() throws {
+        func responseWithLocation(_ location: String?) throws -> HTTPURLResponse {
+            var fields: [String: String] = [:]
+            if let location { fields["Location"] = location }
+            return HTTPURLResponse(
+                url: URL(string: "https://dash.example/api/auth/providers")!,
+                statusCode: 302,
+                httpVersion: "HTTP/1.1",
+                headerFields: fields
+            )!
+        }
+
+        XCTAssertTrue(try NativeAuthClient.redirectsToCloudflareAccessLogin(
+            responseWithLocation("https://tenant.cloudflareaccess.com/cdn-cgi/access/login")
+        ))
+        XCTAssertTrue(try NativeAuthClient.redirectsToCloudflareAccessLogin(
+            responseWithLocation("https://cloudflareaccess.com/cdn-cgi/access/login")
+        ))
+        XCTAssertFalse(try NativeAuthClient.redirectsToCloudflareAccessLogin(
+            responseWithLocation("https://evil.example/u/cloudflareaccess.com")
+        ))
+        XCTAssertFalse(try NativeAuthClient.redirectsToCloudflareAccessLogin(
+            responseWithLocation("https://dash.example/login")
+        ))
+        XCTAssertFalse(try NativeAuthClient.redirectsToCloudflareAccessLogin(
+            responseWithLocation(nil)
+        ))
+        XCTAssertFalse(try NativeAuthClient.redirectsToCloudflareAccessLogin(
+            responseWithLocation("not a url")
+        ))
+    }
+
     func testCancelledConnectSurfacesAsCancellationError() async throws {
         let client = NativeAuthClient(
             baseURL: "https://cancel.example",
@@ -311,7 +425,10 @@ private final class NativeAuthURLProtocol: URLProtocol {
             "multiple.example",
             "tenant.cloudflareaccess.com",
             "cancel.example",
-            "cookieless.example"
+            "cookieless.example",
+            "cfreject.example",
+            "ssoedge.example",
+            "cftoken.example"
         ].contains(host)
     }
 
@@ -513,6 +630,64 @@ private final class NativeAuthURLProtocol: URLProtocol {
             return hasExpectedHeaders
                 ? Fixture(statusCode: 200, headers: [:], body: providerBody())
                 : Fixture(statusCode: 403, headers: [:], body: Data(#"{"error":"missing Cloudflare service token"}"#.utf8))
+        case "cfreject.example":
+            // Cloudflare bounces the request to its Access login page even
+            // though a service token was configured: the token was rejected.
+            return Fixture(
+                statusCode: 302,
+                headers: ["Location": "https://tenant.cloudflareaccess.com/cdn-cgi/access/login"],
+                body: Data()
+            )
+        case "ssoedge.example":
+            // A non-Cloudflare edge redirect (cross-origin, so the redirect
+            // delegate cancels it): not evidence of token rejection.
+            return Fixture(
+                statusCode: 302,
+                headers: ["Location": "https://sso.example/signin"],
+                body: Data()
+            )
+        case "cftoken.example":
+            // Full native flow behind an accepting Cloudflare edge: every
+            // request must carry both service-token headers or it is bounced.
+            let hasToken = request.value(forHTTPHeaderField: "CF-Access-Client-Id") == "flow-client-id"
+                && request.value(forHTTPHeaderField: "CF-Access-Client-Secret") == "flow-client-secret"
+            guard hasToken else {
+                return Fixture(
+                    statusCode: 302,
+                    headers: ["Location": "https://tenant.cloudflareaccess.com/cdn-cgi/access/login"],
+                    body: Data()
+                )
+            }
+            switch request.url?.path {
+            case "/api/auth/providers":
+                return Fixture(statusCode: 200, headers: [:], body: providerBody())
+            case "/auth/password-login":
+                return Fixture(
+                    statusCode: 200,
+                    headers: [
+                        "Content-Type": "application/json",
+                        "Set-Cookie": "hermes_session_at=cf-flow-token; Path=/; HttpOnly"
+                    ],
+                    body: Data(#"{"ok":true,"next":"/"}"#.utf8)
+                )
+            case "/api/auth/ws-ticket":
+                // Mirror the hardened flow: the ticket is only minted when
+                // the login's host-scoped session cookie reached the request.
+                guard request.value(forHTTPHeaderField: "Cookie") == "hermes_session_at=cf-flow-token" else {
+                    return Fixture(
+                        statusCode: 401,
+                        headers: ["Content-Type": "application/json"],
+                        body: Data(#"{"detail":"Unauthorized"}"#.utf8)
+                    )
+                }
+                return Fixture(
+                    statusCode: 200,
+                    headers: ["Content-Type": "application/json"],
+                    body: Data(#"{"ticket":"fresh-ticket"}"#.utf8)
+                )
+            default:
+                return nil
+            }
         default:
             return nil
         }

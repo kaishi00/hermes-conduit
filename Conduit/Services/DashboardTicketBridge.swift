@@ -274,6 +274,7 @@ final class DashboardTicketBridge: NSObject {
         self.readinessPollInterval = readinessPollInterval
         self.requestDeadlineGraceMilliseconds = max(0, requestDeadlineGraceMilliseconds)
         let configuration = WKWebViewConfiguration()
+        WebViewUserAgent.apply(to: configuration)
         configuration.websiteDataStore = .default()
         if let script = cloudflareAccess?.fetchInjectionUserScript(expectedBaseURL: normalizedBaseURL), !script.isEmpty {
             configuration.userContentController.addUserScript(
