@@ -6625,21 +6625,28 @@ final class AppState: ObservableObject {
     /// that reconnect lands.
     private func adoptAuthoritativeFallbackProfile(_ fallback: String) {
         guard fallback != activeProfile else { return }
+        // A profile change replaces the voice gateway; any in-flight read
+        // aloud belongs to the outgoing profile (same as switchProfile).
+        messageReadAloudController.stop()
         flushPendingPresentationCache()
         sessions = []
         cronSessions = []
         archivedSessions = []
+        projects = []
+        supportsProjects = false
+        projectsLoading = false
         slashCommands = Self.builtInSlashCommands
-        // The in-memory transcript, streaming text, and reasoning state all
-        // belong to the deleted profile's session; the flush above already
-        // persisted them under that profile's namespace. Showing them under
-        // the fallback's restored session identity would mislabel them, and
-        // the unguarded presentation-cache writes on user actions would
-        // persist them there. Same reset set as the other hard boundaries
-        // (prepareChatResumeForConnection, sign-out).
         messages = []
         clearStreamingText()
         resetReasoningTurn()
+        // The next profile's approval mode is unknown until its first session
+        // snapshot arrives; don't let the deleted profile's approval floor or
+        // YOLO state leak across the re-home — neutralize to the safe display
+        // until the fallback profile resolves them (same neutralization as
+        // switchProfile).
+        runtime.approvalsMode = nil
+        runtime.yolo = false
+        lastReportedSessionYolo = nil
         // Drop the deleted profile's persisted local bookkeeping so a later
         // re-creation with the same name starts fresh instead of
         // resurrecting obsolete titles and pins.

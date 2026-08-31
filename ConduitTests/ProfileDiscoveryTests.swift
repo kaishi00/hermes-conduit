@@ -273,13 +273,15 @@ final class ProfileDiscoveryTests: XCTestCase {
         seedKnownProfiles(["default", "profile2"], activeProfile: "profile2")
         // Stale per-profile bookkeeping and catalog state belonging to the
         // deleted profile, used to probe the hard-boundary side effects.
+        // Titles are stored as a UserDefaults dictionary; pins as JSON data,
+        // each mirroring its production persistence representation.
+        defaults.set(
+            ["profile2": "old title"],
+            forKey: "conduit.activeSessionTitlesByProfile.v1"
+        )
         defaults.set(
             try JSONEncoder().encode(["profile2": ["pin-1"], "default": []]),
             forKey: "conduit.pinnedSessionIdsByProfile.v1"
-        )
-        defaults.set(
-            try JSONEncoder().encode(["profile2": "old title"]),
-            forKey: "conduit.activeSessionTitlesByProfile.v1"
         )
         let appState = makeAppState(profileDiscoveryLoader: {
             ["profiles": ["profile3", "default"]]
@@ -299,6 +301,10 @@ final class ProfileDiscoveryTests: XCTestCase {
                 lineageRootId: nil
             )
         ]
+        // Stale runtime floor owned by the deleted profile; the re-home must
+        // neutralize it exactly like switchProfile does.
+        appState.runtime.approvalsMode = "off"
+        appState.runtime.yolo = true
 
         await appState.loadProfiles()
 
@@ -323,6 +329,13 @@ final class ProfileDiscoveryTests: XCTestCase {
             defaults.dictionary(forKey: "conduit.activeSessionTitlesByProfile.v1") as? [String: String],
             [:]
         )
+        // The deleted profile's runtime approval floor and YOLO state do not
+        // survive the re-home, and no stale Projects state rides along.
+        XCTAssertNil(appState.runtime.approvalsMode)
+        XCTAssertFalse(appState.runtime.yolo)
+        XCTAssertTrue(appState.projects.isEmpty)
+        XCTAssertFalse(appState.supportsProjects)
+        XCTAssertFalse(appState.projectsLoading)
     }
 
     func testAuthoritativeResponseContainingActiveProfileKeepsItWithoutReset() async throws {
