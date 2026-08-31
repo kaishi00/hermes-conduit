@@ -15,7 +15,7 @@ final class LoginKeyboardUITests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
 
-        let serverField = app.textFields.firstMatch
+        let serverField = app.textFields["https://hermes.example"]
         XCTAssertTrue(serverField.waitForExistence(timeout: 10), "Login screen did not appear. Tree:\n\(app.debugDescription)")
 
         let cfToggle = app.switches["Use Cloudflare Access service token"]
@@ -53,7 +53,10 @@ final class LoginKeyboardUITests: XCTestCase {
         if !connect.isHittable {
             app.swipeUp()
         }
-        XCTAssertTrue(connect.isHittable, "Connect must remain reachable with the keyboard visible")
+        XCTAssertTrue(
+            pollHittability(of: connect, timeout: 5),
+            "Connect must remain reachable with the keyboard visible"
+        )
     }
 
     /// XCUIElement has no waitForHittability; poll isHittable on a deadline.

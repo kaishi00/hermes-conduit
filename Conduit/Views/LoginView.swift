@@ -65,8 +65,13 @@ struct LoginView: View {
                     .onChange(of: revealCloudflareSection) { _, requested in
                         guard requested else { return }
                         revealCloudflareSection = false
-                        withAnimation(.easeOut(duration: 0.25)) {
-                            proxy.scrollTo(LoginField.cloudflareClientID, anchor: .center)
+                        // Defer one runloop turn: the CF fields this scroll
+                        // targets are inserted in the same transaction, and
+                        // scrolling to not-yet-installed ids would no-op.
+                        DispatchQueue.main.async {
+                            withAnimation(.easeOut(duration: 0.25)) {
+                                proxy.scrollTo(LoginField.cloudflareClientID, anchor: .center)
+                            }
                         }
                     }
                 }
@@ -208,6 +213,13 @@ struct LoginView: View {
                         set: { enabled in
                             cloudflareEnabled = enabled
                             revealCloudflareSection = enabled
+                            // Turning the section off while typing in one of
+                            // its fields unmounts them mid-focus; drop focus
+                            // explicitly so the keyboard never dangles.
+                            if !enabled,
+                               focusedField == .cloudflareClientID || focusedField == .cloudflareClientSecret {
+                                focusedField = nil
+                            }
                         }
                     ))
                     .tint(.conduitAccent)
@@ -287,9 +299,10 @@ struct LoginView: View {
         guard !cleaned.isEmpty else { return }
         // The return-key chain can reach submit while an earlier field was
         // skipped (e.g. tapping straight into the Cloudflare Secret); land
-        // focus on the missing field instead of a raw remote 401.
+        // focus on the missing field instead of a raw remote 401. The
+        // password value itself is sent untrimmed.
         guard !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              !password.isEmpty else {
+              !password.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             error = "Enter your dashboard username and password."
             focusedField = username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .username : .password
             return

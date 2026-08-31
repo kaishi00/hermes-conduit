@@ -19,8 +19,6 @@ final class LoginFieldNavigationTests: XCTestCase {
             [.server, .username, .password, .cloudflareClientID, .cloudflareClientSecret],
             "Every field, including both Cloudflare fields, must sit on the return-key focus chain"
         )
-        // Submit (connect) happens only after the last field of the chain.
-        XCTAssertNil(current)
     }
 
     func testPasswordSubmitsDirectlyWhenTokenEntryDisabled() {

@@ -14,11 +14,9 @@ import WebKit
 enum WebViewUserAgent {
     static func safariCompatibilitySuffix() -> String {
         let version = ProcessInfo.processInfo.operatingSystemVersion
-        var versionText = "\(version.majorVersion).\(version.minorVersion)"
-        if version.patchVersion > 0 {
-            versionText += ".\(version.patchVersion)"
-        }
-        return "Version/\(versionText) Safari/604.1"
+        // Safari's Version token is major.minor only — the OS patch level
+        // never appears in a real iOS UA, so omit it to stay byte-faithful.
+        return "Version/\(version.majorVersion).\(version.minorVersion) Safari/604.1"
     }
 
     /// Must run before the web view loads anything: WebKit ignores user-agent

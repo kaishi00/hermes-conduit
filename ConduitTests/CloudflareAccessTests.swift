@@ -68,6 +68,14 @@ final class CloudflareAccessTests: XCTestCase {
             suffix.contains("Version/\(osVersion.majorVersion).\(osVersion.minorVersion)"),
             "Version token should track the current OS: \(suffix)"
         )
+        // Real Safari UAs never carry the OS patch level in the Version
+        // token; emitting one would fingerprint the UA as synthetic.
+        if osVersion.patchVersion > 0 {
+            XCTAssertFalse(
+                suffix.contains("Version/\(osVersion.majorVersion).\(osVersion.minorVersion)."),
+                "Version token must be major.minor only: \(suffix)"
+            )
+        }
     }
 
     func testUserAgentApplyTargetsConfigurationBeforeFirstLoad() {
