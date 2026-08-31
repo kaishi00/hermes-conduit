@@ -21,6 +21,12 @@ enum AuthClientError: LocalizedError {
     case loginFailed(String)
     case ticketFailed(String)
     case providerDiscoveryFailed(String)
+    /// A configured Cloudflare Access service token did not satisfy the
+    /// edge: provider discovery was still answered with a redirect to the
+    /// Cloudflare Access login page. Distinct from `.loginFailed`/`.ticketFailed`
+    /// so the UI can point at the token configuration instead of silently
+    /// dropping the user into interactive Cloudflare sign-in.
+    case cloudflareServiceTokenRejected
 
     var errorDescription: String? {
         switch self {
@@ -32,6 +38,11 @@ enum AuthClientError: LocalizedError {
             return "Could not get session ticket: \(detail)"
         case .providerDiscoveryFailed(let detail):
             return "Could not check dashboard sign-in options: \(detail)"
+        case .cloudflareServiceTokenRejected:
+            return "Cloudflare Access did not accept the configured service token. "
+                + "Verify the Client ID / Secret and that the token is allowed by a "
+                + "Service Auth policy for this Access application, or turn off "
+                + "\"Use Cloudflare Access service token\" to sign in interactively."
         }
     }
 }
@@ -94,6 +105,19 @@ struct NativeAuthClient {
         }
         switch http.statusCode {
         case 301, 302, 303, 307, 308:
+            // The SecureRedirectDelegate cancels cross-origin redirects, so a
+            // 3xx final response here is the edge bouncing us to its sign-in
+            // page. Without a configured token that is the expected
+            // interactive-auth signal (empty list → WebView fallback). With
+            // an actually configured service token it means Cloudflare
+            // rejected that token — say so instead of presenting the same
+            // login page that should have been bypassed. Match
+            // `applying(to:)`'s configuration state: a non-nil but empty
+            // credentials value sends no headers and must fall back too.
+            if cloudflareAccess?.isConfigured == true,
+               Self.redirectsToCloudflareAccessLogin(http) {
+                throw AuthClientError.cloudflareServiceTokenRejected
+            }
             return []
         default:
             break
@@ -245,6 +269,20 @@ struct NativeAuthClient {
         }, onCancel: {
             holder.cancel()
         })
+    }
+
+    /// True when the redirect's `Location` lands on a Cloudflare Access
+    /// login origin (`*.cloudflareaccess.com`). Only such redirects may
+    /// classify a configured token as rejected; redirects from other edges
+    /// or from the dashboard itself keep the existing WebView fallback.
+    /// A relative `Location` always resolves against the dashboard's own
+    /// origin (and same-origin redirects are followed by the delegate, never
+    /// reaching this classifier), so absolute-URL parsing alone is exact.
+    static func redirectsToCloudflareAccessLogin(_ response: HTTPURLResponse) -> Bool {
+        guard let location = response.value(forHTTPHeaderField: "Location"),
+              let url = URL(string: location),
+              let host = url.host?.lowercased() else { return false }
+        return host == "cloudflareaccess.com" || host.hasSuffix(".cloudflareaccess.com")
     }
 
     private func parseError(_ data: Data) -> String? {

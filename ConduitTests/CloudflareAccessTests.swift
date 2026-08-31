@@ -17,6 +17,30 @@ final class CloudflareAccessTests: XCTestCase {
         XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
     }
 
+    func testCleartextHTTPRequestNeverReceivesAccessHeaders() throws {
+        // Trusted-LAN plain HTTP stays supported for ordinary Hermes
+        // connectivity, but the long-lived Cloudflare credentials must never
+        // ride it.
+        let credentials = CloudflareAccessCredentials(clientID: "client-id", clientSecret: "client-secret")
+        for urlString in ["http://192.168.1.20:9119/api/status", "http://localhost:9119/api/auth/providers"] {
+            let request = credentials.applying(to: URLRequest(url: try XCTUnwrap(URL(string: urlString))))
+            XCTAssertNil(request.value(forHTTPHeaderField: "CF-Access-Client-Id"), urlString)
+            XCTAssertNil(request.value(forHTTPHeaderField: "CF-Access-Client-Secret"), urlString)
+        }
+    }
+
+    func testWebSocketUpgradesCarryTokenOnlyOverWSS() throws {
+        let credentials = CloudflareAccessCredentials(clientID: "ws-id", clientSecret: "ws-secret")
+        // HermesClient derives wss/ws from the dashboard scheme before
+        // applying credentials, so the secure transform is what matters.
+        let secure = credentials.applying(to: URLRequest(url: try XCTUnwrap(URL(string: "wss://hermes.example/api/ws?ticket=t"))))
+        XCTAssertEqual(secure.value(forHTTPHeaderField: "CF-Access-Client-Id"), "ws-id")
+        XCTAssertEqual(secure.value(forHTTPHeaderField: "CF-Access-Client-Secret"), "ws-secret")
+        let cleartext = credentials.applying(to: URLRequest(url: try XCTUnwrap(URL(string: "ws://192.168.1.20:9119/api/ws?ticket=t"))))
+        XCTAssertNil(cleartext.value(forHTTPHeaderField: "CF-Access-Client-Id"))
+        XCTAssertNil(cleartext.value(forHTTPHeaderField: "CF-Access-Client-Secret"))
+    }
+
     func testDisabledRetainedFieldsDoNotAdmitCredentialsOrHeaders() throws {
         // LoginView uses @State which SwiftUI manages outside of view
         // lifecycle. Test the factory directly instead.
@@ -54,6 +78,47 @@ final class CloudflareAccessTests: XCTestCase {
     func testIncompleteConfigurationIsAbsent() {
         XCTAssertNil(CloudflareAccessCredentials.from(clientID: "client-id", clientSecret: ""))
         XCTAssertNil(CloudflareAccessCredentials.from(clientID: "", clientSecret: "secret"))
+    }
+
+    // MARK: - Auth WebView initial request construction
+
+    func testAuthWebViewInitialDashboardRequestCarriesServiceTokenHeaders() throws {
+        let request = try AuthWebView.dashboardRequest(
+            normalizedBaseURL: "https://hermes.example",
+            cloudflareAccess: CloudflareAccessCredentials(clientID: "web-id", clientSecret: "web-secret")
+        )
+        XCTAssertEqual(request.url?.absoluteString, "https://hermes.example/login")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "CF-Access-Client-Id"), "web-id")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "CF-Access-Client-Secret"), "web-secret")
+    }
+
+    func testAuthWebViewInitialDashboardRequestWithoutTokenStaysUnauthenticated() throws {
+        let request = try AuthWebView.dashboardRequest(
+            normalizedBaseURL: "https://hermes.example",
+            cloudflareAccess: nil
+        )
+        XCTAssertEqual(request.url?.absoluteString, "https://hermes.example/login")
+        XCTAssertNil(request.value(forHTTPHeaderField: "CF-Access-Client-Id"))
+        XCTAssertNil(request.value(forHTTPHeaderField: "CF-Access-Client-Secret"))
+    }
+
+    func testAuthWebViewInitialRequestOverPlainHTTPOmitsServiceToken() throws {
+        let request = try AuthWebView.dashboardRequest(
+            normalizedBaseURL: "http://192.168.1.20",
+            cloudflareAccess: CloudflareAccessCredentials(clientID: "web-id", clientSecret: "web-secret")
+        )
+        XCTAssertEqual(request.url?.absoluteString, "http://192.168.1.20/login")
+        XCTAssertNil(request.value(forHTTPHeaderField: "CF-Access-Client-Id"), "Initial WebView requests over cleartext HTTP must not carry the service token")
+        XCTAssertNil(request.value(forHTTPHeaderField: "CF-Access-Client-Secret"))
+    }
+
+    // MARK: - Fetch injection HTTPS-only invariant
+
+    func testFetchInjectionIsEmptyForPlainHTTPOrigin() {
+        let credentials = CloudflareAccessCredentials(clientID: "http-id", clientSecret: "http-secret")
+        let script = credentials.fetchInjectionUserScript(expectedBaseURL: "http://192.168.1.20:9119")
+        XCTAssertEqual(script, "", "Plain-HTTP dashboard origins must not receive an injection script at all")
+        XCTAssertFalse(script.contains("http-secret"), "The secret must never be embedded in page JavaScript over cleartext origins")
     }
 
     // MARK: - Fetch Injection Script

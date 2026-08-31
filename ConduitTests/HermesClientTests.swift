@@ -149,6 +149,47 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
+    /// The Cloudflare service token rides only secure upgrades: an HTTPS
+    /// dashboard yields wss:// with both headers; a plain-HTTP LAN dashboard
+    /// yields ws:// with the credentials silently omitted.
+    func testCloudflareServiceTokenRidesOnlySecureWebSocketUpgrades() async throws {
+        let credentials = CloudflareAccessCredentials(clientID: "ws-id", clientSecret: "ws-secret")
+
+        let secureTransport = FakeTransport()
+        let secureSocket = FakeSocket()
+        secureTransport.nextSocket = { secureSocket }
+        let secureClient = HermesClient(
+            connection: HermesConnection(baseUrl: "https://hermes.example", ticket: "ticket"),
+            cloudflareAccess: credentials,
+            transportFactory: { secureTransport }
+        )
+        let secureConnect = Task { try? await secureClient.connect() }
+        secureTransport.open(secureSocket)
+        try await awaitCompletion(of: secureConnect, "the secure connect to complete")
+        let secureRequest = try XCTUnwrap(secureTransport.requestsMade.first)
+        XCTAssertEqual(secureRequest.url?.scheme, "wss")
+        XCTAssertEqual(secureRequest.value(forHTTPHeaderField: "CF-Access-Client-Id"), "ws-id")
+        XCTAssertEqual(secureRequest.value(forHTTPHeaderField: "CF-Access-Client-Secret"), "ws-secret")
+        secureClient.disconnect()
+
+        let plainTransport = FakeTransport()
+        let plainSocket = FakeSocket()
+        plainTransport.nextSocket = { plainSocket }
+        let plainClient = HermesClient(
+            connection: HermesConnection(baseUrl: "http://192.168.1.50:9119", ticket: "ticket"),
+            cloudflareAccess: credentials,
+            transportFactory: { plainTransport }
+        )
+        let plainConnect = Task { try? await plainClient.connect() }
+        plainTransport.open(plainSocket)
+        try await awaitCompletion(of: plainConnect, "the plain-HTTP connect to complete")
+        let plainRequest = try XCTUnwrap(plainTransport.requestsMade.first)
+        XCTAssertEqual(plainRequest.url?.scheme, "ws", "Local ws:// connectivity must remain supported")
+        XCTAssertNil(plainRequest.value(forHTTPHeaderField: "CF-Access-Client-Id"))
+        XCTAssertNil(plainRequest.value(forHTTPHeaderField: "CF-Access-Client-Secret"))
+        plainClient.disconnect()
+    }
+
     func testConcurrentConnectSupersedesPriorWithoutHanging() async throws {
         // A second connect() while the first is still mid-handshake must resume
         // the first's open continuation (via the teardown, mirroring disconnect),
@@ -591,6 +632,9 @@ private final class FakeSocket: HermesWebSocket {
 private final class FakeTransport: HermesWebSocketTransport {
     private(set) var invalidated = false
     private(set) var socketsMade: [FakeSocket] = []
+    /// Every upgrade request handed to `makeSocket`, in order — used by the
+    /// Cloudflare HTTPS/WSS-only header tests.
+    private(set) var requestsMade: [URLRequest] = []
     var nextSocket: (() -> FakeSocket)?
     private var openCallbacks: [ObjectIdentifier: () -> Void] = [:]
     private var earlyOpenRequests = Set<ObjectIdentifier>()
@@ -600,6 +644,7 @@ private final class FakeTransport: HermesWebSocketTransport {
         onOpen: @escaping (any HermesWebSocket) -> Void,
         onCloseBeforeOpen: @escaping (any HermesWebSocket) -> Void
     ) -> any HermesWebSocket {
+        requestsMade.append(request)
         let socket = nextSocket?() ?? FakeSocket()
         socketsMade.append(socket)
         let key = ObjectIdentifier(socket)

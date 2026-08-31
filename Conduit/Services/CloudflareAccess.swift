@@ -40,6 +40,14 @@ struct CloudflareAccessCredentials: Equatable, CustomStringConvertible {
 
     func applying(to request: URLRequest) -> URLRequest {
         guard isConfigured else { return request }
+        // Service tokens are HTTPS/WSS-only. Cleartext transports — plain
+        // HTTP dashboards and ws:// upgrades on trusted LANs — must never
+        // carry the long-lived Cloudflare credentials, even when a token is
+        // configured for the session; local Hermes connectivity works
+        // without them, so they are silently omitted rather than blocking
+        // the login.
+        let scheme = request.url?.scheme?.lowercased()
+        guard scheme == "https" || scheme == "wss" else { return request }
         var request = request
         request.setValue(clientID, forHTTPHeaderField: "CF-Access-Client-Id")
         request.setValue(clientSecret, forHTTPHeaderField: "CF-Access-Client-Secret")
@@ -58,10 +66,14 @@ struct CloudflareAccessCredentials: Equatable, CustomStringConvertible {
     /// `fetch()` and `XMLHttpRequest` calls inside the WKWebView include the
     /// Cloudflare Access service-token headers. The script is intentionally
     /// scoped to the configured dashboard origin; native requests still apply
-    /// the headers directly to the initial dashboard request.
+    /// the headers directly to the initial dashboard request. Shares the
+    /// HTTPS-only invariant of `applying(to:)`: plain-HTTP dashboard origins
+    /// get no script at all, so the credentials are never embedded in page
+    /// JavaScript either.
     func fetchInjectionUserScript(expectedBaseURL: String) -> String {
         guard isConfigured,
               let normalizedBaseURL = try? ConnectionURLPolicy.normalizedBaseURL(expectedBaseURL),
+              normalizedBaseURL.lowercased().hasPrefix("https://"),
               let baseURLLiteral = javaScriptStringLiteral(normalizedBaseURL),
               let idLiteral = javaScriptStringLiteral(clientID),
               let secretLiteral = javaScriptStringLiteral(clientSecret) else { return "" }

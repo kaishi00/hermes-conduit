@@ -681,12 +681,22 @@ extension DashboardTicketBridge: WKNavigationDelegate {
         decidePolicyFor navigationAction: WKNavigationAction,
         decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
     ) {
-        guard ConnectionURLPolicy.isAllowedTransport(navigationAction.request.url) else {
-            decisionHandler(.cancel)
+        // Subframe check must come BEFORE the main-frame transport guard:
+        // Turnstile's WebView requirements call for about:blank and
+        // about:srcdoc subframe documents, which plain HTTP(S) transport
+        // rules would reject. The allowance is confined to subframes —
+        // a top-level navigation attempt from such a document re-enters
+        // this delegate as a MAIN frame and still must match the dashboard
+        // origin below.
+        if let targetFrame = navigationAction.targetFrame, !targetFrame.isMainFrame {
+            decisionHandler(
+                ConnectionURLPolicy.isAllowedWebViewSubframeTransport(navigationAction.request.url)
+                    ? .allow : .cancel
+            )
             return
         }
-        if let targetFrame = navigationAction.targetFrame, !targetFrame.isMainFrame {
-            decisionHandler(.allow)
+        guard ConnectionURLPolicy.isAllowedTransport(navigationAction.request.url) else {
+            decisionHandler(.cancel)
             return
         }
         guard let expectedURL = URL(string: baseURL),
