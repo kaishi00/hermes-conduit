@@ -755,6 +755,10 @@ final class AppState: ObservableObject {
     private let sessionTitleRecoveryTracker = SessionTitleRecoveryTracker()
     private let sessionRenameOperationsOverride: SessionRenameOperation.Operations?
     private let sessionCatalogLoaderOverride: ((Bool) async throws -> [SessionSummary])?
+    /// Test seam mirroring `sessionCatalogLoader`: overrides the dashboard
+    /// `/api/profiles` fetch inside `loadProfiles()` so success, failure, and
+    /// late-response ordering can be modeled without a live WebKit bridge.
+    private let profileDiscoveryLoaderOverride: (@MainActor () async throws -> [String: Any])?
     private var reconnectAttempts = 0
     /// Whether the UI scene is active. Backgrounded scene updates must
     /// complete within ~10s of wall clock before the watchdog kills the app
@@ -1006,6 +1010,7 @@ final class AppState: ObservableObject {
         },
         sessionRenameOperations: SessionRenameOperation.Operations? = nil,
         sessionCatalogLoader: ((Bool) async throws -> [SessionSummary])? = nil,
+        profileDiscoveryLoader: (@MainActor () async throws -> [String: Any])? = nil,
         reconnectScheduler: ChatResumeReconnectScheduler? = nil,
         reconnectExecutor: ChatResumeReconnectExecutor? = nil,
         chatResumeLifecycleOperations: ChatResumeLifecycleOperations = .live,
@@ -1025,6 +1030,7 @@ final class AppState: ObservableObject {
         self.clearSessionPresentationCache = clearSessionPresentationCache
         sessionRenameOperationsOverride = sessionRenameOperations
         sessionCatalogLoaderOverride = sessionCatalogLoader
+        profileDiscoveryLoaderOverride = profileDiscoveryLoader
         self.reconnectScheduler = reconnectScheduler ?? scheduleChatResumeReconnectTask
         self.reconnectExecutor = reconnectExecutor
         self.chatResumeLifecycleOperations = chatResumeLifecycleOperations
@@ -1057,6 +1063,16 @@ final class AppState: ObservableObject {
            let stored = try? JSONDecoder().decode([String: [String]].self, from: data) {
             pinnedSessionIDsByProfile = stored
         }
+        // Hydrate the visible profile list from the persisted known-profile
+        // cache before any discovery runs. A cold launch must not present an
+        // effectively empty list — starting from `[]` is what let a single
+        // failed /api/profiles refresh collapse the picker to one entry and
+        // persist that degraded list over the complete cache. The union also
+        // heals a cache a pre-fix build already degraded: `default` and the
+        // remembered active profile are re-added on first launch.
+        profiles = orderedProfiles(
+            (defaults.stringArray(forKey: knownProfilesKey) ?? []) + [activeProfile, "default"]
+        )
         restoreActiveSessionState(for: activeProfile)
         restorePinnedSessions(for: activeProfile)
         if shouldLoadSavedConnection {
@@ -6516,22 +6532,132 @@ final class AppState: ObservableObject {
     }
 
     func loadProfiles() async {
-        guard let dashboardTicketBridge else { return }
+        guard let bridge = dashboardTicketBridge else { return }
         do {
-            let response = try await dashboardTicketBridge.requestJSON(path: "/api/profiles")
+            let response: [String: Any]
+            if let profileDiscoveryLoaderOverride {
+                response = try await profileDiscoveryLoaderOverride()
+            } else {
+                response = try await bridge.requestJSON(path: "/api/profiles")
+            }
+            // Commit gate, same identity pattern as the dashboard catalog
+            // loader: a bridge swapped mid-request (server change, re-login,
+            // disconnect) makes this response foreign. A late reply from an
+            // old connection must not overwrite the live list, and must not
+            // repopulate a persisted cache that
+            // prepareChatResumeForConnection(to:) already cleared with the
+            // previous server's profile names. Discarded silently — profile
+            // discovery has no retry loop to feed an error into.
+            guard dashboardTicketBridge === bridge else { return }
             let values = response["profiles"] as? [Any] ?? []
             let names = values.compactMap { value -> String? in
                 if let name = value as? String { return name }
                 return (value as? [String: Any])?["name"] as? String
             }
-            profiles = orderedProfiles(names + ["default"])
-            defaults.set(profiles, forKey: knownProfilesKey)
+            // A 200 with no profile names is a degraded payload (dashboard
+            // mid-restart, partial deploy, proxy), not authoritative evidence
+            // that every profile vanished — Hermes always has `default`. The
+            // next line would otherwise collapse the picker and persist that
+            // degraded list over the complete cache, the exact bug this
+            // function exists to prevent, just via a 200 instead of an error.
+            let nextProfiles = names.isEmpty
+                ? orderedProfiles(profiles + [activeProfile, "default"])
+                : orderedProfiles(names + ["default"])
+            profiles = nextProfiles
+            defaults.set(nextProfiles, forKey: knownProfilesKey)
+            // A non-empty response is authoritative: if the server no longer
+            // knows the active profile (deleted externally), re-home onto a
+            // valid fallback instead of leaving `activeProfile ∉ profiles` —
+            // a state the profile picker cannot represent. The degraded and
+            // empty-payload paths already union `activeProfile` in, so only
+            // this branch can need the correction.
+            if !names.isEmpty, !nextProfiles.contains(activeProfile) {
+                // orderedProfiles always unions "default" into a non-empty
+                // names list, so the fallback is unconditionally "default";
+                // the contains-check stays as cheap defense-in-depth against
+                // a future change to that union invariant.
+                adoptAuthoritativeFallbackProfile(
+                    nextProfiles.contains("default") ? "default" : nextProfiles[0]
+                )
+                // The abandoned profile-scoped connect/reconnect work can no
+                // longer commit (its identity fences now fail), so converge
+                // the transport onto the corrected profile. Fire-and-forget:
+                // never awaited inside discovery, and idempotent — the next
+                // discovery contains the fallback and will not re-adopt.
+                if isConnected {
+                    Task { await reconnect() }
+                }
+            }
         } catch {
-            // Profile discovery is additive. A working chat must not be
-            // replaced by an error just because an older dashboard lacks it.
-            if profiles.isEmpty { profiles = orderedProfiles([activeProfile]) }
-            defaults.set(profiles, forKey: knownProfilesKey)
+            guard dashboardTicketBridge === bridge else { return }
+            // Profile discovery is additive and monotonic. A failed refresh
+            // (bridge still loading, dashboard restart, transient 5xx) must
+            // never shrink the visible list or overwrite a complete persisted
+            // cache with a degraded fallback — that degradation is exactly
+            // how a known profile "disappeared" from the picker until the
+            // next successful discovery or a logout/login cycle. Union with
+            // the current list so the active profile and the `default`
+            // invariant are always represented, then persist the union (a
+            // no-op write when the cache is already complete).
+            let merged = orderedProfiles(profiles + [activeProfile, "default"])
+            profiles = merged
+            defaults.set(merged, forKey: knownProfilesKey)
         }
+    }
+
+    /// Authoritative discovery reported a server that no longer contains the
+    /// active profile (e.g. it was deleted externally). Re-home onto a valid
+    /// fallback using the same local hard-boundary sequence as the forward
+    /// profile transition in `connect(with:profile:)`: flush the outgoing
+    /// transcript under its presentation-cache namespace, clear the
+    /// profile-scoped catalogs and transcript, fence-flip the identity,
+    /// prune the deleted profile's persisted bookkeeping, restore the
+    /// fallback's remembered session/pinned state, and persist the
+    /// correction under `activeProfileKey`.
+    ///
+    /// Deliberately NOT the interactive `switchProfile(to:reusing:)` flow:
+    /// that re-resolves the whole connection and would nest reconnects and
+    /// capability loads inside this discovery call site. Callers schedule a
+    /// fire-and-forget `reconnect()` when the transport is live so the
+    /// client converges onto the corrected profile; every catalog read is
+    /// filtered and path-prefixed by the explicit profile, so no
+    /// cross-profile transcript or cache state leaks in the window before
+    /// that reconnect lands.
+    private func adoptAuthoritativeFallbackProfile(_ fallback: String) {
+        guard fallback != activeProfile else { return }
+        // A profile change replaces the voice gateway; any in-flight read
+        // aloud belongs to the outgoing profile (same as switchProfile).
+        messageReadAloudController.stop()
+        flushPendingPresentationCache()
+        sessions = []
+        cronSessions = []
+        archivedSessions = []
+        projects = []
+        supportsProjects = false
+        projectsLoading = false
+        slashCommands = Self.builtInSlashCommands
+        messages = []
+        clearStreamingText()
+        resetReasoningTurn()
+        // The next profile's approval mode is unknown until its first session
+        // snapshot arrives; don't let the deleted profile's approval floor or
+        // YOLO state leak across the re-home — neutralize to the safe display
+        // until the fallback profile resolves them (same neutralization as
+        // switchProfile).
+        runtime.approvalsMode = nil
+        runtime.yolo = false
+        lastReportedSessionYolo = nil
+        // Drop the deleted profile's persisted local bookkeeping so a later
+        // re-creation with the same name starts fresh instead of
+        // resurrecting obsolete titles and pins.
+        activeSessionTitlesByProfile.removeValue(forKey: activeProfile)
+        pinnedSessionIDsByProfile.removeValue(forKey: activeProfile)
+        persistActiveSessionTitles()
+        persistPinnedSessions()
+        setActiveProfile(fallback)
+        restoreActiveSessionState(for: fallback)
+        restorePinnedSessions(for: fallback)
+        defaults.set(fallback, forKey: activeProfileKey)
     }
 
     /// Hermes blocks a clarify/approval prompt for only ~5 minutes server-side
@@ -8550,6 +8676,13 @@ final class AppState: ObservableObject {
         self.isVoiceEnabled = isVoiceEnabled
         if let transcriptionMode { voiceTranscriptionMode = transcriptionMode }
         if let appleSpeechAvailability { self.appleSpeechAvailability = appleSpeechAvailability }
+    }
+
+    /// Test-only: installs a dashboard bridge (and nothing else) so profile
+    /// discovery can exercise its bridge-identity commit gate — modeled
+    /// connection swaps — without the voice capability snapshot plumbing.
+    func installDashboardTicketBridgeForTesting(_ bridge: DashboardTicketBridge) {
+        dashboardTicketBridge = bridge
     }
 
     private func loadVoiceProfilePreferences(profile: String) -> VoiceProfilePreferences {
