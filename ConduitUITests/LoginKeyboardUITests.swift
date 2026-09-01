@@ -93,12 +93,13 @@ final class LoginKeyboardUITests: XCTestCase {
     private var toggleObservations: [String] = []
 
     private func switchIsOn(_ element: XCUIElement) -> Bool {
-        // SwiftUI switches expose their state as the string "0"/"1" via
-        // `value`; `isSwitchOn` is the typed equivalent on newer XCTest.
-        if let raw = element.value as? String {
-            return raw == "1"
+        // SwiftUI switches expose their state via `value` as the string
+        // "0"/"1" (NSString); some configurations surface a Bool NSNumber.
+        switch element.value as? String {
+        case "1": return true
+        case "0": return false
+        default: return (element.value as? Bool) == true
         }
-        return element.isSwitchOn
     }
 
     /// Drives the toggle to ON and verifies the state actually changed.
