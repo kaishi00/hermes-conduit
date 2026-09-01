@@ -88,17 +88,13 @@ struct ChatView: View {
         appState.chatResumeRestorationRequest != nil
     }
 
-    /// The bounded persisted-history window reports older pages behind the
-    /// loaded tail. Only offered while the window belongs to the active
-    /// profile and there is a hydrated transcript to extend.
+    /// Whether "Load earlier messages" is offered right now. AppState owns
+    /// the complete truth — window state, transcript content, and
+    /// active-conversation ownership — the exact predicate
+    /// `loadEarlierMessages` enforces, so the control can never render for
+    /// a window the action would silently reject.
     private var transcriptBackfillAvailable: Bool {
-        guard let window = appState.persistedTranscriptWindow,
-              window.canLoadEarlier,
-              window.profile == appState.activeProfile,
-              !appState.messages.isEmpty else {
-            return false
-        }
-        return true
+        appState.canLoadEarlierMessagesForActiveConversation
     }
 
     private var transcriptBackfillIsLoading: Bool {

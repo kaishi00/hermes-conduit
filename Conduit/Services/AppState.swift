@@ -2830,6 +2830,8 @@ final class AppState: ObservableObject {
             let priorWindowForGraft = priorWindowOwnsThisConversation(
                 priorWindow,
                 requestedSessionId: sessionId,
+                resolvedSessionId: transcript?.resolvedSessionId,
+                runtimeSessionId: result.sessionId,
                 profile: profile
             ) ? priorWindow : nil
             let presentationResult: SessionResumeResult
@@ -2879,11 +2881,16 @@ final class AppState: ObservableObject {
             // affordance once and re-retires on its first terminal page.
             if let transcript, transcriptMatches, let page = transcript.page,
                page.honorsTailContract {
+                // The window records EVERY identity the accepted
+                // transaction produced — requested, resolved stored, and
+                // runtime — so ownership stays self-contained even before
+                // the session catalog learns the runtime↔stored alias.
                 persistedTranscriptWindow = PersistedTranscriptWindowState(
                     requestedSessionID: sessionId,
                     profile: profile,
                     pageSize: PersistedTranscriptPagination.pageSize,
-                    resolvedSessionID: transcript.resolvedSessionId ?? result.sessionId,
+                    resolvedSessionID: transcript.resolvedSessionId,
+                    runtimeSessionID: result.sessionId,
                     nextOffset: page.rawReturned,
                     canLoadEarlier: page.mayHaveOlderRows(fetchedRowCount: page.rawReturned),
                     hasBackfilledPrefix: graftedBackfilledPrefix
@@ -6381,18 +6388,30 @@ final class AppState: ObservableObject {
         )
     }
 
+    /// Whether a persisted-history window from the previous reconciliation
+    /// belongs to the conversation this reconcile just accepted. Identity is
+    /// compared through the ONE centralized rule with the new transaction's
+    /// full identity set (requested, resolved stored, runtime), so a
+    /// reconnect keeps the backfilled prefix even when the catalog is
+    /// temporarily stale about the stored↔runtime alias.
     private func priorWindowOwnsThisConversation(
         _ window: PersistedTranscriptWindowState?,
         requestedSessionId: String,
+        resolvedSessionId: String?,
+        runtimeSessionId: String?,
         profile: String
     ) -> Bool {
-        guard let window, window.profile == profile else { return false }
-        if window.requestedSessionID == requestedSessionId { return true }
-        // Alias-aware, exactly like the backfill ownership gate: the window
-        // may have been opened under a runtime ID while this reconcile runs
-        // under the catalog's stored ID (or vice versa).
-        return knownSessionIDs(for: requestedSessionId).contains(window.requestedSessionID)
-            || knownSessionIDs(for: window.requestedSessionID).contains(requestedSessionId)
+        guard let window else { return false }
+        let conversationIds = PersistedTranscriptWindow.normalizingSessionIDs([
+            requestedSessionId, resolvedSessionId, runtimeSessionId
+        ])
+        return PersistedTranscriptWindow.ownershipHolds(
+            window: window,
+            conversationSessionIds: conversationIds,
+            profile: profile,
+            windowAliasIds: catalogAliasIDs(for: window.trustedSessionIDs),
+            conversationAliasIds: catalogAliasIDs(for: conversationIds)
+        )
     }
 
     /// Fetches the next older persisted-history page for the active
@@ -6410,14 +6429,32 @@ final class AppState: ObservableObject {
     func loadEarlierMessages() async -> Bool {
         guard let window = persistedTranscriptWindow,
               window.canLoadEarlier,
-              !window.isLoadingEarlier,
-              persistedTranscriptWindowOwnershipIsCurrent(
-                requestedSessionId: window.requestedSessionID,
-                profile: window.profile
-              ) else {
+              !window.isLoadingEarlier else {
             return false
         }
-        let requestSessionId = window.requestedSessionID
+        guard persistedTranscriptWindowOwnershipIsCurrent(window) else {
+            // No user-facing error for an already-departed conversation —
+            // and normally unreachable from a tap, because the affordance
+            // exposes this exact ownership truth. The debug capture below
+            // is purely diagnostic (it also fires on the legitimate
+            // render-to-tap race during a session switch).
+            sessionCatalogLog.debug("""
+                Older-page backfill rejected ownership of an otherwise-actionable window: \
+                requested=\(window.requestedSessionID, privacy: .public) \
+                resolved=\(window.resolvedSessionID ?? "none", privacy: .public) \
+                runtime=\(window.runtimeSessionID ?? "none", privacy: .public) \
+                active=\(self.activeSessionId ?? "none", privacy: .public) \
+                windowProfile=\(window.profile, privacy: .public) \
+                activeProfile=\(self.activeProfile, privacy: .public)
+                """)
+            return false
+        }
+        // Older pages are persisted transcript history: continue against
+        // the durable stored identity the hydration resolved (Desktop's
+        // `BackfillRequest.storedSessionId` contract) — never the runtime
+        // WebSocket ID, and never re-derived from a later catalog refresh.
+        let wireSessionId = window.resolvedSessionID ?? window.requestedSessionID
+        let requestedSessionId = window.requestedSessionID
         let profile = window.profile
         let offset = window.nextOffset
         var arming = window
@@ -6425,7 +6462,7 @@ final class AppState: ObservableObject {
         persistedTranscriptWindow = arming
 
         let outcome = await fetchOlderTranscriptPage(
-            sessionId: requestSessionId,
+            sessionId: wireSessionId,
             profile: profile,
             offset: offset
         )
@@ -6434,15 +6471,23 @@ final class AppState: ObservableObject {
         // request's window (same session, same profile, still loading, and
         // no other fetch advanced it meanwhile). Anything else — session
         // switch, profile switch, disconnect re-home — discards the page.
+        // The first four conditions identify THIS armed window; only then
+        // may the bookkeeping below touch it.
         guard var current = persistedTranscriptWindow,
-              current.requestedSessionID == requestSessionId,
+              current.requestedSessionID == requestedSessionId,
               current.profile == profile,
-              current.isLoadingEarlier,
               current.nextOffset == offset,
-              persistedTranscriptWindowOwnershipIsCurrent(
-                requestedSessionId: requestSessionId,
-                profile: profile
-              ) else {
+              current.isLoadingEarlier else {
+            return false
+        }
+        guard persistedTranscriptWindowOwnershipIsCurrent(current) else {
+            // The armed window survived untouched but the conversation
+            // moved on underneath it (e.g. activeSessionId cleared by a
+            // disconnect). Discard the response whole AND release the
+            // single-flight flag so the affordance can re-arm later — a
+            // replaced window never reaches this branch.
+            current.isLoadingEarlier = false
+            persistedTranscriptWindow = current
             return false
         }
         current.isLoadingEarlier = false
@@ -6454,28 +6499,30 @@ final class AppState: ObservableObject {
                 // A malformed page is a backfill dead end, not a chat
                 // failure: stop offering older pages rather than erroring
                 // the already-hydrated conversation.
-                sessionCatalogLog.debug("Older-page backfill for \(requestSessionId, privacy: .public) returned a malformed payload; retiring the affordance")
+                sessionCatalogLog.debug("Older-page backfill for \(wireSessionId, privacy: .public) returned a malformed payload; retiring the affordance")
                 current.canLoadEarlier = false
                 return false
             }
             // Response ownership: the page must still describe THIS
-            // conversation. The endpoint may resolve a runtime ID to its
-            // stored ID, so accept the requested ID, the window's resolved
-            // stored ID, and any known alias of the same conversation —
-            // never a foreign session's rows. A foreign response neither
-            // normalizes into the transcript nor advances coverage.
+            // conversation. The SAME centralized identity rule decides —
+            // the echoed session_id plays the role of the checked
+            // conversation — so an echo is accepted exactly when it is a
+            // transaction-captured identity of this window or a
+            // catalog-proven alias of one. Never a foreign session's rows;
+            // a foreign response neither normalizes into the transcript
+            // nor advances coverage.
             if let returnedId = Self.resolvedSessionId(in: response),
-               !returnedId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                var acceptedIds = knownSessionIDs(for: requestSessionId)
-                acceptedIds.insert(requestSessionId)
-                if let resolvedId = current.resolvedSessionID {
-                    acceptedIds.insert(resolvedId)
-                }
-                guard acceptedIds.contains(returnedId) else {
-                    sessionCatalogLog.debug("Older-page backfill for \(requestSessionId, privacy: .public) returned foreign session \(returnedId, privacy: .public); discarding and retiring the affordance")
-                    current.canLoadEarlier = false
-                    return false
-                }
+               !returnedId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               !PersistedTranscriptWindow.ownershipHolds(
+                 window: current,
+                 conversationSessionIds: [returnedId],
+                 profile: current.profile,
+                 windowAliasIds: catalogAliasIDs(for: current.trustedSessionIDs),
+                 conversationAliasIds: knownSessionIDs(for: returnedId)
+               ) {
+                sessionCatalogLog.debug("Older-page backfill for \(wireSessionId, privacy: .public) returned foreign session \(returnedId, privacy: .public); discarding and retiring the affordance")
+                current.canLoadEarlier = false
+                return false
             }
             let fetchedRowCount = rawRows.count
             let page = PersistedTranscriptPagination.parse(response, rawRowCount: fetchedRowCount)
@@ -6485,7 +6532,7 @@ final class AppState: ObservableObject {
             // and prepending them would break chronology. That response
             // retires the affordance instead.
             guard let page, page.honorsTailContract else {
-                sessionCatalogLog.debug("Older-page backfill for \(requestSessionId, privacy: .public) lost the tail contract; retiring the affordance")
+                sessionCatalogLog.debug("Older-page backfill for \(wireSessionId, privacy: .public) lost the tail contract; retiring the affordance")
                 current.canLoadEarlier = false
                 return false
             }
@@ -6494,7 +6541,7 @@ final class AppState: ObservableObject {
             // IDs that cannot survive across pages — refuse it before it can
             // silently corrupt dedup.
             guard PersistedTranscriptWindow.rowsHaveDurableIdentity(rawRows) else {
-                sessionCatalogLog.debug("Older-page backfill for \(requestSessionId, privacy: .public) returned rows without durable IDs; retiring the affordance")
+                sessionCatalogLog.debug("Older-page backfill for \(wireSessionId, privacy: .public) returned rows without durable IDs; retiring the affordance")
                 current.canLoadEarlier = false
                 return false
             }
@@ -6564,7 +6611,7 @@ final class AppState: ObservableObject {
             // reads, a temporarily cold bridge — stays retryable through
             // another explicit tap. A failed backfill never loops on its
             // own.
-            sessionCatalogLog.debug("Older-page backfill failed for \(requestSessionId, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            sessionCatalogLog.debug("Older-page backfill failed for \(wireSessionId, privacy: .public): \(error.localizedDescription, privacy: .public)")
             current.canLoadEarlier = !Self.historySourceIsUnavailable(error)
             return false
         }
@@ -6593,17 +6640,49 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Ownership gate for the backfill: the window's session and profile
-    /// must still be the active conversation (alias-aware, since the
-    /// endpoint may resolve a runtime ID to its stored ID).
+    /// Catalog alias knowledge for a set of session identities: every ID
+    /// the live catalog groups with any of them (an unknown ID expands to
+    /// just itself).
+    private func catalogAliasIDs(for sessionIds: Set<String>) -> Set<String> {
+        sessionIds.reduce(into: Set<String>()) { expanded, sessionId in
+            expanded.formUnion(knownSessionIDs(for: sessionId))
+        }
+    }
+
+    /// Ownership gate for the persisted-history window: the window must
+    /// belong to the conversation that is actually active. The window's
+    /// transaction-captured identities (requested, resolved stored, runtime)
+    /// are the primary truth — `applyChatResume` re-homes `activeSessionId`
+    /// to the runtime ID long before the catalog learns the alias — while
+    /// catalog alias knowledge remains a compatibility source only.
     private func persistedTranscriptWindowOwnershipIsCurrent(
-        requestedSessionId: String,
-        profile: String
+        _ window: PersistedTranscriptWindowState
     ) -> Bool {
-        guard profile == activeProfile, let activeId = activeSessionId else { return false }
-        if activeId == requestedSessionId { return true }
-        return knownSessionIDs(for: activeId).contains(requestedSessionId)
-            || knownSessionIDs(for: requestedSessionId).contains(activeId)
+        guard let activeId = activeSessionId else { return false }
+        return PersistedTranscriptWindow.ownershipHolds(
+            window: window,
+            conversationSessionIds: [activeId],
+            profile: activeProfile,
+            windowAliasIds: catalogAliasIDs(for: window.trustedSessionIDs),
+            conversationAliasIds: knownSessionIDs(for: activeId)
+        )
+    }
+
+    /// Whether "Load earlier messages" may be offered AND executed right
+    /// now: a hydrated, non-empty transcript whose persisted-history window
+    /// still has an older page and belongs to the conversation that is
+    /// actually active. The single ownership truth for the ChatView
+    /// affordance and the `loadEarlierMessages` action, so the control can
+    /// never render for a window the action would reject (the production
+    /// no-op regression).
+    var canLoadEarlierMessagesForActiveConversation: Bool {
+        guard let window = persistedTranscriptWindow,
+              window.canLoadEarlier,
+              !messages.isEmpty,
+              persistedTranscriptWindowOwnershipIsCurrent(window) else {
+            return false
+        }
+        return true
     }
 
     /// The endpoint may resolve a runtime ID to its stored session ID. Accept
