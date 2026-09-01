@@ -279,6 +279,75 @@ struct SessionBranchMessage {
     let content: String
 }
 
+/// Typed result of `prompt.submit`, derived from the gateway's actual
+/// response `status` field (verified against upstream `tui_gateway`):
+/// `streaming` for a new turn, `steered`/`redirected`/`queued` when the
+/// gateway applied its busy-input policy to a mid-turn submission. The busy
+/// outcomes are NOT failures — Hermes accepted the text — but they prove the
+/// session was RUNNING when the prompt landed, so a caller that believed the
+/// session idle must adopt the authoritative busy state.
+enum PromptSubmissionOutcome: Equatable {
+    /// `{"status": "streaming"}` — the gateway started a new turn.
+    case accepted
+    /// `{"status": "steered"}` — injected into the live turn.
+    case steered
+    /// `{"status": "redirected"}` — live-turn correction accepted.
+    case redirected
+    /// `{"status": "queued"}` — held for the next turn.
+    case queued
+
+    var isBusySubmission: Bool { self != .accepted }
+
+    init(gatewayStatus: String?) {
+        switch gatewayStatus?.lowercased() {
+        case "steered": self = .steered
+        case "redirected": self = .redirected
+        case "queued": self = .queued
+        // "streaming" and any unrecognized success shape: the RPC envelope
+        // succeeded, so the submission was accepted. Older gateways may omit
+        // the status field; never invent a failure from a missing field.
+        default: self = .accepted
+        }
+    }
+}
+
+/// One row of `session.active_list` — the gateway's authoritative in-memory
+/// runtime registry. Reading it does not resume, focus, or otherwise mutate a
+/// session (upstream contract), which makes it the only safe liveness probe
+/// for a healthy foreground transition.
+struct LiveSessionStatus: Equatable {
+    /// The registry's runtime id for this live session.
+    let runtimeSessionId: String
+    /// The durable stored session key the runtime was resumed/created from.
+    let storedSessionId: String
+    /// Upstream `_session_live_status`: "working" | "waiting" | "starting" | "idle".
+    let status: String
+    let lastActive: TimeInterval?
+
+    /// "waiting" (a pending decision) and "starting" (turn accepted, agent
+    /// build in flight) still mean the session is committed busy.
+    var isRunning: Bool { status == "working" || status == "waiting" || status == "starting" }
+
+    init(runtimeSessionId: String, storedSessionId: String, status: String, lastActive: TimeInterval? = nil) {
+        self.runtimeSessionId = runtimeSessionId
+        self.storedSessionId = storedSessionId
+        self.status = status
+        self.lastActive = lastActive
+    }
+
+    init?(from object: [String: AnyCodable]) {
+        guard let runtimeId = object["id"]?.stringValue, !runtimeId.isEmpty else {
+            return nil
+        }
+        self.init(
+            runtimeSessionId: runtimeId,
+            storedSessionId: object["session_key"]?.stringValue ?? "",
+            status: object["status"]?.stringValue ?? "idle",
+            lastActive: object["last_active"]?.doubleValue
+        )
+    }
+}
+
 /// Result of the newer active-turn correction RPC. `queued` is still a
 /// successful delivery: Hermes accepted the correction while the agent was
 /// in its short turn-build window and will run it next.
@@ -946,11 +1015,33 @@ final class HermesClient: ObservableObject {
         return result.objectValue?["text"]?.stringValue
     }
 
-    func sendPrompt(_ sessionId: String, text: String) async throws {
-        _ = try await rpc("prompt.submit", params: [
+    /// The gateway's answer is meaningful and must not be discarded: an idle
+    /// session returns `{"status": "streaming"}`, while a busy session never
+    /// rejects — it applies the configured busy policy and reports
+    /// `steered`/`redirected`/`queued`. A lost RPC acknowledgement (timeout,
+    /// socket death after the bytes reached Hermes) leaves the turn running
+    /// server-side; upstream's own clients recover that case by querying the
+    /// authoritative session state instead of blindly re-submitting.
+    func sendPrompt(_ sessionId: String, text: String) async throws -> PromptSubmissionOutcome {
+        let result = try await rpc("prompt.submit", params: [
             "session_id": sessionId,
             "text": text
         ], timeout: Self.promptSubmitTimeout)
+        return PromptSubmissionOutcome(
+            gatewayStatus: result.objectValue?["status"]?.stringValue
+        )
+    }
+
+    /// Read-only liveness probe against the gateway's in-memory runtime
+    /// registry (`session.active_list`). Unlike `session.resume` this does not
+    /// switch, rebind, or mutate the session, and it is authoritative about
+    /// absence: a runtime that has ended (turn complete + transport gone, or
+    /// a gateway restart) is no longer listed. Older gateways without the
+    /// method throw `RpcError`; callers degrade to resume-based recovery.
+    func activeSessions() async throws -> [LiveSessionStatus] {
+        let result = try await rpc("session.active_list", params: [:])
+        let rows = result.objectValue?["sessions"]?.arrayValue ?? []
+        return rows.compactMap { LiveSessionStatus(from: $0.objectValue ?? [:]) }
     }
 
     func steer(_ sessionId: String, text: String) async throws {

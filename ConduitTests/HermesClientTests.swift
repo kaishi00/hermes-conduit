@@ -409,6 +409,108 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
+    // MARK: - prompt.submit outcome + session.active_list probe
+
+    func testSendPromptReturnsTypedOutcomeFromGatewayStatus() async throws {
+        // Upstream `prompt.submit` never rejects a busy session: it applies
+        // the configured busy policy and reports steered/redirected/queued.
+        // The client must surface that status instead of discarding it.
+        for (gatewayStatus, expected) in [
+            ("streaming", PromptSubmissionOutcome.accepted),
+            ("steered", PromptSubmissionOutcome.steered),
+            ("redirected", PromptSubmissionOutcome.redirected),
+            ("queued", PromptSubmissionOutcome.queued)
+        ] {
+            let transport = FakeTransport()
+            let socket = FakeSocket()
+            transport.nextSocket = { socket }
+            let client = makeClient(transport: transport)
+            let connectTask = Task { try? await client.connect() }
+            transport.open(socket)
+            try await awaitCompletion(of: connectTask, "connect() to complete")
+
+            let sent = Gate()
+            socket.onSend = { sent.signal() }
+            let submitTask = Task<PromptSubmissionOutcome, Error> {
+                try await client.sendPrompt("sess-1", text: "Hello")
+            }
+            try await sent.wait("the prompt.submit request to be sent")
+
+            let request = try XCTUnwrap(
+                JSONSerialization.jsonObject(with: Data(try XCTUnwrap(socket.sentTexts.last).utf8)) as? [String: Any]
+            )
+            XCTAssertEqual(request["method"] as? String, "prompt.submit")
+            let params = try XCTUnwrap(request["params"] as? [String: Any])
+            XCTAssertEqual(params["session_id"] as? String, "sess-1")
+
+            let id = try XCTUnwrap(request["id"] as? Int)
+            let response: [String: Any] = [
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": ["status": gatewayStatus]
+            ]
+            socket.deliver(String(data: try JSONSerialization.data(withJSONObject: response), encoding: .utf8)!)
+
+            let outcome = try await awaitResult(of: submitTask, "the prompt.submit response")
+            XCTAssertEqual(outcome, expected)
+            client.disconnect()
+        }
+    }
+
+    func testActiveSessionsParsesRuntimeRegistryWithoutMutatingParams() async throws {
+        let transport = FakeTransport()
+        let socket = FakeSocket()
+        transport.nextSocket = { socket }
+        let client = makeClient(transport: transport)
+        let connectTask = Task { try? await client.connect() }
+        transport.open(socket)
+        try await awaitCompletion(of: connectTask, "connect() to complete")
+
+        let sent = Gate()
+        socket.onSend = { sent.signal() }
+        let probeTask = Task<[LiveSessionStatus], Error> { try await client.activeSessions() }
+        try await sent.wait("the session.active_list request to be sent")
+
+        let request = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(try XCTUnwrap(socket.sentTexts.last).utf8)) as? [String: Any]
+        )
+        XCTAssertEqual(request["method"] as? String, "session.active_list")
+
+        let id = try XCTUnwrap(request["id"] as? Int)
+        let response: [String: Any] = [
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": [
+                "sessions": [
+                    [
+                        "id": "runtime-1",
+                        "session_key": "stored-1",
+                        "status": "working",
+                        "last_active": 100.0
+                    ],
+                    [
+                        "id": "runtime-2",
+                        "session_key": "stored-2",
+                        "status": "idle"
+                    ],
+                    // Missing the runtime id entirely: unmatchable, dropped.
+                    ["session_key": "stored-broken", "status": "idle"]
+                ]
+            ]
+        ]
+        socket.deliver(String(data: try JSONSerialization.data(withJSONObject: response), encoding: .utf8)!)
+
+        let rows = try await awaitResult(of: probeTask, "the session.active_list response")
+        XCTAssertEqual(rows.count, 2, "Rows without a runtime id are dropped")
+        XCTAssertEqual(rows.first?.runtimeSessionId, "runtime-1")
+        XCTAssertEqual(rows.first?.storedSessionId, "stored-1")
+        XCTAssertEqual(rows.first?.status, "working")
+        XCTAssertTrue(rows.first?.isRunning == true)
+        XCTAssertEqual(rows.last?.status, "idle")
+        XCTAssertFalse(rows.last?.isRunning ?? true)
+        client.disconnect()
+    }
+
     // MARK: - Helpers
 
     private final class ResultBox<T>: @unchecked Sendable {

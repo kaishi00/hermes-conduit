@@ -16,6 +16,10 @@ import WebKit
 private let sessionCatalogLog = Logger(subsystem: "com.milim.conduit", category: "SessionCatalog")
 private let titleGenerationLog = Logger(subsystem: "com.milim.conduit", category: "TitleGeneration")
 private let sessionYoloLog = Logger(subsystem: "com.milim.conduit", category: "SessionYolo")
+/// Foreground/turn-lifecycle decisions: why a refresh chose observation vs
+/// resume, and how prompt submissions were classified. Ids only — never
+/// prompt text, credentials, or message content.
+private let lifecycleLog = Logger(subsystem: "com.milim.conduit", category: "TurnLifecycle")
 
 typealias ChatResumeReconnectCancellation = @MainActor () -> Void
 typealias ChatResumeReconnectExecutor = @MainActor (ChatResumeSyncPurpose) async -> Void
@@ -51,7 +55,14 @@ struct ChatResumeLifecycleOperations {
     ) async throws -> BranchResult)?
     var setSessionTitle: (@MainActor (HermesClient, String, String) async throws -> Void)?
     var refreshContext: (@MainActor (HermesClient, String) async -> Void)?
-    var sendPrompt: (@MainActor (HermesClient, String, String) async throws -> Void)?
+    var sendPrompt: (@MainActor (HermesClient, String, String) async throws -> PromptSubmissionOutcome)?
+    /// Foreground transport verification. Production calls the client's
+    /// `session.list` health check; tests substitute a controllable outcome.
+    var verifyTransportHealth: (@MainActor (HermesClient) async throws -> Void)?
+    /// Foreground liveness probe against the gateway's runtime registry.
+    /// Production calls `session.active_list`; unsupported gateways throw and
+    /// the caller degrades to the resume-based refresh.
+    var probeActiveSessions: (@MainActor (HermesClient) async throws -> [LiveSessionStatus])?
     var steer: (@MainActor (HermesClient, String, String) async throws -> Void)?
     var redirect: (@MainActor (
         HermesClient,
@@ -89,7 +100,9 @@ struct ChatResumeLifecycleOperations {
         ) async throws -> BranchResult)? = nil,
         setSessionTitle: (@MainActor (HermesClient, String, String) async throws -> Void)? = nil,
         refreshContext: (@MainActor (HermesClient, String) async -> Void)? = nil,
-        sendPrompt: (@MainActor (HermesClient, String, String) async throws -> Void)? = nil,
+        sendPrompt: (@MainActor (HermesClient, String, String) async throws -> PromptSubmissionOutcome)? = nil,
+        verifyTransportHealth: (@MainActor (HermesClient) async throws -> Void)? = nil,
+        probeActiveSessions: (@MainActor (HermesClient) async throws -> [LiveSessionStatus])? = nil,
         steer: (@MainActor (HermesClient, String, String) async throws -> Void)? = nil,
         redirect: (@MainActor (
             HermesClient,
@@ -121,6 +134,8 @@ struct ChatResumeLifecycleOperations {
         self.setSessionTitle = setSessionTitle
         self.refreshContext = refreshContext
         self.sendPrompt = sendPrompt
+        self.verifyTransportHealth = verifyTransportHealth
+        self.probeActiveSessions = probeActiveSessions
         self.steer = steer
         self.redirect = redirect
         self.interrupt = interrupt
@@ -456,6 +471,15 @@ final class AppState: ObservableObject {
     @Published private(set) var isOpeningNotificationSession = false
     @Published private(set) var isBranchingChat = false
     @Published private(set) var turnState: TurnState = .idle
+    /// Whether `turnState` may have missed server-side turn edges. Set at
+    /// lifecycle boundaries where the socket can die or the gateway can change
+    /// state unobserved (scene dips, reconnects, ambiguous submissions);
+    /// cleared only when an authoritative source (the `session.active_list`
+    /// probe, a resume snapshot, or a typed prompt outcome) re-confirms the
+    /// state. A stale idle state must not route the next input as a new-turn
+    /// `prompt.submit` — Hermes would apply its busy policy to it and the
+    /// message would silently join a turn the user never saw start.
+    private(set) var turnStateIsStale = false
     @Published private(set) var busyInputMode: BusyInputMode = .steer
     @Published private(set) var displayPreferences = ProfileDisplayPreferences()
     @Published var streamingText = ""
@@ -3383,6 +3407,8 @@ final class AppState: ObservableObject {
         } else {
             turnState = TurnState.fromGatewayRunning(result.snapshot.running)
         }
+        // The resume snapshot is authoritative about the turn state.
+        turnStateIsStale = false
         return true
     }
 
@@ -4051,6 +4077,10 @@ final class AppState: ObservableObject {
         if purpose == .automaticReturn, reconnectTask != nil {
             cancelScheduledReconnect()
         }
+        // The old socket died: turn edges may have been missed while the
+        // transport was down. The sync this cycle runs will re-confirm the
+        // state from the authoritative resume snapshot and clear the flag.
+        turnStateIsStale = true
         isConnecting = true
         turnState = .reconnecting
 
@@ -4249,16 +4279,19 @@ final class AppState: ObservableObject {
                     // these flags for unhealthy sockets.
                     self.isConnected = true
                     self.isConnecting = false
+                    lifecycleLog.notice(
+                        "Foreground refresh start: transport=retained localTurn=\(self.turnStateLogValue, privacy: .public)"
+                    )
                     do {
-                        try await client.healthCheck()
+                        try await self.verifyChatResumeTransportHealth(client)
                         guard self.scenePhaseAttemptIsCurrent(sceneAttemptID),
                               self.automaticChatResumeWorkIsCurrent(automaticWorkToken) else {
                             self.settleReconciliation(token)
                             return
                         }
-                        await self.syncSession(
-                            purpose: .automaticReturn,
-                            using: token,
+                        await self.refreshForegroundOnHealthyTransport(
+                            using: client,
+                            reconciliationToken: token,
                             automaticWorkToken: automaticWorkToken
                         )
                     } catch {
@@ -4267,6 +4300,9 @@ final class AppState: ObservableObject {
                             self.settleReconciliation(token)
                             return
                         }
+                        lifecycleLog.notice(
+                            "Foreground refresh: health check failed (\(error.localizedDescription, privacy: .public)); reconnecting"
+                        )
                         await self.reconnectForRetry(purpose: .automaticReturn)
                         self.settleReconciliation(token)
                     }
@@ -4276,6 +4312,9 @@ final class AppState: ObservableObject {
                         self.settleReconciliation(token)
                         return
                     }
+                    lifecycleLog.notice(
+                        "Foreground refresh start: transport=missing-or-unhealthy; reconnecting"
+                    )
                     await self.reconnectForRetry(purpose: .automaticReturn)
                     self.settleReconciliation(token)
                 }
@@ -4286,6 +4325,11 @@ final class AppState: ObservableObject {
         case .background:
             isSceneActive = false
             hasEnteredBackgroundScenePhase = true
+            // The socket can die while suspended and turn edges can be missed,
+            // so the local turn state must be re-confirmed against the
+            // authoritative runtime registry before the next composer submit
+            // decides between a new turn and a busy submission.
+            turnStateIsStale = true
             voiceConversationController.setForegroundActive(false)
             messageReadAloudController.setForegroundActive(false)
             showVoiceSheet = false
@@ -4304,6 +4348,10 @@ final class AppState: ObservableObject {
 
         case .inactive:
             isSceneActive = false
+            // Same reasoning as .background: a dip through Control Center or a
+            // system overlay can miss turn edges. This never causes a resume —
+            // the foreground path treats staleness as a read-only probe.
+            turnStateIsStale = true
             // Reconnects are suppressed during .inactive too, so an armed
             // timer would only fire to be discarded. Drop it here; a socket
             // that dies under a system overlay (incoming call, control
@@ -4340,6 +4388,226 @@ final class AppState: ObservableObject {
         scenePhaseAttemptID = nil
         scenePhaseTask = nil
     }
+
+    private var turnStateLogValue: String {
+        switch turnState {
+        case .synchronizing: return "synchronizing"
+        case .idle: return "idle"
+        case .running: return "running"
+        case .reconnecting: return "reconnecting"
+        case .unsupportedGateway: return "unsupportedGateway"
+        }
+    }
+
+    // MARK: - Foreground observational refresh
+
+    /// Outcome of the read-only liveness probe for the active conversation.
+    private enum ForegroundRuntimeProbe {
+        /// A live runtime row matched the active session's identity.
+        case live(LiveSessionStatus)
+        /// The registry answered but listed no runtime for this session: the
+        /// turn ended and its transport went away, or the gateway restarted.
+        case absent
+        /// The registry could not be read (older gateway, transient RPC
+        /// failure). The caller falls back to the resume-based refresh.
+        case unavailable(String)
+    }
+
+    /// A healthy foreground transition must be observational, not a session
+    /// replacement. `session.resume` is a session SWITCH upstream (switch_
+    /// session), and the full sync path re-derives the target session,
+    /// replaces the transcript, and resets the live reasoning projection — a
+    /// harmless background→foreground cycle must not manufacture a semantic
+    /// turn boundary. So the healthy-socket path first probes the gateway's
+    /// in-memory runtime registry (`session.active_list`), which upstream
+    /// guarantees does not resume, focus, or mutate a session, and only falls
+    /// back to `session.resume` when the registry proves the live runtime is
+    /// gone (or cannot answer).
+    private func refreshForegroundOnHealthyTransport(
+        using client: HermesClient,
+        reconciliationToken token: UUID,
+        automaticWorkToken: ChatResumeAutomaticWorkToken?
+    ) async {
+        guard foregroundRefreshOwnsReconciliation(token),
+              automaticChatResumeWorkIsCurrent(automaticWorkToken) else {
+            settleReconciliation(token)
+            return
+        }
+        let requestedSessionID = activeSessionId
+        let probe: ForegroundRuntimeProbe
+        if let requestedSessionID {
+            probe = await probeForegroundRuntime(
+                requestedSessionID: requestedSessionID,
+                using: client
+            )
+        } else {
+            probe = .absent
+        }
+        guard foregroundRefreshOwnsReconciliation(token),
+              automaticChatResumeWorkIsCurrent(automaticWorkToken) else {
+            settleReconciliation(token)
+            return
+        }
+        switch probe {
+        case let .live(row):
+            if row.isRunning, !messages.isEmpty {
+                // The same turn is still live over a hydrated transcript: keep
+                // the session, the transcript, the streaming buffer, and the
+                // PR #121 live reasoning projection exactly as they are. Only
+                // the buffered events captured while the reconciliation
+                // boundary was open need replaying — nothing was replaced, so
+                // no dedup is needed.
+                lifecycleLog.notice(
+                    "Foreground refresh: probe=live status=\(row.status, privacy: .public) session=\(requestedSessionID ?? "-", privacy: .public) → observation-only adopt"
+                )
+                adoptForegroundRunningState(
+                    reconciliationToken: token,
+                    automaticWorkToken: automaticWorkToken
+                )
+            } else if row.isRunning {
+                // A running runtime over an empty local transcript means this
+                // surface never hydrated (failed resume, or the turn was
+                // started from another surface): attach through the full
+                // refresh, whose resume returns the live projection.
+                lifecycleLog.notice(
+                    "Foreground refresh: probe=live localTranscript=empty → resume refresh (attach live projection)"
+                )
+                await syncSession(
+                    purpose: .automaticReturn,
+                    using: token,
+                    automaticWorkToken: automaticWorkToken
+                )
+            } else if turnState.isRunning {
+                // The turn ended while the app was suspended and the idle edge
+                // was missed. Presentation recovery needs the authoritative
+                // bounded transcript refresh, which is allowed to resume
+                // because nothing is running anymore.
+                lifecycleLog.notice(
+                    "Foreground refresh: probe=idle localTurn=running → resume refresh (turn ended while away)"
+                )
+                await syncSession(
+                    purpose: .automaticReturn,
+                    using: token,
+                    automaticWorkToken: automaticWorkToken
+                )
+            } else {
+                // Idle before, idle now: the session is stable and attached.
+                lifecycleLog.notice(
+                    "Foreground refresh: probe=idle localTurn=idle → no-op"
+                )
+                turnStateIsStale = false
+                _ = settleReconciliationAndPublish(token, automaticWorkToken: automaticWorkToken)
+            }
+        case .absent:
+            // No live runtime for this session: either the turn completed and
+            // the registry reaped it while the transport was away, or the
+            // gateway restarted and the runtime id is gone. Both need the
+            // resume-based refresh to reattach (or recover completed work).
+            // `session.resume` reuses a live runtime when one exists, so this
+            // cannot create a duplicate runtime for a session that is alive.
+            lifecycleLog.notice(
+                "Foreground refresh: probe=absent → resume refresh (runtime not live)"
+            )
+            await syncSession(
+                purpose: .automaticReturn,
+                using: token,
+                automaticWorkToken: automaticWorkToken
+            )
+        case let .unavailable(reason):
+            // Older gateway or transient registry failure: keep the proven
+            // resume-based refresh rather than guessing.
+            lifecycleLog.notice(
+                "Foreground refresh: probe unavailable (\(reason, privacy: .public)) → resume refresh"
+            )
+            await syncSession(
+                purpose: .automaticReturn,
+                using: token,
+                automaticWorkToken: automaticWorkToken
+            )
+        }
+    }
+
+    /// Read-only registry probe for the active conversation. Matches a row by
+    /// ANY identity the conversation is known under (requested, stored, and
+    /// runtime aliases), so a runtime-id rotation cannot be mistaken for a
+    /// dead runtime while the catalog already knows the alias.
+    private func probeForegroundRuntime(
+        requestedSessionID: String,
+        using client: HermesClient
+    ) async -> ForegroundRuntimeProbe {
+        do {
+            let rows: [LiveSessionStatus]
+            if let probeActiveSessions = chatResumeLifecycleOperations.probeActiveSessions {
+                rows = try await probeActiveSessions(client)
+            } else {
+                rows = try await client.activeSessions()
+            }
+            let acceptedIDs = acceptedIdentitySessionIDs(forRequested: requestedSessionID)
+            if let row = rows.first(where: {
+                acceptedIDs.contains($0.runtimeSessionId) || acceptedIDs.contains($0.storedSessionId)
+            }) {
+                return .live(row)
+            }
+            return .absent
+        } catch {
+            return .unavailable(error.localizedDescription)
+        }
+    }
+
+    /// Every identity the active conversation answers to: the requested id,
+    /// its canonical stored id, and the catalog's confirmed aliases.
+    private func acceptedIdentitySessionIDs(forRequested requestedSessionID: String) -> Set<String> {
+        var ids = knownSessionIDs(for: requestedSessionID)
+        ids.insert(requestedSessionID)
+        if let canonical = canonicalSessionID(for: requestedSessionID) {
+            ids.insert(canonical)
+        }
+        if let activeSessionId {
+            ids.insert(activeSessionId)
+        }
+        return ids
+    }
+
+    /// Adopts an authoritative running state WITHOUT replacing any
+    /// presentation state: no transcript swap, no streaming-buffer reset, no
+    /// reasoning-segment reset. Buffered events captured while the foreground
+    /// reconciliation boundary was open are replayed FIRST (applyStreamEvent's
+    /// active-session gate still applies), then the probe's later-authoritative
+    /// running state is adopted — a buffered turn-end edge is intentionally
+    /// overridden by the registry snapshot the decision was made from. The
+    /// boundary settles last.
+    private func adoptForegroundRunningState(
+        reconciliationToken token: UUID,
+        automaticWorkToken: ChatResumeAutomaticWorkToken?
+    ) {
+        guard token == reconciliationToken else { return }
+        let bufferedEvents = reconciliation?.bufferedEvents ?? []
+        bufferedEvents.forEach { applyStreamEvent($0) }
+        // The registry is authoritative: a locally idle state that disagreed
+        // with it (missed turn start) is corrected, and a running state is
+        // confirmed. setRunning also clears the pending-decision restoration
+        // guard exactly like a live sessionBusy(true) event would.
+        setRunning(true)
+        turnStateIsStale = false
+        _ = settleReconciliationAndPublish(token, automaticWorkToken: automaticWorkToken)
+    }
+
+    private func verifyChatResumeTransportHealth(_ client: HermesClient) async throws {
+        if let verifyTransportHealth = chatResumeLifecycleOperations.verifyTransportHealth {
+            try await verifyTransportHealth(client)
+        } else {
+            try await client.healthCheck()
+        }
+    }
+
+    /// Continuation guard for the foreground refresh: the refresh decision may
+    /// only mutate state while its reconciliation token still owns the
+    /// boundary (a newer transition rotates the token and cancels the task).
+    private func foregroundRefreshOwnsReconciliation(_ token: UUID) -> Bool {
+        token == reconciliationToken && !Task.isCancelled
+    }
+
+    // MARK: - Authoritative turn-state correction
 
     // MARK: - Session management
 
@@ -5204,11 +5472,75 @@ final class AppState: ObservableObject {
             }
         }
 
+        // A lifecycle/recovery boundary (scene dip, reconnect, ambiguous
+        // submission) may have left the local idle state stale while Hermes
+        // still considers the session running. Submitting blind would enter
+        // Hermes' server-side busy policy with a message the user meant as a
+        // new turn — the queued/steered follow-up the user never asked for.
+        // One authoritative read-only probe corrects the state before the
+        // routing decision. Trusted state never pays for the probe.
+        if turnState == .idle, turnStateIsStale,
+           await correctStaleIdleTurnState() {
+            guard attachments.isEmpty else {
+                errorMessage = "Attachments can only be sent in a new message, after the current response finishes."
+                return false
+            }
+            switch busyInputMode {
+            case .steer:
+                lifecycleLog.notice("submitComposer: stale-idle corrected to running → busy steer")
+                return await steer(text, context: submissionContext)
+            case .interrupt:
+                lifecycleLog.notice("submitComposer: stale-idle corrected to running → busy redirect/interrupt")
+                return await redirectOrInterruptAndSend(text, context: submissionContext)
+            }
+        }
+
         return await sendMessage(
             text,
             attachments: attachments,
             context: submissionContext
         )
+    }
+
+    /// Read-only authoritative correction of a possibly stale local idle
+    /// state. Returns true when the gateway proves the session is RUNNING (the
+    /// caller must use the configured busy action); false when the session is
+    /// idle (safe to send a new turn) or the state could not be verified (do
+    /// not add RPC chatter — fall through to the ordinary send).
+    private func correctStaleIdleTurnState() async -> Bool {
+        guard let client, let sessionId = activeSessionId else {
+            turnStateIsStale = false
+            return false
+        }
+        let probe = await probeForegroundRuntime(
+            requestedSessionID: sessionId,
+            using: client
+        )
+        switch probe {
+        case let .live(row) where row.isRunning:
+            lifecycleLog.notice(
+                "submitComposer: authoritative probe=live status=\(row.status, privacy: .public) corrects stale idle session=\(sessionId, privacy: .public)"
+            )
+            // setRunning also clears the pending-decision restoration guard,
+            // exactly like a live sessionBusy(true) edge would.
+            setRunning(true)
+            turnStateIsStale = false
+            return true
+        case .live, .absent:
+            // Authoritative idle (or the runtime is gone): the local idle
+            // state is confirmed for this submission.
+            turnStateIsStale = false
+            return false
+        case let .unavailable(reason):
+            // The registry could not be read (older gateway, transient
+            // failure). Proceed with the ordinary send rather than blocking
+            // the user; the submission's own typed outcome will reconcile.
+            lifecycleLog.notice(
+                "submitComposer: stale-idle probe unavailable (\(reason, privacy: .public)); proceeding with send"
+            )
+            turnStateIsStale = false
+            return false
+        }
     }
 
     func sendMessage(
@@ -5268,22 +5600,173 @@ final class AppState: ObservableObject {
         }
 
         do {
+            let outcome: PromptSubmissionOutcome
             if let sendPrompt = chatResumeLifecycleOperations.sendPrompt {
-                try await sendPrompt(client, sessionId, text)
+                outcome = try await sendPrompt(client, sessionId, text)
             } else {
-                try await client.sendPrompt(sessionId, text: text)
+                outcome = try await client.sendPrompt(sessionId, text: text)
             }
             // The gateway accepted the prompt. A session handoff may have
             // happened while the RPC was suspended, but that does not turn a
             // remotely successful send into a local draft failure. There are
             // no current-session mutations after this point.
+            lifecycleLog.notice(
+                "prompt.submit outcome=\(Self.promptOutcomeLogValue(outcome), privacy: .public) session=\(sessionId, privacy: .public)"
+            )
+            if outcome.isBusySubmission, isCurrentComposerSubmission(submissionContext) {
+                // Hermes applied its busy policy, which proves THIS session
+                // was RUNNING when the prompt landed — the local state was
+                // stale. Adopt the authoritative busy state so the composer
+                // keeps offering the configured busy action and the next
+                // submission is routed correctly. A session handoff while the
+                // RPC was suspended must not misattribute the busy state to
+                // the newly active session.
+                turnState = .running
+            }
+            turnStateIsStale = false
             return true
         } catch {
             guard isCurrentComposerSubmission(submissionContext) else { return false }
+            if Self.isAmbiguousPromptDelivery(error) {
+                lifecycleLog.notice(
+                    "prompt.submit ambiguous (\(error.localizedDescription, privacy: .public)); querying authoritative state session=\(sessionId, privacy: .public)"
+                )
+                let (resolution, reconnected) = await reconcileAmbiguousPromptSubmission(
+                    requestedSessionID: sessionId,
+                    submissionContext: submissionContext
+                )
+                switch resolution {
+                case .acceptedRunning, .acceptedSettled:
+                    // Hermes accepted the submission and the turn is live:
+                    // keep the optimistic user row and the running turn, and
+                    // never re-send the prompt. In the settled flavor the
+                    // recovery reconnect's sync already replaced the
+                    // transcript; either way the turn is authoritative.
+                    turnState = .running
+                    turnStateIsStale = false
+                    return true
+                case .notAccepted:
+                    // Authoritative evidence shows Hermes did not accept the
+                    // prompt: restore the unsent state exactly once below.
+                    lifecycleLog.notice(
+                        "prompt.submit not accepted (authoritative); restoring unsent state session=\(sessionId, privacy: .public)"
+                    )
+                    turnStateIsStale = false
+                case .unresolved:
+                    // The authoritative state could not be read. Be
+                    // conservative about duplicate delivery: restore rather
+                    // than re-send blindly.
+                    lifecycleLog.notice(
+                        "prompt.submit state unresolved; restoring unsent state session=\(sessionId, privacy: .public)"
+                    )
+                }
+                errorMessage = "Failed to send: \(error.localizedDescription)"
+                if !reconnected {
+                    await recoverComposerSubmission(using: submissionContext)
+                }
+                // A reconnect inside the recovery already synced the
+                // authoritative transcript, so the restoration happened there.
+                return false
+            }
             errorMessage = "Failed to send: \(error.localizedDescription)"
             await recoverComposerSubmission(using: submissionContext)
             return false
         }
+    }
+
+    private static func promptOutcomeLogValue(_ outcome: PromptSubmissionOutcome) -> String {
+        switch outcome {
+        case .accepted: return "accepted"
+        case .steered: return "steered"
+        case .redirected: return "redirected"
+        case .queued: return "queued"
+        }
+    }
+
+    /// Which failures leave it genuinely unknown whether Hermes received the
+    /// prompt. Two classes are DEFINITIVE rejections: a structured `RpcError`
+    /// (the gateway answered, so the prompt was not accepted) and
+    /// `notConnected` (`rpc` throws before any bytes leave the device). The
+    /// remaining transport failures are ambiguous — the bytes may have
+    /// reached Hermes and the turn may already be running — so the
+    /// authoritative registry probe decides, and unknown future `HermesError`
+    /// cases fail toward the probe rather than toward a blind retry.
+    private static func isAmbiguousPromptDelivery(_ error: Error) -> Bool {
+        switch error {
+        case HermesError.notConnected:
+            return false
+        case is RpcError:
+            return false
+        case is HermesError:
+            return true
+        case is URLError, is CancellationError:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Recovery for a `prompt.submit` whose acknowledgement was lost. Reconnects
+    /// the transport if needed, then consults the authoritative runtime
+    /// registry: a live turn for this session means the prompt was accepted and
+    /// must never be re-sent; an idle/absent session means it was not.
+    /// `reconnected` reports whether a transport recovery (with its own full
+    /// transcript sync) ran, so the caller can skip a duplicate restoration.
+    private enum AmbiguousPromptResolution {
+        /// Accepted; the turn is running on the current transport.
+        case acceptedRunning
+        /// Accepted; the recovery reconnect's sync already settled the
+        /// transcript authoritatively.
+        case acceptedSettled
+        /// The registry proves the prompt was not accepted.
+        case notAccepted
+        /// The registry could not be read.
+        case unresolved
+    }
+
+    private func reconcileAmbiguousPromptSubmission(
+        requestedSessionID: String,
+        submissionContext: ComposerSubmissionContext
+    ) async -> (resolution: AmbiguousPromptResolution, reconnected: Bool) {
+        var reconnected = false
+        var probeClient = client
+        if probeClient?.isConnected != true {
+            // The transport died around the submission. A reconnect here is a
+            // real recovery, and its sync may already surface the accepted
+            // turn's persisted rows.
+            await reconnectForRetry(purpose: .preserveCurrent)
+            probeClient = self.client
+            reconnected = true
+        }
+        guard isCurrentOrAliasedComposerSubmission(submissionContext),
+              let probeClient else { return (.unresolved, reconnected) }
+        let acceptedIDs = acceptedIdentitySessionIDs(forRequested: requestedSessionID)
+        let rows: [LiveSessionStatus]
+        do {
+            if let probeActiveSessions = chatResumeLifecycleOperations.probeActiveSessions {
+                rows = try await probeActiveSessions(probeClient)
+            } else {
+                rows = try await probeClient.activeSessions()
+            }
+        } catch {
+            return (.unresolved, reconnected)
+        }
+        guard let row = rows.first(where: {
+            acceptedIDs.contains($0.runtimeSessionId) || acceptedIDs.contains($0.storedSessionId)
+        }) else {
+            // Authoritative absence: the runtime is gone. A turn accepted
+            // seconds ago would still be listed (the registry reaps a runtime
+            // only after its transport is gone AND it settled), so treat this
+            // as not accepted.
+            return (.notAccepted, reconnected)
+        }
+        if row.isRunning {
+            let resolution: AmbiguousPromptResolution = self.client === probeClient
+                ? .acceptedRunning
+                : .acceptedSettled
+            return (resolution, reconnected)
+        }
+        return (.notAccepted, reconnected)
     }
 
     func toggleYolo(context: ComposerSubmissionContext? = nil) async {
