@@ -512,8 +512,62 @@ final class AppStateReasoningStreamTests: XCTestCase {
         XCTAssertEqual(state.messages.last?.id, "assistant-1")
     }
 
-    func testSessionSwitchDiscardsPendingReasoningPublishForNewSession() async {
-        let replacementMessages = [
+    /// Mid-turn transcript rows (review summaries, clarify/approval cards,
+    /// slash output, steer corrections) must not land below the live
+    /// reasoning card's eventual commit: each append settles the segment
+    /// first, preserving the pre-projection chronology, and reasoning that
+    /// resumes afterwards mounts a fresh segment (tool-boundary precedent).
+    func testMidTurnTranscriptAppendsCommitReasoningSegmentFirst() {
+        let state = makeAppState()
+        installActiveSession(state, id: "stored-a")
+
+        feedReasoning(["thinking about the change "], sessionId: "stored-a", state: state)
+        state.handleStreamEvent(.reviewSummary(
+            sessionId: "stored-a",
+            activity: ReviewActivity(summary: "mid-turn review", details: nil, fullSessionId: nil)
+        ))
+
+        // The live card committed above the review row; nothing stays live.
+        XCTAssertEqual(state.messages.map(\.role), [.reasoning, .system])
+        XCTAssertEqual(state.messages.first?.content, "thinking about the change ")
+        XCTAssertNil(state.liveReasoningSegment)
+
+        // Reasoning that resumes after the interjection mounts a FRESH
+        // segment, which the next mid-turn append commits the same way.
+        feedReasoning(["second segment "], sessionId: "stored-a", state: state)
+        state.handleStreamEvent(.approval(
+            sessionId: "stored-a",
+            activity: ApprovalActivity(
+                sessionId: "stored-a",
+                command: "run tests",
+                description: "wants to run tests",
+                choices: nil,
+                allowPermanent: false,
+                smartDenied: false,
+                status: .pending,
+                choice: nil,
+                error: nil
+            )
+        ))
+        XCTAssertEqual(state.messages.map(\.role), [.reasoning, .system, .reasoning, .approval])
+        XCTAssertEqual(state.messages[2].content, "second segment ")
+
+        feedReasoning(["third segment"], sessionId: "stored-a", state: state)
+        state.handleStreamEvent(.clarify(
+            sessionId: "stored-a",
+            requestId: "req-1",
+            question: "which scope?",
+            choices: [("a", "A"), ("b", "B")]
+        ))
+        XCTAssertEqual(
+            state.messages.map(\.role),
+            [.reasoning, .system, .reasoning, .approval, .reasoning, .clarify]
+        )
+        XCTAssertEqual(state.messages[4].content, "third segment")
+        XCTAssertNil(state.liveReasoningSegment)
+    }
+
+    func testSessionSwitchDiscardsPendingReasoningPublishForNewSession() async {        let replacementMessages = [
             ChatMessage(id: "new-1", role: .assistant, content: "Other session", timestamp: "1")
         ]
         let state = makeAppState(lifecycleOperations: ChatResumeLifecycleOperations(

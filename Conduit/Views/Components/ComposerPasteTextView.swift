@@ -94,6 +94,8 @@ struct ComposerPasteTextView: UIViewRepresentable {
             editorIdentity: editorIdentity,
             to: uiView
         )
+        // Layout is requested on text change and editability flip only;
+        // bounds changes re-layout automatically through layoutSubviews.
         if uiView.isEditable != enabled {
             uiView.isEditable = enabled
             uiView.setNeedsLayout()
@@ -187,16 +189,31 @@ struct ComposerPasteTextView: UIViewRepresentable {
                 lastTextReportedByUIKit = textView.text
                 pendingProgrammatic = nil
                 appliedProgrammaticRevision = 0
+                if textView.text != text {
+                    // The binding is the fresh editor's ground truth even
+                    // when no revision advance accompanies the rotation.
+                    // Every production rotation is text-paired through
+                    // replaceComposerText; applying here keeps a future
+                    // unpaired rotation from silently blanking the editor.
+                    performProgrammaticReplacement(
+                        text: text,
+                        revision: programmaticRevision,
+                        into: textView
+                    )
+                    return
+                }
             }
             flushPendingProgrammaticIfCompositionEnded(textView)
 
-            // Echo of a user edit (or an idempotent repeat): the binding
-            // mirrors text UIKit already reported. Writing here would revert
-            // keystrokes UIKit has accepted since, re-clamp the selection,
-            // and tear down input state — the reported cursor corruption.
-            guard text != lastTextReportedByUIKit else { return }
-            // Unrelated invalidation: no revision advance, no editor write.
+            // An unrelated invalidation keeps the revision and can stop here.
             guard programmaticRevision != appliedProgrammaticRevision else { return }
+            if text == lastTextReportedByUIKit {
+                // Intentional replacement whose value the editor already
+                // holds: adopt the revision so bookkeeping stays in sync,
+                // without tearing down live input state with a rewrite.
+                appliedProgrammaticRevision = programmaticRevision
+                return
+            }
 
             // Active IME composition is never silently replaced.
             if textView.markedTextRange != nil {

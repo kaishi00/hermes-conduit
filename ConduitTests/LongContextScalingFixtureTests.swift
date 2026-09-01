@@ -484,6 +484,69 @@ final class LongContextScalingFixtureTests: XCTestCase {
         )
     }
 
+    /// An editor identity rotation NOT paired with a revision advance (no
+    /// production path does this today, but the bridge must not silently
+    /// blank the editor if one ever appears): the fresh editor adopts the
+    /// binding as ground truth, exactly once.
+    func testIdentityRotationWithUnpairedRevisionStillAppliesBinding() throws {
+        var value = "carried text"
+        let firstIdentity = UUID()
+        let secondIdentity = UUID()
+        let editor = ComposerPasteTextView(
+            text: Binding(get: { value }, set: { value = $0 }),
+            isFocused: .constant(false),
+            measuredHeight: .constant(44),
+            enabled: true,
+            onPastedImage: { _ in },
+            onPastedImageError: { _ in },
+            editorIdentity: firstIdentity
+        )
+        let coordinator = ComposerPasteTextView.Coordinator(editor)
+        let textView = ImagePasteTextView()
+
+        // Establish the first lifecycle with no revision advances at all
+        // (revision stays 0 — typed text, never replaced programmatically).
+        TranscriptPerf.reset()
+        coordinator.apply(
+            text: "carried text",
+            programmaticRevision: 0,
+            editorIdentity: firstIdentity,
+            to: textView
+        )
+        XCTAssertEqual(
+            TranscriptPerf.composerProgrammaticTextAssignments, 1,
+            "first apply on a fresh editor must materialize the binding"
+        )
+
+        // Rotate the identity with a genuinely fresh editor (in production
+        // .id(editorIdentity) recreates the view) and no revision advance:
+        // the empty view must adopt the binding as ground truth.
+        let freshTextView = ImagePasteTextView()
+        coordinator.apply(
+            text: "carried text",
+            programmaticRevision: 0,
+            editorIdentity: secondIdentity,
+            to: freshTextView
+        )
+        XCTAssertEqual(
+            freshTextView.text, "carried text",
+            "an unpaired identity rotation must not blank the editor"
+        )
+        XCTAssertEqual(
+            TranscriptPerf.composerProgrammaticTextAssignments, 2,
+            "the rotation apply happens exactly once"
+        )
+
+        // Follow-up invalidations with the same identity/revision: no writes.
+        coordinator.apply(
+            text: "carried text",
+            programmaticRevision: 0,
+            editorIdentity: secondIdentity,
+            to: freshTextView
+        )
+        XCTAssertEqual(TranscriptPerf.composerProgrammaticTextAssignments, 2)
+    }
+
     /// Clear-after-send is an intentional revision: the editor is cleared
     /// exactly once even though the same (empty) binding rides along on
     /// every subsequent invalidation.

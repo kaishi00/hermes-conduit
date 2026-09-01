@@ -5231,6 +5231,9 @@ final class AppState: ObservableObject {
             author: nil,
             attachments: attachments.isEmpty ? nil : attachments
         )
+        // Mid-turn ordering rule: the outgoing bubble must not land below a
+        // still-live reasoning card's eventual commit.
+        settleReasoningSegmentIntoTranscript()
         messages.append(userMessage)
         requestChatScrollToLatest()
         cacheMessagePresentation(for: [sessionId])
@@ -5787,6 +5790,9 @@ final class AppState: ObservableObject {
         if let context {
             guard isCurrentComposerSubmission(context) else { return }
         }
+        // Mid-turn ordering rule: slash output must not land below the live
+        // reasoning card's eventual commit.
+        settleReasoningSegmentIntoTranscript()
         messages.append(ChatMessage(
             id: "slash-\(Date().timeIntervalSince1970)",
             role: .system,
@@ -5941,6 +5947,11 @@ final class AppState: ObservableObject {
                 == text.trimmingCharacters(in: .whitespacesAndNewlines) {
             return
         }
+        // Mid-turn ordering rule: a steer/redirect correction bubble must sit
+        // above the live reasoning card's eventual commit. Reasoning that
+        // resumes after the correction mounts a fresh segment below it,
+        // matching the tool-boundary precedent.
+        settleReasoningSegmentIntoTranscript()
         messages.append(ChatMessage(
             id: "local-correction-\(Date().timeIntervalSince1970)",
             role: .user,
@@ -8326,6 +8337,10 @@ final class AppState: ObservableObject {
         case .reviewSummary(let sessionId, let activity):
             let id = "review-summary-\(sessionId)-\(UUID().uuidString)"
             guard !messages.contains(where: { $0.review == activity }) else { return }
+            // A mid-turn row must not land below the live reasoning card's
+            // eventual commit — settle first so chronology matches the
+            // pre-projection transcript.
+            settleReasoningSegmentIntoTranscript()
             messages.append(ChatMessage(
                 id: id,
                 role: .system,
@@ -8386,6 +8401,9 @@ final class AppState: ObservableObject {
                         sessionIDs: cacheSessionIDs
                     )
                 }
+                // The clarify row must sit above the live reasoning card's
+                // eventual commit — settle the segment before it lands.
+                settleReasoningSegmentIntoTranscript()
                 messages.append(ChatMessage(
                     id: "clarify-\(requestId)",
                     role: .clarify,
@@ -8404,6 +8422,8 @@ final class AppState: ObservableObject {
                 messages[index].content = activity.description
                 messages[index].approval = activity
             } else {
+                // Same mid-turn ordering rule as clarify above.
+                settleReasoningSegmentIntoTranscript()
                 messages.append(ChatMessage(
                     id: "approval-\(activity.sessionId)-\(UUID().uuidString)",
                     role: .approval,
@@ -8535,6 +8555,13 @@ final class AppState: ObservableObject {
 
         func commit(id: String, timestamp: String, content: String) {
             guard !content.isEmpty else { return }
+            // Commit and the projection clear below must stay in ONE
+            // transaction: ChatView relies on the committed row's id equaling
+            // the live segment's id for a seamless live→settled transition —
+            // splitting them would transiently duplicate ids in the
+            // LazyVStack. The card keeps its mount timestamp; `author`
+            // reflects the profile at settle time (indistinguishable unless
+            // the profile switches mid-stream).
             TranscriptPerf.note(.reasoningTranscriptMutation)
             messages.append(ChatMessage(
                 id: id,
@@ -8596,8 +8623,10 @@ final class AppState: ObservableObject {
     /// streamed card; gateways that only provide completion still get a card
     /// immediately before their final answer. Completion is a boundary: the
     /// trace commits straight into the settled transcript rather than the
-    /// live projection — a projection left behind would be discarded by the
-    /// turn reset that immediately follows.
+    /// live projection. Reachable only when nothing streamed this turn (the
+    /// caller gates on `receivedReasoningForCurrentTurn`), so there is never
+    /// a live segment to supersede here — `explicitContent` always mounts a
+    /// fresh settled card.
     private func finalizeReasoning(_ text: String) {
         guard !text.isEmpty else { return }
         settleReasoningSegmentIntoTranscript(explicitContent: text)
