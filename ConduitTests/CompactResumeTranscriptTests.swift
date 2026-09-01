@@ -1774,6 +1774,517 @@ final class CompactResumeTranscriptTests: XCTestCase {
         XCTAssertTrue(harness.appState.persistedTranscriptWindow?.hasBackfilledPrefix ?? false)
     }
 
+    // MARK: - Window conversation-identity ownership
+
+    /// THE production no-op regression: a long stored session opens, the
+    /// bounded tail hydrates, and `session.resume` re-homes
+    /// `activeSessionId` to a runtime ID the session catalog has NOT
+    /// learned as an alias. The window's transaction-captured identity must
+    /// keep the backfill owned and actionable — the old catalog-alias gate
+    /// silently early-returned before any request, spinner, or error, while
+    /// the button stayed visible.
+    func testBackfillWorksWithoutCatalogLearningRuntimeAlias() async throws {
+        let backfillCalls = BackfillCallRecorder()
+        // Catalog contains ONLY stored-a; runtime-a appears nowhere in it.
+        let active = session("stored-a")
+        let harness = try makeHarness(
+            openSession: { _, _, _ in
+                SessionResumeResult(
+                    sessionId: "runtime-a",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { _, _ in
+                self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1880..<2000), offset: 0)
+            },
+            loadEarlierTranscriptPage: { sessionId, profile, offset in
+                backfillCalls.record(sessionId: sessionId, profile: profile, offset: offset)
+                return self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1760..<1880), offset: offset)
+            }
+        )
+        harness.appState.sessions = [active]
+
+        let opened = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(opened)
+
+        // The resume re-homed the active identity to the runtime ID, and
+        // the window captured the whole accepted transaction.
+        XCTAssertEqual(harness.appState.activeSessionId, "runtime-a")
+        let window = harness.appState.persistedTranscriptWindow
+        XCTAssertEqual(window?.requestedSessionID, "stored-a")
+        XCTAssertEqual(window?.resolvedSessionID, "stored-a")
+        XCTAssertEqual(window?.runtimeSessionID, "runtime-a")
+        XCTAssertEqual(window?.canLoadEarlier, true)
+        XCTAssertTrue(
+            harness.appState.canLoadEarlierMessagesForActiveConversation,
+            "The affordance must stay actionable before the catalog learns the runtime↔stored alias"
+        )
+
+        let didPrepend = await harness.appState.loadEarlierMessages()
+
+        XCTAssertTrue(didPrepend, "Backfill must run — not silently early-return — without catalog aliases")
+        XCTAssertEqual(backfillCalls.calls.count, 1, "The older-page loader must be invoked exactly once")
+        XCTAssertEqual(backfillCalls.calls.first?.sessionId, "stored-a", "The persisted-history request must use the stored session ID")
+        XCTAssertEqual(backfillCalls.calls.first?.profile, "default")
+        XCTAssertEqual(backfillCalls.calls.first?.offset, 120)
+        XCTAssertEqual(harness.appState.messages.count, 240)
+        XCTAssertEqual(harness.appState.messages.first?.content, "Row 1760")
+        XCTAssertEqual(harness.appState.messages.last?.content, "Row 1999")
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.nextOffset, 240)
+        XCTAssertTrue(harness.appState.persistedTranscriptWindow?.hasBackfilledPrefix ?? false)
+    }
+
+    /// A requested runtime alias that resolves to a DIFFERENT stored ID:
+    /// backfill continues against the resolved stored ID (Desktop's
+    /// `BackfillRequest.storedSessionId` contract) while ownership stays
+    /// with the active runtime conversation.
+    func testBackfillUsesResolvedStoredIDWhenOpenedViaRuntimeAlias() async throws {
+        let backfillCalls = BackfillCallRecorder()
+        let active = session("stored-a", alternateIDs: ["runtime-a"])
+        let harness = try makeHarness(
+            openSession: { _, _, _ in
+                SessionResumeResult(
+                    sessionId: "runtime-a",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { _, _ in
+                self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1880..<2000), offset: 0)
+            },
+            loadEarlierTranscriptPage: { sessionId, profile, offset in
+                backfillCalls.record(sessionId: sessionId, profile: profile, offset: offset)
+                XCTAssertEqual(
+                    sessionId, "stored-a",
+                    "Persisted-history reads continue against the stored ID, never the requested runtime alias"
+                )
+                return self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1760..<1880), offset: offset)
+            }
+        )
+        harness.appState.sessions = [active]
+
+        let opened = await harness.appState.openSession("runtime-a")
+        XCTAssertTrue(opened)
+        XCTAssertEqual(harness.appState.activeSessionId, "runtime-a")
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.requestedSessionID, "runtime-a")
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.resolvedSessionID, "stored-a")
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.runtimeSessionID, "runtime-a")
+
+        let didPrepend = await harness.appState.loadEarlierMessages()
+
+        XCTAssertTrue(didPrepend)
+        XCTAssertEqual(backfillCalls.calls.first?.sessionId, "stored-a")
+        XCTAssertEqual(backfillCalls.calls.first?.offset, 120)
+        XCTAssertEqual(harness.appState.messages.count, 240)
+        XCTAssertTrue(harness.appState.canLoadEarlierMessagesForActiveConversation)
+    }
+
+    /// A backfill resolving after a session switch is discarded even with a
+    /// catalog that never learned any runtime aliases: session B's
+    /// transcript is untouched and session A's coverage is not published
+    /// into it.
+    func testStaleBackfillDiscardedAfterSwitchWithoutCatalogAliases() async throws {
+        let backfillStarted = Flag()
+        let sessionA = session("stored-a")
+        let sessionB = session("stored-b")
+        let harness = try makeHarness(
+            openSession: { _, sessionID, _ in
+                SessionResumeResult(
+                    sessionId: sessionID == "stored-a" ? "runtime-a" : "runtime-b",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { sessionId, _ in
+                if sessionId == "stored-a" {
+                    return self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1880..<2000), offset: 0)
+                }
+                return self.tailPagePayload(sessionId: "stored-b", rows: self.syntheticRows(1..<3), offset: 0)
+            },
+            loadEarlierTranscriptPage: { sessionId, _, offset in
+                backfillStarted.isOn = true
+                XCTAssertEqual(sessionId, "stored-a")
+                try? await Task.sleep(for: .milliseconds(250))
+                return self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1760..<1880), offset: offset)
+            }
+        )
+        harness.appState.sessions = [sessionA, sessionB]
+        let openedA = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(openedA)
+        XCTAssertEqual(harness.appState.activeSessionId, "runtime-a")
+
+        let backfill = Task { await harness.appState.loadEarlierMessages() }
+        for _ in 0..<1_000 where !backfillStarted.isOn {
+            await Task.yield()
+        }
+        XCTAssertTrue(backfillStarted.isOn, "The backfill fetch must have started")
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.isLoadingEarlier, true)
+
+        let openedB = await harness.appState.openSession("stored-b")
+        XCTAssertTrue(openedB)
+        let didPrependStale = await backfill.value
+        XCTAssertFalse(didPrependStale, "The stale session-A page must not publish")
+
+        XCTAssertEqual(harness.appState.messages.count, 2, "Session B must be completely unchanged by the stale page")
+        XCTAssertEqual(harness.appState.messages.first?.content, "Row 1")
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.requestedSessionID, "stored-b")
+        XCTAssertFalse(
+            harness.appState.persistedTranscriptWindow?.hasBackfilledPrefix ?? true,
+            "Session A's backfill coverage must not be published into session B"
+        )
+        XCTAssertFalse(harness.appState.messages.contains { $0.id == "1760" }, "No session-A row may leak into session B")
+    }
+
+    /// A window from a genuinely different conversation must neither show
+    /// an actionable control nor issue a request.
+    func testForeignActiveSessionHidesAffordanceAndRejectsBackfill() async throws {
+        let backfillCalls = BackfillCallRecorder()
+        let active = session("stored-a")
+        let harness = try makeHarness(
+            openSession: { _, _, _ in
+                SessionResumeResult(
+                    sessionId: "runtime-a",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { _, _ in
+                self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1880..<2000), offset: 0)
+            },
+            loadEarlierTranscriptPage: { sessionId, profile, offset in
+                backfillCalls.record(sessionId: sessionId, profile: profile, offset: offset)
+                return self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1760..<1880), offset: offset)
+            }
+        )
+        harness.appState.sessions = [active]
+        let opened = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(opened)
+        XCTAssertTrue(harness.appState.canLoadEarlierMessagesForActiveConversation)
+
+        // A different conversation becomes active — no alias relationship
+        // with the window's stored/runtime identities.
+        harness.appState.activeSessionId = "runtime-b"
+
+        XCTAssertFalse(
+            harness.appState.canLoadEarlierMessagesForActiveConversation,
+            "A foreign active session must not show an actionable control"
+        )
+        let didPrepend = await harness.appState.loadEarlierMessages()
+        XCTAssertFalse(didPrepend)
+        XCTAssertEqual(backfillCalls.calls.count, 0, "No network request may be issued for a foreign conversation")
+    }
+
+    /// The catalog learning the stored↔runtime alias LATER must not reset
+    /// or re-own the history window: the transaction-derived identity stays
+    /// sufficient before and after the refresh.
+    func testCatalogLearningAliasLaterPreservesWindowAndOwnership() async throws {
+        let backfillCalls = BackfillCallRecorder()
+        let harness = try makeHarness(
+            openSession: { _, _, _ in
+                SessionResumeResult(
+                    sessionId: "runtime-a",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { _, _ in
+                self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1880..<2000), offset: 0)
+            },
+            loadEarlierTranscriptPage: { sessionId, profile, offset in
+                backfillCalls.record(sessionId: sessionId, profile: profile, offset: offset)
+                return self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1760..<1880), offset: offset)
+            }
+        )
+        harness.appState.sessions = [session("stored-a")]
+        let opened = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(opened)
+        let windowBefore = harness.appState.persistedTranscriptWindow
+        XCTAssertEqual(windowBefore?.runtimeSessionID, "runtime-a")
+
+        // The catalog later learns the alias.
+        harness.appState.sessions = [session("stored-a", alternateIDs: ["runtime-a"])]
+
+        XCTAssertEqual(
+            harness.appState.persistedTranscriptWindow, windowBefore,
+            "A catalog refresh must not reset or rewrite the history window"
+        )
+        XCTAssertTrue(harness.appState.canLoadEarlierMessagesForActiveConversation)
+
+        let didPrepend = await harness.appState.loadEarlierMessages()
+        XCTAssertTrue(didPrepend)
+        XCTAssertEqual(backfillCalls.calls.count, 1)
+        XCTAssertEqual(backfillCalls.calls.first?.sessionId, "stored-a")
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.nextOffset, 240)
+    }
+
+    /// The exact production sequence end to end: backfill under a catalog
+    /// that never learned the runtime↔stored alias, then a
+    /// reconnect/reconcile — the backfilled prefix survives, ownership
+    /// holds, and continued backfilling still routes by the stored ID.
+    /// (The harness reuses one runtime ID per stored session; a backend
+    /// minting a FRESH runtime ID per resume is still safe because the
+    /// reconcile rebuilds the window inside the same accepted transaction
+    /// — the graft gate then compares that new transaction's full identity
+    /// against the previous window's.)
+    func testReconnectGraftSurvivesStaleCatalogAliases() async throws {
+        let holdsRefreshedTail = Flag()
+        let backfillCalls = BackfillCallRecorder()
+        let active = session("stored-a")
+        let harness = try makeHarness(
+            openSession: { _, _, _ in
+                SessionResumeResult(
+                    sessionId: "runtime-a",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { _, _ in
+                if holdsRefreshedTail.isOn {
+                    return self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1900..<2020), offset: 0)
+                }
+                return self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1880..<2000), offset: 0)
+            },
+            loadEarlierTranscriptPage: { sessionId, profile, offset in
+                backfillCalls.record(sessionId: sessionId, profile: profile, offset: offset)
+                if backfillCalls.calls.count == 1 {
+                    return self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1760..<1880), offset: offset)
+                }
+                return self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1640..<1760), offset: offset)
+            },
+            additionalOperations: { ops in
+                ops.connectClient = { _ in }
+                // The refreshed catalog STILL lacks the runtime alias.
+                ops.loadCatalog = { _, _ in [active] }
+                ops.loadProfiles = {}
+                ops.loadBusyInputMode = { _ in }
+                ops.loadProfileDisplayPreferences = {}
+                ops.loadSlashCommands = {}
+            }
+        )
+        harness.appState.sessions = [active]
+        let opened = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(opened)
+
+        let didPrepend = await harness.appState.loadEarlierMessages()
+        XCTAssertTrue(didPrepend)
+        XCTAssertEqual(harness.appState.messages.count, 240)
+        XCTAssertEqual(backfillCalls.calls.first?.sessionId, "stored-a")
+
+        // The reconnect re-reconciles under the stored ID while the catalog
+        // is still alias-stale; resume re-homes active to runtime-a again.
+        holdsRefreshedTail.isOn = true
+        harness.coordinator.rememberSessionID("stored-a", for: "default")
+        await harness.appState.connect(
+            with: HermesConnection(baseUrl: "https://one.example", ticket: "stale-alias-graft")
+        )
+
+        // Backfilled prefix (rows 1760–1899) plus the refreshed tail
+        // (rows 1900–2019) — not truncated to the refreshed tail alone.
+        XCTAssertEqual(harness.appState.messages.count, 140 + 120)
+        XCTAssertEqual(harness.appState.messages.first?.content, "Row 1760")
+        XCTAssertEqual(harness.appState.messages[139].content, "Row 1899")
+        XCTAssertEqual(harness.appState.messages[140].content, "Row 1900")
+        XCTAssertEqual(harness.appState.messages.last?.content, "Row 2019")
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.requestedSessionID, "stored-a")
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.runtimeSessionID, "runtime-a")
+        XCTAssertTrue(harness.appState.persistedTranscriptWindow?.hasBackfilledPrefix ?? false)
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.nextOffset, 120)
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.canLoadEarlier, true)
+        XCTAssertTrue(
+            harness.appState.canLoadEarlierMessagesForActiveConversation,
+            "Ownership must survive the reconnect without catalog aliases"
+        )
+
+        // Continued backfilling after the reconnect still uses the stored ID.
+        let didPrependAfter = await harness.appState.loadEarlierMessages()
+        XCTAssertTrue(didPrependAfter)
+        XCTAssertEqual(backfillCalls.calls.count, 2)
+        XCTAssertEqual(backfillCalls.calls.last?.sessionId, "stored-a")
+        XCTAssertEqual(backfillCalls.calls.last?.offset, 120)
+        XCTAssertEqual(harness.appState.messages.count, 380, "Rows 1640–1759 prepend onto the grafted transcript")
+        XCTAssertEqual(harness.appState.messages.first?.content, "Row 1640")
+    }
+
+    /// The centralized identity rule behind every window-ownership check:
+    /// explicit transaction-captured overlap is primary truth, catalog
+    /// aliases only assist, and a profile mismatch always rejects.
+    func testWindowOwnershipIdentityRule() {
+        func expanded(_ ids: Set<String>, catalog: [String: Set<String>]) -> Set<String> {
+            ids.reduce(into: Set<String>()) { out, id in out.formUnion(catalog[id] ?? [id]) }
+        }
+        let window = PersistedTranscriptWindowState(
+            requestedSessionID: "stored-a",
+            profile: "default",
+            pageSize: 120,
+            resolvedSessionID: "stored-a",
+            runtimeSessionID: "runtime-a",
+            nextOffset: 120,
+            canLoadEarlier: true
+        )
+        func holds(
+            active: String,
+            profile: String = "default",
+            catalog: [String: Set<String>] = [:]
+        ) -> Bool {
+            let conversationIds = Set([active])
+            return PersistedTranscriptWindow.ownershipHolds(
+                window: window,
+                conversationSessionIds: conversationIds,
+                profile: profile,
+                windowAliasIds: expanded(window.trustedSessionIDs, catalog: catalog),
+                conversationAliasIds: expanded(conversationIds, catalog: catalog)
+            )
+        }
+
+        // Active runtime conversation, catalog ignorant of the alias:
+        // owned through the transaction-captured runtime ID alone.
+        XCTAssertTrue(holds(active: "runtime-a"))
+        XCTAssertTrue(holds(active: "stored-a"))
+        // Catalog alias knowledge still proves equivalence either direction.
+        XCTAssertTrue(holds(
+            active: "runtime-x",
+            catalog: ["runtime-x": ["runtime-x", "stored-a"]]
+        ))
+        XCTAssertTrue(holds(
+            active: "runtime-x",
+            catalog: ["stored-a": ["stored-a", "runtime-x"]]
+        ))
+        // A genuinely foreign conversation with no proven alias rejects.
+        XCTAssertFalse(holds(active: "runtime-b"))
+        XCTAssertFalse(holds(active: "stored-b", catalog: ["stored-b": ["stored-b", "runtime-b"]]))
+        // Profile mismatch rejects even with explicit ID overlap.
+        XCTAssertFalse(holds(active: "runtime-a", profile: "work"))
+    }
+
+    /// If ownership is lost MID-FLIGHT while the armed window itself
+    /// survived (e.g. a disconnect clears `activeSessionId` without a
+    /// reconcile replacing the window), the response is discarded whole AND
+    /// the single-flight flag is released — the affordance can re-arm later
+    /// instead of spinning forever.
+    func testOwnershipLossMidFlightReleasesLoadingFlag() async throws {
+        let backfillCalls = BackfillCallRecorder()
+        let active = session("stored-a")
+        let harness = try makeHarness(
+            openSession: { _, _, _ in
+                SessionResumeResult(
+                    sessionId: "runtime-a",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { _, _ in
+                self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1880..<2000), offset: 0)
+            },
+            loadEarlierTranscriptPage: { sessionId, profile, offset in
+                backfillCalls.record(sessionId: sessionId, profile: profile, offset: offset)
+                try? await Task.sleep(for: .milliseconds(150))
+                return self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1760..<1880), offset: offset)
+            }
+        )
+        harness.appState.sessions = [active]
+        let opened = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(opened)
+
+        let backfill = Task { await harness.appState.loadEarlierMessages() }
+        // Detach the conversation identity WITHOUT replacing the window —
+        // the ownership-lost-but-window-survived shape.
+        for _ in 0..<1_000 where backfillCalls.calls.isEmpty {
+            await Task.yield()
+        }
+        harness.appState.activeSessionId = "runtime-b"
+        let didPrepend = await backfill.value
+
+        XCTAssertFalse(didPrepend, "The response must be discarded once the conversation moved on")
+        XCTAssertEqual(harness.appState.messages.count, 120, "The transcript stays untouched")
+        XCTAssertFalse(
+            harness.appState.persistedTranscriptWindow?.isLoadingEarlier ?? true,
+            "The single-flight flag must be released, not stranded"
+        )
+
+        // Re-owning the conversation re-arms the affordance and backfill works.
+        harness.appState.activeSessionId = "runtime-a"
+        XCTAssertTrue(harness.appState.canLoadEarlierMessagesForActiveConversation)
+        let didPrependRetry = await harness.appState.loadEarlierMessages()
+        XCTAssertTrue(didPrependRetry)
+        XCTAssertEqual(backfillCalls.calls.count, 2)
+        XCTAssertEqual(harness.appState.messages.count, 240)
+    }
+
+    /// A `/messages` response without a `session_id` echo (legacy backend
+    /// shape) leaves the window without a resolved stored ID: older-page
+    /// requests fall back to the requested session ID.
+    func testBackfillFallsBackToRequestedIDWhenHydrationEchoesNoSessionID() async throws {
+        let backfillCalls = BackfillCallRecorder()
+        let active = session("stored-a")
+        let harness = try makeHarness(
+            openSession: { _, _, _ in
+                SessionResumeResult(
+                    sessionId: "runtime-a",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { _, _ in
+                // Tail page under the current contract, but with NO
+                // `session_id` echo.
+                .payload([
+                    "messages": self.syntheticRows(1880..<2000),
+                    "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 120]
+                ])
+            },
+            loadEarlierTranscriptPage: { sessionId, profile, offset in
+                backfillCalls.record(sessionId: sessionId, profile: profile, offset: offset)
+                XCTAssertEqual(sessionId, "stored-a", "No resolved stored ID: fall back to the requested ID")
+                return self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1760..<1880), offset: offset)
+            }
+        )
+        harness.appState.sessions = [active]
+        let opened = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(opened)
+        XCTAssertNil(harness.appState.persistedTranscriptWindow?.resolvedSessionID)
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.runtimeSessionID, "runtime-a")
+
+        let didPrepend = await harness.appState.loadEarlierMessages()
+
+        XCTAssertTrue(didPrepend)
+        XCTAssertEqual(backfillCalls.calls.first?.sessionId, "stored-a")
+        XCTAssertEqual(backfillCalls.calls.first?.offset, 120)
+        XCTAssertEqual(harness.appState.messages.count, 240)
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.nextOffset, 240)
+    }
+
+    /// An older-page response that echoes the TRANSACTION-CAPTURED runtime
+    /// ID is still this conversation's rows: the accepted resume proved
+    /// that identity, so the page must not be rejected as foreign.
+    func testBackfillAcceptsResponseEchoingTransactionRuntimeID() async throws {
+        let active = session("stored-a")
+        let harness = try makeHarness(
+            openSession: { _, _, _ in
+                SessionResumeResult(
+                    sessionId: "runtime-a",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { _, _ in
+                self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1880..<2000), offset: 0)
+            },
+            loadEarlierTranscriptPage: { _, _, offset in
+                self.tailPagePayload(sessionId: "runtime-a", rows: self.syntheticRows(1760..<1880), offset: offset)
+            }
+        )
+        harness.appState.sessions = [active]
+        let opened = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(opened)
+
+        let didPrepend = await harness.appState.loadEarlierMessages()
+
+        XCTAssertTrue(didPrepend, "An echo of the window's own resume-proven runtime ID is not foreign")
+        XCTAssertEqual(harness.appState.messages.count, 240)
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.canLoadEarlier, true, "The affordance must not be retired")
+    }
+
     // MARK: - Harness
 
     private func makeHarness(
@@ -1841,6 +2352,16 @@ final class CompactResumeTranscriptTests: XCTestCase {
 
     private final class Flag {
         var isOn = false
+    }
+
+    /// Records every older-page backfill request: the wire session ID, the
+    /// routing profile, and the offset — the identity contract of "Load
+    /// earlier messages".
+    private final class BackfillCallRecorder {
+        private(set) var calls: [(sessionId: String, profile: String, offset: Int)] = []
+        func record(sessionId: String, profile: String, offset: Int) {
+            calls.append((sessionId, profile, offset))
+        }
     }
 
     /// One persisted transcript row exactly as the messages endpoint returns

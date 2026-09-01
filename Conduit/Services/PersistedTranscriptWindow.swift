@@ -85,13 +85,21 @@ enum PersistedTranscriptPagination {
 /// history is on screen and whether older pages remain" — the pagination
 /// counterpart of the compact resume's runtime state, never mixed into it.
 struct PersistedTranscriptWindowState: Equatable {
-    /// Session ID the window was hydrated for (as requested; the resolved
-    /// stored ID is tracked separately because the endpoint may re-home a
-    /// runtime alias).
+    /// Session ID the window was hydrated for (as requested). The resolved
+    /// stored ID and the runtime ID are tracked separately because the
+    /// endpoint may re-home a runtime alias and `session.resume` may answer
+    /// with a fresh runtime ID.
     let requestedSessionID: String
     let profile: String
     let pageSize: Int
+    /// Stored session ID the accepted hydration's `/messages` response
+    /// echoed (`session_id`), when the backend supplied one — the durable
+    /// identity of the persisted rows and the ID older-page requests
+    /// continue against.
     var resolvedSessionID: String?
+    /// Runtime session ID the same accepted `session.resume` returned —
+    /// the identity `applyChatResume` made active.
+    var runtimeSessionID: String?
     /// Number of newest persisted rows the local transcript already covers.
     /// Advances by the fetched row count of every page, which self-corrects
     /// the offset drift that live rows create under `order=latest` paging.
@@ -107,6 +115,18 @@ struct PersistedTranscriptWindowState: Equatable {
     /// backfill prepends; kept by a reconcile that grafts onto the prefix;
     /// cleared when a refreshed tail is authoritative (no safe anchor).
     var hasBackfilledPrefix = false
+
+    /// Every session identity the accepted hydration/resume transaction
+    /// vouched for together: the requested ID, the persisted stored ID, and
+    /// the runtime ID. Trusted as one conversation because they arrived in
+    /// the SAME accepted transaction after the transcript ownership
+    /// validation — never reconstructed from a later catalog refresh, whose
+    /// freshness must not gate backfill (the production no-op regression).
+    var trustedSessionIDs: Set<String> {
+        PersistedTranscriptWindow.normalizingSessionIDs([
+            requestedSessionID, resolvedSessionID, runtimeSessionID
+        ])
+    }
 }
 
 /// A legacy one-shot transcript that exceeded the client's safe response
@@ -122,8 +142,52 @@ struct LegacyTranscriptOversizedError: LocalizedError {
     }
 }
 
-/// Pure row-algebra for older-page backfill.
+/// Pure algebra for older-page backfill: row merging, reconnect grafting,
+/// tool-boundary reconstruction, and conversation-identity ownership.
 enum PersistedTranscriptWindow {
+    /// Whether a persisted-history window belongs to a conversation — the
+    /// ONE identity rule shared by the backfill action, stale-response
+    /// validation, the ChatView affordance, and the reconnect graft gate.
+    ///
+    /// Primary truth is explicit overlap between the window's
+    /// transaction-captured IDs (`trustedSessionIDs`: requested + resolved
+    /// stored + runtime) and the checked conversation's IDs. Catalog alias
+    /// knowledge — pre-expanded by the caller into the alias sets — remains
+    /// a secondary compatibility source, but its freshness is never
+    /// required: a resume re-homes `activeSessionId` to the runtime ID long
+    /// before (sometimes never before) the catalog learns the alias, and
+    /// requiring it silently disabled "Load earlier messages".
+    static func ownershipHolds(
+        window: PersistedTranscriptWindowState,
+        conversationSessionIds: Set<String>,
+        profile: String,
+        windowAliasIds: Set<String>,
+        conversationAliasIds: Set<String>
+    ) -> Bool {
+        guard window.profile == profile else { return false }
+        let windowIDs = window.trustedSessionIDs
+        if !windowIDs.isDisjoint(with: conversationSessionIds) { return true }
+        if !windowIDs.isDisjoint(with: conversationAliasIds) { return true }
+        if !conversationSessionIds.isDisjoint(with: windowAliasIds) { return true }
+        return false
+    }
+
+    /// Session-ID candidates reduced to a trusted identity set: nil and
+    /// whitespace-only entries are dropped, everything else is kept as-is.
+    /// One normalization rule for every identity set compared by
+    /// `ownershipHolds`.
+    static func normalizingSessionIDs(_ candidates: [String?]) -> Set<String> {
+        var ids: Set<String> = []
+        for candidate in candidates {
+            guard let candidate,
+                  !candidate.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                continue
+            }
+            ids.insert(candidate)
+        }
+        return ids
+    }
+
     /// Prepends an older page onto the loaded transcript, dropping rows the
     /// transcript already holds. Offset drift under `order=latest` paging
     /// (rows persisted while the conversation is open shift the origin) makes
