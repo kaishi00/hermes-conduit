@@ -207,18 +207,21 @@ struct ComposerPasteTextView: UIViewRepresentable {
 
             // An unrelated invalidation keeps the revision and can stop here.
             guard programmaticRevision != appliedProgrammaticRevision else { return }
+
+            // Active IME composition is never silently replaced — nor
+            // revision-adopted; the deferred replacement lands when the
+            // composition ends and stays the newest instruction.
+            if textView.markedTextRange != nil {
+                TranscriptPerf.note(.composerMarkedTextDeferral)
+                pendingProgrammatic = (text, programmaticRevision)
+                return
+            }
+
             if text == lastTextReportedByUIKit {
                 // Intentional replacement whose value the editor already
                 // holds: adopt the revision so bookkeeping stays in sync,
                 // without tearing down live input state with a rewrite.
                 appliedProgrammaticRevision = programmaticRevision
-                return
-            }
-
-            // Active IME composition is never silently replaced.
-            if textView.markedTextRange != nil {
-                TranscriptPerf.note(.composerMarkedTextDeferral)
-                pendingProgrammatic = (text, programmaticRevision)
                 return
             }
 

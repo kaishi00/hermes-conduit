@@ -185,9 +185,9 @@ enum TranscriptPerf {
         get { read(\.reasoningTranscriptMutation) }
     }
 
-    /// Message-value comparisons consumed by the scroll-target cache's
-    /// common-prefix walk. Scales with transcript depth per transcript
-    /// change; must stay zero while live reasoning is publishing.
+    /// Length of the matching leading prefix consumed by the scroll-target
+    /// cache's common-prefix walk. Scales with transcript depth per
+    /// transcript change; must stay zero while live reasoning is publishing.
     static var scrollTargetCommonPrefixComparisons: Int {
         get { read(\.scrollTargetCommonPrefixComparisons) }
         set { write(\.scrollTargetCommonPrefixComparisons, newValue) }

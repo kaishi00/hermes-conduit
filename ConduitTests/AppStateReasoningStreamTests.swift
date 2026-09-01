@@ -567,7 +567,8 @@ final class AppStateReasoningStreamTests: XCTestCase {
         XCTAssertNil(state.liveReasoningSegment)
     }
 
-    func testSessionSwitchDiscardsPendingReasoningPublishForNewSession() async {        let replacementMessages = [
+    func testSessionSwitchDiscardsPendingReasoningPublishForNewSession() async {
+        let replacementMessages = [
             ChatMessage(id: "new-1", role: .assistant, content: "Other session", timestamp: "1")
         ]
         let state = makeAppState(lifecycleOperations: ChatResumeLifecycleOperations(
