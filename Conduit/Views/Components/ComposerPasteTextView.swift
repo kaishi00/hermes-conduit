@@ -217,14 +217,21 @@ struct ComposerPasteTextView: UIViewRepresentable {
                 return
             }
 
-            if text == lastTextReportedByUIKit {
-                // Intentional replacement whose value the editor already
-                // holds: adopt the revision so bookkeeping stays in sync,
-                // without tearing down live input state with a rewrite.
+            if text == textView.text {
+                // The editor verifiably holds the intended value — checked
+                // against the LIVE text, not only the last delegate report,
+                // which can lag in-flight user input. Adopt the revision so
+                // bookkeeping stays in sync without tearing down live input
+                // state with a redundant rewrite.
                 appliedProgrammaticRevision = programmaticRevision
+                lastTextReportedByUIKit = textView.text
                 return
             }
 
+            // A revision advance the editor does not verifiably hold is a
+            // genuine intentional replacement: apply it even when the value
+            // equals the last reported text — the live editor has moved past
+            // that report, and the intentional source stays authoritative.
             performProgrammaticReplacement(
                 text: text,
                 revision: programmaticRevision,

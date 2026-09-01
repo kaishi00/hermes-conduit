@@ -547,6 +547,83 @@ final class LongContextScalingFixtureTests: XCTestCase {
         XCTAssertEqual(TranscriptPerf.composerProgrammaticTextAssignments, 2)
     }
 
+    /// An intentional revision whose value equals the last DELEGATE-REPORTED
+    /// text must still be applied when the live editor has already advanced
+    /// past that report (unreported user input in flight). The adoption
+    /// shortcut verifies against the live editor, so a genuine intentional
+    /// revision can never be acknowledged without being applied.
+    func testIntentionalRevisionAppliesWhenLiveEditorAdvancedPastReportedText() throws {
+        var value = "abcdef"
+        let identity = UUID()
+        let editor = ComposerPasteTextView(
+            text: Binding(get: { value }, set: { value = $0 }),
+            isFocused: .constant(false),
+            measuredHeight: .constant(44),
+            enabled: true,
+            onPastedImage: { _ in },
+            onPastedImageError: { _ in },
+            editorIdentity: identity
+        )
+        let coordinator = ComposerPasteTextView.Coordinator(editor)
+        let textView = ImagePasteTextView()
+
+        coordinator.apply(
+            text: "abcdef",
+            programmaticRevision: 1,
+            editorIdentity: identity,
+            to: textView
+        )
+        XCTAssertEqual(textView.text, "abcdef")
+
+        // The user types "g" — the live editor advances to "abcdefg" while
+        // the delegate flush is still pending, so the last reported text is
+        // stale at "abcdef".
+        textView.text = "abcdefg"
+        textView.selectedRange = NSRange(location: 7, length: 0)
+
+        TranscriptPerf.reset()
+        // An intentional source rewrites the SAME value it believes is
+        // current, advancing the revision: the adoption shortcut must not
+        // fire on the stale report.
+        coordinator.apply(
+            text: "abcdef",
+            programmaticRevision: 2,
+            editorIdentity: identity,
+            to: textView
+        )
+        XCTAssertEqual(
+            textView.text, "abcdef",
+            "a genuine intentional revision must be applied, not acknowledged while the live editor holds newer text"
+        )
+        XCTAssertEqual(
+            TranscriptPerf.composerProgrammaticTextAssignments, 1,
+            "the intentional replacement must perform a real assignment"
+        )
+
+        // Apply-once: the same revision never rewrites again.
+        coordinator.apply(
+            text: "abcdef",
+            programmaticRevision: 2,
+            editorIdentity: identity,
+            to: textView
+        )
+        XCTAssertEqual(TranscriptPerf.composerProgrammaticTextAssignments, 1)
+
+        // The user-echo contract is untouched: newer live text with an
+        // UNCHANGED revision is never reverted by an unrelated invalidation.
+        textView.text = "abcdefZ"
+        textView.selectedRange = NSRange(location: 6, length: 0)
+        coordinator.apply(
+            text: "abcdef",
+            programmaticRevision: 2,
+            editorIdentity: identity,
+            to: textView
+        )
+        XCTAssertEqual(textView.text, "abcdefZ")
+        XCTAssertEqual(textView.selectedRange.location, 6)
+        XCTAssertEqual(TranscriptPerf.composerProgrammaticTextAssignments, 1)
+    }
+
     /// Clear-after-send is an intentional revision: the editor is cleared
     /// exactly once even though the same (empty) binding rides along on
     /// every subsequent invalidation.
