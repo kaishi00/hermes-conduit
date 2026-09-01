@@ -102,8 +102,8 @@ jobs:
           echo "ui-estimates=$(jq -r '.ui_lane.class_estimates // ""' ci-artifacts/plan.json)" >> "$GITHUB_OUTPUT"
           echo "ui-target=$(jq -r '.ui_lane.target // ""' ci-artifacts/plan.json)" >> "$GITHUB_OUTPUT"
           echo "ui-predicted=$(jq -r '.ui_lane.predicted_s // 0' ci-artifacts/plan.json)" >> "$GITHUB_OUTPUT"
-          echo "ui-timeout=$(jq -r '.ui_lane.timeout_s // 600' ci-artifacts/plan.json)" >> "$GITHUB_OUTPUT"
-          echo "ui-job-timeout=$(jq -r '.ui_lane.job_timeout_min // 25' ci-artifacts/plan.json)" >> "$GITHUB_OUTPUT"
+          echo "ui-timeout=$(jq -r '.ui_lane.timeout_s // 900' ci-artifacts/plan.json)" >> "$GITHUB_OUTPUT"
+          echo "ui-job-timeout=$(jq -r '.ui_lane.job_timeout_min // 65' ci-artifacts/plan.json)" >> "$GITHUB_OUTPUT"
 
       - name: Plan summary
         run: cat ci-artifacts/plan-summary.md >> "$GITHUB_STEP_SUMMARY"

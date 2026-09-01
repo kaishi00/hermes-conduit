@@ -26,6 +26,14 @@ struct ComposerBar: View {
     @State private var composerErrorMessage: String?
     @State private var draftStore = ComposerDraftStore()
     @State private var editorIdentity = UUID()
+    /// Generation of intentional composer text replacements. Every program
+    /// path that replaces the composer content routes through
+    /// `replaceComposerText(_:)` and advances this, so the UIKit editor
+    /// bridge applies the change exactly once — and, crucially, so ordinary
+    /// SwiftUI invalidations (streaming, reasoning, busy state) arrive with
+    /// an UNCHANGED revision and can never rewrite the editor or move the
+    /// cursor mid-typing.
+    @State private var composerRevision: UInt64 = 0
     @State private var loadedDraftKey: ComposerDraftKey?
     @State private var photoImportContext: AsyncAttachmentContext?
     @State private var photoImportGeneration: UInt64 = 0
@@ -143,6 +151,14 @@ struct ComposerBar: View {
         !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    /// The only sanctioned way to replace composer content programmatically.
+    /// Advances the editor's programmatic revision alongside the text so the
+    /// change is applied to the UIKit editor exactly once.
+    private func replaceComposerText(_ newValue: String) {
+        text = newValue
+        composerRevision &+= 1
+    }
+
     /// Returns the slash prefix being typed, or nil if the cursor has moved
     /// beyond the command name. Leading whitespace is accepted on purpose.
     private var slashPrefix: String? {
@@ -219,6 +235,7 @@ struct ComposerBar: View {
     }
 
     var body: some View {
+        let _ = TranscriptPerf.note(.composerBarBody)
         Group {
             if #available(iOS 26.0, *) {
                 GlassEffectContainer(spacing: 16) {
@@ -247,7 +264,7 @@ struct ComposerBar: View {
             }
         }
         .onChange(of: appState.composerPrefillToken) { _, _ in
-            text = appState.composerPrefillText
+            replaceComposerText(appState.composerPrefillText)
             isFocused = !text.isEmpty
             isShowingSlashSuggestions = slashPrefix != nil
         }
@@ -303,7 +320,7 @@ struct ComposerBar: View {
                 SlashSuggestionsOverlay(
                     commands: filteredSlashCommands,
                     onSelected: { cmd in
-                        text = "/\(cmd.name) "
+                        replaceComposerText("/\(cmd.name) ")
                         isShowingSlashSuggestions = false
                     }
                 )
@@ -336,6 +353,7 @@ struct ComposerBar: View {
                             handlePastedImageError(message, editorIdentity: currentEditorIdentity)
                         },
                         editorIdentity: editorIdentity,
+                        programmaticRevision: composerRevision,
                         returnKeySends: returnKeySends,
                         // May lag one render behind fast typing; the safe
                         // failure mode is newline insertion, and
@@ -643,7 +661,7 @@ struct ComposerBar: View {
             draftStore.removeDraft(for: submittedDraftBucket)
             guard loadedDraftKey == submittedDraftKey else { return }
             if appState.composerPrefillToken != prefillToken {
-                text = appState.composerPrefillText
+                replaceComposerText(appState.composerPrefillText)
                 isFocused = !text.isEmpty
             }
             isShowingSlashSuggestions = slashPrefix != nil
@@ -684,7 +702,7 @@ struct ComposerBar: View {
     private func collapseSubmittedDraft() {
         dismissComposer()
         let updates = {
-            text = ""
+            replaceComposerText("")
             attachments = []
             composerTextHeight = ComposerPasteTextView.minimumHeight
         }
@@ -723,7 +741,7 @@ struct ComposerBar: View {
         // Do not overwrite a new draft if the user already returned to the
         // composer while the failed request was in flight.
         guard text.isEmpty, attachments.isEmpty else { return }
-        text = submittedText
+        replaceComposerText(submittedText)
         attachments = submittedAttachments
     }
 
@@ -780,7 +798,7 @@ struct ComposerBar: View {
         if text != draft.text {
             suppressNextTextChangeSuggestions = true
         }
-        text = draft.text
+        replaceComposerText(draft.text)
         attachments = draft.attachments
         loadedDraftKey = key
         composerTextHeight = ComposerPasteTextView.minimumHeight

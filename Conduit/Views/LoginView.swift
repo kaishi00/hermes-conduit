@@ -146,6 +146,7 @@ struct LoginView: View {
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .keyboardType(.URL)
+                    .accessibilityIdentifier("login.server-url")
                     .focused($focusedField, equals: .server)
                     .submitLabel(LoginField.server.submitKeyboardLabel(cloudflareTokenEntryEnabled: cloudflareEnabled))
                     .onSubmit { handleSubmit(from: .server) }
@@ -217,9 +218,14 @@ struct LoginView: View {
                         }
                     ))
                     .tint(.conduitAccent)
+                    // Stable XCUI handles: the localized label works too, but
+                    // identifiers decouple the UI tests from copy changes
+                    // and from Switch/CheckBox element-type ambiguity.
+                    .accessibilityIdentifier("login.cloudflare-toggle")
                     if cloudflareEnabled {
                         TextField("Cloudflare Client ID", text: $cloudflareClientID)
                             .textInputAutocapitalization(.never).autocorrectionDisabled()
+                            .accessibilityIdentifier("login.cloudflare-client-id")
                             .focused($focusedField, equals: .cloudflareClientID)
                             .submitLabel(LoginField.cloudflareClientID.submitKeyboardLabel(cloudflareTokenEntryEnabled: cloudflareEnabled))
                             .onSubmit { handleSubmit(from: .cloudflareClientID) }
@@ -227,6 +233,7 @@ struct LoginView: View {
                             .conduitGlassSurface(cornerRadius: 17, tint: .conduitAura.opacity(0.06))
                             .id(LoginField.cloudflareClientID)
                         SecureField("Cloudflare Client Secret", text: $cloudflareClientSecret)
+                            .accessibilityIdentifier("login.cloudflare-client-secret")
                             .focused($focusedField, equals: .cloudflareClientSecret)
                             .submitLabel(LoginField.cloudflareClientSecret.submitKeyboardLabel(cloudflareTokenEntryEnabled: cloudflareEnabled))
                             .onSubmit { handleSubmit(from: .cloudflareClientSecret) }
@@ -259,6 +266,7 @@ struct LoginView: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: 50)
                 }
+                .accessibilityIdentifier("login.connect")
                 .foregroundStyle(.white)
                 .disabled(!connectInputsArePresent || isConnecting)
                 .conduitGlassControl(cornerRadius: 18, tint: .conduitAccent, prominent: true)

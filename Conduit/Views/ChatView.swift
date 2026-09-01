@@ -188,6 +188,7 @@ struct ChatView: View {
     }
 
     var body: some View {
+        let _ = TranscriptPerf.note(.chatViewBody)
         VStack(spacing: 0) {
             // Message list
             ScrollViewReader { proxy in
@@ -246,7 +247,14 @@ struct ChatView: View {
                     EmptyChatState().padding(.top, 60)
                 }
 
-                ForEach(Array(chatMessageScrollTargets.enumerated()), id: \.element.id) { index, target in
+                // Iterate the targets collection directly: wrapping it in
+                // Array(enumerated()) copied the entire transcript into a
+                // fresh tuple array on EVERY body evaluation — O(message
+                // count) allocation churn at streaming/reasoning cadence in
+                // deep sessions. Row identity (target.id) and the transcript
+                // order needed by row geometry (target.order, maintained by
+                // the scroll-target cache) are unchanged.
+                ForEach(chatMessageScrollTargets) { target in
                     MessageBubble(message: target.message, gatewayResolver: appState.gatewayMediaResolver)
                         .id(target.id)
                         .background {
@@ -258,12 +266,30 @@ struct ChatView: View {
                                             semanticID: target.id,
                                             scope: $0,
                                             frame: geometry.frame(in: .global),
-                                            order: index
+                                            order: target.order
                                         )
                                     } ?? ChatRenderedScrollTargets()
                                 )
                             }
                         }
+                }
+
+                // Live reasoning renders from the projection, not the settled
+                // transcript: per-publish reasoning changes re-render only
+                // this card, never the ForEach data or the scroll-target
+                // cache. Chronology matches the pre-projection transcript —
+                // thinking streams at the tail, before the assistant answer.
+                if let segment = appState.liveReasoningSegment {
+                    ThinkingCard(
+                        message: ChatMessage(
+                            id: segment.id,
+                            role: .reasoning,
+                            content: segment.content,
+                            timestamp: segment.timestamp,
+                            author: appState.activeProfile
+                        )
+                    )
+                    .id(segment.id)
                 }
 
                 if !appState.streamingText.isEmpty {

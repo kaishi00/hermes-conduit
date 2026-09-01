@@ -45,7 +45,22 @@ MAX_LANES = 8
 TARGET_LANE_BUDGET_S = 240.0       # scale-out threshold per lane
 LANE_TIMEOUT_MIN_S = 600           # healthy lanes never get less than 10 min
 LANE_TIMEOUT_MULTIPLIER = 2.5      # headroom over prediction
-UI_TIMEOUT_MIN_S = 600             # UI lane floor (simulator interaction overhead)
+# UI lane floor. Raised from 600s after run #500: a healthy hosted UI
+# invocation spends ~2.5 min on xcodebuild/automation-session/simulator
+# startup BEFORE the first test and ~1 min finalizing the xcresult after
+# the last one, so ~225s of predicted tests needs ~500-600s wall clock on
+# the happy path alone - the old floor left no room for the native retry
+# iteration and was crossed while the tests were SUCCEEDING.
+UI_TIMEOUT_MIN_S = 900
+# Per-invocation Xcode/simulator overhead the UI lane pays exactly once per
+# xcodebuild run, independent of how long the tests take: process startup,
+# automation-session + simulator boot, app install, and xcresult
+# finalization. Measured on macos-26 hosted runners (~2.5 min before the
+# first test starts, ~1 min of teardown).
+UI_INVOCATION_OVERHEAD_S = 240
+# Native flake retry can execute the full class list a second time inside
+# the same invocation when a failure survives iteration 1.
+UI_RETRY_HEADROOM_FACTOR = 2.0
 JOB_TIMEOUT_MARGIN_S = 1200        # reset/erase overhead + setup/download slack
 UNIT_TARGET = "ConduitTests"
 UI_TARGET = "ConduitUITests"
@@ -263,6 +278,23 @@ def timeout_for(predicted: float, floor_s: float, multiplier: float) -> int:
     return max(int(floor_s), int(math.ceil(predicted * multiplier)))
 
 
+def ui_timeout_for(predicted: float, floor_s: float, overhead_s: float,
+                   retry_factor: float) -> int:
+    """UI watchdog = predicted test time under both native iterations plus
+    one invocation's Xcode/simulator overhead, never below the floor.
+
+    Unlike unit lanes (many classes amortizing one simulator boot), a UI
+    invocation pays large fixed overhead around the tests, and the native
+    retry can run the whole (small) class list twice. Formula:
+
+        timeout = max(floor, ceil(predicted * retry_factor + overhead))
+
+    With the measured overhead this yields 900s for today's ~226s UI
+    prediction (the old 600s floor was crossed by SUCCEEDING runs) and
+    grows linearly if the UI suite expands."""
+    return max(int(floor_s), int(math.ceil(predicted * retry_factor + overhead_s)))
+
+
 def job_timeout_min(lane_timeout_s: int, cfg: dict) -> int:
     """Outer job ceiling: worst in-script path is attempt 1 + attempt 2 + a
     full isolation pass (each bounded by lane_timeout_s) plus two bounded
@@ -310,7 +342,12 @@ def build_plan(discovery: dict, cfg: dict, estimates: dict) -> dict:
     ui_lane = None
     if ui_names:
         predicted = sum(ui_est.values())
-        timeout = timeout_for(predicted, cfg["ui_timeout_min_s"], cfg["timeout_multiplier"])
+        timeout = ui_timeout_for(
+            predicted,
+            cfg["ui_timeout_min_s"],
+            cfg["ui_invocation_overhead_s"],
+            cfg["ui_retry_headroom_factor"],
+        )
         ui_lane = {
             "lane": "ui",
             "target": UI_TARGET,
@@ -327,6 +364,7 @@ def build_plan(discovery: dict, cfg: dict, estimates: dict) -> dict:
         "config": {k: cfg[k] for k in (
             "default_estimate_s", "min_lanes", "max_lanes", "target_budget_s",
             "lane_timeout_min_s", "timeout_multiplier", "ui_timeout_min_s",
+            "ui_invocation_overhead_s", "ui_retry_headroom_factor",
             "job_timeout_margin_s")},
         "inventory": {"unit": unit_names, "ui": ui_names},
         "estimates": {n: round(v, 3) for n, v in sorted(
@@ -543,6 +581,8 @@ def _cfg_from_args(a) -> dict:
         "lane_timeout_min_s": a.lane_timeout_min_s,
         "timeout_multiplier": a.timeout_multiplier,
         "ui_timeout_min_s": a.ui_timeout_min_s,
+        "ui_invocation_overhead_s": a.ui_invocation_overhead_s,
+        "ui_retry_headroom_factor": a.ui_retry_headroom_factor,
         "job_timeout_margin_s": a.job_timeout_margin_s,
     }
 
@@ -610,6 +650,8 @@ def main(argv=None) -> int:
         p.add_argument("--lane-timeout-min-s", type=int, default=LANE_TIMEOUT_MIN_S)
         p.add_argument("--timeout-multiplier", type=float, default=LANE_TIMEOUT_MULTIPLIER)
         p.add_argument("--ui-timeout-min-s", type=int, default=UI_TIMEOUT_MIN_S)
+        p.add_argument("--ui-invocation-overhead-s", type=int, default=UI_INVOCATION_OVERHEAD_S)
+        p.add_argument("--ui-retry-headroom-factor", type=float, default=UI_RETRY_HEADROOM_FACTOR)
         p.add_argument("--job-timeout-margin-s", type=int, default=JOB_TIMEOUT_MARGIN_S)
         if cmd == "plan":
             p.add_argument("--out", default="plan.json")

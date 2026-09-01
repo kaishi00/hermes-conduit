@@ -238,6 +238,97 @@ assert_eq "isolation statuses" "$(isolation_statuses)" "['pass', 'timeout', 'not
 assert_eq "AlphaTests invoked once" "$(grep -c '^iso:AlphaTests$' "$INVOCATION_LOG")" "1"
 assert_eq "BetaTests invoked once" "$(grep -c '^iso:BetaTests$' "$INVOCATION_LOG")" "1"
 assert_eq "GammaTests never invoked" "$(grep -c '^iso:GammaTests$' "$INVOCATION_LOG")" "0"
+
+# --- case 8: finished session survives its budget via finalize grace ----------
+# Run #500 regression: xcodebuild printed its terminal result and was only
+# finalizing the xcresult when the watchdog expired. The deadline must be
+# extended ONCE (bounded grace) so the finished session can exit with its
+# real status; success still comes from the exit status, never the marker.
+begin_case "finalize grace lets a finished invocation pass" "$WORK/c8"
+cat > "$STUBS/xcodebuild" <<'EOF'
+#!/bin/bash
+echo "running tests (stub)"
+sleep 4
+echo "** TEST EXECUTE SUCCEEDED **"
+echo "finalizing xcresult (stub)"
+sleep 4
+exit 0
+EOF
+chmod +x "$STUBS/xcodebuild"
+export XCODEBUILD_FINALIZE_GRACE_S=30
+write_canned "$WORK/canned-grace.json" "AlphaTests" "Passed"
+run_lane "AlphaTests" 5 pass 1
+assert_eq "exit code" "$(cat "$WORKCASE/exit-code")" "0"
+assert_eq "verdict" "$(lane_field "['status']")" "pass"
+assert_eq "attempts" "$(attempts_statuses)" "['passed']"
+if grep -q "finalize grace" "$WORKCASE/stdout.log"; then
+  ok "finalize grace reported"
+else
+  bad "finalize grace must be reported when it fires"
+fi
+
+# --- case 9: grace is bounded - a wedged finalize is still a timeout ----------
+begin_case "finalize grace expiry kills and isolates" "$WORK/c9"
+cat > "$STUBS/xcodebuild" <<'EOF'
+#!/bin/bash
+echo "** TEST EXECUTE SUCCEEDED **"
+echo "wedged finalization (stub)"
+sleep 300
+exit 0
+EOF
+chmod +x "$STUBS/xcodebuild"
+export XCODEBUILD_FINALIZE_GRACE_S=3
+export ISOLATION_BUDGET_S=200 CLASS_TIMEOUT_MIN_S=1 CLASS_TIMEOUT_MULTIPLIER=0.1
+run_lane "AlphaTests" 3 pass 1
+assert_eq "exit code" "$(cat "$WORKCASE/exit-code")" "1"
+assert_eq "verdict" "$(lane_field "['status']")" "timeout"
+assert_eq "first attempt" "$(attempts_statuses | grep -o 'timeout' | head -1)" "timeout"
+if grep -q "finalize grace" "$WORKCASE/stdout.log"; then
+  ok "grace was granted before the kill"
+else
+  bad "grace must be attempted before killing a finalized session"
+fi
+
+# --- case 10: infra failure recovers on the single post-reset retry -----------
+begin_case "infra retry recovers to green" "$WORK/c10"
+cat > "$STUBS/xcodebuild" <<'EOF'
+#!/bin/bash
+n=$(cat "$COUNT_FILE" 2>/dev/null || echo 0)
+n=$((n + 1))
+echo "$n" > "$COUNT_FILE"
+if [ "$n" -eq 1 ]; then
+  echo "simulator crashed once (stub)"
+  exit 70
+fi
+exit 0
+EOF
+chmod +x "$STUBS/xcodebuild"
+export COUNT_FILE="$WORK/c10-count"
+: > "$COUNT_FILE"
+write_canned "$WORK/canned-c10.json" "AlphaTests" "Passed"
+run_lane "AlphaTests" 300 infra-once 1
+assert_eq "exit code" "$(cat "$WORKCASE/exit-code")" "0"
+assert_eq "verdict" "$(lane_field "['status']")" "pass"
+assert_eq "attempts" "$(attempts_statuses)" "['infra-recovered', 'passed']"
+
+# --- case 11: class failure during isolation fails the lane --------------------
+begin_case "class failure during isolation" "$WORK/c11"
+cat > "$STUBS/xcodebuild" <<'EOF'
+#!/bin/bash
+n=$(printf '%s\n' "$@" | grep -c -- '-only-testing:' || true)
+if [ "$n" -gt 1 ]; then
+  sleep 300
+  exit 0
+fi
+exit 65
+EOF
+chmod +x "$STUBS/xcodebuild"
+export ISOLATION_BUDGET_S=200 CLASS_TIMEOUT_MIN_S=1 CLASS_TIMEOUT_MULTIPLIER=0.1
+run_lane "AlphaTests,BetaTests" 3 fail65 1
+assert_eq "exit code" "$(cat "$WORKCASE/exit-code")" "1"
+assert_eq "verdict" "$(lane_field "['status']")" "fail"
+assert_eq "isolation statuses" "$(isolation_statuses)" "['fail', 'fail']"
+
 echo ""
 echo "lane-runner state machine: $pass_count passed, $fail_count failed"
 [ "$fail_count" -eq 0 ] || exit 1
