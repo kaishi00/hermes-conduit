@@ -190,8 +190,34 @@ class PlanningTests(unittest.TestCase):
             lane = plan["unit_lanes"][0]
             self.assertEqual(lane["predicted_s"], 200.0)
             self.assertEqual(lane["timeout_s"], 600)  # floor wins: max(600, 500)
+            # UI: max(900 floor, ceil(60*2 + 240)) = 900 (floor wins)
             self.assertEqual(
-                plan["ui_lane"]["timeout_s"], 600)  # floor wins: max(600, 150)
+                plan["ui_lane"]["timeout_s"], 900)
+
+    def test_ui_timeout_formula_covers_overhead_and_retry(self):
+        # The UI watchdog must budget measured invocation overhead plus both
+        # native retry iterations, not just the raw prediction (run #500
+        # crossed the old 600s floor while the tests were succeeding).
+        cfg = default_cfg()
+        # Today's UI prediction (~225.9s): formula yields 692s, floor wins.
+        self.assertEqual(
+            planner.ui_timeout_for(225.9, cfg["ui_timeout_min_s"],
+                                   cfg["ui_invocation_overhead_s"],
+                                   cfg["ui_retry_headroom_factor"]),
+            900)
+        # A growing UI suite outgrows the floor linearly: 600s predicted ->
+        # 600*2 + 240 = 1440s, comfortably above any healthy invocation.
+        self.assertEqual(
+            planner.ui_timeout_for(600.0, cfg["ui_timeout_min_s"],
+                                   cfg["ui_invocation_overhead_s"],
+                                   cfg["ui_retry_headroom_factor"]),
+            1440)
+        # Tiny suites stay bounded by the floor, not the formula.
+        self.assertEqual(
+            planner.ui_timeout_for(5.0, cfg["ui_timeout_min_s"],
+                                   cfg["ui_invocation_overhead_s"],
+                                   cfg["ui_retry_headroom_factor"]),
+            900)
 
     def test_job_ceiling_covers_worst_in_script_path(self):
         # Ceiling must fit attempt1 + attempt2 + a full isolation pass plus
