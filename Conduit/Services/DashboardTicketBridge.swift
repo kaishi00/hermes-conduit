@@ -132,6 +132,12 @@ enum DashboardTicketBridgeError: LocalizedError {
     /// 0) and fall back deliberately instead of treating them like unrelated
     /// server errors.
     case http(status: Int, detail: String)
+    /// The response exceeded the client's safe response bound
+    /// (`DataURLLimits.maxJSONResponseBytes`) before it could be parsed.
+    /// Distinguished from generic status-0 failures so callers can react to
+    /// a known-oversized history response without retrying the same giant
+    /// transcript over another transport.
+    case oversizedResponse(limit: Int)
 
     var errorDescription: String? {
         switch self {
@@ -143,6 +149,14 @@ enum DashboardTicketBridgeError: LocalizedError {
             return message
         case .http(_, let detail):
             return detail
+        case .oversizedResponse:
+            // Generic bridge-level copy: this error is raised for ANY
+            // dashboard response that exceeds the safe bound (workspace-file
+            // reads, catalogs, history), not exclusively transcripts.
+            // Transcript-specific messaging is mapped in the transcript
+            // layer, which knows whether the request was a legacy one-shot
+            // or a bounded current-Hermes page.
+            return "This response is too large to load safely."
         }
     }
 }
@@ -667,12 +681,22 @@ extension DashboardTicketBridge: WKNavigationDelegate {
         decidePolicyFor navigationAction: WKNavigationAction,
         decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
     ) {
-        guard ConnectionURLPolicy.isAllowedTransport(navigationAction.request.url) else {
-            decisionHandler(.cancel)
+        // Subframe check must come BEFORE the main-frame transport guard:
+        // Turnstile's WebView requirements call for about:blank and
+        // about:srcdoc subframe documents, which plain HTTP(S) transport
+        // rules would reject. The allowance is confined to subframes —
+        // a top-level navigation attempt from such a document re-enters
+        // this delegate as a MAIN frame and still must match the dashboard
+        // origin below.
+        if let targetFrame = navigationAction.targetFrame, !targetFrame.isMainFrame {
+            decisionHandler(
+                ConnectionURLPolicy.isAllowedWebViewSubframeTransport(navigationAction.request.url)
+                    ? .allow : .cancel
+            )
             return
         }
-        if let targetFrame = navigationAction.targetFrame, !targetFrame.isMainFrame {
-            decisionHandler(.allow)
+        guard ConnectionURLPolicy.isAllowedTransport(navigationAction.request.url) else {
+            decisionHandler(.cancel)
             return
         }
         guard let expectedURL = URL(string: baseURL),
@@ -806,6 +830,18 @@ extension DashboardTicketBridge: WKScriptMessageHandler {
             return
         }
         let detail = payload["error"] as? String ?? "Dashboard request failed (\(status))."
+        // The injected fetch throws exactly one sentinel for a response that
+        // outgrew the safe bound (content-length or streamed bytes). It
+        // arrives here as a status-0 failure like every other JS-level
+        // error, but it is a known-oversized response, not transport
+        // trouble — give callers the typed condition so an oversized
+        // history read is never mistaken for a retryable network failure.
+        if status == 0, detail.contains("response_too_large") {
+            continuation.resume(throwing: DashboardTicketBridgeError.oversizedResponse(
+                limit: DataURLLimits.maxJSONResponseBytes
+            ))
+            return
+        }
         continuation.resume(throwing: DashboardTicketBridgeError.http(status: status, detail: detail))
     }
 }

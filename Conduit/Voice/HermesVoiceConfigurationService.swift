@@ -23,6 +23,15 @@ struct VoiceProviderReadiness: Equatable, Identifiable {
     let kind: VoiceProviderDescriptor.Kind
     let status: String
     let isActive: Bool
+    /// The gateway's own picker row label. Provider selection is submitted
+    /// under this name so Hermes — not Conduit — owns the row→config mapping.
+    let displayName: String
+    /// Structured marker for the managed Nous route, set once at parse time
+    /// from upstream semantics (`managed_nous_feature` for the row's kind, or
+    /// the legacy managed-row label). Selection writes for these rows are
+    /// server-owned: when the toolset provider endpoint is unavailable they
+    /// must fail closed, never fall back to a raw config write of "nous".
+    let isManagedNous: Bool
     let requiredCredentials: [VoiceCredentialStatus]
 }
 
@@ -136,8 +145,10 @@ final class HermesVoiceConfigurationService: ObservableObject {
             sttReadiness: try? stt.get(),
             ttsReadiness: try? tts.get(),
             environment: try? environment.get(),
-            sttEndpointAvailable: (try? stt.get()) != nil,
-            ttsEndpointAvailable: (try? tts.get()) != nil
+            // STT toolset readiness is intentionally NOT passed to the
+            // parser: it cannot influence transcription capability, only the
+            // picker population and diagnostics built from its rows.
+            ttsToolsetConfigAvailable: (try? tts.get()) != nil
         )
         snapshot = parsed
         // Toolset config was added after some public gateways. Its absence is
@@ -147,10 +158,93 @@ final class HermesVoiceConfigurationService: ObservableObject {
         }
     }
 
+    /// Provider selection follows the Hermes client contract: when the row
+    /// came from the toolset readiness matrix, its display name is submitted
+    /// to the toolset provider endpoint and the GATEWAY owns the config write
+    /// (managed "Nous Subscription" rows become `stt.provider = nous` on
+    /// current Hermes and the gateway-intent equivalent on older ones).
+    /// Writing a Conduit-side ID such as "nous" directly would corrupt the
+    /// profile config on gateways that predate that value.
     func saveProvider(_ provider: String, kind: VoiceProviderDescriptor.Kind) async -> Bool {
-        let saved = await save(value: provider, for: "\(kind.rawValue).provider")
-        if saved { await reload() }
-        return saved
+        let providers = kind == .stt ? snapshot.sttProviders : snapshot.ttsProviders
+        guard let row = providers.first(where: { $0.descriptor.id == provider })?.readiness else {
+            // Schema-only provider (gateway without toolset readiness). The
+            // raw ID is a plain vendor config value, safe to write directly —
+            // except the canonical managed Nous ID, whose meaning is
+            // server-owned and never written raw.
+            guard provider.lowercased() != "nous" else {
+                errorMessage = "Hermes must translate this managed selection; its provider endpoint is unavailable."
+                return false
+            }
+            return await saveVendorSelection(provider, kind: kind)
+        }
+        if await saveProviderSelection(rowName: row.displayName, kind: kind) { return true }
+        // The toolset endpoint failed. Managed Nous rows must fail closed:
+        // "nous" is only meaningful on gateways whose provider endpoint
+        // translates the row, so it is never raw-written through the legacy
+        // config fallback. Vendor rows carry IDs that ARE the config values
+        // upstream persists, so their legacy write stays safe.
+        guard !row.isManagedNous else { return false }
+        errorMessage = nil
+        return await saveVendorSelection(provider, kind: kind)
+    }
+
+    /// Legacy provider-selection fallback for gateways whose toolset provider
+    /// endpoint is unavailable. Writes the section atomically the way
+    /// upstream's single-provider selection model expects: the vendor value
+    /// lands in `<section>.provider` and any stale `use_gateway`
+    /// gateway-routing intent is removed — a leftover `use_gateway: true`
+    /// would override the user's fresh BYOK selection on legacy runtimes.
+    /// Like the other config editors, this is a full-document GET→PUT, so a
+    /// concurrent profile-config edit from another writer could be clobbered;
+    /// the single-writer UI flow makes that a deliberate, pre-existing
+    /// trade-off rather than a new one.
+    private func saveVendorSelection(_ vendor: String, kind: VoiceProviderDescriptor.Kind) async -> Bool {
+        let sectionKey = kind.rawValue
+        guard var config = try? await requester.requestJSON(path: profilePath("/api/config"), method: "GET", body: nil) else {
+            errorMessage = "Could not load voice settings to save this change."
+            return false
+        }
+        var section = config[sectionKey] as? [String: Any] ?? [:]
+        section["provider"] = vendor
+        section.removeValue(forKey: "use_gateway")
+        config[sectionKey] = section
+        do {
+            _ = try await requester.requestJSON(
+                path: profilePath("/api/config"), method: "PUT",
+                body: ["config": config]
+            )
+            await reload()
+            return true
+        } catch {
+            errorMessage = "Could not save \(sectionKey).provider: \(error.localizedDescription)"
+            return false
+        }
+    }
+
+    private func saveProviderSelection(rowName: String, kind: VoiceProviderDescriptor.Kind) async -> Bool {
+        do {
+            let response = try await requester.requestJSON(
+                path: profilePath("/api/tools/toolsets/\(kind.rawValue)/provider"),
+                method: "PUT",
+                body: ["provider": rowName]
+            )
+            if let error = response["error"] as? String, !error.isEmpty {
+                errorMessage = "Could not select \(rowName): \(error)"
+                return false
+            }
+            await reload()
+            if response["needs_nous_auth"] as? Bool == true {
+                // The write landed; Hermes is flagging that the managed route
+                // still needs sign-in. Diagnostic, never a silent failure.
+                let feature = kind == .stt ? "speech-to-text" : "speech"
+                errorMessage = "Hermes saved this selection, but the Nous subscription needs sign-in before \(feature) can use it."
+            }
+            return true
+        } catch {
+            errorMessage = "Could not select \(rowName): \(error.localizedDescription)"
+            return false
+        }
     }
 
     func save(value: String, for key: String) async -> Bool {
@@ -248,8 +342,7 @@ enum VoiceConfigurationParser {
         sttReadiness: [String: Any]?,
         ttsReadiness: [String: Any]?,
         environment: [String: Any]?,
-        sttEndpointAvailable: Bool,
-        ttsEndpointAvailable: Bool
+        ttsToolsetConfigAvailable: Bool
     ) -> VoiceConfigurationSnapshot {
         let selectedSTT = nestedString(config, "stt.provider") ?? "local"
         let selectedTTS = nestedString(config, "tts.provider") ?? "edge"
@@ -264,19 +357,21 @@ enum VoiceConfigurationParser {
 
         let stt = sttIDs.map { id in providerConfiguration(id: id, kind: .stt, readiness: readiness, credentials: credentials) }
         let tts = ttsIDs.map { id in providerConfiguration(id: id, kind: .tts, readiness: readiness, credentials: credentials) }
-        let noVoiceSurface = !sttEndpointAvailable && !ttsEndpointAvailable
         let sttEnabled = nestedBool(config, "stt.enabled") ?? true
-        let selectedSTTReady = selectedProviderIsReady(stt, selectedID: selectedSTT)
         let selectedTTSReady = selectedProviderIsReady(tts, selectedID: selectedTTS)
-        let supportsTranscription = sttEndpointAvailable && sttEnabled && selectedSTTReady
-        let supportsSpeech = ttsEndpointAvailable && selectedTTSReady
+        // Hermes Desktop's dictation principle: once the profile config is
+        // loaded, `stt.enabled != false` is the only capability gate. The
+        // toolset readiness response is picker/diagnostic surface — its
+        // availability says nothing about POST /api/audio/transcribe, and its
+        // metadata cannot model every runtime credential source
+        // (stt.openai.api_key, VOICE_TOOLS_OPENAI_KEY, OPENAI_API_KEY,
+        // managed Nous sign-in). A real endpoint problem surfaces from the
+        // actual transcription attempt.
+        let supportsTranscription = sttEnabled
+        let supportsSpeech = ttsToolsetConfigAvailable && selectedTTSReady
         let unavailableReason: String?
-        if noVoiceSurface {
-            unavailableReason = "This Hermes gateway does not provide voice endpoints. Text chat remains available."
-        } else if !supportsTranscription {
-            unavailableReason = sttEnabled
-                ? "The selected speech-to-text provider is not ready for this profile."
-                : "Speech-to-text is disabled for this Hermes profile."
+        if !sttEnabled {
+            unavailableReason = "Speech-to-text is disabled for this Hermes profile."
         } else if !supportsSpeech {
             unavailableReason = "The selected text-to-speech provider is not ready for this profile."
         } else {
@@ -311,14 +406,33 @@ enum VoiceConfigurationParser {
             (id == "xiaomi_mimo" && credential.key == "MIMO_API_KEY")
         }
         return .init(descriptor: descriptor, fields: fields, readiness: row.map {
-            .init(id: $0.id, kind: $0.kind, status: $0.status, isActive: $0.isActive, requiredCredentials: required)
+            .init(id: $0.id, kind: $0.kind, status: $0.status, isActive: $0.isActive, displayName: $0.displayName, isManagedNous: $0.isManagedNous, requiredCredentials: required)
         })
     }
 
+    /// Display catalog matching Hermes' current STT picker. Providers outside
+    /// this table (plugin rows such as StepFun/Xiaomi MiMo, or future
+    /// gateways) fall back to a generated descriptor and still work.
     static func catalogDescriptor(id: String, kind: VoiceProviderDescriptor.Kind) -> VoiceProviderDescriptor? {
         switch (id, kind) {
         case ("local", .stt):
             return .init(id: id, displayName: "Local", kind: kind, models: ["tiny", "base", "small", "medium", "large-v3"], supportsStreaming: false)
+        case ("nous", .stt), ("openai", .stt):
+            // The managed Nous route resolves models from the same
+            // OpenAI-compatible catalog as the direct key.
+            return .init(id: id, displayName: id == "nous" ? "Nous Subscription" : "OpenAI", kind: kind, models: ["whisper-1", "gpt-4o-mini-transcribe", "gpt-4o-transcribe", "gpt-transcribe"], supportsStreaming: false)
+        case ("groq", .stt):
+            return .init(id: id, displayName: "Groq", kind: kind, models: ["whisper-large-v3-turbo", "whisper-large-v3", "distil-whisper-large-v3-en"], supportsStreaming: false)
+        case ("xai", .stt):
+            return .init(id: id, displayName: "xAI", kind: kind, supportsStreaming: false)
+        case ("elevenlabs", .stt):
+            return .init(id: id, displayName: "ElevenLabs Scribe", kind: kind, supportsStreaming: false)
+        case ("deepinfra", .stt):
+            return .init(id: id, displayName: "DeepInfra", kind: kind, supportsStreaming: false)
+        case ("nous", .tts):
+            return .init(id: id, displayName: "Nous Subscription", kind: kind, supportsStreaming: true)
+        case ("openai", .tts):
+            return .init(id: id, displayName: "OpenAI", kind: kind, supportsStreaming: true)
         case ("stepfun", .stt):
             return .init(id: id, displayName: "StepFun", kind: kind, models: ["stepaudio-2.5-asr", "step-asr"], supportsStreaming: false)
         case ("stepfun", .tts):
@@ -332,10 +446,15 @@ enum VoiceConfigurationParser {
     }
 
     static func typedFields(id: String, kind: VoiceProviderDescriptor.Kind) -> [VoiceTypedField] {
-        let root = "\(kind.rawValue).\(id)"
+        // The managed Nous selection shares the vendor's config section
+        // upstream (Hermes resolves stt.nous through stt.openai), so its
+        // editors must read and write the vendor keys.
+        let root = id == "nous" ? "\(kind.rawValue).openai" : "\(kind.rawValue).\(id)"
+        // Hermes keys the ElevenLabs STT model `stt.elevenlabs.model_id`.
+        let modelKey = kind == .stt && id == "elevenlabs" ? "model_id" : "model"
         let defaultModel = id == "local" && kind == .stt ? "base" : ""
         var shared = [
-            VoiceTypedField(key: "\(root).model", label: "Model", help: "You can enter any installed model identifier.", kind: .text, defaultValue: defaultModel),
+            VoiceTypedField(key: "\(root).\(modelKey)", label: "Model", help: "You can enter any installed model identifier.", kind: .text, defaultValue: defaultModel),
             VoiceTypedField(key: "\(root).language", label: "Language", help: "Leave blank for automatic language detection.", kind: .text, defaultValue: "")
         ]
         if kind == .tts {
@@ -396,25 +515,39 @@ enum VoiceConfigurationParser {
             if let text = row["status"] as? String { status = text }
             else if let object = row["status"] as? [String: Any] { status = object["state"] as? String ?? object["label"] as? String ?? "Unknown" }
             else { status = "Unknown" }
-            return .init(id: id, kind: kind, status: status, isActive: row["is_active"] as? Bool ?? false, requiredCredentials: credentials)
+            // providerID resolves to "nous" only for the managed route (the
+            // managed feature marker or the legacy managed-row label), so the
+            // canonical ID doubles as the structured managed marker.
+            return .init(id: id, kind: kind, status: status, isActive: row["is_active"] as? Bool ?? false, displayName: row["name"] as? String ?? id, isManagedNous: id == "nous", requiredCredentials: credentials)
         }
     }
 
-    /// Hermes' current toolset response includes `tts_provider` but older and
-    /// current STT responses can omit `stt_provider`, leaving only the picker
-    /// display name. Normalize those names back to config keys so Conduit never
-    /// writes a label such as "Local Whisper" into `stt.provider`.
+    /// Hermes' toolset response keys each row by its picker label; only TTS
+    /// rows additionally carry a `tts_provider` config key. Normalize rows to
+    /// the provider IDs Hermes itself writes into `stt.provider`/`tts.provider`
+    /// so Conduit never conflates two different routes.
+    ///
+    /// The managed "Nous Subscription" row is its own selection upstream:
+    /// current Hermes writes `stt.provider = "nous"` (serviced by the
+    /// OpenAI-compatible implementation through the managed gateway) while the
+    /// direct "OpenAI" row writes `stt.provider = "openai"` with the user's
+    /// own key. The two must stay distinct — the row's vendor field, when
+    /// present, names the shared implementation, not the selection — so the
+    /// managed flags decide identity before any vendor field is read.
     private static func providerID(for row: [String: Any], kind: VoiceProviderDescriptor.Kind) -> String? {
+        let name = (row["name"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if row["managed_nous_feature"] as? String == kind.rawValue || name.lowercased() == "nous subscription" {
+            return "nous"
+        }
         if kind == .stt, let id = row["stt_provider"] as? String, !id.isEmpty { return id }
         if kind == .tts, let id = row["tts_provider"] as? String, !id.isEmpty { return id }
-        guard let name = row["name"] as? String, !name.isEmpty else { return nil }
-        if kind == .stt {
-            switch name.lowercased() {
-            case "local whisper": return "local"
-            case "nous subscription", "openai": return "openai"
-            case "elevenlabs scribe": return "elevenlabs"
-            default: break
-            }
+        guard !name.isEmpty else { return nil }
+        switch name.lowercased() {
+        case "local whisper": return "local"
+        case "openai", "openai tts": return "openai"
+        case "elevenlabs scribe": return "elevenlabs"
+        case "microsoft edge tts": return "edge"
+        default: break
         }
         return name
             .components(separatedBy: CharacterSet.alphanumerics.inverted)

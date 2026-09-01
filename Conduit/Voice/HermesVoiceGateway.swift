@@ -7,6 +7,26 @@ import Foundation
 
 @MainActor
 final class HermesVoiceGateway: VoiceGatewayService {
+    /// Mirrors Hermes Desktop's transcription request policy
+    /// (apps/desktop/src/api/system.ts): remote providers and long recordings
+    /// regularly exceed short request ceilings, so every request gets a
+    /// generous floor that scales with the payload and clamps at a cap.
+    static let transcriptionMinimumRequestTimeoutMilliseconds = 180_000
+    static let transcriptionMaximumRequestTimeoutMilliseconds = 600_000
+    /// The payload is the base64 audio data URL itself, so its length tracks
+    /// clip size. Conduit records 16kHz mono 16-bit WAV (~42.7k base64
+    /// characters per second of audio), so 0.1ms per character budgets ~4.3s
+    /// of timeout per 1s of audio before the cap clamps it.
+    static let transcriptionTimeoutMillisecondsPerDataURLCharacter = 0.1
+
+    static func transcriptionRequestTimeoutMilliseconds(dataURLCharacterCount: Int) -> Int {
+        let estimated = max(
+            transcriptionMinimumRequestTimeoutMilliseconds,
+            Int(ceil(Double(dataURLCharacterCount) * transcriptionTimeoutMillisecondsPerDataURLCharacter))
+        )
+        return min(transcriptionMaximumRequestTimeoutMilliseconds, estimated)
+    }
+
     let profile: String
     private let bridge: DashboardTicketBridge
     private let baseURL: String
@@ -19,11 +39,16 @@ final class HermesVoiceGateway: VoiceGatewayService {
     }
 
     func transcribe(_ audio: VoiceCapturedAudio) async throws -> String {
+        // Base64 encoding is expensive for long recordings — build the data
+        // URL once and reuse it for both the payload and the timeout budget.
+        let dataURL = audio.dataURL
         let response = try await bridge.requestJSON(
             path: "/api/audio/transcribe" + profileQuery,
             method: "POST",
-            body: ["data_url": audio.dataURL, "mime_type": "audio/wav"],
-            timeoutMilliseconds: 90_000
+            body: ["data_url": dataURL, "mime_type": "audio/wav"],
+            timeoutMilliseconds: Self.transcriptionRequestTimeoutMilliseconds(
+                dataURLCharacterCount: dataURL.utf8.count
+            )
         )
         if let error = response["error"] as? String, !error.isEmpty { throw DashboardTicketBridgeError.requestFailed(error) }
         guard let rawTranscript = response["transcript"] as? String ?? response["text"] as? String else {
