@@ -9,6 +9,11 @@ struct ChatMessageScrollTarget: Identifiable, Equatable {
     let message: ChatMessage
     let semanticID: String
     let restorationMetadata: ChatScrollAnchorMetadata
+    /// Transcript-order position, maintained by the cache so views can
+    /// iterate the targets collection directly (no Array(enumerated()) copy
+    /// per body evaluation) and still report stable row order to the
+    /// viewport geometry.
+    let order: Int
 
     /// SwiftUI keeps the existing source-row identity for rendering and
     /// controls. Only scroll targeting uses the source-independent ID.
@@ -68,6 +73,7 @@ struct ChatMessageScrollTargetCache: Equatable {
               targets[commonPrefix].message == messages[commonPrefix] {
             commonPrefix += 1
         }
+        TranscriptPerf.scrollTargetCommonPrefixComparisons += commonPrefix
 
         // Identical transcripts: no work at all.
         if commonPrefix == targets.count, commonPrefix == messages.count {
@@ -85,15 +91,17 @@ struct ChatMessageScrollTargetCache: Equatable {
 
         // Same length and identical suffix fingerprints: a rendering-only
         // replacement (equal semantics, different message objects). Swap the
-        // message values in place; semantic IDs and restoration metadata are
-        // untouched, so duplicate semantics cannot shift.
+        // message values in place; semantic IDs, restoration metadata, and
+        // transcript order are untouched, so duplicate semantics cannot
+        // shift.
         if targets.count == messages.count,
            suffixFingerprints.elementsEqual(fingerprints[suffixStart...]) {
             let replacement = zip(suffixMessages, targets[suffixStart...]).map { message, target in
                 ChatMessageScrollTarget(
                     message: message,
                     semanticID: target.semanticID,
-                    restorationMetadata: target.restorationMetadata
+                    restorationMetadata: target.restorationMetadata,
+                    order: target.order
                 )
             }
             targets.replaceSubrange(suffixStart..., with: replacement)
@@ -107,6 +115,7 @@ struct ChatMessageScrollTargetCache: Equatable {
         // direction (old or new), and the suffix itself must be
         // duplicate-free. Otherwise fall back to a full rebuild — correctness
         // over exotic incremental cases.
+        TranscriptPerf.note(.scrollTargetPrefixSetBuild)
         let prefixFingerprints = Set(fingerprints[..<suffixStart])
         let oldSuffixFingerprints = fingerprints[suffixStart...]
         let canRebuildSuffixIncrementally =
@@ -117,7 +126,8 @@ struct ChatMessageScrollTargetCache: Equatable {
         if canRebuildSuffixIncrementally {
             let suffixTargets = ChatMessageScrollTargets.make(
                 for: suffixMessages,
-                fingerprints: suffixFingerprints
+                fingerprints: suffixFingerprints,
+                baseOrder: suffixStart
             )
             fingerprints.replaceSubrange(suffixStart..., with: suffixFingerprints)
             targets.replaceSubrange(suffixStart..., with: suffixTargets)
@@ -267,15 +277,17 @@ enum ChatMessageScrollTargets {
         messages.map(fingerprint)
     }
 
-    fileprivate static func make(
+    static func make(
         for messages: [ChatMessage],
-        fingerprints: [String]
+        fingerprints: [String],
+        baseOrder: Int = 0
     ) -> [ChatMessageScrollTarget] {
         let duplicateCounts = fingerprints.reduce(into: [String: Int]()) { counts, fingerprint in
             counts[fingerprint, default: 0] += 1
         }
         var occurrences: [String: Int] = [:]
-        return zip(messages, fingerprints).map { message, fingerprint in
+        return zip(messages, fingerprints).enumerated().map { offset, pair in
+            let (message, fingerprint) = pair
             let occurrence = occurrences[fingerprint, default: 0]
             occurrences[fingerprint] = occurrence + 1
             return ChatMessageScrollTarget(
@@ -284,7 +296,8 @@ enum ChatMessageScrollTargets {
                 restorationMetadata: ChatScrollAnchorMetadata(
                     fingerprint: fingerprint,
                     duplicateCount: duplicateCounts[fingerprint, default: 0]
-                )
+                ),
+                order: baseOrder + offset
             )
         }
     }

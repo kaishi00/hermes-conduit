@@ -459,6 +459,14 @@ final class AppState: ObservableObject {
     @Published private(set) var busyInputMode: BusyInputMode = .steer
     @Published private(set) var displayPreferences = ProfileDisplayPreferences()
     @Published var streamingText = ""
+    /// Live, frequently-changing reasoning projection. Streaming reasoning
+    /// renders from here at display cadence WITHOUT mutating the settled
+    /// `messages` array — per-publish transcript mutation (O(message count)
+    /// index scan + copy-on-write copy + revision bump + scroll-target cache
+    /// walk) is what made deep agent sessions burn CPU and battery. The card
+    /// commits into `messages` exactly once per segment boundary via
+    /// `settleReasoningSegmentIntoTranscript()`.
+    @Published private(set) var liveReasoningSegment: LiveReasoningSegment?
     /// An explicit user-send request lets ChatView scroll after SwiftUI has
     /// inserted the outgoing bubble, even if the user previously browsed up.
     @Published private(set) var chatScrollRequest = 0
@@ -661,6 +669,15 @@ final class AppState: ObservableObject {
         let reasoning: String?
     }
 
+    /// One live reasoning segment as projected to the UI: the identity and
+    /// mount timestamp are fixed for the segment's lifetime, only `content`
+    /// advances at display cadence. Rendering treats it exactly like a
+    /// settled `.reasoning` row (same ThinkingCard presentation).
+    struct LiveReasoningSegment: Equatable {
+        let id: String
+        let timestamp: String
+        var content: String
+    }
     private var reconciliationToken = UUID()
     private var reconciliation: Reconciliation?
     private var activeClientEpoch = UUID()
@@ -8188,9 +8205,10 @@ final class AppState: ObservableObject {
         switch event {
         case .messageStart:
             finalizePendingStreamingCompletion()
-            // A new turn ends any live reasoning card; flush first so the
-            // previous segment keeps its exact buffered text.
-            flushReasoningPublish()
+            // A new turn ends any live reasoning card; settle first so the
+            // previous segment keeps its exact buffered text in the
+            // transcript.
+            settleReasoningSegmentIntoTranscript()
             resetReasoningTurn()
             setRunning(true)
             notifyVoiceAssistant(.started(sessionID: streamSessionId))
@@ -8218,7 +8236,7 @@ final class AppState: ObservableObject {
             notifyVoiceAssistant(.completed(sessionID: streamSessionId, content: content))
 
         case .messageError(_, let message):
-            flushReasoningPublish()
+            settleReasoningSegmentIntoTranscript()
             resetReasoningTurn()
             clearStreamingText()
             errorMessage = message
@@ -8226,7 +8244,7 @@ final class AppState: ObservableObject {
             notifyVoiceAssistant(.failed(sessionID: streamSessionId, message: message))
 
         case .messageInterrupted:
-            flushReasoningPublish()
+            settleReasoningSegmentIntoTranscript()
             resetReasoningTurn()
             clearStreamingText()
             setRunning(false)
@@ -8260,11 +8278,12 @@ final class AppState: ObservableObject {
 
         case .toolStart(_, let name, let input):
             if name.lowercased() == "clarify" { break }
-            // The tool card must land after a complete reasoning card; flush
-            // the coalesced buffer before the boundary reorders the transcript.
-            // A tool ends the reasoning SEGMENT only — the turn flag survives
-            // so completion-carried reasoning cannot duplicate this segment.
-            flushReasoningPublish()
+            // The tool card must land after a complete reasoning card; commit
+            // the coalesced segment before the boundary reorders the
+            // transcript. A tool ends the reasoning SEGMENT only — the turn
+            // flag survives so completion-carried reasoning cannot duplicate
+            // this segment.
+            settleReasoningSegmentIntoTranscript()
             resetReasoningSegment()
             flushStreamingPartial()
             messages.append(ChatMessage(
@@ -8277,7 +8296,7 @@ final class AppState: ObservableObject {
 
         case .toolComplete(_, let name, let output):
             if name.lowercased() == "clarify" { break }
-            flushReasoningPublish()
+            settleReasoningSegmentIntoTranscript()
             resetReasoningSegment()
             // Update the matching running tool card in place instead of
             // appending a duplicate. This keeps input + output together in
@@ -8430,9 +8449,11 @@ final class AppState: ObservableObject {
     /// A reasoning delta belongs exactly where Hermes emitted it. Gateways can
     /// send either deltas or repeated cumulative snapshots, so merge both into
     /// one live card rather than creating duplicate thinking boxes. The first
-    /// delta of a segment mounts the card immediately so the thinking box
-    /// appears promptly; every later delta coalesces through
-    /// `reasoningBuffer` and republishes at display cadence.
+    /// delta of a segment mounts the live projection immediately so the
+    /// thinking box appears promptly; every later delta coalesces through
+    /// `reasoningBuffer` and republishes the PROJECTION at display cadence.
+    /// The settled transcript is touched only once per segment, at the
+    /// boundary commit.
     private func appendReasoning(_ text: String) {
         guard !text.isEmpty else { return }
         reasoningBuffer = mergedReasoning(
@@ -8441,14 +8462,13 @@ final class AppState: ObservableObject {
         )
         guard activeReasoningMessageId != nil else {
             let id = "reasoning-\(Date().timeIntervalSince1970)"
-            messages.append(ChatMessage(
-                id: id,
-                role: .reasoning,
-                content: reasoningBuffer,
-                timestamp: Self.localTimestamp(),
-                author: activeProfile
-            ))
             activeReasoningMessageId = id
+            TranscriptPerf.note(.reasoningProjectionPublish)
+            liveReasoningSegment = LiveReasoningSegment(
+                id: id,
+                timestamp: Self.localTimestamp(),
+                content: reasoningBuffer
+            )
             return
         }
         scheduleReasoningPublish()
@@ -8461,12 +8481,11 @@ final class AppState: ObservableObject {
 
         reasoningPublishTask = Task { @MainActor [weak self] in
             do {
-                // Reasoning updates mutate the published transcript, which is
-                // heavier than the streaming-text projection: an expanded
-                // ThinkingCard restyles its attributed text and remeasures a
-                // growing height on every commit. ~20 fps keeps the stream
-                // readable while leaving the main actor free between layout
-                // passes.
+                // Reasoning updates republish the live projection at this
+                // cadence; an expanded ThinkingCard restyles its attributed
+                // text and remeasures a growing height on every commit, so
+                // ~20 fps keeps the stream readable while leaving the main
+                // actor free between layout passes.
                 try await Task.sleep(for: .milliseconds(50))
             } catch {
                 return
@@ -8484,19 +8503,60 @@ final class AppState: ObservableObject {
     /// nothing can mutate a finalized or replaced transcript.
     private func publishReasoningBuffer(liveCardID: String?) {
         guard let liveCardID, liveCardID == activeReasoningMessageId,
-              let index = messages.firstIndex(where: { $0.id == liveCardID }),
-              messages[index].content != reasoningBuffer else { return }
-        messages[index].content = reasoningBuffer
+              var segment = liveReasoningSegment, segment.id == liveCardID,
+              segment.content != reasoningBuffer else { return }
+        TranscriptPerf.note(.reasoningProjectionPublish)
+        segment.content = reasoningBuffer
+        liveReasoningSegment = segment
     }
 
-    /// Publish any coalesced reasoning immediately so the live card is exact
-    /// before a semantic boundary (completion, tool, error, interruption,
-    /// next turn) reads or reorders the transcript.
+    /// Publish any coalesced reasoning into the live projection immediately.
+    /// Non-boundary callers (the sidebar closing) keep the segment streaming;
+    /// boundary callers need `settleReasoningSegmentIntoTranscript()`.
     private func flushReasoningPublish() {
         reasoningPublishTask?.cancel()
         reasoningPublishTask = nil
         hasScheduledReasoningPublish = false
         publishReasoningBuffer(liveCardID: activeReasoningMessageId)
+    }
+
+    /// Commit the live reasoning segment into the settled transcript EXACTLY
+    /// ONCE at a semantic boundary: tool card, completion, error,
+    /// interruption, or a new turn. `explicitContent` supersedes the buffered
+    /// text (the completion-carried trace replaces what streamed, exactly as
+    /// it replaced the in-transcript card content before the projection
+    /// existed). Paired with the boundary's `resetReasoning*` call, this
+    /// preserves the pre-projection transcript shape: the card is in
+    /// `messages`, complete, and no stale publish can touch it afterwards.
+    private func settleReasoningSegmentIntoTranscript(explicitContent: String? = nil) {
+        reasoningPublishTask?.cancel()
+        reasoningPublishTask = nil
+        hasScheduledReasoningPublish = false
+
+        func commit(id: String, timestamp: String, content: String) {
+            guard !content.isEmpty else { return }
+            TranscriptPerf.note(.reasoningTranscriptMutation)
+            messages.append(ChatMessage(
+                id: id,
+                role: .reasoning,
+                content: content,
+                timestamp: timestamp,
+                author: activeProfile
+            ))
+            reasoningBuffer = ""
+            activeReasoningMessageId = nil
+            liveReasoningSegment = nil
+        }
+
+        if let segment = liveReasoningSegment, activeReasoningMessageId == segment.id {
+            commit(id: segment.id, timestamp: segment.timestamp, content: explicitContent ?? reasoningBuffer)
+        } else if let text = explicitContent {
+            commit(
+                id: "reasoning-\(Date().timeIntervalSince1970)",
+                timestamp: Self.localTimestamp(),
+                content: text
+            )
+        }
     }
 
     /// End the active reasoning SEGMENT without publishing. Used at tool
@@ -8509,6 +8569,7 @@ final class AppState: ObservableObject {
         hasScheduledReasoningPublish = false
         reasoningBuffer = ""
         activeReasoningMessageId = nil
+        liveReasoningSegment = nil
     }
 
     /// Restore the ENTIRE per-turn reasoning state machine to its initial
@@ -8533,19 +8594,13 @@ final class AppState: ObservableObject {
     /// Completion sometimes carries the full reasoning trace as well as the
     /// deltas. Prefer that complete value without duplicating an already
     /// streamed card; gateways that only provide completion still get a card
-    /// immediately before their final answer.
+    /// immediately before their final answer. Completion is a boundary: the
+    /// trace commits straight into the settled transcript rather than the
+    /// live projection — a projection left behind would be discarded by the
+    /// turn reset that immediately follows.
     private func finalizeReasoning(_ text: String) {
         guard !text.isEmpty else { return }
-        if let id = activeReasoningMessageId,
-           let index = messages.firstIndex(where: { $0.id == id }) {
-            if text.hasPrefix(messages[index].content) {
-                messages[index].content = text
-            } else if messages[index].content != text {
-                messages[index].content = text
-            }
-            return
-        }
-        appendReasoning(text)
+        settleReasoningSegmentIntoTranscript(explicitContent: text)
     }
 
     func requestChatScrollToLatest() {
@@ -9243,7 +9298,7 @@ final class AppState: ObservableObject {
     ) {
         // messageComplete is a semantic boundary: the thinking card must show
         // its full buffered reasoning immediately, not one cadence later.
-        flushReasoningPublish()
+        settleReasoningSegmentIntoTranscript()
         streamingCompletionTask?.cancel()
         streamingPublishTask?.cancel()
         streamingPublishTask = nil
@@ -9321,7 +9376,7 @@ final class AppState: ObservableObject {
     ) {
         // Reasoning that raced the drain window must not be discarded when
         // the pending completion finalizes.
-        flushReasoningPublish()
+        settleReasoningSegmentIntoTranscript()
         removeAllPartials()
         // Some gateways repeat the full trace in completion after already
         // emitting reasoning events. Use it only when streaming supplied no

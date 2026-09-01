@@ -1125,12 +1125,14 @@ extension ChatViewportControllerTests {
             ChatMessageScrollTarget(
                 message: message("m1", "one"),
                 semanticID: anchor,
-                restorationMetadata: ChatScrollAnchorMetadata(fingerprint: "fp", duplicateCount: 1)
+                restorationMetadata: ChatScrollAnchorMetadata(fingerprint: "fp", duplicateCount: 1),
+                order: 0
             ),
             ChatMessageScrollTarget(
                 message: message("m2", "two"),
                 semanticID: "other",
-                restorationMetadata: ChatScrollAnchorMetadata(fingerprint: "fp2", duplicateCount: 1)
+                restorationMetadata: ChatScrollAnchorMetadata(fingerprint: "fp2", duplicateCount: 1),
+                order: 1
             )
         ]
         var controller = ChatViewportController()
