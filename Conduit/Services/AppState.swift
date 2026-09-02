@@ -4524,12 +4524,23 @@ final class AppState: ObservableObject {
                     automaticWorkToken: automaticWorkToken
                 )
             } else {
-                // Idle before, idle now: the session is stable and attached.
+                // The registry is authoritative that this runtime is idle.
+                // Adopt idle through the shared helper so a transitional
+                // state (.synchronizing / .reconnecting) left behind by an
+                // aborted recovery attempt cannot survive a healthy-socket
+                // foreground cycle — the observational refresh must still end
+                // with a usable composer. setRunning(false) is idempotent for
+                // .idle and preserves an unsupportedGateway marker.
                 lifecycleLog.notice(
-                    "Foreground refresh: probe=idle localTurn=idle → no-op"
+                    "Foreground refresh: probe=idle → adopt idle"
                 )
+                // The adopted idle is the OLDER observation: events buffered
+                // while the boundary was open are newer live edges and must
+                // win (a busy edge that raced the probe re-owns the state)
+                // before the boundary settles and discards them.
+                setRunning(false)
                 turnStateIsStale = false
-                _ = settleReconciliationAndPublish(token, automaticWorkToken: automaticWorkToken)
+                settleForegroundBoundary(token, automaticWorkToken: automaticWorkToken)
             }
         case .absent:
             // No live runtime for this session: either the turn completed and
@@ -4625,9 +4636,12 @@ final class AppState: ObservableObject {
         _ = settleReconciliationAndPublish(token, automaticWorkToken: automaticWorkToken)
     }
 
-    /// Settles the foreground reconciliation boundary without adopting any
-    /// turn state — used when the registry answer is inconclusive ("starting")
-    /// so buffered events still land but the local state stays stream-owned.
+    /// Replays the events buffered while the foreground reconciliation
+    /// boundary was open — newer live edges win over any baseline the caller
+    /// just adopted — then settles the boundary. Used when the registry answer
+    /// is inconclusive ("starting", so the local state stays stream-owned) and
+    /// after the authoritative-idle adoption, where the caller establishes the
+    /// idle baseline first.
     private func settleForegroundBoundary(
         _ token: UUID,
         automaticWorkToken: ChatResumeAutomaticWorkToken?

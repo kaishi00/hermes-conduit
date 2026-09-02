@@ -509,6 +509,14 @@ final class HermesClient: ObservableObject {
     /// so it gets a bounded-but-generous budget instead of the ordinary
     /// request timeout.
     static let legacyResumeTimeout: TimeInterval = 60
+    /// Shared budget for liveness probes (`healthCheck`,
+    /// `session.active_list`). These sit on latency-sensitive paths — the
+    /// foreground refresh and the pre-send stale-idle correction — so a
+    /// stalled gateway must fail them fast instead of holding the composer
+    /// for the generic request timeout. 8s matches the pre-existing
+    /// health-check budget; a timed-out probe takes the same fallback paths
+    /// as any other probe failure.
+    static let livenessProbeTimeout: TimeInterval = 8
 
     init(
         connection: HermesConnection,
@@ -846,7 +854,7 @@ final class HermesClient: ObservableObject {
     }
 
     func healthCheck() async throws {
-        _ = try await rpc("session.list", params: nil, timeout: 8)
+        _ = try await rpc("session.list", params: nil, timeout: Self.livenessProbeTimeout)
     }
 
     /// Resumes a session with the compact projection: `omit_messages` asks
@@ -1045,10 +1053,17 @@ final class HermesClient: ObservableObject {
     /// registry (`session.active_list`). Unlike `session.resume` this does not
     /// switch, rebind, or mutate the session, and it is authoritative about
     /// absence: a runtime that has ended (turn complete + transport gone, or
-    /// a gateway restart) is no longer listed. Older gateways without the
-    /// method throw `RpcError`; callers degrade to resume-based recovery.
+    /// a gateway restart) is no longer listed. The empty parameter map is
+    /// load-bearing: `scopeParams` collapses it to an argument-free request
+    /// under the default profile (non-default profiles add only the gateway
+    /// `profile` context). Older gateways without the method throw `RpcError`;
+    /// callers degrade to resume-based recovery.
     func activeSessions() async throws -> [LiveSessionStatus] {
-        let result = try await rpc("session.active_list", params: [:])
+        let result = try await rpc(
+            "session.active_list",
+            params: [:],
+            timeout: Self.livenessProbeTimeout
+        )
         let rows = result.objectValue?["sessions"]?.arrayValue ?? []
         return rows.compactMap { LiveSessionStatus(from: $0.objectValue ?? [:]) }
     }

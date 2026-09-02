@@ -199,6 +199,241 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         box.client.disconnect()
     }
 
+    // MARK: - C2. Stale transitional state under an authoritative idle probe
+
+    /// A recovery attempt parked mid-reconcile leaves the transitional
+    /// `.synchronizing` state behind even though the socket is healthy. The
+    /// next foreground cycle's authoritative idle observation must adopt
+    /// idle — composer usable, no resume, transcript untouched — instead of
+    /// settling the boundary around the stale state.
+    func testForegroundWithStaleSynchronizingAndAuthoritativeIdleAdoptsIdle() async {
+        let active = session("stored-a")
+        var probeCount = 0
+        var resumeCount = 0
+        let parkedRefresh = LifecycleSuspension()
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                openSession: { _, sessionID, _ in
+                    resumeCount += 1
+                    await parkedRefresh.suspend()
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: [:])
+                    )
+                },
+                refreshContext: { _, _ in },
+                verifyTransportHealth: { _ in },
+                probeActiveSessions: { _ in
+                    probeCount += 1
+                    return [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: "idle"
+                    )]
+                }
+            )
+        )
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        let seedMessages = [
+            ChatMessage(id: "user", role: .user, content: "Earlier", timestamp: "1")
+        ]
+        harness.appState.messages = seedMessages
+
+        // A previous recovery attempt (explicit re-resume) parks mid-reconcile
+        // with the transitional state showing. The task is deliberately not
+        // awaited: its unwinding is covered by the rotated-token guards.
+        Task { @MainActor in
+            await harness.appState.refreshActiveSession()
+        }
+        await parkedRefresh.waitUntilSuspended()
+        XCTAssertEqual(harness.appState.turnState, .synchronizing)
+        let resumeCountBeforeForeground = resumeCount
+
+        harness.appState.handleScenePhase(.background)
+        await runSceneActivation(harness)
+
+        XCTAssertEqual(probeCount, 1)
+        XCTAssertEqual(
+            resumeCount, resumeCountBeforeForeground,
+            "The foreground refresh must not issue any resume of its own"
+        )
+        XCTAssertEqual(
+            harness.appState.turnState, .idle,
+            "An authoritative idle observation must clear the stale transitional state"
+        )
+        XCTAssertTrue(
+            harness.appState.composerIsEnabled,
+            "The composer must be usable once the registry says idle"
+        )
+        XCTAssertFalse(harness.appState.turnStateIsStale)
+        XCTAssertEqual(harness.appState.messages, seedMessages, "The transcript must remain stable")
+        XCTAssertFalse(
+            harness.appState.activeChatScrollSessionIdentity.isReconciling,
+            "No reconciliation may remain open after the observational refresh"
+        )
+
+        // The abandoned refresh unwinds through its rotated-token guards; it
+        // must not undo the adopted idle state or the transcript.
+        parkedRefresh.resume()
+        await flushMainActor()
+        XCTAssertEqual(harness.appState.turnState, .idle)
+        XCTAssertEqual(
+            harness.appState.messages, seedMessages,
+            "The abandoned refresh must not replace the transcript"
+        )
+        XCTAssertFalse(
+            harness.appState.activeChatScrollSessionIdentity.isReconciling
+        )
+        box.client.disconnect()
+    }
+
+    /// A recovery attempt parked while reconnecting (the ticket mint stands
+    /// in for a slow dashboard handoff) leaves `.reconnecting` behind even
+    /// though the socket is healthy. The next foreground cycle's
+    /// authoritative idle observation must adopt idle with the same
+    /// observational guarantees.
+    func testForegroundWithStaleReconnectingAndAuthoritativeIdleAdoptsIdle() async {
+        let active = session("stored-a")
+        var probeCount = 0
+        var resumeCount = 0
+        let parkedReconnect = LifecycleSuspension()
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                mintTicket: { _ in
+                    await parkedReconnect.suspend()
+                    return "ticket"
+                },
+                openSession: { _, sessionID, _ in
+                    resumeCount += 1
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: [:])
+                    )
+                },
+                refreshContext: { _, _ in },
+                verifyTransportHealth: { _ in },
+                probeActiveSessions: { _ in
+                    probeCount += 1
+                    return [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: "idle"
+                    )]
+                }
+            )
+        )
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        let seedMessages = [
+            ChatMessage(id: "user", role: .user, content: "Earlier", timestamp: "1")
+        ]
+        harness.appState.messages = seedMessages
+
+        // A previous connection/recovery attempt parks mid-reconnect, leaving
+        // the transitional state showing. The gate is deliberately never
+        // released: a mint that resolves in production proceeds into the
+        // reconnect cycle's own full authoritative sync (the automatic-work
+        // token is shared, not rotated), and pinning the post-release state
+        // would require stubbing the entire reconnect transport chain — the
+        // foreground adoption under test must not depend on either outcome.
+        Task { @MainActor in
+            await harness.appState.reconnectForRetry(purpose: .automaticReturn)
+        }
+        await parkedReconnect.waitUntilSuspended()
+        XCTAssertEqual(harness.appState.turnState, .reconnecting)
+        XCTAssertEqual(resumeCount, 0)
+
+        harness.appState.handleScenePhase(.background)
+        await runSceneActivation(harness)
+
+        XCTAssertEqual(probeCount, 1)
+        XCTAssertEqual(resumeCount, 0, "An idle healthy session must not be resumed")
+        XCTAssertEqual(
+            harness.appState.turnState, .idle,
+            "An authoritative idle observation must clear the stale transitional state"
+        )
+        XCTAssertTrue(
+            harness.appState.composerIsEnabled,
+            "The composer must be usable once the registry says idle"
+        )
+        XCTAssertFalse(harness.appState.turnStateIsStale)
+        XCTAssertEqual(harness.appState.messages, seedMessages, "The transcript must remain stable")
+        XCTAssertFalse(
+            harness.appState.activeChatScrollSessionIdentity.isReconciling,
+            "No reconciliation may remain open after the observational refresh"
+        )
+        box.client.disconnect()
+    }
+
+    /// The adopted idle baseline is the OLDER observation: a busy edge that
+    /// races the probe and lands in the boundary buffer must win when the
+    /// buffer is replayed, instead of being discarded by the idle adoption.
+    func testForegroundAdoptedIdleYieldsToNewerBufferedBusyEdge() async {
+        let active = session("stored-a")
+        var probeCount = 0
+        var resumeCount = 0
+        let parkedProbe = LifecycleSuspension()
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                openSession: { _, sessionID, _ in
+                    resumeCount += 1
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: [:])
+                    )
+                },
+                refreshContext: { _, _ in },
+                verifyTransportHealth: { _ in },
+                probeActiveSessions: { _ in
+                    probeCount += 1
+                    await parkedProbe.suspend()
+                    return [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: "idle"
+                    )]
+                }
+            )
+        )
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        harness.appState.messages = [
+            ChatMessage(id: "user", role: .user, content: "Earlier", timestamp: "1")
+        ]
+
+        harness.appState.handleScenePhase(.background)
+        let activation = Task { @MainActor in
+            await runSceneActivation(harness)
+        }
+        // Hold the foreground activation at the probe, then deliver a newer
+        // busy edge while the reconciliation boundary is open.
+        await parkedProbe.waitUntilSuspended()
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: true))
+        parkedProbe.resume()
+        await activation.value
+        await flushMainActor()
+
+        XCTAssertEqual(probeCount, 1)
+        XCTAssertEqual(resumeCount, 0, "An idle healthy session must not be resumed")
+        XCTAssertEqual(
+            harness.appState.turnState, .running,
+            "The newer buffered busy edge must win over the adopted idle baseline"
+        )
+        XCTAssertTrue(
+            harness.appState.composerIsEnabled,
+            "A running turn keeps composer actions (stop/steer) available"
+        )
+        XCTAssertFalse(harness.appState.turnStateIsStale)
+        box.client.disconnect()
+    }
+
     // MARK: - D. inactive → active only
 
     func testInactiveToActiveCycleDoesNotResumeOrResetReasoning() async {

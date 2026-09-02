@@ -475,6 +475,14 @@ final class HermesClientTests: XCTestCase {
             JSONSerialization.jsonObject(with: Data(try XCTUnwrap(socket.sentTexts.last).utf8)) as? [String: Any]
         )
         XCTAssertEqual(request["method"] as? String, "session.active_list")
+        // The registry read is a read-only, argument-free query. Under the
+        // default profile `scopeParams` collapses the empty `[:]` to nil, so
+        // the wire request carries NO `params` key at all — no session id and
+        // no focus/switch/resume parameters by construction.
+        XCTAssertNil(
+            request["params"],
+            "session.active_list must be sent without session-selection or mutation parameters"
+        )
 
         let id = try XCTUnwrap(request["id"] as? Int)
         let response: [String: Any] = [
@@ -508,6 +516,50 @@ final class HermesClientTests: XCTestCase {
         XCTAssertTrue(rows.first?.isRunning == true)
         XCTAssertEqual(rows.last?.status, "idle")
         XCTAssertFalse(rows.last?.isRunning ?? true)
+        client.disconnect()
+    }
+
+    func testActiveSessionsCarriesOnlyProfileContextForNonDefaultProfile() async throws {
+        // A non-default profile adds the same gateway-context `profile` key
+        // every other catalog read carries — still no session id and no
+        // focus/switch/resume parameters.
+        let transport = FakeTransport()
+        let socket = FakeSocket()
+        transport.nextSocket = { socket }
+        let client = makeClient(transport: transport, profile: "work")
+        let connectTask = Task { try? await client.connect() }
+        transport.open(socket)
+        try await awaitCompletion(of: connectTask, "connect() to complete")
+
+        let sent = Gate()
+        socket.onSend = { sent.signal() }
+        let probeTask = Task<[LiveSessionStatus], Error> { try await client.activeSessions() }
+        try await sent.wait("the session.active_list request to be sent")
+
+        let request = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(try XCTUnwrap(socket.sentTexts.last).utf8)) as? [String: Any]
+        )
+        XCTAssertEqual(request["method"] as? String, "session.active_list")
+        let params = try XCTUnwrap(request["params"] as? [String: Any])
+        XCTAssertEqual(
+            params["profile"] as? String, "work",
+            "The profile key is gateway context, matching every other catalog read"
+        )
+        XCTAssertEqual(
+            params.count, 1,
+            "session.active_list must carry no session id and no focus/switch/resume parameters"
+        )
+
+        let id = try XCTUnwrap(request["id"] as? Int)
+        let response: [String: Any] = [
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": ["sessions": []]
+        ]
+        socket.deliver(String(data: try JSONSerialization.data(withJSONObject: response), encoding: .utf8)!)
+
+        let rows = try await awaitResult(of: probeTask, "the session.active_list response")
+        XCTAssertTrue(rows.isEmpty)
         client.disconnect()
     }
 
@@ -546,9 +598,10 @@ final class HermesClientTests: XCTestCase {
         return try stored.get()
     }
 
-    private func makeClient(transport: FakeTransport) -> HermesClient {
+    private func makeClient(transport: FakeTransport, profile: String? = nil) -> HermesClient {
         HermesClient(
             connection: HermesConnection(baseUrl: "https://test.example", ticket: "ticket"),
+            profile: profile,
             transportFactory: { transport }
         )
     }
