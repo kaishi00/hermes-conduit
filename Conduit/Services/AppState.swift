@@ -525,14 +525,19 @@ final class AppState: ObservableObject {
     /// accepted (or ambiguity recovery proves `.acceptedRunning`), and
     /// validated at use against the transcript (the optimistic user row must
     /// still be present, unpersisted, and head a fully-unpersisted suffix)
-    /// plus the local turn state. Hermes runs one turn per session, so a
-    /// remote turn B normally requires our turn A to have settled — and
-    /// settling clears the marker; the residual unobserved-settle window is
-    /// documented on `locallyOwnedFreshnessTailRowIDs`. Distinct from durable
-    /// provenance: optimistic row ids never enter `durablePersistedRowIDs`.
+    /// plus the local turn state. `preSubmitDurableAnchorID` is the newest
+    /// durably-proven row captured BEFORE the send changed the transcript:
+    /// the ordering anchor that lets a later bounded tail read classify
+    /// persisted advancement as belonging to our turn (Hermes persists the
+    /// user row at turn start, so the twin of the optimistic bubble is
+    /// normally there) versus belonging to a later foreign turn. Optimistic
+    /// row ids never enter `durablePersistedRowIDs`; the two identities stay
+    /// distinct — the marker only asserts that ONE new persisted user turn
+    /// is expected while our turn is in flight.
     private struct LocallyOwnedInFlightTurn {
         var sessionIDs: Set<String>
         var optimisticUserRowID: String
+        var preSubmitDurableAnchorID: String?
     }
     private var locallyOwnedInFlightTurn: LocallyOwnedInFlightTurn?
     @Published private(set) var busyInputMode: BusyInputMode = .steer
@@ -4876,15 +4881,14 @@ final class AppState: ObservableObject {
     /// live under any identity) are dropped by id.
     ///
     /// The local transcript may end on the locally-owned turn's optimistic
-    /// rows (`locallyOwnedTailRowIDs` non-nil): those rows have no persisted
-    /// twins YET, so the frontier anchor plus an empty candidate set still
-    /// proves the durable conversation unchanged — same-turn continuation
-    /// without demanding durable ids for Conduit's own optimistic rows. Any
-    /// candidate BEYOND the anchor while the tail is optimistic is persisted
-    /// advancement that cannot be safely attributed (the optimistic user row's
-    /// persisted twin, or a foreign turn) — never merged, always the
-    /// authoritative fallback. Persisted advancement always wins over an
-    /// optimistic tail.
+    /// rows (`locallyOwnedTurn` non-nil). Hermes persists the user row at
+    /// TURN START, so the normal in-flight tail is the pre-submit frontier,
+    /// the durable twin of our optimistic user row, and any Turn A
+    /// output/tool rows; classification there is by canonical USER-turn
+    /// boundaries (see `locallyOwnedTurnFreshnessVerdict`), never raw row
+    /// count. A durably-anchored tail keeps the plain frontier comparison:
+    /// anchor overlap with nothing newer → unchanged; newer durable rows →
+    /// an append-only merge of the advancement.
     private func foregroundFreshnessVerdict(
         _ outcome: ForegroundPersistedTailOutcome,
         localFrontier: Set<String>,
@@ -4893,7 +4897,7 @@ final class AppState: ObservableObject {
         requestedSessionID: String,
         runtimeSessionID: String,
         livenessIsRunning: Bool,
-        locallyOwnedTailRowIDs: Set<String>?
+        locallyOwnedTurn: LocallyOwnedTurnTailEvidence?
     ) -> ForegroundFreshnessVerdict {
         switch outcome {
         case .failed:
@@ -4933,66 +4937,101 @@ final class AppState: ObservableObject {
                 // identity: never merge rows from a foreign transcript.
                 return .inconclusive
             }
-            // The transcript must end either on a row the frontier vouches
-            // for, or on the locally-owned turn's optimistic rows. In the
-            // latter case the page must also prove nothing persisted beyond
-            // the frontier — our own optimistic rows have no persisted twins
-            // yet, and anything else cannot be safely attributed. A tail that
-            // is neither (an abandoned optimistic row, minted rows from a
-            // foreign turn) keeps the strict anchor requirement.
-            guard let lastLocalMessageID,
+            let tailIsDurablyAnchored = lastLocalMessageID.map {
+                localFrontier.contains($0)
+            } ?? false
+            if !tailIsDurablyAnchored, let locallyOwnedTurn {
+                // The tail is Conduit's own optimistic turn: classify by
+                // user-turn boundaries against the pre-submit anchor.
+                return locallyOwnedTurnFreshnessVerdict(
+                    transcript,
+                    owned: locallyOwnedTurn,
+                    localMessageIDs: localMessageIDs,
+                    livenessIsRunning: livenessIsRunning
+                )
+            }
+            // Anchored path: the transcript must END on a row the frontier
+            // vouches for. Trailing optimistic/streaming rows WITHOUT
+            // locally-owned turn evidence keep the strict anchor requirement
+            // — the bounded resume refresh converges this exact shape.
+            guard tailIsDurablyAnchored,
                   let anchorIndex = transcript.messages.lastIndex(where: {
                       localFrontier.contains($0.id)
                   }) else {
-                // No local frontier, or the frontier rotated out of the
-                // newest page (an accepted turn can push hundreds of rows
-                // past the window): no ordering proof — same invariant as the
-                // ambiguous-delivery verifier.
+                // No local frontier, unanchored foreign tail, or the frontier
+                // rotated out of the newest page (an accepted turn can push
+                // hundreds of rows past the window): no ordering proof — same
+                // invariant as the ambiguous-delivery verifier.
                 return .inconclusive
             }
-            let tailIsDurablyAnchored = localFrontier.contains(lastLocalMessageID)
-            guard tailIsDurablyAnchored || locallyOwnedTailRowIDs != nil else {
-                return .inconclusive
-            }
-            var knownIDs = localMessageIDs
-            var newRows: [ChatMessage] = []
-            for row in transcript.messages[transcript.messages.index(after: anchorIndex)...]
-            where knownIDs.insert(row.id).inserted {
-                newRows.append(row)
-            }
+            let newRows = persistedRowsAfter(
+                anchorIndex,
+                in: transcript,
+                heldIDs: localMessageIDs
+            )
             if newRows.isEmpty {
-                // Same-turn continuation also requires the runtime to still
-                // be working/waiting on OUR turn: an idle registry behind an
-                // optimistic tail cannot prove the turn landed at all, and
-                // the authoritative refresh converges it.
-                //
-                // Defense-in-depth only: the refresh routing above already
-                // sends "locally running turn + idle registry" to the
-                // authoritative resume before any freshness read, and
-                // `locallyOwnedFreshnessTailRowIDs` requires a running local
-                // turn — so this arm cannot fire through the current call
-                // graph. It pins the invariant should that routing change.
-                //
-                // Note the companion assumption: the in-flight turn has
-                // persisted NOTHING yet, so an empty candidate set is the
-                // normal in-flight shape. A backend that persists rows at
-                // accept-time yields candidates → authoritative attach once,
-                // after which the tail is durably anchored again.
-                if !tailIsDurablyAnchored, !livenessIsRunning {
-                    return .inconclusive
-                }
                 return .unchanged
-            }
-            if !tailIsDurablyAnchored {
-                // Persisted advancement beyond the pre-turn frontier behind an
-                // optimistic tail: the append-only merge would duplicate the
-                // optimistic row's persisted twin (and cannot attribute the
-                // rest), so the advancement wins and forces the authoritative
-                // attach.
-                return .inconclusive
             }
             return .advanced(transcript: transcript, newRows: newRows)
         }
+    }
+
+    /// Classifies the bounded persisted tail behind a locally-owned
+    /// optimistic turn by USER-turn boundaries. Hermes persists the user row
+    /// at turn start (crash resilience), so the normal in-flight shape is:
+    /// the pre-submit durable anchor, the durable twin of our optimistic
+    /// user row, then any Turn A output/tool rows. The normalizer maps raw
+    /// tool results to `.tool` and drops hidden scaffolding before this
+    /// point, so `.user` rows in the page are real canonical prompts.
+    ///
+    /// Exactly ONE new user-turn boundary after the pre-submit anchor, and
+    /// it must be the FIRST row after that anchor (a linear transcript's
+    /// next row after the old frontier is the next turn's user prompt),
+    /// while the runtime is still working/waiting → same locally-owned
+    /// Turn A → observational continuation. A second user boundary — a
+    /// later turn, or a persisted steer/follow-up inside the running turn —
+    /// means the page cannot prove same-turn continuity → authoritative
+    /// attach (the safe direction). The merge stays INELIGIBLE
+    /// in every optimistic case — the twin would duplicate the optimistic
+    /// bubble — so "unchanged" here means transcript untouched and the live
+    /// projection stays authoritative.
+    private func locallyOwnedTurnFreshnessVerdict(
+        _ transcript: PersistedSessionTranscript,
+        owned: LocallyOwnedTurnTailEvidence,
+        localMessageIDs: Set<String>,
+        livenessIsRunning: Bool
+    ) -> ForegroundFreshnessVerdict {
+        guard livenessIsRunning else {
+            // An idle registry behind our optimistic tail cannot prove the
+            // turn landed at all: the authoritative refresh converges it.
+            return .inconclusive
+        }
+        guard let anchorID = owned.preSubmitDurableAnchorID,
+              let anchorIndex = transcript.messages.lastIndex(where: {
+                  $0.id == anchorID
+              }) else {
+            // No pre-submit ordering anchor, or it rotated out of the newest
+            // page (a long turn can push hundreds of rows past the window):
+            // no boundary proof — same invariant as the anchored path.
+            return .inconclusive
+        }
+        let newRows = persistedRowsAfter(
+            anchorIndex,
+            in: transcript,
+            heldIDs: localMessageIDs
+        )
+        if newRows.isEmpty {
+            // Nothing of ours persisted yet — the earliest in-flight shape.
+            return .unchanged
+        }
+        let newUserTurnBoundaries = newRows.filter { $0.role == .user }
+        guard let firstRow = newRows.first, firstRow.role == .user,
+              newUserTurnBoundaries.count == 1 else {
+            return .inconclusive
+        }
+        // Exactly the expected twin of our optimistic Turn A user row (plus
+        // any Turn A output/tool rows): our turn is still the only one.
+        return .unchanged
     }
 
     /// Runs the bounded cross-surface freshness reconciliation for a
@@ -5002,20 +5041,21 @@ final class AppState: ObservableObject {
     ///
     /// - anchor overlap, nothing newer → observational liveness adoption,
     ///   transcript untouched, zero `session.resume`. With a locally-owned
-    ///   optimistic tail, the anchor overlap plus an empty candidate set
-    ///   additionally proves same-turn continuation of the turn Conduit
-    ///   itself submitted (the normal locally-started running turn), still
-    ///   zero `session.resume`;
+    ///   optimistic tail, EXACTLY ONE new canonical user-turn boundary after
+    ///   the pre-submit anchor (the durable twin Hermes persists at turn
+    ///   start, plus any of our turn's output/tool rows) additionally proves
+    ///   same-turn continuation — still zero `session.resume`;
     /// - anchor overlap, newer durable rows → the advancement is appended to
     ///   the local transcript (loaded-earlier prefix untouched, persisted
     ///   window re-anchored) and the liveness adopted — still zero
     ///   `session.resume`, because the persisted-history source supplied
     ///   everything a completed turn needs;
     /// - inconclusive (rotated anchor, no tail contract, foreign resolved id,
-    ///   unanchored foreign tail, persisted advancement behind an optimistic
-    ///   tail) → the existing bounded resume refresh, the authoritative
-    ///   fallback that re-anchors the whole conversation (and, for a live
-    ///   runtime, returns the in-flight projection);
+    ///   unanchored foreign tail, a SECOND user-turn boundary behind an
+    ///   optimistic tail — a later turn exists) → the existing bounded resume
+    ///   refresh, the authoritative fallback that re-anchors the whole
+    ///   conversation (and, for a live runtime, returns the in-flight
+    ///   projection);
     /// - structurally absent source → the same authoritative refresh, hinted
     ///   so it skips the doomed history request and resumes non-compact
     ///   exactly once;
@@ -5034,7 +5074,7 @@ final class AppState: ObservableObject {
         let localFrontier = durablePersistedRowIDs
         let localMessageIDs = Set(messages.map { $0.id })
         let lastLocalMessageID = messages.last?.id
-        let locallyOwnedTailRowIDs = locallyOwnedFreshnessTailRowIDs(
+        let locallyOwnedTurn = locallyOwnedFreshnessTurnEvidence(
             forRequested: requestedSessionID
         )
         let outcome = await foregroundPersistedTailOutcome(
@@ -5071,7 +5111,7 @@ final class AppState: ObservableObject {
             requestedSessionID: requestedSessionID,
             runtimeSessionID: probeRow.runtimeSessionId,
             livenessIsRunning: livenessIsRunning,
-            locallyOwnedTailRowIDs: locallyOwnedTailRowIDs
+            locallyOwnedTurn: locallyOwnedTurn
         ) {
         case let .advanced(transcript, newRows):
             if livenessIsRunning {
@@ -5157,19 +5197,30 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Ordering evidence for the locally-owned optimistic tail, captured by
+    /// `locallyOwnedFreshnessTurnEvidence` at freshness time. Non-nil means
+    /// the trailing unpersisted rows belong to this surface's in-flight
+    /// turn; `preSubmitDurableAnchorID` is the ordering anchor the bounded
+    /// tail is classified against.
+    private struct LocallyOwnedTurnTailEvidence {
+        let preSubmitDurableAnchorID: String?
+    }
+
     /// Non-nil when the transcript's trailing unpersisted rows belong to a
     /// turn THIS surface submitted and the local turn state still agrees the
     /// turn is in flight: the recorded optimistic user row is still present
-    /// and unpersisted, and every row after it is unpersisted too. The
-    /// residual window this cannot close — our turn settling unobserved
-    /// (dead socket) while a remote turn starts before anything of either
-    /// persisted — degrades to the same observational adopt the pre-marker
-    /// code took (a bounded resume in that exact window was the PR #121
-    /// regression); persisted advancement, idle liveness, and buffered
-    /// settle edges all still force the authoritative path.
-    private func locallyOwnedFreshnessTailRowIDs(
+    /// and unpersisted, and every row after it is unpersisted too.
+    ///
+    /// The residual window this cannot close: a turn this surface submitted
+    /// that never persisted anything server-side (accepted, then lost) is
+    /// indistinguishable from our own twin when exactly ONE `.user` row
+    /// follows the anchor — the app stays observational until the next
+    /// authoritative sync converges and drops the phantom row. Turn A's
+    /// completion, a second user turn, idle liveness, and buffered settle
+    /// edges all still force the authoritative path.
+    private func locallyOwnedFreshnessTurnEvidence(
         forRequested sessionID: String
-    ) -> Set<String>? {
+    ) -> LocallyOwnedTurnTailEvidence? {
         guard turnState.isRunning,
               let marker = locallyOwnedInFlightTurn,
               marker.sessionIDs.contains(sessionID),
@@ -5182,7 +5233,26 @@ final class AppState: ObservableObject {
               }) else {
             return nil
         }
-        return Set(messages[userIndex...].map { $0.id })
+        return LocallyOwnedTurnTailEvidence(
+            preSubmitDurableAnchorID: marker.preSubmitDurableAnchorID
+        )
+    }
+
+    /// Chronological page rows strictly after `anchorIndex` whose ids the
+    /// local transcript does not already hold — rows streamed in live under
+    /// any identity dedupe by id, in both verdict paths.
+    private func persistedRowsAfter(
+        _ anchorIndex: Int,
+        in transcript: PersistedSessionTranscript,
+        heldIDs: Set<String>
+    ) -> [ChatMessage] {
+        var knownIDs = heldIDs
+        var newRows: [ChatMessage] = []
+        for row in transcript.messages[transcript.messages.index(after: anchorIndex)...]
+        where knownIDs.insert(row.id).inserted {
+            newRows.append(row)
+        }
+        return newRows
     }
 
     /// Adopts the freshly-decided foreground liveness after a freshness
@@ -6165,6 +6235,26 @@ final class AppState: ObservableObject {
             }
         }
 
+        // The stale-idle probe above can lose a race with a live busy edge:
+        // its post-await ownership check refuses to mutate a non-idle state
+        // and returns false, so without this re-route the submission would
+        // fall through to an ordinary prompt.submit into the now-running
+        // turn — the same busy-edge rule the freshness gate enforces.
+        if turnState.isRunning {
+            guard attachments.isEmpty else {
+                errorMessage = "Attachments can only be sent in a new message, after the current response finishes."
+                return false
+            }
+            switch busyInputMode {
+            case .steer:
+                lifecycleLog.notice("submitComposer: busy edge raced the stale-idle probe → busy steer")
+                return await steer(text, context: submissionContext)
+            case .interrupt:
+                lifecycleLog.notice("submitComposer: busy edge raced the stale-idle probe → busy redirect/interrupt")
+                return await redirectOrInterruptAndSend(text, context: submissionContext)
+            }
+        }
+
         // Transcript freshness is a separate concern from turn-state
         // staleness: the registry probe above proves whether Hermes is busy,
         // never whether the visible transcript is missing persisted rows. A
@@ -6324,13 +6414,32 @@ final class AppState: ObservableObject {
             profile: profile,
             using: bridge
         )
-        // Ownership re-check after the await: a session/profile handoff or a
-        // scene transition during the read invalidates this gate's evidence,
-        // and the ordinary flow's own guards own the outcome then.
+        // Ownership re-check after the await, SPLIT from the turn state. A
+        // session/profile/viewport handoff SUPERSEDES this gate: the old
+        // operation must mutate nothing in the newly selected conversation,
+        // and the ordinary flow's own ownership guards own that outcome. But
+        // a turn-state change on the SAME conversation is this submission's
+        // business: a busy edge that raced the read must route through the
+        // configured busy submission — never fall through to an ordinary
+        // new-turn prompt.submit into an already-running turn.
         guard isCurrentComposerSubmission(submissionContext),
-              activeSessionId == sessionId,
-              turnState == .idle else {
+              activeSessionId == sessionId else {
             return .proceed
+        }
+        if turnState.isRunning {
+            lifecycleLog.notice(
+                "submitComposer: conversation turned busy during pre-send freshness read → busy submission session=\(sessionId, privacy: .public)"
+            )
+            return .routeToBusySubmission
+        }
+        guard turnState == .idle else {
+            // A recovery boundary (.synchronizing/.reconnecting) or an
+            // unsupported gateway is in flight: neither proves the
+            // transcript ordering, and neither may blind-send.
+            lifecycleLog.notice(
+                "submitComposer: pre-send freshness read superseded by \(self.turnStateLogValue, privacy: .public); blocking send session=\(sessionId, privacy: .public)"
+            )
+            return .blocked("Unable to refresh this conversation. Try again.")
         }
         switch outcome {
         case .failed:
@@ -6389,7 +6498,7 @@ final class AppState: ObservableObject {
                     ?? persistedTranscriptWindow?.runtimeSessionID
                     ?? sessionId,
                 livenessIsRunning: false,
-                locallyOwnedTailRowIDs: nil
+                locallyOwnedTurn: nil
             )
             switch verdict {
             case .unchanged:
@@ -6472,6 +6581,12 @@ final class AppState: ObservableObject {
             durableIDs: durablePersistedRowIDs,
             holdsUnprovenRows: messages.contains { !durablePersistedRowIDs.contains($0.id) }
         )
+        // The locally-owned turn marker's ordering anchor: the newest
+        // durably-proven row, captured BEFORE the optimistic append changes
+        // the transcript below.
+        let preSubmitDurableAnchorID = messages.last(where: {
+            durablePersistedRowIDs.contains($0.id)
+        })?.id
         // The identity under probe must be captured BEFORE any await — never
         // re-derived from the mutable active session afterwards.
         let submissionSessionIDs = acceptedIdentitySessionIDs(forRequested: sessionId)
@@ -6560,7 +6675,8 @@ final class AppState: ObservableObject {
                     // durable id for a row the gateway has not persisted yet.
                     locallyOwnedInFlightTurn = LocallyOwnedInFlightTurn(
                         sessionIDs: submissionSessionIDs,
-                        optimisticUserRowID: userMessage.id
+                        optimisticUserRowID: userMessage.id,
+                        preSubmitDurableAnchorID: preSubmitDurableAnchorID
                     )
                 }
             }
@@ -6591,10 +6707,14 @@ final class AppState: ObservableObject {
                         turnStateIsStale = false
                         // Same proof as the ordinary success path: the turn
                         // in flight is provably Conduit's own submission.
-                        // Validation at use still gates every later adopt.
+                        // The anchor is intentionally the PRE-SEND capture
+                        // even though ambiguity recovery may have re-hydrated
+                        // the transcript in between: validation at use plus
+                        // the anchor lookup at use neutralize any staleness.
                         locallyOwnedInFlightTurn = LocallyOwnedInFlightTurn(
                             sessionIDs: submissionSessionIDs,
-                            optimisticUserRowID: userMessage.id
+                            optimisticUserRowID: userMessage.id,
+                            preSubmitDurableAnchorID: preSubmitDurableAnchorID
                         )
                     }
                     return true

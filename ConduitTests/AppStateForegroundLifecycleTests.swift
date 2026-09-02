@@ -3942,8 +3942,11 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
     /// A locally-submitted Turn A whose persisted evidence advanced past the
     /// pre-turn frontier while suspended (A completed, another surface
     /// started Turn B) must NOT keep the optimistic tail as same-turn
-    /// continuation: persisted advancement wins and forces the authoritative
-    /// attach, resetting Turn A's live projection in favor of Turn B's.
+    /// continuation. The tail shows TWO new canonical user-turn boundaries
+    /// after the pre-submit anchor (Turn A's twin and Turn B's prompt): the
+    /// second boundary proves a later turn exists and forces the
+    /// authoritative attach, resetting Turn A's live projection in favor of
+    /// Turn B's.
     func testForegroundLocallyOwnedOptimisticTailYieldsToPersistedTurnB() async {
         let active = session("stored-a")
         var probeCount = 0
@@ -4241,6 +4244,681 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         XCTAssertTrue(harness.appState.composerIsEnabled)
         XCTAssertFalse(harness.appState.activeChatScrollSessionIdentity.isReconciling)
         box.client.disconnect()
+    }
+
+    // MARK: - Round 9: realistic persisted shape, busy-edge race
+
+    /// The REALISTIC locally-submitted turn: Hermes persists the user row at
+    /// turn start, so the foreground bounded tail already contains the
+    /// durable twin (102) of Conduit's optimistic local row. Exactly ONE new
+    /// canonical user-turn boundary after the pre-submit anchor is the
+    /// expected Turn A twin — it must NOT force a resume: zero
+    /// `session.resume`, transcript untouched (the twin is never merged
+    /// behind the optimistic bubble), live reasoning projection intact.
+    func testForegroundLocalTurnAWithPersistedUserTwinStaysObservational() async {
+        let active = session("stored-a")
+        var probeCount = 0
+        var resumeCount = 0
+        var transcriptReads = 0
+        var submitCount = 0
+        let seedPayload: [String: Any] = [
+            "messages": [
+                ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"]
+            ],
+            "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 2]
+        ]
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                openSession: { _, sessionID, _ in
+                    resumeCount += 1
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                persistedTranscript: { _, _ in
+                    transcriptReads += 1
+                    if transcriptReads == 1 {
+                        return .payload(seedPayload)
+                    }
+                    // The freshness read: Hermes' crash-resilience path has
+                    // already persisted the durable twin of our optimistic
+                    // user row.
+                    return .payload([
+                        "messages": [
+                            ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                            ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"],
+                            ["id": "102", "role": "user", "content": "Follow-up question", "timestamp": "3"]
+                        ],
+                        "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 3]
+                    ])
+                },
+                refreshContext: { _, _ in },
+                sendPrompt: { _, _, _ in
+                    submitCount += 1
+                    return .accepted
+                },
+                verifyTransportHealth: { _ in },
+                probeActiveSessions: { _ in
+                    probeCount += 1
+                    return [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: "working"
+                    )]
+                }
+            )
+        )
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        let opened = await harness.appState.openSession(active.id)
+        XCTAssertTrue(opened)
+        XCTAssertEqual(harness.appState.messages.map(\.id), ["100", "101"])
+
+        let submitted = await harness.appState.submitComposer(text: "Follow-up question")
+        XCTAssertTrue(submitted)
+        XCTAssertEqual(submitCount, 1)
+        XCTAssertEqual(harness.appState.messages.count, 3)
+        XCTAssertTrue(
+            harness.appState.messages.last?.id.hasPrefix("local-") == true,
+            "The visible user row must still be the optimistic local row"
+        )
+        XCTAssertEqual(harness.appState.turnState, .running)
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: true))
+        harness.appState.handleStreamEvent(.reasoningDelta(sessionId: active.id, text: "Thinking."))
+        let segmentBefore = harness.appState.liveReasoningSegment
+        XCTAssertNotNil(segmentBefore)
+        let messagesBefore = harness.appState.messages
+        let resumesBeforeForeground = resumeCount
+
+        harness.appState.handleScenePhase(.background)
+        await runSceneActivation(harness)
+
+        XCTAssertEqual(probeCount, 1)
+        XCTAssertEqual(transcriptReads, 2, "One bounded freshness read")
+        XCTAssertEqual(
+            resumeCount, resumesBeforeForeground,
+            "The durable user twin of our own turn must NOT force a session.resume"
+        )
+        XCTAssertEqual(
+            harness.appState.messages, messagesBefore,
+            "The persisted twin is never merged behind the optimistic row"
+        )
+        XCTAssertEqual(harness.appState.liveReasoningSegment, segmentBefore)
+        XCTAssertEqual(harness.appState.turnState, .running)
+        XCTAssertFalse(harness.appState.transcriptFreshnessIsStale)
+
+        // Future deltas extend the SAME turn.
+        harness.appState.handleStreamEvent(.reasoningDelta(sessionId: active.id, text: " More."))
+        XCTAssertEqual(harness.appState.liveReasoningSegment?.id, segmentBefore?.id)
+        harness.appState.showSidebar = true
+        harness.appState.showSidebar = false
+        XCTAssertEqual(harness.appState.liveReasoningSegment?.content, "Thinking. More.")
+        box.client.disconnect()
+    }
+
+    /// Turn A's crash-resilience persistence can outrun the live stream:
+    /// besides the durable user twin, assistant and tool rows of the SAME
+    /// turn may already be persisted while the runtime is still working.
+    /// Non-user rows do not prove another turn: exactly one new canonical
+    /// user boundary stays same-turn continuation — zero resume, same live
+    /// projection, same optimistic local row.
+    func testForegroundLocalTurnAWithPersistedTurnARowsStaysObservational() async {
+        let active = session("stored-a")
+        var probeCount = 0
+        var resumeCount = 0
+        var transcriptReads = 0
+        var submitCount = 0
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                openSession: { _, sessionID, _ in
+                    resumeCount += 1
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                persistedTranscript: { _, _ in
+                    transcriptReads += 1
+                    if transcriptReads == 1 {
+                        return .payload([
+                            "messages": [
+                                ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                                ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"]
+                            ],
+                            "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 2]
+                        ])
+                    }
+                    // Turn A's user twin PLUS two Turn A rows (assistant
+                    // output and a tool row): still only ONE new user-turn
+                    // boundary after the pre-submit anchor.
+                    return .payload([
+                        "messages": [
+                            ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                            ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"],
+                            ["id": "102", "role": "user", "content": "Follow-up question", "timestamp": "3"],
+                            ["id": "103", "role": "assistant", "content": "Working answer", "timestamp": "4"],
+                            ["id": "104", "role": "tool", "content": "tool output", "timestamp": "5"]
+                        ],
+                        "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 5]
+                    ])
+                },
+                refreshContext: { _, _ in },
+                sendPrompt: { _, _, _ in
+                    submitCount += 1
+                    return .accepted
+                },
+                verifyTransportHealth: { _ in },
+                probeActiveSessions: { _ in
+                    probeCount += 1
+                    return [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: "working"
+                    )]
+                }
+            )
+        )
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        let opened = await harness.appState.openSession(active.id)
+        XCTAssertTrue(opened)
+
+        let submitted = await harness.appState.submitComposer(text: "Follow-up question")
+        XCTAssertTrue(submitted)
+        XCTAssertEqual(submitCount, 1)
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: true))
+        harness.appState.handleStreamEvent(.reasoningDelta(sessionId: active.id, text: "Thinking."))
+        let segmentBefore = harness.appState.liveReasoningSegment
+        let messagesBefore = harness.appState.messages
+        let resumesBeforeForeground = resumeCount
+
+        harness.appState.handleScenePhase(.background)
+        await runSceneActivation(harness)
+
+        XCTAssertEqual(probeCount, 1)
+        XCTAssertEqual(transcriptReads, 2)
+        XCTAssertEqual(
+            resumeCount, resumesBeforeForeground,
+            "Turn A's own persisted output/tool rows must NOT force a session.resume"
+        )
+        XCTAssertEqual(harness.appState.messages, messagesBefore)
+        XCTAssertEqual(harness.appState.liveReasoningSegment, segmentBefore)
+        XCTAssertEqual(harness.appState.turnState, .running)
+        XCTAssertFalse(harness.appState.transcriptFreshnessIsStale)
+        box.client.disconnect()
+    }
+
+    /// A busy edge that races the pre-send freshness read must win: when the
+    /// gate's bounded read returns and the SAME conversation has turned
+    /// running, the text routes through the configured busy submission —
+    /// never an ordinary new-turn `prompt.submit`, and no optimistic
+    /// new-turn row is appended into the running turn.
+    func testPreSendFreshnessRetryYieldsToBusyEdge() async {
+        let active = session("stored-a")
+        var probeCount = 0
+        var resumeCount = 0
+        var transcriptReads = 0
+        var submitCount = 0
+        var steerCount = 0
+        let parkedRead = LifecycleSuspension()
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                openSession: { _, sessionID, _ in
+                    resumeCount += 1
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                persistedTranscript: { _, _ in
+                    transcriptReads += 1
+                    if transcriptReads == 1 {
+                        return .payload([
+                            "messages": [
+                                ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                                ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"]
+                            ],
+                            "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 2]
+                        ])
+                    }
+                    if transcriptReads == 2 {
+                        // The foreground freshness read fails transiently,
+                        // arming the pre-send gate.
+                        return .failed(DashboardTicketBridgeError.http(
+                            status: 503,
+                            detail: "temporarily unavailable"
+                        ))
+                    }
+                    // Hold ONLY the pre-send retry; the busy edge lands
+                    // while it is suspended.
+                    if transcriptReads == 3 {
+                        await parkedRead.suspend()
+                    }
+                    return .failed(DashboardTicketBridgeError.http(
+                        status: 503,
+                        detail: "temporarily unavailable"
+                    ))
+                },
+                refreshContext: { _, _ in },
+                sendPrompt: { _, _, _ in
+                    submitCount += 1
+                    return .accepted
+                },
+                verifyTransportHealth: { _ in },
+                probeActiveSessions: { _ in
+                    probeCount += 1
+                    return [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: "idle"
+                    )]
+                },
+                steer: { _, _, _ in
+                    steerCount += 1
+                }
+            )
+        )
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        let opened = await harness.appState.openSession(active.id)
+        XCTAssertTrue(opened)
+
+        harness.appState.handleScenePhase(.background)
+        await runSceneActivation(harness)
+        XCTAssertTrue(harness.appState.transcriptFreshnessIsStale)
+        XCTAssertEqual(harness.appState.turnState, .idle)
+
+        let submission = Task { @MainActor in
+            await harness.appState.submitComposer(text: "Follow-up")
+        }
+        await parkedRead.waitUntilSuspended()
+        // The race: a live busy edge arrives while the pre-send freshness
+        // read is suspended.
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: true))
+        XCTAssertEqual(harness.appState.turnState, .running)
+        parkedRead.resume()
+
+        let submitted = await submission.value
+        XCTAssertTrue(submitted, "The steered busy submission reports success")
+
+        XCTAssertEqual(submitCount, 0, "No ordinary prompt.submit into a running turn")
+        XCTAssertEqual(steerCount, 1, "The text routed through the configured busy action")
+        XCTAssertEqual(transcriptReads, 3, "No retry loop behind the routed submission")
+        XCTAssertEqual(
+            harness.appState.messages.map(\.id), ["100", "101"],
+            "No optimistic new-turn row is appended into the running turn"
+        )
+        XCTAssertEqual(harness.appState.turnState, .running)
+        XCTAssertTrue(
+            harness.appState.transcriptFreshnessIsStale,
+            "The busy path does not claim transcript freshness it never checked"
+        )
+        box.client.disconnect()
+    }
+
+    // MARK: - Round 9 review hardening
+
+    /// The twin is what makes the one-boundary shape provable. When the
+    /// first persisted row after the pre-submit anchor is NOT a user prompt
+    /// (the twin is missing while Turn A output rows persisted), the page
+    /// cannot prove same-turn continuity — the classifier must take the
+    /// authoritative attach, not observational adoption.
+    func testForegroundLocalTurnAWithMissingUserTwinTakesAttach() async {
+        let active = session("stored-a")
+        var probeCount = 0
+        var resumeCount = 0
+        var transcriptReads = 0
+        var submitCount = 0
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in [active] },
+                openSession: { _, sessionID, _ in
+                    resumeCount += 1
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(
+                            object: ["running": .bool(resumeCount > 1)],
+                            inflight: resumeCount > 1
+                                ? .object(["text": .string("Recovered partial answer")])
+                                : nil
+                        )
+                    )
+                },
+                persistedTranscript: { _, _ in
+                    transcriptReads += 1
+                    if transcriptReads == 1 {
+                        return .payload([
+                            "messages": [
+                                ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                                ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"]
+                            ],
+                            "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 2]
+                        ])
+                    }
+                    // Turn A output rows persisted WITHOUT the user twin:
+                    // the first row after the anchor is not a user prompt.
+                    return .payload([
+                        "messages": [
+                            ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                            ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"],
+                            ["id": "103", "role": "assistant", "content": "Orphaned output", "timestamp": "3"],
+                            ["id": "104", "role": "assistant", "content": "More orphaned output", "timestamp": "4"]
+                        ],
+                        "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 4]
+                    ])
+                },
+                refreshContext: { _, _ in },
+                sendPrompt: { _, _, _ in
+                    submitCount += 1
+                    return .accepted
+                },
+                verifyTransportHealth: { _ in },
+                probeActiveSessions: { _ in
+                    probeCount += 1
+                    return [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: "working"
+                    )]
+                }
+            )
+        )
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        let opened = await harness.appState.openSession(active.id)
+        XCTAssertTrue(opened)
+
+        let submitted = await harness.appState.submitComposer(text: "Follow-up question")
+        XCTAssertTrue(submitted)
+        XCTAssertEqual(submitCount, 1)
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: true))
+        harness.appState.handleStreamEvent(.reasoningDelta(sessionId: active.id, text: "Turn A thinking."))
+        XCTAssertNotNil(harness.appState.liveReasoningSegment)
+        let resumesBeforeForeground = resumeCount
+
+        harness.appState.handleScenePhase(.background)
+        await runSceneActivation(harness)
+
+        XCTAssertEqual(probeCount, 1)
+        XCTAssertEqual(transcriptReads, 3, "Freshness read + the attach reconcile's bounded read")
+        XCTAssertEqual(
+            resumeCount, resumesBeforeForeground + 1,
+            "A non-user first row after the anchor cannot prove same-turn continuity"
+        )
+        XCTAssertEqual(
+            harness.appState.messages.map(\.id), ["100", "101", "103", "104"],
+            "The authoritative attach owns the unprovable tail"
+        )
+        XCTAssertNil(
+            harness.appState.liveReasoningSegment,
+            "The optimistic live projection must not survive the attach"
+        )
+        XCTAssertEqual(harness.appState.turnState, .running)
+        box.client.disconnect()
+    }
+
+    /// A brand-new conversation's first locally-submitted turn has NO
+    /// durable pre-submit anchor, so no boundary proof can exist even for
+    /// the expected twin — the conservative attach owns it.
+    func testForegroundFirstTurnWithoutDurableAnchorTakesAttach() async {
+        let active = session("stored-a")
+        var probeCount = 0
+        var resumeCount = 0
+        var transcriptReads = 0
+        var submitCount = 0
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in [active] },
+                openSession: { _, sessionID, _ in
+                    resumeCount += 1
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(
+                            object: ["running": .bool(resumeCount > 1)],
+                            inflight: resumeCount > 1
+                                ? .object(["text": .string("First turn partial")])
+                                : nil
+                        )
+                    )
+                },
+                persistedTranscript: { _, _ in
+                    transcriptReads += 1
+                    if transcriptReads == 1 {
+                        // A positively empty conversation: no durable rows.
+                        return .payload([
+                            "messages": [],
+                            "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 0]
+                        ])
+                    }
+                    // The twin of our optimistic first-turn user row.
+                    return .payload([
+                        "messages": [
+                            ["id": "102", "role": "user", "content": "First question", "timestamp": "1"]
+                        ],
+                        "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 1]
+                    ])
+                },
+                refreshContext: { _, _ in },
+                sendPrompt: { _, _, _ in
+                    submitCount += 1
+                    return .accepted
+                },
+                verifyTransportHealth: { _ in },
+                probeActiveSessions: { _ in
+                    probeCount += 1
+                    return [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: "working"
+                    )]
+                }
+            )
+        )
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        let opened = await harness.appState.openSession(active.id)
+        XCTAssertTrue(opened)
+        XCTAssertTrue(harness.appState.messages.isEmpty)
+
+        let submitted = await harness.appState.submitComposer(text: "First question")
+        XCTAssertTrue(submitted)
+        XCTAssertEqual(submitCount, 1)
+        XCTAssertEqual(harness.appState.messages.count, 1)
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: true))
+        harness.appState.handleStreamEvent(.reasoningDelta(sessionId: active.id, text: "Thinking."))
+        XCTAssertNotNil(harness.appState.liveReasoningSegment)
+        let resumesBeforeForeground = resumeCount
+
+        harness.appState.handleScenePhase(.background)
+        await runSceneActivation(harness)
+
+        XCTAssertEqual(probeCount, 1)
+        XCTAssertEqual(transcriptReads, 3)
+        XCTAssertEqual(
+            resumeCount, resumesBeforeForeground + 1,
+            "No durable anchor → no ordering proof → the attach owns the tail"
+        )
+        XCTAssertEqual(harness.appState.messages.map(\.id), ["102"])
+        XCTAssertNil(harness.appState.liveReasoningSegment)
+        XCTAssertEqual(harness.appState.turnState, .running)
+        box.client.disconnect()
+    }
+
+    /// The gate's second non-proceed arm: a recovery boundary
+    /// (.reconnecting here) racing the pre-send freshness read proves
+    /// neither liveness nor ordering — the send is blocked, not blind-sent
+    /// and not routed as a busy action.
+    func testPreSendFreshnessRetryBlockedByRecoveryBoundary() async {
+        let active = session("stored-a")
+        var probeCount = 0
+        var resumeCount = 0
+        var transcriptReads = 0
+        var submitCount = 0
+        let parkedRead = LifecycleSuspension()
+        let parkedMint = LifecycleSuspension()
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                mintTicket: { _ in
+                    await parkedMint.suspend()
+                    return "ticket"
+                },
+                openSession: { _, sessionID, _ in
+                    resumeCount += 1
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                persistedTranscript: { _, _ in
+                    transcriptReads += 1
+                    if transcriptReads == 1 {
+                        return .payload([
+                            "messages": [
+                                ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                                ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"]
+                            ],
+                            "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 2]
+                        ])
+                    }
+                    if transcriptReads == 2 {
+                        return .failed(DashboardTicketBridgeError.http(
+                            status: 503,
+                            detail: "temporarily unavailable"
+                        ))
+                    }
+                    if transcriptReads == 3 {
+                        await parkedRead.suspend()
+                    }
+                    return .failed(DashboardTicketBridgeError.http(
+                        status: 503,
+                        detail: "temporarily unavailable"
+                    ))
+                },
+                refreshContext: { _, _ in },
+                sendPrompt: { _, _, _ in
+                    submitCount += 1
+                    return .accepted
+                },
+                verifyTransportHealth: { _ in },
+                probeActiveSessions: { _ in
+                    probeCount += 1
+                    return [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: "idle"
+                    )]
+                }
+            )
+        )
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        let opened = await harness.appState.openSession(active.id)
+        XCTAssertTrue(opened)
+
+        harness.appState.handleScenePhase(.background)
+        await runSceneActivation(harness)
+        XCTAssertTrue(harness.appState.transcriptFreshnessIsStale)
+
+        let submission = Task { @MainActor in
+            await harness.appState.submitComposer(text: "Follow-up")
+        }
+        await parkedRead.waitUntilSuspended()
+        // The race: a reconnect boundary starts while the pre-send freshness
+        // read is suspended and parks mid-mint in .reconnecting.
+        let reconnect = Task { @MainActor in
+            await harness.appState.reconnectForRetry(purpose: .automaticReturn)
+        }
+        await parkedMint.waitUntilSuspended()
+        XCTAssertEqual(harness.appState.turnState, .reconnecting)
+        parkedRead.resume()
+
+        let submitted = await submission.value
+        XCTAssertFalse(submitted, "The blocked send must not report success")
+
+        XCTAssertEqual(submitCount, 0, "No ordinary prompt.submit past a recovery boundary")
+        XCTAssertEqual(transcriptReads, 3, "No retry loop behind the blocked send")
+        XCTAssertEqual(
+            harness.appState.messages.map(\.id), ["100", "101"],
+            "No optimistic new-turn row is appended past a recovery boundary"
+        )
+        XCTAssertEqual(
+            harness.appState.errorMessage, "Unable to refresh this conversation. Try again."
+        )
+        XCTAssertEqual(harness.appState.turnState, .reconnecting)
+        box.client.disconnect()
+    }
+
+    /// The busy-edge rule also covers the sibling stale-idle probe: a busy
+    /// edge landing while THAT probe is suspended must route through the
+    /// configured busy action instead of falling through to an ordinary
+    /// new-turn prompt.submit into the now-running turn.
+    func testStaleIdleProbeBusyEdgeRaceRoutesThroughBusyAction() async {
+        let active = session("stored-a")
+        var submitCount = 0
+        var steerCount = 0
+        var probeCount = 0
+        let parkedProbe = LifecycleSuspension()
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                sendPrompt: { _, _, _ in
+                    submitCount += 1
+                    return .accepted
+                },
+                probeActiveSessions: { _ in
+                    probeCount += 1
+                    await parkedProbe.suspend()
+                    return [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: "idle"
+                    )]
+                },
+                steer: { _, _, _ in
+                    steerCount += 1
+                }
+            )
+        )
+        installDisconnectedClient(into: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        // The lifecycle boundary marks the local idle state stale.
+        harness.appState.handleScenePhase(.background)
+
+        let submission = Task { @MainActor in
+            await harness.appState.submitComposer(text: "Follow-up")
+        }
+        await parkedProbe.waitUntilSuspended()
+        // The race: the live busy edge lands while the stale-idle probe is
+        // suspended.
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: true))
+        XCTAssertEqual(harness.appState.turnState, .running)
+        parkedProbe.resume()
+
+        let submitted = await submission.value
+        XCTAssertTrue(submitted)
+
+        XCTAssertEqual(probeCount, 1)
+        XCTAssertEqual(submitCount, 0, "No ordinary prompt.submit into the running turn")
+        XCTAssertEqual(steerCount, 1, "The text routed through the configured busy action")
+        XCTAssertTrue(
+            harness.appState.messages.isEmpty,
+            "No optimistic new-turn row is appended into the running turn"
+        )
+        XCTAssertEqual(harness.appState.turnState, .running)
     }
 
     // MARK: - Harness
