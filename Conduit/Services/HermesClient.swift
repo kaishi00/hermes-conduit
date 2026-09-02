@@ -324,9 +324,18 @@ struct LiveSessionStatus: Equatable {
     let status: String
     let lastActive: TimeInterval?
 
-    /// "waiting" (a pending decision) and "starting" (turn accepted, agent
-    /// build in flight) still mean the session is committed busy.
-    var isRunning: Bool { status == "working" || status == "waiting" || status == "starting" }
+    /// Authoritative committed-busy state. Upstream `_session_live_status`
+    /// reports "working" while the turn thread runs and "waiting" while a
+    /// decision is pending. "starting" is deliberately excluded: it means
+    /// `agent_build_started` with the ready event unset, which
+    /// `_schedule_agent_build` also arms for PLAIN session.create /
+    /// cold-resume pre-warm with no prompt involved — and because the
+    /// starting check precedes the running check it can transiently mask a
+    /// committed running turn during the submit→agent-ready window. Hermes
+    /// Desktop likewise treats only working/waiting as busy. A "starting"
+    /// row is runtime-present, liveness-inconclusive; the typed
+    /// `prompt.submit` outcome is the authority for busy-input semantics.
+    var isRunning: Bool { status == "working" || status == "waiting" }
 
     init(runtimeSessionId: String, storedSessionId: String, status: String, lastActive: TimeInterval? = nil) {
         self.runtimeSessionId = runtimeSessionId

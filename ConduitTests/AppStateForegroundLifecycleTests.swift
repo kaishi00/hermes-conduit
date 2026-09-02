@@ -642,11 +642,11 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
             ).isRunning,
             "A pending decision keeps the turn live"
         )
-        XCTAssertTrue(
+        XCTAssertFalse(
             LiveSessionStatus(
                 runtimeSessionId: "r", storedSessionId: "s", status: "starting"
             ).isRunning,
-            "A turn accepted during agent build is committed busy"
+            "Starting also covers promptless agent pre-warm — not committed busy"
         )
         XCTAssertFalse(
             LiveSessionStatus(
@@ -661,7 +661,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
 
     // MARK: - Reviewer-hardening coverage
 
-    func testForegroundWithStartingRuntimeAdoptsObservationally() async {
+    func testForegroundWithStartingRuntimeLeavesStateStreamOwned() async {
         let active = session("stored-a")
         var resumeCount = 0
         let harness = makeHarness(
@@ -698,9 +698,16 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
 
         XCTAssertEqual(
             resumeCount, 0,
-            "A starting runtime is committed busy — foreground must not resume"
+            "A starting runtime must never manufacture a resume refresh"
         )
-        XCTAssertEqual(harness.appState.turnState, .running)
+        XCTAssertEqual(
+            harness.appState.turnState, .running,
+            "A starting row is liveness-inconclusive: local state stays stream-owned"
+        )
+        XCTAssertTrue(
+            harness.appState.turnStateIsStale,
+            "An inconclusive probe must not mark the state trusted"
+        )
         box.client.disconnect()
     }
 
@@ -907,6 +914,491 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         XCTAssertFalse(harness.appState.turnStateIsStale)
     }
 
+    // MARK: - Round 2: ambiguous acceptance proven by the durable transcript
+
+    /// The headline fast-settle regression: the prompt was ACCEPTED, the turn
+    /// completed, and by the time recovery probed, the registry had already
+    /// gone absent. The durable transcript must prove acceptance instead of
+    /// the submission being restored as unsent.
+    func testAmbiguousAcceptedTurnCompletedBeforeProbeIsProvenByTranscript() async {
+        let active = session("stored-a")
+        var submitCount = 0
+        var probeCount = 0
+        var transcriptReads = 0
+        var resumeCount = 0
+        var catalogCount = 0
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in
+                    catalogCount += 1
+                    return [active]
+                },
+                openSession: { _, sessionID, _ in
+                    resumeCount += 1
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: [:])
+                    )
+                },
+                persistedTranscript: { _, _ in
+                    transcriptReads += 1
+                    return .payload([
+                        "messages": [
+                            ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                            ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"],
+                            ["id": "102", "role": "user", "content": "Ambiguous send", "timestamp": "3"],
+                            ["id": "103", "role": "assistant", "content": "Completed result", "timestamp": "4"]
+                        ],
+                        "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 4]
+                    ])
+                },
+                sendPrompt: { _, _, _ in
+                    submitCount += 1
+                    throw HermesError.timeout("prompt.submit")
+                },
+                probeActiveSessions: { _ in
+                    probeCount += 1
+                    // The turn completed and the runtime was reaped before
+                    // recovery looked: current liveness is absent.
+                    return []
+                }
+            )
+        )
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        // Baseline the conversation already held before the submission.
+        harness.appState.messages = [
+            ChatMessage(id: "100", role: .user, content: "Earlier question", timestamp: "1"),
+            ChatMessage(id: "101", role: .assistant, content: "Earlier answer", timestamp: "2")
+        ]
+
+        let submitted = await harness.appState.submitComposer(text: "Ambiguous send")
+
+        XCTAssertTrue(submitted, "Transcript-proven acceptance must not surface as a failed send")
+        XCTAssertEqual(submitCount, 1, "An accepted prompt must never be re-submitted")
+        XCTAssertEqual(probeCount, 1)
+        XCTAssertEqual(transcriptReads, 1, "One bounded tail read decides the outcome")
+        XCTAssertEqual(
+            catalogCount, 0,
+            "No failed-send restoration may run for a transcript-proven acceptance"
+        )
+        XCTAssertEqual(resumeCount, 0)
+        XCTAssertEqual(
+            harness.appState.messages.last?.content, "Ambiguous send",
+            "The submitted turn stays; the transcript converges on the next bounded refresh"
+        )
+        XCTAssertEqual(harness.appState.turnState, .idle, "The turn settled before recovery looked")
+        XCTAssertFalse(harness.appState.turnStateIsStale)
+        box.client.disconnect()
+    }
+
+    /// The genuine not-accepted case keeps its coverage: registry idle AND
+    /// the durable transcript holds nothing beyond the submit-time baseline.
+    func testAmbiguousPromptAbsentFromDurableTranscriptRestoresOnce() async {
+        let active = session("stored-a")
+        var submitCount = 0
+        var transcriptReads = 0
+        var catalogCount = 0
+        var resumeCount = 0
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in
+                    catalogCount += 1
+                    return [active]
+                },
+                openSession: { _, sessionID, _ in
+                    resumeCount += 1
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [
+                            ChatMessage(id: "100", role: .user, content: "Earlier question", timestamp: "1"),
+                            ChatMessage(id: "101", role: .assistant, content: "Earlier answer", timestamp: "2")
+                        ],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                persistedTranscript: { _, _ in
+                    transcriptReads += 1
+                    return .payload([
+                        "messages": [
+                            ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                            ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"]
+                        ],
+                        "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 2]
+                    ])
+                },
+                refreshContext: { _, _ in },
+                sendPrompt: { _, _, _ in
+                    submitCount += 1
+                    throw HermesError.timeout("prompt.submit")
+                },
+                probeActiveSessions: { _ in
+                    [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: "idle"
+                    )]
+                }
+            )
+        )
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        harness.appState.messages = [
+            ChatMessage(id: "100", role: .user, content: "Earlier question", timestamp: "1"),
+            ChatMessage(id: "101", role: .assistant, content: "Earlier answer", timestamp: "2")
+        ]
+
+        let submitted = await harness.appState.submitComposer(text: "Never delivered")
+
+        XCTAssertFalse(submitted)
+        XCTAssertEqual(submitCount, 1, "No blind retry may follow the ambiguous failure")
+        XCTAssertEqual(
+            transcriptReads, 2,
+            "One bounded read decides acceptance; the restore's compact resume re-reads the tail"
+        )
+        XCTAssertEqual(catalogCount, 1, "The unsent restoration runs exactly once")
+        XCTAssertEqual(resumeCount, 1)
+        XCTAssertEqual(
+            harness.appState.messages.map(\.id), ["100", "101"],
+            "The optimistic row is restored away exactly once by the authoritative transcript"
+        )
+        XCTAssertTrue(harness.appState.errorMessage?.contains("Failed to send") == true)
+        box.client.disconnect()
+    }
+
+    /// A duplicate-text trap: the transcript advanced with rows that do not
+    /// carry the submitted text, while an OLDER identical user row exists.
+    /// Ordering (baseline ids) must decide, not content matching.
+    func testAmbiguousPromptWithDuplicateOlderTextIsProvenAbsentByOrdering() async {
+        let active = session("stored-a")
+        var transcriptReads = 0
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in [active] },
+                openSession: { _, sessionID, _ in
+                    SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [
+                            ChatMessage(id: "100", role: .user, content: "go on", timestamp: "1"),
+                            ChatMessage(id: "101", role: .assistant, content: "Earlier reply", timestamp: "2")
+                        ],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                persistedTranscript: { _, _ in
+                    transcriptReads += 1
+                    return .payload([
+                        "messages": [
+                            ["id": "100", "role": "user", "content": "go on", "timestamp": "1"],
+                            ["id": "101", "role": "assistant", "content": "Earlier reply", "timestamp": "2"],
+                            ["id": "102", "role": "user", "content": "Different newer ask", "timestamp": "3"],
+                            ["id": "103", "role": "assistant", "content": "Newer reply", "timestamp": "4"]
+                        ],
+                        "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 4]
+                    ])
+                },
+                refreshContext: { _, _ in },
+                sendPrompt: { _, _, _ in throw HermesError.timeout("prompt.submit") },
+                probeActiveSessions: { _ in
+                    [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: "idle"
+                    )]
+                }
+            )
+        )
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        harness.appState.messages = [
+            ChatMessage(id: "100", role: .user, content: "go on", timestamp: "1"),
+            ChatMessage(id: "101", role: .assistant, content: "Earlier reply", timestamp: "2")
+        ]
+
+        let submitted = await harness.appState.submitComposer(text: "go on")
+
+        XCTAssertFalse(submitted, "The transcript advanced without this prompt: it was not accepted")
+        XCTAssertEqual(transcriptReads, 2)
+        XCTAssertEqual(
+            harness.appState.messages.map(\.id), ["100", "101", "102", "103"],
+            "Restoration converges on the authoritative tail even though only its older rows " +
+            "predate the submission — the newer rows prove this prompt never landed"
+        )
+        box.client.disconnect()
+    }
+
+    /// No usable durable source (bridge unavailable): acceptance can be
+    /// neither proven nor disproven — conservative restore, never a resend.
+    func testAmbiguousPromptWithUnreadableTranscriptRestoresConservatively() async {
+        var submitCount = 0
+        var probeCount = 0
+        var catalogCount = 0
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in
+                    catalogCount += 1
+                    return [self.session("stored-a")]
+                },
+                openSession: { _, sessionID, _ in
+                    SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                persistedTranscript: { _, _ in .unavailable },
+                sendPrompt: { _, _, _ in
+                    submitCount += 1
+                    throw HermesError.timeout("prompt.submit")
+                },
+                probeActiveSessions: { _ in
+                    probeCount += 1
+                    return [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: "idle"
+                    )]
+                }
+            )
+        )
+        installDisconnectedClient(into: harness)
+        harness.appState.sessions = [session("stored-a")]
+        harness.appState.activeSessionId = "stored-a"
+
+        let submitted = await harness.appState.submitComposer(text: "Unverifiable send")
+
+        XCTAssertFalse(submitted)
+        XCTAssertEqual(submitCount, 1, "Unresolved acceptance must never become an automatic resend")
+        XCTAssertEqual(probeCount, 1)
+        XCTAssertEqual(catalogCount, 1, "Exactly one conservative restoration")
+    }
+
+    // MARK: - Round 2: submission-owned stale-state correction
+
+    /// A probe started for session A must not mutate anything after the user
+    /// switched to session B: B's stale marker survives and B runs its own
+    /// authoritative correction before its send.
+    func testStaleIdleProbeSupersededBySessionHandoffDoesNotMutateNewSession() async {
+        let sessionA = session("stored-a")
+        let sessionB = session("stored-b")
+        var probeCalls = 0
+        var submitCount = 0
+        var steerTargets: [String] = []
+        let probeGate = LifecycleSuspension()
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                sendPrompt: { _, _, _ in
+                    submitCount += 1
+                    return .accepted
+                },
+                probeActiveSessions: { _ in
+                    probeCalls += 1
+                    if probeCalls == 1 {
+                        await probeGate.suspend()
+                        return [LiveSessionStatus(
+                            runtimeSessionId: "runtime-a",
+                            storedSessionId: "stored-a",
+                            status: "working"
+                        )]
+                    }
+                    return [LiveSessionStatus(
+                        runtimeSessionId: "runtime-b",
+                        storedSessionId: "stored-b",
+                        status: "working"
+                    )]
+                },
+                steer: { _, sessionID, _ in steerTargets.append(sessionID) }
+            )
+        )
+        installDisconnectedClient(into: harness)
+        harness.appState.sessions = [sessionA, sessionB]
+        harness.appState.activeSessionId = sessionA.id
+        harness.appState.handleScenePhase(.background)
+
+        let submissionA = Task { @MainActor in
+            await harness.appState.submitComposer(text: "A follow-up")
+        }
+        await probeGate.waitUntilSuspended()
+
+        // The user switches to session B while A's probe is suspended.
+        harness.appState.activeSessionId = sessionB.id
+        probeGate.resume()
+        let submittedA = await submissionA.value
+
+        XCTAssertFalse(submittedA, "A superseded submission must abort, not fall through")
+        XCTAssertEqual(submitCount, 0, "A's aborted submission must not send")
+        XCTAssertEqual(steerTargets, [], "A's result must not steer")
+        XCTAssertEqual(
+            harness.appState.turnState, .idle,
+            "A's running result must not be attributed to B"
+        )
+        XCTAssertTrue(
+            harness.appState.turnStateIsStale,
+            "B's stale marker must survive A's completed probe"
+        )
+
+        // B still performs its own authoritative probe before routing.
+        let submittedB = await harness.appState.submitComposer(text: "B follow-up")
+        XCTAssertTrue(submittedB)
+        XCTAssertEqual(probeCalls, 2)
+        XCTAssertEqual(steerTargets, ["stored-b"], "B routes through the configured busy action")
+        XCTAssertEqual(harness.appState.turnState, .running)
+        XCTAssertFalse(harness.appState.turnStateIsStale)
+    }
+
+    /// A prompt outcome returned after the user switched sessions must not
+    /// adopt running state or clear staleness for the new session.
+    func testPromptOutcomeHandoffDoesNotMutateNewSessionState() async {
+        let sessionA = session("stored-a")
+        let sessionB = session("stored-b")
+        var submitCount = 0
+        let sendGate = LifecycleSuspension()
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                sendPrompt: { _, _, _ in
+                    submitCount += 1
+                    if submitCount == 1 {
+                        await sendGate.suspend()
+                    }
+                    // Hermes was busy: a typed busy outcome for session A.
+                    return .queued
+                },
+                probeActiveSessions: { _ in [] }
+            )
+        )
+        installDisconnectedClient(into: harness)
+        harness.appState.sessions = [sessionA, sessionB]
+        harness.appState.activeSessionId = sessionA.id
+
+        let submissionA = Task { @MainActor in
+            await harness.appState.submitComposer(text: "A message")
+        }
+        await sendGate.waitUntilSuspended()
+
+        // Switch to B, let B go stale, and establish B's authoritative idle
+        // edge while A's RPC is still suspended.
+        harness.appState.activeSessionId = sessionB.id
+        harness.appState.handleScenePhase(.inactive)
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: sessionB.id, busy: false))
+
+        sendGate.resume()
+        let submittedA = await submissionA.value
+
+        XCTAssertTrue(submittedA, "A's remotely accepted send stays a success")
+        XCTAssertEqual(submitCount, 1)
+        XCTAssertEqual(
+            harness.appState.turnState, .idle,
+            "A's busy outcome must not be misattributed to session B"
+        )
+        XCTAssertTrue(
+            harness.appState.turnStateIsStale,
+            "B's stale marker must not be cleared by A's outcome"
+        )
+    }
+
+    /// A starting runtime is not committed busy: the stale-idle correction
+    /// falls through to the ordinary send, whose typed outcome reconciles any
+    /// genuine busy race.
+    func testStaleIdleWithStartingRuntimeSendsOrdinaryTurn() async {
+        var submitCount = 0
+        var steerCount = 0
+        var probeCount = 0
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                sendPrompt: { _, _, _ in
+                    submitCount += 1
+                    return .accepted
+                },
+                probeActiveSessions: { _ in
+                    probeCount += 1
+                    return [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: "starting"
+                    )]
+                },
+                steer: { _, _, _ in steerCount += 1 }
+            )
+        )
+        installDisconnectedClient(into: harness)
+        harness.appState.sessions = [session("stored-a")]
+        harness.appState.activeSessionId = "stored-a"
+        harness.appState.handleScenePhase(.background)
+
+        let submitted = await harness.appState.submitComposer(text: "Go")
+
+        XCTAssertTrue(submitted)
+        XCTAssertEqual(probeCount, 1)
+        XCTAssertEqual(steerCount, 0, "Starting alone must not route through busy steer")
+        XCTAssertEqual(submitCount, 1, "The submission falls through to the ordinary new-turn send")
+        XCTAssertEqual(harness.appState.turnState, .running)
+        XCTAssertFalse(harness.appState.turnStateIsStale)
+    }
+
+    // MARK: - Round 2: foreground probe/event ordering
+
+    /// A turn-ending event that arrives while the foreground probe is in
+    /// flight is NEWER than the registry snapshot and must win: the settled
+    /// state is idle, not a falsely-resurrected running turn.
+    func testForegroundBufferedTurnEndWinsOverStaleRunningSnapshot() async {
+        let active = session("stored-a")
+        var resumeCount = 0
+        let probeGate = LifecycleSuspension()
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                openSession: { _, sessionID, _ in
+                    resumeCount += 1
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: [:])
+                    )
+                },
+                refreshContext: { _, _ in },
+                verifyTransportHealth: { _ in },
+                probeActiveSessions: { _ in
+                    await probeGate.suspend()
+                    // The snapshot was taken before the turn ended.
+                    return [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: "working"
+                    )]
+                }
+            )
+        )
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        harness.appState.messages = [
+            ChatMessage(id: "user", role: .user, content: "Question", timestamp: "1")
+        ]
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: true))
+
+        harness.appState.handleScenePhase(.background)
+        let sceneTask = harness.appState.handleScenePhase(.active)
+        await probeGate.waitUntilSuspended()
+
+        // The turn ENDS while the probe is still in flight: the newest edge.
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: false))
+        probeGate.resume()
+        await sceneTask?.value
+
+        XCTAssertEqual(
+            harness.appState.turnState, .idle,
+            "The newest authoritative event must win over the older registry snapshot"
+        )
+        XCTAssertEqual(resumeCount, 0, "The race must not manufacture a resume")
+        XCTAssertFalse(
+            harness.appState.activeChatScrollSessionIdentity.isReconciling
+        )
+        box.client.disconnect()
+    }
+
     // MARK: - Harness
 
     private func makeHarness(
@@ -1059,6 +1551,34 @@ private final class ConnectedClientBox {
 
 private struct LifecycleSyncTimedOut: Error {
     let phase: String
+}
+
+/// Suspend/resume gate for driving an in-flight RPC to a chosen point and
+/// releasing it after the test has raced a handoff against it.
+@MainActor
+private final class LifecycleSuspension {
+    private var suspension: CheckedContinuation<Void, Never>?
+    private var observer: CheckedContinuation<Void, Never>?
+
+    func suspend() async {
+        await withCheckedContinuation { continuation in
+            suspension = continuation
+            observer?.resume()
+            observer = nil
+        }
+    }
+
+    func waitUntilSuspended() async {
+        guard suspension == nil else { return }
+        await withCheckedContinuation { continuation in
+            observer = continuation
+        }
+    }
+
+    func resume() {
+        suspension?.resume()
+        suspension = nil
+    }
 }
 
 /// Bounded wait for a spawned task to finish: a wedged phase fails the test

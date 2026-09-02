@@ -4450,7 +4450,18 @@ final class AppState: ObservableObject {
         }
         switch probe {
         case let .live(row):
-            if row.isRunning, !messages.isEmpty {
+            if row.status == "starting" {
+                // Runtime present, liveness inconclusive: "starting" also
+                // covers promptless agent pre-warm (session.create / cold
+                // resume) and transiently masks a running turn during the
+                // build window, so it proves neither busy nor idle. Leave the
+                // local turn state exactly as the stream left it and let live
+                // events own the next edge; never manufacture a resume here.
+                lifecycleLog.notice(
+                    "Foreground refresh: probe=starting session=\(requestedSessionID ?? "-", privacy: .public) → observation-only, state untouched"
+                )
+                settleForegroundBoundary(token, automaticWorkToken: automaticWorkToken)
+            } else if row.isRunning, !messages.isEmpty {
                 // The same turn is still live over a hydrated transcript: keep
                 // the session, the transcript, the streaming buffer, and the
                 // PR #121 live reasoning projection exactly as they are. Only
@@ -4570,25 +4581,38 @@ final class AppState: ObservableObject {
 
     /// Adopts an authoritative running state WITHOUT replacing any
     /// presentation state: no transcript swap, no streaming-buffer reset, no
-    /// reasoning-segment reset. Buffered events captured while the foreground
-    /// reconciliation boundary was open are replayed FIRST (applyStreamEvent's
-    /// active-session gate still applies), then the probe's later-authoritative
-    /// running state is adopted — a buffered turn-end edge is intentionally
-    /// overridden by the registry snapshot the decision was made from. The
+    /// reasoning-segment reset. Ordering: the probe snapshot is the OLDER
+    /// observation, so it establishes the running baseline FIRST; the buffered
+    /// events captured while the foreground reconciliation boundary was open
+    /// are replayed SECOND — they arrived after the snapshot was taken and the
+    /// newest authoritative edge must win (a buffered sessionBusy(false) or
+    /// completion therefore settles the turn instead of being overwritten back
+    /// to running). applyStreamEvent's active-session gate still applies. The
     /// boundary settles last.
     private func adoptForegroundRunningState(
         reconciliationToken token: UUID,
         automaticWorkToken: ChatResumeAutomaticWorkToken?
     ) {
         guard token == reconciliationToken else { return }
-        let bufferedEvents = reconciliation?.bufferedEvents ?? []
-        bufferedEvents.forEach { applyStreamEvent($0) }
-        // The registry is authoritative: a locally idle state that disagreed
-        // with it (missed turn start) is corrected, and a running state is
-        // confirmed. setRunning also clears the pending-decision restoration
-        // guard exactly like a live sessionBusy(true) event would.
+        // Probe baseline (older observation).
         setRunning(true)
         turnStateIsStale = false
+        // Newer live edges win over the snapshot.
+        let bufferedEvents = reconciliation?.bufferedEvents ?? []
+        bufferedEvents.forEach { applyStreamEvent($0) }
+        _ = settleReconciliationAndPublish(token, automaticWorkToken: automaticWorkToken)
+    }
+
+    /// Settles the foreground reconciliation boundary without adopting any
+    /// turn state — used when the registry answer is inconclusive ("starting")
+    /// so buffered events still land but the local state stays stream-owned.
+    private func settleForegroundBoundary(
+        _ token: UUID,
+        automaticWorkToken: ChatResumeAutomaticWorkToken?
+    ) {
+        guard token == reconciliationToken else { return }
+        let bufferedEvents = reconciliation?.bufferedEvents ?? []
+        bufferedEvents.forEach { applyStreamEvent($0) }
         _ = settleReconciliationAndPublish(token, automaticWorkToken: automaticWorkToken)
     }
 
@@ -5480,7 +5504,7 @@ final class AppState: ObservableObject {
         // One authoritative read-only probe corrects the state before the
         // routing decision. Trusted state never pays for the probe.
         if turnState == .idle, turnStateIsStale,
-           await correctStaleIdleTurnState() {
+           await correctStaleIdleTurnState(using: submissionContext) {
             guard attachments.isEmpty else {
                 errorMessage = "Attachments can only be sent in a new message, after the current response finishes."
                 return false
@@ -5503,21 +5527,60 @@ final class AppState: ObservableObject {
     }
 
     /// Read-only authoritative correction of a possibly stale local idle
-    /// state. Returns true when the gateway proves the session is RUNNING (the
-    /// caller must use the configured busy action); false when the session is
-    /// idle (safe to send a new turn) or the state could not be verified (do
-    /// not add RPC chatter — fall through to the ordinary send).
-    private func correctStaleIdleTurnState() async -> Bool {
+    /// state, OWNED BY THIS SUBMISSION. Returns true when the gateway proves
+    /// the session is RUNNING (the caller must use the configured busy
+    /// action); false when the session is idle (safe to send a new turn) or
+    /// the state could not be verified (do not add RPC chatter — fall through
+    /// to the ordinary send, whose typed outcome reconciles). If ownership of
+    /// the submission was lost across the probe's await (session/profile
+    /// handoff), NOTHING is mutated: the session the user switched to keeps
+    /// its own stale marker and will run its own correction.
+    private func correctStaleIdleTurnState(
+        using submissionContext: ComposerSubmissionContext
+    ) async -> Bool {
         guard let client, let sessionId = activeSessionId else {
-            turnStateIsStale = false
+            // Nothing to probe; leave the stale marker for the real owner.
             return false
         }
-        let probe = await probeForegroundRuntime(
-            requestedSessionID: sessionId,
-            using: client
-        )
-        switch probe {
-        case let .live(row) where row.isRunning:
+        // Capture the probe identity BEFORE the await — never re-derive it
+        // from the mutable active session afterwards.
+        let acceptedIDs = acceptedIdentitySessionIDs(forRequested: sessionId)
+        let rows: [LiveSessionStatus]
+        do {
+            if let probeActiveSessions = chatResumeLifecycleOperations.probeActiveSessions {
+                rows = try await probeActiveSessions(client)
+            } else {
+                rows = try await client.activeSessions()
+            }
+        } catch {
+            // The registry could not be read (older gateway, transient
+            // failure). Proceed with the ordinary send rather than blocking
+            // the user; the submission's own typed outcome will reconcile.
+            // The one-time stale clear is submission-owned so an unsupported
+            // gateway does not turn every later submit into probe chatter.
+            lifecycleLog.notice(
+                "submitComposer: stale-idle probe unavailable; proceeding with send session=\(sessionId, privacy: .public)"
+            )
+            if isCurrentComposerSubmission(submissionContext) {
+                turnStateIsStale = false
+            }
+            return false
+        }
+        // Ownership re-check AFTER the await: if the user switched sessions or
+        // profiles while the probe was suspended, this result belongs to the
+        // OLD conversation and must not mutate the new one's turn state — nor
+        // clear its stale marker.
+        guard isCurrentComposerSubmission(submissionContext),
+              turnState == .idle, turnStateIsStale else {
+            lifecycleLog.notice(
+                "submitComposer: stale-idle probe superseded by session handoff; no state mutation session=\(sessionId, privacy: .public)"
+            )
+            return false
+        }
+        let row = rows.first(where: {
+            acceptedIDs.contains($0.runtimeSessionId) || acceptedIDs.contains($0.storedSessionId)
+        })
+        if let row, row.isRunning {
             lifecycleLog.notice(
                 "submitComposer: authoritative probe=live status=\(row.status, privacy: .public) corrects stale idle session=\(sessionId, privacy: .public)"
             )
@@ -5526,21 +5589,13 @@ final class AppState: ObservableObject {
             setRunning(true)
             turnStateIsStale = false
             return true
-        case .live, .absent:
-            // Authoritative idle (or the runtime is gone): the local idle
-            // state is confirmed for this submission.
-            turnStateIsStale = false
-            return false
-        case let .unavailable(reason):
-            // The registry could not be read (older gateway, transient
-            // failure). Proceed with the ordinary send rather than blocking
-            // the user; the submission's own typed outcome will reconcile.
-            lifecycleLog.notice(
-                "submitComposer: stale-idle probe unavailable (\(reason, privacy: .public)); proceeding with send"
-            )
-            turnStateIsStale = false
-            return false
         }
+        // Authoritative idle/absent/starting for THIS submission: the local
+        // idle state is confirmed and a starting runtime is not committed
+        // busy (pre-warm builds report it too), so send as an ordinary new
+        // turn — the typed prompt.submit outcome catches a genuine busy race.
+        turnStateIsStale = false
+        return false
     }
 
     func sendMessage(
@@ -5553,6 +5608,14 @@ final class AppState: ObservableObject {
         guard let client, let sessionId = activeSessionId else { return false }
         cancelChatResumeRestoration()
         resetResponseHapticTurn()
+        // Durable before/after identity for ambiguous-delivery recovery:
+        // everything this conversation held BEFORE the optimistic append, so
+        // a later bounded tail read can prove whether the submitted turn
+        // landed even when the registry has already gone idle/absent.
+        let submissionBaseline = PromptTranscriptBaseline(messages: messages)
+        // The identity under probe must be captured BEFORE any await — never
+        // re-derived from the mutable active session afterwards.
+        let submissionSessionIDs = acceptedIdentitySessionIDs(forRequested: sessionId)
 
         let userMessage = ChatMessage(
             id: "local-\(Date().timeIntervalSince1970)",
@@ -5608,22 +5671,24 @@ final class AppState: ObservableObject {
             }
             // The gateway accepted the prompt. A session handoff may have
             // happened while the RPC was suspended, but that does not turn a
-            // remotely successful send into a local draft failure. There are
-            // no current-session mutations after this point.
+            // remotely successful send into a local draft failure. All local
+            // state writes below are submission-owned: an operation started
+            // for session A must never mutate turn state that now belongs to
+            // session B.
             lifecycleLog.notice(
                 "prompt.submit outcome=\(Self.promptOutcomeLogValue(outcome), privacy: .public) session=\(sessionId, privacy: .public)"
             )
-            if outcome.isBusySubmission, isCurrentComposerSubmission(submissionContext) {
-                // Hermes applied its busy policy, which proves THIS session
-                // was RUNNING when the prompt landed — the local state was
-                // stale. Adopt the authoritative busy state so the composer
-                // keeps offering the configured busy action and the next
-                // submission is routed correctly. A session handoff while the
-                // RPC was suspended must not misattribute the busy state to
-                // the newly active session.
-                turnState = .running
+            if isCurrentComposerSubmission(submissionContext) {
+                if outcome.isBusySubmission {
+                    // Hermes applied its busy policy, which proves THIS
+                    // session was RUNNING when the prompt landed — the local
+                    // state was stale. Adopt the authoritative busy state so
+                    // the composer keeps offering the configured busy action
+                    // and the next submission is routed correctly.
+                    turnState = .running
+                }
+                turnStateIsStale = false
             }
-            turnStateIsStale = false
             return true
         } catch {
             guard isCurrentComposerSubmission(submissionContext) else { return false }
@@ -5633,17 +5698,38 @@ final class AppState: ObservableObject {
                 )
                 let (resolution, reconnected) = await reconcileAmbiguousPromptSubmission(
                     requestedSessionID: sessionId,
+                    acceptedSessionIDs: submissionSessionIDs,
+                    baseline: submissionBaseline,
+                    submittedText: text,
                     submissionContext: submissionContext
                 )
+                // Every write below is submission-owned: the guard is
+                // re-checked inside each branch so a handoff during the
+                // recovery awaits cannot leak state into the new session.
                 switch resolution {
-                case .acceptedRunning, .acceptedSettled:
-                    // Hermes accepted the submission and the turn is live:
-                    // keep the optimistic user row and the running turn, and
-                    // never re-send the prompt. In the settled flavor the
-                    // recovery reconnect's sync already replaced the
-                    // transcript; either way the turn is authoritative.
-                    turnState = .running
-                    turnStateIsStale = false
+                case .acceptedRunning:
+                    // Hermes accepted the submission and the turn is still
+                    // live: keep the optimistic user row and the running turn,
+                    // and never re-send the prompt.
+                    if isCurrentComposerSubmission(submissionContext) {
+                        turnState = .running
+                        turnStateIsStale = false
+                    }
+                    return true
+                case .acceptedSettled:
+                    // The durable transcript proves the submitted turn landed
+                    // and settled (the registry had already gone idle/absent
+                    // by the time recovery looked). The submission stays
+                    // accepted: the composer remains cleared, nothing is
+                    // restored, and the transcript converges on the next
+                    // bounded refresh.
+                    lifecycleLog.notice(
+                        "prompt.submit accepted (durable transcript); turn settled session=\(sessionId, privacy: .public)"
+                    )
+                    if isCurrentComposerSubmission(submissionContext) {
+                        turnState = .idle
+                        turnStateIsStale = false
+                    }
                     return true
                 case .notAccepted:
                     // Authoritative evidence shows Hermes did not accept the
@@ -5651,9 +5737,11 @@ final class AppState: ObservableObject {
                     lifecycleLog.notice(
                         "prompt.submit not accepted (authoritative); restoring unsent state session=\(sessionId, privacy: .public)"
                     )
-                    turnStateIsStale = false
+                    if isCurrentComposerSubmission(submissionContext) {
+                        turnStateIsStale = false
+                    }
                 case .unresolved:
-                    // The authoritative state could not be read. Be
+                    // Acceptance could be neither proven nor disproven. Be
                     // conservative about duplicate delivery: restore rather
                     // than re-send blindly.
                     lifecycleLog.notice(
@@ -5661,7 +5749,7 @@ final class AppState: ObservableObject {
                     )
                 }
                 errorMessage = "Failed to send: \(error.localizedDescription)"
-                if !reconnected {
+                if !reconnected, isCurrentComposerSubmission(submissionContext) {
                     await recoverComposerSubmission(using: submissionContext)
                 }
                 // A reconnect inside the recovery already synced the
@@ -5713,19 +5801,25 @@ final class AppState: ObservableObject {
     /// `reconnected` reports whether a transport recovery (with its own full
     /// transcript sync) ran, so the caller can skip a duplicate restoration.
     private enum AmbiguousPromptResolution {
-        /// Accepted; the turn is running on the current transport.
+        /// Accepted and still running on the current transport.
         case acceptedRunning
-        /// Accepted; the recovery reconnect's sync already settled the
-        /// transcript authoritatively.
+        /// Accepted and proven settled by the durable transcript: the turn ran
+        /// to completion before recovery looked (the registry had already gone
+        /// idle/absent, which alone cannot prove non-acceptance).
         case acceptedSettled
-        /// The registry proves the prompt was not accepted.
+        /// Authoritative evidence (registry idle/absent AND the durable
+        /// transcript advanced without the submitted turn) that the prompt was
+        /// not accepted.
         case notAccepted
-        /// The registry could not be read.
+        /// Neither acceptance nor non-acceptance could be established.
         case unresolved
     }
 
     private func reconcileAmbiguousPromptSubmission(
         requestedSessionID: String,
+        acceptedSessionIDs: Set<String>,
+        baseline: PromptTranscriptBaseline,
+        submittedText: String,
         submissionContext: ComposerSubmissionContext
     ) async -> (resolution: AmbiguousPromptResolution, reconnected: Bool) {
         var reconnected = false
@@ -5736,11 +5830,15 @@ final class AppState: ObservableObject {
             // turn's persisted rows.
             await reconnectForRetry(purpose: .preserveCurrent)
             probeClient = self.client
-            reconnected = true
+            // Only a SUCCESSFUL reconnect (whose sync already restored the
+            // authoritative transcript) may skip the caller's restoration; a
+            // failed reconnect must fall back to it.
+            reconnected = probeClient?.isConnected == true
         }
         guard isCurrentOrAliasedComposerSubmission(submissionContext),
               let probeClient else { return (.unresolved, reconnected) }
-        let acceptedIDs = acceptedIdentitySessionIDs(forRequested: requestedSessionID)
+        // The alias set was captured from the ORIGINAL submission before any
+        // await; it is never re-derived from the mutable active session here.
         let rows: [LiveSessionStatus]
         do {
             if let probeActiveSessions = chatResumeLifecycleOperations.probeActiveSessions {
@@ -5752,21 +5850,150 @@ final class AppState: ObservableObject {
             return (.unresolved, reconnected)
         }
         guard let row = rows.first(where: {
-            acceptedIDs.contains($0.runtimeSessionId) || acceptedIDs.contains($0.storedSessionId)
+            acceptedSessionIDs.contains($0.runtimeSessionId) || acceptedSessionIDs.contains($0.storedSessionId)
         }) else {
-            // Authoritative absence: the runtime is gone. A turn accepted
-            // seconds ago would still be listed (the registry reaps a runtime
-            // only after its transport is gone AND it settled), so treat this
-            // as not accepted.
-            return (.notAccepted, reconnected)
+            // No runtime for this conversation anymore: current liveness is
+            // gone, but that alone cannot prove non-acceptance — the accepted
+            // turn may have completed and been reaped. Verify durably below.
+            let transcript = await verifySubmittedTurnInTranscript(
+                requestedSessionID: requestedSessionID,
+                profile: submissionContext.profile,
+                baseline: baseline,
+                submittedText: submittedText
+            )
+            switch transcript {
+            case .present: return (.acceptedSettled, reconnected)
+            case .absent: return (.notAccepted, reconnected)
+            case .indeterminate: return (.unresolved, reconnected)
+            }
         }
         if row.isRunning {
+            // A committed-busy runtime can only describe an accepted,
+            // still-running submission.
             let resolution: AmbiguousPromptResolution = self.client === probeClient
                 ? .acceptedRunning
                 : .acceptedSettled
             return (resolution, reconnected)
         }
-        return (.notAccepted, reconnected)
+        // The registry is authoritative about CURRENT liveness only: an
+        // idle/absent-or-starting runtime cannot by itself prove
+        // non-acceptance, because the accepted turn may have completed (and
+        // the runtime gone idle or been reaped) before recovery looked. Fall
+        // through to the durable transcript.
+        let transcript = await verifySubmittedTurnInTranscript(
+            requestedSessionID: requestedSessionID,
+            profile: submissionContext.profile,
+            baseline: baseline,
+            submittedText: submittedText
+        )
+        switch transcript {
+        case .present:
+            return (.acceptedSettled, reconnected)
+        case .absent:
+            return (.notAccepted, reconnected)
+        case .indeterminate:
+            return (.unresolved, reconnected)
+        }
+    }
+
+    /// Durable before/after identity captured BEFORE the optimistic append.
+    /// The submitted turn is proven by ORDERING (rows the conversation did not
+    /// hold at submit time) corroborated by user-role content — never by
+    /// content alone, since identical texts are legitimate.
+    struct PromptTranscriptBaseline {
+        let knownMessageIDs: Set<String>
+        let knownMessageCount: Int
+
+        init(messages: [ChatMessage]) {
+            self.knownMessageIDs = Set(messages.map(\.id))
+            self.knownMessageCount = messages.count
+        }
+    }
+
+    private enum SubmittedTurnEvidence {
+        case present
+        case absent
+        case indeterminate
+    }
+
+    /// Bounded tail read (the PR #118 `order=latest` page via the existing
+    /// persisted-transcript source) to decide whether an ambiguously
+    /// acknowledged prompt actually landed. `profile` comes from the owning
+    /// submission context, captured before any await.
+    private func verifySubmittedTurnInTranscript(
+        requestedSessionID: String,
+        profile: String,
+        baseline: PromptTranscriptBaseline,
+        submittedText: String
+    ) async -> SubmittedTurnEvidence {
+        let outcome = await persistedTranscriptOutcome(
+            sessionId: requestedSessionID,
+            profile: profile,
+            using: dashboardTicketBridge
+        )
+        let tail: [ChatMessage]
+        let idsAreDurable: Bool
+        switch outcome {
+        case .hydrated(let persisted):
+            tail = persisted.messages
+            // A paginated page only comes back when the echo honored the
+            // tail contract AND the rows carried durable identity; the
+            // legacy one-shot re-read makes no such guarantee.
+            idsAreDurable = persisted.page != nil
+        case .unavailable, .failed:
+            // No usable durable source: acceptance stays unproven.
+            return .indeterminate
+        }
+
+        let wanted = submittedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let isNewRow: (ChatMessage) -> Bool = { message in
+            !baseline.knownMessageIDs.contains(message.id)
+        }
+        let contentMatches: (ChatMessage) -> Bool = { message in
+            message.role == .user
+                && message.content.trimmingCharacters(in: .whitespacesAndNewlines) == wanted
+        }
+
+        if idsAreDurable {
+            if tail.contains(where: { isNewRow($0) && contentMatches($0) }) {
+                // A user row this conversation did not hold before the
+                // submission carries the submitted text: the turn landed.
+                // Response rows after it only strengthen the proof; their
+                // absence means the accepted turn was interrupted, which is
+                // still acceptance.
+                return .present
+            }
+            if tail.contains(where: isNewRow) {
+                // The durable transcript advanced past the submit-time
+                // baseline without any new user row carrying the submitted
+                // text: whatever landed, this prompt did not.
+                return .absent
+            }
+            // The tail is exactly what this conversation already held: no
+            // new row at all — the submitted turn never landed.
+            return .absent
+        }
+
+        // Positional-id fallback (legacy one-shot transcript): row identity
+        // cannot distinguish new from old rows, so decide by transcript
+        // growth plus the newest user row.
+        if tail.count <= baseline.knownMessageCount {
+            // Nothing landed beyond what this conversation already held.
+            return .absent
+        }
+        let newestUserRow = tail.last(where: { $0.role == .user })
+        if let newestUserRow, contentMatches(newestUserRow) {
+            // The transcript grew and its newest user turn carries the
+            // submitted text: acceptance, settled.
+            return .present
+        }
+        if tail.contains(where: contentMatches) {
+            // Grew with our text present but not newest — an identical older
+            // send makes this ambiguous.
+            return .indeterminate
+        }
+        // Grew without the submitted text: this prompt did not land.
+        return .absent
     }
 
     func toggleYolo(context: ComposerSubmissionContext? = nil) async {
