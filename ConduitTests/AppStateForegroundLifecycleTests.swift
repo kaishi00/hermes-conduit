@@ -938,11 +938,22 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                     return SessionResumeResult(
                         sessionId: sessionID,
                         messages: [],
-                        snapshot: SessionRuntimeSnapshot(object: [:])
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
                 persistedTranscript: { _, _ in
                     transcriptReads += 1
+                    if transcriptReads == 1 {
+                        // The pre-submit hydration: two durable rows held.
+                        return .payload([
+                            "messages": [
+                                ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                                ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"]
+                            ],
+                            "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 2]
+                        ])
+                    }
+                    // Recovery: the accepted turn landed and settled.
                     return .payload([
                         "messages": [
                             ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
@@ -953,6 +964,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 4]
                     ])
                 },
+                refreshContext: { _, _ in },
                 sendPrompt: { _, _, _ in
                     submitCount += 1
                     throw HermesError.timeout("prompt.submit")
@@ -968,23 +980,23 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         let box = await installConnectedClient(into: harness)
         harness.appState.sessions = [active]
         harness.appState.activeSessionId = active.id
-        // Baseline the conversation already held before the submission.
-        harness.appState.messages = [
-            ChatMessage(id: "100", role: .user, content: "Earlier question", timestamp: "1"),
-            ChatMessage(id: "101", role: .assistant, content: "Earlier answer", timestamp: "2")
-        ]
+        // Establish durable provenance through the real hydration path.
+        let opened = await harness.appState.openSession(active.id)
+        XCTAssertTrue(opened)
+        XCTAssertEqual(harness.appState.messages.map(\.id), ["100", "101"])
+        let resumesBeforeSubmit = resumeCount
 
         let submitted = await harness.appState.submitComposer(text: "Ambiguous send")
 
         XCTAssertTrue(submitted, "Transcript-proven acceptance must not surface as a failed send")
         XCTAssertEqual(submitCount, 1, "An accepted prompt must never be re-submitted")
         XCTAssertEqual(probeCount, 1)
-        XCTAssertEqual(transcriptReads, 1, "One bounded tail read decides the outcome")
+        XCTAssertEqual(transcriptReads, 2, "One bounded tail read decides the outcome")
         XCTAssertEqual(
             catalogCount, 0,
             "No failed-send restoration may run for a transcript-proven acceptance"
         )
-        XCTAssertEqual(resumeCount, 0)
+        XCTAssertEqual(resumeCount, resumesBeforeSubmit)
         XCTAssertEqual(
             harness.appState.messages.last?.content, "Ambiguous send",
             "The submitted turn stays; the transcript converges on the next bounded refresh"
@@ -1046,21 +1058,23 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         let box = await installConnectedClient(into: harness)
         harness.appState.sessions = [active]
         harness.appState.activeSessionId = active.id
-        harness.appState.messages = [
-            ChatMessage(id: "100", role: .user, content: "Earlier question", timestamp: "1"),
-            ChatMessage(id: "101", role: .assistant, content: "Earlier answer", timestamp: "2")
-        ]
+        // Establish durable provenance through the real hydration path: the
+        // pre-submit conversation durably holds rows 100 and 101.
+        let opened = await harness.appState.openSession(active.id)
+        XCTAssertTrue(opened)
+        XCTAssertEqual(harness.appState.messages.map(\.id), ["100", "101"])
+        let resumesBeforeSubmit = resumeCount
 
         let submitted = await harness.appState.submitComposer(text: "Never delivered")
 
         XCTAssertFalse(submitted)
         XCTAssertEqual(submitCount, 1, "No blind retry may follow the ambiguous failure")
         XCTAssertEqual(
-            transcriptReads, 2,
-            "One bounded read decides acceptance; the restore's compact resume re-reads the tail"
+            transcriptReads, 3,
+            "Hydration, ambiguous verification, and the restore's compact resume each read once"
         )
         XCTAssertEqual(catalogCount, 1, "The unsent restoration runs exactly once")
-        XCTAssertEqual(resumeCount, 1)
+        XCTAssertEqual(resumeCount, resumesBeforeSubmit + 1)
         XCTAssertEqual(
             harness.appState.messages.map(\.id), ["100", "101"],
             "The optimistic row is restored away exactly once by the authoritative transcript"
@@ -1081,15 +1095,23 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                 openSession: { _, sessionID, _ in
                     SessionResumeResult(
                         sessionId: sessionID,
-                        messages: [
-                            ChatMessage(id: "100", role: .user, content: "go on", timestamp: "1"),
-                            ChatMessage(id: "101", role: .assistant, content: "Earlier reply", timestamp: "2")
-                        ],
+                        messages: [],
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
                 persistedTranscript: { _, _ in
                     transcriptReads += 1
+                    if transcriptReads == 1 {
+                        // Pre-submit hydration: the older identical "go on".
+                        return .payload([
+                            "messages": [
+                                ["id": "100", "role": "user", "content": "go on", "timestamp": "1"],
+                                ["id": "101", "role": "assistant", "content": "Earlier reply", "timestamp": "2"]
+                            ],
+                            "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 2]
+                        ])
+                    }
+                    // Recovery: the tail advanced with a DIFFERENT newer ask.
                     return .payload([
                         "messages": [
                             ["id": "100", "role": "user", "content": "go on", "timestamp": "1"],
@@ -1114,15 +1136,15 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         let box = await installConnectedClient(into: harness)
         harness.appState.sessions = [active]
         harness.appState.activeSessionId = active.id
-        harness.appState.messages = [
-            ChatMessage(id: "100", role: .user, content: "go on", timestamp: "1"),
-            ChatMessage(id: "101", role: .assistant, content: "Earlier reply", timestamp: "2")
-        ]
+        // Establish durable provenance for the older identical "go on" row.
+        let opened = await harness.appState.openSession(active.id)
+        XCTAssertTrue(opened)
+        XCTAssertEqual(harness.appState.messages.map(\.id), ["100", "101"])
 
         let submitted = await harness.appState.submitComposer(text: "go on")
 
         XCTAssertFalse(submitted, "The transcript advanced without this prompt: it was not accepted")
-        XCTAssertEqual(transcriptReads, 2)
+        XCTAssertEqual(transcriptReads, 3)
         XCTAssertEqual(
             harness.appState.messages.map(\.id), ["100", "101", "102", "103"],
             "Restoration converges on the authoritative tail even though only its older rows " +
@@ -1421,15 +1443,24 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                 openSession: { _, sessionID, _ in
                     SessionResumeResult(
                         sessionId: sessionID,
-                        messages: [
-                            ChatMessage(id: "98", role: .user, content: "prior", timestamp: "0"),
-                            ChatMessage(id: "99", role: .assistant, content: "ack", timestamp: "1")
-                        ],
+                        messages: [],
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
                 persistedTranscript: { _, _ in
                     transcriptReads += 1
+                    if transcriptReads == 1 {
+                        // Pre-submit hydration: two durable rows held.
+                        return .payload([
+                            "messages": [
+                                ["id": "98", "role": "user", "content": "prior", "timestamp": "0"],
+                                ["id": "99", "role": "assistant", "content": "ack", "timestamp": "1"]
+                            ],
+                            "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 2]
+                        ])
+                    }
+                    // Recovery: an identical user row exists after the anchor,
+                    // but the conversation also held an optimistic local row.
                     return .payload([
                         "messages": [
                             ["id": "98", "role": "user", "content": "prior", "timestamp": "0"],
@@ -1439,6 +1470,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 3]
                     ])
                 },
+                refreshContext: { _, _ in },
                 sendPrompt: { _, _, _ in
                     submitCount += 1
                     throw HermesError.timeout("prompt.submit")
@@ -1455,11 +1487,14 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         let box = await installConnectedClient(into: harness)
         harness.appState.sessions = [active]
         harness.appState.activeSessionId = active.id
-        harness.appState.messages = [
-            ChatMessage(id: "98", role: .user, content: "prior", timestamp: "0"),
-            ChatMessage(id: "99", role: .assistant, content: "ack", timestamp: "1"),
+        // Establish durable provenance for rows 98/99 through real hydration.
+        let opened = await harness.appState.openSession(active.id)
+        XCTAssertTrue(opened)
+        // Turn 1 was sent optimistically and never re-hydrated: its persisted
+        // twin's id is unknown to this conversation.
+        harness.appState.messages.append(
             ChatMessage(id: "local-123", role: .user, content: "continue", timestamp: "2")
-        ]
+        )
 
         let submitted = await harness.appState.submitComposer(text: "continue")
 
@@ -1468,7 +1503,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
             "An identical persisted row after the anchor cannot be attributed to this submission"
         )
         XCTAssertEqual(submitCount, 1, "No automatic resend")
-        XCTAssertEqual(transcriptReads, 2)
+        XCTAssertEqual(transcriptReads, 3)
         XCTAssertEqual(catalogCount, 1, "The conservative restoration runs exactly once")
         XCTAssertEqual(
             harness.appState.messages.filter { $0.role == .user && $0.content == "continue" }.count,
@@ -1486,6 +1521,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         var submitCount = 0
         var probeCount = 0
         var catalogCount = 0
+        var transcriptReads = 0
         let harness = makeHarness(
             lifecycleOperations: ChatResumeLifecycleOperations(
                 loadCatalog: { _, _ in
@@ -1496,11 +1532,25 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                     SessionResumeResult(
                         sessionId: sessionID,
                         messages: [],
-                        snapshot: SessionRuntimeSnapshot(object: [:])
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
                 persistedTranscript: { _, _ in
-                    .payload([
+                    transcriptReads += 1
+                    if transcriptReads == 1 {
+                        // Pre-submit hydration: the first identical turn is
+                        // durably anchored (rows 501/502).
+                        return .payload([
+                            "messages": [
+                                ["id": "501", "role": "user", "content": "continue", "timestamp": "1"],
+                                ["id": "502", "role": "assistant", "content": "done", "timestamp": "2"]
+                            ],
+                            "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 2]
+                        ])
+                    }
+                    // Recovery: the tail advanced past the anchor with a NEW
+                    // identical user row (503) plus its response.
+                    return .payload([
                         "messages": [
                             ["id": "501", "role": "user", "content": "continue", "timestamp": "1"],
                             ["id": "502", "role": "assistant", "content": "done", "timestamp": "2"],
@@ -1510,6 +1560,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 4]
                     ])
                 },
+                refreshContext: { _, _ in },
                 sendPrompt: { _, _, _ in
                     submitCount += 1
                     throw HermesError.timeout("prompt.submit")
@@ -1524,10 +1575,11 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         let box = await installConnectedClient(into: harness)
         harness.appState.sessions = [active]
         harness.appState.activeSessionId = active.id
-        harness.appState.messages = [
-            ChatMessage(id: "501", role: .user, content: "continue", timestamp: "1"),
-            ChatMessage(id: "502", role: .assistant, content: "done", timestamp: "2")
-        ]
+        // Durably anchor the FIRST identical turn (rows 501/502) via real
+        // hydration; the verifier may then treat 503 as new.
+        let opened = await harness.appState.openSession(active.id)
+        XCTAssertTrue(opened)
+        XCTAssertEqual(harness.appState.messages.map(\.id), ["501", "502"])
 
         let submitted = await harness.appState.submitComposer(text: "continue")
 
@@ -1570,6 +1622,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 1]
                     ])
                 },
+                refreshContext: { _, _ in },
                 sendPrompt: { _, _, _ in
                     submitCount += 1
                     throw HermesError.timeout("prompt.submit")
@@ -1631,6 +1684,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 2]
                     ])
                 },
+                refreshContext: { _, _ in },
                 sendPrompt: { _, _, _ in
                     submitCount += 1
                     throw HermesError.timeout("prompt.submit")
@@ -1649,10 +1703,10 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         let box = await installConnectedClient(into: harness)
         harness.appState.sessions = [sessionA, sessionB]
         harness.appState.activeSessionId = sessionA.id
-        harness.appState.messages = [
-            ChatMessage(id: "100", role: .user, content: "Earlier question", timestamp: "1"),
-            ChatMessage(id: "101", role: .assistant, content: "Earlier answer", timestamp: "2")
-        ]
+        // Establish durable provenance through the real hydration path.
+        let opened = await harness.appState.openSession(sessionA.id)
+        XCTAssertTrue(opened)
+        XCTAssertEqual(harness.appState.messages.map(\.id), ["100", "101"])
 
         let submissionA = Task { @MainActor in
             await harness.appState.submitComposer(text: "A doomed send")
@@ -1680,6 +1734,154 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         )
         XCTAssertEqual(catalogCount, 0, "A's restoration is skipped under lost ownership")
         box.client.disconnect()
+    }
+
+    /// Round 4: the accepted turn generated so much activity that BOTH the
+    /// pre-submit durable anchor and the submitted row fell out of the newest
+    /// bounded page. Ordering evidence is gone — content absence from a
+    /// window cannot prove non-acceptance, so the outcome is indeterminate
+    /// (conservative restore, no resend, no false rejection claim).
+    func testAmbiguousPromptBeyondBoundedTailIsIndeterminate() async {
+        let active = session("stored-a")
+        var submitCount = 0
+        var transcriptReads = 0
+        var catalogCount = 0
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in
+                    catalogCount += 1
+                    return [active]
+                },
+                openSession: { _, sessionID, _ in
+                    SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                persistedTranscript: { _, _ in
+                    transcriptReads += 1
+                    if transcriptReads == 1 {
+                        // Pre-submit hydration: one durable anchor row held.
+                        return .payload([
+                            "messages": [
+                                ["id": "500", "role": "assistant", "content": "anchor row", "timestamp": "1"]
+                            ],
+                            "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 1]
+                        ])
+                    }
+                    // Recovery: the newest page holds neither the anchor nor
+                    // the submitted user row — the accepted turn's activity
+                    // pushed both out of the window.
+                    return .payload([
+                        "messages": [
+                            ["id": "601", "role": "assistant", "content": "much later output", "timestamp": "9"]
+                        ],
+                        "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 1]
+                    ])
+                },
+                refreshContext: { _, _ in },
+                sendPrompt: { _, _, _ in
+                    submitCount += 1
+                    throw HermesError.timeout("prompt.submit")
+                },
+                probeActiveSessions: { _ in
+                    [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: "idle"
+                    )]
+                }
+            )
+        )
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        let opened = await harness.appState.openSession(active.id)
+        XCTAssertTrue(opened)
+        XCTAssertEqual(harness.appState.messages.map(\.id), ["500"])
+
+        let submitted = await harness.appState.submitComposer(text: "continue")
+
+        XCTAssertFalse(
+            submitted,
+            "Without ordering evidence the submission must be treated as unresolved"
+        )
+        XCTAssertEqual(submitCount, 1, "No automatic resend of the ambiguous prompt")
+        XCTAssertEqual(transcriptReads, 3)
+        XCTAssertEqual(catalogCount, 1, "Exactly one conservative restoration")
+        XCTAssertFalse(
+            harness.appState.messages.contains { $0.role == .user && $0.content == "continue" },
+            "The unresolved submission is restored rather than kept as sent"
+        )
+        box.client.disconnect()
+    }
+
+    /// Synthetic visible ids (optimistic sends, live streaming completions,
+    /// positional fallbacks, reasoning/tool projections) carry no persisted
+    /// provenance and must never become overlap anchors — even when the tail
+    /// contains a matching user row that could be the older logical twin.
+    func testSyntheticVisibleIDsNeverBecomeDurableAnchors() async {
+        for syntheticID in [
+            "local-123",
+            "assistant-1700000000",
+            "3",
+            "reasoning-1700000001",
+            "tool-start-1700000002"
+        ] {
+            let harness = makeHarness(
+                lifecycleOperations: ChatResumeLifecycleOperations(
+                    loadCatalog: { _, _ in [self.session("stored-a")] },
+                    openSession: { _, sessionID, _ in
+                        SessionResumeResult(
+                            sessionId: sessionID,
+                            messages: [],
+                            snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                        )
+                    },
+                    persistedTranscript: { _, _ in
+                        .payload([
+                            "messages": [
+                                ["id": "501", "role": "user", "content": "continue", "timestamp": "5"]
+                            ],
+                            "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 1]
+                        ])
+                    },
+                    refreshContext: { _, _ in },
+                    sendPrompt: { _, _, _ in throw HermesError.timeout("prompt.submit") },
+                    probeActiveSessions: { _ in
+                        [LiveSessionStatus(
+                            runtimeSessionId: "runtime-a",
+                            storedSessionId: "stored-a",
+                            status: "idle"
+                        )]
+                    }
+                )
+            )
+            installDisconnectedClient(into: harness)
+            harness.appState.sessions = [session("stored-a")]
+            harness.appState.activeSessionId = "stored-a"
+            // The visible conversation holds ONLY a synthetic id: no positive
+            // persisted provenance exists.
+            harness.appState.messages = [
+                ChatMessage(id: syntheticID, role: .user, content: "continue", timestamp: "1")
+            ]
+
+            let submitted = await harness.appState.submitComposer(text: "continue")
+
+            XCTAssertFalse(
+                submitted,
+                "Synthetic id \(syntheticID) must not prove acceptance"
+            )
+            XCTAssertEqual(
+                harness.appState.turnState, .idle,
+                "Synthetic id \(syntheticID) must not adopt a running state"
+            )
+            XCTAssertEqual(
+                harness.appState.messages.last?.id, "501",
+                "Synthetic id \(syntheticID): the durable tail restored exactly once"
+            )
+        }
     }
 
     // MARK: - Harness

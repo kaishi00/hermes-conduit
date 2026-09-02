@@ -181,6 +181,11 @@ struct PersistedSessionTranscript {
     /// Nil (or an echo without the `order=latest` tail contract) means the
     /// backend served a one-shot full transcript.
     var page: PersistedTranscriptPagination.PageInfo?
+    /// Row ids positively extracted from raw rows carrying a durable
+    /// `id` / `message_id` key, populated only when this transcript came from
+    /// a validated `order=latest` page. Empty for legacy one-shot reads,
+    /// whose row identity is positional and untrustworthy.
+    var durableRowIDs: Set<String> = []
 }
 
 struct ComposerSubmissionContext: Equatable {
@@ -455,6 +460,15 @@ final class AppState: ObservableObject {
     /// transcript is either a legacy one-shot hydration or not persisted-
     /// history-backed at all, and no older pages exist to fetch.
     @Published private(set) var persistedTranscriptWindow: PersistedTranscriptWindowState?
+    /// Row ids POSITIVELY known to originate from validated persisted-
+    /// transcript hydration (raw rows carrying a durable `id`/`message_id`)
+    /// for the active conversation, adopted from the latest accepted
+    /// hydration and cleared whenever a reconcile begins or fails to adopt a
+    /// transcript. Consumed only by the ambiguous-delivery verifier as
+    /// ordering anchors — never populated from visible id shape, so local
+    /// optimistic / streaming / positional ids can never masquerade as
+    /// persisted anchors.
+    private var durablePersistedRowIDs: Set<String> = []
     @Published private(set) var isChatRefreshing = false
     @Published private(set) var chatResumeBehavior: ChatResumeBehavior = .continueWhereLeftOff
     @Published private(set) var chatReturnSurface: ChatReturnSurface = .conversation
@@ -2734,6 +2748,10 @@ final class AppState: ObservableObject {
             streamSessionIDAtBoundary: priorReconciliation?.streamSessionIDAtBoundary,
             bufferedEvents: bufferedEvents
         )
+        // Any previously held durable anchors belong to a different reconcile
+        // transaction; they are re-adopted below only from a transcript this
+        // reconcile actually validated and accepted.
+        durablePersistedRowIDs = []
         refreshActiveChatScrollSessionIdentity(isReconciling: true)
         turnState = .synchronizing
         let profile = activeProfile
@@ -2840,6 +2858,10 @@ final class AppState: ObservableObject {
                     resumedSessionId: result.sessionId
                 )
             } ?? false
+            // Adopt the durable row ids ONLY from a transcript this reconcile
+            // validated and accepted; they anchor the ambiguous-delivery
+            // verifier's ordering evidence for this conversation.
+            durablePersistedRowIDs = (transcriptMatches ? transcript?.durableRowIDs : nil) ?? []
 
             // Capture the pre-reconcile transcript and window for the graft
             // decision below before either is replaced. The window write
@@ -5609,10 +5631,15 @@ final class AppState: ObservableObject {
         cancelChatResumeRestoration()
         resetResponseHapticTurn()
         // Durable before/after identity for ambiguous-delivery recovery:
-        // everything this conversation held BEFORE the optimistic append, so
-        // a later bounded tail read can prove whether the submitted turn
-        // landed even when the registry has already gone idle/absent.
-        let submissionBaseline = PromptTranscriptBaseline(messages: messages)
+        // positively-proven persisted row ids (from the latest accepted
+        // hydration) plus whether the conversation holds rows whose persisted
+        // identity is unproven, so a later bounded tail read can decide
+        // whether the submitted turn landed even when the registry has gone
+        // idle/absent.
+        let submissionBaseline = PromptTranscriptBaseline(
+            durableIDs: durablePersistedRowIDs,
+            holdsUnprovenRows: messages.contains { !durablePersistedRowIDs.contains($0.id) }
+        )
         // The identity under probe must be captured BEFORE any await — never
         // re-derived from the mutable active session afterwards.
         let submissionSessionIDs = acceptedIdentitySessionIDs(forRequested: sessionId)
@@ -5905,45 +5932,30 @@ final class AppState: ObservableObject {
 
     /// Durable before/after identity captured BEFORE the optimistic append.
     ///
-    /// Only rows backed by trusted durable persisted identity may serve as
-    /// baseline evidence. Visible `ChatMessage.id` values for optimistic or
-    /// locally synthesized rows (`local-…`, tool/reasoning/review cards) are
-    /// presentation identities: when Hermes persists those rows it mints NEW
-    /// database ids, so "persisted id not in the visible set" cannot prove a
-    /// row is new. The baseline therefore records the durable ids separately
-    /// and flags whether the conversation holds any local-only row whose
-    /// persisted twin is unknown.
+    /// Only rows with POSITIVE durable provenance may serve as baseline
+    /// evidence: ids adopted from validated persisted-transcript hydration.
+    /// Visible `ChatMessage.id` values for optimistic or locally synthesized
+    /// rows (`local-…`, live tool/reasoning/review projections, positional
+    /// fallbacks, streaming completions) are presentation identities — Hermes
+    /// persists those rows under fresh database ids — so id shape can never
+    /// establish that a persisted row is new, and no prefix list can be
+    /// complete. The baseline therefore consumes only the positively adopted
+    /// durable id set and flags whether the conversation holds any visible
+    /// row whose persisted identity is unproven.
     struct PromptTranscriptBaseline {
-        /// Visible ids backed by durable persisted identity (hydrated REST
-        /// rows), usable as overlap anchors against a persisted tail.
+        /// Positively known durable persisted row ids for this conversation,
+        /// usable as overlap anchors against a persisted tail.
         let durableIDs: Set<String>
         /// Whether some pre-submit conversation content exists only as a
-        /// local row (e.g. an earlier optimistic send that was never
-        /// re-hydrated). If so, a matching persisted row after the anchor
-        /// could belong to THAT content, and acceptance is unprovable.
-        let includesLocalOnlyRows: Bool
+        /// row without durable provenance (e.g. an earlier optimistic send
+        /// that was never re-hydrated). If so, a matching persisted row after
+        /// the anchor could belong to THAT content, and acceptance is
+        /// unprovable.
+        let holdsUnprovenRows: Bool
 
-        init(messages: [ChatMessage]) {
-            var durable = Set<String>()
-            var sawLocalOnly = false
-            for message in messages {
-                if Self.isLocalSyntheticID(message.id) {
-                    sawLocalOnly = true
-                } else {
-                    durable.insert(message.id)
-                }
-            }
-            self.durableIDs = durable
-            self.includesLocalOnlyRows = sawLocalOnly
-        }
-
-        /// Locally synthesized presentation ids that never correspond 1:1 to
-        /// a persisted row id. Mirrors the id schemes AppState mints for
-        /// optimistic sends, live tool/reasoning/review projections, and
-        /// locally restored decision cards.
-        static func isLocalSyntheticID(_ id: String) -> Bool {
-            ["local-", "tool-start-", "tool-complete-", "review-summary-", "reasoning-", "approval-", "clarify-"]
-                .contains { id.hasPrefix($0) }
+        init(durableIDs: Set<String>, holdsUnprovenRows: Bool) {
+            self.durableIDs = durableIDs
+            self.holdsUnprovenRows = holdsUnprovenRows
         }
     }
 
@@ -5993,42 +6005,44 @@ final class AppState: ObservableObject {
             // evidence already held. Only rows strictly after that anchor are
             // candidates for the submitted turn — a matching row at or before
             // the anchor belongs to an OLDER identical send.
-            let anchorIndex = tail.lastIndex { baseline.durableIDs.contains($0.id) }
-            let candidates: ArraySlice<ChatMessage> = anchorIndex.map { anchor in
-                tail[tail.index(after: anchor)...]
-            } ?? tail[tail.startIndex..<tail.startIndex]
-            let candidateMatches = candidates.contains(where: contentMatches)
+            //
+            // A bounded `order=latest` page carries only the newest rows: an
+            // accepted turn can persist hundreds of rows after the
+            // submission, pushing BOTH the anchor and the submitted row out
+            // of this window. Without the anchor in the tail, ordering
+            // evidence is unavailable and content absence from the window
+            // proves nothing — the outcome is indeterminate, never
+            // notAccepted and never acceptedSettled.
+            guard let anchorIndex = tail.lastIndex(where: {
+                baseline.durableIDs.contains($0.id)
+            }) else {
+                return .indeterminate
+            }
+            let candidates = tail[tail.index(after: anchorIndex)...]
 
-            if candidateMatches {
-                if anchorIndex != nil, !baseline.includesLocalOnlyRows {
-                    // Every pre-submit row was durably identified, so the
-                    // anchor proves everything up to it; a matching user row
-                    // after the anchor can only be the new submission.
-                    return .present
+            if candidates.contains(where: contentMatches) {
+                if baseline.holdsUnprovenRows {
+                    // The conversation held visible rows whose persisted
+                    // twins are unknown: the matching candidate could be an
+                    // older identical send re-homed under a new id.
+                    return .indeterminate
                 }
-                // Either no durable anchor exists to order against, or the
-                // conversation held local-only rows whose persisted twins are
-                // unknown: an identical older row is indistinguishable from
-                // the new submission. Never fabricate certainty.
-                return .indeterminate
+                // Every pre-submit row was durably identified, so the anchor
+                // proves everything up to it; a matching user row after the
+                // anchor can only be the new submission.
+                return .present
             }
-            if anchorIndex != nil {
-                // The tail advanced past the durable anchor without any
-                // matching user row: whatever landed, this prompt did not.
-                return .absent
-            }
-            // No anchor row appears in the tail (rotated out / empty
-            // baseline). Content absence still proves non-acceptance; content
-            // presence without ordering does not prove acceptance.
-            if tail.contains(where: contentMatches) {
-                return .indeterminate
-            }
+            // The tail advanced past the durable anchor without any matching
+            // user row. The anchor's presence in this window bounds the
+            // search: the submitted row, if it had landed, would be newer
+            // than the anchor and therefore inside the window too.
             return .absent
         }
 
-        // Positional-id fallback (legacy one-shot transcript): row identity
-        // cannot distinguish new from old rows at all, so a matching row is
-        // never proof of acceptance. Content absence proves non-acceptance.
+        // Positional-id fallback (legacy one-shot transcript): this response
+        // IS the entire persisted transcript, so content absence proves
+        // non-acceptance — but row identity cannot distinguish new from old
+        // rows, so a matching row is never proof of acceptance.
         if tail.contains(where: contentMatches) {
             return .indeterminate
         }
@@ -7084,7 +7098,8 @@ final class AppState: ObservableObject {
             return .hydrated(PersistedSessionTranscript(
                 resolvedSessionId: Self.resolvedSessionId(in: response),
                 messages: MessageNormalizer.normalizeMessages(rawMessages.map(AnyCodable.from)),
-                page: page
+                page: page,
+                durableRowIDs: Set(rawMessages.compactMap(Self.durablePersistedRowID(from:)))
             ))
         }
     }
@@ -7120,6 +7135,42 @@ final class AppState: ObservableObject {
         ["messages", "data", "_array"]
             .compactMap { response[$0] as? [Any] }
             .first
+    }
+
+    /// Positively extracts the durable persisted row id from a raw `/messages`
+    /// row — the id the row actually persisted under — or nil when the row
+    /// carries no durable identity (the normalizer would fall back to a
+    /// positional index, which is presentation identity, not provenance).
+    ///
+    /// Keep the envelope merge and id-key order in sync with
+    /// `MessageNormalizer.normalizeMessages`, which consumes the same rows.
+    nonisolated static func durablePersistedRowID(from rawRow: Any) -> String? {
+        guard let envelope = rawRow as? [String: Any] else { return nil }
+        // Same envelope merge as normalizeMessages: `message` / `payload` /
+        // message-shaped `data` override the envelope, nested values win.
+        let dataMessage = envelope["data"] as? [String: Any]
+        let dataMessageIsCarrier = dataMessage.map { $0["role"] != nil || $0["type"] != nil } ?? false
+        let nested = (envelope["message"] as? [String: Any])
+            ?? (envelope["payload"] as? [String: Any])
+            ?? (dataMessageIsCarrier ? dataMessage : nil)
+            ?? [:]
+        var obj = envelope
+        for (key, value) in nested {
+            obj[key] = value
+        }
+        for key in ["id", "message_id"] {
+            switch obj[key] {
+            case let string as String where !string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty:
+                return string
+            case let number as NSNumber where number.doubleValue != 0:
+                // Match AnyCodable's number rendering so the extracted id is
+                // byte-identical to the normalized ChatMessage.id.
+                return String(number.doubleValue)
+            default:
+                continue
+            }
+        }
+        return nil
     }
 
     nonisolated static func resolvedSessionId(in response: [String: Any]) -> String? {
