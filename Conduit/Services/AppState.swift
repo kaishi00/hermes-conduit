@@ -494,6 +494,23 @@ final class AppState: ObservableObject {
     /// `prompt.submit` — Hermes would apply its busy policy to it and the
     /// message would silently join a turn the user never saw start.
     private(set) var turnStateIsStale = false
+    /// Session identities with a locally-observed running turn at the last
+    /// scene transition (empty = no continuity evidence). A foreground probe
+    /// whose working/waiting row matches one of these ids continues a turn
+    /// Conduit already knows — the fast observational path. A working/waiting
+    /// row WITHOUT this evidence may be a turn another surface started while
+    /// Conduit was suspended, so liveness alone must not stand in for
+    /// transcript freshness. Captured at the transition (before
+    /// reconciliation resets any state), consumed by exactly one foreground
+    /// refresh.
+    private(set) var preSuspensionTurnRunningSessionIDs: Set<String> = []
+    /// Armed by a real `.background` transition and consumed synchronously by
+    /// the next `.active` transition: the socket can die while suspended, so
+    /// bounded persisted-history activity from another surface could have
+    /// been missed. Overlay (`.inactive`) dips keep the socket alive — live
+    /// events keep flowing — so they observe but do not arm the freshness
+    /// check.
+    private(set) var foregroundFreshnessCheckArmed = false
     @Published private(set) var busyInputMode: BusyInputMode = .steer
     @Published private(set) var displayPreferences = ProfileDisplayPreferences()
     @Published var streamingText = ""
@@ -4284,6 +4301,13 @@ final class AppState: ObservableObject {
             // Publish the foreground reconciliation boundary synchronously.
             // ChatView may receive the same scene transition before the health
             // check task runs, so geometry alone must not restore stale rows.
+            // Consume the freshness arming here, synchronously with the
+            // transition: exactly one foreground return pays the bounded
+            // freshness check, overlay dips stay observational, and a refresh
+            // superseded mid-read is token-dead before it can act on stale
+            // evidence (every deactivation rotates the token).
+            let freshnessCheckArmed = foregroundFreshnessCheckArmed
+            foregroundFreshnessCheckArmed = false
             let token = beginReconciliation()
             let automaticWorkToken = beginAutomaticChatResumeWork()
             let sceneAttemptID = UUID()
@@ -4313,6 +4337,7 @@ final class AppState: ObservableObject {
                         }
                         await self.refreshForegroundOnHealthyTransport(
                             using: client,
+                            freshnessCheckArmed: freshnessCheckArmed,
                             reconciliationToken: token,
                             automaticWorkToken: automaticWorkToken
                         )
@@ -4352,6 +4377,14 @@ final class AppState: ObservableObject {
             // authoritative runtime registry before the next composer submit
             // decides between a new turn and a busy submission.
             turnStateIsStale = true
+            // Snapshot the pre-suspension liveness evidence and arm the
+            // cross-surface freshness check: while suspended, another Hermes
+            // surface can start or finish turns whose stream events Conduit
+            // will never see (the socket may not survive the suspension).
+            preSuspensionTurnRunningSessionIDs = turnState.isRunning
+                ? acceptedIdentitySessionIDs(forRequested: activeSessionId ?? "")
+                : []
+            foregroundFreshnessCheckArmed = true
             voiceConversationController.setForegroundActive(false)
             messageReadAloudController.setForegroundActive(false)
             showVoiceSheet = false
@@ -4374,6 +4407,12 @@ final class AppState: ObservableObject {
             // system overlay can miss turn edges. This never causes a resume —
             // the foreground path treats staleness as a read-only probe.
             turnStateIsStale = true
+            // Capture the continuity evidence (an in-flight Conduit turn stays
+            // the same turn across a dip) but do NOT arm the freshness check:
+            // the socket survives overlay dips, so live events kept flowing.
+            preSuspensionTurnRunningSessionIDs = turnState.isRunning
+                ? acceptedIdentitySessionIDs(forRequested: activeSessionId ?? "")
+                : []
             // Reconnects are suppressed during .inactive too, so an armed
             // timer would only fire to be discarded. Drop it here; a socket
             // that dies under a system overlay (incoming call, control
@@ -4447,6 +4486,7 @@ final class AppState: ObservableObject {
     /// gone (or cannot answer).
     private func refreshForegroundOnHealthyTransport(
         using client: HermesClient,
+        freshnessCheckArmed: Bool,
         reconciliationToken token: UUID,
         automaticWorkToken: ChatResumeAutomaticWorkToken?
     ) async {
@@ -4470,6 +4510,17 @@ final class AppState: ObservableObject {
             settleReconciliation(token)
             return
         }
+        // Scene-transition evidence. The arming flag was consumed at the
+        // `.active` transition itself (one foreground return pays the check;
+        // dips stay observational). The pre-suspension running set is read
+        // but never cleared here: the next real transition overwrites it, so
+        // a token-rotated refresh cannot consume evidence a newer refresh
+        // still needs. A working/waiting row matching the pre-suspension
+        // running set continues a turn Conduit already owns; without that
+        // match, liveness alone says nothing about whether the local
+        // transcript saw the activity, and a real background interval may
+        // have hidden persisted turns from another surface entirely.
+        let preSuspensionRunningIDs = preSuspensionTurnRunningSessionIDs
         switch probe {
         case let .live(row):
             if row.status == "starting" {
@@ -4483,33 +4534,64 @@ final class AppState: ObservableObject {
                     "Foreground refresh: probe=starting session=\(requestedSessionID ?? "-", privacy: .public) → observation-only, state untouched"
                 )
                 settleForegroundBoundary(token, automaticWorkToken: automaticWorkToken)
-            } else if row.isRunning, !messages.isEmpty {
-                // The same turn is still live over a hydrated transcript: keep
-                // the session, the transcript, the streaming buffer, and the
-                // PR #121 live reasoning projection exactly as they are. Only
-                // the buffered events captured while the reconciliation
-                // boundary was open need replaying — nothing was replaced, so
-                // no dedup is needed.
-                lifecycleLog.notice(
-                    "Foreground refresh: probe=live status=\(row.status, privacy: .public) session=\(requestedSessionID ?? "-", privacy: .public) → observation-only adopt"
-                )
-                adoptForegroundRunningState(
-                    reconciliationToken: token,
-                    automaticWorkToken: automaticWorkToken
-                )
             } else if row.isRunning {
-                // A running runtime over an empty local transcript means this
-                // surface never hydrated (failed resume, or the turn was
-                // started from another surface): attach through the full
-                // refresh, whose resume returns the live projection.
-                lifecycleLog.notice(
-                    "Foreground refresh: probe=live localTranscript=empty → resume refresh (attach live projection)"
+                let acceptedIDs = acceptedIdentitySessionIDs(
+                    forRequested: requestedSessionID ?? ""
                 )
-                await syncSession(
-                    purpose: .automaticReturn,
-                    using: token,
-                    automaticWorkToken: automaticWorkToken
-                )
+                let continuesLocalTurn = !preSuspensionRunningIDs.isDisjoint(with: acceptedIDs)
+                if continuesLocalTurn, !messages.isEmpty {
+                    // The same turn is still live over a hydrated transcript:
+                    // keep the session, the transcript, the streaming buffer,
+                    // and the PR #121 live reasoning projection exactly as
+                    // they are. Only the buffered events captured while the
+                    // reconciliation boundary was open need replaying —
+                    // nothing was replaced, so no dedup is needed.
+                    lifecycleLog.notice(
+                        "Foreground refresh: probe=live status=\(row.status, privacy: .public) session=\(requestedSessionID ?? "-", privacy: .public) → observation-only adopt"
+                    )
+                    adoptForegroundRunningState(
+                        reconciliationToken: token,
+                        automaticWorkToken: automaticWorkToken
+                    )
+                } else if !freshnessCheckArmed, !messages.isEmpty {
+                    // Overlay-dip semantics: the socket survived the dip and
+                    // live events kept the transcript current, so the
+                    // observational adopt stands without a transcript read.
+                    lifecycleLog.notice(
+                        "Foreground refresh: probe=live status=\(row.status, privacy: .public) session=\(requestedSessionID ?? "-", privacy: .public) → observation-only adopt (unarmed)"
+                    )
+                    adoptForegroundRunningState(
+                        reconciliationToken: token,
+                        automaticWorkToken: automaticWorkToken
+                    )
+                } else if freshnessCheckArmed {
+                    // Working/waiting without turn-continuity evidence (or an
+                    // unanchored transcript) after a real background: a turn
+                    // another surface started may be missing locally. One
+                    // bounded persisted-tail read decides between an
+                    // observational adopt, a merged advancement, and the
+                    // bounded resume refresh.
+                    await reconcileForegroundCrossSurfaceActivity(
+                        livenessIsRunning: true,
+                        requestedSessionID: requestedSessionID ?? "",
+                        probeRow: row,
+                        reconciliationToken: token,
+                        automaticWorkToken: automaticWorkToken
+                    )
+                } else {
+                    // A running runtime over an empty local transcript means
+                    // this surface never hydrated (failed resume, or the turn
+                    // was started from another surface): attach through the
+                    // full refresh, whose resume returns the live projection.
+                    lifecycleLog.notice(
+                        "Foreground refresh: probe=live localTranscript=empty → resume refresh (attach live projection)"
+                    )
+                    await syncSession(
+                        purpose: .automaticReturn,
+                        using: token,
+                        automaticWorkToken: automaticWorkToken
+                    )
+                }
             } else if turnState.isRunning {
                 // The turn ended while the app was suspended and the idle edge
                 // was missed. Presentation recovery needs the authoritative
@@ -4523,24 +4605,24 @@ final class AppState: ObservableObject {
                     using: token,
                     automaticWorkToken: automaticWorkToken
                 )
-            } else {
-                // The registry is authoritative that this runtime is idle.
-                // Adopt idle through the shared helper so a transitional
-                // state (.synchronizing / .reconnecting) left behind by an
-                // aborted recovery attempt cannot survive a healthy-socket
-                // foreground cycle — the observational refresh must still end
-                // with a usable composer. setRunning(false) is idempotent for
-                // .idle and preserves an unsupportedGateway marker.
-                lifecycleLog.notice(
-                    "Foreground refresh: probe=idle → adopt idle"
+            } else if freshnessCheckArmed {
+                // Authoritative idle after a real background: the runtime
+                // being idle does not prove the local transcript saw
+                // everything persisted while Conduit was away. One bounded
+                // persisted-tail read decides between the observational idle
+                // adoption and merging the missed rows.
+                await reconcileForegroundCrossSurfaceActivity(
+                    livenessIsRunning: false,
+                    requestedSessionID: requestedSessionID ?? "",
+                    probeRow: row,
+                    reconciliationToken: token,
+                    automaticWorkToken: automaticWorkToken
                 )
-                // The adopted idle is the OLDER observation: events buffered
-                // while the boundary was open are newer live edges and must
-                // win (a busy edge that raced the probe re-owns the state)
-                // before the boundary settles and discards them.
-                setRunning(false)
-                turnStateIsStale = false
-                settleForegroundBoundary(token, automaticWorkToken: automaticWorkToken)
+            } else {
+                adoptForegroundAuthoritativeIdle(
+                    token: token,
+                    automaticWorkToken: automaticWorkToken
+                )
             }
         case .absent:
             // No live runtime for this session: either the turn completed and
@@ -4650,6 +4732,312 @@ final class AppState: ObservableObject {
         let bufferedEvents = reconciliation?.bufferedEvents ?? []
         bufferedEvents.forEach { applyStreamEvent($0) }
         _ = settleReconciliationAndPublish(token, automaticWorkToken: automaticWorkToken)
+    }
+
+    /// Adopts an authoritative idle observation: the registry says this
+    /// runtime is idle, so a transitional state (.synchronizing /
+    /// .reconnecting) left behind by an aborted recovery attempt cannot
+    /// survive a healthy-socket foreground cycle — the observational refresh
+    /// must still end with a usable composer. setRunning(false) is idempotent
+    /// for .idle and preserves an unsupportedGateway marker. The adopted idle
+    /// is the OLDER observation: events buffered while the boundary was open
+    /// are newer live edges and must win (a busy edge that raced the probe
+    /// re-owns the state) before the boundary settles and discards them.
+    private func adoptForegroundAuthoritativeIdle(
+        token: UUID,
+        automaticWorkToken: ChatResumeAutomaticWorkToken?
+    ) {
+        lifecycleLog.notice("Foreground refresh: probe=idle → adopt idle")
+        setRunning(false)
+        turnStateIsStale = false
+        settleForegroundBoundary(token, automaticWorkToken: automaticWorkToken)
+    }
+
+    // MARK: - Cross-surface transcript freshness
+
+    /// Outcome of the bounded persisted-tail freshness comparison against the
+    /// locally adopted durable frontier.
+    private enum ForegroundFreshnessVerdict {
+        /// The newest page overlaps the local durable frontier and contains
+        /// nothing beyond it: the local transcript is current.
+        case unchanged
+        /// The page overlaps the frontier and holds validated durable rows
+        /// after it: persisted activity the local transcript never saw.
+        case advanced(transcript: PersistedSessionTranscript, newRows: [ChatMessage])
+        /// No durable ordering proof: the frontier rotated out of the newest
+        /// page, the read was a legacy one-shot without durable identity, the
+        /// response belongs to another conversation identity, the local tail
+        /// is not durably anchored, or there is no local frontier. Same
+        /// invariant as the ambiguous-delivery verifier — no anchor means
+        /// "unchanged" can never be declared.
+        case inconclusive
+        /// The check could not run at all: no usable history source, or the
+        /// bounded read failed transiently. The authoritative liveness
+        /// observation stands on the previously accepted observational
+        /// terms — a failed check must not escalate into a resume cascade.
+        case unverifiable
+    }
+
+    /// Compares one bounded persisted-tail read against the local durable
+    /// frontier. Ordering key: the page is chronological, so the NEWEST local
+    /// durable row present in the page is the anchor and only strictly-later
+    /// page rows are candidates; candidate rows already held (streamed in
+    /// live under any identity) are dropped by id.
+    private func foregroundFreshnessVerdict(
+        _ outcome: PersistedTranscriptOutcome,
+        localFrontier: Set<String>,
+        localMessageIDs: Set<String>,
+        lastLocalMessageID: String?,
+        requestedSessionID: String,
+        runtimeSessionID: String
+    ) -> ForegroundFreshnessVerdict {
+        switch outcome {
+        case .unavailable, .failed:
+            return .unverifiable
+        case let .hydrated(transcript):
+            guard let page = transcript.page, page.honorsTailContract,
+                  transcript.messages.isEmpty || !transcript.durableRowIDs.isEmpty else {
+                // Legacy one-shot: positively the entire transcript, but its
+                // rows carry no durable identity, so nothing can be compared
+                // (text and count comparisons are forbidden). The bounded
+                // resume refresh owns legacy conversations end-to-end.
+                return .inconclusive
+            }
+            // A positively empty page with no older rows proves the
+            // conversation has no persisted rows at all: an idle runtime
+            // cannot hide anything behind it, and an empty local transcript
+            // has nothing to diverge from.
+            if transcript.messages.isEmpty {
+                guard !page.mayHaveOlderRows(fetchedRowCount: 0),
+                      lastLocalMessageID == nil else {
+                    return .inconclusive
+                }
+                return .unchanged
+            }
+            guard transcriptMatchesSession(
+                transcript,
+                requestedSessionId: requestedSessionID,
+                resumedSessionId: runtimeSessionID
+            ) else {
+                // The endpoint answered for a different conversation
+                // identity: never merge rows from a foreign transcript.
+                return .inconclusive
+            }
+            // The local transcript must END on a row the frontier vouches
+            // for. Trailing optimistic/streaming rows have persisted twins
+            // (same turn, database id) that would merge as duplicates, so
+            // the append-only merge is ineligible: the bounded resume
+            // refresh — which replaces the tail wholesale and already
+            // converges this exact shape — takes over.
+            guard let lastLocalMessageID,
+                  localFrontier.contains(lastLocalMessageID),
+                  let anchorIndex = transcript.messages.lastIndex(where: {
+                      localFrontier.contains($0.id)
+                  }) else {
+                // Unanchored tail, no local frontier, or the frontier
+                // rotated out of the newest page (an accepted turn can push
+                // hundreds of rows past the window): no ordering proof —
+                // same invariant as the ambiguous-delivery verifier.
+                return .inconclusive
+            }
+            var knownIDs = localMessageIDs
+            var newRows: [ChatMessage] = []
+            for row in transcript.messages[transcript.messages.index(after: anchorIndex)...]
+            where knownIDs.insert(row.id).inserted {
+                newRows.append(row)
+            }
+            if newRows.isEmpty {
+                return .unchanged
+            }
+            return .advanced(transcript: transcript, newRows: newRows)
+        }
+    }
+
+    /// Runs the bounded cross-surface freshness reconciliation for a
+    /// foreground whose probe liveness could hide missed persisted activity
+    /// (real background interval, no turn-continuity evidence):
+    ///
+    /// - anchor overlap, nothing newer → observational liveness adoption,
+    ///   transcript untouched, zero `session.resume`;
+    /// - anchor overlap, newer durable rows → the advancement is appended to
+    ///   the local transcript (loaded-earlier prefix untouched, persisted
+    ///   window re-anchored) and the liveness adopted — still zero
+    ///   `session.resume`, because the persisted-history source supplied
+    ///   everything a completed turn needs;
+    /// - inconclusive → the existing bounded resume refresh (the one
+    ///   `session.resume` that re-anchors the whole conversation and, for a
+    ///   live runtime, returns the in-flight projection);
+    /// - unverifiable → the previously accepted observational behavior.
+    private func reconcileForegroundCrossSurfaceActivity(
+        livenessIsRunning: Bool,
+        requestedSessionID: String,
+        probeRow: LiveSessionStatus,
+        reconciliationToken token: UUID,
+        automaticWorkToken: ChatResumeAutomaticWorkToken?
+    ) async {
+        let profile = activeProfile
+        let bridge = dashboardTicketBridge
+        let localFrontier = durablePersistedRowIDs
+        let localMessageIDs = Set(messages.map { $0.id })
+        let lastLocalMessageID = messages.last?.id
+        let outcome = await persistedTranscriptOutcome(
+            sessionId: requestedSessionID,
+            profile: profile,
+            using: bridge
+        )
+        guard foregroundRefreshOwnsReconciliation(token),
+              automaticChatResumeWorkIsCurrent(automaticWorkToken) else {
+            settleReconciliation(token)
+            return
+        }
+        // The composer stays enabled during the bounded read: a submit that
+        // landed mid-read appends an optimistic row and would invert the
+        // merge order. The transcript moved, so the append-only merge can no
+        // longer be proven safe — the bounded resume refresh converges it.
+        guard messages.last?.id == lastLocalMessageID,
+              durablePersistedRowIDs == localFrontier else {
+            lifecycleLog.notice(
+                "Foreground freshness: session=\(requestedSessionID, privacy: .public) transcript moved during read → bounded resume refresh"
+            )
+            await syncSession(
+                purpose: .automaticReturn,
+                using: token,
+                automaticWorkToken: automaticWorkToken
+            )
+            return
+        }
+        switch foregroundFreshnessVerdict(
+            outcome,
+            localFrontier: localFrontier,
+            localMessageIDs: localMessageIDs,
+            lastLocalMessageID: lastLocalMessageID,
+            requestedSessionID: requestedSessionID,
+            runtimeSessionID: probeRow.runtimeSessionId
+        ) {
+        case let .advanced(transcript, newRows):
+            lifecycleLog.notice(
+                "Foreground freshness: probe=\(livenessIsRunning ? "running" : "idle", privacy: .public) session=\(requestedSessionID, privacy: .public) verdict=advanced rows=\(newRows.count, privacy: .public) → merge persisted advancement"
+            )
+            applyPersistedForegroundAdvancement(
+                requestedSessionID: requestedSessionID,
+                transcript: transcript,
+                newRows: newRows,
+                runtimeSessionID: probeRow.runtimeSessionId,
+                profile: profile
+            )
+            adoptForegroundLiveness(
+                livenessIsRunning,
+                token: token,
+                automaticWorkToken: automaticWorkToken
+            )
+        case .unchanged:
+            lifecycleLog.notice(
+                "Foreground freshness: probe=\(livenessIsRunning ? "running" : "idle", privacy: .public) session=\(requestedSessionID, privacy: .public) verdict=unchanged → observational adopt"
+            )
+            adoptForegroundLiveness(
+                livenessIsRunning,
+                token: token,
+                automaticWorkToken: automaticWorkToken
+            )
+        case .unverifiable:
+            lifecycleLog.notice(
+                "Foreground freshness: probe=\(livenessIsRunning ? "running" : "idle", privacy: .public) session=\(requestedSessionID, privacy: .public) verdict=unverifiable → observational fallback"
+            )
+            if livenessIsRunning, messages.isEmpty {
+                // Pre-freshness semantics for a running runtime over an empty
+                // transcript: attach the live projection.
+                await syncSession(
+                    purpose: .automaticReturn,
+                    using: token,
+                    automaticWorkToken: automaticWorkToken
+                )
+            } else {
+                adoptForegroundLiveness(
+                    livenessIsRunning,
+                    token: token,
+                    automaticWorkToken: automaticWorkToken
+                )
+            }
+        case .inconclusive:
+            lifecycleLog.notice(
+                "Foreground freshness: probe=\(livenessIsRunning ? "running" : "idle", privacy: .public) session=\(requestedSessionID, privacy: .public) verdict=inconclusive → bounded resume refresh"
+            )
+            await syncSession(
+                purpose: .automaticReturn,
+                using: token,
+                automaticWorkToken: automaticWorkToken
+            )
+        }
+    }
+
+    /// Adopts the freshly-decided foreground liveness after a freshness
+    /// verdict: the merged transcript / unchanged snapshot is the OLDER
+    /// observation, so buffered events replay after it (newer edges win) and
+    /// the boundary settles last.
+    private func adoptForegroundLiveness(
+        _ running: Bool,
+        token: UUID,
+        automaticWorkToken: ChatResumeAutomaticWorkToken?
+    ) {
+        if running {
+            adoptForegroundRunningState(
+                reconciliationToken: token,
+                automaticWorkToken: automaticWorkToken
+            )
+        } else {
+            adoptForegroundAuthoritativeIdle(
+                token: token,
+                automaticWorkToken: automaticWorkToken
+            )
+        }
+    }
+
+    /// Appends cross-surface persisted advancement to the live transcript.
+    /// Append-only by construction: the verdict selected rows strictly after
+    /// the newest local durable anchor, deduplicated against every held row
+    /// id, so the loaded-earlier prefix and any durably-anchored tail remain
+    /// exactly as they were. The persisted window is re-anchored to the
+    /// fetched page (same coverage-reset semantics as a reconcile refresh:
+    /// subsequent backfills retrace deduped page-sized increments), keeping
+    /// "Load earlier messages" coherent without a resume.
+    private func applyPersistedForegroundAdvancement(
+        requestedSessionID: String,
+        transcript: PersistedSessionTranscript,
+        newRows: [ChatMessage],
+        runtimeSessionID: String,
+        profile: String
+    ) {
+        var knownIDs = Set(messages.map { $0.id })
+        var merged = messages
+        merged.reserveCapacity(merged.count + newRows.count)
+        for row in newRows where knownIDs.insert(row.id).inserted {
+            merged.append(row)
+        }
+        messages = merged
+        // The merge just made the newest persisted page local: adopt its
+        // durable ids as the frontier (same per-hydration replacement
+        // semantics as reconcile) so the next freshness check anchors
+        // against the rows this merge added.
+        durablePersistedRowIDs = transcript.durableRowIDs
+        let priorOwned: PersistedTranscriptWindowState? = priorWindowOwnsThisConversation(
+            persistedTranscriptWindow,
+            requestedSessionId: requestedSessionID,
+            resolvedSessionId: transcript.resolvedSessionId,
+            runtimeSessionId: runtimeSessionID,
+            profile: profile
+        ) ? persistedTranscriptWindow : nil
+        if let page = transcript.page, page.honorsTailContract {
+            persistedTranscriptWindow = PersistedTranscriptWindowState(
+                requestedSessionID: requestedSessionID,
+                profile: profile,
+                pageSize: PersistedTranscriptPagination.pageSize,
+                resolvedSessionID: transcript.resolvedSessionId,
+                runtimeSessionID: runtimeSessionID,
+                nextOffset: page.rawReturned,
+                canLoadEarlier: page.mayHaveOlderRows(fetchedRowCount: page.rawReturned),
+                hasBackfilledPrefix: priorOwned?.hasBackfilledPrefix ?? false
+            )
+        }
     }
 
     private func verifyChatResumeTransportHealth(_ client: HermesClient) async throws {
@@ -10230,15 +10618,29 @@ final class AppState: ObservableObject {
 
         let firstTurnUserMessage = messages.first(where: { $0.role == .user })?.content
         let isFirstUserTurn = messages.filter { $0.role == .user }.count == 1
-        let resolvedMessageID = messageId
+        let trimmedMessageID = messageId
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .flatMap { $0.isEmpty ? nil : $0 }
+        let resolvedMessageID = trimmedMessageID
             ?? "assistant-\(Date().timeIntervalSince1970)"
         let systemNotice = MessageNormalizer.systemNoticeText(fromText: finalContent)
         let displayContent = systemNotice ?? finalContent
         let displayRole: MessageRole = systemNotice == nil ? .assistant : .system
-        if !displayContent.isEmpty,
-           (messages.last?.role != displayRole || messages.last?.content != displayContent) {
+        // In-place finalization only for GATEWAY-SUPPLIED ids: a cross-surface
+        // persisted advancement can merge the persisted row before the live
+        // completion arrives, and the completion must finalize that row in
+        // place instead of appending a twin. The timestamp fallback id is
+        // minted locally per completion — matching on it could overwrite an
+        // unrelated same-second completion — so it keeps the historical
+        // append semantics.
+        if let trimmedMessageID,
+           let existingIndex = messages.lastIndex(where: { $0.id == trimmedMessageID }) {
+            if !displayContent.isEmpty {
+                messages[existingIndex].content = displayContent
+                messages[existingIndex].rawContent = systemNotice == nil ? nil : finalContent
+            }
+        } else if !displayContent.isEmpty,
+                  (messages.last?.role != displayRole || messages.last?.content != displayContent) {
             messages.append(ChatMessage(
                 id: resolvedMessageID,
                 role: displayRole,
