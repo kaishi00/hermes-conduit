@@ -511,6 +511,30 @@ final class AppState: ObservableObject {
     /// events keep flowing — so they observe but do not arm the freshness
     /// check.
     private(set) var foregroundFreshnessCheckArmed = false
+    /// Whether the visible persisted transcript may be MISSING rows —
+    /// conceptually disjoint from `turnStateIsStale`, which answers "do I
+    /// know whether Hermes is currently busy?". Set only when a bounded
+    /// foreground freshness read failed transiently on a real background
+    /// return; a liveness answer (the registry probe) can never clear it.
+    /// Cleared only when an authoritative transcript source proves
+    /// convergence: an unchanged bounded verdict, an advancement merge, or a
+    /// resume/reconcile hydration (`applyChatResume`).
+    private(set) var transcriptFreshnessIsStale = false
+    /// Evidence that the in-flight turn was submitted from THIS surface:
+    /// recorded when a locally-initiated, non-busy `prompt.submit` is
+    /// accepted (or ambiguity recovery proves `.acceptedRunning`), and
+    /// validated at use against the transcript (the optimistic user row must
+    /// still be present, unpersisted, and head a fully-unpersisted suffix)
+    /// plus the local turn state. Hermes runs one turn per session, so a
+    /// remote turn B normally requires our turn A to have settled — and
+    /// settling clears the marker; the residual unobserved-settle window is
+    /// documented on `locallyOwnedFreshnessTailRowIDs`. Distinct from durable
+    /// provenance: optimistic row ids never enter `durablePersistedRowIDs`.
+    private struct LocallyOwnedInFlightTurn {
+        var sessionIDs: Set<String>
+        var optimisticUserRowID: String
+    }
+    private var locallyOwnedInFlightTurn: LocallyOwnedInFlightTurn?
     @Published private(set) var busyInputMode: BusyInputMode = .steer
     @Published private(set) var displayPreferences = ProfileDisplayPreferences()
     @Published var streamingText = ""
@@ -1774,6 +1798,7 @@ final class AppState: ObservableObject {
         activeSessionTitle = "New conversation"
         messages = []
         persistedTranscriptWindow = nil
+        resetTranscriptLifecycleEvidence()
         clearStreamingText()
         resetReasoningTurn()
         activeSessionTitlesByProfile = [:]
@@ -2358,13 +2383,15 @@ final class AppState: ObservableObject {
         purpose: ChatResumeSyncPurpose,
         using existingReconciliationToken: UUID?,
         automaticWorkToken existingAutomaticWorkToken: ChatResumeAutomaticWorkToken?,
-        requiredViewportTransitionGeneration: UInt64? = nil
+        requiredViewportTransitionGeneration: UInt64? = nil,
+        historySourceUnavailable: Bool = false
     ) async {
         _ = await performSyncSession(
             purpose: purpose,
             using: existingReconciliationToken,
             automaticWorkToken: existingAutomaticWorkToken,
-            requiredViewportTransitionGeneration: requiredViewportTransitionGeneration
+            requiredViewportTransitionGeneration: requiredViewportTransitionGeneration,
+            historySourceUnavailable: historySourceUnavailable
         )
     }
 
@@ -2372,7 +2399,8 @@ final class AppState: ObservableObject {
         purpose: ChatResumeSyncPurpose,
         using existingReconciliationToken: UUID?,
         automaticWorkToken existingAutomaticWorkToken: ChatResumeAutomaticWorkToken?,
-        requiredViewportTransitionGeneration: UInt64? = nil
+        requiredViewportTransitionGeneration: UInt64? = nil,
+        historySourceUnavailable: Bool = false
     ) async -> ChatResumeSyncExecutionOutcome {
         guard chatViewportTransitionIsCurrent(
             requiredViewportTransitionGeneration
@@ -2503,7 +2531,8 @@ final class AppState: ObservableObject {
                     acceptedSessionIDs: Set([target.id] + target.alternateIds),
                     automaticWorkToken: automaticWorkToken,
                     automaticSyncOperationID: automaticOperationID,
-                    requiredViewportTransitionGeneration: requiredViewportTransitionGeneration
+                    requiredViewportTransitionGeneration: requiredViewportTransitionGeneration,
+                    historySourceUnavailable: historySourceUnavailable
                 )
                 if !succeeded,
                    purpose == .automaticReturn,
@@ -2746,7 +2775,8 @@ final class AppState: ObservableObject {
         acceptedSessionIDs: Set<String> = [],
         automaticWorkToken: ChatResumeAutomaticWorkToken? = nil,
         automaticSyncOperationID: UUID? = nil,
-        requiredViewportTransitionGeneration: UInt64? = nil
+        requiredViewportTransitionGeneration: UInt64? = nil,
+        historySourceUnavailable: Bool = false
     ) async -> Bool {
         guard automaticChatResumeWorkIsCurrent(
             automaticWorkToken,
@@ -2794,21 +2824,28 @@ final class AppState: ObservableObject {
             // legacy resume — cold bridge, gateway without the history route —
             // carries the transcript in the RPC response, whose size is
             // bounded by the socket limit (the pre-compact behavior).
-            let compactResume = chatResumeLifecycleOperations.persistedTranscript != nil || bridge != nil
-            async let resumedSession = openChatResumeSession(
-                sessionId,
-                using: client,
-                compact: compactResume
-            )
-            async let transcriptOutcome = persistedTranscriptOutcome(
-                sessionId: sessionId,
-                profile: profile,
-                using: bridge
-            )
-
-            var result = try await resumedSession
+            //
+            // A caller that POSITIVELY established structural history
+            // absence moments ago (the foreground freshness path) skips the
+            // compact attempt entirely: a compact resume here would be
+            // followed by a doomed history request and a second legacy
+            // resume — one non-compact resume does the whole job.
+            let compactResume = !historySourceUnavailable
+                && (chatResumeLifecycleOperations.persistedTranscript != nil || bridge != nil)
+            var result: SessionResumeResult
             var transcript: PersistedSessionTranscript?
             if compactResume {
+                async let resumedSession = openChatResumeSession(
+                    sessionId,
+                    using: client,
+                    compact: true
+                )
+                async let transcriptOutcome = persistedTranscriptOutcome(
+                    sessionId: sessionId,
+                    profile: profile,
+                    using: bridge
+                )
+                result = try await resumedSession
                 switch await transcriptOutcome {
                 case .hydrated(let persisted):
                     // The endpoint may resolve a runtime ID to its stored
@@ -2843,6 +2880,12 @@ final class AppState: ObservableObject {
                     // a legacy resume that would hide it: surface it instead.
                     throw error
                 }
+            } else {
+                result = try await openChatResumeSession(
+                    sessionId,
+                    using: client,
+                    compact: false
+                )
             }
             guard automaticChatResumeWorkIsCurrent(
                     automaticWorkToken,
@@ -3228,6 +3271,7 @@ final class AppState: ObservableObject {
             setActiveSessionState(id: runtimeSessionID, title: "New conversation")
             messages = []
             persistedTranscriptWindow = nil
+            resetTranscriptLifecycleEvidence()
             noteChatViewportTranscriptReplacement()
             clearStreamingText()
             activeAssistantMessageId = nil
@@ -3358,6 +3402,12 @@ final class AppState: ObservableObject {
         )
         messages = mergeCachedReviews(into: restored, sessionId: result.sessionId)
         noteChatViewportTranscriptReplacement()
+        // An authoritative resume/reconcile just replaced the transcript:
+        // whatever rows a failed freshness read could not see are now either
+        // present or authoritatively absent, and any optimistic-turn
+        // provenance died with the rows it pointed at.
+        transcriptFreshnessIsStale = false
+        locallyOwnedInFlightTurn = nil
         let gatewayPendingDecisionKeys = SessionPresentationCache.pendingDecisionKeys(in: result.messages)
         let restoredPendingDecisionKeys = SessionPresentationCache
             .pendingDecisionKeys(in: messages)
@@ -4384,6 +4434,19 @@ final class AppState: ObservableObject {
             preSuspensionTurnRunningSessionIDs = turnState.isRunning
                 ? acceptedIdentitySessionIDs(forRequested: activeSessionId ?? "")
                 : []
+            // A locally-owned in-flight turn is only continuity evidence
+            // while this conversation's turn is unsettled. A SETTLED turn
+            // (idle, or the unsupported-gateway dead end) expires the marker;
+            // .synchronizing/.reconnecting are mid-recovery, not settle —
+            // the turn may still be live, so the marker survives them. A
+            // marker left over from another session never survives.
+            if turnState == .idle || turnState == .unsupportedGateway {
+                locallyOwnedInFlightTurn = nil
+            } else if let marker = locallyOwnedInFlightTurn,
+                      let active = activeSessionId,
+                      !marker.sessionIDs.contains(active) {
+                locallyOwnedInFlightTurn = nil
+            }
             foregroundFreshnessCheckArmed = true
             voiceConversationController.setForegroundActive(false)
             messageReadAloudController.setForegroundActive(false)
@@ -4767,6 +4830,16 @@ final class AppState: ObservableObject {
 
     // MARK: - Cross-surface transcript freshness
 
+    /// Transcript-scoped lifecycle evidence (freshness uncertainty and
+    /// locally-owned turn provenance) belongs to the conversation it was
+    /// captured for. Call wherever the transcript is wholesale reset for a
+    /// new/different conversation identity: sign-out, profile switch,
+    /// conversation replacement, session open.
+    private func resetTranscriptLifecycleEvidence() {
+        transcriptFreshnessIsStale = false
+        locallyOwnedInFlightTurn = nil
+    }
+
     /// Outcome of the bounded persisted-tail freshness comparison against the
     /// locally adopted durable frontier.
     private enum ForegroundFreshnessVerdict {
@@ -4779,14 +4852,19 @@ final class AppState: ObservableObject {
         /// No durable ordering proof: the frontier rotated out of the newest
         /// page, the backend has no tail contract, the response belongs to
         /// another conversation identity, the local tail is not durably
-        /// anchored, there is no local frontier, or the history source is
-        /// structurally absent. Same invariant as the ambiguous-delivery
-        /// verifier — no anchor means "unchanged" can never be declared.
-        /// The bounded resume refresh is the authoritative fallback.
+        /// anchored, or there is no local frontier. Same invariant as the
+        /// ambiguous-delivery verifier — no anchor means "unchanged" can
+        /// never be declared. The bounded resume refresh is the
+        /// authoritative fallback.
         case inconclusive
+        /// The history source is positively, structurally absent for this
+        /// conversation (no bridge, or the endpoint answered 404/410/501):
+        /// bounded evidence cannot exist, so the authoritative refresh can
+        /// skip its doomed history request and resume non-compact directly.
+        case sourceUnavailable
         /// The bounded read failed transiently (timeout, 429/5xx, bridge not
         /// ready). Liveness stays authoritative, but freshness is UNRESOLVED:
-        /// the stale marker is retained so the next authoritative source
+        /// the freshness marker is retained so the next authoritative source
         /// re-confirms, and no "unchanged" verdict may be claimed.
         case unresolvedTransient
     }
@@ -4796,22 +4874,37 @@ final class AppState: ObservableObject {
     /// durable row present in the page is the anchor and only strictly-later
     /// page rows are candidates; candidate rows already held (streamed in
     /// live under any identity) are dropped by id.
+    ///
+    /// The local transcript may end on the locally-owned turn's optimistic
+    /// rows (`locallyOwnedTailRowIDs` non-nil): those rows have no persisted
+    /// twins YET, so the frontier anchor plus an empty candidate set still
+    /// proves the durable conversation unchanged — same-turn continuation
+    /// without demanding durable ids for Conduit's own optimistic rows. Any
+    /// candidate BEYOND the anchor while the tail is optimistic is persisted
+    /// advancement that cannot be safely attributed (the optimistic user row's
+    /// persisted twin, or a foreign turn) — never merged, always the
+    /// authoritative fallback. Persisted advancement always wins over an
+    /// optimistic tail.
     private func foregroundFreshnessVerdict(
         _ outcome: ForegroundPersistedTailOutcome,
         localFrontier: Set<String>,
         localMessageIDs: Set<String>,
         lastLocalMessageID: String?,
         requestedSessionID: String,
-        runtimeSessionID: String
+        runtimeSessionID: String,
+        livenessIsRunning: Bool,
+        locallyOwnedTailRowIDs: Set<String>?
     ) -> ForegroundFreshnessVerdict {
         switch outcome {
         case .failed:
             return .unresolvedTransient
-        case .unavailable, .unsupportedTailContract:
-            // Structural source absence or a backend without the tail
-            // contract: there is no bounded evidence and the freshness check
-            // deliberately does not escalate to a full-transcript read — the
-            // bounded resume refresh is the authoritative fallback.
+        case .unavailable:
+            return .sourceUnavailable
+        case .unsupportedTailContract:
+            // A backend without the tail contract: there is no bounded
+            // evidence and the freshness check deliberately does not escalate
+            // to a full-transcript read — the bounded resume refresh is the
+            // authoritative fallback.
             return .inconclusive
         case let .hydrated(transcript):
             // Defense-in-depth only: foregroundPersistedTailOutcome already
@@ -4840,21 +4933,25 @@ final class AppState: ObservableObject {
                 // identity: never merge rows from a foreign transcript.
                 return .inconclusive
             }
-            // The local transcript must END on a row the frontier vouches
-            // for. Trailing optimistic/streaming rows have persisted twins
-            // (same turn, database id) that would merge as duplicates, so
-            // the append-only merge is ineligible: the bounded resume
-            // refresh — which replaces the tail wholesale and already
-            // converges this exact shape — takes over.
+            // The transcript must end either on a row the frontier vouches
+            // for, or on the locally-owned turn's optimistic rows. In the
+            // latter case the page must also prove nothing persisted beyond
+            // the frontier — our own optimistic rows have no persisted twins
+            // yet, and anything else cannot be safely attributed. A tail that
+            // is neither (an abandoned optimistic row, minted rows from a
+            // foreign turn) keeps the strict anchor requirement.
             guard let lastLocalMessageID,
-                  localFrontier.contains(lastLocalMessageID),
                   let anchorIndex = transcript.messages.lastIndex(where: {
                       localFrontier.contains($0.id)
                   }) else {
-                // Unanchored tail, no local frontier, or the frontier
-                // rotated out of the newest page (an accepted turn can push
-                // hundreds of rows past the window): no ordering proof —
-                // same invariant as the ambiguous-delivery verifier.
+                // No local frontier, or the frontier rotated out of the
+                // newest page (an accepted turn can push hundreds of rows
+                // past the window): no ordering proof — same invariant as the
+                // ambiguous-delivery verifier.
+                return .inconclusive
+            }
+            let tailIsDurablyAnchored = localFrontier.contains(lastLocalMessageID)
+            guard tailIsDurablyAnchored || locallyOwnedTailRowIDs != nil else {
                 return .inconclusive
             }
             var knownIDs = localMessageIDs
@@ -4864,7 +4961,35 @@ final class AppState: ObservableObject {
                 newRows.append(row)
             }
             if newRows.isEmpty {
+                // Same-turn continuation also requires the runtime to still
+                // be working/waiting on OUR turn: an idle registry behind an
+                // optimistic tail cannot prove the turn landed at all, and
+                // the authoritative refresh converges it.
+                //
+                // Defense-in-depth only: the refresh routing above already
+                // sends "locally running turn + idle registry" to the
+                // authoritative resume before any freshness read, and
+                // `locallyOwnedFreshnessTailRowIDs` requires a running local
+                // turn — so this arm cannot fire through the current call
+                // graph. It pins the invariant should that routing change.
+                //
+                // Note the companion assumption: the in-flight turn has
+                // persisted NOTHING yet, so an empty candidate set is the
+                // normal in-flight shape. A backend that persists rows at
+                // accept-time yields candidates → authoritative attach once,
+                // after which the tail is durably anchored again.
+                if !tailIsDurablyAnchored, !livenessIsRunning {
+                    return .inconclusive
+                }
                 return .unchanged
+            }
+            if !tailIsDurablyAnchored {
+                // Persisted advancement beyond the pre-turn frontier behind an
+                // optimistic tail: the append-only merge would duplicate the
+                // optimistic row's persisted twin (and cannot attribute the
+                // rest), so the advancement wins and forces the authoritative
+                // attach.
+                return .inconclusive
             }
             return .advanced(transcript: transcript, newRows: newRows)
         }
@@ -4876,20 +5001,27 @@ final class AppState: ObservableObject {
     /// never a full-transcript fallback — decides:
     ///
     /// - anchor overlap, nothing newer → observational liveness adoption,
-    ///   transcript untouched, zero `session.resume`;
+    ///   transcript untouched, zero `session.resume`. With a locally-owned
+    ///   optimistic tail, the anchor overlap plus an empty candidate set
+    ///   additionally proves same-turn continuation of the turn Conduit
+    ///   itself submitted (the normal locally-started running turn), still
+    ///   zero `session.resume`;
     /// - anchor overlap, newer durable rows → the advancement is appended to
     ///   the local transcript (loaded-earlier prefix untouched, persisted
     ///   window re-anchored) and the liveness adopted — still zero
     ///   `session.resume`, because the persisted-history source supplied
     ///   everything a completed turn needs;
     /// - inconclusive (rotated anchor, no tail contract, foreign resolved id,
-    ///   unanchored optimistic tail, structurally absent source) → the
-    ///   existing bounded resume refresh, the authoritative fallback that
-    ///   re-anchors the whole conversation (and, for a live runtime, returns
-    ///   the in-flight projection);
+    ///   unanchored foreign tail, persisted advancement behind an optimistic
+    ///   tail) → the existing bounded resume refresh, the authoritative
+    ///   fallback that re-anchors the whole conversation (and, for a live
+    ///   runtime, returns the in-flight projection);
+    /// - structurally absent source → the same authoritative refresh, hinted
+    ///   so it skips the doomed history request and resumes non-compact
+    ///   exactly once;
     /// - transient read failure → the authoritative liveness adoption with
-    ///   the stale marker RETAINED: freshness is unresolved, never claimed
-    ///   current, and the next authoritative source re-confirms.
+    ///   the transcript-freshness marker SET: freshness is unresolved, never
+    ///   claimed current, and the next authoritative source re-confirms.
     private func reconcileForegroundCrossSurfaceActivity(
         livenessIsRunning: Bool,
         requestedSessionID: String,
@@ -4902,6 +5034,9 @@ final class AppState: ObservableObject {
         let localFrontier = durablePersistedRowIDs
         let localMessageIDs = Set(messages.map { $0.id })
         let lastLocalMessageID = messages.last?.id
+        let locallyOwnedTailRowIDs = locallyOwnedFreshnessTailRowIDs(
+            forRequested: requestedSessionID
+        )
         let outcome = await foregroundPersistedTailOutcome(
             sessionId: requestedSessionID,
             profile: profile,
@@ -4934,7 +5069,9 @@ final class AppState: ObservableObject {
             localMessageIDs: localMessageIDs,
             lastLocalMessageID: lastLocalMessageID,
             requestedSessionID: requestedSessionID,
-            runtimeSessionID: probeRow.runtimeSessionId
+            runtimeSessionID: probeRow.runtimeSessionId,
+            livenessIsRunning: livenessIsRunning,
+            locallyOwnedTailRowIDs: locallyOwnedTailRowIDs
         ) {
         case let .advanced(transcript, newRows):
             if livenessIsRunning {
@@ -4971,6 +5108,10 @@ final class AppState: ObservableObject {
             lifecycleLog.notice(
                 "Foreground freshness: probe=\(livenessIsRunning ? "running" : "idle", privacy: .public) session=\(requestedSessionID, privacy: .public) verdict=unchanged → observational adopt"
             )
+            // The bounded read proved the durable conversation current (an
+            // optimistic locally-owned tail is live-turn content, not
+            // divergence).
+            transcriptFreshnessIsStale = false
             adoptForegroundLiveness(
                 livenessIsRunning,
                 token: token,
@@ -4985,13 +5126,25 @@ final class AppState: ObservableObject {
                 token: token,
                 automaticWorkToken: automaticWorkToken
             )
-            // The bounded read failed transiently: freshness is UNRESOLVED.
-            // Retain the stale marker so the next authoritative source (the
-            // pre-send probe, the next background's freshness check, a
-            // reconnect) re-confirms — never claim a currency the read could
-            // not prove, and never escalate the failed bounded read into a
-            // full-transcript transfer.
-            turnStateIsStale = true
+            // The bounded read failed transiently: transcript freshness is
+            // UNRESOLVED — tracked separately from turn-state staleness
+            // (liveness was just adopted authoritatively above). The
+            // pre-send freshness retry and the next background's freshness
+            // check re-confirm; a registry probe alone can never clear this.
+            transcriptFreshnessIsStale = true
+        case .sourceUnavailable:
+            // Positively structural: the authoritative refresh re-anchors
+            // the conversation, hinted to skip the history request that just
+            // proved absent and resume non-compact exactly once.
+            lifecycleLog.notice(
+                "Foreground freshness: probe=\(livenessIsRunning ? "running" : "idle", privacy: .public) session=\(requestedSessionID, privacy: .public) verdict=source-unavailable → single authoritative resume"
+            )
+            await syncSession(
+                purpose: .automaticReturn,
+                using: token,
+                automaticWorkToken: automaticWorkToken,
+                historySourceUnavailable: true
+            )
         case .inconclusive:
             lifecycleLog.notice(
                 "Foreground freshness: probe=\(livenessIsRunning ? "running" : "idle", privacy: .public) session=\(requestedSessionID, privacy: .public) verdict=inconclusive → bounded resume refresh"
@@ -5002,6 +5155,34 @@ final class AppState: ObservableObject {
                 automaticWorkToken: automaticWorkToken
             )
         }
+    }
+
+    /// Non-nil when the transcript's trailing unpersisted rows belong to a
+    /// turn THIS surface submitted and the local turn state still agrees the
+    /// turn is in flight: the recorded optimistic user row is still present
+    /// and unpersisted, and every row after it is unpersisted too. The
+    /// residual window this cannot close — our turn settling unobserved
+    /// (dead socket) while a remote turn starts before anything of either
+    /// persisted — degrades to the same observational adopt the pre-marker
+    /// code took (a bounded resume in that exact window was the PR #121
+    /// regression); persisted advancement, idle liveness, and buffered
+    /// settle edges all still force the authoritative path.
+    private func locallyOwnedFreshnessTailRowIDs(
+        forRequested sessionID: String
+    ) -> Set<String>? {
+        guard turnState.isRunning,
+              let marker = locallyOwnedInFlightTurn,
+              marker.sessionIDs.contains(sessionID),
+              !durablePersistedRowIDs.contains(marker.optimisticUserRowID),
+              let userIndex = messages.lastIndex(where: {
+                  $0.id == marker.optimisticUserRowID
+              }),
+              messages[userIndex...].allSatisfy({
+                  !durablePersistedRowIDs.contains($0.id)
+              }) else {
+            return nil
+        }
+        return Set(messages[userIndex...].map { $0.id })
     }
 
     /// Adopts the freshly-decided foreground liveness after a freshness
@@ -5048,6 +5229,9 @@ final class AppState: ObservableObject {
             merged.append(row)
         }
         messages = merged
+        // The bounded read just proved exactly which persisted rows were
+        // missing and merged them: transcript freshness is restored.
+        transcriptFreshnessIsStale = false
         // The merge just made the newest persisted page local: adopt its
         // durable ids as the frontier (same per-hydration replacement
         // semantics as reconcile) so the next freshness check anchors
@@ -5396,6 +5580,7 @@ final class AppState: ObservableObject {
         setActiveSessionState(id: nil, title: "New conversation")
         messages = []
         persistedTranscriptWindow = nil
+        resetTranscriptLifecycleEvidence()
         clearStreamingText()
         activeAssistantMessageId = nil
         resetReasoningTurn()
@@ -5475,6 +5660,9 @@ final class AppState: ObservableObject {
         setActiveSessionState(id: sessionId)
         messages = []
         persistedTranscriptWindow = nil
+        // Freshness evidence belongs to the conversation it was captured
+        // for; the reconcile below re-establishes it authoritatively.
+        resetTranscriptLifecycleEvidence()
         clearStreamingText()
         activeAssistantMessageId = nil
         resetReasoningTurn()
@@ -5977,6 +6165,45 @@ final class AppState: ObservableObject {
             }
         }
 
+        // Transcript freshness is a separate concern from turn-state
+        // staleness: the registry probe above proves whether Hermes is busy,
+        // never whether the visible transcript is missing persisted rows. A
+        // foreground freshness read that failed transiently left that
+        // uncertainty open — resolve it with exactly one bounded tail-only
+        // retry before appending a new-turn prompt into a possibly-reordered
+        // transcript.
+        if turnState == .idle, transcriptFreshnessIsStale {
+            switch await confirmTranscriptFreshnessBeforeSend(
+                using: submissionContext
+            ) {
+            case .proceed:
+                break
+            case .routeToBusySubmission:
+                // The authoritative recovery revealed a live turn: the text
+                // routes through the configured busy submission, exactly like
+                // a stale-idle correction to running.
+                guard attachments.isEmpty else {
+                    errorMessage = "Attachments can only be sent in a new message, after the current response finishes."
+                    return false
+                }
+                switch busyInputMode {
+                case .steer:
+                    lifecycleLog.notice(
+                        "submitComposer: freshness recovery found live turn → busy steer"
+                    )
+                    return await steer(text, context: submissionContext)
+                case .interrupt:
+                    lifecycleLog.notice(
+                        "submitComposer: freshness recovery found live turn → busy redirect/interrupt"
+                    )
+                    return await redirectOrInterruptAndSend(text, context: submissionContext)
+                }
+            case .blocked(let message):
+                errorMessage = message
+                return false
+            }
+        }
+
         return await sendMessage(
             text,
             attachments: attachments,
@@ -6054,6 +6281,175 @@ final class AppState: ObservableObject {
         // turn — the typed prompt.submit outcome catches a genuine busy race.
         turnStateIsStale = false
         return false
+    }
+
+    /// Outcome of the pre-send transcript-freshness gate.
+    private enum TranscriptFreshnessGateOutcome {
+        /// Ordering is proven current (or the concern no longer applies):
+        /// proceed with the ordinary new-turn submission.
+        case proceed
+        /// The recovery revealed a live turn: route the text through the
+        /// configured busy submission instead of a new-turn prompt.
+        case routeToBusySubmission
+        /// Freshness could not be restored; do not append into an unresolved
+        /// ordering. Associated value is the user-facing message.
+        case blocked(String)
+    }
+
+    /// Exactly one bounded tail-only freshness retry before an ordinary
+    /// NEW-TURN submit while `transcriptFreshnessIsStale` (a foreground
+    /// freshness read failed transiently on a real background return). Never
+    /// polls: a second transient failure blocks the send rather than
+    /// silently appending into an unresolved ordering, and structural
+    /// absence takes the existing authoritative recovery (a non-compact
+    /// resume needs no history endpoint) before the send proceeds.
+    private func confirmTranscriptFreshnessBeforeSend(
+        using submissionContext: ComposerSubmissionContext
+    ) async -> TranscriptFreshnessGateOutcome {
+        guard client != nil, let sessionId = activeSessionId else {
+            // Nothing to verify against; the ordinary send path owns the
+            // no-client outcome.
+            return .proceed
+        }
+        let profile = activeProfile
+        let bridge = dashboardTicketBridge
+        let localFrontier = durablePersistedRowIDs
+        let localMessageIDs = Set(messages.map { $0.id })
+        let lastLocalMessageID = messages.last?.id
+        lifecycleLog.notice(
+            "submitComposer: transcript freshness unresolved; one bounded pre-send retry session=\(sessionId, privacy: .public)"
+        )
+        let outcome = await foregroundPersistedTailOutcome(
+            sessionId: sessionId,
+            profile: profile,
+            using: bridge
+        )
+        // Ownership re-check after the await: a session/profile handoff or a
+        // scene transition during the read invalidates this gate's evidence,
+        // and the ordinary flow's own guards own the outcome then.
+        guard isCurrentComposerSubmission(submissionContext),
+              activeSessionId == sessionId,
+              turnState == .idle else {
+            return .proceed
+        }
+        switch outcome {
+        case .failed:
+            // Second transient failure: no loop, no escalation, no silently
+            // claimed freshness — block the new-turn prompt instead.
+            return .blocked("Unable to refresh this conversation. Try again.")
+        case .unavailable:
+            // Positively structural: the authoritative reconcile is the
+            // recovery path that still converges the transcript (a
+            // non-compact resume needs no history endpoint), hinted to skip
+            // the doomed history request.
+            await syncSession(
+                purpose: .preserveCurrent,
+                using: nil,
+                automaticWorkToken: nil,
+                historySourceUnavailable: true
+            )
+            return postRecoveryFreshnessGateOutcome(
+                submissionContext: submissionContext,
+                sessionID: sessionId
+            )
+        case .unsupportedTailContract:
+            // A shapeless page: no comparable evidence either way — the
+            // authoritative reconcile re-classifies the source itself.
+            await syncSession(
+                purpose: .preserveCurrent,
+                using: nil,
+                automaticWorkToken: nil
+            )
+            return postRecoveryFreshnessGateOutcome(
+                submissionContext: submissionContext,
+                sessionID: sessionId
+            )
+        case .hydrated:
+            // The transcript moved under the gate (a stream edge landed):
+            // the comparison evidence is stale — converge authoritatively.
+            guard messages.last?.id == lastLocalMessageID,
+                  durablePersistedRowIDs == localFrontier else {
+                await syncSession(
+                    purpose: .preserveCurrent,
+                    using: nil,
+                    automaticWorkToken: nil
+                )
+                return postRecoveryFreshnessGateOutcome(
+                    submissionContext: submissionContext,
+                    sessionID: sessionId
+                )
+            }
+            let verdict = foregroundFreshnessVerdict(
+                outcome,
+                localFrontier: localFrontier,
+                localMessageIDs: localMessageIDs,
+                lastLocalMessageID: lastLocalMessageID,
+                requestedSessionID: sessionId,
+                runtimeSessionID: canonicalSessionID(for: sessionId)
+                    ?? persistedTranscriptWindow?.runtimeSessionID
+                    ?? sessionId,
+                livenessIsRunning: false,
+                locallyOwnedTailRowIDs: nil
+            )
+            switch verdict {
+            case .unchanged:
+                transcriptFreshnessIsStale = false
+                return .proceed
+            case let .advanced(transcript, newRows):
+                applyPersistedForegroundAdvancement(
+                    requestedSessionID: sessionId,
+                    transcript: transcript,
+                    newRows: newRows,
+                    runtimeSessionID: persistedTranscriptWindow?.runtimeSessionID
+                        ?? transcript.resolvedSessionId
+                        ?? sessionId,
+                    profile: profile
+                )
+                return .proceed
+            case .inconclusive:
+                await syncSession(
+                    purpose: .preserveCurrent,
+                    using: nil,
+                    automaticWorkToken: nil
+                )
+                return postRecoveryFreshnessGateOutcome(
+                    submissionContext: submissionContext,
+                    sessionID: sessionId
+                )
+            case .sourceUnavailable, .unresolvedTransient:
+                // Unreachable for a `.hydrated` outcome (both are produced
+                // only from the fetch-level cases above); kept as defensive
+                // exhaustiveness. Blocking is the safe direction regardless.
+                return .blocked("Unable to refresh this conversation. Try again.")
+            }
+        }
+    }
+
+    /// Shared post-recovery checks for the freshness gate: a converged
+    /// authoritative reconcile cleared `transcriptFreshnessIsStale` (via
+    /// `applyChatResume`); anything else means recovery did not converge and
+    /// the send must not proceed into an unresolved ordering.
+    private func postRecoveryFreshnessGateOutcome(
+        submissionContext: ComposerSubmissionContext,
+        sessionID: String
+    ) -> TranscriptFreshnessGateOutcome {
+        guard isCurrentComposerSubmission(submissionContext),
+              activeSessionId == sessionID else {
+            return .proceed
+        }
+        if turnState.isRunning {
+            return .routeToBusySubmission
+        }
+        if transcriptFreshnessIsStale {
+            // Either recovery was superseded (a newer boundary owns the
+            // conversation) or it genuinely failed to converge; both must
+            // not send into an unresolved ordering.
+            lifecycleLog.notice(
+                "submitComposer: pre-send freshness recovery did not converge; blocking send session=\(sessionID, privacy: .public)"
+            )
+            return .blocked("Unable to refresh this conversation. Try again.")
+        }
+        return .proceed
     }
 
     func sendMessage(
@@ -6151,6 +6547,22 @@ final class AppState: ObservableObject {
                     turnState = .running
                 }
                 turnStateIsStale = false
+                if outcome.isBusySubmission {
+                    // A steered/queued/redirected outcome joined a turn that
+                    // was ALREADY running — possibly started by another
+                    // surface — so it is not proof of a locally-owned turn;
+                    // the optimistic row gets no continuity marker.
+                    locallyOwnedInFlightTurn = nil
+                } else {
+                    // The turn in flight is now provably Conduit's own: record
+                    // the optimistic user row so a later foreground freshness
+                    // check can prove same-turn continuity WITHOUT demanding a
+                    // durable id for a row the gateway has not persisted yet.
+                    locallyOwnedInFlightTurn = LocallyOwnedInFlightTurn(
+                        sessionIDs: submissionSessionIDs,
+                        optimisticUserRowID: userMessage.id
+                    )
+                }
             }
             return true
         } catch {
@@ -6177,6 +6589,13 @@ final class AppState: ObservableObject {
                     if isCurrentComposerSubmission(submissionContext) {
                         turnState = .running
                         turnStateIsStale = false
+                        // Same proof as the ordinary success path: the turn
+                        // in flight is provably Conduit's own submission.
+                        // Validation at use still gates every later adopt.
+                        locallyOwnedInFlightTurn = LocallyOwnedInFlightTurn(
+                            sessionIDs: submissionSessionIDs,
+                            optimisticUserRowID: userMessage.id
+                        )
                     }
                     return true
                 case .acceptedSettled:
@@ -8452,6 +8871,7 @@ final class AppState: ObservableObject {
         slashCommands = Self.builtInSlashCommands
         messages = []
         persistedTranscriptWindow = nil
+        resetTranscriptLifecycleEvidence()
         clearStreamingText()
         resetReasoningTurn()
         // The next profile's approval mode is unknown until its first session
@@ -10123,6 +10543,10 @@ final class AppState: ObservableObject {
         guard turnState != .unsupportedGateway else { return }
         if running {
             clearPendingDecisionRestorationGuard()
+        } else {
+            // The turn settled: any locally-owned in-flight turn evidence
+            // expired with it.
+            locallyOwnedInFlightTurn = nil
         }
         turnState = running ? .running : .idle
     }

@@ -1534,10 +1534,13 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         await runSceneActivation(harness)
 
         XCTAssertEqual(probeCount, 1)
-        XCTAssertEqual(transcriptReads, 3, "Freshness read + the reconcile's bounded read; no more")
         XCTAssertEqual(
-            resumeCount, resumesBeforeForeground + 2,
-            "Compact resume + the structural fallback's legacy re-resume"
+            transcriptReads, 2,
+            "Seed hydration + the foreground freshness read only — the hinted reconcile skips the history request"
+        )
+        XCTAssertEqual(
+            resumeCount, resumesBeforeForeground + 1,
+            "Exactly one authoritative noncompact resume — no compact attempt, no second resume"
         )
         XCTAssertEqual(harness.appState.messages.map(\.id), ["100", "101", "102", "103"])
         XCTAssertEqual(harness.appState.turnState, .idle)
@@ -1614,9 +1617,13 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         XCTAssertEqual(harness.appState.messages, messagesBefore)
         XCTAssertEqual(harness.appState.turnState, .idle)
         XCTAssertTrue(harness.appState.composerIsEnabled)
-        XCTAssertTrue(
+        XCTAssertFalse(
             harness.appState.turnStateIsStale,
-            "Freshness is unresolved: the stale marker must be retained"
+            "Turn-state staleness is resolved: the registry's idle answer was adopted"
+        )
+        XCTAssertTrue(
+            harness.appState.transcriptFreshnessIsStale,
+            "Transcript freshness is unresolved: the freshness marker must be retained"
         )
         box.client.disconnect()
     }
@@ -1688,9 +1695,13 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         XCTAssertEqual(resumeCount, resumesBeforeForeground, "No resume cascade")
         XCTAssertEqual(harness.appState.messages, messagesBefore)
         XCTAssertEqual(harness.appState.turnState, .running)
-        XCTAssertTrue(
+        XCTAssertFalse(
             harness.appState.turnStateIsStale,
-            "Freshness is unresolved on the running path too: the stale marker must be retained"
+            "Turn-state staleness is resolved: the registry's working answer was adopted"
+        )
+        XCTAssertTrue(
+            harness.appState.transcriptFreshnessIsStale,
+            "Transcript freshness is unresolved on the running path too: the freshness marker must be retained"
         )
         box.client.disconnect()
     }
@@ -3809,6 +3820,427 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                 "Synthetic id \(syntheticID): the durable tail restored exactly once"
             )
         }
+    }
+
+    // MARK: - Round 8: locally-owned optimistic tails, freshness split, single structural resume
+
+    /// The NORMAL workflow: a real `submitComposer` turn starts with an
+    /// optimistic `local-*` user row that has NO durable id. Background +
+    /// foreground with the runtime still working on that same locally
+    /// submitted turn must stay observational — zero `session.resume`, zero
+    /// transcript replacement, the optimistic row and the live reasoning
+    /// segment survive, and later deltas extend the same turn.
+    func testForegroundNormalLocallySubmittedRunningTurnStaysObservational() async {
+        let active = session("stored-a")
+        var probeCount = 0
+        var resumeCount = 0
+        var transcriptReads = 0
+        var submitCount = 0
+        let seedPayload: [String: Any] = [
+            "messages": [
+                ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"]
+            ],
+            "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 2]
+        ]
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                openSession: { _, sessionID, _ in
+                    resumeCount += 1
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                persistedTranscript: { _, _ in
+                    transcriptReads += 1
+                    // Every read returns only the durable pre-turn history:
+                    // the in-flight turn has persisted nothing.
+                    return .payload(seedPayload)
+                },
+                refreshContext: { _, _ in },
+                sendPrompt: { _, _, _ in
+                    submitCount += 1
+                    return .accepted
+                },
+                verifyTransportHealth: { _ in },
+                probeActiveSessions: { _ in
+                    probeCount += 1
+                    return [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: "working"
+                    )]
+                }
+            )
+        )
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        let opened = await harness.appState.openSession(active.id)
+        XCTAssertTrue(opened)
+        XCTAssertEqual(harness.appState.messages.map(\.id), ["100", "101"])
+
+        // The real submit path: optimistic user row, accepted prompt, live
+        // reasoning projection.
+        let submitted = await harness.appState.submitComposer(text: "Follow-up question")
+        XCTAssertTrue(submitted)
+        XCTAssertEqual(submitCount, 1)
+        XCTAssertEqual(harness.appState.messages.count, 3)
+        XCTAssertEqual(harness.appState.messages.last?.role, .user)
+        XCTAssertTrue(
+            harness.appState.messages.last?.id.hasPrefix("local-") == true,
+            "The visible user row must be the optimistic local row"
+        )
+        XCTAssertEqual(harness.appState.turnState, .running)
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: true))
+        harness.appState.handleStreamEvent(.reasoningDelta(sessionId: active.id, text: "Thinking."))
+        let segmentBefore = harness.appState.liveReasoningSegment
+        XCTAssertNotNil(segmentBefore)
+        let messagesBefore = harness.appState.messages
+        let resumesBeforeForeground = resumeCount
+
+        harness.appState.handleScenePhase(.background)
+        await runSceneActivation(harness)
+
+        XCTAssertEqual(probeCount, 1)
+        XCTAssertEqual(
+            transcriptReads, 2,
+            "One bounded freshness read; the durable frontier is unchanged"
+        )
+        XCTAssertEqual(
+            resumeCount, resumesBeforeForeground,
+            "The normal locally-submitted running turn must NOT pay a session.resume"
+        )
+        XCTAssertEqual(harness.appState.messages, messagesBefore, "No transcript replacement")
+        XCTAssertEqual(
+            harness.appState.liveReasoningSegment, segmentBefore,
+            "The live reasoning projection survives the foreground cycle"
+        )
+        XCTAssertEqual(harness.appState.turnState, .running)
+        XCTAssertFalse(harness.appState.turnStateIsStale)
+        XCTAssertFalse(harness.appState.transcriptFreshnessIsStale)
+
+        // Future deltas extend the SAME turn — no reset, no replacement.
+        harness.appState.handleStreamEvent(.reasoningDelta(sessionId: active.id, text: " More."))
+        XCTAssertEqual(
+            harness.appState.liveReasoningSegment?.id, segmentBefore?.id,
+            "Later deltas must extend the same live reasoning segment"
+        )
+        // The sidebar toggle synchronously flushes the coalesced live
+        // projection publish (the established deterministic-test pattern).
+        harness.appState.showSidebar = true
+        harness.appState.showSidebar = false
+        XCTAssertEqual(
+            harness.appState.liveReasoningSegment?.content, "Thinking. More.",
+            "The delta merged into the SAME segment's buffer"
+        )
+        box.client.disconnect()
+    }
+
+    /// A locally-submitted Turn A whose persisted evidence advanced past the
+    /// pre-turn frontier while suspended (A completed, another surface
+    /// started Turn B) must NOT keep the optimistic tail as same-turn
+    /// continuation: persisted advancement wins and forces the authoritative
+    /// attach, resetting Turn A's live projection in favor of Turn B's.
+    func testForegroundLocallyOwnedOptimisticTailYieldsToPersistedTurnB() async {
+        let active = session("stored-a")
+        var probeCount = 0
+        var resumeCount = 0
+        var transcriptReads = 0
+        var submitCount = 0
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in [active] },
+                openSession: { _, sessionID, _ in
+                    resumeCount += 1
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(
+                            object: ["running": .bool(resumeCount > 1)],
+                            inflight: resumeCount > 1
+                                ? .object(["text": .string("Turn B partial answer")])
+                                : nil
+                        )
+                    )
+                },
+                persistedTranscript: { _, _ in
+                    transcriptReads += 1
+                    if transcriptReads == 1 {
+                        return .payload([
+                            "messages": [
+                                ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                                ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"]
+                            ],
+                            "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 2]
+                        ])
+                    }
+                    // Turn A's rows AND Turn B's first row are persisted:
+                    // advancement beyond the locally-owned pre-turn frontier.
+                    return .payload([
+                        "messages": [
+                            ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                            ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"],
+                            ["id": "102", "role": "user", "content": "Turn A question", "timestamp": "3"],
+                            ["id": "103", "role": "assistant", "content": "Turn A answer", "timestamp": "4"],
+                            ["id": "104", "role": "user", "content": "Turn B question", "timestamp": "5"]
+                        ],
+                        "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 5]
+                    ])
+                },
+                refreshContext: { _, _ in },
+                sendPrompt: { _, _, _ in
+                    submitCount += 1
+                    return .accepted
+                },
+                verifyTransportHealth: { _ in },
+                probeActiveSessions: { _ in
+                    probeCount += 1
+                    return [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: "working"
+                    )]
+                }
+            )
+        )
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        let opened = await harness.appState.openSession(active.id)
+        XCTAssertTrue(opened)
+
+        let submitted = await harness.appState.submitComposer(text: "Turn A question")
+        XCTAssertTrue(submitted)
+        XCTAssertEqual(submitCount, 1)
+        XCTAssertEqual(harness.appState.turnState, .running)
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: true))
+        harness.appState.handleStreamEvent(.reasoningDelta(sessionId: active.id, text: "Turn A thinking."))
+        XCTAssertNotNil(harness.appState.liveReasoningSegment)
+        let resumesBeforeForeground = resumeCount
+
+        harness.appState.handleScenePhase(.background)
+        await runSceneActivation(harness)
+
+        XCTAssertEqual(probeCount, 1)
+        XCTAssertEqual(transcriptReads, 3, "Freshness read + the attach reconcile's bounded read")
+        XCTAssertEqual(
+            resumeCount, resumesBeforeForeground + 1,
+            "Persisted advancement behind an optimistic tail forces the authoritative attach"
+        )
+        XCTAssertEqual(
+            harness.appState.messages.map(\.id), ["100", "101", "102", "103", "104"],
+            "Turn A completion and Turn B prefix are visible after the attach"
+        )
+        XCTAssertNil(
+            harness.appState.liveReasoningSegment,
+            "The stale Turn A reasoning segment must not survive the attach"
+        )
+        XCTAssertEqual(
+            harness.appState.streamingText, "Turn B partial answer",
+            "Turn B's live projection is authoritative"
+        )
+        XCTAssertEqual(harness.appState.turnState, .running)
+        box.client.disconnect()
+    }
+
+    /// A transient foreground freshness failure leaves
+    /// `transcriptFreshnessIsStale` set. The next NEW-TURN submit runs
+    /// exactly one bounded tail-only retry; when it proves advancement, the
+    /// missing rows merge BEFORE the optimistic user row appends, and the
+    /// send proceeds with zero resume.
+    func testPreSendFreshnessRetryMergesMissingRowsBeforeNewPrompt() async {
+        let active = session("stored-a")
+        var probeCount = 0
+        var resumeCount = 0
+        var transcriptReads = 0
+        var submitCount = 0
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                openSession: { _, sessionID, _ in
+                    resumeCount += 1
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                persistedTranscript: { _, _ in
+                    transcriptReads += 1
+                    if transcriptReads == 1 {
+                        return .payload([
+                            "messages": [
+                                ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                                ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"]
+                            ],
+                            "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 2]
+                        ])
+                    }
+                    if transcriptReads == 2 {
+                        // The foreground freshness read fails transiently.
+                        return .failed(DashboardTicketBridgeError.http(
+                            status: 503,
+                            detail: "temporarily unavailable"
+                        ))
+                    }
+                    // The pre-send retry proves the remote completed turn.
+                    return .payload([
+                        "messages": [
+                            ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                            ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"],
+                            ["id": "102", "role": "user", "content": "Remote question", "timestamp": "3"],
+                            ["id": "103", "role": "assistant", "content": "Remote answer", "timestamp": "4"]
+                        ],
+                        "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 4]
+                    ])
+                },
+                refreshContext: { _, _ in },
+                sendPrompt: { _, _, _ in
+                    submitCount += 1
+                    return .accepted
+                },
+                verifyTransportHealth: { _ in },
+                probeActiveSessions: { _ in
+                    probeCount += 1
+                    return [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: "idle"
+                    )]
+                }
+            )
+        )
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        let opened = await harness.appState.openSession(active.id)
+        XCTAssertTrue(opened)
+        let resumesBefore = resumeCount
+
+        harness.appState.handleScenePhase(.background)
+        await runSceneActivation(harness)
+
+        XCTAssertEqual(probeCount, 1)
+        XCTAssertEqual(transcriptReads, 2, "No foreground retry, no legacy fallback")
+        XCTAssertEqual(resumeCount, resumesBefore, "No resume on the transient path")
+        XCTAssertEqual(harness.appState.messages.map(\.id), ["100", "101"])
+        XCTAssertEqual(harness.appState.turnState, .idle)
+        XCTAssertFalse(harness.appState.turnStateIsStale)
+        XCTAssertTrue(harness.appState.transcriptFreshnessIsStale)
+
+        let submitted = await harness.appState.submitComposer(text: "Follow-up")
+        XCTAssertTrue(submitted)
+
+        XCTAssertEqual(submitCount, 1, "prompt.submit called exactly once")
+        XCTAssertEqual(transcriptReads, 3, "Exactly one bounded pre-send retry")
+        XCTAssertEqual(
+            resumeCount, resumesBefore,
+            "The merge needs no resume — the persisted source supplied the rows"
+        )
+        XCTAssertEqual(
+            harness.appState.messages.count, 5,
+            "Missing remote rows reconcile, then the optimistic user appends"
+        )
+        XCTAssertEqual(
+            Array(harness.appState.messages.map(\.id).prefix(4)), ["100", "101", "102", "103"],
+            "The remote rows land before the new prompt"
+        )
+        XCTAssertEqual(harness.appState.messages.last?.role, .user)
+        XCTAssertTrue(
+            harness.appState.messages.last?.id.hasPrefix("local-") == true,
+            "The new prompt appends last, after the reconciled rows"
+        )
+        XCTAssertFalse(
+            harness.appState.transcriptFreshnessIsStale,
+            "A proven advancement merge clears transcript freshness"
+        )
+        XCTAssertEqual(harness.appState.turnState, .running)
+        box.client.disconnect()
+    }
+
+    /// A SECOND transient freshness failure at the pre-send gate must not
+    /// loop, must not fall back to full history, and must not silently
+    /// append a new-turn prompt into an unresolved ordering: the send is
+    /// blocked with a lightweight retryable message.
+    func testPreSendFreshnessRetryTransientFailureBlocksNewTurn() async {
+        let active = session("stored-a")
+        var probeCount = 0
+        var resumeCount = 0
+        var transcriptReads = 0
+        var submitCount = 0
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                openSession: { _, sessionID, _ in
+                    resumeCount += 1
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                persistedTranscript: { _, _ in
+                    transcriptReads += 1
+                    if transcriptReads == 1 {
+                        return .payload([
+                            "messages": [
+                                ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                                ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"]
+                            ],
+                            "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 2]
+                        ])
+                    }
+                    return .failed(DashboardTicketBridgeError.http(
+                        status: 503,
+                        detail: "temporarily unavailable"
+                    ))
+                },
+                refreshContext: { _, _ in },
+                sendPrompt: { _, _, _ in
+                    submitCount += 1
+                    return .accepted
+                },
+                verifyTransportHealth: { _ in },
+                probeActiveSessions: { _ in
+                    probeCount += 1
+                    return [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: "idle"
+                    )]
+                }
+            )
+        )
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        let opened = await harness.appState.openSession(active.id)
+        XCTAssertTrue(opened)
+        let resumesBefore = resumeCount
+
+        harness.appState.handleScenePhase(.background)
+        await runSceneActivation(harness)
+        XCTAssertTrue(harness.appState.transcriptFreshnessIsStale)
+
+        let submitted = await harness.appState.submitComposer(text: "Follow-up")
+        XCTAssertFalse(submitted, "The blocked send must not report success")
+
+        XCTAssertEqual(submitCount, 0, "No prompt.submit into an unresolved ordering")
+        XCTAssertEqual(transcriptReads, 3, "Foreground read + one retry; no loop, no legacy fallback")
+        XCTAssertEqual(resumeCount, resumesBefore, "A transient failure never escalates to a resume")
+        XCTAssertEqual(
+            harness.appState.messages.map(\.id), ["100", "101"],
+            "The new-turn prompt must not append out of order"
+        )
+        XCTAssertTrue(
+            harness.appState.transcriptFreshnessIsStale,
+            "Freshness stays unresolved after the second transient failure"
+        )
+        XCTAssertEqual(harness.appState.turnState, .idle)
+        XCTAssertTrue(harness.appState.composerIsEnabled)
+        XCTAssertFalse(harness.appState.activeChatScrollSessionIdentity.isReconciling)
+        box.client.disconnect()
     }
 
     // MARK: - Harness
