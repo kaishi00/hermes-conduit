@@ -4348,7 +4348,7 @@ final class AppState: ObservableObject {
                             return
                         }
                         lifecycleLog.notice(
-                            "Foreground refresh: health check failed (\(error.localizedDescription, privacy: .public)); reconnecting"
+                            "Foreground refresh: health check failed (\(error.localizedDescription, privacy: .private)); reconnecting"
                         )
                         await self.reconnectForRetry(purpose: .automaticReturn)
                         self.settleReconciliation(token)
@@ -4527,50 +4527,60 @@ final class AppState: ObservableObject {
                 // Runtime present, liveness inconclusive: "starting" also
                 // covers promptless agent pre-warm (session.create / cold
                 // resume) and transiently masks a running turn during the
-                // build window, so it proves neither busy nor idle. Leave the
-                // local turn state exactly as the stream left it and let live
+                // build window, so it proves neither busy nor idle. Live
                 // events own the next edge; never manufacture a resume here.
+                // A transitional state (.synchronizing / .reconnecting) left
+                // by an aborted recovery attempt is NOT valid stream-owned
+                // state, though: normalize it to a usable neutral baseline
+                // (starting is never classified as running) so the composer
+                // cannot stay disabled indefinitely — and a newer buffered
+                // busy edge still wins during the boundary replay.
                 lifecycleLog.notice(
-                    "Foreground refresh: probe=starting session=\(requestedSessionID ?? "-", privacy: .public) → observation-only, state untouched"
+                    "Foreground refresh: probe=starting session=\(requestedSessionID ?? "-", privacy: .public) → observation-only, transitional state normalized"
                 )
+                if turnState == .synchronizing || turnState == .reconnecting {
+                    setRunning(false)
+                }
                 settleForegroundBoundary(token, automaticWorkToken: automaticWorkToken)
             } else if row.isRunning {
                 let acceptedIDs = acceptedIdentitySessionIDs(
                     forRequested: requestedSessionID ?? ""
                 )
                 let continuesLocalTurn = !preSuspensionRunningIDs.isDisjoint(with: acceptedIDs)
-                if continuesLocalTurn, !messages.isEmpty {
-                    // The same turn is still live over a hydrated transcript:
-                    // keep the session, the transcript, the streaming buffer,
-                    // and the PR #121 live reasoning projection exactly as
-                    // they are. Only the buffered events captured while the
-                    // reconciliation boundary was open need replaying —
-                    // nothing was replaced, so no dedup is needed.
-                    lifecycleLog.notice(
-                        "Foreground refresh: probe=live status=\(row.status, privacy: .public) session=\(requestedSessionID ?? "-", privacy: .public) → observation-only adopt"
-                    )
-                    adoptForegroundRunningState(
-                        reconciliationToken: token,
-                        automaticWorkToken: automaticWorkToken
-                    )
-                } else if !freshnessCheckArmed, !messages.isEmpty {
+                if !freshnessCheckArmed {
                     // Overlay-dip semantics: the socket survived the dip and
                     // live events kept the transcript current, so the
                     // observational adopt stands without a transcript read.
-                    lifecycleLog.notice(
-                        "Foreground refresh: probe=live status=\(row.status, privacy: .public) session=\(requestedSessionID ?? "-", privacy: .public) → observation-only adopt (unarmed)"
-                    )
-                    adoptForegroundRunningState(
-                        reconciliationToken: token,
-                        automaticWorkToken: automaticWorkToken
-                    )
-                } else if freshnessCheckArmed {
-                    // Working/waiting without turn-continuity evidence (or an
-                    // unanchored transcript) after a real background: a turn
-                    // another surface started may be missing locally. One
-                    // bounded persisted-tail read decides between an
-                    // observational adopt, a merged advancement, and the
-                    // bounded resume refresh.
+                    if !messages.isEmpty {
+                        lifecycleLog.notice(
+                            "Foreground refresh: probe=live status=\(row.status, privacy: .public) session=\(requestedSessionID ?? "-", privacy: .public) → observation-only adopt (unarmed)"
+                        )
+                        adoptForegroundRunningState(
+                            reconciliationToken: token,
+                            automaticWorkToken: automaticWorkToken
+                        )
+                    } else {
+                        // A running runtime over an empty local transcript
+                        // means this surface never hydrated (failed resume,
+                        // or the turn was started from another surface):
+                        // attach through the full refresh, whose resume
+                        // returns the live projection.
+                        lifecycleLog.notice(
+                            "Foreground refresh: probe=live localTranscript=empty → resume refresh (attach live projection)"
+                        )
+                        await syncSession(
+                            purpose: .automaticReturn,
+                            using: token,
+                            automaticWorkToken: automaticWorkToken
+                        )
+                    }
+                } else if continuesLocalTurn, !messages.isEmpty {
+                    // Same-session working is NOT same-turn proof: Turn A can
+                    // complete and Turn B start in the SAME session while
+                    // Conduit was suspended. One bounded tail read proves
+                    // continuity — an unchanged verdict keeps the zero-resume
+                    // fast path; anything else takes the authoritative
+                    // attach below (which owns the in-flight projection).
                     await reconcileForegroundCrossSurfaceActivity(
                         livenessIsRunning: true,
                         requestedSessionID: requestedSessionID ?? "",
@@ -4579,12 +4589,14 @@ final class AppState: ObservableObject {
                         automaticWorkToken: automaticWorkToken
                     )
                 } else {
-                    // A running runtime over an empty local transcript means
-                    // this surface never hydrated (failed resume, or the turn
-                    // was started from another surface): attach through the
-                    // full refresh, whose resume returns the live projection.
+                    // Working without turn-continuity evidence after a real
+                    // background: a turn this device never owned. Persisted
+                    // history alone cannot supply the in-flight assistant/
+                    // reasoning projection, so attach authoritatively — the
+                    // compact resume fast-path returns the live projection
+                    // and the reconcile merges the persisted prefix.
                     lifecycleLog.notice(
-                        "Foreground refresh: probe=live localTranscript=empty → resume refresh (attach live projection)"
+                        "Foreground refresh: probe=live status=\(row.status, privacy: .public) session=\(requestedSessionID ?? "-", privacy: .public) → authoritative attach (remote running turn)"
                     )
                     await syncSession(
                         purpose: .automaticReturn,
@@ -4643,7 +4655,7 @@ final class AppState: ObservableObject {
             // Older gateway or transient registry failure: keep the proven
             // resume-based refresh rather than guessing.
             lifecycleLog.notice(
-                "Foreground refresh: probe unavailable (\(reason, privacy: .public)) → resume refresh"
+                "Foreground refresh: probe unavailable (\(reason, privacy: .private)) → resume refresh"
             )
             await syncSession(
                 purpose: .automaticReturn,
@@ -4765,17 +4777,18 @@ final class AppState: ObservableObject {
         /// after it: persisted activity the local transcript never saw.
         case advanced(transcript: PersistedSessionTranscript, newRows: [ChatMessage])
         /// No durable ordering proof: the frontier rotated out of the newest
-        /// page, the read was a legacy one-shot without durable identity, the
-        /// response belongs to another conversation identity, the local tail
-        /// is not durably anchored, or there is no local frontier. Same
-        /// invariant as the ambiguous-delivery verifier — no anchor means
-        /// "unchanged" can never be declared.
+        /// page, the backend has no tail contract, the response belongs to
+        /// another conversation identity, the local tail is not durably
+        /// anchored, there is no local frontier, or the history source is
+        /// structurally absent. Same invariant as the ambiguous-delivery
+        /// verifier — no anchor means "unchanged" can never be declared.
+        /// The bounded resume refresh is the authoritative fallback.
         case inconclusive
-        /// The check could not run at all: no usable history source, or the
-        /// bounded read failed transiently. The authoritative liveness
-        /// observation stands on the previously accepted observational
-        /// terms — a failed check must not escalate into a resume cascade.
-        case unverifiable
+        /// The bounded read failed transiently (timeout, 429/5xx, bridge not
+        /// ready). Liveness stays authoritative, but freshness is UNRESOLVED:
+        /// the stale marker is retained so the next authoritative source
+        /// re-confirms, and no "unchanged" verdict may be claimed.
+        case unresolvedTransient
     }
 
     /// Compares one bounded persisted-tail read against the local durable
@@ -4784,7 +4797,7 @@ final class AppState: ObservableObject {
     /// page rows are candidates; candidate rows already held (streamed in
     /// live under any identity) are dropped by id.
     private func foregroundFreshnessVerdict(
-        _ outcome: PersistedTranscriptOutcome,
+        _ outcome: ForegroundPersistedTailOutcome,
         localFrontier: Set<String>,
         localMessageIDs: Set<String>,
         lastLocalMessageID: String?,
@@ -4792,15 +4805,19 @@ final class AppState: ObservableObject {
         runtimeSessionID: String
     ) -> ForegroundFreshnessVerdict {
         switch outcome {
-        case .unavailable, .failed:
-            return .unverifiable
+        case .failed:
+            return .unresolvedTransient
+        case .unavailable, .unsupportedTailContract:
+            // Structural source absence or a backend without the tail
+            // contract: there is no bounded evidence and the freshness check
+            // deliberately does not escalate to a full-transcript read — the
+            // bounded resume refresh is the authoritative fallback.
+            return .inconclusive
         case let .hydrated(transcript):
+            // Defense-in-depth only: foregroundPersistedTailOutcome already
+            // refuses to construct .hydrated for a non-contract page.
             guard let page = transcript.page, page.honorsTailContract,
                   transcript.messages.isEmpty || !transcript.durableRowIDs.isEmpty else {
-                // Legacy one-shot: positively the entire transcript, but its
-                // rows carry no durable identity, so nothing can be compared
-                // (text and count comparisons are forbidden). The bounded
-                // resume refresh owns legacy conversations end-to-end.
                 return .inconclusive
             }
             // A positively empty page with no older rows proves the
@@ -4855,7 +4872,8 @@ final class AppState: ObservableObject {
 
     /// Runs the bounded cross-surface freshness reconciliation for a
     /// foreground whose probe liveness could hide missed persisted activity
-    /// (real background interval, no turn-continuity evidence):
+    /// (real background interval): exactly one TAIL-ONLY persisted read —
+    /// never a full-transcript fallback — decides:
     ///
     /// - anchor overlap, nothing newer → observational liveness adoption,
     ///   transcript untouched, zero `session.resume`;
@@ -4864,10 +4882,14 @@ final class AppState: ObservableObject {
     ///   window re-anchored) and the liveness adopted — still zero
     ///   `session.resume`, because the persisted-history source supplied
     ///   everything a completed turn needs;
-    /// - inconclusive → the existing bounded resume refresh (the one
-    ///   `session.resume` that re-anchors the whole conversation and, for a
-    ///   live runtime, returns the in-flight projection);
-    /// - unverifiable → the previously accepted observational behavior.
+    /// - inconclusive (rotated anchor, no tail contract, foreign resolved id,
+    ///   unanchored optimistic tail, structurally absent source) → the
+    ///   existing bounded resume refresh, the authoritative fallback that
+    ///   re-anchors the whole conversation (and, for a live runtime, returns
+    ///   the in-flight projection);
+    /// - transient read failure → the authoritative liveness adoption with
+    ///   the stale marker RETAINED: freshness is unresolved, never claimed
+    ///   current, and the next authoritative source re-confirms.
     private func reconcileForegroundCrossSurfaceActivity(
         livenessIsRunning: Bool,
         requestedSessionID: String,
@@ -4880,7 +4902,7 @@ final class AppState: ObservableObject {
         let localFrontier = durablePersistedRowIDs
         let localMessageIDs = Set(messages.map { $0.id })
         let lastLocalMessageID = messages.last?.id
-        let outcome = await persistedTranscriptOutcome(
+        let outcome = await foregroundPersistedTailOutcome(
             sessionId: requestedSessionID,
             profile: profile,
             using: bridge
@@ -4915,8 +4937,24 @@ final class AppState: ObservableObject {
             runtimeSessionID: probeRow.runtimeSessionId
         ) {
         case let .advanced(transcript, newRows):
+            if livenessIsRunning {
+                // A running turn whose persisted history advanced beyond the
+                // frontier cannot be proven same-turn, and the page cannot
+                // supply its in-flight projection: the authoritative attach
+                // (compact resume + reconcile) owns both the advancement and
+                // the live projection.
+                lifecycleLog.notice(
+                    "Foreground freshness: probe=running session=\(requestedSessionID, privacy: .public) verdict=advanced rows=\(newRows.count, privacy: .public) → authoritative attach"
+                )
+                await syncSession(
+                    purpose: .automaticReturn,
+                    using: token,
+                    automaticWorkToken: automaticWorkToken
+                )
+                return
+            }
             lifecycleLog.notice(
-                "Foreground freshness: probe=\(livenessIsRunning ? "running" : "idle", privacy: .public) session=\(requestedSessionID, privacy: .public) verdict=advanced rows=\(newRows.count, privacy: .public) → merge persisted advancement"
+                "Foreground freshness: probe=idle session=\(requestedSessionID, privacy: .public) verdict=advanced rows=\(newRows.count, privacy: .public) → merge persisted advancement"
             )
             applyPersistedForegroundAdvancement(
                 requestedSessionID: requestedSessionID,
@@ -4925,8 +4963,7 @@ final class AppState: ObservableObject {
                 runtimeSessionID: probeRow.runtimeSessionId,
                 profile: profile
             )
-            adoptForegroundLiveness(
-                livenessIsRunning,
+            adoptForegroundAuthoritativeIdle(
                 token: token,
                 automaticWorkToken: automaticWorkToken
             )
@@ -4939,25 +4976,22 @@ final class AppState: ObservableObject {
                 token: token,
                 automaticWorkToken: automaticWorkToken
             )
-        case .unverifiable:
+        case .unresolvedTransient:
             lifecycleLog.notice(
-                "Foreground freshness: probe=\(livenessIsRunning ? "running" : "idle", privacy: .public) session=\(requestedSessionID, privacy: .public) verdict=unverifiable → observational fallback"
+                "Foreground freshness: probe=\(livenessIsRunning ? "running" : "idle", privacy: .public) session=\(requestedSessionID, privacy: .public) verdict=transient-failure → liveness adopt, freshness unresolved"
             )
-            if livenessIsRunning, messages.isEmpty {
-                // Pre-freshness semantics for a running runtime over an empty
-                // transcript: attach the live projection.
-                await syncSession(
-                    purpose: .automaticReturn,
-                    using: token,
-                    automaticWorkToken: automaticWorkToken
-                )
-            } else {
-                adoptForegroundLiveness(
-                    livenessIsRunning,
-                    token: token,
-                    automaticWorkToken: automaticWorkToken
-                )
-            }
+            adoptForegroundLiveness(
+                livenessIsRunning,
+                token: token,
+                automaticWorkToken: automaticWorkToken
+            )
+            // The bounded read failed transiently: freshness is UNRESOLVED.
+            // Retain the stale marker so the next authoritative source (the
+            // pre-send probe, the next background's freshness check, a
+            // reconnect) re-confirms — never claim a currency the read could
+            // not prove, and never escalate the failed bounded read into a
+            // full-transcript transfer.
+            turnStateIsStale = true
         case .inconclusive:
             lifecycleLog.notice(
                 "Foreground freshness: probe=\(livenessIsRunning ? "running" : "idle", privacy: .public) session=\(requestedSessionID, privacy: .public) verdict=inconclusive → bounded resume refresh"
@@ -6123,7 +6157,7 @@ final class AppState: ObservableObject {
             guard isCurrentComposerSubmission(submissionContext) else { return false }
             if Self.isAmbiguousPromptDelivery(error) {
                 lifecycleLog.notice(
-                    "prompt.submit ambiguous (\(error.localizedDescription, privacy: .public)); querying authoritative state session=\(sessionId, privacy: .public)"
+                    "prompt.submit ambiguous (\(error.localizedDescription, privacy: .private)); querying authoritative state session=\(sessionId, privacy: .public)"
                 )
                 let (resolution, reconnected) = await reconcileAmbiguousPromptSubmission(
                     requestedSessionID: sessionId,
@@ -7415,6 +7449,72 @@ final class AppState: ObservableObject {
     /// pagination echo answers under the paginated tail contract; one
     /// without it is a legacy one-shot full transcript and hydrates as
     /// before.
+    /// Result of the foreground freshness tail read. Only the newest bounded
+    /// `order=latest` page is ever requested. Unlike `persistedTranscriptOutcome`
+    /// this deliberately has NO legacy one-shot fallback: a freshness check
+    /// must never escalate into a full-transcript transfer just to prove
+    /// currency — a backend that cannot serve the tail contract yields
+    /// inconclusive evidence instead, and the authoritative resume/reconcile
+    /// path owns any full hydration. (Gateway-only deployments without any
+    /// history source therefore re-attach authoritatively on each armed
+    /// return — the designed fallback, not a regression to optimize away.)
+    private enum ForegroundPersistedTailOutcome {
+        /// Validated tail page with positively durable row ids.
+        case hydrated(PersistedSessionTranscript)
+        /// The response did not honor the `order=latest` + durable-identity
+        /// contract — including a body with no message-rows array at all,
+        /// which the authoritative resume path re-classifies and SURFACES as
+        /// `HermesError.invalidResponse` (never silently absorbed here).
+        case unsupportedTailContract
+        /// The history source is structurally absent (no bridge/endpoint, or
+        /// the endpoint answered 404/410/501): no bounded capability exists.
+        case unavailable
+        /// Transient trouble (timeout, 429/5xx, bridge not ready, network).
+        case failed(Error)
+    }
+
+    /// Bounded tail-only read for the foreground freshness check: exactly one
+    /// `order=latest offset=0` page request, parsed with the shared
+    /// extraction/pagination/identity helpers, and stopping deliberately
+    /// before `persistedTranscriptOutcome`'s legacy one-shot re-read.
+    private func foregroundPersistedTailOutcome(
+        sessionId: String,
+        profile: String,
+        using bridge: DashboardTicketBridge?
+    ) async -> ForegroundPersistedTailOutcome {
+        let fetchOutcome = await fetchPersistedHistoryPayload(
+            sessionId: sessionId,
+            profile: profile,
+            query: PersistedTranscriptPagination.tailQuery(offset: 0),
+            using: bridge
+        )
+        switch fetchOutcome {
+        case .unavailable:
+            return .unavailable
+        case .failed(let error):
+            if Self.historySourceIsUnavailable(error) {
+                // Structural endpoint absence: no bounded capability exists.
+                return .unavailable
+            }
+            return .failed(error)
+        case .payload(let response):
+            guard let rawMessages = Self.persistedMessageRows(in: response) else {
+                return .unsupportedTailContract
+            }
+            guard let page = PersistedTranscriptPagination.parse(response, rawRowCount: rawMessages.count),
+                  page.honorsTailContract,
+                  PersistedTranscriptWindow.rowsHaveDurableIdentity(rawMessages) else {
+                return .unsupportedTailContract
+            }
+            return .hydrated(PersistedSessionTranscript(
+                resolvedSessionId: Self.resolvedSessionId(in: response),
+                messages: MessageNormalizer.normalizeMessages(rawMessages.map(AnyCodable.from)),
+                page: page,
+                durableRowIDs: Set(rawMessages.compactMap(Self.durablePersistedRowID(from:)))
+            ))
+        }
+    }
+
     private func persistedTranscriptOutcome(
         sessionId: String,
         profile: String,
@@ -7438,10 +7538,10 @@ final class AppState: ObservableObject {
             // silently become a full-transcript WebSocket transport (the
             // giant-payload path compact resume exists to eliminate).
             if Self.historySourceIsUnavailable(error) {
-                sessionCatalogLog.debug("Persisted transcript unavailable for \(sessionId, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                sessionCatalogLog.debug("Persisted transcript unavailable for \(sessionId, privacy: .public): \(error.localizedDescription, privacy: .private)")
                 return .unavailable
             }
-            sessionCatalogLog.debug("Persisted transcript failed for \(sessionId, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            sessionCatalogLog.debug("Persisted transcript failed for \(sessionId, privacy: .public): \(error.localizedDescription, privacy: .private)")
             return .failed(error)
         case .payload(let response):
             guard let rawMessages = Self.persistedMessageRows(in: response) else {
