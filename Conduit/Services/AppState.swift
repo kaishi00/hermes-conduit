@@ -5748,7 +5748,12 @@ final class AppState: ObservableObject {
                         "prompt.submit state unresolved; restoring unsent state session=\(sessionId, privacy: .public)"
                     )
                 }
-                errorMessage = "Failed to send: \(error.localizedDescription)"
+                // Presentation writes below are submission-owned too: A's
+                // failed send must not paint an error onto the session the
+                // user switched to while recovery was suspended.
+                if isCurrentComposerSubmission(submissionContext) {
+                    errorMessage = "Failed to send: \(error.localizedDescription)"
+                }
                 if !reconnected, isCurrentComposerSubmission(submissionContext) {
                     await recoverComposerSubmission(using: submissionContext)
                 }
@@ -5756,7 +5761,9 @@ final class AppState: ObservableObject {
                 // authoritative transcript, so the restoration happened there.
                 return false
             }
-            errorMessage = "Failed to send: \(error.localizedDescription)"
+            if isCurrentComposerSubmission(submissionContext) {
+                errorMessage = "Failed to send: \(error.localizedDescription)"
+            }
             await recoverComposerSubmission(using: submissionContext)
             return false
         }
@@ -5897,16 +5904,46 @@ final class AppState: ObservableObject {
     }
 
     /// Durable before/after identity captured BEFORE the optimistic append.
-    /// The submitted turn is proven by ORDERING (rows the conversation did not
-    /// hold at submit time) corroborated by user-role content — never by
-    /// content alone, since identical texts are legitimate.
+    ///
+    /// Only rows backed by trusted durable persisted identity may serve as
+    /// baseline evidence. Visible `ChatMessage.id` values for optimistic or
+    /// locally synthesized rows (`local-…`, tool/reasoning/review cards) are
+    /// presentation identities: when Hermes persists those rows it mints NEW
+    /// database ids, so "persisted id not in the visible set" cannot prove a
+    /// row is new. The baseline therefore records the durable ids separately
+    /// and flags whether the conversation holds any local-only row whose
+    /// persisted twin is unknown.
     struct PromptTranscriptBaseline {
-        let knownMessageIDs: Set<String>
-        let knownMessageCount: Int
+        /// Visible ids backed by durable persisted identity (hydrated REST
+        /// rows), usable as overlap anchors against a persisted tail.
+        let durableIDs: Set<String>
+        /// Whether some pre-submit conversation content exists only as a
+        /// local row (e.g. an earlier optimistic send that was never
+        /// re-hydrated). If so, a matching persisted row after the anchor
+        /// could belong to THAT content, and acceptance is unprovable.
+        let includesLocalOnlyRows: Bool
 
         init(messages: [ChatMessage]) {
-            self.knownMessageIDs = Set(messages.map(\.id))
-            self.knownMessageCount = messages.count
+            var durable = Set<String>()
+            var sawLocalOnly = false
+            for message in messages {
+                if Self.isLocalSyntheticID(message.id) {
+                    sawLocalOnly = true
+                } else {
+                    durable.insert(message.id)
+                }
+            }
+            self.durableIDs = durable
+            self.includesLocalOnlyRows = sawLocalOnly
+        }
+
+        /// Locally synthesized presentation ids that never correspond 1:1 to
+        /// a persisted row id. Mirrors the id schemes AppState mints for
+        /// optimistic sends, live tool/reasoning/review projections, and
+        /// locally restored decision cards.
+        static func isLocalSyntheticID(_ id: String) -> Bool {
+            ["local-", "tool-start-", "tool-complete-", "review-summary-", "reasoning-", "approval-", "clarify-"]
+                .contains { id.hasPrefix($0) }
         }
     }
 
@@ -5946,53 +5983,55 @@ final class AppState: ObservableObject {
         }
 
         let wanted = submittedText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let isNewRow: (ChatMessage) -> Bool = { message in
-            !baseline.knownMessageIDs.contains(message.id)
-        }
         let contentMatches: (ChatMessage) -> Bool = { message in
             message.role == .user
                 && message.content.trimmingCharacters(in: .whitespacesAndNewlines) == wanted
         }
 
         if idsAreDurable {
-            if tail.contains(where: { isNewRow($0) && contentMatches($0) }) {
-                // A user row this conversation did not hold before the
-                // submission carries the submitted text: the turn landed.
-                // Response rows after it only strengthen the proof; their
-                // absence means the accepted turn was interrupted, which is
-                // still acceptance.
-                return .present
+            // Overlap anchor: the NEWEST tail row the pre-submit durable
+            // evidence already held. Only rows strictly after that anchor are
+            // candidates for the submitted turn — a matching row at or before
+            // the anchor belongs to an OLDER identical send.
+            let anchorIndex = tail.lastIndex { baseline.durableIDs.contains($0.id) }
+            let candidates: ArraySlice<ChatMessage> = anchorIndex.map { anchor in
+                tail[tail.index(after: anchor)...]
+            } ?? tail[tail.startIndex..<tail.startIndex]
+            let candidateMatches = candidates.contains(where: contentMatches)
+
+            if candidateMatches {
+                if anchorIndex != nil, !baseline.includesLocalOnlyRows {
+                    // Every pre-submit row was durably identified, so the
+                    // anchor proves everything up to it; a matching user row
+                    // after the anchor can only be the new submission.
+                    return .present
+                }
+                // Either no durable anchor exists to order against, or the
+                // conversation held local-only rows whose persisted twins are
+                // unknown: an identical older row is indistinguishable from
+                // the new submission. Never fabricate certainty.
+                return .indeterminate
             }
-            if tail.contains(where: isNewRow) {
-                // The durable transcript advanced past the submit-time
-                // baseline without any new user row carrying the submitted
-                // text: whatever landed, this prompt did not.
+            if anchorIndex != nil {
+                // The tail advanced past the durable anchor without any
+                // matching user row: whatever landed, this prompt did not.
                 return .absent
             }
-            // The tail is exactly what this conversation already held: no
-            // new row at all — the submitted turn never landed.
+            // No anchor row appears in the tail (rotated out / empty
+            // baseline). Content absence still proves non-acceptance; content
+            // presence without ordering does not prove acceptance.
+            if tail.contains(where: contentMatches) {
+                return .indeterminate
+            }
             return .absent
         }
 
         // Positional-id fallback (legacy one-shot transcript): row identity
-        // cannot distinguish new from old rows, so decide by transcript
-        // growth plus the newest user row.
-        if tail.count <= baseline.knownMessageCount {
-            // Nothing landed beyond what this conversation already held.
-            return .absent
-        }
-        let newestUserRow = tail.last(where: { $0.role == .user })
-        if let newestUserRow, contentMatches(newestUserRow) {
-            // The transcript grew and its newest user turn carries the
-            // submitted text: acceptance, settled.
-            return .present
-        }
+        // cannot distinguish new from old rows at all, so a matching row is
+        // never proof of acceptance. Content absence proves non-acceptance.
         if tail.contains(where: contentMatches) {
-            // Grew with our text present but not newest — an identical older
-            // send makes this ambiguous.
             return .indeterminate
         }
-        // Grew without the submitted text: this prompt did not land.
         return .absent
     }
 

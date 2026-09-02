@@ -1399,6 +1399,289 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         box.client.disconnect()
     }
 
+    // MARK: - Round 3: durable-anchor evidence model
+
+    /// Case A: the pre-submit conversation holds an optimistic local row
+    /// ("continue"), and the persisted tail contains an identical user row
+    /// (501) that may be that SAME send re-homed under a database id. The
+    /// verifier must not prove acceptance merely because "501" is not
+    /// "local-123": with a durable anchor present but local-only rows
+    /// outstanding, the outcome is indeterminate → conservative restore.
+    func testAmbiguousMatchingRowAfterAnchorWithLocalPredecessorIsIndeterminate() async {
+        let active = session("stored-a")
+        var submitCount = 0
+        var transcriptReads = 0
+        var catalogCount = 0
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in
+                    catalogCount += 1
+                    return [active]
+                },
+                openSession: { _, sessionID, _ in
+                    SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [
+                            ChatMessage(id: "98", role: .user, content: "prior", timestamp: "0"),
+                            ChatMessage(id: "99", role: .assistant, content: "ack", timestamp: "1")
+                        ],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                persistedTranscript: { _, _ in
+                    transcriptReads += 1
+                    return .payload([
+                        "messages": [
+                            ["id": "98", "role": "user", "content": "prior", "timestamp": "0"],
+                            ["id": "99", "role": "assistant", "content": "ack", "timestamp": "1"],
+                            ["id": "501", "role": "user", "content": "continue", "timestamp": "5"]
+                        ],
+                        "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 3]
+                    ])
+                },
+                sendPrompt: { _, _, _ in
+                    submitCount += 1
+                    throw HermesError.timeout("prompt.submit")
+                },
+                probeActiveSessions: { _ in
+                    [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: "idle"
+                    )]
+                }
+            )
+        )
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        harness.appState.messages = [
+            ChatMessage(id: "98", role: .user, content: "prior", timestamp: "0"),
+            ChatMessage(id: "99", role: .assistant, content: "ack", timestamp: "1"),
+            ChatMessage(id: "local-123", role: .user, content: "continue", timestamp: "2")
+        ]
+
+        let submitted = await harness.appState.submitComposer(text: "continue")
+
+        XCTAssertFalse(
+            submitted,
+            "An identical persisted row after the anchor cannot be attributed to this submission"
+        )
+        XCTAssertEqual(submitCount, 1, "No automatic resend")
+        XCTAssertEqual(transcriptReads, 2)
+        XCTAssertEqual(catalogCount, 1, "The conservative restoration runs exactly once")
+        XCTAssertEqual(
+            harness.appState.messages.filter { $0.role == .user && $0.content == "continue" }.count,
+            1,
+            "The optimistic duplicate is restored away; exactly one user row remains"
+        )
+        box.client.disconnect()
+    }
+
+    /// Case B: the first identical turn is durably anchored (hydrated rows
+    /// 501/502) and the tail advances past that anchor with a NEW identical
+    /// user row (503) plus its response — acceptance is provable.
+    func testAmbiguousNewIdenticalRowBeyondDurableAnchorIsAcceptedSettled() async {
+        let active = session("stored-a")
+        var submitCount = 0
+        var probeCount = 0
+        var catalogCount = 0
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in
+                    catalogCount += 1
+                    return [active]
+                },
+                openSession: { _, sessionID, _ in
+                    SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: [:])
+                    )
+                },
+                persistedTranscript: { _, _ in
+                    .payload([
+                        "messages": [
+                            ["id": "501", "role": "user", "content": "continue", "timestamp": "1"],
+                            ["id": "502", "role": "assistant", "content": "done", "timestamp": "2"],
+                            ["id": "503", "role": "user", "content": "continue", "timestamp": "3"],
+                            ["id": "504", "role": "assistant", "content": "done again", "timestamp": "4"]
+                        ],
+                        "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 4]
+                    ])
+                },
+                sendPrompt: { _, _, _ in
+                    submitCount += 1
+                    throw HermesError.timeout("prompt.submit")
+                },
+                probeActiveSessions: { _ in
+                    probeCount += 1
+                    // The turn already completed and the runtime was reaped.
+                    return []
+                }
+            )
+        )
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        harness.appState.messages = [
+            ChatMessage(id: "501", role: .user, content: "continue", timestamp: "1"),
+            ChatMessage(id: "502", role: .assistant, content: "done", timestamp: "2")
+        ]
+
+        let submitted = await harness.appState.submitComposer(text: "continue")
+
+        XCTAssertTrue(submitted, "Durable ordering proves the second identical turn landed")
+        XCTAssertEqual(submitCount, 1, "No second prompt.submit")
+        XCTAssertEqual(probeCount, 1)
+        XCTAssertEqual(catalogCount, 0, "No composer restoration for a proven acceptance")
+        XCTAssertEqual(
+            harness.appState.messages.last?.content, "continue",
+            "The optimistic row converges with the persisted transcript"
+        )
+        XCTAssertEqual(harness.appState.turnState, .idle, "The turn settled before recovery looked")
+        XCTAssertFalse(harness.appState.turnStateIsStale)
+        box.client.disconnect()
+    }
+
+    /// Case C: with NO durable pre-submit anchor at all, a matching persisted
+    /// row cannot be dated — indeterminate, never present.
+    func testAmbiguousMatchingRowWithoutDurableAnchorIsIndeterminate() async {
+        var submitCount = 0
+        var catalogCount = 0
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in
+                    catalogCount += 1
+                    return [self.session("stored-a")]
+                },
+                openSession: { _, sessionID, _ in
+                    SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                persistedTranscript: { _, _ in
+                    .payload([
+                        "messages": [
+                            ["id": "501", "role": "user", "content": "continue", "timestamp": "5"]
+                        ],
+                        "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 1]
+                    ])
+                },
+                sendPrompt: { _, _, _ in
+                    submitCount += 1
+                    throw HermesError.timeout("prompt.submit")
+                },
+                probeActiveSessions: { _ in
+                    [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: "idle"
+                    )]
+                }
+            )
+        )
+        installDisconnectedClient(into: harness)
+        harness.appState.sessions = [session("stored-a")]
+        harness.appState.activeSessionId = "stored-a"
+        harness.appState.messages = [
+            ChatMessage(id: "local-123", role: .user, content: "continue", timestamp: "2")
+        ]
+
+        let submitted = await harness.appState.submitComposer(text: "continue")
+
+        XCTAssertFalse(submitted, "Without a durable anchor the outcome must not claim acceptance")
+        XCTAssertEqual(submitCount, 1)
+        XCTAssertEqual(catalogCount, 1, "Conservative restoration exactly once")
+    }
+
+    // MARK: - Round 3: post-recovery presentation ownership
+
+    /// A failed-send error produced by session A's ambiguous recovery must
+    /// not paint the error (or any turn state) onto session B after the user
+    /// switched mid-recovery.
+    func testAmbiguousRecoveryErrorDoesNotLeakIntoHandedOffSession() async {
+        let sessionA = session("stored-a")
+        let sessionB = session("stored-b")
+        var submitCount = 0
+        var probeCount = 0
+        var catalogCount = 0
+        let probeGate = LifecycleSuspension()
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in
+                    catalogCount += 1
+                    return [sessionA]
+                },
+                openSession: { _, sessionID, _ in
+                    SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                persistedTranscript: { _, _ in
+                    .payload([
+                        "messages": [
+                            ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                            ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"]
+                        ],
+                        "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 2]
+                    ])
+                },
+                sendPrompt: { _, _, _ in
+                    submitCount += 1
+                    throw HermesError.timeout("prompt.submit")
+                },
+                probeActiveSessions: { _ in
+                    probeCount += 1
+                    await probeGate.suspend()
+                    return [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: "idle"
+                    )]
+                }
+            )
+        )
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [sessionA, sessionB]
+        harness.appState.activeSessionId = sessionA.id
+        harness.appState.messages = [
+            ChatMessage(id: "100", role: .user, content: "Earlier question", timestamp: "1"),
+            ChatMessage(id: "101", role: .assistant, content: "Earlier answer", timestamp: "2")
+        ]
+
+        let submissionA = Task { @MainActor in
+            await harness.appState.submitComposer(text: "A doomed send")
+        }
+        await probeGate.waitUntilSuspended()
+
+        // The user switches to session B while A's recovery is suspended.
+        harness.appState.activeSessionId = sessionB.id
+        harness.appState.handleScenePhase(.inactive)
+        harness.appState.errorMessage = "B-sentinel"
+
+        probeGate.resume()
+        let submittedA = await submissionA.value
+
+        XCTAssertFalse(submittedA)
+        XCTAssertEqual(submitCount, 1)
+        XCTAssertEqual(probeCount, 1)
+        XCTAssertEqual(
+            harness.appState.errorMessage, "B-sentinel",
+            "A's stale send failure must not overwrite B's error surface"
+        )
+        XCTAssertTrue(
+            harness.appState.turnStateIsStale,
+            "B's stale marker must survive A's recovery"
+        )
+        XCTAssertEqual(catalogCount, 0, "A's restoration is skipped under lost ownership")
+        box.client.disconnect()
+    }
+
     // MARK: - Harness
 
     private func makeHarness(
