@@ -525,21 +525,57 @@ final class AppState: ObservableObject {
     /// accepted (or ambiguity recovery proves `.acceptedRunning`), and
     /// validated at use against the transcript (the optimistic user row must
     /// still be present, unpersisted, and head a fully-unpersisted suffix)
-    /// plus the local turn state. `preSubmitDurableAnchorID` is the newest
-    /// durably-proven row captured BEFORE the send changed the transcript:
+    /// plus the local turn state. `preSubmitOrderingBaseline` freezes the
+    /// persisted ordering frontier BEFORE the send changes the transcript:
     /// the ordering anchor that lets a later bounded tail read classify
     /// persisted advancement as belonging to our turn (Hermes persists the
     /// user row at turn start, so the twin of the optimistic bubble is
-    /// normally there) versus belonging to a later foreign turn. Optimistic
+    /// normally there) versus belonging to a later foreign turn. Freezing at
+    /// submit time is load-bearing: a later frontier advance never moves a
+    /// live marker's baseline, so our turn's own persisted rows still count
+    /// as boundaries against a foreign turn that starts after it. Optimistic
     /// row ids never enter `durablePersistedRowIDs`; the two identities stay
     /// distinct — the marker only asserts that ONE new persisted user turn
     /// is expected while our turn is in flight.
     private struct LocallyOwnedInFlightTurn {
         var sessionIDs: Set<String>
         var optimisticUserRowID: String
-        var preSubmitDurableAnchorID: String?
+        var preSubmitOrderingBaseline: PersistedOrderingBaseline
     }
     private var locallyOwnedInFlightTurn: LocallyOwnedInFlightTurn?
+    /// Persisted ORDERING evidence — deliberately distinct from
+    /// `durablePersistedRowIDs` (provenance for rows currently represented
+    /// in the visible transcript). This is the newest durable row Conduit
+    /// has POSITIVELY observed through a validated bounded persisted-history
+    /// read or hydration, or a positive proof that the persisted transcript
+    /// is EMPTY. The visible transcript may keep an optimistic row whose
+    /// durable twin the frontier already knows about; the optimistic row is
+    /// never rewritten, the twin is never merged behind it, and the twin's
+    /// id never enters visible provenance — advancing the frontier is purely
+    /// ordering metadata for the NEXT locally-owned turn's baseline.
+    /// Conversation-scoped: reset on session/profile switch, conversation
+    /// replacement, sign-out; re-anchored by every authoritative reconcile
+    /// adoption and advancement merge, and advanced by every validated
+    /// `.unchanged` bounded read. Assignment is a RE-ANCHORING on the read's
+    /// own positive observation, not a monotonic advance: a validated read
+    /// whose page no longer contains the previous frontier row (server-side
+    /// deletion) re-anchors lower or to unknown — every use site verifies
+    /// anchors by id-presence in the page, so a stale anchor degrades to
+    /// inconclusive, never to a false verdict.
+    private struct PersistedOrderingFrontier {
+        var newestObservedDurableRowID: String?
+        var isPositivelyEmpty = false
+
+        /// Positively empty deliberately wins over an anchored id: the two
+        /// states are mutually exclusive by construction (see
+        /// `orderingFrontier(from:)`), and emptiness is the stronger claim.
+        var baseline: PersistedOrderingBaseline {
+            if isPositivelyEmpty { return .positivelyEmpty }
+            if let newestObservedDurableRowID { return .anchored(newestObservedDurableRowID) }
+            return .unknown
+        }
+    }
+    private var persistedOrderingFrontier = PersistedOrderingFrontier()
     @Published private(set) var busyInputMode: BusyInputMode = .steer
     @Published private(set) var displayPreferences = ProfileDisplayPreferences()
     @Published var streamingText = ""
@@ -2925,8 +2961,14 @@ final class AppState: ObservableObject {
             } ?? false
             // Adopt the durable row ids ONLY from a transcript this reconcile
             // validated and accepted; they anchor the ambiguous-delivery
-            // verifier's ordering evidence for this conversation.
+            // verifier's ordering evidence for this conversation. The
+            // persisted ORDERING frontier is re-established from the same
+            // acceptance — never carried over from a previous conversation
+            // state.
             durablePersistedRowIDs = (transcriptMatches ? transcript?.durableRowIDs : nil) ?? []
+            persistedOrderingFrontier = Self.orderingFrontier(
+                from: transcriptMatches ? transcript : nil
+            )
 
             // Capture the pre-reconcile transcript and window for the graft
             // decision below before either is replaced. The window write
@@ -4835,22 +4877,84 @@ final class AppState: ObservableObject {
 
     // MARK: - Cross-surface transcript freshness
 
-    /// Transcript-scoped lifecycle evidence (freshness uncertainty and
-    /// locally-owned turn provenance) belongs to the conversation it was
-    /// captured for. Call wherever the transcript is wholesale reset for a
-    /// new/different conversation identity: sign-out, profile switch,
-    /// conversation replacement, session open.
+    /// Ordering baseline a locally-owned turn captured at submit time.
+    private enum PersistedOrderingBaseline {
+        /// The newest durable row positively observed at submit time.
+        case anchored(String)
+        /// A validated read positively proved the persisted transcript EMPTY.
+        /// Valid ordering evidence — distinct from `unknown`, because a
+        /// single new user-turn boundary after a known-empty baseline is
+        /// provably the first turn.
+        case positivelyEmpty
+        /// No usable persisted ordering evidence (never hydrated, legacy
+        /// hydration, invalidated): every comparison stays inconclusive.
+        case unknown
+
+        var isPositivelyEmpty: Bool {
+            if case .positivelyEmpty = self { return true }
+            return false
+        }
+    }
+
+    /// Derives ordering evidence from a transcript a reconcile or freshness
+    /// read validated: a contract page anchors on its newest durable row
+    /// (contract pages carry durable ids on every row); a positively empty
+    /// page proves emptiness; anything else (legacy one-shot hydration, no
+    /// transcript) leaves the ordering evidence UNKNOWN — never carried over
+    /// from a previous conversation state.
+    private static func orderingFrontier(
+        from transcript: PersistedSessionTranscript?
+    ) -> PersistedOrderingFrontier {
+        guard let transcript,
+              let page = transcript.page,
+              page.honorsTailContract else {
+            return PersistedOrderingFrontier()
+        }
+        // Anchor on the NEWEST row the page positively proves durable: the
+        // page's newest row may normalize without a durable id while older
+        // rows carry theirs, and that older durable row is still the best
+        // positively-observed ordering anchor.
+        if let anchorIndex = transcript.messages.lastIndex(where: {
+            transcript.durableRowIDs.contains($0.id)
+        }) {
+            return PersistedOrderingFrontier(
+                newestObservedDurableRowID: transcript.messages[anchorIndex].id
+            )
+        }
+        // Emptiness is proven on the RAW row view: a page whose rows all
+        // normalize away (hidden display_kind scaffolding) still carries
+        // durable ids and is NOT a positively empty transcript.
+        if transcript.messages.isEmpty,
+           transcript.durableRowIDs.isEmpty,
+           !page.mayHaveOlderRows(fetchedRowCount: 0) {
+            return PersistedOrderingFrontier(isPositivelyEmpty: true)
+        }
+        return PersistedOrderingFrontier()
+    }
+
+    /// Transcript-scoped lifecycle evidence (freshness uncertainty,
+    /// locally-owned turn provenance, persisted ordering evidence) belongs
+    /// to the conversation it was captured for. Call wherever the
+    /// transcript is wholesale reset for a new/different conversation
+    /// identity: sign-out, profile switch, conversation replacement, session
+    /// open.
     private func resetTranscriptLifecycleEvidence() {
         transcriptFreshnessIsStale = false
         locallyOwnedInFlightTurn = nil
+        persistedOrderingFrontier = PersistedOrderingFrontier()
     }
 
     /// Outcome of the bounded persisted-tail freshness comparison against the
     /// locally adopted durable frontier.
     private enum ForegroundFreshnessVerdict {
         /// The newest page overlaps the local durable frontier and contains
-        /// nothing beyond it: the local transcript is current.
-        case unchanged
+        /// nothing beyond it (or, behind a locally-owned optimistic tail,
+        /// exactly the expected user-turn boundary): the local transcript is
+        /// current. The payload is the persisted ordering evidence this
+        /// validated read positively observed — the caller may advance the
+        /// ordering frontier with it while the visible transcript stays
+        /// untouched.
+        case unchanged(observedOrderingFrontier: PersistedOrderingFrontier)
         /// The page overlaps the frontier and holds validated durable rows
         /// after it: persisted activity the local transcript never saw.
         case advanced(transcript: PersistedSessionTranscript, newRows: [ChatMessage])
@@ -4917,17 +5021,10 @@ final class AppState: ObservableObject {
                   transcript.messages.isEmpty || !transcript.durableRowIDs.isEmpty else {
                 return .inconclusive
             }
-            // A positively empty page with no older rows proves the
-            // conversation has no persisted rows at all: an idle runtime
-            // cannot hide anything behind it, and an empty local transcript
-            // has nothing to diverge from.
-            if transcript.messages.isEmpty {
-                guard !page.mayHaveOlderRows(fetchedRowCount: 0),
-                      lastLocalMessageID == nil else {
-                    return .inconclusive
-                }
-                return .unchanged
-            }
+            // Identity first — even an empty page must belong to THIS
+            // conversation before it can prove anything (a page echoing a
+            // foreign session id is never evidence; pages echoing no id at
+            // all match by construction).
             guard transcriptMatchesSession(
                 transcript,
                 requestedSessionId: requestedSessionID,
@@ -4935,6 +5032,35 @@ final class AppState: ObservableObject {
             ) else {
                 // The endpoint answered for a different conversation
                 // identity: never merge rows from a foreign transcript.
+                return .inconclusive
+            }
+            // A positively empty page with no older rows proves the
+            // conversation has no persisted rows at all: an idle runtime
+            // cannot hide anything behind it, and an empty local transcript
+            // has nothing to diverge from. A visible optimistic tail over a
+            // positively empty page can only be a locally-owned turn whose
+            // rows simply have not persisted yet — still observational; any
+            // other tail has no ordering proof.
+            if transcript.messages.isEmpty {
+                // A page whose raw rows all normalize away (hidden
+                // scaffolding) is not positively empty — its durable ids
+                // prove rows exist.
+                guard transcript.durableRowIDs.isEmpty,
+                      !page.mayHaveOlderRows(fetchedRowCount: 0) else {
+                    return .inconclusive
+                }
+                if lastLocalMessageID == nil {
+                    return .unchanged(
+                        observedOrderingFrontier: Self.orderingFrontier(from: transcript)
+                    )
+                }
+                if let locallyOwnedTurn,
+                   locallyOwnedTurn.baseline.isPositivelyEmpty,
+                   livenessIsRunning {
+                    return .unchanged(
+                        observedOrderingFrontier: Self.orderingFrontier(from: transcript)
+                    )
+                }
                 return .inconclusive
             }
             let tailIsDurablyAnchored = lastLocalMessageID.map {
@@ -4970,7 +5096,9 @@ final class AppState: ObservableObject {
                 heldIDs: localMessageIDs
             )
             if newRows.isEmpty {
-                return .unchanged
+                return .unchanged(
+                    observedOrderingFrontier: Self.orderingFrontier(from: transcript)
+                )
             }
             return .advanced(transcript: transcript, newRows: newRows)
         }
@@ -5006,23 +5134,45 @@ final class AppState: ObservableObject {
             // turn landed at all: the authoritative refresh converges it.
             return .inconclusive
         }
-        guard let anchorID = owned.preSubmitDurableAnchorID,
-              let anchorIndex = transcript.messages.lastIndex(where: {
-                  $0.id == anchorID
-              }) else {
-            // No pre-submit ordering anchor, or it rotated out of the newest
-            // page (a long turn can push hundreds of rows past the window):
-            // no boundary proof — same invariant as the anchored path.
+        let newRows: [ChatMessage]
+        switch owned.baseline {
+        case .unknown:
+            // No usable ordering evidence was captured at submit time.
             return .inconclusive
+        case .anchored(let anchorID):
+            guard let anchorIndex = transcript.messages.lastIndex(where: {
+                $0.id == anchorID
+            }) else {
+                // The anchor rotated out of the newest page (a long turn can
+                // push hundreds of rows past the window): no boundary proof —
+                // same invariant as the anchored path.
+                return .inconclusive
+            }
+            newRows = persistedRowsAfter(
+                anchorIndex,
+                in: transcript,
+                heldIDs: localMessageIDs
+            )
+        case .positivelyEmpty:
+            // The whole persisted transcript follows the empty baseline, so
+            // every page row is a candidate — but only when the page is
+            // complete: older rotated-out rows could hide additional user
+            // boundaries and would make the count understate.
+            guard let page = transcript.page,
+                  !page.mayHaveOlderRows(fetchedRowCount: page.rawReturned) else {
+                return .inconclusive
+            }
+            newRows = persistedRowsAfter(
+                nil,
+                in: transcript,
+                heldIDs: localMessageIDs
+            )
         }
-        let newRows = persistedRowsAfter(
-            anchorIndex,
-            in: transcript,
-            heldIDs: localMessageIDs
-        )
         if newRows.isEmpty {
             // Nothing of ours persisted yet — the earliest in-flight shape.
-            return .unchanged
+            return .unchanged(
+                observedOrderingFrontier: Self.orderingFrontier(from: transcript)
+            )
         }
         let newUserTurnBoundaries = newRows.filter { $0.role == .user }
         guard let firstRow = newRows.first, firstRow.role == .user,
@@ -5030,8 +5180,13 @@ final class AppState: ObservableObject {
             return .inconclusive
         }
         // Exactly the expected twin of our optimistic Turn A user row (plus
-        // any Turn A output/tool rows): our turn is still the only one.
-        return .unchanged
+        // any Turn A output/tool rows): our turn is still the only one. The
+        // visible transcript stays untouched, but the ordering frontier may
+        // advance through the newest observed durable row of this proven
+        // Turn A region so the NEXT locally-owned turn anchors past it.
+        return .unchanged(
+            observedOrderingFrontier: Self.orderingFrontier(from: transcript)
+        )
     }
 
     /// Runs the bounded cross-surface freshness reconciliation for a
@@ -5144,14 +5299,21 @@ final class AppState: ObservableObject {
                 token: token,
                 automaticWorkToken: automaticWorkToken
             )
-        case .unchanged:
+        case let .unchanged(observedOrderingFrontier):
             lifecycleLog.notice(
                 "Foreground freshness: probe=\(livenessIsRunning ? "running" : "idle", privacy: .public) session=\(requestedSessionID, privacy: .public) verdict=unchanged → observational adopt"
             )
             // The bounded read proved the durable conversation current (an
             // optimistic locally-owned tail is live-turn content, not
-            // divergence).
+            // divergence). The visible transcript stays untouched, but the
+            // read's validated ordering evidence advances the persisted
+            // ordering frontier — pure metadata the NEXT locally-owned turn
+            // anchors against.
             transcriptFreshnessIsStale = false
+            // Re-anchor the ordering frontier on this read's own validated
+            // observation (see PersistedOrderingFrontier for the
+            // non-monotonicity rationale).
+            persistedOrderingFrontier = observedOrderingFrontier
             adoptForegroundLiveness(
                 livenessIsRunning,
                 token: token,
@@ -5200,10 +5362,10 @@ final class AppState: ObservableObject {
     /// Ordering evidence for the locally-owned optimistic tail, captured by
     /// `locallyOwnedFreshnessTurnEvidence` at freshness time. Non-nil means
     /// the trailing unpersisted rows belong to this surface's in-flight
-    /// turn; `preSubmitDurableAnchorID` is the ordering anchor the bounded
-    /// tail is classified against.
+    /// turn; `baseline` is the submit-time ordering anchor the bounded tail
+    /// is classified against.
     private struct LocallyOwnedTurnTailEvidence {
-        let preSubmitDurableAnchorID: String?
+        let baseline: PersistedOrderingBaseline
     }
 
     /// Non-nil when the transcript's trailing unpersisted rows belong to a
@@ -5234,7 +5396,7 @@ final class AppState: ObservableObject {
             return nil
         }
         return LocallyOwnedTurnTailEvidence(
-            preSubmitDurableAnchorID: marker.preSubmitDurableAnchorID
+            baseline: marker.preSubmitOrderingBaseline
         )
     }
 
@@ -5242,13 +5404,15 @@ final class AppState: ObservableObject {
     /// local transcript does not already hold — rows streamed in live under
     /// any identity dedupe by id, in both verdict paths.
     private func persistedRowsAfter(
-        _ anchorIndex: Int,
+        _ anchorIndex: Int?,
         in transcript: PersistedSessionTranscript,
         heldIDs: Set<String>
     ) -> [ChatMessage] {
         var knownIDs = heldIDs
         var newRows: [ChatMessage] = []
-        for row in transcript.messages[transcript.messages.index(after: anchorIndex)...]
+        let firstCandidateIndex = anchorIndex.map { $0 + 1 }
+            ?? transcript.messages.startIndex
+        for row in transcript.messages[firstCandidateIndex...]
         where knownIDs.insert(row.id).inserted {
             newRows.append(row)
         }
@@ -5300,8 +5464,10 @@ final class AppState: ObservableObject {
         }
         messages = merged
         // The bounded read just proved exactly which persisted rows were
-        // missing and merged them: transcript freshness is restored.
+        // missing and merged them: transcript freshness is restored, and the
+        // accepted page re-establishes the persisted ordering frontier.
         transcriptFreshnessIsStale = false
+        persistedOrderingFrontier = Self.orderingFrontier(from: transcript)
         // The merge just made the newest persisted page local: adopt its
         // durable ids as the frontier (same per-hydration replacement
         // semantics as reconcile) so the next freshness check anchors
@@ -6501,8 +6667,11 @@ final class AppState: ObservableObject {
                 locallyOwnedTurn: nil
             )
             switch verdict {
-            case .unchanged:
+            case let .unchanged(observedOrderingFrontier):
                 transcriptFreshnessIsStale = false
+                // Re-anchor the ordering frontier on the read's validated
+                // observation (non-monotonic by design).
+                persistedOrderingFrontier = observedOrderingFrontier
                 return .proceed
             case let .advanced(transcript, newRows):
                 applyPersistedForegroundAdvancement(
@@ -6581,12 +6750,12 @@ final class AppState: ObservableObject {
             durableIDs: durablePersistedRowIDs,
             holdsUnprovenRows: messages.contains { !durablePersistedRowIDs.contains($0.id) }
         )
-        // The locally-owned turn marker's ordering anchor: the newest
-        // durably-proven row, captured BEFORE the optimistic append changes
-        // the transcript below.
-        let preSubmitDurableAnchorID = messages.last(where: {
-            durablePersistedRowIDs.contains($0.id)
-        })?.id
+        // The locally-owned turn marker's ordering baseline, frozen BEFORE
+        // the optimistic append changes the transcript below: the persisted
+        // ordering FRONTIER, which may already run past the visible durable
+        // tail (a prior freshness read can have positively observed the
+        // previous turn's durable twins without adopting them visibly).
+        let preSubmitOrderingBaseline = persistedOrderingFrontier.baseline
         // The identity under probe must be captured BEFORE any await — never
         // re-derived from the mutable active session afterwards.
         let submissionSessionIDs = acceptedIdentitySessionIDs(forRequested: sessionId)
@@ -6676,7 +6845,7 @@ final class AppState: ObservableObject {
                     locallyOwnedInFlightTurn = LocallyOwnedInFlightTurn(
                         sessionIDs: submissionSessionIDs,
                         optimisticUserRowID: userMessage.id,
-                        preSubmitDurableAnchorID: preSubmitDurableAnchorID
+                        preSubmitOrderingBaseline: preSubmitOrderingBaseline
                     )
                 }
             }
@@ -6714,7 +6883,7 @@ final class AppState: ObservableObject {
                         locallyOwnedInFlightTurn = LocallyOwnedInFlightTurn(
                             sessionIDs: submissionSessionIDs,
                             optimisticUserRowID: userMessage.id,
-                            preSubmitDurableAnchorID: preSubmitDurableAnchorID
+                            preSubmitOrderingBaseline: preSubmitOrderingBaseline
                         )
                     }
                     return true

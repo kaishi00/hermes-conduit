@@ -4667,10 +4667,15 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         box.client.disconnect()
     }
 
-    /// A brand-new conversation's first locally-submitted turn has NO
-    /// durable pre-submit anchor, so no boundary proof can exist even for
-    /// the expected twin — the conservative attach owns it.
-    func testForegroundFirstTurnWithoutDurableAnchorTakesAttach() async {
+    /// A brand-new conversation's first locally-submitted turn: the initial
+    /// hydration POSITIVELY proved the persisted transcript empty, which is
+    /// valid ordering evidence (distinct from unknown). The persisted twin
+    /// of the optimistic first-turn row — exactly ONE new canonical
+    /// user-turn boundary after a positively-empty baseline, with the
+    /// runtime still working — stays same-turn observational: zero
+    /// `session.resume`, zero transcript replacement, optimistic row and
+    /// live reasoning projection intact.
+    func testForegroundFirstTurnFromPositivelyEmptyBaselineStaysObservational() async {
         let active = session("stored-a")
         var probeCount = 0
         var resumeCount = 0
@@ -4678,18 +4683,12 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         var submitCount = 0
         let harness = makeHarness(
             lifecycleOperations: ChatResumeLifecycleOperations(
-                loadCatalog: { _, _ in [active] },
                 openSession: { _, sessionID, _ in
                     resumeCount += 1
                     return SessionResumeResult(
                         sessionId: sessionID,
                         messages: [],
-                        snapshot: SessionRuntimeSnapshot(
-                            object: ["running": .bool(resumeCount > 1)],
-                            inflight: resumeCount > 1
-                                ? .object(["text": .string("First turn partial")])
-                                : nil
-                        )
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
                 persistedTranscript: { _, _ in
@@ -4736,23 +4735,528 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         XCTAssertTrue(submitted)
         XCTAssertEqual(submitCount, 1)
         XCTAssertEqual(harness.appState.messages.count, 1)
+        XCTAssertTrue(
+            harness.appState.messages.last?.id.hasPrefix("local-") == true,
+            "The visible user row is the optimistic local row"
+        )
+        XCTAssertEqual(harness.appState.turnState, .running)
         harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: true))
         harness.appState.handleStreamEvent(.reasoningDelta(sessionId: active.id, text: "Thinking."))
-        XCTAssertNotNil(harness.appState.liveReasoningSegment)
+        let segmentBefore = harness.appState.liveReasoningSegment
+        XCTAssertNotNil(segmentBefore)
+        let messagesBefore = harness.appState.messages
         let resumesBeforeForeground = resumeCount
 
         harness.appState.handleScenePhase(.background)
         await runSceneActivation(harness)
 
         XCTAssertEqual(probeCount, 1)
-        XCTAssertEqual(transcriptReads, 3)
+        XCTAssertEqual(transcriptReads, 2, "One bounded freshness read")
         XCTAssertEqual(
-            resumeCount, resumesBeforeForeground + 1,
-            "No durable anchor → no ordering proof → the attach owns the tail"
+            resumeCount, resumesBeforeForeground,
+            "A positively-empty baseline makes the first turn's twin provable — zero session.resume"
         )
-        XCTAssertEqual(harness.appState.messages.map(\.id), ["102"])
-        XCTAssertNil(harness.appState.liveReasoningSegment)
+        XCTAssertEqual(
+            harness.appState.messages, messagesBefore,
+            "The persisted twin is never merged behind the optimistic row"
+        )
+        XCTAssertEqual(harness.appState.liveReasoningSegment, segmentBefore)
         XCTAssertEqual(harness.appState.turnState, .running)
+        XCTAssertFalse(harness.appState.transcriptFreshnessIsStale)
+
+        // Future deltas extend the SAME turn.
+        harness.appState.handleStreamEvent(.reasoningDelta(sessionId: active.id, text: " More."))
+        XCTAssertEqual(harness.appState.liveReasoningSegment?.id, segmentBefore?.id)
+        harness.appState.showSidebar = true
+        harness.appState.showSidebar = false
+        XCTAssertEqual(harness.appState.liveReasoningSegment?.content, "Thinking. More.")
+        box.client.disconnect()
+    }
+
+    /// Consecutive locally-owned turns: the Turn A foreground's unchanged
+    /// verdict advances the persisted ordering frontier through Turn A's
+    /// persisted rows WITHOUT touching the visible transcript, so Turn B's
+    /// marker anchors past them — Turn B's foreground must not miscount
+    /// Turn A's rows as foreign user-turn boundaries. Both foregrounds stay
+    /// observational: zero `session.resume`.
+    func testConsecutiveLocallyOwnedTurnsAdvancePersistedOrderingFrontier() async {
+        let active = session("stored-a")
+        var probeCount = 0
+        var resumeCount = 0
+        var transcriptReads = 0
+        var submitCount = 0
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                openSession: { _, sessionID, _ in
+                    resumeCount += 1
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                persistedTranscript: { _, _ in
+                    transcriptReads += 1
+                    if transcriptReads == 1 {
+                        return .payload([
+                            "messages": [
+                                ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                                ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"]
+                            ],
+                            "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 2]
+                        ])
+                    }
+                    if transcriptReads == 2 {
+                        // Turn A's durable twin + output while A runs.
+                        return .payload([
+                            "messages": [
+                                ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                                ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"],
+                                ["id": "102", "role": "user", "content": "A", "timestamp": "3"],
+                                ["id": "103", "role": "assistant", "content": "Answer A", "timestamp": "4"]
+                            ],
+                            "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 4]
+                        ])
+                    }
+                    // Turn B's twin: only ONE new user boundary after the
+                    // advanced ordering frontier (103).
+                    return .payload([
+                        "messages": [
+                            ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                            ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"],
+                            ["id": "102", "role": "user", "content": "A", "timestamp": "3"],
+                            ["id": "103", "role": "assistant", "content": "Answer A", "timestamp": "4"],
+                            ["id": "104", "role": "user", "content": "B", "timestamp": "5"]
+                        ],
+                        "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 5]
+                    ])
+                },
+                refreshContext: { _, _ in },
+                sendPrompt: { _, _, _ in
+                    submitCount += 1
+                    return .accepted
+                },
+                verifyTransportHealth: { _ in },
+                probeActiveSessions: { _ in
+                    probeCount += 1
+                    return [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: "working"
+                    )]
+                }
+            )
+        )
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        let opened = await harness.appState.openSession(active.id)
+        XCTAssertTrue(opened)
+        XCTAssertEqual(harness.appState.messages.map(\.id), ["100", "101"])
+
+        // --- Turn A ---
+        let submittedA = await harness.appState.submitComposer(text: "A")
+        XCTAssertTrue(submittedA)
+        XCTAssertEqual(submitCount, 1)
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: true))
+        harness.appState.handleStreamEvent(.reasoningDelta(sessionId: active.id, text: "A thinking."))
+        let segmentA = harness.appState.liveReasoningSegment
+        XCTAssertNotNil(segmentA)
+        let messagesAfterA = harness.appState.messages
+
+        harness.appState.handleScenePhase(.background)
+        await runSceneActivation(harness)
+
+        XCTAssertEqual(probeCount, 1)
+        XCTAssertEqual(transcriptReads, 2)
+        XCTAssertEqual(
+            resumeCount, 1,
+            "Turn A's foreground with its durable twin stays observational"
+        )
+        XCTAssertEqual(harness.appState.messages, messagesAfterA)
+        XCTAssertEqual(harness.appState.liveReasoningSegment, segmentA)
+        XCTAssertEqual(harness.appState.turnState, .running)
+
+        // Settle Turn A locally through the normal stream completion path.
+        harness.appState.handleStreamEvent(.messageComplete(
+            sessionId: active.id,
+            messageId: nil,
+            content: "Answer A",
+            reasoning: nil
+        ))
+        harness.appState.handleStreamEvent(.messageStart(sessionId: active.id))
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: false))
+        XCTAssertEqual(harness.appState.turnState, .idle)
+
+        // --- Turn B ---
+        let submittedB = await harness.appState.submitComposer(text: "B")
+        XCTAssertTrue(submittedB)
+        XCTAssertEqual(submitCount, 2)
+        XCTAssertEqual(harness.appState.turnState, .running)
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: true))
+        harness.appState.handleStreamEvent(.reasoningDelta(sessionId: active.id, text: "B thinking."))
+        let segmentB = harness.appState.liveReasoningSegment
+        XCTAssertNotNil(segmentB)
+        let messagesAfterB = harness.appState.messages
+
+        harness.appState.handleScenePhase(.background)
+        await runSceneActivation(harness)
+
+        XCTAssertEqual(probeCount, 2)
+        XCTAssertEqual(transcriptReads, 3, "One bounded freshness read per background return")
+        XCTAssertEqual(
+            resumeCount, 1,
+            "Turn A's persisted rows must not be miscounted as foreign boundaries — Turn B stays observational"
+        )
+        XCTAssertEqual(harness.appState.messages, messagesAfterB, "No transcript replacement")
+        XCTAssertEqual(harness.appState.liveReasoningSegment, segmentB)
+        XCTAssertEqual(harness.appState.turnState, .running)
+        XCTAssertFalse(harness.appState.transcriptFreshnessIsStale)
+
+        // Future Turn B deltas extend the SAME segment.
+        harness.appState.handleStreamEvent(.reasoningDelta(sessionId: active.id, text: " More."))
+        XCTAssertEqual(harness.appState.liveReasoningSegment?.id, segmentB?.id)
+        box.client.disconnect()
+    }
+
+    /// Frontier advancement never weakens cross-surface protection: the
+    /// locally-owned marker's baseline is FROZEN at submit time, so after
+    /// Turn A's foreground advances the frontier through 103, a SECOND
+    /// background return where A completed and a remote Turn B started
+    /// still sees TWO boundaries against the frozen baseline and takes the
+    /// authoritative attach.
+    func testForegroundRemoteTurnBAfterFrontierAdvanceStillAttaches() async {
+        let active = session("stored-a")
+        var probeCount = 0
+        var resumeCount = 0
+        var transcriptReads = 0
+        var submitCount = 0
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in [active] },
+                openSession: { _, sessionID, _ in
+                    resumeCount += 1
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(
+                            object: ["running": .bool(resumeCount > 1)],
+                            inflight: resumeCount > 1
+                                ? .object(["text": .string("Turn B partial answer")])
+                                : nil
+                        )
+                    )
+                },
+                persistedTranscript: { _, _ in
+                    transcriptReads += 1
+                    if transcriptReads == 1 {
+                        return .payload([
+                            "messages": [
+                                ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                                ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"]
+                            ],
+                            "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 2]
+                        ])
+                    }
+                    if transcriptReads == 2 {
+                        // Turn A's twin + output while A runs.
+                        return .payload([
+                            "messages": [
+                                ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                                ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"],
+                                ["id": "102", "role": "user", "content": "A", "timestamp": "3"],
+                                ["id": "103", "role": "assistant", "content": "Answer A", "timestamp": "4"]
+                            ],
+                            "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 4]
+                        ])
+                    }
+                    // A completed while away; a remote Turn B started: TWO
+                    // boundaries after the frozen baseline (101).
+                    return .payload([
+                        "messages": [
+                            ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                            ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"],
+                            ["id": "102", "role": "user", "content": "A", "timestamp": "3"],
+                            ["id": "103", "role": "assistant", "content": "Answer A", "timestamp": "4"],
+                            ["id": "104", "role": "user", "content": "Turn B question", "timestamp": "5"]
+                        ],
+                        "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 5]
+                    ])
+                },
+                refreshContext: { _, _ in },
+                sendPrompt: { _, _, _ in
+                    submitCount += 1
+                    return .accepted
+                },
+                verifyTransportHealth: { _ in },
+                probeActiveSessions: { _ in
+                    probeCount += 1
+                    return [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: "working"
+                    )]
+                }
+            )
+        )
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        let opened = await harness.appState.openSession(active.id)
+        XCTAssertTrue(opened)
+
+        // Turn A: foreground advances the ordering frontier through 103.
+        let submitted = await harness.appState.submitComposer(text: "A")
+        XCTAssertTrue(submitted)
+        XCTAssertEqual(submitCount, 1)
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: true))
+        harness.appState.handleStreamEvent(.reasoningDelta(sessionId: active.id, text: "Turn A thinking."))
+        XCTAssertNotNil(harness.appState.liveReasoningSegment)
+
+        harness.appState.handleScenePhase(.background)
+        await runSceneActivation(harness)
+        XCTAssertEqual(resumeCount, 1, "Turn A's own foreground stays observational")
+        XCTAssertEqual(transcriptReads, 2)
+
+        // Second background: A completes unobserved, remote Turn B starts.
+        harness.appState.handleScenePhase(.background)
+        await runSceneActivation(harness)
+
+        XCTAssertEqual(probeCount, 2)
+        XCTAssertEqual(transcriptReads, 4, "Freshness read + the attach reconcile's bounded read")
+        XCTAssertEqual(
+            resumeCount, 2,
+            "A second user boundary after the FROZEN baseline forces the authoritative attach"
+        )
+        XCTAssertEqual(
+            harness.appState.messages.map(\.id), ["100", "101", "102", "103", "104"],
+            "Turn A completion and the remote Turn B prefix are visible"
+        )
+        XCTAssertNil(
+            harness.appState.liveReasoningSegment,
+            "The stale Turn A projection must not survive the attach"
+        )
+        XCTAssertEqual(
+            harness.appState.streamingText, "Turn B partial answer",
+            "The remote Turn B projection is authoritative"
+        )
+        XCTAssertEqual(harness.appState.turnState, .running)
+        box.client.disconnect()
+    }
+
+    /// Local Turn A observed (frontier advanced), local Turn B submitted,
+    /// then B completes while backgrounded and a remote Turn C starts: TWO
+    /// boundaries after B's frozen baseline force the attach — advancing the
+    /// ordering frontier does not erase the second-boundary protection.
+    func testForegroundRemoteTurnCAfterLocalTurnBStillAttaches() async {
+        let active = session("stored-a")
+        var probeCount = 0
+        var resumeCount = 0
+        var transcriptReads = 0
+        var submitCount = 0
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in [active] },
+                openSession: { _, sessionID, _ in
+                    resumeCount += 1
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(
+                            object: ["running": .bool(resumeCount > 1)],
+                            inflight: resumeCount > 1
+                                ? .object(["text": .string("Turn C partial answer")])
+                                : nil
+                        )
+                    )
+                },
+                persistedTranscript: { _, _ in
+                    transcriptReads += 1
+                    if transcriptReads == 1 {
+                        return .payload([
+                            "messages": [
+                                ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                                ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"]
+                            ],
+                            "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 2]
+                        ])
+                    }
+                    if transcriptReads == 2 {
+                        // Turn A's twin + output while A runs.
+                        return .payload([
+                            "messages": [
+                                ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                                ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"],
+                                ["id": "102", "role": "user", "content": "A", "timestamp": "3"],
+                                ["id": "103", "role": "assistant", "content": "Answer A", "timestamp": "4"]
+                            ],
+                            "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 4]
+                        ])
+                    }
+                    // B completed while away; remote Turn C started: TWO
+                    // boundaries after B's frozen baseline (103).
+                    return .payload([
+                        "messages": [
+                            ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                            ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"],
+                            ["id": "102", "role": "user", "content": "A", "timestamp": "3"],
+                            ["id": "103", "role": "assistant", "content": "Answer A", "timestamp": "4"],
+                            ["id": "104", "role": "user", "content": "B", "timestamp": "5"],
+                            ["id": "105", "role": "assistant", "content": "Answer B", "timestamp": "6"],
+                            ["id": "106", "role": "user", "content": "Turn C question", "timestamp": "7"]
+                        ],
+                        "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 7]
+                    ])
+                },
+                refreshContext: { _, _ in },
+                sendPrompt: { _, _, _ in
+                    submitCount += 1
+                    return .accepted
+                },
+                verifyTransportHealth: { _ in },
+                probeActiveSessions: { _ in
+                    probeCount += 1
+                    return [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: "working"
+                    )]
+                }
+            )
+        )
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        let opened = await harness.appState.openSession(active.id)
+        XCTAssertTrue(opened)
+
+        // Turn A: foreground advances the ordering frontier through 103.
+        let submittedA = await harness.appState.submitComposer(text: "A")
+        XCTAssertTrue(submittedA)
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: true))
+        harness.appState.handleStreamEvent(.reasoningDelta(sessionId: active.id, text: "A thinking."))
+        harness.appState.handleScenePhase(.background)
+        await runSceneActivation(harness)
+        XCTAssertEqual(resumeCount, 1)
+
+        // Settle A locally, then submit Turn B.
+        harness.appState.handleStreamEvent(.messageComplete(
+            sessionId: active.id,
+            messageId: nil,
+            content: "Answer A",
+            reasoning: nil
+        ))
+        harness.appState.handleStreamEvent(.messageStart(sessionId: active.id))
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: false))
+        XCTAssertEqual(harness.appState.turnState, .idle)
+
+        let submittedB = await harness.appState.submitComposer(text: "B")
+        XCTAssertTrue(submittedB)
+        XCTAssertEqual(submitCount, 2)
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: true))
+        harness.appState.handleStreamEvent(.reasoningDelta(sessionId: active.id, text: "B thinking."))
+        XCTAssertNotNil(harness.appState.liveReasoningSegment)
+
+        // B completes while backgrounded; a remote Turn C starts.
+        harness.appState.handleScenePhase(.background)
+        await runSceneActivation(harness)
+
+        XCTAssertEqual(probeCount, 2)
+        XCTAssertEqual(transcriptReads, 4, "Freshness read + the attach reconcile's bounded read")
+        XCTAssertEqual(
+            resumeCount, 2,
+            "Two boundaries after B's frozen baseline force the authoritative attach"
+        )
+        XCTAssertEqual(
+            harness.appState.messages.map(\.id), ["100", "101", "102", "103", "104", "105", "106"],
+            "Turn B completion and the remote Turn C prefix are visible"
+        )
+        XCTAssertNil(
+            harness.appState.liveReasoningSegment,
+            "The stale Turn B projection must not survive the attach"
+        )
+        XCTAssertEqual(
+            harness.appState.streamingText, "Turn C partial answer",
+            "The remote Turn C projection is authoritative"
+        )
+        XCTAssertEqual(harness.appState.turnState, .running)
+        box.client.disconnect()
+    }
+
+    /// The twin can lag the read: a locally-owned first turn whose user row
+    /// has NOT persisted yet (the page is still positively empty) with the
+    /// runtime working stays observational — nothing new is persisted, so
+    /// there is nothing to attach to.
+    func testForegroundLocallyOwnedTurnTwinNotYetPersistedStaysObservational() async {
+        let active = session("stored-a")
+        var probeCount = 0
+        var resumeCount = 0
+        var transcriptReads = 0
+        var submitCount = 0
+        let emptyPage: [String: Any] = [
+            "messages": [],
+            "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 0]
+        ]
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                openSession: { _, sessionID, _ in
+                    resumeCount += 1
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                persistedTranscript: { _, _ in
+                    transcriptReads += 1
+                    return .payload(emptyPage)
+                },
+                refreshContext: { _, _ in },
+                sendPrompt: { _, _, _ in
+                    submitCount += 1
+                    return .accepted
+                },
+                verifyTransportHealth: { _ in },
+                probeActiveSessions: { _ in
+                    probeCount += 1
+                    return [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: "working"
+                    )]
+                }
+            )
+        )
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        let opened = await harness.appState.openSession(active.id)
+        XCTAssertTrue(opened)
+        XCTAssertTrue(harness.appState.messages.isEmpty)
+
+        let submitted = await harness.appState.submitComposer(text: "First question")
+        XCTAssertTrue(submitted)
+        XCTAssertEqual(submitCount, 1)
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: true))
+        harness.appState.handleStreamEvent(.reasoningDelta(sessionId: active.id, text: "Thinking."))
+        let segmentBefore = harness.appState.liveReasoningSegment
+        XCTAssertNotNil(segmentBefore)
+        let messagesBefore = harness.appState.messages
+        let resumesBeforeForeground = resumeCount
+
+        harness.appState.handleScenePhase(.background)
+        await runSceneActivation(harness)
+
+        XCTAssertEqual(probeCount, 1)
+        XCTAssertEqual(transcriptReads, 2)
+        XCTAssertEqual(
+            resumeCount, resumesBeforeForeground,
+            "An empty persisted tail behind a running locally-owned turn is not evidence of anything foreign"
+        )
+        XCTAssertEqual(harness.appState.messages, messagesBefore)
+        XCTAssertEqual(harness.appState.liveReasoningSegment, segmentBefore)
+        XCTAssertEqual(harness.appState.turnState, .running)
+        XCTAssertFalse(harness.appState.transcriptFreshnessIsStale)
         box.client.disconnect()
     }
 
