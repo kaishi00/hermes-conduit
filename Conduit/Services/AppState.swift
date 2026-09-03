@@ -8177,14 +8177,27 @@ final class AppState: ObservableObject {
             // A successful steer proves Hermes applied the session's busy
             // policy — the session was RUNNING when the steer landed. That is
             // authoritative live liveness evidence for the recovery stamp
-            // guard, even though steer writes no local turn state.
-            turnLifecycleEvidence = TurnLifecycleEvidence(
-                revision: turnLifecycleEvidence.revision &+ 1,
-                running: true
-            )
+            // guard, even though steer writes no local turn state. It is
+            // evidence about the ORIGINATING conversation only: the RPC may
+            // complete after the user switched conversations, and a late
+            // Session-A steer must never contaminate Session B's global
+            // evidence — a stale running claim here would let B's older
+            // ambiguous recovery resurrect ownership over B's newer settled
+            // edge. Alias rotation within the same conversation still counts;
+            // a genuine handoff does not.
+            // Bool test only — the re-homed context it computes internally is
+            // not needed, because steer performs no further session-scoped
+            // writes after this point.
+            if isCurrentOrAliasedComposerSubmission(submissionContext) {
+                turnLifecycleEvidence = TurnLifecycleEvidence(
+                    revision: turnLifecycleEvidence.revision &+ 1,
+                    running: true
+                )
+            }
             // A successful steer is accepted by Hermes even if the user
-            // switched sessions while the RPC was suspended. It has no local
-            // post-await mutation, so preserve success for draft handling.
+            // switched sessions while the RPC was suspended. Apart from the
+            // ownership-gated evidence write above it has no local post-await
+            // mutation, so preserve success for draft handling.
             return true
         } catch {
             guard isCurrentOrAliasedComposerSubmission(submissionContext) else { return false }

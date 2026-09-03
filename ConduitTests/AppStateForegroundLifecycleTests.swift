@@ -7356,6 +7356,239 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         box.client.disconnect()
     }
 
+    /// A steer whose RPC completes after the user switched conversations must
+    /// stay SUCCESSFUL (an accepted Hermes steer is never a local failure) but
+    /// must not mutate the current conversation's global lifecycle evidence.
+    /// Otherwise a late Session-A running claim contaminates Session B and
+    /// lets B's older ambiguous recovery resurrect accepted-turn ownership
+    /// over B's newer settled edge.
+    func testLateSteerFromPreviousConversationCannotOverwriteCurrentLifecycleEvidence() async {
+        let conversationA = session("stored-a")
+        let conversationB = session("stored-b")
+        var steerCount = 0
+        var submitCount = 0
+        var probeCount = 0
+        var transcriptReads = 0
+        var resumeCount = 0
+        let steerGate = LifecycleSuspension()
+        let probeGate = LifecycleSuspension()
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in [conversationA, conversationB] },
+                openSession: { _, sessionID, _ in
+                    resumeCount += 1
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                persistedTranscript: { _, _ in
+                    // Stubbed so the transcriptReads assertions below are
+                    // live: any accidental verifier or debt read fails them.
+                    transcriptReads += 1
+                    return .payload([
+                        "messages": [],
+                        "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 0]
+                    ])
+                },
+                refreshContext: { _, _ in },
+                sendPrompt: { _, _, _ in
+                    submitCount += 1
+                    if submitCount == 1 {
+                        throw HermesError.timeout("prompt.submit")
+                    }
+                    return .accepted
+                },
+                probeActiveSessions: { _ in
+                    probeCount += 1
+                    if probeCount == 1 {
+                        // B's ambiguous-recovery probe is parked.
+                        await probeGate.suspend()
+                    }
+                    // The stale registry snapshot still reports B committed-busy.
+                    return [LiveSessionStatus(
+                        runtimeSessionId: "runtime-b",
+                        storedSessionId: "stored-b",
+                        status: "working"
+                    )]
+                },
+                steer: { _, _, _ in
+                    steerCount += 1
+                    if steerCount == 1 {
+                        // A's steer RPC is parked; B's whole recovery races it.
+                        await steerGate.suspend()
+                    }
+                }
+            )
+        )
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [conversationA, conversationB]
+        harness.appState.activeSessionId = conversationA.id
+        // A is running; the user steers into it.
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: conversationA.id, busy: true))
+        XCTAssertEqual(harness.appState.turnState, .running)
+
+        let steerSubmission = Task { @MainActor in
+            await harness.appState.submitComposer(text: "A correction")
+        }
+        await steerGate.waitUntilSuspended()
+
+        // The user switches to conversation B. A settle edge normalizes the
+        // shared turn state so B's text routes as an ordinary new turn.
+        harness.appState.activeSessionId = conversationB.id
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: conversationB.id, busy: false))
+        XCTAssertEqual(harness.appState.turnState, .idle)
+
+        // B's acknowledgement is ambiguous; its recovery probe parks.
+        let bSubmission = Task { @MainActor in
+            await harness.appState.submitComposer(text: "B prompt")
+        }
+        await probeGate.waitUntilSuspended()
+
+        // Newer authoritative evidence settles B while its recovery awaits.
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: conversationB.id, busy: false))
+        XCTAssertEqual(harness.appState.turnState, .idle)
+
+        // The parked Session-A steer completes successfully AFTER B's newer
+        // settle. It must still report success — without advancing B's
+        // lifecycle evidence to running.
+        steerGate.resume()
+        let steerSubmitted = await steerSubmission.value
+        XCTAssertTrue(
+            steerSubmitted,
+            "A successful steer stays successful across a conversation handoff"
+        )
+
+        // B's stale probe returns working. The newer settlement must win.
+        probeGate.resume()
+        let bSubmitted = await bSubmission.value
+
+        XCTAssertTrue(bSubmitted, "The accepted turn must not surface as a failed send")
+        XCTAssertEqual(submitCount, 1, "An accepted prompt must never be re-submitted")
+        XCTAssertEqual(steerCount, 1)
+        XCTAssertEqual(probeCount, 1)
+        XCTAssertEqual(resumeCount, 0)
+        XCTAssertEqual(
+            transcriptReads, 0,
+            "A running registry row never consults the durable verifier"
+        )
+        XCTAssertEqual(
+            harness.appState.turnState, .idle,
+            "The newer settlement survives: no stale running stamp"
+        )
+        XCTAssertEqual(
+            harness.appState.messages.last?.content, "B prompt",
+            "The optimistic user row remains accepted"
+        )
+        XCTAssertNil(harness.appState.errorMessage)
+
+        // No hidden provenance leaked: a further settle with no resurrected
+        // marker records no ordering debt, so the next ordinary send needs no
+        // bounded read and no resume.
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: conversationB.id, busy: false))
+        let nextSubmitted = await harness.appState.submitComposer(text: "B next")
+        XCTAssertTrue(nextSubmitted)
+        XCTAssertEqual(submitCount, 2)
+        XCTAssertEqual(
+            transcriptReads, 0,
+            "No resurrected ownership: the later settle recorded no debt, so this send needs no bounded read"
+        )
+        XCTAssertEqual(
+            resumeCount, 0,
+            "No authoritative resume may follow the stale-evidence race"
+        )
+        XCTAssertEqual(harness.appState.messages.count, 2, "Both optimistic B rows remain")
+        box.client.disconnect()
+    }
+
+    /// Same-conversation alias rotation keeps the steer's lifecycle evidence:
+    /// a steer that begins for the stored session id and completes after the
+    /// runtime identity rotates (still the SAME conversation) must count as
+    /// authoritative running evidence. Observable through the recovery guard:
+    /// the evidence advance suppresses the acceptedRunning recovery's stale
+    /// clearing, so the boundary-written staleness survives.
+    func testSteerAfterSameConversationAliasRotationStillAdvancesLifecycleEvidence() async {
+        let active = session("stored-a", alternateIDs: ["runtime-a"])
+        var steerCount = 0
+        var submitCount = 0
+        var probeCount = 0
+        let steerGate = LifecycleSuspension()
+        let probeGate = LifecycleSuspension()
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                sendPrompt: { _, _, _ in
+                    submitCount += 1
+                    throw HermesError.timeout("prompt.submit")
+                },
+                probeActiveSessions: { _ in
+                    probeCount += 1
+                    if probeCount == 1 {
+                        // The ambiguous recovery's probe is parked.
+                        await probeGate.suspend()
+                    }
+                    return [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: "working"
+                    )]
+                },
+                steer: { _, _, _ in
+                    steerCount += 1
+                    if steerCount == 1 {
+                        await steerGate.suspend()
+                    }
+                }
+            )
+        )
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: true))
+
+        let steerSubmission = Task { @MainActor in
+            await harness.appState.submitComposer(text: "A correction")
+        }
+        await steerGate.waitUntilSuspended()
+
+        // A settle edge, then the runtime identity rotates within the SAME
+        // conversation.
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: false))
+        harness.appState.activeSessionId = "runtime-a"
+
+        // An ambiguous send on the (aliased) conversation parks its recovery
+        // probe — the capture predates the parked steer's completion.
+        let submission = Task { @MainActor in
+            await harness.appState.submitComposer(text: "Ambiguous send")
+        }
+        await probeGate.waitUntilSuspended()
+        harness.appState.handleScenePhase(.background)
+        XCTAssertTrue(harness.appState.turnStateIsStale)
+
+        // The steer completes for the SAME conversation: its running evidence
+        // must advance.
+        steerGate.resume()
+        let steerSubmitted = await steerSubmission.value
+        XCTAssertTrue(steerSubmitted)
+
+        probeGate.resume()
+        let submitted = await submission.value
+
+        XCTAssertTrue(submitted, "The accepted turn must not surface as a failed send")
+        XCTAssertEqual(submitCount, 1, "An accepted prompt must never be re-submitted")
+        XCTAssertEqual(steerCount, 1)
+        XCTAssertEqual(probeCount, 1)
+        XCTAssertEqual(
+            harness.appState.turnState, .running,
+            "The turn stays running-like for the accepted submission (from the pre-send optimistic stamp, not the suppressed recovery)"
+        )
+        XCTAssertTrue(
+            harness.appState.turnStateIsStale,
+            "The aliased steer advanced the evidence, so the recovery must not clear the boundary's staleness"
+        )
+        box.client.disconnect()
+    }
+
     // MARK: - Harness
 
     private func makeHarness(
