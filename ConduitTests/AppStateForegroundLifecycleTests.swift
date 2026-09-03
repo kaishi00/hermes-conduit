@@ -5260,6 +5260,356 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         box.client.disconnect()
     }
 
+    /// THE foreground-only lifecycle: Turn A is submitted, runs, and
+    /// settles entirely while Conduit stays foregrounded — no bounded
+    /// history read ever observes its durable rows. The settle records one
+    /// unit of local ordering debt, and Turn B's submit reconciles it with
+    /// exactly one bounded tail read BEFORE freezing B's ordering baseline.
+    /// B's foreground then sees only B's own boundary and stays
+    /// observational.
+    func testConsecutiveLocallyOwnedTurnsWithoutIntermediateFreshnessReadStayObservational() async {
+        let active = session("stored-a")
+        var probeCount = 0
+        var resumeCount = 0
+        var transcriptReads = 0
+        var submitCount = 0
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                openSession: { _, sessionID, _ in
+                    resumeCount += 1
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                persistedTranscript: { _, _ in
+                    transcriptReads += 1
+                    if transcriptReads == 1 {
+                        return .payload([
+                            "messages": [
+                                ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                                ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"]
+                            ],
+                            "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 2]
+                        ])
+                    }
+                    if transcriptReads == 2 {
+                        // The pre-send debt catch-up: Turn A's durable rows.
+                        return .payload([
+                            "messages": [
+                                ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                                ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"],
+                                ["id": "102", "role": "user", "content": "A", "timestamp": "3"],
+                                ["id": "103", "role": "assistant", "content": "Answer A", "timestamp": "4"]
+                            ],
+                            "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 4]
+                        ])
+                    }
+                    // Turn B's twin: exactly ONE boundary after 103.
+                    return .payload([
+                        "messages": [
+                            ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                            ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"],
+                            ["id": "102", "role": "user", "content": "A", "timestamp": "3"],
+                            ["id": "103", "role": "assistant", "content": "Answer A", "timestamp": "4"],
+                            ["id": "104", "role": "user", "content": "B", "timestamp": "5"]
+                        ],
+                        "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 5]
+                    ])
+                },
+                refreshContext: { _, _ in },
+                sendPrompt: { _, _, _ in
+                    submitCount += 1
+                    return .accepted
+                },
+                verifyTransportHealth: { _ in },
+                probeActiveSessions: { _ in
+                    probeCount += 1
+                    return [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: "working"
+                    )]
+                }
+            )
+        )
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        let opened = await harness.appState.openSession(active.id)
+        XCTAssertTrue(opened)
+        XCTAssertEqual(harness.appState.messages.map(\.id), ["100", "101"])
+
+        // --- Turn A: runs and settles entirely in the foreground ---
+        let submittedA = await harness.appState.submitComposer(text: "A")
+        XCTAssertTrue(submittedA)
+        XCTAssertEqual(submitCount, 1)
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: true))
+        harness.appState.handleStreamEvent(.reasoningDelta(sessionId: active.id, text: "A thinking."))
+        harness.appState.handleStreamEvent(.messageComplete(
+            sessionId: active.id,
+            messageId: nil,
+            content: "Answer A",
+            reasoning: nil
+        ))
+        harness.appState.handleStreamEvent(.messageStart(sessionId: active.id))
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: false))
+        XCTAssertEqual(harness.appState.turnState, .idle)
+        XCTAssertEqual(transcriptReads, 1, "No history read observed Turn A")
+
+        // --- Turn B: the debt catch-up read fires before B freezes its
+        // baseline, then B submits normally ---
+        let submittedB = await harness.appState.submitComposer(text: "B")
+        XCTAssertTrue(submittedB)
+        XCTAssertEqual(submitCount, 2, "prompt.submit exactly once for Turn B")
+        XCTAssertEqual(
+            transcriptReads, 2,
+            "Exactly one bounded debt catch-up read before Turn B"
+        )
+        XCTAssertEqual(harness.appState.turnState, .running)
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: true))
+        harness.appState.handleStreamEvent(.reasoningDelta(sessionId: active.id, text: "B thinking."))
+        let segmentB = harness.appState.liveReasoningSegment
+        XCTAssertNotNil(segmentB)
+        let messagesAfterB = harness.appState.messages
+
+        // --- Foreground during Turn B ---
+        harness.appState.handleScenePhase(.background)
+        await runSceneActivation(harness)
+
+        XCTAssertEqual(probeCount, 1)
+        XCTAssertEqual(transcriptReads, 3)
+        XCTAssertEqual(
+            resumeCount, 1,
+            "Turn A's persisted rows were anchored by the debt read — Turn B stays observational"
+        )
+        XCTAssertEqual(harness.appState.messages, messagesAfterB, "No transcript replacement")
+        XCTAssertEqual(harness.appState.liveReasoningSegment, segmentB)
+        XCTAssertEqual(harness.appState.turnState, .running)
+        XCTAssertFalse(harness.appState.transcriptFreshnessIsStale)
+
+        // Future Turn B deltas extend the SAME segment.
+        harness.appState.handleStreamEvent(.reasoningDelta(sessionId: active.id, text: " More."))
+        XCTAssertEqual(harness.appState.liveReasoningSegment?.id, segmentB?.id)
+        box.client.disconnect()
+    }
+
+    /// Local ordering debt that is EXCEEDED by persisted history proves
+    /// foreign activity: the authoritative reconcile runs before the local
+    /// send, the remote turn becomes visible, and only then does the new
+    /// local prompt append after it.
+    func testLocalOrderingDebtExceededByRemoteTurnForcesReconcile() async {
+        let active = session("stored-a")
+        var probeCount = 0
+        var resumeCount = 0
+        var transcriptReads = 0
+        var submitCount = 0
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in [active] },
+                openSession: { _, sessionID, _ in
+                    resumeCount += 1
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                persistedTranscript: { _, _ in
+                    transcriptReads += 1
+                    if transcriptReads == 1 {
+                        return .payload([
+                            "messages": [
+                                ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                                ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"]
+                            ],
+                            "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 2]
+                        ])
+                    }
+                    // The debt read (and the recovery reconcile's own read)
+                    // see MORE boundaries than the one outstanding
+                    // locally-owned settled turn: remote B.
+                    return .payload([
+                        "messages": [
+                            ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                            ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"],
+                            ["id": "102", "role": "user", "content": "A", "timestamp": "3"],
+                            ["id": "103", "role": "assistant", "content": "Answer A", "timestamp": "4"],
+                            ["id": "104", "role": "user", "content": "Remote B", "timestamp": "5"],
+                            ["id": "105", "role": "assistant", "content": "Remote B answer", "timestamp": "6"]
+                        ],
+                        "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 6]
+                    ])
+                },
+                refreshContext: { _, _ in },
+                sendPrompt: { _, _, _ in
+                    submitCount += 1
+                    return .accepted
+                },
+                verifyTransportHealth: { _ in },
+                probeActiveSessions: { _ in
+                    probeCount += 1
+                    return [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: "idle"
+                    )]
+                }
+            )
+        )
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        let opened = await harness.appState.openSession(active.id)
+        XCTAssertTrue(opened)
+
+        // Turn A: foreground-only lifecycle, settles, leaves debt = 1.
+        let submittedA = await harness.appState.submitComposer(text: "A")
+        XCTAssertTrue(submittedA)
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: true))
+        harness.appState.handleStreamEvent(.messageComplete(
+            sessionId: active.id,
+            messageId: nil,
+            content: "Answer A",
+            reasoning: nil
+        ))
+        harness.appState.handleStreamEvent(.messageStart(sessionId: active.id))
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: false))
+        XCTAssertEqual(harness.appState.turnState, .idle)
+
+        // The next local submit: the debt read proves foreign activity.
+        let submittedC = await harness.appState.submitComposer(text: "Local C")
+        XCTAssertTrue(submittedC)
+
+        XCTAssertEqual(submitCount, 2, "Turn A + one reconciled local send — no duplicates")
+        XCTAssertEqual(transcriptReads, 3, "Debt read + the recovery reconcile's bounded read")
+        XCTAssertEqual(
+            resumeCount, 2,
+            "Seed hydration + the authoritative recovery resume"
+        )
+        XCTAssertEqual(
+            harness.appState.messages.count, 7,
+            "The remote turn is visible and the local prompt appends after it"
+        )
+        XCTAssertEqual(harness.appState.messages.last?.role, .user)
+        XCTAssertTrue(
+            harness.appState.messages.last?.id.hasPrefix("local-") == true,
+            "The reconciled local prompt appends last"
+        )
+        XCTAssertEqual(harness.appState.turnState, .running)
+        box.client.disconnect()
+    }
+
+    /// An already-observed locally-owned turn (its foreground freshness read
+    /// advanced the frontier through its rows) creates NO ordering debt: the
+    /// next local submit performs no extra pre-send read.
+    func testAlreadyObservedLocalTurnCreatesNoExtraPreSendRead() async {
+        let active = session("stored-a")
+        var probeCount = 0
+        var resumeCount = 0
+        var transcriptReads = 0
+        var submitCount = 0
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                openSession: { _, sessionID, _ in
+                    resumeCount += 1
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                persistedTranscript: { _, _ in
+                    transcriptReads += 1
+                    if transcriptReads == 1 {
+                        return .payload([
+                            "messages": [
+                                ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                                ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"]
+                            ],
+                            "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 2]
+                        ])
+                    }
+                    if transcriptReads == 2 {
+                        // Turn A's foreground freshness read: twin + output.
+                        return .payload([
+                            "messages": [
+                                ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                                ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"],
+                                ["id": "102", "role": "user", "content": "A", "timestamp": "3"],
+                                ["id": "103", "role": "assistant", "content": "Answer A", "timestamp": "4"]
+                            ],
+                            "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 4]
+                        ])
+                    }
+                    // Turn B's twin (used only if B is backgrounded).
+                    return .payload([
+                        "messages": [
+                            ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                            ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"],
+                            ["id": "102", "role": "user", "content": "A", "timestamp": "3"],
+                            ["id": "103", "role": "assistant", "content": "Answer A", "timestamp": "4"],
+                            ["id": "104", "role": "user", "content": "B", "timestamp": "5"]
+                        ],
+                        "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 5]
+                    ])
+                },
+                refreshContext: { _, _ in },
+                sendPrompt: { _, _, _ in
+                    submitCount += 1
+                    return .accepted
+                },
+                verifyTransportHealth: { _ in },
+                probeActiveSessions: { _ in
+                    probeCount += 1
+                    return [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: "working"
+                    )]
+                }
+            )
+        )
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        let opened = await harness.appState.openSession(active.id)
+        XCTAssertTrue(opened)
+
+        // Turn A: background + foreground observes its rows (frontier 103).
+        let submittedA = await harness.appState.submitComposer(text: "A")
+        XCTAssertTrue(submittedA)
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: true))
+        harness.appState.handleStreamEvent(.reasoningDelta(sessionId: active.id, text: "A thinking."))
+        harness.appState.handleScenePhase(.background)
+        await runSceneActivation(harness)
+        XCTAssertEqual(resumeCount, 1)
+        XCTAssertEqual(transcriptReads, 2)
+
+        // Settle A locally; the frontier already covered its boundary.
+        harness.appState.handleStreamEvent(.messageComplete(
+            sessionId: active.id,
+            messageId: nil,
+            content: "Answer A",
+            reasoning: nil
+        ))
+        harness.appState.handleStreamEvent(.messageStart(sessionId: active.id))
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: false))
+        XCTAssertEqual(harness.appState.turnState, .idle)
+
+        // Turn B submits with NO extra pre-send read.
+        let submittedB = await harness.appState.submitComposer(text: "B")
+        XCTAssertTrue(submittedB)
+        XCTAssertEqual(submitCount, 2)
+        XCTAssertEqual(
+            transcriptReads, 2,
+            "An already-observed turn must not trigger a debt catch-up read"
+        )
+        XCTAssertEqual(harness.appState.turnState, .running)
+        box.client.disconnect()
+    }
+
     /// The gate's second non-proceed arm: a recovery boundary
     /// (.reconnecting here) racing the pre-send freshness read proves
     /// neither liveness nor ordering — the send is blocked, not blind-sent

@@ -541,7 +541,32 @@ final class AppState: ObservableObject {
         var sessionIDs: Set<String>
         var optimisticUserRowID: String
         var preSubmitOrderingBaseline: PersistedOrderingBaseline
+        /// Set when a validated bounded read positively observed this turn's
+        /// persisted user boundary (the frontier advanced through it). A
+        /// turn that settles WITHOUT this proof leaves ordering debt: its
+        /// twin is expected in persisted history beyond the frontier, and
+        /// the next locally-owned turn must not anchor before it.
+        var persistedBoundaryObserved = false
     }
+    /// Ordering debt for locally-owned turns that settled locally BEFORE any
+    /// validated persisted read observed their durable user boundary
+    /// (foreground-only lifecycles). One bounded pre-send tail read
+    /// reconciles it: exactly `expectedUserTurnCount` new canonical user
+    /// boundaries after the frontier satisfies the debt (and advances the
+    /// frontier); more proves foreign activity (authoritative reconcile);
+    /// fewer means persisted state has not caught up (conservative
+    /// recovery). Conversation-scoped: reset with the transcript lifecycle
+    /// evidence, cleared by authoritative adoption. Residual windows, both
+    /// routed to the safe direction: a settled turn whose assistant output
+    /// persists AFTER a satisfied re-anchor leaves the next debt read facing
+    /// a leading non-user row (one conservative reconcile); a turn accepted
+    /// but lost server-side leaves unsatisfiable debt until one reconcile
+    /// converges it.
+    private struct PendingLocalOrderingDebt {
+        var sessionIDs: Set<String>
+        var expectedUserTurnCount: Int
+    }
+    private var pendingLocalOrderingDebt: PendingLocalOrderingDebt?
     private var locallyOwnedInFlightTurn: LocallyOwnedInFlightTurn?
     /// Persisted ORDERING evidence — deliberately distinct from
     /// `durablePersistedRowIDs` (provenance for rows currently represented
@@ -3451,10 +3476,13 @@ final class AppState: ObservableObject {
         noteChatViewportTranscriptReplacement()
         // An authoritative resume/reconcile just replaced the transcript:
         // whatever rows a failed freshness read could not see are now either
-        // present or authoritatively absent, and any optimistic-turn
-        // provenance died with the rows it pointed at.
+        // present or authoritatively absent, any optimistic-turn provenance
+        // died with the rows it pointed at, and the adopted ordering
+        // frontier covers everything persisted — no local debt can outlive
+        // it.
         transcriptFreshnessIsStale = false
         locallyOwnedInFlightTurn = nil
+        pendingLocalOrderingDebt = nil
         let gatewayPendingDecisionKeys = SessionPresentationCache.pendingDecisionKeys(in: result.messages)
         let restoredPendingDecisionKeys = SessionPresentationCache
             .pendingDecisionKeys(in: messages)
@@ -4894,6 +4922,11 @@ final class AppState: ObservableObject {
             if case .positivelyEmpty = self { return true }
             return false
         }
+
+        var isUnknown: Bool {
+            if case .unknown = self { return true }
+            return false
+        }
     }
 
     /// Derives ordering evidence from a transcript a reconcile or freshness
@@ -4921,10 +4954,11 @@ final class AppState: ObservableObject {
                 newestObservedDurableRowID: transcript.messages[anchorIndex].id
             )
         }
-        // Emptiness is proven on the RAW row view: a page whose rows all
-        // normalize away (hidden display_kind scaffolding) still carries
-        // durable ids and is NOT a positively empty transcript.
-        if transcript.messages.isEmpty,
+        // Emptiness is proven on the RAW row view: the server must have
+        // returned ZERO rows (not merely rows that all normalize away as
+        // hidden display_kind scaffolding — those still carry durable ids).
+        if page.rawReturned == 0,
+           transcript.messages.isEmpty,
            transcript.durableRowIDs.isEmpty,
            !page.mayHaveOlderRows(fetchedRowCount: 0) {
             return PersistedOrderingFrontier(isPositivelyEmpty: true)
@@ -4942,6 +4976,7 @@ final class AppState: ObservableObject {
         transcriptFreshnessIsStale = false
         locallyOwnedInFlightTurn = nil
         persistedOrderingFrontier = PersistedOrderingFrontier()
+        pendingLocalOrderingDebt = nil
     }
 
     /// Outcome of the bounded persisted-tail freshness comparison against the
@@ -4954,7 +4989,10 @@ final class AppState: ObservableObject {
         /// validated read positively observed — the caller may advance the
         /// ordering frontier with it while the visible transcript stays
         /// untouched.
-        case unchanged(observedOrderingFrontier: PersistedOrderingFrontier)
+        case unchanged(
+            observedOrderingFrontier: PersistedOrderingFrontier,
+            observedNewUserBoundaries: Int?
+        )
         /// The page overlaps the frontier and holds validated durable rows
         /// after it: persisted activity the local transcript never saw.
         case advanced(transcript: PersistedSessionTranscript, newRows: [ChatMessage])
@@ -5043,22 +5081,25 @@ final class AppState: ObservableObject {
             // other tail has no ordering proof.
             if transcript.messages.isEmpty {
                 // A page whose raw rows all normalize away (hidden
-                // scaffolding) is not positively empty — its durable ids
-                // prove rows exist.
-                guard transcript.durableRowIDs.isEmpty,
+                // scaffolding) is not positively empty — positive emptiness
+                // requires the server to have returned zero raw rows.
+                guard page.rawReturned == 0,
+                      transcript.durableRowIDs.isEmpty,
                       !page.mayHaveOlderRows(fetchedRowCount: 0) else {
                     return .inconclusive
                 }
                 if lastLocalMessageID == nil {
                     return .unchanged(
-                        observedOrderingFrontier: Self.orderingFrontier(from: transcript)
+                        observedOrderingFrontier: Self.orderingFrontier(from: transcript),
+                        observedNewUserBoundaries: nil
                     )
                 }
                 if let locallyOwnedTurn,
                    locallyOwnedTurn.baseline.isPositivelyEmpty,
                    livenessIsRunning {
                     return .unchanged(
-                        observedOrderingFrontier: Self.orderingFrontier(from: transcript)
+                        observedOrderingFrontier: Self.orderingFrontier(from: transcript),
+                        observedNewUserBoundaries: 0
                     )
                 }
                 return .inconclusive
@@ -5097,7 +5138,8 @@ final class AppState: ObservableObject {
             )
             if newRows.isEmpty {
                 return .unchanged(
-                    observedOrderingFrontier: Self.orderingFrontier(from: transcript)
+                    observedOrderingFrontier: Self.orderingFrontier(from: transcript),
+                    observedNewUserBoundaries: nil
                 )
             }
             return .advanced(transcript: transcript, newRows: newRows)
@@ -5171,7 +5213,8 @@ final class AppState: ObservableObject {
         if newRows.isEmpty {
             // Nothing of ours persisted yet — the earliest in-flight shape.
             return .unchanged(
-                observedOrderingFrontier: Self.orderingFrontier(from: transcript)
+                observedOrderingFrontier: Self.orderingFrontier(from: transcript),
+                observedNewUserBoundaries: 0
             )
         }
         let newUserTurnBoundaries = newRows.filter { $0.role == .user }
@@ -5183,9 +5226,12 @@ final class AppState: ObservableObject {
         // any Turn A output/tool rows): our turn is still the only one. The
         // visible transcript stays untouched, but the ordering frontier may
         // advance through the newest observed durable row of this proven
-        // Turn A region so the NEXT locally-owned turn anchors past it.
+        // Turn A region so the NEXT locally-owned turn anchors past it — and
+        // this read positively observed the turn's persisted boundary, so a
+        // later settle owes no ordering debt.
         return .unchanged(
-            observedOrderingFrontier: Self.orderingFrontier(from: transcript)
+            observedOrderingFrontier: Self.orderingFrontier(from: transcript),
+            observedNewUserBoundaries: newUserTurnBoundaries.count
         )
     }
 
@@ -5299,7 +5345,7 @@ final class AppState: ObservableObject {
                 token: token,
                 automaticWorkToken: automaticWorkToken
             )
-        case let .unchanged(observedOrderingFrontier):
+        case let .unchanged(observedOrderingFrontier, observedNewUserBoundaries):
             lifecycleLog.notice(
                 "Foreground freshness: probe=\(livenessIsRunning ? "running" : "idle", privacy: .public) session=\(requestedSessionID, privacy: .public) verdict=unchanged → observational adopt"
             )
@@ -5314,6 +5360,11 @@ final class AppState: ObservableObject {
             // observation (see PersistedOrderingFrontier for the
             // non-monotonicity rationale).
             persistedOrderingFrontier = observedOrderingFrontier
+            if let observedNewUserBoundaries, observedNewUserBoundaries > 0 {
+                // The read positively observed the locally-owned turn's
+                // persisted boundary: a later settle owes no ordering debt.
+                locallyOwnedInFlightTurn?.persistedBoundaryObserved = true
+            }
             adoptForegroundLiveness(
                 livenessIsRunning,
                 token: token,
@@ -5464,10 +5515,12 @@ final class AppState: ObservableObject {
         }
         messages = merged
         // The bounded read just proved exactly which persisted rows were
-        // missing and merged them: transcript freshness is restored, and the
-        // accepted page re-establishes the persisted ordering frontier.
+        // missing and merged them: transcript freshness is restored, the
+        // accepted page re-establishes the persisted ordering frontier, and
+        // that page covers any outstanding local ordering debt.
         transcriptFreshnessIsStale = false
         persistedOrderingFrontier = Self.orderingFrontier(from: transcript)
+        pendingLocalOrderingDebt = nil
         // The merge just made the newest persisted page local: adopt its
         // durable ids as the frontier (same per-hydration replacement
         // semantics as reconcile) so the next freshness check anchors
@@ -6428,7 +6481,8 @@ final class AppState: ObservableObject {
         // uncertainty open — resolve it with exactly one bounded tail-only
         // retry before appending a new-turn prompt into a possibly-reordered
         // transcript.
-        if turnState == .idle, transcriptFreshnessIsStale {
+        if turnState == .idle,
+           transcriptFreshnessIsStale || pendingLocalOrderingDebt != nil {
             switch await confirmTranscriptFreshnessBeforeSend(
                 using: submissionContext
             ) {
@@ -6552,13 +6606,18 @@ final class AppState: ObservableObject {
         case blocked(String)
     }
 
-    /// Exactly one bounded tail-only freshness retry before an ordinary
+    /// Exactly one bounded tail-only persisted read before an ordinary
     /// NEW-TURN submit while `transcriptFreshnessIsStale` (a foreground
-    /// freshness read failed transiently on a real background return). Never
-    /// polls: a second transient failure blocks the send rather than
-    /// silently appending into an unresolved ordering, and structural
-    /// absence takes the existing authoritative recovery (a non-compact
-    /// resume needs no history endpoint) before the send proceeds.
+    /// freshness read failed transiently on a real background return) OR
+    /// local ordering debt is outstanding (foreground-only settled turns
+    /// whose persisted boundaries no read has observed). Debt reconciliation
+    /// runs first; both concerns consume this one read. Never polls: a
+    /// transient failure blocks the send rather than silently appending
+    /// into an unresolved ordering (for debt, on the FIRST failure — debt is
+    /// a positive claim about persisted content, not a suspicion worth a
+    /// second chance), and structural absence takes the existing
+    /// authoritative recovery (a non-compact resume needs no history
+    /// endpoint) before the send proceeds.
     private func confirmTranscriptFreshnessBeforeSend(
         using submissionContext: ComposerSubmissionContext
     ) async -> TranscriptFreshnessGateOutcome {
@@ -6573,7 +6632,7 @@ final class AppState: ObservableObject {
         let localMessageIDs = Set(messages.map { $0.id })
         let lastLocalMessageID = messages.last?.id
         lifecycleLog.notice(
-            "submitComposer: transcript freshness unresolved; one bounded pre-send retry session=\(sessionId, privacy: .public)"
+            "submitComposer: pre-send persisted evidence unresolved (freshness or local ordering debt); one bounded retry session=\(sessionId, privacy: .public)"
         )
         let outcome = await foregroundPersistedTailOutcome(
             sessionId: sessionId,
@@ -6639,7 +6698,7 @@ final class AppState: ObservableObject {
                 submissionContext: submissionContext,
                 sessionID: sessionId
             )
-        case .hydrated:
+        case .hydrated(let transcript):
             // The transcript moved under the gate (a stream edge landed):
             // the comparison evidence is stale — converge authoritatively.
             guard messages.last?.id == lastLocalMessageID,
@@ -6654,37 +6713,20 @@ final class AppState: ObservableObject {
                     sessionID: sessionId
                 )
             }
-            let verdict = foregroundFreshnessVerdict(
-                outcome,
-                localFrontier: localFrontier,
-                localMessageIDs: localMessageIDs,
-                lastLocalMessageID: lastLocalMessageID,
-                requestedSessionID: sessionId,
-                runtimeSessionID: canonicalSessionID(for: sessionId)
+            // Identity first: a page echoing a foreign conversation id is
+            // never evidence — for the freshness verdict or debt
+            // reconciliation alike. (Pages echoing no session id at all
+            // match by construction.)
+            guard transcriptMatchesSession(
+                transcript,
+                requestedSessionId: sessionId,
+                resumedSessionId: canonicalSessionID(for: sessionId)
                     ?? persistedTranscriptWindow?.runtimeSessionID
-                    ?? sessionId,
-                livenessIsRunning: false,
-                locallyOwnedTurn: nil
-            )
-            switch verdict {
-            case let .unchanged(observedOrderingFrontier):
-                transcriptFreshnessIsStale = false
-                // Re-anchor the ordering frontier on the read's validated
-                // observation (non-monotonic by design).
-                persistedOrderingFrontier = observedOrderingFrontier
-                return .proceed
-            case let .advanced(transcript, newRows):
-                applyPersistedForegroundAdvancement(
-                    requestedSessionID: sessionId,
-                    transcript: transcript,
-                    newRows: newRows,
-                    runtimeSessionID: persistedTranscriptWindow?.runtimeSessionID
-                        ?? transcript.resolvedSessionId
-                        ?? sessionId,
-                    profile: profile
+                    ?? sessionId
+            ) else {
+                lifecycleLog.notice(
+                    "submitComposer: pre-send read answered for a different conversation → authoritative reconcile session=\(sessionId, privacy: .public)"
                 )
-                return .proceed
-            case .inconclusive:
                 await syncSession(
                     purpose: .preserveCurrent,
                     using: nil,
@@ -6694,13 +6736,152 @@ final class AppState: ObservableObject {
                     submissionContext: submissionContext,
                     sessionID: sessionId
                 )
-            case .sourceUnavailable, .unresolvedTransient:
-                // Unreachable for a `.hydrated` outcome (both are produced
-                // only from the fetch-level cases above); kept as defensive
-                // exhaustiveness. Blocking is the safe direction regardless.
-                return .blocked("Unable to refresh this conversation. Try again.")
             }
+            // Debt reconciliation FIRST: ordering metadata is counted
+            // against the frontier the settled turns were recorded against,
+            // and both concerns consume this one read.
+            if let debt = pendingLocalOrderingDebt {
+                switch localOrderingDebtOutcome(transcript, debt: debt) {
+                case .satisfied:
+                    pendingLocalOrderingDebt = nil
+                    persistedOrderingFrontier = Self.orderingFrontier(from: transcript)
+                case .exceeded, .notCaughtUp, .unprovable:
+                    lifecycleLog.notice(
+                        "submitComposer: pre-send ordering debt not reconcilable → authoritative reconcile session=\(sessionId, privacy: .public)"
+                    )
+                    await syncSession(
+                        purpose: .preserveCurrent,
+                        using: nil,
+                        automaticWorkToken: nil
+                    )
+                    return postRecoveryFreshnessGateOutcome(
+                        submissionContext: submissionContext,
+                        sessionID: sessionId
+                    )
+                }
+            }
+            if transcriptFreshnessIsStale {
+                let verdict = foregroundFreshnessVerdict(
+                    outcome,
+                    localFrontier: localFrontier,
+                    localMessageIDs: localMessageIDs,
+                    lastLocalMessageID: lastLocalMessageID,
+                    requestedSessionID: sessionId,
+                    runtimeSessionID: canonicalSessionID(for: sessionId)
+                        ?? persistedTranscriptWindow?.runtimeSessionID
+                        ?? sessionId,
+                    livenessIsRunning: false,
+                    locallyOwnedTurn: nil
+                )
+                switch verdict {
+                case let .unchanged(observedOrderingFrontier, _):
+                    transcriptFreshnessIsStale = false
+                    // Re-anchor the ordering frontier on the read's validated
+                    // observation (non-monotonic by design).
+                    persistedOrderingFrontier = observedOrderingFrontier
+                    return .proceed
+                case let .advanced(transcript, newRows):
+                    applyPersistedForegroundAdvancement(
+                        requestedSessionID: sessionId,
+                        transcript: transcript,
+                        newRows: newRows,
+                        runtimeSessionID: persistedTranscriptWindow?.runtimeSessionID
+                            ?? transcript.resolvedSessionId
+                            ?? sessionId,
+                        profile: profile
+                    )
+                    return .proceed
+                case .inconclusive:
+                    await syncSession(
+                        purpose: .preserveCurrent,
+                        using: nil,
+                        automaticWorkToken: nil
+                    )
+                    return postRecoveryFreshnessGateOutcome(
+                        submissionContext: submissionContext,
+                        sessionID: sessionId
+                    )
+                case .sourceUnavailable, .unresolvedTransient:
+                    // Unreachable for a `.hydrated` outcome (both are produced
+                    // only from the fetch-level cases above); kept as defensive
+                    // exhaustiveness. Blocking is the safe direction regardless.
+                    return .blocked("Unable to refresh this conversation. Try again.")
+                }
+            }
+            return .proceed
         }
+    }
+
+    /// Outcome of reconciling outstanding local ordering debt against one
+    /// validated bounded page.
+    private enum LocalOrderingDebtOutcome {
+        /// Exactly the expected number of canonical user-turn boundaries
+        /// follow the frontier: the debt is satisfied and the frontier may
+        /// re-anchor on this page.
+        case satisfied
+        /// More user boundaries than outstanding locally-owned turns:
+        /// foreign activity exists — authoritative reconcile before any
+        /// local send.
+        case exceeded
+        /// Fewer boundaries than expected (or an anomalous leading row):
+        /// persisted state has not caught up — conservative recovery.
+        case notCaughtUp
+        /// No ordering anchor to count against (unknown frontier, or it
+        /// rotated out of the page).
+        case unprovable
+        // notCaughtUp and unprovable deliberately share the conservative
+        // recovery routing at the caller; the split exists for field triage
+        // in the logs only.
+    }
+
+    /// Counts canonical user-turn boundaries after the ordering frontier and
+    /// compares them with the outstanding locally-owned settled-turn count.
+    /// Never advances anything: the caller owns frontier/debt mutation.
+    private func localOrderingDebtOutcome(
+        _ transcript: PersistedSessionTranscript,
+        debt: PendingLocalOrderingDebt
+    ) -> LocalOrderingDebtOutcome {
+        let heldIDs = Set(messages.map { $0.id })
+        switch persistedOrderingFrontier.baseline {
+        case .unknown:
+            return .unprovable
+        case .positivelyEmpty:
+            // The whole transcript follows the empty baseline; the page must
+            // be complete or the boundary count understates.
+            guard let page = transcript.page,
+                  !page.mayHaveOlderRows(fetchedRowCount: page.rawReturned) else {
+                return .unprovable
+            }
+            return Self.classifyDebtCandidates(
+                persistedRowsAfter(nil, in: transcript, heldIDs: heldIDs),
+                expected: debt.expectedUserTurnCount
+            )
+        case .anchored(let anchorID):
+            guard let anchorIndex = transcript.messages.lastIndex(where: {
+                $0.id == anchorID
+            }) else {
+                return .unprovable
+            }
+            return Self.classifyDebtCandidates(
+                persistedRowsAfter(anchorIndex, in: transcript, heldIDs: heldIDs),
+                expected: debt.expectedUserTurnCount
+            )
+        }
+    }
+
+    private static func classifyDebtCandidates(
+        _ candidates: [ChatMessage],
+        expected: Int
+    ) -> LocalOrderingDebtOutcome {
+        let boundaries = candidates.filter { $0.role == .user }
+        guard let firstRow = candidates.first, firstRow.role == .user else {
+            // Nothing after the frontier yet, or an assistant/tool row
+            // precedes the first boundary: the persisted state has not
+            // caught up (or ordering is anomalous) — conservative.
+            return boundaries.isEmpty ? .notCaughtUp : .unprovable
+        }
+        if boundaries.count == expected { return .satisfied }
+        return boundaries.count > expected ? .exceeded : .notCaughtUp
     }
 
     /// Shared post-recovery checks for the freshness gate: a converged
@@ -6718,10 +6899,11 @@ final class AppState: ObservableObject {
         if turnState.isRunning {
             return .routeToBusySubmission
         }
-        if transcriptFreshnessIsStale {
+        if transcriptFreshnessIsStale || pendingLocalOrderingDebt != nil {
             // Either recovery was superseded (a newer boundary owns the
             // conversation) or it genuinely failed to converge; both must
-            // not send into an unresolved ordering.
+            // not send into an unresolved ordering — freshness and local
+            // ordering debt alike.
             lifecycleLog.notice(
                 "submitComposer: pre-send freshness recovery did not converge; blocking send session=\(sessionID, privacy: .public)"
             )
@@ -6835,8 +7017,15 @@ final class AppState: ObservableObject {
                     // A steered/queued/redirected outcome joined a turn that
                     // was ALREADY running — possibly started by another
                     // surface — so it is not proof of a locally-owned turn;
-                    // the optimistic row gets no continuity marker.
+                    // the optimistic row gets no continuity marker. It DOES
+                    // persist as a canonical user row beyond the frontier,
+                    // though: carry ordering debt forward so the next local
+                    // turn anchors past it.
                     locallyOwnedInFlightTurn = nil
+                    recordLocalOrderingDebt(
+                        sessionIDs: submissionSessionIDs,
+                        baseline: preSubmitOrderingBaseline
+                    )
                 } else {
                     // The turn in flight is now provably Conduit's own: record
                     // the optimistic user row so a later foreground freshness
@@ -6893,13 +7082,25 @@ final class AppState: ObservableObject {
                     // by the time recovery looked). The submission stays
                     // accepted: the composer remains cleared, nothing is
                     // restored, and the transcript converges on the next
-                    // bounded refresh.
+                    // bounded refresh. That verification proved the turn
+                    // persisted but did not re-anchor the ordering frontier,
+                    // so an unobserved boundary leaves debt.
                     lifecycleLog.notice(
                         "prompt.submit accepted (durable transcript); turn settled session=\(sessionId, privacy: .public)"
                     )
                     if isCurrentComposerSubmission(submissionContext) {
                         turnState = .idle
                         turnStateIsStale = false
+                        // The marker is nil here (prompt.submit threw), but
+                        // the durable transcript PROVED this submission's
+                        // turn persisted: record its ordering debt from the
+                        // frame-captured baseline so the next local turn
+                        // anchors past it.
+                        recordLocalOrderingDebt(
+                            sessionIDs: submissionSessionIDs,
+                            baseline: preSubmitOrderingBaseline
+                        )
+                        locallyOwnedInFlightTurn = nil
                     }
                     return true
                 case .notAccepted:
@@ -10833,11 +11034,51 @@ final class AppState: ObservableObject {
         if running {
             clearPendingDecisionRestorationGuard()
         } else {
-            // The turn settled: any locally-owned in-flight turn evidence
-            // expired with it.
+            // The turn settled. A locally-owned turn whose persisted
+            // boundary was never positively observed leaves ordering debt:
+            // Hermes persisted its user row at turn start, so the next
+            // locally-owned turn must anchor AFTER it.
+            recordLocalOrderingDebtIfTurnUnobserved()
             locallyOwnedInFlightTurn = nil
         }
         turnState = running ? .running : .idle
+    }
+
+    /// Records one unit of local ordering debt when a locally-owned turn
+    /// settles before any validated read observed its persisted boundary.
+    /// Debt counts accumulate when several locally-owned turns settle
+    /// without an intervening read; authoritative adoption (a reconcile
+    /// replacing the transcript) clears the debt outright. Identity
+    /// rotation between turns replaces the slot — an undercount, which
+    /// degrades to a spurious-but-safe authoritative reconcile, never to a
+    /// silent overshoot.
+    private func recordLocalOrderingDebtIfTurnUnobserved() {
+        guard let marker = locallyOwnedInFlightTurn,
+              !marker.persistedBoundaryObserved else { return }
+        recordLocalOrderingDebt(
+            sessionIDs: marker.sessionIDs,
+            baseline: marker.preSubmitOrderingBaseline
+        )
+    }
+
+    /// Debt-accounting core. Debt is only meaningful when the ordering
+    /// baseline was PROVABLE: an unknown baseline (never hydrated, legacy
+    /// gateway) has no ordering metadata to owe — the next turn's
+    /// foreground classifies inconclusive and takes the conservative
+    /// attach, exactly as before ordering evidence existed.
+    private func recordLocalOrderingDebt(
+        sessionIDs: Set<String>,
+        baseline: PersistedOrderingBaseline
+    ) {
+        guard !baseline.isUnknown else { return }
+        if pendingLocalOrderingDebt?.sessionIDs == sessionIDs {
+            pendingLocalOrderingDebt?.expectedUserTurnCount += 1
+        } else {
+            pendingLocalOrderingDebt = PendingLocalOrderingDebt(
+                sessionIDs: sessionIDs,
+                expectedUserTurnCount: 1
+            )
+        }
     }
 
     private func applyResponseHapticSignal(_ signal: ResponseHapticPolicy.Signal) {
