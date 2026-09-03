@@ -2759,7 +2759,10 @@ final class AppStateChatResumeTests: XCTestCase {
         let rpcGate = ControlledSuspension()
         let harness = makeHarness(
             lifecycleOperations: ChatResumeLifecycleOperations(
-                sendPrompt: { _, _, _ in await rpcGate.suspend() }
+                sendPrompt: { _, _, _ in
+                    await rpcGate.suspend()
+                    return .accepted
+                }
             )
         )
         let request = publishRestoration(in: harness)
@@ -2917,6 +2920,7 @@ final class AppStateChatResumeTests: XCTestCase {
             lifecycleOperations: ChatResumeLifecycleOperations(
                 sendPrompt: { _, _, _ in
                     await rpcGate.suspend()
+                    return .accepted
                 }
             )
         )
@@ -3135,7 +3139,10 @@ final class AppStateChatResumeTests: XCTestCase {
         let sendGate = ControlledSuspension()
         let harness = makeHarness(
             lifecycleOperations: ChatResumeLifecycleOperations(
-                sendPrompt: { _, _, _ in await sendGate.suspend() },
+                sendPrompt: { _, _, _ in
+                    await sendGate.suspend()
+                    return .accepted
+                },
                 redirect: { _, _, _ in
                     throw RpcError(
                         code: 4010,
@@ -3193,6 +3200,7 @@ final class AppStateChatResumeTests: XCTestCase {
                 },
                 sendPrompt: { _, sessionID, _ in
                     sendSessionIDs.append(sessionID)
+                    return .accepted
                 },
                 redirect: { _, _, _ in
                     throw RpcError(
