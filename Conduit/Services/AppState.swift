@@ -494,6 +494,20 @@ final class AppState: ObservableObject {
     /// `prompt.submit` — Hermes would apply its busy policy to it and the
     /// message would silently join a turn the user never saw start.
     private(set) var turnStateIsStale = false
+    /// Monotonic revision of AUTHORITATIVE live turn-lifecycle evidence:
+    /// every `setRunning` edge (sessionBusy, message start/delta, completion,
+    /// interruption, error, registry-probe corrections, buffered-event
+    /// replay), the authoritative resume-snapshot adoption, and the typed
+    /// busy-submission outcome advance it. Optimistic local writes (the
+    /// pre-send `.running`, the ambiguous-recovery stamps themselves) never
+    /// do. The ambiguous-submission recovery captures this revision at its
+    /// registry observation; a changed revision at stamp time proves newer
+    /// live evidence arrived while the recovery awaited, so the older
+    /// recovery result must not overwrite `turnState`/`turnStateIsStale`.
+    /// Plain value equality cannot prove that — the pre-send stamp already
+    /// leaves `turnState == .running`, so a newer `sessionBusy(true)` is
+    /// value-indistinguishable from the stale baseline.
+    private var turnLifecycleRevision: UInt64 = 0
     /// Session identities with a locally-observed running turn at the last
     /// scene transition (empty = no continuity evidence). A foreground probe
     /// whose working/waiting row matches one of these ids continues a turn
@@ -3572,6 +3586,7 @@ final class AppState: ObservableObject {
             turnState = TurnState.fromGatewayRunning(result.snapshot.running)
         }
         // The resume snapshot is authoritative about the turn state.
+        turnLifecycleRevision &+= 1
         turnStateIsStale = false
         return true
     }
@@ -7025,6 +7040,7 @@ final class AppState: ObservableObject {
                     // state was stale. Adopt the authoritative busy state so
                     // the composer keeps offering the configured busy action
                     // and the next submission is routed correctly.
+                    turnLifecycleRevision &+= 1
                     turnState = .running
                 }
                 turnStateIsStale = false
@@ -7081,13 +7097,24 @@ final class AppState: ObservableObject {
                 lifecycleLog.notice(
                     "prompt.submit ambiguous (\(error.localizedDescription, privacy: .private)); querying authoritative state session=\(sessionId, privacy: .public)"
                 )
-                let (resolution, reconnected) = await reconcileAmbiguousPromptSubmission(
+                let (resolution, reconnected, recoveryLifecycleRevision) = await reconcileAmbiguousPromptSubmission(
                     requestedSessionID: sessionId,
                     acceptedSessionIDs: submissionSessionIDs,
                     baseline: submissionBaseline,
                     submittedText: text,
                     submissionContext: submissionContext
                 )
+                // Ordering guard for the recovery stamps: the recovery
+                // captured the lifecycle revision at its registry
+                // observation. A changed revision proves an authoritative
+                // live edge (sessionBusy, settlement, interruption, error,
+                // resume snapshot) arrived while the recovery awaited — that
+                // evidence is NEWER and owns the UI. Plain turnState equality
+                // cannot prove this: sendMessage stamped .running before
+                // prompt.submit, so a newer sessionBusy(true) leaves the
+                // value equal. Only the lifecycle stamps below are guarded —
+                // the acceptance decisions stay authoritative either way.
+                let recoveryOwnsLifecycleState = turnLifecycleRevision == recoveryLifecycleRevision
                 // Every write below is submission-owned: the guard is
                 // re-checked inside each branch so a handoff during the
                 // recovery awaits cannot leak state into the new session.
@@ -7097,19 +7124,50 @@ final class AppState: ObservableObject {
                     // live: keep the optimistic user row and the running turn,
                     // and never re-send the prompt.
                     if isCurrentComposerSubmission(submissionContext) {
-                        turnState = .running
-                        turnStateIsStale = false
-                        // Same proof as the ordinary success path: the turn
-                        // in flight is provably Conduit's own submission.
-                        // The anchor is intentionally the PRE-SEND capture
-                        // even though ambiguity recovery may have re-hydrated
-                        // the transcript in between: validation at use plus
-                        // the anchor lookup at use neutralize any staleness.
-                        locallyOwnedInFlightTurn = LocallyOwnedInFlightTurn(
-                            sessionIDs: submissionSessionIDs,
-                            optimisticUserRowID: userMessage.id,
-                            preSubmitOrderingBaseline: preSubmitOrderingBaseline
-                        )
+                        if recoveryOwnsLifecycleState {
+                            turnState = .running
+                            turnStateIsStale = false
+                            // Same proof as the ordinary success path: the
+                            // turn in flight is provably Conduit's own
+                            // submission. The anchor is intentionally the
+                            // PRE-SEND capture even though ambiguity recovery
+                            // may have re-hydrated the transcript in between:
+                            // validation at use plus the anchor lookup at use
+                            // neutralize any staleness. Guarded with the
+                            // stamps: if newer evidence settled the turn while
+                            // the probe awaited, the older recovery must not
+                            // re-assert in-flight ownership.
+                            locallyOwnedInFlightTurn = LocallyOwnedInFlightTurn(
+                                sessionIDs: submissionSessionIDs,
+                                optimisticUserRowID: userMessage.id,
+                                preSubmitOrderingBaseline: preSubmitOrderingBaseline
+                            )
+                        }
+                    }
+                    return true
+                case .acceptedUnsettled:
+                    // The durable transcript proves Hermes accepted the
+                    // submission, but the registry reported `starting` —
+                    // runtime present, liveness inconclusive (the agent build
+                    // may still be arming around a committed turn). The
+                    // submission stays accepted: never re-send, the optimistic
+                    // row remains. But settlement is NOT proven: keep the turn
+                    // running-like for composer routing, leave
+                    // `turnStateIsStale` exactly as it stands (uncertainty is
+                    // not cleared as though settlement were proven), and let
+                    // the next authoritative registry/stream edge settle it.
+                    lifecycleLog.notice(
+                        "prompt.submit accepted (durable transcript); registry starting — liveness unresolved session=\(sessionId, privacy: .public)"
+                    )
+                    if isCurrentComposerSubmission(submissionContext) {
+                        if recoveryOwnsLifecycleState {
+                            turnState = .running
+                            locallyOwnedInFlightTurn = LocallyOwnedInFlightTurn(
+                                sessionIDs: submissionSessionIDs,
+                                optimisticUserRowID: userMessage.id,
+                                preSubmitOrderingBaseline: preSubmitOrderingBaseline
+                            )
+                        }
                     }
                     return true
                 case .acceptedSettled:
@@ -7125,8 +7183,10 @@ final class AppState: ObservableObject {
                         "prompt.submit accepted (durable transcript); turn settled session=\(sessionId, privacy: .public)"
                     )
                     if isCurrentComposerSubmission(submissionContext) {
-                        turnState = .idle
-                        turnStateIsStale = false
+                        if recoveryOwnsLifecycleState {
+                            turnState = .idle
+                            turnStateIsStale = false
+                        }
                         // The marker is nil here (prompt.submit threw), but
                         // the durable transcript PROVED this submission's
                         // turn persisted: record its ordering debt from the
@@ -7145,7 +7205,8 @@ final class AppState: ObservableObject {
                     lifecycleLog.notice(
                         "prompt.submit not accepted (authoritative); restoring unsent state session=\(sessionId, privacy: .public)"
                     )
-                    if isCurrentComposerSubmission(submissionContext) {
+                    if isCurrentComposerSubmission(submissionContext),
+                       recoveryOwnsLifecycleState {
                         turnStateIsStale = false
                     }
                 case .unresolved:
@@ -7215,9 +7276,18 @@ final class AppState: ObservableObject {
     /// must never be re-sent; an idle/absent session means it was not.
     /// `reconnected` reports whether a transport recovery (with its own full
     /// transcript sync) ran, so the caller can skip a duplicate restoration.
-    private enum AmbiguousPromptResolution {
+    /// `lifecycleRevision` is the `turnLifecycleRevision` captured at the
+    /// registry observation — the baseline the caller's stamp guard compares.
+    /// Internal (not private) so the classification contract is directly
+    /// testable.
+    enum AmbiguousPromptResolution {
         /// Accepted and still running on the current transport.
         case acceptedRunning
+        /// Accepted — the durable transcript holds the submitted row — but
+        /// the registry reported `starting`: runtime present, liveness
+        /// inconclusive. Settlement is UNPROVEN; the next authoritative
+        /// registry/stream edge settles the turn.
+        case acceptedUnsettled
         /// Accepted and proven settled by the durable transcript: the turn ran
         /// to completion before recovery looked (the registry had already gone
         /// idle/absent, which alone cannot prove non-acceptance).
@@ -7230,13 +7300,72 @@ final class AppState: ObservableObject {
         case unresolved
     }
 
+    /// The ambiguous-recovery registry status, split beyond
+    /// `LiveSessionStatus.isRunning`. `isRunning` deliberately excludes
+    /// `starting` because Hermes arms `starting` for plain session.create /
+    /// cold-resume pre-warm with no prompt involved — but in an ambiguous
+    /// submission recovery, that same mask can cover a COMMITTED turn during
+    /// the submit → agent-ready window. `starting` is therefore its own
+    /// classification: runtime present, liveness inconclusive — never settled,
+    /// never committed-busy. Internal for the classification-contract tests.
+    enum AmbiguousRegistryLiveness {
+        /// `working` | `waiting` — authoritative committed-busy state.
+        case committedBusy
+        /// `starting` — runtime present, liveness inconclusive.
+        case starting
+        /// An explicit `idle` row (or any unrecognized non-running status).
+        case idle
+        /// No matching runtime row for the submitted session.
+        case absent
+    }
+
+    /// The classification contract for an ambiguous submission's
+    /// authoritative evidence pair. Pure and total so the status × evidence
+    /// matrix is pinned directly by tests:
+    ///
+    /// - `committedBusy` ALWAYS classifies `.acceptedRunning`, before the
+    ///   transcript is consulted and regardless of which client performed the
+    ///   probe — a running registry row is never settled (client
+    ///   replacement/submission ownership is a separate concern).
+    /// - `starting` NEVER classifies `.acceptedSettled`: a `.present` durable
+    ///   row proves acceptance, not settlement (`.acceptedUnsettled`), and
+    ///   `.absent`/`.indeterminate` prove nothing — the committed turn may not
+    ///   have reached the durable verification point yet, so the outcome is
+    ///   conservative `.unresolved` (restore; never a blind resend), never
+    ///   `.notAccepted` merely because `starting` was present.
+    /// - `idle`/`absent` fall through to the durable transcript: present →
+    ///   `.acceptedSettled`, absent → `.notAccepted`, indeterminate →
+    ///   `.unresolved`.
+    static func classifyAmbiguousSubmission(
+        registryLiveness: AmbiguousRegistryLiveness,
+        transcript: SubmittedTurnEvidence
+    ) -> AmbiguousPromptResolution {
+        switch registryLiveness {
+        case .committedBusy:
+            // Ignoring `transcript` here is the contract: a working/waiting
+            // row settles the acceptance question on the registry alone.
+            return .acceptedRunning
+        case .starting:
+            switch transcript {
+            case .present: return .acceptedUnsettled
+            case .absent, .indeterminate: return .unresolved
+            }
+        case .idle, .absent:
+            switch transcript {
+            case .present: return .acceptedSettled
+            case .absent: return .notAccepted
+            case .indeterminate: return .unresolved
+            }
+        }
+    }
+
     private func reconcileAmbiguousPromptSubmission(
         requestedSessionID: String,
         acceptedSessionIDs: Set<String>,
         baseline: PromptTranscriptBaseline,
         submittedText: String,
         submissionContext: ComposerSubmissionContext
-    ) async -> (resolution: AmbiguousPromptResolution, reconnected: Bool) {
+    ) async -> (resolution: AmbiguousPromptResolution, reconnected: Bool, lifecycleRevision: UInt64) {
         var reconnected = false
         var probeClient = client
         if probeClient?.isConnected != true {
@@ -7251,7 +7380,14 @@ final class AppState: ObservableObject {
             reconnected = probeClient?.isConnected == true
         }
         guard isCurrentOrAliasedComposerSubmission(submissionContext),
-              let probeClient else { return (.unresolved, reconnected) }
+              let probeClient else {
+            return (.unresolved, reconnected, turnLifecycleRevision)
+        }
+        // The revision baseline for the caller's stamp guard, captured at the
+        // registry observation: the probe result already includes every edge
+        // processed up to this point, so anything that increments
+        // `turnLifecycleRevision` afterwards is strictly newer evidence.
+        let lifecycleRevision = turnLifecycleRevision
         // The alias set was captured from the ORIGINAL submission before any
         // await; it is never re-derived from the mutable active session here.
         let rows: [LiveSessionStatus]
@@ -7262,53 +7398,49 @@ final class AppState: ObservableObject {
                 rows = try await probeClient.activeSessions()
             }
         } catch {
-            return (.unresolved, reconnected)
+            return (.unresolved, reconnected, lifecycleRevision)
         }
-        guard let row = rows.first(where: {
+        let matchedRow = rows.first(where: {
             acceptedSessionIDs.contains($0.runtimeSessionId) || acceptedSessionIDs.contains($0.storedSessionId)
-        }) else {
+        })
+        // Registry liveness split: `working`/`waiting` are committed-busy,
+        // `starting` is runtime-present but liveness-inconclusive, and only a
+        // genuine `idle`/absent runtime lets the durable transcript decide
+        // between settled and not-accepted.
+        let registryLiveness: AmbiguousRegistryLiveness
+        if let matchedRow {
+            if matchedRow.isRunning {
+                registryLiveness = .committedBusy
+            } else if matchedRow.status == "starting" {
+                registryLiveness = .starting
+            } else {
+                registryLiveness = .idle
+            }
+        } else {
             // No runtime for this conversation anymore: current liveness is
             // gone, but that alone cannot prove non-acceptance — the accepted
             // turn may have completed and been reaped. Verify durably below.
-            let transcript = await verifySubmittedTurnInTranscript(
+            registryLiveness = .absent
+        }
+        // A committed-busy row classifies on the registry alone; the bounded
+        // durable verifier is only consulted when liveness alone cannot
+        // classify.
+        let transcript: SubmittedTurnEvidence = registryLiveness == .committedBusy
+            ? .indeterminate
+            : await verifySubmittedTurnInTranscript(
                 requestedSessionID: requestedSessionID,
                 profile: submissionContext.profile,
                 baseline: baseline,
                 submittedText: submittedText
             )
-            switch transcript {
-            case .present: return (.acceptedSettled, reconnected)
-            case .absent: return (.notAccepted, reconnected)
-            case .indeterminate: return (.unresolved, reconnected)
-            }
-        }
-        if row.isRunning {
-            // A committed-busy runtime can only describe an accepted,
-            // still-running submission.
-            let resolution: AmbiguousPromptResolution = self.client === probeClient
-                ? .acceptedRunning
-                : .acceptedSettled
-            return (resolution, reconnected)
-        }
-        // The registry is authoritative about CURRENT liveness only: an
-        // idle/absent-or-starting runtime cannot by itself prove
-        // non-acceptance, because the accepted turn may have completed (and
-        // the runtime gone idle or been reaped) before recovery looked. Fall
-        // through to the durable transcript.
-        let transcript = await verifySubmittedTurnInTranscript(
-            requestedSessionID: requestedSessionID,
-            profile: submissionContext.profile,
-            baseline: baseline,
-            submittedText: submittedText
+        return (
+            Self.classifyAmbiguousSubmission(
+                registryLiveness: registryLiveness,
+                transcript: transcript
+            ),
+            reconnected,
+            lifecycleRevision
         )
-        switch transcript {
-        case .present:
-            return (.acceptedSettled, reconnected)
-        case .absent:
-            return (.notAccepted, reconnected)
-        case .indeterminate:
-            return (.unresolved, reconnected)
-        }
     }
 
     /// Durable before/after identity captured BEFORE the optimistic append.
@@ -7340,7 +7472,9 @@ final class AppState: ObservableObject {
         }
     }
 
-    private enum SubmittedTurnEvidence {
+    /// Internal (not private) so `classifyAmbiguousSubmission`'s contract is
+    /// directly testable.
+    enum SubmittedTurnEvidence {
         case present
         case absent
         case indeterminate
@@ -7966,6 +8100,11 @@ final class AppState: ObservableObject {
             } else {
                 try await client.steer(sessionId, text: text)
             }
+            // A successful steer proves Hermes applied the session's busy
+            // policy — the session was RUNNING when the steer landed. That is
+            // authoritative live liveness evidence for the recovery stamp
+            // guard, even though steer writes no local turn state.
+            turnLifecycleRevision &+= 1
             // A successful steer is accepted by Hermes even if the user
             // switched sessions while the RPC was suspended. It has no local
             // post-await mutation, so preserve success for draft handling.
@@ -11067,6 +11206,9 @@ final class AppState: ObservableObject {
 
     private func setRunning(_ running: Bool) {
         guard turnState != .unsupportedGateway else { return }
+        // Every call is authoritative live evidence, even a re-affirmation:
+        // the ambiguity-recovery guard compares revisions, not values.
+        turnLifecycleRevision &+= 1
         if running {
             clearPendingDecisionRestorationGuard()
         } else {

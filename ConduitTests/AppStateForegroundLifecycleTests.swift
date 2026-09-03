@@ -6252,6 +6252,676 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         XCTAssertEqual(harness.appState.turnState, .running)
     }
 
+    // MARK: - Round 13: `starting` never settles; lifecycle revisions order recovery stamps
+
+    /// The classification CONTRACT for ambiguous-submission recovery, pinned
+    /// as a pure matrix. `working`/`waiting` are authoritative committed-busy
+    /// state: they classify `.acceptedRunning` before the durable verifier is
+    /// consulted, regardless of transcript evidence — and regardless of which
+    /// client performed the probe, since ownership is not a classifier input
+    /// (regression C: a replacement/reconnected client's `working` row is
+    /// acceptedRunning, never acceptedSettled). `starting` NEVER classifies
+    /// `.acceptedSettled` or `.notAccepted`.
+    func testAmbiguousClassificationContractSplitRegistryStatuses() {
+        // committedBusy: a running registry row is never settled — the
+        // durable verdict is irrelevant (the verifier is not even consulted).
+        XCTAssertEqual(
+            AppState.classifyAmbiguousSubmission(
+                registryLiveness: .committedBusy,
+                transcript: .present
+            ),
+            .acceptedRunning
+        )
+        XCTAssertEqual(
+            AppState.classifyAmbiguousSubmission(
+                registryLiveness: .committedBusy,
+                transcript: .absent
+            ),
+            .acceptedRunning,
+            "A working/waiting row classifies acceptedRunning even when the durable tail cannot prove the row: the registry alone settles acceptance"
+        )
+        XCTAssertEqual(
+            AppState.classifyAmbiguousSubmission(
+                registryLiveness: .committedBusy,
+                transcript: .indeterminate
+            ),
+            .acceptedRunning
+        )
+
+        // starting: runtime present, liveness inconclusive.
+        XCTAssertEqual(
+            AppState.classifyAmbiguousSubmission(
+                registryLiveness: .starting,
+                transcript: .present
+            ),
+            .acceptedUnsettled,
+            "A durable submitted row under a starting runtime proves acceptance, never settlement"
+        )
+        XCTAssertEqual(
+            AppState.classifyAmbiguousSubmission(
+                registryLiveness: .starting,
+                transcript: .absent
+            ),
+            .unresolved,
+            "starting masks a committed turn that may not have reached the durable verification point: absent must stay unresolved, never notAccepted and never a resend"
+        )
+        XCTAssertEqual(
+            AppState.classifyAmbiguousSubmission(
+                registryLiveness: .starting,
+                transcript: .indeterminate
+            ),
+            .unresolved
+        )
+
+        // idle/absent: the durable transcript decides settled vs not-accepted.
+        for liveness in [AppState.AmbiguousRegistryLiveness.idle, .absent] {
+            XCTAssertEqual(
+                AppState.classifyAmbiguousSubmission(
+                    registryLiveness: liveness,
+                    transcript: .present
+                ),
+                .acceptedSettled
+            )
+            XCTAssertEqual(
+                AppState.classifyAmbiguousSubmission(
+                    registryLiveness: liveness,
+                    transcript: .absent
+                ),
+                .notAccepted
+            )
+            XCTAssertEqual(
+                AppState.classifyAmbiguousSubmission(
+                    registryLiveness: liveness,
+                    transcript: .indeterminate
+                ),
+                .unresolved
+            )
+        }
+    }
+
+    /// Regression A: an ambiguous prompt whose registry row reports
+    /// `starting` while the durable verifier proves the submitted user row.
+    /// The submission is ACCEPTED (never resent, optimistic row kept, no
+    /// failed-send restoration), but the turn is NOT settled: no idle stamp,
+    /// the turn stays running-like so the composer cannot ordinary-send a
+    /// fresh turn into the committed/building turn, and the next
+    /// authoritative registry/stream edges take over and settle it normally.
+    func testAmbiguousStartingRegistryWithDurableRowIsAcceptedUnsettled() async {
+        let active = session("stored-a")
+        var submitCount = 0
+        var steerCount = 0
+        var probeCount = 0
+        var transcriptReads = 0
+        var resumeCount = 0
+        var catalogCount = 0
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in
+                    catalogCount += 1
+                    return [active]
+                },
+                openSession: { _, sessionID, _ in
+                    resumeCount += 1
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                persistedTranscript: { _, _ in
+                    transcriptReads += 1
+                    if transcriptReads == 1 {
+                        // The pre-submit hydration: two durable rows held.
+                        return .payload([
+                            "messages": [
+                                ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                                ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"]
+                            ],
+                            "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 2]
+                        ])
+                    }
+                    // Recovery: the submitted user row persisted; the turn is
+                    // still building (no assistant output has landed).
+                    return .payload([
+                        "messages": [
+                            ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                            ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"],
+                            ["id": "102", "role": "user", "content": "Ambiguous send", "timestamp": "3"]
+                        ],
+                        "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 3]
+                    ])
+                },
+                refreshContext: { _, _ in },
+                sendPrompt: { _, _, _ in
+                    submitCount += 1
+                    throw HermesError.timeout("prompt.submit")
+                },
+                probeActiveSessions: { _ in
+                    probeCount += 1
+                    return [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: "starting"
+                    )]
+                },
+                steer: { _, _, _ in
+                    steerCount += 1
+                }
+            )
+        )
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        // Establish durable provenance through the real hydration path.
+        let opened = await harness.appState.openSession(active.id)
+        XCTAssertTrue(opened)
+        XCTAssertEqual(harness.appState.messages.map(\.id), ["100", "101"])
+        let resumesBeforeSubmit = resumeCount
+
+        let submitted = await harness.appState.submitComposer(text: "Ambiguous send")
+
+        // Accepted: never a failed send, never a resend, optimistic row kept.
+        XCTAssertTrue(
+            submitted,
+            "Durable acceptance under a starting runtime must not surface as a failed send"
+        )
+        XCTAssertEqual(submitCount, 1, "An accepted prompt must never be re-submitted")
+        XCTAssertEqual(probeCount, 1)
+        XCTAssertEqual(transcriptReads, 2, "One bounded tail read decides the outcome")
+        XCTAssertEqual(
+            catalogCount, 0,
+            "No failed-send restoration may run for a durably accepted submission"
+        )
+        XCTAssertEqual(resumeCount, resumesBeforeSubmit)
+        XCTAssertEqual(
+            harness.appState.messages.last?.content, "Ambiguous send",
+            "The optimistic user row remains accepted"
+        )
+
+        // NOT settled: the turn stays running-like, so a follow-up routes
+        // through the busy action instead of a fresh ordinary prompt.submit.
+        XCTAssertEqual(
+            harness.appState.turnState, .running,
+            "A starting runtime must never stamp idle: settlement is unproven"
+        )
+        let busyRouted = await harness.appState.submitComposer(text: "Follow-up")
+        XCTAssertTrue(busyRouted)
+        XCTAssertEqual(steerCount, 1, "The follow-up must route through the configured busy action")
+        XCTAssertEqual(
+            submitCount, 1,
+            "No fresh ordinary turn may enter the committed/building turn"
+        )
+
+        // The next authoritative edges take over and settle normally.
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: true))
+        XCTAssertEqual(harness.appState.turnState, .running, "A busy edge takes over cleanly")
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: false))
+        XCTAssertEqual(
+            harness.appState.turnState, .idle,
+            "The turn settles normally once the authoritative edge arrives"
+        )
+        box.client.disconnect()
+    }
+
+    /// Regression A, staleness half: the same `starting` + durable-present
+    /// recovery raced against a real staleness boundary. A scene dip while
+    /// the durable verifier is suspended marks the turn state stale; the
+    /// acceptedUnsettled resolution must keep the turn running-like WITHOUT
+    /// clearing that staleness as though settlement were proven (the
+    /// uncertainty survives until an authoritative edge resolves it).
+    func testAcceptedUnsettledPreservesStalenessFromNewerBoundary() async {
+        let active = session("stored-a")
+        var submitCount = 0
+        var probeCount = 0
+        var transcriptReads = 0
+        var catalogCount = 0
+        let parkedRead = LifecycleSuspension()
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in [active] },
+                openSession: { _, sessionID, _ in
+                    SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                persistedTranscript: { _, _ in
+                    transcriptReads += 1
+                    if transcriptReads == 1 {
+                        return .payload([
+                            "messages": [
+                                ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                                ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"]
+                            ],
+                            "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 2]
+                        ])
+                    }
+                    // Recovery's bounded verification: parked until the test
+                    // has opened a staleness boundary against it.
+                    await parkedRead.suspend()
+                    return .payload([
+                        "messages": [
+                            ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                            ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"],
+                            ["id": "102", "role": "user", "content": "Ambiguous send", "timestamp": "3"]
+                        ],
+                        "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 3]
+                    ])
+                },
+                refreshContext: { _, _ in },
+                sendPrompt: { _, _, _ in
+                    submitCount += 1
+                    throw HermesError.timeout("prompt.submit")
+                },
+                probeActiveSessions: { _ in
+                    probeCount += 1
+                    return [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: "starting"
+                    )]
+                }
+            )
+        )
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        let opened = await harness.appState.openSession(active.id)
+        XCTAssertTrue(opened)
+        XCTAssertEqual(harness.appState.messages.map(\.id), ["100", "101"])
+
+        let submission = Task { @MainActor in
+            await harness.appState.submitComposer(text: "Ambiguous send")
+        }
+        await parkedRead.waitUntilSuspended()
+        // The lifecycle boundary marks the state stale while the recovery's
+        // verifier is suspended.
+        harness.appState.handleScenePhase(.background)
+        XCTAssertTrue(harness.appState.turnStateIsStale)
+        parkedRead.resume()
+
+        let submitted = await submission.value
+
+        // Accepted — and NOT settled: no idle stamp, and the boundary's
+        // staleness must survive untouched (an acceptedRunning- or
+        // acceptedSettled-shaped stamp would clear it).
+        XCTAssertTrue(submitted, "Durable acceptance under a starting runtime must not surface as a failed send")
+        XCTAssertEqual(submitCount, 1, "An accepted prompt must never be re-submitted")
+        XCTAssertEqual(probeCount, 1)
+        XCTAssertEqual(transcriptReads, 2)
+        XCTAssertEqual(catalogCount, 0, "No failed-send restoration may run")
+        XCTAssertEqual(harness.appState.turnState, .running, "The turn stays running-like")
+        XCTAssertTrue(
+            harness.appState.turnStateIsStale,
+            "The uncertainty must not be cleared as though settlement were proven"
+        )
+        XCTAssertEqual(
+            harness.appState.messages.last?.content, "Ambiguous send",
+            "The optimistic user row remains accepted"
+        )
+
+        // The next authoritative edges resolve the uncertainty normally.
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: true))
+        XCTAssertEqual(harness.appState.turnState, .running)
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: false))
+        XCTAssertEqual(harness.appState.turnState, .idle, "The authoritative settle edge resolves the turn")
+        box.client.disconnect()
+    }
+
+    /// Regression B: ambiguous prompt, registry `starting`, and the durable
+    /// verifier cannot yet prove the submitted row. `starting` is explicitly
+    /// inconclusive — the committed turn may not have reached the durable
+    /// verification point — so the outcome is the conservative unresolved
+    /// path (restore the unsent state exactly once), never acceptedSettled
+    /// and never notAccepted solely because `starting` was present.
+    func testAmbiguousStartingRegistryWithoutDurableRowStaysUnresolved() async {
+        let active = session("stored-a")
+        var submitCount = 0
+        var probeCount = 0
+        var transcriptReads = 0
+        var resumeCount = 0
+        var catalogCount = 0
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in
+                    catalogCount += 1
+                    return [active]
+                },
+                openSession: { _, sessionID, _ in
+                    resumeCount += 1
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [
+                            ChatMessage(id: "100", role: .user, content: "Earlier question", timestamp: "1"),
+                            ChatMessage(id: "101", role: .assistant, content: "Earlier answer", timestamp: "2")
+                        ],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                persistedTranscript: { _, _ in
+                    transcriptReads += 1
+                    // Every read, including recovery's, sees only the
+                    // pre-submit tail: the submitted row is not provable.
+                    return .payload([
+                        "messages": [
+                            ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                            ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"]
+                        ],
+                        "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 2]
+                    ])
+                },
+                refreshContext: { _, _ in },
+                sendPrompt: { _, _, _ in
+                    submitCount += 1
+                    throw HermesError.timeout("prompt.submit")
+                },
+                probeActiveSessions: { _ in
+                    probeCount += 1
+                    return [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: "starting"
+                    )]
+                }
+            )
+        )
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        let opened = await harness.appState.openSession(active.id)
+        XCTAssertTrue(opened)
+        XCTAssertEqual(harness.appState.messages.map(\.id), ["100", "101"])
+        let resumesBeforeSubmit = resumeCount
+
+        let submitted = await harness.appState.submitComposer(text: "Never delivered")
+
+        XCTAssertFalse(submitted, "Unprovable acceptance under a starting runtime restores conservatively")
+        XCTAssertEqual(submitCount, 1, "No blind retry may follow the ambiguous failure")
+        XCTAssertEqual(probeCount, 1)
+        XCTAssertEqual(
+            transcriptReads, 3,
+            "Hydration, ambiguous verification, and the restore's compact resume each read once"
+        )
+        XCTAssertEqual(catalogCount, 1, "The unsent restoration runs exactly once")
+        XCTAssertEqual(resumeCount, resumesBeforeSubmit + 1)
+        XCTAssertEqual(
+            harness.appState.messages.map(\.id), ["100", "101"],
+            "The optimistic row is restored away exactly once"
+        )
+        XCTAssertTrue(
+            harness.appState.errorMessage?.contains("Failed to send") == true
+        )
+        box.client.disconnect()
+    }
+
+    /// Regression C (integration): the probe observes `working` while the
+    /// active client is REPLACED mid-recovery. The classification must remain
+    /// acceptedRunning — a running registry row is never settled — while the
+    /// ownership/epoch guards suppress stale local mutation after the
+    /// handoff. The submission stays accepted either way.
+    func testAmbiguousWorkingRowAfterClientReplacementIsAcceptedRunning() async {
+        let active = session("stored-a")
+        var submitCount = 0
+        var probeCount = 0
+        // Assigned after harness creation; the seam below only fires during
+        // the submission, long after setup has finished.
+        var appStateForProbe: AppState?
+        var replacementClient: HermesClient?
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                sendPrompt: { _, _, _ in
+                    submitCount += 1
+                    throw HermesError.timeout("prompt.submit")
+                },
+                probeActiveSessions: { _ in
+                    probeCount += 1
+                    // The probe itself runs on the CAPTURED client; the
+                    // active client is replaced while that probe await is
+                    // suspended (a concurrent reconnect elsewhere), so the
+                    // classification observes probeClient != self.client.
+                    let replacement = HermesClient(
+                        connection: HermesConnection(
+                            baseUrl: "https://two.example",
+                            ticket: "replacement"
+                        ),
+                        profile: "default"
+                    )
+                    appStateForProbe?.client = replacement
+                    replacementClient = replacement
+                    return [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: "working"
+                    )]
+                }
+            )
+        )
+        appStateForProbe = harness.appState
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        harness.appState.messages = [
+            ChatMessage(id: "earlier", role: .assistant, content: "Earlier", timestamp: "0")
+        ]
+
+        let submitted = await harness.appState.submitComposer(text: "Ambiguous send")
+
+        XCTAssertTrue(submitted, "A working registry row accepts the submission regardless of client replacement")
+        XCTAssertEqual(submitCount, 1, "An accepted prompt must never be re-submitted")
+        XCTAssertEqual(probeCount, 1)
+        // Ownership (the replaced client) suppresses every local lifecycle
+        // stamp after the handoff, so no settled state may leak through the
+        // real caller path either: the turn frame the optimistic pre-send
+        // stamp left must survive untouched. The classification itself
+        // (acceptedRunning for a working row, independent of client identity
+        // and durable evidence) is pinned by the contract matrix test.
+        XCTAssertEqual(harness.appState.turnState, .running)
+        XCTAssertNil(harness.appState.errorMessage, "No failed-send error may surface for an accepted submission")
+        XCTAssertEqual(
+            harness.appState.messages.last?.content, "Ambiguous send",
+            "The optimistic user row remains accepted"
+        )
+        replacementClient?.disconnect()
+        box.client.disconnect()
+    }
+
+    /// Regression D: an `idle` registry snapshot drives the recovery toward
+    /// acceptedSettled, but a NEWER sessionBusy(true) lands while the durable
+    /// verifier is suspended. The newer running state must survive: the older
+    /// recovery result keeps the acceptance (no resend) but must NOT stamp
+    /// idle and must NOT clear staleness. Value equality cannot prove this —
+    /// the pre-send stamp already left turnState == .running, so a guard
+    /// comparing turnState values would pass here and wrongly stamp idle.
+    func testNewerBusyEdgeBeatsAcceptedSettledRecoveryStamp() async {
+        let active = session("stored-a")
+        var submitCount = 0
+        var probeCount = 0
+        var transcriptReads = 0
+        var catalogCount = 0
+        let parkedRead = LifecycleSuspension()
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in [active] },
+                openSession: { _, sessionID, _ in
+                    SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                persistedTranscript: { _, _ in
+                    transcriptReads += 1
+                    if transcriptReads == 1 {
+                        return .payload([
+                            "messages": [
+                                ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                                ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"]
+                            ],
+                            "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 2]
+                        ])
+                    }
+                    // Recovery's bounded verification: parked until the test
+                    // has raced newer lifecycle edges against it.
+                    await parkedRead.suspend()
+                    return .payload([
+                        "messages": [
+                            ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                            ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"],
+                            ["id": "102", "role": "user", "content": "Ambiguous send", "timestamp": "3"],
+                            ["id": "103", "role": "assistant", "content": "Completed result", "timestamp": "4"]
+                        ],
+                        "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 4]
+                    ])
+                },
+                refreshContext: { _, _ in },
+                sendPrompt: { _, _, _ in
+                    submitCount += 1
+                    throw HermesError.timeout("prompt.submit")
+                },
+                probeActiveSessions: { _ in
+                    probeCount += 1
+                    // The registry had already gone absent when recovery
+                    // looked: without newer evidence this classifies
+                    // acceptedSettled.
+                    return []
+                }
+            )
+        )
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        let opened = await harness.appState.openSession(active.id)
+        XCTAssertTrue(opened)
+        XCTAssertEqual(harness.appState.messages.map(\.id), ["100", "101"])
+
+        let submission = Task { @MainActor in
+            await harness.appState.submitComposer(text: "Ambiguous send")
+        }
+        await parkedRead.waitUntilSuspended()
+        // Newer live evidence arrives while the older recovery awaits: the
+        // session is running again, and the lifecycle boundary marks the
+        // state stale.
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: true))
+        XCTAssertEqual(harness.appState.turnState, .running)
+        harness.appState.handleScenePhase(.background)
+        XCTAssertTrue(harness.appState.turnStateIsStale)
+        parkedRead.resume()
+
+        let submitted = await submission.value
+
+        XCTAssertTrue(submitted, "The submission stays accepted: no resend, no failed-send restoration")
+        XCTAssertEqual(submitCount, 1, "An accepted prompt must never be re-submitted")
+        XCTAssertEqual(probeCount, 1)
+        XCTAssertEqual(catalogCount, 0, "No failed-send restoration may run")
+        XCTAssertEqual(
+            harness.appState.messages.last?.content, "Ambiguous send",
+            "The optimistic user row remains accepted"
+        )
+        XCTAssertEqual(
+            harness.appState.turnState, .running,
+            "The newer busy edge survives: the older recovery must NOT stamp idle"
+        )
+        XCTAssertTrue(
+            harness.appState.turnStateIsStale,
+            "The staleness written by the newer boundary must not be cleared by the older recovery result"
+        )
+        box.client.disconnect()
+    }
+
+    /// Regression E (the converse of D): the recovery probe observes
+    /// `working` (acceptedRunning), but a NEWER sessionBusy(false) settles
+    /// the turn while the probe is suspended. The newer idle settlement must
+    /// survive: the older recovery must not force running again and must not
+    /// clear the boundary's staleness. A running row also never needs the
+    /// durable verifier, so no transcript read may follow.
+    func testNewerSettleEdgeBeatsAcceptedRunningRecoveryStamp() async {
+        let active = session("stored-a")
+        var submitCount = 0
+        var probeCount = 0
+        var transcriptReads = 0
+        let parkedProbe = LifecycleSuspension()
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                openSession: { _, sessionID, _ in
+                    SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [
+                            ChatMessage(id: "100", role: .user, content: "Earlier question", timestamp: "1")
+                        ],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                persistedTranscript: { _, _ in
+                    transcriptReads += 1
+                    return .payload([
+                        "messages": [
+                            ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"]
+                        ],
+                        "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 1]
+                    ])
+                },
+                refreshContext: { _, _ in },
+                sendPrompt: { _, _, _ in
+                    submitCount += 1
+                    throw HermesError.timeout("prompt.submit")
+                },
+                probeActiveSessions: { _ in
+                    probeCount += 1
+                    // The probe itself is parked: the registry says the turn
+                    // was working when ASKED, but newer edges land first.
+                    await parkedProbe.suspend()
+                    return [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: "working"
+                    )]
+                }
+            )
+        )
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        let opened = await harness.appState.openSession(active.id)
+        XCTAssertTrue(opened)
+        XCTAssertEqual(harness.appState.messages.map(\.id), ["100"])
+
+        let submission = Task { @MainActor in
+            await harness.appState.submitComposer(text: "Ambiguous send")
+        }
+        await parkedProbe.waitUntilSuspended()
+        // The turn settled while the probe was suspended, and the settlement
+        // boundary marks the state stale.
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: false))
+        XCTAssertEqual(harness.appState.turnState, .idle)
+        harness.appState.handleScenePhase(.background)
+        XCTAssertTrue(harness.appState.turnStateIsStale)
+        parkedProbe.resume()
+
+        let submitted = await submission.value
+
+        XCTAssertTrue(submitted, "The registry proved the submission was accepted: no resend")
+        XCTAssertEqual(submitCount, 1, "An accepted prompt must never be re-submitted")
+        XCTAssertEqual(probeCount, 1)
+        XCTAssertEqual(
+            transcriptReads, 1,
+            "A running registry row never consults the durable verifier"
+        )
+        XCTAssertEqual(
+            harness.appState.messages.last?.content, "Ambiguous send",
+            "The optimistic user row remains accepted"
+        )
+        XCTAssertEqual(
+            harness.appState.turnState, .idle,
+            "The newer settle edge survives: the older recovery must NOT force running again"
+        )
+        XCTAssertTrue(
+            harness.appState.turnStateIsStale,
+            "The staleness written by the newer boundary must not be cleared by the older recovery result"
+        )
+        box.client.disconnect()
+    }
+
     // MARK: - Harness
 
     private func makeHarness(
