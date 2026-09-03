@@ -131,12 +131,45 @@ the rest of CI v2.
 
 ## Watchdogs
 
-`timeout = max(min_timeout, ceil(predicted x 2.5))` with a 300 s floor for
-unit lanes (600 s for both unit and UI after the first measured runs). The
-outer GitHub job ceiling is `ceil((3 x watchdog + 1200s) / 60)` minutes -
-attempt 1 + attempt 2 + a full isolation pass plus two bounded simulator
-resets and setup/download slack - so the ceiling can never preempt legitimate
-in-script recovery (the script watchdogs are the real enforcement).
+Unit lanes: `timeout = max(min_timeout, ceil(predicted x 2.5))` with a 600 s
+floor. The outer GitHub job ceiling is `ceil((3 x watchdog + 1200s) / 60)`
+minutes - attempt 1 + attempt 2 + a full isolation pass plus two bounded
+simulator resets and setup/download slack - so the ceiling can never preempt
+legitimate in-script recovery (the script watchdogs are the real
+enforcement).
+
+UI lanes pay large **fixed per-invocation overhead** that unit lanes amortize
+across far more test seconds: xcodebuild/automation-session startup and
+simulator boot before the first test (~2.5 min measured on macos-26 hosted
+runners), app install, and xcresult finalization after the last one (~1 min).
+Their budget is therefore
+
+```
+ui_timeout = max(UI_TIMEOUT_MIN_S, ceil(predicted x UI_RETRY_HEADROOM_FACTOR
+                                       + UI_INVOCATION_OVERHEAD_S))
+           = max(900s, ceil(predicted x 2.0 + 240s))
+```
+
+- the floor was raised 600 -> 900 s after run #500 crossed the old floor
+  while the tests were **succeeding** (predicted ~226 s + measured overhead
+  already needs ~500-600 s on the happy path, leaving no room for the native
+  retry iteration);
+- the retry term covers both native iterations executing the full (small)
+  class list when a failure survives iteration 1;
+- the formula grows linearly if the UI suite expands, so the floor stays a
+  floor rather than the whole budget. The dynamic job ceiling covers the
+  worst in-script path (initial invocation + post-reset retry + class
+  isolation) exactly as for units.
+
+**Finalize grace.** When a watchdog expires but the log already carries
+xcodebuild's terminal result marker (`** TEST EXECUTE SUCCEEDED/FAILED **`),
+the test session has ENDED and the process is only writing its xcresult.
+Killing there converts a completed run into a timeout (run #500) and can
+truncate the result bundle, so the deadline is extended once by a bounded
+`XCODEBUILD_FINALIZE_GRACE_S` (default 180 s) and the process may exit on its
+own. The verdict still comes exclusively from the real exit status - the
+marker never declares success on its own - and a process that outlives the
+grace is killed and classified as a timeout exactly as before.
 
 Every `simctl` operation is deadline-bounded; the process-group watchdog kill
 (xcodebuild + xctest + simulator agents) is preserved from the previous

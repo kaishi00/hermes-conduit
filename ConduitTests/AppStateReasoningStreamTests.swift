@@ -4,9 +4,16 @@ import XCTest
 
 /// Live reasoning must publish through the same display-cadence discipline as
 /// assistant streaming: raw gateway deltas merge into an authoritative buffer
-/// immediately, but the published transcript only republishes at a coalesced
-/// cadence so an expanded ThinkingCard cannot saturate main-actor layout work
-/// (0x8BADF00D scene-update watchdog during active reasoning streams).
+/// immediately, but the UI only republishes at a coalesced cadence so an
+/// expanded ThinkingCard cannot saturate main-actor layout work (0x8BADF00D
+/// scene-update watchdog during active reasoning streams).
+///
+/// The live card renders from the published PROJECTION
+/// (`liveReasoningSegment`) and never mutates the settled `messages` array
+/// while streaming — per-publish transcript mutation is O(message count) in a
+/// deep agent session. Settled `.reasoning` rows appear exactly once per
+/// segment, committed at semantic boundaries (tool cards, completion, error,
+/// interruption, new turn).
 @MainActor
 final class AppStateReasoningStreamTests: XCTestCase {
 
@@ -47,6 +54,8 @@ final class AppStateReasoningStreamTests: XCTestCase {
     /// The sidebar drawer suppresses streaming publications while open and
     /// force-publishes the authoritative buffers when it closes. Toggling it
     /// gives tests a synchronous flush without sleeping on the publish cadence.
+    /// The flush targets the live projection only — the segment keeps
+    /// streaming; only boundaries commit it into the transcript.
     private func forceFlushPendingReasoning(on state: AppState) {
         state.showSidebar = true
         state.showSidebar = false
@@ -66,6 +75,12 @@ final class AppStateReasoningStreamTests: XCTestCase {
         state.messages.filter { $0.role == .reasoning }
     }
 
+    /// Live reasoning content as the UI sees it (the projection), independent
+    /// of the settled transcript.
+    private func liveReasoningContent(on state: AppState) -> String? {
+        state.liveReasoningSegment?.content
+    }
+
     // MARK: - Coalescing
 
     func testRapidReasoningDeltasCoalesceTranscriptPublications() {
@@ -79,14 +94,16 @@ final class AppStateReasoningStreamTests: XCTestCase {
         feedReasoning(chunks, sessionId: "stored-a", state: state)
         cancellable.cancel()
 
-        // One publication creates the thinking card; every raw delta after
-        // that must merge into the authoritative buffer without republishing.
-        XCTAssertEqual(burstPublications, 1)
-        XCTAssertEqual(reasoningCards(in: state).count, 1)
-        XCTAssertEqual(reasoningCards(in: state).first?.content, chunks.first)
+        // Zero transcript publications: the live card mounts in the
+        // projection, and every raw delta after that merges into the
+        // authoritative buffer without touching `messages` at all.
+        XCTAssertEqual(burstPublications, 0)
+        XCTAssertEqual(reasoningCards(in: state).count, 0)
+        XCTAssertEqual(liveReasoningContent(on: state), chunks.first)
 
         forceFlushPendingReasoning(on: state)
-        XCTAssertEqual(reasoningCards(in: state).first?.content, expectedTotal)
+        XCTAssertEqual(liveReasoningContent(on: state), expectedTotal)
+        XCTAssertEqual(reasoningCards(in: state).count, 0)
     }
 
     func testScheduledReasoningPublishFiresWithoutForcedFlush() async throws {
@@ -98,15 +115,24 @@ final class AppStateReasoningStreamTests: XCTestCase {
             sessionId: "stored-a",
             state: state
         )
-        XCTAssertEqual(reasoningCards(in: state).first?.content, "coalesced chunk one ")
+        XCTAssertEqual(liveReasoningContent(on: state), "coalesced chunk one ")
 
         // The scheduled 50 ms publish must land on its own — no sidebar
         // force-flush, no boundary event. The wait only needs to clear the
         // cadence interval, so generous slack keeps it stable on CI runners.
+        var scheduledTranscriptPublications = 0
+        let cancellable = state.$messages.dropFirst().sink { _ in
+            scheduledTranscriptPublications += 1
+        }
         try await Task.sleep(for: .milliseconds(500))
+        cancellable.cancel()
         XCTAssertEqual(
-            reasoningCards(in: state).first?.content,
+            liveReasoningContent(on: state),
             "coalesced chunk one coalesced chunk two"
+        )
+        XCTAssertEqual(
+            scheduledTranscriptPublications, 0,
+            "the scheduled reasoning publish must not touch the settled transcript"
         )
     }
 
@@ -116,15 +142,17 @@ final class AppStateReasoningStreamTests: XCTestCase {
 
         feedReasoning(["first segment "], sessionId: "stored-a", state: state)
         forceFlushPendingReasoning(on: state)
-        let firstCardID = reasoningCards(in: state).first?.id
+        let firstCardID = state.liveReasoningSegment?.id
 
         feedReasoning(["continues to stream "], sessionId: "stored-a", state: state)
         forceFlushPendingReasoning(on: state)
 
-        XCTAssertEqual(reasoningCards(in: state).count, 1)
-        XCTAssertEqual(reasoningCards(in: state).first?.id, firstCardID)
+        // One live card for the whole segment, stable identity, still outside
+        // the settled transcript.
+        XCTAssertEqual(reasoningCards(in: state).count, 0)
+        XCTAssertEqual(state.liveReasoningSegment?.id, firstCardID)
         XCTAssertEqual(
-            reasoningCards(in: state).first?.content,
+            liveReasoningContent(on: state),
             "first segment continues to stream "
         )
     }
@@ -142,7 +170,7 @@ final class AppStateReasoningStreamTests: XCTestCase {
         )
         forceFlushPendingReasoning(on: state)
 
-        XCTAssertEqual(reasoningCards(in: state).first?.content, "abcdefgh")
+        XCTAssertEqual(liveReasoningContent(on: state), "abcdefgh")
     }
 
     func testIncrementalReasoningDeltasConcatenateExactly() {
@@ -152,10 +180,10 @@ final class AppStateReasoningStreamTests: XCTestCase {
         feedReasoning(["abc", "def", "ghi"], sessionId: "stored-a", state: state)
         forceFlushPendingReasoning(on: state)
 
-        XCTAssertEqual(reasoningCards(in: state).first?.content, "abcdefghi")
+        XCTAssertEqual(liveReasoningContent(on: state), "abcdefghi")
     }
 
-    // MARK: - Boundary flushes
+    // MARK: - Boundary commits
 
     func testMessageCompleteFlushesPendingReasoningSynchronously() {
         let state = makeAppState()
@@ -175,10 +203,12 @@ final class AppStateReasoningStreamTests: XCTestCase {
             )
         )
 
+        // The boundary commits the live segment into the settled transcript.
         XCTAssertEqual(
             reasoningCards(in: state).first?.content,
             "partial thought still buffering"
         )
+        XCTAssertNil(state.liveReasoningSegment)
 
         // Force the drained completion so the final assistant message lands
         // synchronously; the reasoning card must stay complete and ordered
@@ -218,12 +248,12 @@ final class AppStateReasoningStreamTests: XCTestCase {
         }
         XCTAssertLessThan(reasoningIndex, toolIndex)
 
-        // Reasoning that resumes after a tool belongs to a fresh card, never
-        // the finalized one.
+        // Reasoning that resumes after a tool belongs to a fresh live card,
+        // never the finalized one.
         feedReasoning(["post-tool thinking "], sessionId: "stored-a", state: state)
         forceFlushPendingReasoning(on: state)
-        XCTAssertEqual(reasoningCards(in: state).count, 2)
-        XCTAssertEqual(reasoningCards(in: state).last?.content, "post-tool thinking ")
+        XCTAssertEqual(reasoningCards(in: state).count, 1)
+        XCTAssertEqual(liveReasoningContent(on: state), "post-tool thinking ")
     }
 
     func testMessageErrorFlushesPendingReasoningWithoutStaleDelayedPublish() async throws {
@@ -297,19 +327,22 @@ final class AppStateReasoningStreamTests: XCTestCase {
         installActiveSession(state, id: "stored-a")
 
         feedReasoning(["visible "], sessionId: "stored-a", state: state)
-        XCTAssertEqual(reasoningCards(in: state).first?.content, "visible ")
+        XCTAssertEqual(liveReasoningContent(on: state), "visible ")
 
         // The drawer suppresses coalesced reasoning publications while it is
         // animating; the buffer stays authoritative.
         state.showSidebar = true
         feedReasoning(["hidden ", "while draining"], sessionId: "stored-a", state: state)
-        XCTAssertEqual(reasoningCards(in: state).first?.content, "visible ")
+        XCTAssertEqual(liveReasoningContent(on: state), "visible ")
 
         state.showSidebar = false
         XCTAssertEqual(
-            reasoningCards(in: state).first?.content,
+            liveReasoningContent(on: state),
             "visible hidden while draining"
         )
+        // The suppression flush publishes the projection; it must not commit
+        // the still-streaming segment into the transcript.
+        XCTAssertEqual(reasoningCards(in: state).count, 0)
     }
 
     func testReasoningDeltaDuringCompletionDrainMountsFreshCardAfterAssistant() {
@@ -326,17 +359,20 @@ final class AppStateReasoningStreamTests: XCTestCase {
             )
         )
         // A delta racing the drain window finalizes the pending completion
-        // first, then mounts a fresh card — the pre-fix behavior, with no
-        // buffered text lost.
+        // first, then mounts a fresh live card — the pre-projection behavior,
+        // with no buffered text lost. The fresh segment stays in the
+        // projection until its own boundary.
         state.handleStreamEvent(
             .reasoningDelta(sessionId: "stored-a", text: "late thought")
         )
 
-        let cards = reasoningCards(in: state)
-        XCTAssertEqual(cards.count, 2)
-        XCTAssertEqual(cards.first?.content, "pre-complete ")
-        XCTAssertEqual(cards.last?.content, "late thought")
+        XCTAssertEqual(state.messages.map(\.role), [.reasoning, .assistant])
+        XCTAssertEqual(liveReasoningContent(on: state), "late thought")
+
+        // The next turn boundary commits the late segment in order.
+        state.handleStreamEvent(.messageStart(sessionId: "stored-a"))
         XCTAssertEqual(state.messages.map(\.role), [.reasoning, .assistant, .reasoning])
+        XCTAssertEqual(state.messages.last?.content, "late thought")
     }
 
     func testCompletionReasoningTraceDoesNotDuplicateStreamedCard() {
@@ -373,6 +409,7 @@ final class AppStateReasoningStreamTests: XCTestCase {
 
         // Turn one streamed reasoning: receivedReasoningForCurrentTurn == true.
         feedReasoning(["prior turn reasoning "], sessionId: "stored-a", state: state)
+        state.handleStreamEvent(.messageStart(sessionId: "stored-a"))
         XCTAssertEqual(reasoningCards(in: state).count, 1)
 
         // A full state reset (disconnect) must restore the ENTIRE per-turn
@@ -475,6 +512,61 @@ final class AppStateReasoningStreamTests: XCTestCase {
         XCTAssertEqual(state.messages.last?.id, "assistant-1")
     }
 
+    /// Mid-turn transcript rows (review summaries, clarify/approval cards,
+    /// slash output, steer corrections) must not land below the live
+    /// reasoning card's eventual commit: each append settles the segment
+    /// first, preserving the pre-projection chronology, and reasoning that
+    /// resumes afterwards mounts a fresh segment (tool-boundary precedent).
+    func testMidTurnTranscriptAppendsCommitReasoningSegmentFirst() {
+        let state = makeAppState()
+        installActiveSession(state, id: "stored-a")
+
+        feedReasoning(["thinking about the change "], sessionId: "stored-a", state: state)
+        state.handleStreamEvent(.reviewSummary(
+            sessionId: "stored-a",
+            activity: ReviewActivity(summary: "mid-turn review", details: nil, fullSessionId: nil)
+        ))
+
+        // The live card committed above the review row; nothing stays live.
+        XCTAssertEqual(state.messages.map(\.role), [.reasoning, .system])
+        XCTAssertEqual(state.messages.first?.content, "thinking about the change ")
+        XCTAssertNil(state.liveReasoningSegment)
+
+        // Reasoning that resumes after the interjection mounts a FRESH
+        // segment, which the next mid-turn append commits the same way.
+        feedReasoning(["second segment "], sessionId: "stored-a", state: state)
+        state.handleStreamEvent(.approval(
+            sessionId: "stored-a",
+            activity: ApprovalActivity(
+                sessionId: "stored-a",
+                command: "run tests",
+                description: "wants to run tests",
+                choices: nil,
+                allowPermanent: false,
+                smartDenied: false,
+                status: .pending,
+                choice: nil,
+                error: nil
+            )
+        ))
+        XCTAssertEqual(state.messages.map(\.role), [.reasoning, .system, .reasoning, .approval])
+        XCTAssertEqual(state.messages[2].content, "second segment ")
+
+        feedReasoning(["third segment"], sessionId: "stored-a", state: state)
+        state.handleStreamEvent(.clarify(
+            sessionId: "stored-a",
+            requestId: "req-1",
+            question: "which scope?",
+            choices: [("a", "A"), ("b", "B")]
+        ))
+        XCTAssertEqual(
+            state.messages.map(\.role),
+            [.reasoning, .system, .reasoning, .approval, .reasoning, .clarify]
+        )
+        XCTAssertEqual(state.messages[4].content, "third segment")
+        XCTAssertNil(state.liveReasoningSegment)
+    }
+
     func testSessionSwitchDiscardsPendingReasoningPublishForNewSession() async {
         let replacementMessages = [
             ChatMessage(id: "new-1", role: .assistant, content: "Other session", timestamp: "1")
@@ -529,18 +621,21 @@ final class AppStateReasoningStreamTests: XCTestCase {
 
         XCTAssertEqual(state.activeSessionId, destination.id)
         XCTAssertTrue(reasoningCards(in: state).isEmpty)
+        XCTAssertNil(state.liveReasoningSegment)
         XCTAssertEqual(state.messages, replacementMessages)
 
         // Even a forced flush of any surviving pending state must not
         // reproduce the old session's reasoning inside the new transcript.
         forceFlushPendingReasoning(on: state)
         XCTAssertTrue(reasoningCards(in: state).isEmpty)
+        XCTAssertNil(state.liveReasoningSegment)
         XCTAssertEqual(state.messages, replacementMessages)
 
         // Five 50 ms cadence periods: proves that after the session switch no
         // stale publish (guarded or not) can mutate the replacement transcript.
         try? await Task.sleep(for: .milliseconds(250))
         XCTAssertTrue(reasoningCards(in: state).isEmpty)
+        XCTAssertNil(state.liveReasoningSegment)
         XCTAssertEqual(state.messages, replacementMessages)
     }
 }

@@ -27,6 +27,14 @@ struct ComposerPasteTextView: UIViewRepresentable {
     let onPastedImage: (PastedImage) -> Void
     let onPastedImageError: (String) -> Void
     let editorIdentity: UUID
+    /// Generation of INTENTIONAL programmatic composer replacements (draft
+    /// restore, prefill, session handoff, slash insertion, clear after send).
+    /// ComposerBar advances it only through `replaceComposerText(_:)`.
+    /// Ordinary SwiftUI invalidations — streaming, reasoning, busy state,
+    /// toolbar state — arrive with an unchanged revision, which is how the
+    /// bridge tells them apart from a deliberate replacement and from the
+    /// echo of a user edit: they may not rewrite the editor.
+    var programmaticRevision: UInt64 = 0
     /// Hardware-keyboard Return behavior. When true, a plain Return press
     /// submits through the composer action path; Shift-Return and every
     /// non-submittable state keep the default newline insertion.
@@ -77,10 +85,21 @@ struct ComposerPasteTextView: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: ImagePasteTextView, context: Context) {
+        TranscriptPerf.note(.composerUpdateUIView)
         context.coordinator.parent = self
         context.coordinator.isActive = true
-        context.coordinator.apply(text: text, editorIdentity: editorIdentity, to: uiView)
-        uiView.isEditable = enabled
+        context.coordinator.apply(
+            text: text,
+            programmaticRevision: programmaticRevision,
+            editorIdentity: editorIdentity,
+            to: uiView
+        )
+        // Layout is requested on text change and editability flip only;
+        // bounds changes re-layout automatically through layoutSubviews.
+        if uiView.isEditable != enabled {
+            uiView.isEditable = enabled
+            uiView.setNeedsLayout()
+        }
         uiView.editorIdentity = editorIdentity
         uiView.onContentHeightChange = { height in
             context.coordinator.updateMeasuredHeight(height)
@@ -90,7 +109,6 @@ struct ComposerPasteTextView: UIViewRepresentable {
         uiView.returnKeySends = returnKeySends
         uiView.canSubmitFromReturn = canSubmitFromReturn
         uiView.onSubmitFromReturn = onSubmitFromReturn
-        uiView.setNeedsLayout()
         if isFocused, !uiView.isFirstResponder { uiView.becomeFirstResponder() }
         if !isFocused, uiView.isFirstResponder { uiView.resignFirstResponder() }
     }
@@ -99,15 +117,36 @@ struct ComposerPasteTextView: UIViewRepresentable {
         var parent: ComposerPasteTextView
         var isApplyingProgrammaticState = false
         var isActive = true
+        /// The last text UIKit itself reported through `textViewDidChange`.
+        /// A binding value equal to this is the ECHO of a user edit, never a
+        /// reason to write into the editor: UIKit's text-input delegate can
+        /// deliver the change notification after the storage already moved
+        /// on (and after unrelated SwiftUI invalidations), so a binding that
+        /// lags the editor is evidence of in-flight user input, not of a
+        /// programmatic source.
+        private var lastTextReportedByUIKit = ""
+        /// The programmatic revision currently reflected in the editor.
+        /// Only an ADVANCE may rewrite the editor, and it does so exactly
+        /// once; unchanged revisions ride along without touching text.
+        private var appliedProgrammaticRevision: UInt64 = 0
+        /// An intentional replacement that arrived while IME marked text was
+        /// active. Composition is never silently replaced; this lands as
+        /// soon as it ends.
+        private var pendingProgrammatic: (text: String, revision: UInt64)?
         private var editorIdentity: UUID?
 
-        init(_ parent: ComposerPasteTextView) { self.parent = parent }
+        init(_ parent: ComposerPasteTextView) {
+            self.parent = parent
+            super.init()
+        }
 
         func textViewDidChange(_ textView: UITextView) {
             guard isActive, !isApplyingProgrammaticState else { return }
+            lastTextReportedByUIKit = textView.text
             parent.text = textView.text
             textView.scrollRangeToVisible(textView.selectedRange)
             textView.setNeedsLayout()
+            flushPendingProgrammaticIfCompositionEnded(textView)
         }
         func textViewDidBeginEditing(_ textView: UITextView) {
             guard isActive, !isApplyingProgrammaticState else { return }
@@ -116,6 +155,7 @@ struct ComposerPasteTextView: UIViewRepresentable {
         func textViewDidEndEditing(_ textView: UITextView) {
             guard isActive, !isApplyingProgrammaticState else { return }
             parent.isFocused = false
+            flushPendingProgrammaticIfCompositionEnded(textView)
         }
 
         func updateMeasuredHeight(_ height: CGFloat) {
@@ -124,30 +164,87 @@ struct ComposerPasteTextView: UIViewRepresentable {
             parent.measuredHeight = height
         }
 
-        func apply(text: String, editorIdentity: UUID, to textView: UITextView) {
-            let needsTextUpdate = textView.text != text
-            let needsIdentityUpdate = self.editorIdentity != editorIdentity
-            guard needsTextUpdate || needsIdentityUpdate else { return }
-
-            let clampedSelection = clampedSelectionRange(
-                textView.selectedRange,
-                maxLength: (text as NSString).length
-            )
-
-            isApplyingProgrammaticState = true
-            defer {
-                isApplyingProgrammaticState = false
+        /// The one gate between SwiftUI and the editor's text state.
+        ///
+        ///   user typing:            UIKit → binding (textViewDidChange)
+        ///   unrelated invalidation: no SwiftUI → UIKit text replacement
+        ///   intentional change:     programmaticRevision advance → UIKit
+        ///
+        /// A binding that merely disagrees with `textView.text` is NOT an
+        /// intentional change — it is either the echo of text UIKit already
+        /// reported, or user input that outran the delegate notification.
+        func apply(
+            text: String,
+            programmaticRevision: UInt64,
+            editorIdentity: UUID,
+            to textView: UITextView
+        ) {
+            if self.editorIdentity != editorIdentity {
+                // Lifecycle boundary (session handoff / attachment rotate).
+                // `.id(editorIdentity)` recreates the editor wholesale, so
+                // this branch is defensive: reset bookkeeping to the fresh
+                // view's actual state — the previous editor's pending
+                // replacement and applied revision died with it.
                 self.editorIdentity = editorIdentity
+                lastTextReportedByUIKit = textView.text
+                pendingProgrammatic = nil
+                appliedProgrammaticRevision = 0
+                if textView.text != text {
+                    // The binding is the fresh editor's ground truth even
+                    // when no revision advance accompanies the rotation.
+                    // Every production rotation is text-paired through
+                    // replaceComposerText; applying here keeps a future
+                    // unpaired rotation from silently blanking the editor.
+                    performProgrammaticReplacement(
+                        text: text,
+                        revision: programmaticRevision,
+                        into: textView
+                    )
+                    return
+                }
+            }
+            flushPendingProgrammaticIfCompositionEnded(textView)
+
+            // An unrelated invalidation keeps the revision and can stop here.
+            guard programmaticRevision != appliedProgrammaticRevision else { return }
+
+            // Active IME composition is never silently replaced — nor
+            // revision-adopted; the deferred replacement lands when the
+            // composition ends and stays the newest instruction.
+            if textView.markedTextRange != nil {
+                TranscriptPerf.note(.composerMarkedTextDeferral)
+                pendingProgrammatic = (text, programmaticRevision)
+                return
             }
 
-            textView.text = text
-            textView.selectedRange = clampedSelection
-            textView.setNeedsLayout()
+            if text == textView.text {
+                // The editor verifiably holds the intended value — checked
+                // against the LIVE text, not only the last delegate report,
+                // which can lag in-flight user input. Adopt the revision so
+                // bookkeeping stays in sync without tearing down live input
+                // state with a redundant rewrite.
+                appliedProgrammaticRevision = programmaticRevision
+                lastTextReportedByUIKit = textView.text
+                return
+            }
+
+            // A revision advance the editor does not verifiably hold is a
+            // genuine intentional replacement: apply it even when the value
+            // equals the last reported text — the live editor has moved past
+            // that report, and the intentional source stays authoritative.
+            performProgrammaticReplacement(
+                text: text,
+                revision: programmaticRevision,
+                into: textView
+            )
         }
 
         func deactivate(textView: UITextView) {
             isActive = false
             isApplyingProgrammaticState = false
+            pendingProgrammatic = nil
+            lastTextReportedByUIKit = ""
+            appliedProgrammaticRevision = 0
             editorIdentity = nil
             textView.delegate = nil
             if let textView = textView as? ImagePasteTextView {
@@ -162,6 +259,58 @@ struct ComposerPasteTextView: UIViewRepresentable {
             if textView.isFirstResponder {
                 textView.resignFirstResponder()
             }
+        }
+
+        /// A deferred intentional replacement lands at the first
+        /// composition-free moment: `textViewDidChange` fires for both the
+        /// commit and the discard of marked text, and any later
+        /// `updateUIView` re-checks here.
+        private func flushPendingProgrammaticIfCompositionEnded(_ textView: UITextView) {
+            guard textView.markedTextRange == nil,
+                  let pending = pendingProgrammatic else { return }
+            pendingProgrammatic = nil
+            if textView.text == pending.text {
+                // Already in place: record the revision without tearing down
+                // live input state with a redundant assignment.
+                appliedProgrammaticRevision = pending.revision
+                lastTextReportedByUIKit = textView.text
+                return
+            }
+            performProgrammaticReplacement(
+                text: pending.text,
+                revision: pending.revision,
+                into: textView
+            )
+        }
+
+        private func performProgrammaticReplacement(
+            text: String,
+            revision: UInt64,
+            into textView: UITextView
+        ) {
+            let clampedSelection = clampedSelectionRange(
+                textView.selectedRange,
+                maxLength: (text as NSString).length
+            )
+
+            TranscriptPerf.note(.composerProgrammaticTextAssignment)
+            TranscriptPerf.lastComposerSelectionBeforeAssignment = textView.selectedRange.location
+            TranscriptPerf.note(.composerSelectionWrite)
+            TranscriptPerf.lastComposerSelectionAfterAssignment = clampedSelection.location
+
+            isApplyingProgrammaticState = true
+            defer { isApplyingProgrammaticState = false }
+
+            textView.text = text
+            textView.selectedRange = clampedSelection
+            textView.setNeedsLayout()
+            appliedProgrammaticRevision = revision
+            lastTextReportedByUIKit = text
+            // In the deferred flow the user's (now replaced) composition may
+            // have published a newer binding AFTER the intentional source
+            // wrote its value; the intentional replacement stays
+            // authoritative, so the binding follows the editor.
+            if parent.text != text { parent.text = text }
         }
 
         private func clampedSelectionRange(_ range: NSRange, maxLength: Int) -> NSRange {
