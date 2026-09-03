@@ -542,29 +542,29 @@ final class AppState: ObservableObject {
         var optimisticUserRowID: String
         var preSubmitOrderingBaseline: PersistedOrderingBaseline
         /// Set when a validated bounded read positively observed this turn's
-        /// persisted user boundary (the frontier advanced through it). A
-        /// turn that settles WITHOUT this proof leaves ordering debt: its
-        /// twin is expected in persisted history beyond the frontier, and
-        /// the next locally-owned turn must not anchor before it.
+        /// persisted user boundary (the frontier advanced through it).
         var persistedBoundaryObserved = false
     }
-    /// Ordering debt for locally-owned turns that settled locally BEFORE any
-    /// validated persisted read observed their durable user boundary
-    /// (foreground-only lifecycles). One bounded pre-send tail read
-    /// reconciles it: exactly `expectedUserTurnCount` new canonical user
-    /// boundaries after the frontier satisfies the debt (and advances the
-    /// frontier); more proves foreign activity (authoritative reconcile);
-    /// fewer means persisted state has not caught up (conservative
-    /// recovery). Conversation-scoped: reset with the transcript lifecycle
-    /// evidence, cleared by authoritative adoption. Residual windows, both
-    /// routed to the safe direction: a settled turn whose assistant output
-    /// persists AFTER a satisfied re-anchor leaves the next debt read facing
-    /// a leading non-user row (one conservative reconcile); a turn accepted
-    /// but lost server-side leaves unsatisfiable debt until one reconcile
-    /// converges it.
+    /// Ordering debt for turns whose durable ordering is not yet proven. A
+    /// missing-boundary debt expects one or more canonical user rows after the
+    /// frontier. A zero-boundary observation obligation permits only trailing
+    /// assistant/tool rows: it covers a locally-owned turn whose boundary was
+    /// seen while live, plus busy `.queued`/`.steered` outcomes whose typed
+    /// response cannot prove whether Hermes later promoted input to a full
+    /// turn. One bounded pre-send read clears the matching shape and advances
+    /// the frontier; extra user boundaries prove new activity (authoritative
+    /// reconcile), while missing rows or an unprovable anchor recover
+    /// conservatively. Conversation-scoped: reset with transcript lifecycle
+    /// evidence and cleared by authoritative adoption.
     private struct PendingLocalOrderingDebt {
         var sessionIDs: Set<String>
         var expectedUserTurnCount: Int
+        /// No exact new boundary is owed. Rows before the next expected
+        /// boundary may be a settled local tail or the current busy turn's
+        /// tail. With zero expected boundaries, an empty or non-user-only
+        /// suffix satisfies the obligation; any user boundary proves new
+        /// activity that must be adopted authoritatively.
+        var allowTrailingRowsWithoutNewUserBoundary: Bool
     }
     private var pendingLocalOrderingDebt: PendingLocalOrderingDebt?
     private var locallyOwnedInFlightTurn: LocallyOwnedInFlightTurn?
@@ -5362,7 +5362,8 @@ final class AppState: ObservableObject {
             persistedOrderingFrontier = observedOrderingFrontier
             if let observedNewUserBoundaries, observedNewUserBoundaries > 0 {
                 // The read positively observed the locally-owned turn's
-                // persisted boundary: a later settle owes no ordering debt.
+                // persisted boundary. If the turn is still running this does
+                // NOT prove its final durable tail.
                 locallyOwnedInFlightTurn?.persistedBoundaryObserved = true
             }
             adoptForegroundLiveness(
@@ -6854,7 +6855,8 @@ final class AppState: ObservableObject {
             }
             return Self.classifyDebtCandidates(
                 persistedRowsAfter(nil, in: transcript, heldIDs: heldIDs),
-                expected: debt.expectedUserTurnCount
+                expected: debt.expectedUserTurnCount,
+                allowTrailingRowsWithoutNewUserBoundary: debt.allowTrailingRowsWithoutNewUserBoundary
             )
         case .anchored(let anchorID):
             guard let anchorIndex = transcript.messages.lastIndex(where: {
@@ -6864,16 +6866,29 @@ final class AppState: ObservableObject {
             }
             return Self.classifyDebtCandidates(
                 persistedRowsAfter(anchorIndex, in: transcript, heldIDs: heldIDs),
-                expected: debt.expectedUserTurnCount
+                expected: debt.expectedUserTurnCount,
+                allowTrailingRowsWithoutNewUserBoundary: debt.allowTrailingRowsWithoutNewUserBoundary
             )
         }
     }
 
     private static func classifyDebtCandidates(
         _ candidates: [ChatMessage],
-        expected: Int
+        expected: Int,
+        allowTrailingRowsWithoutNewUserBoundary: Bool = false
     ) -> LocalOrderingDebtOutcome {
         let boundaries = candidates.filter { $0.role == .user }
+        if expected == 0, allowTrailingRowsWithoutNewUserBoundary {
+            // Settled-tail debt: trailing assistant/tool rows (or no rows at
+            // all) are exactly what the bounded read is meant to absorb. A
+            // canonical user boundary cannot belong to that already-settled
+            // turn and therefore proves foreign/new activity.
+            return boundaries.isEmpty ? .satisfied : .exceeded
+        }
+        if allowTrailingRowsWithoutNewUserBoundary {
+            if boundaries.count == expected { return .satisfied }
+            return boundaries.count > expected ? .exceeded : .notCaughtUp
+        }
         guard let firstRow = candidates.first, firstRow.role == .user else {
             // Nothing after the frontier yet, or an assistant/tool row
             // precedes the first boundary: the persisted state has not
@@ -7013,20 +7028,8 @@ final class AppState: ObservableObject {
                     turnState = .running
                 }
                 turnStateIsStale = false
-                if outcome.isBusySubmission {
-                    // A steered/queued/redirected outcome joined a turn that
-                    // was ALREADY running — possibly started by another
-                    // surface — so it is not proof of a locally-owned turn;
-                    // the optimistic row gets no continuity marker. It DOES
-                    // persist as a canonical user row beyond the frontier,
-                    // though: carry ordering debt forward so the next local
-                    // turn anchors past it.
-                    locallyOwnedInFlightTurn = nil
-                    recordLocalOrderingDebt(
-                        sessionIDs: submissionSessionIDs,
-                        baseline: preSubmitOrderingBaseline
-                    )
-                } else {
+                switch outcome {
+                case .accepted:
                     // The turn in flight is now provably Conduit's own: record
                     // the optimistic user row so a later foreground freshness
                     // check can prove same-turn continuity WITHOUT demanding a
@@ -7035,6 +7038,39 @@ final class AppState: ObservableObject {
                         sessionIDs: submissionSessionIDs,
                         optimisticUserRowID: userMessage.id,
                         preSubmitOrderingBaseline: preSubmitOrderingBaseline
+                    )
+                case .queued:
+                    // Hermes normally drains queued input as a later full turn,
+                    // but `_enqueue_prompt` may drop an in-flight self-duplicate
+                    // or coalesce several text submissions into one envelope.
+                    // Therefore the typed outcome proves no exact boundary
+                    // count. Require one later bounded observation: no new user
+                    // row clears it; any user row is adopted authoritatively.
+                    locallyOwnedInFlightTurn = nil
+                    recordLocalOrderingDebt(
+                        sessionIDs: submissionSessionIDs,
+                        baseline: preSubmitOrderingBaseline,
+                        expectedUserTurnIncrement: 0,
+                        allowTrailingRowsWithoutNewUserBoundary: true
+                    )
+                case .redirected:
+                    // Hermes replaces/corrects the current live model request;
+                    // it does not create an independent canonical user turn.
+                    locallyOwnedInFlightTurn = nil
+                case .steered:
+                    // Hermes normally injects this into the current run without
+                    // a canonical user row. A steer arriving after the final
+                    // tool batch is returned as `pending_steer`, however, and
+                    // requeued as a full next turn. As with `.queued`, the typed
+                    // outcome proves no exact boundary count, so observe once
+                    // before the next ordinary local turn and reconcile if a
+                    // promoted steer produced a user boundary.
+                    locallyOwnedInFlightTurn = nil
+                    recordLocalOrderingDebt(
+                        sessionIDs: submissionSessionIDs,
+                        baseline: preSubmitOrderingBaseline,
+                        expectedUserTurnIncrement: 0,
+                        allowTrailingRowsWithoutNewUserBoundary: true
                     )
                 }
             }
@@ -11038,27 +11074,37 @@ final class AppState: ObservableObject {
             // boundary was never positively observed leaves ordering debt:
             // Hermes persisted its user row at turn start, so the next
             // locally-owned turn must anchor AFTER it.
-            recordLocalOrderingDebtIfTurnUnobserved()
+            recordLocalOrderingDebtForSettledTurn()
             locallyOwnedInFlightTurn = nil
         }
         turnState = running ? .running : .idle
     }
 
-    /// Records one unit of local ordering debt when a locally-owned turn
-    /// settles before any validated read observed its persisted boundary.
+    /// Records the minimum unresolved persisted-ordering obligation when a
+    /// locally-owned turn settles. An unseen boundary owes one canonical user
+    /// turn. A boundary observed only while live owes a zero-boundary settled
+    /// tail read, because later assistant/tool rows may still have persisted.
     /// Debt counts accumulate when several locally-owned turns settle
     /// without an intervening read; authoritative adoption (a reconcile
     /// replacing the transcript) clears the debt outright. Identity
     /// rotation between turns replaces the slot — an undercount, which
     /// degrades to a spurious-but-safe authoritative reconcile, never to a
     /// silent overshoot.
-    private func recordLocalOrderingDebtIfTurnUnobserved() {
-        guard let marker = locallyOwnedInFlightTurn,
-              !marker.persistedBoundaryObserved else { return }
-        recordLocalOrderingDebt(
-            sessionIDs: marker.sessionIDs,
-            baseline: marker.preSubmitOrderingBaseline
-        )
+    private func recordLocalOrderingDebtForSettledTurn() {
+        guard let marker = locallyOwnedInFlightTurn else { return }
+        if !marker.persistedBoundaryObserved {
+            recordLocalOrderingDebt(
+                sessionIDs: marker.sessionIDs,
+                baseline: marker.preSubmitOrderingBaseline
+            )
+        } else {
+            recordLocalOrderingDebt(
+                sessionIDs: marker.sessionIDs,
+                baseline: marker.preSubmitOrderingBaseline,
+                expectedUserTurnIncrement: 0,
+                allowTrailingRowsWithoutNewUserBoundary: true
+            )
+        }
     }
 
     /// Debt-accounting core. Debt is only meaningful when the ordering
@@ -11068,15 +11114,21 @@ final class AppState: ObservableObject {
     /// attach, exactly as before ordering evidence existed.
     private func recordLocalOrderingDebt(
         sessionIDs: Set<String>,
-        baseline: PersistedOrderingBaseline
+        baseline: PersistedOrderingBaseline,
+        expectedUserTurnIncrement: Int = 1,
+        allowTrailingRowsWithoutNewUserBoundary: Bool = false
     ) {
         guard !baseline.isUnknown else { return }
         if pendingLocalOrderingDebt?.sessionIDs == sessionIDs {
-            pendingLocalOrderingDebt?.expectedUserTurnCount += 1
+            pendingLocalOrderingDebt?.expectedUserTurnCount += expectedUserTurnIncrement
+            if allowTrailingRowsWithoutNewUserBoundary {
+                pendingLocalOrderingDebt?.allowTrailingRowsWithoutNewUserBoundary = true
+            }
         } else {
             pendingLocalOrderingDebt = PendingLocalOrderingDebt(
                 sessionIDs: sessionIDs,
-                expectedUserTurnCount: 1
+                expectedUserTurnCount: expectedUserTurnIncrement,
+                allowTrailingRowsWithoutNewUserBoundary: allowTrailingRowsWithoutNewUserBoundary
             )
         }
     }

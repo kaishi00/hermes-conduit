@@ -4818,6 +4818,20 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                             "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 4]
                         ])
                     }
+                    if transcriptReads == 3 {
+                        // Mandatory settled-tail check before Turn B. The
+                        // live-time observation already contained A's final
+                        // persisted row, so nothing follows frontier 103.
+                        return .payload([
+                            "messages": [
+                                ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                                ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"],
+                                ["id": "102", "role": "user", "content": "A", "timestamp": "3"],
+                                ["id": "103", "role": "assistant", "content": "Answer A", "timestamp": "4"]
+                            ],
+                            "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 4]
+                        ])
+                    }
                     // Turn B's twin: only ONE new user boundary after the
                     // advanced ordering frontier (103).
                     return .payload([
@@ -4892,6 +4906,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         let submittedB = await harness.appState.submitComposer(text: "B")
         XCTAssertTrue(submittedB)
         XCTAssertEqual(submitCount, 2)
+        XCTAssertEqual(transcriptReads, 3, "One bounded settled-tail check before Turn B")
         XCTAssertEqual(harness.appState.turnState, .running)
         harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: true))
         harness.appState.handleStreamEvent(.reasoningDelta(sessionId: active.id, text: "B thinking."))
@@ -4903,7 +4918,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         await runSceneActivation(harness)
 
         XCTAssertEqual(probeCount, 2)
-        XCTAssertEqual(transcriptReads, 3, "One bounded freshness read per background return")
+        XCTAssertEqual(transcriptReads, 4, "Settled-tail check plus one bounded read per background return")
         XCTAssertEqual(
             resumeCount, 1,
             "Turn A's persisted rows must not be miscounted as foreign boundaries — Turn B stays observational"
@@ -5093,6 +5108,19 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                             "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 4]
                         ])
                     }
+                    if transcriptReads == 3 {
+                        // Mandatory settled-tail check before Turn B. The
+                        // earlier live observation already held A's final row.
+                        return .payload([
+                            "messages": [
+                                ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                                ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"],
+                                ["id": "102", "role": "user", "content": "A", "timestamp": "3"],
+                                ["id": "103", "role": "assistant", "content": "Answer A", "timestamp": "4"]
+                            ],
+                            "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 4]
+                        ])
+                    }
                     // B completed while away; remote Turn C started: TWO
                     // boundaries after B's frozen baseline (103).
                     return .payload([
@@ -5153,6 +5181,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         let submittedB = await harness.appState.submitComposer(text: "B")
         XCTAssertTrue(submittedB)
         XCTAssertEqual(submitCount, 2)
+        XCTAssertEqual(transcriptReads, 3, "One bounded settled-tail check before Turn B")
         harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: true))
         harness.appState.handleStreamEvent(.reasoningDelta(sessionId: active.id, text: "B thinking."))
         XCTAssertNotNil(harness.appState.liveReasoningSegment)
@@ -5162,7 +5191,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         await runSceneActivation(harness)
 
         XCTAssertEqual(probeCount, 2)
-        XCTAssertEqual(transcriptReads, 4, "Freshness read + the attach reconcile's bounded read")
+        XCTAssertEqual(transcriptReads, 5, "Settled-tail check + freshness read + attach reconcile read")
         XCTAssertEqual(
             resumeCount, 2,
             "Two boundaries after B's frozen baseline force the authoritative attach"
@@ -5501,10 +5530,400 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         box.client.disconnect()
     }
 
-    /// An already-observed locally-owned turn (its foreground freshness read
-    /// advanced the frontier through its rows) creates NO ordering debt: the
-    /// next local submit performs no extra pre-send read.
-    func testAlreadyObservedLocalTurnCreatesNoExtraPreSendRead() async {
+    /// A settled-tail check may absorb only the already-observed local turn's
+    /// assistant/tool suffix. A canonical user boundary after the live-time
+    /// frontier proves another turn occurred and must be adopted before the
+    /// next local prompt is appended.
+    func testObservedRunningTurnWithRemoteActivityReconcilesBeforeNextTurn() async {
+        let active = session("stored-a")
+        var resumeCount = 0
+        var transcriptReads = 0
+        var submitCount = 0
+        let remoteTail: [[String: Any]] = [
+            ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+            ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"],
+            ["id": "102", "role": "user", "content": "A", "timestamp": "3"],
+            ["id": "103", "role": "assistant", "content": "Partial A", "timestamp": "4"],
+            ["id": "104", "role": "tool", "content": "Final tool A", "timestamp": "5"],
+            ["id": "105", "role": "user", "content": "Remote B", "timestamp": "6"],
+            ["id": "106", "role": "assistant", "content": "Remote B answer", "timestamp": "7"]
+        ]
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in [active] },
+                openSession: { _, sessionID, _ in
+                    resumeCount += 1
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                persistedTranscript: { _, _ in
+                    transcriptReads += 1
+                    if transcriptReads == 1 {
+                        return .payload([
+                            "messages": Array(remoteTail.prefix(2)),
+                            "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 2]
+                        ])
+                    }
+                    if transcriptReads == 2 {
+                        return .payload([
+                            "messages": Array(remoteTail.prefix(4)),
+                            "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 4]
+                        ])
+                    }
+                    return .payload([
+                        "messages": remoteTail,
+                        "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 7]
+                    ])
+                },
+                refreshContext: { _, _ in },
+                sendPrompt: { _, _, _ in
+                    submitCount += 1
+                    return .accepted
+                },
+                verifyTransportHealth: { _ in },
+                probeActiveSessions: { _ in
+                    [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: "working"
+                    )]
+                }
+            )
+        )
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        let opened = await harness.appState.openSession(active.id)
+        XCTAssertTrue(opened)
+
+        let submittedA = await harness.appState.submitComposer(text: "A")
+        XCTAssertTrue(submittedA)
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: true))
+        harness.appState.handleStreamEvent(.reasoningDelta(sessionId: active.id, text: "A thinking."))
+        harness.appState.handleScenePhase(.background)
+        await runSceneActivation(harness)
+        XCTAssertEqual(resumeCount, 1)
+        XCTAssertEqual(transcriptReads, 2)
+
+        harness.appState.handleStreamEvent(.messageComplete(
+            sessionId: active.id,
+            messageId: nil,
+            content: "Answer A",
+            reasoning: nil
+        ))
+        harness.appState.handleStreamEvent(.messageStart(sessionId: active.id))
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: false))
+
+        let submittedC = await harness.appState.submitComposer(text: "Local C")
+        XCTAssertTrue(submittedC)
+
+        XCTAssertEqual(submitCount, 2, "Turn A plus exactly one reconciled local send")
+        XCTAssertEqual(transcriptReads, 4, "Settled-tail read plus authoritative reconcile read")
+        XCTAssertEqual(resumeCount, 2, "The remote user boundary forces authoritative recovery")
+        XCTAssertEqual(
+            harness.appState.messages.dropLast().map(\.id),
+            ["100", "101", "102", "103", "105", "106"],
+            "The remote user turn is visible; persisted tool rows remain presentation-filtered"
+        )
+        XCTAssertTrue(harness.appState.messages.last?.id.hasPrefix("local-") == true)
+        box.client.disconnect()
+    }
+
+    /// Hermes `prompt.submit` busy outcomes have distinct persistence
+    /// contracts. Redirect mutates the current live turn, so it cannot owe a
+    /// new canonical user boundary after that turn settles.
+    func testRedirectedBusySubmissionCreatesNoNewTurnOrderingDebt() async {
+        await assertBusyPromptOutcomeOrdering(
+            outcome: .redirected,
+            persistedRowsOnDebtRead: nil,
+            expectedTranscriptReads: 1,
+            expectedResumeCount: 1
+        )
+    }
+
+    /// Steer injects into the current run at a role-safe boundary and does not
+    /// persist an independent user turn.
+    func testSteeredBusySubmissionCreatesNoNewTurnOrderingDebt() async {
+        await assertBusyPromptOutcomeOrdering(
+            outcome: .steered,
+            persistedRowsOnDebtRead: nil,
+            expectedTranscriptReads: 2,
+            expectedResumeCount: 1
+        )
+    }
+
+    /// A non-deduplicated queue drains as a full turn. Because the typed
+    /// outcome cannot prove an exact boundary count, observing that user row
+    /// forces authoritative adoption before another local turn is appended.
+    func testQueuedBusySubmissionCanonicalTurnReconcilesBeforeNextSend() async {
+        await assertBusyPromptOutcomeOrdering(
+            outcome: .queued,
+            persistedRowsOnDebtRead: [
+                ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"],
+                ["id": "102", "role": "user", "content": "Queued follow-up", "timestamp": "3"],
+                ["id": "103", "role": "assistant", "content": "Queued answer", "timestamp": "4"]
+            ],
+            expectedTranscriptReads: 3,
+            expectedResumeCount: 2
+        )
+    }
+
+    /// Hermes reports `.queued` even when `_enqueue_prompt` drops a text-only
+    /// duplicate of the in-flight prompt. The outcome therefore cannot create
+    /// an exact one-boundary debt; a bounded read with no new user row clears
+    /// the observation obligation without an authoritative resume.
+    func testQueuedBusySubmissionDroppedAsDuplicateCreatesNoImpossibleDebt() async {
+        await assertBusyPromptOutcomeOrdering(
+            outcome: .queued,
+            persistedRowsOnDebtRead: nil,
+            expectedTranscriptReads: 2,
+            expectedResumeCount: 1
+        )
+    }
+
+    /// A steer normally stays inside the live turn, but Hermes promotes a
+    /// late `pending_steer` to the queued next turn. If that canonical user
+    /// boundary appears, the zero-boundary observation obligation forces an
+    /// authoritative reconcile before the next local prompt.
+    func testSteeredBusySubmissionPromotedToTurnReconcilesBeforeNextSend() async {
+        await assertBusyPromptOutcomeOrdering(
+            outcome: .steered,
+            persistedRowsOnDebtRead: [
+                ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"],
+                ["id": "102", "role": "user", "content": "Late steer", "timestamp": "3"],
+                ["id": "103", "role": "assistant", "content": "Late steer answer", "timestamp": "4"]
+            ],
+            expectedTranscriptReads: 3,
+            expectedResumeCount: 2
+        )
+    }
+
+    private func assertBusyPromptOutcomeOrdering(
+        outcome: PromptSubmissionOutcome,
+        persistedRowsOnDebtRead: [[String: Any]]?,
+        expectedTranscriptReads: Int,
+        expectedResumeCount: Int
+    ) async {
+        let active = session("stored-a")
+        var resumeCount = 0
+        var transcriptReads = 0
+        var submitCount = 0
+        let seedRows: [[String: Any]] = [
+            ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+            ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"]
+        ]
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in [active] },
+                openSession: { _, sessionID, _ in
+                    resumeCount += 1
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                persistedTranscript: { _, _ in
+                    transcriptReads += 1
+                    let rows = persistedRowsOnDebtRead ?? seedRows
+                    return .payload([
+                        "messages": transcriptReads == 1 ? seedRows : rows,
+                        "pagination": [
+                            "limit": 120,
+                            "offset": 0,
+                            "order": "latest",
+                            "returned": transcriptReads == 1 ? seedRows.count : rows.count
+                        ]
+                    ])
+                },
+                refreshContext: { _, _ in },
+                sendPrompt: { _, _, _ in
+                    submitCount += 1
+                    return submitCount == 1 ? outcome : .accepted
+                },
+                verifyTransportHealth: { _ in },
+                probeActiveSessions: { _ in [] }
+            )
+        )
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        let opened = await harness.appState.openSession(active.id)
+        XCTAssertTrue(opened)
+
+        let submittedBusy = await harness.appState.submitComposer(text: "Busy-race follow-up")
+        XCTAssertTrue(submittedBusy)
+        XCTAssertEqual(harness.appState.turnState, .running)
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: false))
+        XCTAssertEqual(harness.appState.turnState, .idle)
+
+        let submittedNext = await harness.appState.submitComposer(text: "Ordinary next turn")
+        XCTAssertTrue(submittedNext)
+        XCTAssertEqual(submitCount, 2)
+        XCTAssertEqual(transcriptReads, expectedTranscriptReads)
+        XCTAssertEqual(resumeCount, expectedResumeCount)
+        XCTAssertEqual(harness.appState.turnState, .running)
+        box.client.disconnect()
+    }
+
+    /// A running probe and persisted read remain older than stream events
+    /// buffered behind the foreground boundary. Even when a newer busy edge
+    /// confirms the same turn is live, the read certifies only its user
+    /// boundary; its later settle still causes one bounded tail catch-up.
+    func testRunningForegroundObservationWithBufferedBusyEdgeStillLeavesTailDebt() async {
+        let active = session("stored-a")
+        var probeCount = 0
+        var resumeCount = 0
+        var transcriptReads = 0
+        var submitCount = 0
+        let parkedRead = LifecycleSuspension()
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in [active] },
+                openSession: { _, sessionID, _ in
+                    resumeCount += 1
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                persistedTranscript: { _, _ in
+                    transcriptReads += 1
+                    if transcriptReads == 1 {
+                        return .payload([
+                            "messages": [
+                                ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                                ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"]
+                            ],
+                            "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 2]
+                        ])
+                    }
+                    if transcriptReads == 2 {
+                        await parkedRead.suspend()
+                        return .payload([
+                            "messages": [
+                                ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                                ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"],
+                                ["id": "102", "role": "user", "content": "A", "timestamp": "3"],
+                                ["id": "103", "role": "assistant", "content": "Partial A", "timestamp": "4"]
+                            ],
+                            "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 4]
+                        ])
+                    }
+                    if transcriptReads == 3 {
+                        return .payload([
+                            "messages": [
+                                ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                                ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"],
+                                ["id": "102", "role": "user", "content": "A", "timestamp": "3"],
+                                ["id": "103", "role": "assistant", "content": "Partial A", "timestamp": "4"],
+                                ["id": "104", "role": "tool", "content": "Final tool A", "timestamp": "5"],
+                                ["id": "105", "role": "assistant", "content": "Final A", "timestamp": "6"]
+                            ],
+                            "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 6]
+                        ])
+                    }
+                    return .payload([
+                        "messages": [
+                            ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                            ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"],
+                            ["id": "102", "role": "user", "content": "A", "timestamp": "3"],
+                            ["id": "103", "role": "assistant", "content": "Partial A", "timestamp": "4"],
+                            ["id": "104", "role": "tool", "content": "Final tool A", "timestamp": "5"],
+                            ["id": "105", "role": "assistant", "content": "Final A", "timestamp": "6"],
+                            ["id": "106", "role": "user", "content": "B", "timestamp": "7"]
+                        ],
+                        "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 7]
+                    ])
+                },
+                refreshContext: { _, _ in },
+                sendPrompt: { _, _, _ in
+                    submitCount += 1
+                    return .accepted
+                },
+                verifyTransportHealth: { _ in },
+                probeActiveSessions: { _ in
+                    probeCount += 1
+                    return [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: "working"
+                    )]
+                }
+            )
+        )
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        let opened = await harness.appState.openSession(active.id)
+        XCTAssertTrue(opened)
+
+        let submittedA = await harness.appState.submitComposer(text: "A")
+        XCTAssertTrue(submittedA)
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: true))
+        harness.appState.handleStreamEvent(.reasoningDelta(sessionId: active.id, text: "A thinking."))
+        harness.appState.handleScenePhase(.background)
+        let activationA = Task { @MainActor in await runSceneActivation(harness) }
+        await parkedRead.waitUntilSuspended()
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: true))
+        parkedRead.resume()
+        await activationA.value
+        await flushMainActor()
+
+        XCTAssertEqual(resumeCount, 1)
+        XCTAssertEqual(transcriptReads, 2)
+        XCTAssertEqual(harness.appState.turnState, .running)
+
+        harness.appState.handleStreamEvent(.toolStart(
+            sessionId: active.id,
+            toolName: "read_file",
+            toolInput: nil
+        ))
+        harness.appState.handleStreamEvent(.toolComplete(
+            sessionId: active.id,
+            toolName: "read_file",
+            toolOutput: "Final tool A"
+        ))
+        harness.appState.handleStreamEvent(.messageComplete(
+            sessionId: active.id,
+            messageId: nil,
+            content: "Final A",
+            reasoning: nil
+        ))
+        harness.appState.handleStreamEvent(.messageStart(sessionId: active.id))
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: false))
+
+        let submittedB = await harness.appState.submitComposer(text: "B")
+        XCTAssertTrue(submittedB)
+        XCTAssertEqual(transcriptReads, 3, "Buffered busy edge must preserve one settled-tail read")
+        XCTAssertEqual(submitCount, 2)
+        XCTAssertEqual(resumeCount, 1)
+
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: true))
+        harness.appState.handleStreamEvent(.reasoningDelta(sessionId: active.id, text: "B thinking."))
+        let segmentB = harness.appState.liveReasoningSegment
+        let messagesDuringB = harness.appState.messages
+        harness.appState.handleScenePhase(.background)
+        await runSceneActivation(harness)
+
+        XCTAssertEqual(resumeCount, 1, "Turn B foreground remains observational")
+        XCTAssertEqual(harness.appState.messages, messagesDuringB)
+        XCTAssertEqual(harness.appState.liveReasoningSegment, segmentB)
+        box.client.disconnect()
+    }
+
+    /// Observing Turn A's user boundary while A is still running does not
+    /// certify A's final persisted tail. The next new-turn submit performs one
+    /// bounded settled-tail read, advances through assistant/tool-only rows,
+    /// and freezes Turn B's baseline after them so B's foreground remains
+    /// observational.
+    func testObservedRunningTurnReconcilesFinalPersistedTailBeforeNextTurn() async {
         let active = session("stored-a")
         var probeCount = 0
         var resumeCount = 0
@@ -5532,7 +5951,9 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         ])
                     }
                     if transcriptReads == 2 {
-                        // Turn A's foreground freshness read: twin + output.
+                        // Turn A's foreground freshness read while it is still
+                        // running: its user boundary and only the output that
+                        // had persisted so far.
                         return .payload([
                             "messages": [
                                 ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
@@ -5543,16 +5964,35 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                             "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 4]
                         ])
                     }
-                    // Turn B's twin (used only if B is backgrounded).
+                    if transcriptReads == 3 {
+                        // Turn A continued after the live-time observation.
+                        // This pre-send settled-tail read contains no new user
+                        // boundary after 103, only A's final durable tail.
+                        return .payload([
+                            "messages": [
+                                ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                                ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"],
+                                ["id": "102", "role": "user", "content": "A", "timestamp": "3"],
+                                ["id": "103", "role": "assistant", "content": "Partial answer A", "timestamp": "4"],
+                                ["id": "104", "role": "tool", "content": "Tool output A", "timestamp": "5"],
+                                ["id": "105", "role": "assistant", "content": "Final answer A", "timestamp": "6"]
+                            ],
+                            "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 6]
+                        ])
+                    }
+                    // Turn B's twin: exactly one canonical user boundary after
+                    // the settled-tail catch-up frontier at 105.
                     return .payload([
                         "messages": [
                             ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
                             ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"],
                             ["id": "102", "role": "user", "content": "A", "timestamp": "3"],
-                            ["id": "103", "role": "assistant", "content": "Answer A", "timestamp": "4"],
-                            ["id": "104", "role": "user", "content": "B", "timestamp": "5"]
+                            ["id": "103", "role": "assistant", "content": "Partial answer A", "timestamp": "4"],
+                            ["id": "104", "role": "tool", "content": "Tool output A", "timestamp": "5"],
+                            ["id": "105", "role": "assistant", "content": "Final answer A", "timestamp": "6"],
+                            ["id": "106", "role": "user", "content": "B", "timestamp": "7"]
                         ],
-                        "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 5]
+                        "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 7]
                     ])
                 },
                 refreshContext: { _, _ in },
@@ -5577,7 +6017,8 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         let opened = await harness.appState.openSession(active.id)
         XCTAssertTrue(opened)
 
-        // Turn A: background + foreground observes its rows (frontier 103).
+        // Turn A: background + foreground observes its boundary and partial
+        // persisted output through 103 while the turn is still live.
         let submittedA = await harness.appState.submitComposer(text: "A")
         XCTAssertTrue(submittedA)
         harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: true))
@@ -5586,8 +6027,18 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         await runSceneActivation(harness)
         XCTAssertEqual(resumeCount, 1)
         XCTAssertEqual(transcriptReads, 2)
+        let segmentA = harness.appState.liveReasoningSegment
+        XCTAssertNotNil(segmentA)
 
-        // Settle A locally; the frontier already covered its boundary.
+        // A continues after that read and persists more tool/output rows.
+        harness.appState.handleStreamEvent(
+            .toolStart(sessionId: active.id, toolName: "read_file", toolInput: nil)
+        )
+        harness.appState.handleStreamEvent(
+            .toolComplete(sessionId: active.id, toolName: "read_file", toolOutput: "Tool output A")
+        )
+
+        // Settle A locally. No history read has yet observed its final tail.
         harness.appState.handleStreamEvent(.messageComplete(
             sessionId: active.id,
             messageId: nil,
@@ -5598,15 +6049,41 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: false))
         XCTAssertEqual(harness.appState.turnState, .idle)
 
-        // Turn B submits with NO extra pre-send read.
+        // Turn B performs exactly one settled-tail catch-up before freezing
+        // its ordering baseline, without replacing the visible transcript.
         let submittedB = await harness.appState.submitComposer(text: "B")
         XCTAssertTrue(submittedB)
         XCTAssertEqual(submitCount, 2)
         XCTAssertEqual(
-            transcriptReads, 2,
-            "An already-observed turn must not trigger a debt catch-up read"
+            transcriptReads, 3,
+            "A live-time boundary observation still requires one final-tail read"
         )
+        XCTAssertEqual(resumeCount, 1)
         XCTAssertEqual(harness.appState.turnState, .running)
+
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: true))
+        harness.appState.handleStreamEvent(.reasoningDelta(sessionId: active.id, text: "B thinking."))
+        let segmentB = harness.appState.liveReasoningSegment
+        XCTAssertNotNil(segmentB)
+        let messagesDuringB = harness.appState.messages
+        let optimisticB = messagesDuringB.last
+        XCTAssertEqual(optimisticB?.role, .user)
+        XCTAssertTrue(optimisticB?.id.hasPrefix("local-") == true)
+
+        harness.appState.handleScenePhase(.background)
+        await runSceneActivation(harness)
+
+        XCTAssertEqual(transcriptReads, 4)
+        XCTAssertEqual(
+            resumeCount, 1,
+            "B's foreground must not resume after A's final tail was re-anchored"
+        )
+        XCTAssertEqual(harness.appState.messages, messagesDuringB)
+        XCTAssertEqual(harness.appState.messages.last, optimisticB)
+        XCTAssertEqual(harness.appState.liveReasoningSegment, segmentB)
+
+        harness.appState.handleStreamEvent(.reasoningDelta(sessionId: active.id, text: " More."))
+        XCTAssertEqual(harness.appState.liveReasoningSegment?.id, segmentB?.id)
         box.client.disconnect()
     }
 
