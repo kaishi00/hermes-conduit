@@ -5633,14 +5633,44 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
     }
 
     /// Hermes `prompt.submit` busy outcomes have distinct persistence
-    /// contracts. Redirect mutates the current live turn, so it cannot owe a
-    /// new canonical user boundary after that turn settles.
-    func testRedirectedBusySubmissionCreatesNoNewTurnOrderingDebt() async {
+    /// contracts. A redirect mutates the current live turn, so it owes ZERO
+    /// new canonical user boundaries — but the mutated turn can keep
+    /// persisting assistant/tool rows after the current ordering frontier.
+    /// The zero-user-boundary final-tail obligation is satisfied by exactly
+    /// that non-user-only suffix: one bounded read advances the frontier and
+    /// the next ordinary local send proceeds without an authoritative resume.
+    func testRedirectedBusySubmissionPersistsTrailingRowsBeforeNextSend() async {
         await assertBusyPromptOutcomeOrdering(
             outcome: .redirected,
-            persistedRowsOnDebtRead: nil,
-            expectedTranscriptReads: 1,
+            persistedRowsOnDebtRead: [
+                ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"],
+                ["id": "102", "role": "assistant", "content": "Redirected output", "timestamp": "3"],
+                ["id": "103", "role": "tool", "name": "search", "content": "", "timestamp": "4"],
+                ["id": "104", "role": "assistant", "content": "Redirected conclusion", "timestamp": "5"]
+            ],
+            expectedTranscriptReads: 2,
             expectedResumeCount: 1
+        )
+    }
+
+    /// If a canonical user boundary appears after a redirect, a later or new
+    /// turn exists. The zero-user-boundary obligation is then EXCEEDED, and
+    /// the next ordinary local send must reconcile authoritatively — the
+    /// remote turn becomes visible before the local prompt is sent, exactly
+    /// once, with no duplicate delivery.
+    func testRedirectedBusySubmissionRemoteTurnReconcilesBeforeNextSend() async {
+        await assertBusyPromptOutcomeOrdering(
+            outcome: .redirected,
+            persistedRowsOnDebtRead: [
+                ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"],
+                ["id": "102", "role": "assistant", "content": "Redirected output", "timestamp": "3"],
+                ["id": "103", "role": "user", "content": "Remote B", "timestamp": "4"],
+                ["id": "104", "role": "assistant", "content": "Remote B answer", "timestamp": "5"]
+            ],
+            expectedTranscriptReads: 3,
+            expectedResumeCount: 2
         )
     }
 
@@ -6840,11 +6870,13 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         var submitCount = 0
         var probeCount = 0
         var transcriptReads = 0
+        var resumeCount = 0
         let parkedProbe = LifecycleSuspension()
         let harness = makeHarness(
             lifecycleOperations: ChatResumeLifecycleOperations(
                 openSession: { _, sessionID, _ in
-                    SessionResumeResult(
+                    resumeCount += 1
+                    return SessionResumeResult(
                         sessionId: sessionID,
                         messages: [
                             ChatMessage(id: "100", role: .user, content: "Earlier question", timestamp: "1")
@@ -6864,18 +6896,27 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                 refreshContext: { _, _ in },
                 sendPrompt: { _, _, _ in
                     submitCount += 1
-                    throw HermesError.timeout("prompt.submit")
+                    if submitCount == 1 {
+                        throw HermesError.timeout("prompt.submit")
+                    }
+                    return .accepted
                 },
                 probeActiveSessions: { _ in
                     probeCount += 1
-                    // The probe itself is parked: the registry says the turn
-                    // was working when ASKED, but newer edges land first.
-                    await parkedProbe.suspend()
-                    return [LiveSessionStatus(
-                        runtimeSessionId: "runtime-a",
-                        storedSessionId: "stored-a",
-                        status: "working"
-                    )]
+                    if probeCount == 1 {
+                        // The probe itself is parked: the registry says the
+                        // turn was working when ASKED, but newer edges land
+                        // first.
+                        await parkedProbe.suspend()
+                        return [LiveSessionStatus(
+                            runtimeSessionId: "runtime-a",
+                            storedSessionId: "stored-a",
+                            status: "working"
+                        )]
+                    }
+                    // Later probes (the stale-idle correction) see the
+                    // settled, absent runtime.
+                    return []
                 }
             )
         )
@@ -6885,6 +6926,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         let opened = await harness.appState.openSession(active.id)
         XCTAssertTrue(opened)
         XCTAssertEqual(harness.appState.messages.map(\.id), ["100"])
+        let resumesBeforeSubmit = resumeCount
 
         let submission = Task { @MainActor in
             await harness.appState.submitComposer(text: "Ambiguous send")
@@ -6919,6 +6961,398 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
             harness.appState.turnStateIsStale,
             "The staleness written by the newer boundary must not be cleared by the older recovery result"
         )
+        XCTAssertEqual(resumeCount, resumesBeforeSubmit)
+
+        // Regression B, ownership half: the settle edge ENDED live ownership,
+        // so the acceptedRunning recovery must not resurrect the locally-owned
+        // marker. A later turn cycle settles with no marker, records no
+        // ordering debt, and the next ordinary send therefore performs NO
+        // bounded read and no resume.
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: true))
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: false))
+        let submittedNext = await harness.appState.submitComposer(text: "Ordinary next turn")
+        XCTAssertTrue(submittedNext)
+        XCTAssertEqual(submitCount, 2)
+        XCTAssertEqual(probeCount, 2, "The stale-idle correction probes once before the ordinary send")
+        XCTAssertEqual(
+            transcriptReads, 1,
+            "No resurrected ownership: the later settle recorded no debt, so the next send needs no bounded read"
+        )
+        XCTAssertEqual(resumeCount, resumesBeforeSubmit, "Stale settled ownership never forces an authoritative resume")
+        XCTAssertEqual(harness.appState.turnState, .running)
+        box.client.disconnect()
+    }
+
+    /// PRIMARY regression: an ambiguous submission whose recovery races a
+    /// newer busy edge must retain locally-owned turn continuity. The newer
+    /// edge owns the lifecycle STATE (no stale running stamp), but
+    /// acceptedRunning positively proves the submission was accepted and is
+    /// the active turn — so the locally-owned marker must still be installed.
+    /// Without it, the next foreground cannot prove same-turn continuity,
+    /// degrades to inconclusive, and a session.resume destroys the PR #121
+    /// live reasoning projection.
+    func testAmbiguousAcceptedRunningAfterNewerBusyEdgeRetainsLocalTurnContinuity() async {
+        let active = session("stored-a")
+        var submitCount = 0
+        var probeCount = 0
+        var transcriptReads = 0
+        var resumeCount = 0
+        var catalogCount = 0
+        let parkedProbe = LifecycleSuspension()
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in
+                    catalogCount += 1
+                    return [active]
+                },
+                openSession: { _, sessionID, _ in
+                    resumeCount += 1
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                persistedTranscript: { _, _ in
+                    transcriptReads += 1
+                    if transcriptReads == 1 {
+                        return .payload([
+                            "messages": [
+                                ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                                ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"]
+                            ],
+                            "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 2]
+                        ])
+                    }
+                    // The foreground freshness read: the submitted turn's
+                    // durable twin persisted while Conduit was suspended.
+                    return .payload([
+                        "messages": [
+                            ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                            ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"],
+                            ["id": "102", "role": "user", "content": "A", "timestamp": "3"]
+                        ],
+                        "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 3]
+                    ])
+                },
+                refreshContext: { _, _ in },
+                sendPrompt: { _, _, _ in
+                    submitCount += 1
+                    throw HermesError.timeout("prompt.submit")
+                },
+                verifyTransportHealth: { _ in },
+                probeActiveSessions: { _ in
+                    probeCount += 1
+                    if probeCount == 1 {
+                        // The recovery's registry probe is parked: a newer
+                        // busy edge lands while it is suspended.
+                        await parkedProbe.suspend()
+                    }
+                    return [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: "working"
+                    )]
+                }
+            )
+        )
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        let opened = await harness.appState.openSession(active.id)
+        XCTAssertTrue(opened)
+        XCTAssertEqual(harness.appState.messages.map(\.id), ["100", "101"])
+        let resumesBeforeSubmit = resumeCount
+
+        let submission = Task { @MainActor in
+            await harness.appState.submitComposer(text: "A")
+        }
+        await parkedProbe.waitUntilSuspended()
+        // Newer live evidence arrives while the recovery awaits. The
+        // lifecycle revision advances; the turn stays running.
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: true))
+        XCTAssertEqual(harness.appState.turnState, .running)
+        parkedProbe.resume()
+
+        let submitted = await submission.value
+
+        // Accepted once, lifecycle state untouched by the older recovery.
+        XCTAssertTrue(submitted, "The accepted turn must not surface as a failed send")
+        XCTAssertEqual(submitCount, 1, "An accepted prompt must never be re-submitted")
+        XCTAssertEqual(probeCount, 1)
+        XCTAssertEqual(
+            transcriptReads, 1,
+            "A running registry row never consults the durable verifier"
+        )
+        XCTAssertEqual(harness.appState.turnState, .running)
+        XCTAssertEqual(
+            harness.appState.messages.count, 3,
+            "The optimistic user row remains accepted"
+        )
+        XCTAssertEqual(harness.appState.messages.last?.content, "A")
+
+        // The live reasoning projection starts on the running turn.
+        harness.appState.handleStreamEvent(.reasoningDelta(sessionId: active.id, text: "Thinking."))
+        let segmentBefore = harness.appState.liveReasoningSegment
+        XCTAssertNotNil(segmentBefore)
+
+        // A background/foreground cycle must stay observational: the
+        // retained locally-owned marker proves same-turn continuity against
+        // the persisted twin, so NO session.resume may run and the live
+        // reasoning segment must survive untouched.
+        harness.appState.handleScenePhase(.background)
+        await runSceneActivation(harness)
+
+        XCTAssertEqual(resumeCount, resumesBeforeSubmit, "Zero session.resume: retained ownership proves same-turn continuity")
+        XCTAssertEqual(catalogCount, 0, "A healthy foreground must not reload the catalog")
+        XCTAssertEqual(probeCount, 2, "The foreground probes the registry once")
+        XCTAssertEqual(transcriptReads, 2, "The foreground freshness check reads the bounded tail once")
+        XCTAssertEqual(
+            harness.appState.liveReasoningSegment?.id, segmentBefore?.id,
+            "The live reasoning segment must survive the foreground"
+        )
+        XCTAssertEqual(harness.appState.turnState, .running)
+        XCTAssertEqual(harness.appState.messages.count, 3, "Foregrounding must not replace the transcript")
+        XCTAssertEqual(harness.appState.messages.last?.content, "A")
+
+        // Later reasoning deltas extend the SAME segment (no reset, no
+        // duplicate settled thinking row).
+        harness.appState.handleStreamEvent(.reasoningDelta(sessionId: active.id, text: " Step two."))
+        await flushMainActor()
+        XCTAssertEqual(
+            harness.appState.liveReasoningSegment?.id, segmentBefore?.id,
+            "The same live segment must extend across the foreground"
+        )
+        XCTAssertEqual(harness.appState.messages.count, 3)
+        box.client.disconnect()
+    }
+
+    /// Regression C: an acceptedRunning recovery that raced a newer busy edge
+    /// retains the locally-owned marker, so when the turn later settles it
+    /// flows into the SAME ordering-debt lifecycle as an ordinary accepted
+    /// turn: the settle records a missing-boundary debt (one canonical user
+    /// turn), and the next local send clears it with exactly one bounded
+    /// read — no authoritative resume.
+    func testAmbiguousAcceptedRunningRetainedOwnershipLaterSettlesIntoOrderingDebt() async {
+        let active = session("stored-a")
+        var submitCount = 0
+        var probeCount = 0
+        var transcriptReads = 0
+        var resumeCount = 0
+        let parkedProbe = LifecycleSuspension()
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                openSession: { _, sessionID, _ in
+                    resumeCount += 1
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                persistedTranscript: { _, _ in
+                    transcriptReads += 1
+                    if transcriptReads == 1 {
+                        return .payload([
+                            "messages": [
+                                ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                                ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"]
+                            ],
+                            "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 2]
+                        ])
+                    }
+                    // The pre-send debt read: turn A's persisted user twin
+                    // (plus its output tail) satisfies the missing-boundary
+                    // debt.
+                    return .payload([
+                        "messages": [
+                            ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                            ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"],
+                            ["id": "102", "role": "user", "content": "A", "timestamp": "3"],
+                            ["id": "103", "role": "assistant", "content": "Answer A", "timestamp": "4"]
+                        ],
+                        "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 4]
+                    ])
+                },
+                refreshContext: { _, _ in },
+                sendPrompt: { _, _, _ in
+                    submitCount += 1
+                    if submitCount == 1 {
+                        throw HermesError.timeout("prompt.submit")
+                    }
+                    return .accepted
+                },
+                probeActiveSessions: { _ in
+                    probeCount += 1
+                    if probeCount == 1 {
+                        await parkedProbe.suspend()
+                    }
+                    return [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: "working"
+                    )]
+                }
+            )
+        )
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        let opened = await harness.appState.openSession(active.id)
+        XCTAssertTrue(opened)
+        XCTAssertEqual(harness.appState.messages.map(\.id), ["100", "101"])
+        let resumesBeforeSubmit = resumeCount
+
+        let submission = Task { @MainActor in
+            await harness.appState.submitComposer(text: "A")
+        }
+        await parkedProbe.waitUntilSuspended()
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: true))
+        parkedProbe.resume()
+
+        let submittedA = await submission.value
+        XCTAssertTrue(submittedA)
+        XCTAssertEqual(submitCount, 1)
+        XCTAssertEqual(transcriptReads, 1)
+
+        // The turn settles. The retained locally-owned marker turns this
+        // settle into the standard missing-boundary debt.
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: false))
+        XCTAssertEqual(harness.appState.turnState, .idle)
+
+        // The next ordinary send clears the debt with ONE bounded read
+        // (exactly one new canonical user boundary observed) and proceeds —
+        // no authoritative resume.
+        let submittedB = await harness.appState.submitComposer(text: "B")
+        XCTAssertTrue(submittedB)
+        XCTAssertEqual(submitCount, 2, "Exactly one new local prompt after the debt read")
+        XCTAssertEqual(
+            transcriptReads, 2,
+            "One bounded read satisfies the settle debt before the baseline freezes"
+        )
+        XCTAssertEqual(resumeCount, resumesBeforeSubmit, "A satisfied debt needs no authoritative resume")
+        XCTAssertEqual(probeCount, 1)
+        XCTAssertEqual(harness.appState.turnState, .running)
+        XCTAssertEqual(harness.appState.messages.count, 4, "Both optimistic rows remain: A and B")
+        XCTAssertEqual(harness.appState.messages.last?.content, "B")
+        box.client.disconnect()
+    }
+
+    /// Symmetric provenance coverage for `.acceptedUnsettled`: a `starting`
+    /// registry row with the durable row present proves acceptance but not
+    /// settlement. When a newer busy edge races the durable verification, the
+    /// same split applies — the edge owns the lifecycle state, the accepted
+    /// marker stays live — and a later background/foreground cycle stays
+    /// observational with the live reasoning projection intact.
+    func testAmbiguousAcceptedUnsettledAfterNewerBusyEdgeRetainsLocalTurnContinuity() async {
+        let active = session("stored-a")
+        var submitCount = 0
+        var probeCount = 0
+        var transcriptReads = 0
+        var resumeCount = 0
+        let parkedRead = LifecycleSuspension()
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in [active] },
+                openSession: { _, sessionID, _ in
+                    resumeCount += 1
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                persistedTranscript: { _, _ in
+                    transcriptReads += 1
+                    if transcriptReads == 1 {
+                        return .payload([
+                            "messages": [
+                                ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                                ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"]
+                            ],
+                            "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 2]
+                        ])
+                    }
+                    if transcriptReads == 2 {
+                        // Recovery's bounded verification: parked until the
+                        // newer busy edge has raced it; then the submitted
+                        // user row. Later reads (the foreground freshness
+                        // check) must pass through ungated.
+                        await parkedRead.suspend()
+                    }
+                    return .payload([
+                        "messages": [
+                            ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                            ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"],
+                            ["id": "102", "role": "user", "content": "A", "timestamp": "3"]
+                        ],
+                        "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 3]
+                    ])
+                },
+                refreshContext: { _, _ in },
+                sendPrompt: { _, _, _ in
+                    submitCount += 1
+                    throw HermesError.timeout("prompt.submit")
+                },
+                verifyTransportHealth: { _ in },
+                probeActiveSessions: { _ in
+                    probeCount += 1
+                    // The recovery probe observes `starting` (the submit →
+                    // agent-ready window); by the foreground the build has
+                    // completed and the registry reports committed-busy.
+                    return [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: probeCount == 1 ? "starting" : "working"
+                    )]
+                }
+            )
+        )
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        let opened = await harness.appState.openSession(active.id)
+        XCTAssertTrue(opened)
+        XCTAssertEqual(harness.appState.messages.map(\.id), ["100", "101"])
+        let resumesBeforeSubmit = resumeCount
+
+        let submission = Task { @MainActor in
+            await harness.appState.submitComposer(text: "A")
+        }
+        await parkedRead.waitUntilSuspended()
+        // A newer busy edge lands while the durable verification awaits.
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: true))
+        XCTAssertEqual(harness.appState.turnState, .running)
+        parkedRead.resume()
+
+        let submitted = await submission.value
+
+        // Accepted-unsettled: never a failed send, no verifier re-read, and
+        // the newer edge's running state survives untouched.
+        XCTAssertTrue(submitted, "Durable acceptance must not surface as a failed send")
+        XCTAssertEqual(submitCount, 1, "An accepted prompt must never be re-submitted")
+        XCTAssertEqual(probeCount, 1)
+        XCTAssertEqual(transcriptReads, 2, "One bounded tail read decides the outcome")
+        XCTAssertEqual(harness.appState.turnState, .running, "The newer busy edge owns the lifecycle state")
+        XCTAssertEqual(harness.appState.messages.count, 3, "The optimistic user row remains accepted")
+
+        // The retained ownership marker must carry the turn through a
+        // background/foreground cycle observationally.
+        harness.appState.handleStreamEvent(.reasoningDelta(sessionId: active.id, text: "Thinking."))
+        let segmentBefore = harness.appState.liveReasoningSegment
+        XCTAssertNotNil(segmentBefore)
+        harness.appState.handleScenePhase(.background)
+        await runSceneActivation(harness)
+
+        XCTAssertEqual(resumeCount, resumesBeforeSubmit, "Zero session.resume: retained ownership proves same-turn continuity")
+        XCTAssertEqual(probeCount, 2, "The foreground probes the registry once")
+        XCTAssertEqual(transcriptReads, 3, "The foreground freshness check reads the bounded tail once")
+        XCTAssertEqual(
+            harness.appState.liveReasoningSegment?.id, segmentBefore?.id,
+            "The live reasoning segment must survive the foreground"
+        )
+        XCTAssertEqual(harness.appState.turnState, .running)
+        XCTAssertEqual(harness.appState.messages.count, 3)
         box.client.disconnect()
     }
 
