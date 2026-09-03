@@ -11010,7 +11010,12 @@ final class AppState: ObservableObject {
     /// Publish any coalesced reasoning into the live projection immediately.
     /// Non-boundary callers (the sidebar closing) keep the segment streaming;
     /// boundary callers need `settleReasoningSegmentIntoTranscript()`.
-    private func flushReasoningPublish() {
+    ///
+    /// Internal (not private) as the deterministic test seam: performance
+    /// fixtures flush each fed delta through this SAME production path, so
+    /// a measured window contains exactly the publications the deltas imply
+    /// instead of racing the ~50 ms coalescing task's scheduler timing.
+    func flushReasoningPublish() {
         reasoningPublishTask?.cancel()
         reasoningPublishTask = nil
         hasScheduledReasoningPublish = false
