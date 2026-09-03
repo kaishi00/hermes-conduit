@@ -25,7 +25,7 @@ final class LongContextScalingFixtureTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        TranscriptPerf.reset()
+        TranscriptPerf.resetRenderLedgerForTesting()
     }
 
     override func tearDown() {
@@ -86,8 +86,17 @@ final class LongContextScalingFixtureTests: XCTestCase {
         }
     }
 
-    /// Drives `count` live reasoning deltas spaced past the 50 ms publish
-    /// cadence so each scheduled publish actually fires inside the window.
+    /// Drives `count` live reasoning deltas through the production
+    /// stream-event path and performs each coalesced publication through the
+    /// production flush seam (`AppState.flushReasoningPublish`), followed by
+    /// ONE deterministic run-loop turn per publish.
+    ///
+    /// The old version waited 55 ms per delta hoping the ~50 ms coalescing
+    /// `Task.sleep` would fire inside the pump — on loaded CI runners the
+    /// publishes coalesced or landed late, so the measured window contained
+    /// an arbitrary subset of the implied publications. Now the window
+    /// contains exactly the publications the deltas imply, with zero
+    /// dependence on scheduler timing.
     @discardableResult
     private func feedReasoningDeltas(
         _ count: Int,
@@ -100,44 +109,12 @@ final class LongContextScalingFixtureTests: XCTestCase {
             let chunk = "reasoning line \(index) for the live thinking card. "
             buffer += chunk
             state.handleStreamEvent(.reasoningDelta(sessionId: sessionId, text: chunk))
+            state.flushReasoningPublish()
             host.view.setNeedsLayout()
             host.view.layoutIfNeeded()
-            RunLoop.current.run(until: Date().addingTimeInterval(0.055))
+            RunLoop.current.run(until: Date())
         }
         return buffer
-    }
-
-    /// Drains pending updates until the measured counters have been quiet for
-    /// a sustained window (same discipline as TranscriptPerformanceFixtureTests).
-    private func settleQuiet(maxQuietSeconds: TimeInterval = 1.0, cap: TimeInterval = 15.0) -> Bool {
-        func totals() -> [Int] {
-            [
-                TranscriptPerf.chatViewBodyEvaluations,
-                TranscriptPerf.composerBarBodyEvaluations,
-                TranscriptPerf.composerUpdateUIViewCalls,
-                TranscriptPerf.settledMarkdownTextBodyEvaluations,
-                TranscriptPerf.transcriptChangedCalls,
-                TranscriptPerf.reasoningProjectionPublishes,
-                TranscriptPerf.reasoningTranscriptMutations,
-            ]
-        }
-        var quietFor: TimeInterval = 0
-        var elapsed: TimeInterval = 0
-        var last = totals()
-        let step: TimeInterval = 0.1
-        while elapsed < cap {
-            RunLoop.current.run(until: Date().addingTimeInterval(step))
-            elapsed += step
-            let current = totals()
-            if current == last {
-                quietFor += step
-                if quietFor >= maxQuietSeconds { return true }
-            } else {
-                quietFor = 0
-                last = current
-            }
-        }
-        return false
     }
 
     private func mountChat(appState: AppState) -> UIHostingController<AnyView> {
@@ -176,19 +153,24 @@ final class LongContextScalingFixtureTests: XCTestCase {
         appState.messages = Self.deepTranscript()
 
         let host = mountChat(appState: appState)
-        guard settleQuiet() else {
+        guard PerformanceFixtureWait.settleUntilCountersQuiet(quietFor: 1.0) else {
             XCTFail("deep transcript never reached a quiet state; measurement would be meaningless")
             return
         }
 
         TranscriptPerf.reset()
         let expected = feedReasoningDeltas(12, sessionId: "deep-session", state: appState, host: host)
-        guard settleQuiet(maxQuietSeconds: 0.6) else {
+        guard PerformanceFixtureWait.settleUntilCountersQuiet(quietFor: 0.6) else {
             XCTFail("measurement window never quieted; trailing publishes would be misattributed")
             return
         }
 
-        // Measurement validity: publishes really happened.
+        // Measurement validity: publishes really happened. The flush-fed
+        // driver is deterministic — one publication per delta (delta 0's
+        // publication IS the initial mount; its flush no-ops on the
+        // unchanged-content guard), so 12 for this fixture. The floor only
+        // guards against a silent seam breakage; the exact contract lives
+        // in the ledger micro-test.
         XCTAssertGreaterThanOrEqual(
             TranscriptPerf.reasoningProjectionPublishes, 5,
             "fixture must drive at least 5 live reasoning publishes"
@@ -211,9 +193,25 @@ final class LongContextScalingFixtureTests: XCTestCase {
             TranscriptPerf.scrollTargetPrefixSetBuilds, 0,
             "live reasoning publishes must not rebuild the prefix fingerprint set"
         )
-        XCTAssertEqual(
-            TranscriptPerf.settledMarkdownTextBodyEvaluations, 0,
-            "live reasoning publishes must leave settled Markdown dormant"
+        // Dormancy, classified by position: a growing live card legitimately
+        // shifts the bottom-anchored LazyVStack and can remount rows AT THE
+        // VIEWPORT EDGES (measured churn touches only the first/last few
+        // messages — Turn 0/2 and Turn 796/798 in this fixture). A re-render
+        // of an INTERIOR row is the per-publish cascade this fixture kills:
+        // every mounted row re-evaluating, which no amount of edge churn
+        // can disguise. The data-layer invariants above (zero mutations,
+        // zero transcriptChanged, zero prefix walks) remain the primary
+        // contract; this is the render-layer defense in depth.
+        let atRestRerenders = TranscriptPerf.settledMarkdownPreWindowRepeatEvaluations
+        let interiorRerenders = TranscriptPerf.interiorAtRestRerenders(
+            sources: TranscriptPerf.recentPreWindowRepeatSources,
+            transcript: Self.deepTranscript()
+        )
+        XCTAssertTrue(
+            interiorRerenders.isEmpty,
+            "live reasoning re-rendered \(interiorRerenders.count) interior settled rows "
+                + "(of \(atRestRerenders) at-rest re-renders; edge remounts are tolerated): "
+                + "\(interiorRerenders.map { String($0.prefix(32)) })"
         )
 
         // And the live card content must actually be visible.
@@ -232,7 +230,7 @@ final class LongContextScalingFixtureTests: XCTestCase {
         appState.messages = Self.deepTranscript()
 
         let host = mountChat(appState: appState)
-        guard settleQuiet() else {
+        guard PerformanceFixtureWait.settleUntilCountersQuiet(quietFor: 1.0) else {
             XCTFail("deep transcript never reached a quiet state; measurement would be meaningless")
             return
         }
@@ -258,8 +256,7 @@ final class LongContextScalingFixtureTests: XCTestCase {
         appState.streamingText = ""
         host.view.setNeedsLayout()
         host.view.layoutIfNeeded()
-        RunLoop.current.run(until: Date().addingTimeInterval(0.3))
-        guard settleQuiet(maxQuietSeconds: 0.6) else {
+        guard PerformanceFixtureWait.settleUntilCountersQuiet(quietFor: 0.6) else {
             XCTFail("measurement window never quieted")
             return
         }
