@@ -52,10 +52,30 @@ enum TranscriptPerf {
     /// CONDUIT_PERF_TRACE=1 is set (CI diagnostics), each settled-body
     /// evaluation logs its context so a polluted measurement window can be
     /// traced to the exact rows involved. DEBUG builds only.
+    ///
+    /// For `.settledMarkdownBody` the context is the row's markdown source;
+    /// it also feeds the repeat-detection ledgers behind
+    /// `settledMarkdownPreWindowRepeatEvaluations` (re-evaluation of a row
+    /// that rendered BEFORE the current measurement window opened — the
+    /// cascade signature) and `settledMarkdownWindowDuplicateEvaluations`
+    /// (second+ body pass of a row first rendered INSIDE the window —
+    /// lazy-mount noise).
     @inline(__always)
     static func note(_ event: Event, context: String) {
         #if DEBUG
         note(event)
+        if event == .settledMarkdownBody {
+            if storage.settledMarkdownKnownSources.contains(context) {
+                storage.settledMarkdownPreWindowRepeatBody += 1
+                if storage.recentPreWindowRepeatSources.count < 128 {
+                    storage.recentPreWindowRepeatSources.append(context)
+                }
+            } else if storage.settledMarkdownWindowSources.contains(context) {
+                storage.settledMarkdownWindowDuplicateBody += 1
+            } else {
+                storage.settledMarkdownWindowSources.insert(context)
+            }
+        }
         if event == .settledMarkdownBody,
            ProcessInfo.processInfo.environment["CONDUIT_PERF_TRACE"] == "1" {
             // Constant format string: source content must never be
@@ -93,6 +113,26 @@ enum TranscriptPerf {
 
     static var settledMarkdownTextBodyEvaluations: Int {
         get { read(\.settledMarkdownBody) }
+    }
+
+    /// Settled Markdown body evaluations of sources that had ALREADY been
+    /// evaluated before the current measurement window opened (per the
+    /// repeat-detection ledgers fed by `note(_:context:)`). This is the
+    /// cascade signature the scaling fixtures guard: re-rendering rows that
+    /// were already at rest. Two distinct rows sharing identical markdown
+    /// source count as a repeat for the second row; the fixtures use
+    /// per-row-unique content.
+    static var settledMarkdownPreWindowRepeatEvaluations: Int {
+        get { read(\.settledMarkdownPreWindowRepeatBody) }
+    }
+
+    /// Second and later body passes of a row FIRST rendered inside the
+    /// current measurement window. SwiftUI can legitimately evaluate a
+    /// freshly mounted row's body more than once while sizing it — this
+    /// counter exists so fixture failure messages can distinguish that
+    /// mount noise from at-rest re-renders.
+    static var settledMarkdownWindowDuplicateEvaluations: Int {
+        get { read(\.settledMarkdownWindowDuplicateBody) }
     }
 
     static var selectableTextViewUpdateCalls: Int {
@@ -213,13 +253,66 @@ enum TranscriptPerf {
         set { write(\.lastComposerSelectionAfter, newValue) }
     }
 
+    /// Sources of the most recent pre-window repeat evaluations (bounded
+    /// ring, DEBUG diagnostics only). Lets fixtures classify WHICH rows
+    /// re-rendered: viewport-edge rows under live-card layout churn are
+    /// tolerated; interior rows are the cascade signature.
+    static var recentPreWindowRepeatSources: [String] {
+        #if DEBUG
+        return storage.recentPreWindowRepeatSources
+        #else
+        return []
+        #endif
+    }
+
     // MARK: - Control
 
-    /// Reset all counters to zero.
+    /// Reset all counters and open a fresh measurement window. Sources
+    /// first rendered in the closing window merge into the pre-window
+    /// ledger, so the new window still recognizes every row rendered so
+    /// far as already-at-rest.
     static func reset() {
+        #if DEBUG
+        var fresh = Storage()
+        fresh.settledMarkdownKnownSources =
+            storage.settledMarkdownKnownSources.union(storage.settledMarkdownWindowSources)
+        storage = fresh
+        #endif
+    }
+
+    /// Clear counters AND both repeat-detection ledgers. Test fixtures call
+    /// this in setUp so one test's rendered sources never leak into the
+    /// next test's repeat counting; plain `reset()` (per measurement
+    /// window) always preserves the at-rest ledger.
+    static func resetRenderLedgerForTesting() {
         #if DEBUG
         storage = Storage()
         #endif
+    }
+
+    // MARK: - Fixture classification support
+
+    /// Classifies at-rest re-renders against the transcript's viewport
+    /// edges. `sources` are repeat-evaluation source strings (the ring),
+    /// `transcript` the fixture's message list, `edgeMargin` how many rows
+    /// at either end of the transcript count as viewport-edge territory.
+    ///
+    /// Mechanism: a growing live card / streaming bubble legitimately shifts
+    /// the bottom-anchored LazyVStack and can remount rows AT THE EDGES —
+    /// observed churn only ever touches the first/last few messages. A
+    /// re-render of an INTERIOR row is the per-publish cascade the fixtures
+    /// guard (every mounted row re-evaluating), which stays caught no
+    /// matter how much edge churn a loaded scheduler produces.
+    static func interiorAtRestRerenders(
+        sources: [String],
+        transcript: [ChatMessage],
+        edgeMargin: Int = 8
+    ) -> [String] {
+        let edges = Set(
+            transcript.prefix(edgeMargin).map(\.content)
+                + transcript.suffix(edgeMargin).map(\.content)
+        )
+        return sources.filter { !edges.contains($0) }
     }
 
     // MARK: - Private storage
@@ -231,6 +324,17 @@ enum TranscriptPerf {
     private struct Storage {
         var settledBubbleBody = 0
         var settledMarkdownBody = 0
+        var settledMarkdownPreWindowRepeatBody = 0
+        var settledMarkdownWindowDuplicateBody = 0
+        /// Markdown sources already evaluated at least once (DEBUG-only
+        /// diagnostics memory, bounded by the same order as the render
+        /// cache, which also holds one entry per distinct source).
+        var settledMarkdownKnownSources = Set<String>()
+        /// Sources first seen in the CURRENT measurement window; reset()
+        /// merges them into `settledMarkdownKnownSources`.
+        var settledMarkdownWindowSources = Set<String>()
+        /// Ring of recent pre-window repeat sources (DEBUG diagnostics).
+        var recentPreWindowRepeatSources: [String] = []
         var selectableTextViewUpdate = 0
         var selectableTextViewTextRebuild = 0
         var textKitMeasurement = 0
