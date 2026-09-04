@@ -555,6 +555,32 @@ final class ClarifyBatchStateTests: XCTestCase {
         XCTAssertEqual(restored.status, .pending)
     }
 
+    func testSessionInfoSnapshotAlsoRestoresPendingClarify() throws {
+        // Some gateway generations carry pending_clarify on session.info
+        // snapshots too; wherever it appears it is the same authoritative
+        // restore contract.
+        let (appState, _) = makeAppState()
+        let snapshot = SessionRuntimeSnapshot(object: [
+            "running": .bool(true),
+            "pending_clarify": .object([
+                "request_id": .string("req-info"),
+                "questions": .array([
+                    .object([
+                        "qid": .string("environment"),
+                        "question": .string("Which environment?"),
+                        "choices": .array([.string("staging")])
+                    ])
+                ])
+            ])
+        ])
+
+        appState.handleStreamEvent(.sessionInfo(sessionId: "stored-a", snapshot: snapshot))
+
+        let restored = try XCTUnwrap(clarifyCard(in: appState, requestId: "req-info"))
+        XCTAssertEqual(restored.questions[0].status, .pending)
+        XCTAssertEqual(restored.status, .pending)
+    }
+
     func testResumeReplayUpdatesAnExistingPendingClarifyCardInPlace() throws {
         let (appState, _) = makeAppState()
         // A live card already present (the one-shot event fired, one answer

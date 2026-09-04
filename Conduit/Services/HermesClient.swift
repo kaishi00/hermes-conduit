@@ -2156,12 +2156,16 @@ enum MessageNormalizer {
     private static func clarifyQuestion(from object: [String: AnyCodable]) -> ClarifyQuestion? {
         let text = scalarClarifyText(in: object) ?? ""
         guard !text.isEmpty else { return nil }
-        guard let qid = ["qid", "question_id", "id"]
-            .compactMap { object[$0]?.stringValue }
-            .first(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })?
-            .trimmingCharacters(in: .whitespacesAndNewlines), !qid.isEmpty else {
-            return nil
+        // Explicit [String] annotation: the inline literal plus a multiline
+        // closure body otherwise confuses the type-checker into the wrong
+        // Dictionary subscript overload.
+        let qidKeys: [String] = ["qid", "question_id", "id"]
+        let qidCandidates = qidKeys.compactMap { key -> String? in
+            object[key]?.stringValue?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
         }
+        .filter { !$0.isEmpty }
+        guard let qid = qidCandidates.first else { return nil }
         let choices = clarifyChoices(from: object)
         let multiSelect = object["multi_select"]?.boolValue == true && !choices.isEmpty
         return ClarifyQuestion(id: qid, question: text, choices: choices, multiSelect: multiSelect)
