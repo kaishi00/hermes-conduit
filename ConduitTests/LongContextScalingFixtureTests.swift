@@ -203,9 +203,17 @@ final class LongContextScalingFixtureTests: XCTestCase {
         // zero transcriptChanged, zero prefix walks) remain the primary
         // contract; this is the render-layer defense in depth.
         let atRestRerenders = TranscriptPerf.settledMarkdownPreWindowRepeatEvaluations
+        // The reasoning buffer inherently ACCUMULATES (deltas merge into one
+        // growing live card), so the layout-shift band scales with the fed
+        // content — measured churn reaches ~1 row per fed line, deeper than
+        // the streaming fixture's steady-state window. Margin 16 covers the
+        // 12-delta fixture's band with slack; a full mounted-row cascade
+        // still cannot hide inside it, and the data-layer counters above
+        // remain the exact primary contract.
         let interiorRerenders = TranscriptPerf.interiorAtRestRerenders(
             sources: TranscriptPerf.recentPreWindowRepeatSources,
-            transcript: Self.deepTranscript()
+            transcript: Self.deepTranscript(),
+            edgeMargin: 16
         )
         XCTAssertTrue(
             interiorRerenders.isEmpty,
