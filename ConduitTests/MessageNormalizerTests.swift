@@ -1019,6 +1019,58 @@ final class MessageNormalizerTests: XCTestCase {
         ]))
     }
 
+    func testNotificationPayloadBatchClarifyDeduplicatesIdentities() {
+        // Duplicate qids and duplicate choice values collapse (first wins) —
+        // they would render as duplicate Identifiable rows and answer
+        // ambiguously per question.
+        let service = PushNotificationService(retryDelay: .zero)
+        defer {
+            if let target = service.pendingTarget {
+                service.clearPendingTarget(target)
+            }
+        }
+        service.receiveNotificationPayload([
+            "conduit": [
+                "session_id": "runtime-1",
+                "profile": "default",
+                "type": "input.needed",
+                "decision": [
+                    "kind": "clarify",
+                    "request_id": "conduit-push-dedupe",
+                    "questions": [
+                        ["qid": "q0", "question": "Which environment?", "choices": ["staging", "staging", "prod"], "multi_select": false],
+                        ["qid": "q0", "question": "Duplicate qid dropped", "choices": ["x"], "multi_select": false],
+                        ["qid": "q1", "question": "Which tests?", "choices": ["unit", "ui"], "multi_select": true],
+                    ] as [[String: Any]],
+                ] as [String: Any],
+            ] as [String: Any],
+        ])
+
+        guard case let .clarifyBatch(requestId, questions) = service.pendingTarget?.decision else {
+            return XCTFail("Expected a batch clarify decision carried on the notification target")
+        }
+        XCTAssertEqual(requestId, "conduit-push-dedupe")
+        XCTAssertEqual(questions.map(\.id), ["q0", "q1"], "duplicate qids collapse to the first occurrence")
+        XCTAssertEqual(questions[0].choices.map(\.value), ["staging", "prod"], "duplicate choice values collapse")
+        XCTAssertEqual(questions[0].question, "Which environment?", "the surviving qid keeps the FIRST entry's text")
+    }
+
+    func testRelayTransportPolicyRequiresHTTPSExceptLoopback() {
+        func url(_ string: String) -> URL { URL(string: string)! }
+        // HTTPS is always allowed.
+        XCTAssertTrue(RelayTransportPolicy.allowsCredentialTransport(url("https://push.milim.dev/v1/meta")))
+        // The pairing credential is a bearer secret: arbitrary cleartext
+        // relays are refused.
+        XCTAssertFalse(RelayTransportPolicy.allowsCredentialTransport(url("http://push.milim.dev/v1/meta")))
+        XCTAssertFalse(RelayTransportPolicy.allowsCredentialTransport(url("http://192.168.1.10:8080/v1/meta")))
+        XCTAssertFalse(RelayTransportPolicy.allowsCredentialTransport(url("ftp://push.milim.dev")))
+        // Bounded development exception: a loopback relay never exposes the
+        // credential off the machine.
+        XCTAssertTrue(RelayTransportPolicy.allowsCredentialTransport(url("http://localhost:8080/v1/meta")))
+        XCTAssertTrue(RelayTransportPolicy.allowsCredentialTransport(url("http://127.0.0.1:9000/v1/decisions/x/respond")))
+        XCTAssertTrue(RelayTransportPolicy.allowsCredentialTransport(url("http://[::1]:8080/v1/meta")))
+    }
+
     func testApprovalActivityNormalizesGatewayChoices() {
         let activity = MessageNormalizer.approvalActivity(
             from: [

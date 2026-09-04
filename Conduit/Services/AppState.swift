@@ -8551,11 +8551,7 @@ final class AppState: ObservableObject {
         answer: String
     ) async {
         do {
-            let outcome = try await PushNotificationService.shared.respondToRelayDecisionQuestion(
-                requestId: requestId,
-                questionId: questionId,
-                answer: answer
-            )
+            let outcome = try await relayQuestionResponder(requestId, questionId, answer)
             guard let index = messages.firstIndex(where: { $0.clarify?.requestId == requestId }),
                   var activity = messages[index].clarify,
                   let questionIndex = activity.questions.firstIndex(where: { $0.id == questionId }) else {
@@ -8580,10 +8576,16 @@ final class AppState: ObservableObject {
                 }
             case .questionAlreadyLocked:
                 // Another device locked this qid first; settle it without
-                // displaying this device's rejected text.
+                // displaying this device's rejected text. Sibling questions
+                // keep their state — a locked qid never retires the batch.
                 activity.questions[questionIndex].status = .answered
                 activity.questions[questionIndex].answer = nil
-            case .noLongerActive:
+            case .decisionReleased, .noLongerActive:
+                // Released (the native gateway path resolved the whole
+                // clarify) and timed-out/gone decisions are different relay
+                // reasons for the same card outcome: unanswered questions go
+                // inactive, answered history stays locked, and no sibling
+                // remains answerable.
                 activity.isExpired = true
                 for questionIndex in activity.questions.indices
                 where activity.questions[questionIndex].status != .answered {
@@ -11085,6 +11087,18 @@ final class AppState: ObservableObject {
     }
 
     // MARK: - Clarify lifecycle
+
+    /// Injectable relay transport for per-question batch answers. Production
+    /// resolves through the shared PushNotificationService; tests inject
+    /// canned outcomes to pin the released-vs-qid-locked handling.
+    var relayQuestionResponder: (_ requestId: String, _ questionId: String, _ answer: String) async throws -> PushNotificationService.RelayQuestionOutcome =
+        { requestId, questionId, answer in
+            try await PushNotificationService.shared.respondToRelayDecisionQuestion(
+                requestId: requestId,
+                questionId: questionId,
+                answer: answer
+            )
+        }
 
     /// How a clarification activity reached AppState. Replay defenses for the
     /// one-shot stream event are deliberately weaker than the gateway's

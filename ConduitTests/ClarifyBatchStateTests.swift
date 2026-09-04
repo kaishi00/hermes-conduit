@@ -1017,6 +1017,101 @@ final class ClarifyBatchStateTests: XCTestCase {
         XCTAssertTrue(AppState.pushCardSupersededBy(pushed, live: makeBatchActivity()))
     }
 
+
+    // MARK: - Relay per-question outcomes (push transport)
+
+    /// A batch push card with gateway qids — the shape the batch-capable
+    /// notifier pushes and Conduit's notification parser produces.
+    private func makeRelayBatchCard(requestId: String = "conduit-push-batch1") -> ClarifyActivity {
+        ClarifyActivity(
+            requestId: requestId,
+            questions: [
+                ClarifyQuestion(id: "environment", question: "Which environment?", choices: [ClarifyChoice(label: "staging", value: "staging"), ClarifyChoice(label: "prod", value: "prod")]),
+                ClarifyQuestion(id: "tests", question: "Which tests?", choices: [ClarifyChoice(label: "unit", value: "unit"), ClarifyChoice(label: "ui", value: "ui")], multiSelect: true),
+                ClarifyQuestion(id: "notes", question: "Any additional notes?", choices: [])
+            ]
+        )
+    }
+
+    func testDuplicateQidAnswerSettlesOnlyThatQuestionAsAnsweredElsewhere() async throws {
+        let (appState, _) = makeAppState()
+        appState.messages = [
+            ChatMessage(id: "clarify-relay", role: .clarify, content: "relay", timestamp: "1", clarify: makeRelayBatchCard())
+        ]
+        appState.relayQuestionResponder = { _, _, _ in
+            PushNotificationService.RelayQuestionOutcome.questionAlreadyLocked
+        }
+
+        await appState.respondToClarify(requestId: "conduit-push-batch1", questionId: "environment", answer: "prod")
+
+        let settled = try XCTUnwrap(clarifyCard(in: appState, requestId: "conduit-push-batch1"))
+        XCTAssertEqual(settled.questions[0].status, .answered, "A locked qid settles as answered elsewhere")
+        XCTAssertNil(settled.questions[0].answer, "…without displaying this device's rejected text")
+        XCTAssertEqual(settled.questions[1].status, .pending, "A locked qid never retires its open siblings")
+        XCTAssertEqual(settled.questions[2].status, .pending)
+        XCTAssertFalse(settled.isExpired)
+    }
+
+    func testReleasedDecisionRetiresTheWholePushedCard() async throws {
+        // The relay RELEASED the decision (Hermes resolved natively): the
+        // entire card goes inactive — unanswered questions expire, no
+        // sibling stays answerable — even though the release reason is
+        // different from a plain timeout.
+        let (appState, _) = makeAppState()
+        appState.messages = [
+            ChatMessage(id: "clarify-relay", role: .clarify, content: "relay", timestamp: "1", clarify: makeRelayBatchCard())
+        ]
+        appState.relayQuestionResponder = { _, _, _ in
+            PushNotificationService.RelayQuestionOutcome.decisionReleased
+        }
+
+        await appState.respondToClarify(requestId: "conduit-push-batch1", questionId: "environment", answer: "staging")
+
+        let settled = try XCTUnwrap(clarifyCard(in: appState, requestId: "conduit-push-batch1"))
+        XCTAssertEqual(settled.status, .expired)
+        XCTAssertTrue(settled.isExpired)
+        XCTAssertEqual(settled.questions[0].status, .expired)
+        XCTAssertEqual(settled.questions[1].status, .expired)
+        XCTAssertEqual(settled.questions[2].status, .expired)
+        XCTAssertFalse((settled.error ?? "").isEmpty, "The card explains the teardown")
+    }
+
+    func testRelayAnswerWithOmittedRemainingSettlesOnlyTheSubmittedQuestion() async throws {
+        let (appState, _) = makeAppState()
+        appState.messages = [
+            ChatMessage(id: "clarify-relay", role: .clarify, content: "relay", timestamp: "1", clarify: makeRelayBatchCard())
+        ]
+        appState.relayQuestionResponder = { _, _, _ in
+            PushNotificationService.RelayQuestionOutcome.locked(remaining: nil)
+        }
+
+        await appState.respondToClarify(requestId: "conduit-push-batch1", questionId: "tests", answer: ClarifyQuestion.multiSelectAnswer(["unit"]))
+
+        let settled = try XCTUnwrap(clarifyCard(in: appState, requestId: "conduit-push-batch1"))
+        XCTAssertEqual(settled.questions[1].status, .answered)
+        XCTAssertEqual(settled.questions[0].status, .pending, "An omitted remaining list carries no sibling information")
+        XCTAssertEqual(settled.questions[2].status, .pending)
+    }
+
+    func testRelayAnswerWithExplicitRemainingSettlesAbsentSiblings() async throws {
+        let (appState, _) = makeAppState()
+        appState.messages = [
+            ChatMessage(id: "clarify-relay", role: .clarify, content: "relay", timestamp: "1", clarify: makeRelayBatchCard())
+        ]
+        appState.relayQuestionResponder = { _, _, _ in
+            PushNotificationService.RelayQuestionOutcome.locked(remaining: ["notes"])
+        }
+
+        await appState.respondToClarify(requestId: "conduit-push-batch1", questionId: "environment", answer: "staging")
+
+        let settled = try XCTUnwrap(clarifyCard(in: appState, requestId: "conduit-push-batch1"))
+        XCTAssertEqual(settled.questions[0].status, .answered)
+        XCTAssertEqual(settled.questions[0].answer, "staging")
+        XCTAssertEqual(settled.questions[1].status, .answered, "Absent from an explicit remaining list ⇒ locked elsewhere")
+        XCTAssertNil(settled.questions[1].answer)
+        XCTAssertEqual(settled.questions[2].status, .pending, "Still listed in remaining ⇒ stays answerable")
+    }
+
     // MARK: - Model helpers
 
     func testMultiSelectAnswerSerializationRoundTrips() throws {
