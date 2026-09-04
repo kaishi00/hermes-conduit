@@ -822,9 +822,10 @@ final class MessageNormalizerTests: XCTestCase {
         ])
 
         XCTAssertEqual(activity?.requestId, "clarify-1")
-        XCTAssertEqual(activity?.question, "Which environment should I use?")
-        XCTAssertEqual(activity?.choices.map(\.label), ["Staging", "Production"])
-        XCTAssertEqual(activity?.choices.map(\.value), ["Staging", "Production"])
+        XCTAssertEqual(activity?.questions.count, 1)
+        XCTAssertEqual(activity?.questions[0].question, "Which environment should I use?")
+        XCTAssertEqual(activity?.questions[0].choices.map(\.label), ["Staging", "Production"])
+        XCTAssertEqual(activity?.questions[0].choices.map(\.value), ["Staging", "Production"])
     }
 
     func testClarifyActivityKeepsLegacyStructuredChoices() {
@@ -837,8 +838,95 @@ final class MessageNormalizerTests: XCTestCase {
         ])
 
         XCTAssertEqual(activity?.requestId, "clarify-2")
-        XCTAssertEqual(activity?.question, "Pick one")
-        XCTAssertEqual(activity?.choices, [ClarifyChoice(label: "Use current branch", value: "current")])
+        XCTAssertEqual(activity?.questions[0].question, "Pick one")
+        XCTAssertEqual(activity?.questions[0].choices, [ClarifyChoice(label: "Use current branch", value: "current")])
+    }
+
+    func testClarifyActivityNormalizesLegacyScalarIntoOneQuestionBatch() {
+        // The legacy scalar payload must normalize into the SAME batch model
+        // the current questions[] protocol produces — one internal shape, no
+        // parallel scalar implementation.
+        let activity = MessageNormalizer.clarifyActivity(from: [
+            "request_id": .string("clarify-3"),
+            "question": .string("Solo"),
+            "choices": .array([.string("a")])
+        ])
+        XCTAssertEqual(activity?.questions.count, 1)
+        XCTAssertEqual(activity?.displayQuestion, "Solo")
+        XCTAssertEqual(activity?.correlationQuestion, "Solo")
+        XCTAssertEqual(activity?.status, .pending)
+    }
+
+    func testClarifyActivityParsesCurrentBatchQuestionsProtocol() {
+        let activity = MessageNormalizer.clarifyActivity(from: [
+            "request_id": .string("req-1"),
+            "questions": .array([
+                .object([
+                    "qid": .string("environment"),
+                    "question": .string("Which environment?"),
+                    "choices": .array([.string("staging"), .string("prod")]),
+                    "multi_select": .bool(false)
+                ]),
+                .object([
+                    "qid": .string("tests"),
+                    "question": .string("Which tests should run?"),
+                    "choices": .array([.string("unit"), .string("integration"), .string("ui")]),
+                    "multi_select": .bool(true)
+                ]),
+                .object([
+                    "qid": .string("notes"),
+                    "question": .string("Any additional notes?"),
+                    "choices": .array([])
+                ])
+            ])
+        ])
+
+        XCTAssertEqual(activity?.questions.map(\.id), ["environment", "tests", "notes"])
+        XCTAssertEqual(activity?.displayQuestion, "Which environment?\nWhich tests should run?\nAny additional notes?")
+        XCTAssertEqual(activity?.correlationQuestion, "Which environment?", "Supersede correlation uses the first question, matching the notifier's reduction")
+        XCTAssertEqual(activity?.questions[1].multiSelect, true)
+        XCTAssertEqual(activity?.questions[2].choices.isEmpty, true)
+    }
+
+    func testPendingClarifyActivityRestoresAnswersKeyedByQID() {
+        let activity = MessageNormalizer.pendingClarifyActivity(from: [
+            "request_id": .string("req-batch"),
+            "questions": .array([
+                .object([
+                    "qid": .string("environment"),
+                    "question": .string("Which environment?"),
+                    "choices": .array([.string("staging"), .string("prod")]),
+                    "multi_select": .bool(false)
+                ]),
+                .object([
+                    "qid": .string("notes"),
+                    "question": .string("Notes?"),
+                    "choices": .array([])
+                ])
+            ]),
+            "answers": .object(["environment": .string("staging")])
+        ])
+
+        XCTAssertEqual(activity?.requestId, "req-batch")
+        XCTAssertEqual(activity?.questions[0].status, .answered, "Answers locked before the detach restore locked")
+        XCTAssertEqual(activity?.questions[0].answer, "staging")
+        XCTAssertEqual(activity?.questions[1].status, .pending)
+    }
+
+    func testPendingClarifyActivityWithoutAnswersLeavesEverythingAnswerable() {
+        let activity = MessageNormalizer.pendingClarifyActivity(from: [
+            "request_id": .string("req-batch"),
+            "questions": .array([
+                .object(["qid": .string("a"), "question": .string("Q?"), "choices": .array([.string("x")])])
+            ])
+        ])
+        XCTAssertEqual(activity?.questions[0].status, .pending)
+    }
+
+    func testPendingClarifyActivityRejectsPayloadWithoutQuestions() {
+        XCTAssertNil(MessageNormalizer.pendingClarifyActivity(from: [
+            "request_id": .string("req-1")
+        ]))
     }
 
     func testApprovalActivityNormalizesGatewayChoices() {

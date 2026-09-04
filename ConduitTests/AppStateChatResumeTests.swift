@@ -777,7 +777,7 @@ final class AppStateChatResumeTests: XCTestCase {
         let restoredCard = harness.appState.messages.first { $0.role == .clarify }
         XCTAssertEqual(restoredCard?.clarify?.requestId, "conduit-push-abc123")
         XCTAssertEqual(restoredCard?.clarify?.status, .pending, "A relay-delivered clarify must render as a normal answerable card")
-        XCTAssertEqual(restoredCard?.clarify?.choices.map(\.label), ["Red", "Blue"])
+        XCTAssertEqual(restoredCard?.clarify?.questions.first?.choices.map(\.label), ["Red", "Blue"])
     }
 
     func testLiveClarifyEventSupersedesPushDeliveredCardForSameQuestion() async {
@@ -803,9 +803,16 @@ final class AppStateChatResumeTests: XCTestCase {
         harness.appState.handleStreamEvent(
             .clarify(
                 sessionId: "stored-a",
-                requestId: "gateway-rid-1",
-                question: "Which color?",
-                choices: [("Red", "Red")]
+                activity: ClarifyActivity(
+                    requestId: "gateway-rid-1",
+                    questions: [
+                        ClarifyQuestion(
+                            id: "q0",
+                            question: "Which color?",
+                            choices: [ClarifyChoice(label: "Red", value: "Red")]
+                        )
+                    ]
+                )
             )
         )
 
@@ -840,9 +847,12 @@ final class AppStateChatResumeTests: XCTestCase {
         harness.appState.handleStreamEvent(
             .clarify(
                 sessionId: "stored-a",
-                requestId: "gateway-rid-1",
-                question: "which color?",
-                choices: [("Red", "Red")]
+                activity: ClarifyActivity(
+                    requestId: "gateway-rid-1",
+                    questions: [
+                        ClarifyQuestion(id: "q0", question: "which color?", choices: [ClarifyChoice(label: "Red", value: "Red")])
+                    ]
+                )
             )
         )
 
@@ -894,9 +904,12 @@ final class AppStateChatResumeTests: XCTestCase {
         harness.appState.handleStreamEvent(
             .clarify(
                 sessionId: "stored-a",
-                requestId: "gateway-rid-1",
-                question: "Which color?",
-                choices: [("Red", "Red")]
+                activity: ClarifyActivity(
+                    requestId: "gateway-rid-1",
+                    questions: [
+                        ClarifyQuestion(id: "q0", question: "Which color?", choices: [ClarifyChoice(label: "Red", value: "Red")])
+                    ]
+                )
             )
         )
 
@@ -936,9 +949,12 @@ final class AppStateChatResumeTests: XCTestCase {
         harness.appState.handleStreamEvent(
             .clarify(
                 sessionId: "stored-a",
-                requestId: "gateway-rid-2",
-                question: "Which color?",
-                choices: [("Red", "Red")]
+                activity: ClarifyActivity(
+                    requestId: "gateway-rid-2",
+                    questions: [
+                        ClarifyQuestion(id: "q0", question: "Which color?", choices: [ClarifyChoice(label: "Red", value: "Red")])
+                    ]
+                )
             )
         )
 
@@ -946,7 +962,7 @@ final class AppStateChatResumeTests: XCTestCase {
         // later clarify with identical text.
         let clarifyCards = harness.appState.messages.filter { $0.role == .clarify }
         XCTAssertEqual(clarifyCards.count, 2)
-        XCTAssertTrue(clarifyCards.contains { $0.clarify?.status == .answered && $0.clarify?.answer == "Red" })
+        XCTAssertTrue(clarifyCards.contains { $0.clarify?.status == .answered && $0.clarify?.questions.first?.answer == "Red" })
         XCTAssertTrue(clarifyCards.contains { $0.clarify?.requestId == "gateway-rid-2" })
     }
 
@@ -981,7 +997,7 @@ final class AppStateChatResumeTests: XCTestCase {
         let card = harness.appState.messages.first { $0.role == .clarify }
         XCTAssertEqual(card?.clarify?.status, .error)
         XCTAssertEqual(
-            card?.clarify?.error,
+            card?.clarify?.questions.first?.error,
             "This device is not paired with a push relay.",
             "The relay path must run before the gateway-client guard and surface relay errors"
         )

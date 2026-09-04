@@ -555,9 +555,15 @@ final class AppStateReasoningStreamTests: XCTestCase {
         feedReasoning(["third segment"], sessionId: "stored-a", state: state)
         state.handleStreamEvent(.clarify(
             sessionId: "stored-a",
-            requestId: "req-1",
-            question: "which scope?",
-            choices: [("a", "A"), ("b", "B")]
+            activity: ClarifyActivity(
+                requestId: "req-1",
+                questions: [
+                    ClarifyQuestion(id: "q0", question: "which scope?", choices: [
+                        ClarifyChoice(label: "A", value: "a"),
+                        ClarifyChoice(label: "B", value: "b")
+                    ])
+                ]
+            )
         ))
         XCTAssertEqual(
             state.messages.map(\.role),

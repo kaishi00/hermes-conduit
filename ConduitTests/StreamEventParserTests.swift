@@ -408,27 +408,143 @@ final class StreamEventParserTests: XCTestCase {
         let event = parse(#"""
         {"type": "clarify.request", "session_id": "s1", "payload": {"request_id": "req-1", "question": "Which env?", "choices": ["staging", "prod"]}}
         """#)
-        guard case .clarify(let sessionId, let requestId, let question, let choices) = event else {
+        guard case .clarify(let sessionId, let activity) = event else {
             return XCTFail("Expected clarify")
         }
         XCTAssertEqual(sessionId, "s1")
-        XCTAssertEqual(requestId, "req-1")
-        XCTAssertEqual(question, "Which env?")
-        XCTAssertEqual(choices.count, 2)
-        XCTAssertEqual(choices[0].label, "staging")
-        XCTAssertEqual(choices[1].value, "prod")
+        XCTAssertEqual(activity.requestId, "req-1")
+        XCTAssertEqual(activity.questions.count, 1)
+        XCTAssertEqual(activity.questions[0].id, "q0")
+        XCTAssertEqual(activity.questions[0].question, "Which env?")
+        XCTAssertEqual(activity.questions[0].choices.map(\.value), ["staging", "prod"])
+        XCTAssertFalse(activity.questions[0].multiSelect)
+        XCTAssertEqual(activity.status, .pending)
     }
 
     func testClarifyWithObjectChoices() {
         let event = parse(#"""
         {"type": "clarify", "session_id": "s1", "payload": {"requestId": "req-2", "prompt": "Pick one", "options": [{"label": "Current", "value": "current"}]}}
         """#)
-        guard case .clarify(_, _, _, let choices) = event else {
+        guard case .clarify(_, let activity) = event else {
             return XCTFail("Expected clarify")
         }
-        XCTAssertEqual(choices.count, 1)
-        XCTAssertEqual(choices[0].label, "Current")
-        XCTAssertEqual(choices[0].value, "current")
+        XCTAssertEqual(activity.questions[0].choices, [ClarifyChoice(label: "Current", value: "current")])
+    }
+
+    func testClarifyBatchQuestionsParseInGatewayOrder() {
+        let event = parse(#"""
+        {"type": "clarify.request", "session_id": "s1", "payload": {"request_id": "req-1", "questions": [
+            {"qid": "environment", "question": "Which environment?", "choices": ["staging", "prod"], "multi_select": false},
+            {"qid": "tests", "question": "Which tests should run?", "choices": ["unit", "integration", "ui"], "multi_select": true},
+            {"qid": "notes", "question": "Any additional notes?", "choices": []}
+        ]}}
+        """#)
+        guard case .clarify(_, let activity) = event else {
+            return XCTFail("Expected clarify")
+        }
+        XCTAssertEqual(activity.requestId, "req-1")
+        XCTAssertEqual(activity.questions.map(\.id), ["environment", "tests", "notes"], "The gateway qid is the question identity")
+        XCTAssertEqual(activity.questions.map(\.question), [
+            "Which environment?",
+            "Which tests should run?",
+            "Any additional notes?"
+        ])
+        XCTAssertEqual(activity.questions[0].choices.map(\.value), ["staging", "prod"])
+        XCTAssertFalse(activity.questions[0].multiSelect)
+        XCTAssertTrue(activity.questions[1].multiSelect, "multi_select must survive normalization")
+        XCTAssertTrue(activity.questions[2].choices.isEmpty, "A choice-less question is a free-text question")
+        XCTAssertFalse(activity.questions[2].multiSelect, "multi_select without choices degrades like the gateway does")
+    }
+
+    func testClarifyBatchWithSingleQuestionPreservesQID() {
+        let event = parse(#"""
+        {"type": "clarify.request", "session_id": "s1", "payload": {"request_id": "req-1", "questions": [{"qid": "only", "question": "One?", "choices": ["a"]}]}}
+        """#)
+        guard case .clarify(_, let activity) = event else {
+            return XCTFail("Expected clarify")
+        }
+        XCTAssertEqual(activity.questions.map(\.id), ["only"], "A real batch qid is never replaced by a synthetic id")
+    }
+
+    func testClarifyBatchObjectChoicesRemainCompatible() {
+        let event = parse(#"""
+        {"type": "clarify.request", "session_id": "s1", "payload": {"request_id": "req-1", "questions": [{"qid": "q", "question": "Pick", "choices": [{"label": "Current", "value": "current"}]}]}}
+        """#)
+        guard case .clarify(_, let activity) = event else {
+            return XCTFail("Expected clarify")
+        }
+        XCTAssertEqual(activity.questions[0].choices, [ClarifyChoice(label: "Current", value: "current")])
+    }
+
+    func testClarifyBatchDropsMalformedQuestionsButKeepsAnswerableOnes() {
+        let event = parse(#"""
+        {"type": "clarify.request", "session_id": "s1", "payload": {"request_id": "req-1", "questions": [
+            {"question": "No qid, unanswerable per question", "choices": ["a"]},
+            {"qid": "ok", "question": "Valid", "choices": ["a", "b"]},
+            {"qid": "empty", "question": "   ", "choices": ["a"]}
+        ]}}
+        """#)
+        guard case .clarify(_, let activity) = event else {
+            return XCTFail("Expected clarify")
+        }
+        XCTAssertEqual(activity.questions.map(\.id), ["ok"], "Malformed siblings are dropped deliberately; answerable ones survive")
+    }
+
+    func testClarifyBatchFailsWithoutAnyAnswerableQuestion() {
+        let event = parse(#"""
+        {"type": "clarify.request", "session_id": "s1", "payload": {"request_id": "req-1", "questions": [{"qid": "empty", "question": "", "choices": []}]}}
+        """#)
+        XCTAssertNil(event)
+    }
+
+    func testClarifyBatchWithMissingRequestIDReturnsNil() {
+        let event = parse(#"""
+        {"type": "clarify.request", "session_id": "s1", "payload": {"questions": [{"qid": "a", "question": "Q?", "choices": ["x"]}]}}
+        """#)
+        XCTAssertNil(event)
+    }
+
+    func testClarifyLegacyScalarQuestionStillParsesWithoutTopLevelQuestions() {
+        // A batch payload shape must not depend on a legacy top-level
+        // question being present.
+        let event = parse(#"""
+        {"type": "clarify", "session_id": "s1", "payload": {"request_id": "req-1", "question": "Which env?", "choices": ["staging"]}}
+        """#)
+        guard case .clarify(_, let activity) = event else {
+            return XCTFail("Expected clarify")
+        }
+        XCTAssertEqual(activity.questions.count, 1)
+        XCTAssertEqual(activity.questions[0].question, "Which env?")
+    }
+
+    func testClarifyLegacyScalarMultiSelectParses() {
+        let event = parse(#"""
+        {"type": "clarify.request", "session_id": "s1", "payload": {"request_id": "req-1", "question": "Which tests?", "choices": ["unit", "ui"], "multi_select": true}}
+        """#)
+        guard case .clarify(_, let activity) = event else {
+            return XCTFail("Expected clarify")
+        }
+        XCTAssertTrue(activity.questions[0].multiSelect)
+    }
+
+    // MARK: - clarify.expire
+
+    func testClarifyExpireParsesRequestID() {
+        let event = parse(#"""
+        {"type": "clarify.expire", "session_id": "s1", "payload": {"request_id": "req-7"}}
+        """#)
+        guard case .clarifyExpire(let sessionId, let requestId) = event else {
+            return XCTFail("Expected clarifyExpire")
+        }
+        XCTAssertEqual(sessionId, "s1")
+        XCTAssertEqual(requestId, "req-7")
+    }
+
+    func testClarifyExpireWithoutRequestIDReturnsNil() {
+        let event = parse(#"""
+        {"type": "clarify.expire", "session_id": "s1", "payload": {}}
+        """#)
+        XCTAssertNil(event)
     }
 
     func testClarifyMissingRequestIdReturnsNil() {

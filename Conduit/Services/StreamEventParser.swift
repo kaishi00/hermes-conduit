@@ -93,12 +93,14 @@ enum StreamEventParser {
         case "clarify", "clarify.request":
             guard let payload,
                   let clarify = MessageNormalizer.clarifyActivity(from: payload) else { return nil }
-            return .clarify(
-                sessionId: sessionId,
-                requestId: clarify.requestId,
-                question: clarify.question,
-                choices: clarify.choices.map { (label: $0.label, value: $0.value) }
-            )
+            return .clarify(sessionId: sessionId, activity: clarify)
+
+        case "clarify.expire":
+            let requestId = payload?["request_id"]?.stringValue
+                ?? payload?["requestId"]?.stringValue
+                ?? ""
+            guard !requestId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+            return .clarifyExpire(sessionId: sessionId, requestId: requestId)
 
         case "approval.request":
             guard let payload,

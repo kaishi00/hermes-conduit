@@ -176,7 +176,12 @@ enum StreamEvent {
     case toolStart(sessionId: String, toolName: String, toolInput: String?)
     case toolComplete(sessionId: String, toolName: String, toolOutput: String?)
     case reviewSummary(sessionId: String, activity: ReviewActivity)
-    case clarify(sessionId: String, requestId: String, question: String, choices: [(label: String, value: String)])
+    /// The complete normalized clarification — batch structure intact. The
+    /// parser must not flatten `questions[]` back into scalar fields, or a
+    /// parsed batch would be discarded at the AppState boundary.
+    case clarify(sessionId: String, activity: ClarifyActivity)
+    /// `clarify.expire { request_id }` — the gateway timed the request out.
+    case clarifyExpire(sessionId: String, requestId: String)
     case approval(sessionId: String, activity: ApprovalActivity)
     case contextUpdate(sessionId: String, percent: Double, used: Int, max: Int)
     case cwdUpdate(sessionId: String, cwd: String)
@@ -207,6 +212,12 @@ struct SessionRuntimeSnapshot {
     let approvalsMode: String?
     let inflight: AnyCodable?
     let queued: AnyCodable?
+    /// Authoritative still-pending clarification carried by `session.resume`
+    /// (`pending_clarify`) — the same payload as the one-shot `clarify.request`
+    /// plus any answers locked before the client detached. The one-shot event
+    /// is not sufficient for restore: it may have fired while the app was
+    /// backgrounded or disconnected.
+    let pendingClarify: ClarifyActivity?
 
     /// `session.resume` may include an in-flight or queued projection that is
     /// newer than the persisted database transcript. Keep that projection for
@@ -263,6 +274,8 @@ struct SessionRuntimeSnapshot {
         approvalsMode = object["approvals_mode"]?.stringValue
             ?? object["approval_mode"]?.stringValue
             ?? object["approvals"]?.objectValue?["mode"]?.stringValue
+        pendingClarify = object["pending_clarify"]?.objectValue
+            .flatMap { MessageNormalizer.pendingClarifyActivity(from: $0) }
         self.inflight = inflight
         self.queued = queued
     }
@@ -911,6 +924,12 @@ final class HermesClient: ObservableObject {
                 snapshotObject[key] = value
             }
         }
+        // `pending_clarify` rides the resume response top level (upstream
+        // `_build_resume_payload`), mirroring how `pending_approval` is
+        // delivered; hoist it so the snapshot parser sees it.
+        if let pendingClarify = object["pending_clarify"] {
+            snapshotObject["pending_clarify"] = pendingClarify
+        }
         return SessionResumeResult(
             sessionId: resolvedId,
             messages: messages,
@@ -1092,11 +1111,55 @@ final class HermesClient: ObservableObject {
         ])
     }
 
-    func respondToClarification(requestId: String, answer: String) async throws {
-        _ = try await rpc("clarify.respond", params: [
+    /// Outcome of `clarify.respond`. Batch questions report the gateway's
+    /// authoritative `remaining` list so the caller can tell a per-question
+    /// lock from full completion; `expired` is a successful RPC whose status
+    /// says the request timed out server-side (the clarify bridge sets
+    /// `allow_expired`, so a late answer never errors) and must not read as
+    /// success.
+    enum ClarifyResponseOutcome: Equatable {
+        case accepted(remaining: [String])
+        case expired
+
+        var isExpired: Bool { self == .expired }
+
+        /// True when the accepted outcome completed the whole request (no
+        /// questions remain unlocked).
+        var requestCompleted: Bool {
+            switch self {
+            case .accepted(let remaining): return remaining.isEmpty
+            case .expired: return false
+            }
+        }
+    }
+
+    /// Answers one clarification. Batch questions pass their gateway `qid` as
+    /// `questionId` for the per-question lock (`{"status": "ok",
+    /// "remaining": [...]}`). Omitting `questionId` keeps the legacy
+    /// request-level response — still required for push-relay cards, request
+    /// cancellation, and harmless for single-question gateways, which ignore
+    /// the extra parameter.
+    func respondToClarification(
+        requestId: String,
+        answer: String,
+        questionId: String? = nil
+    ) async throws -> ClarifyResponseOutcome {
+        var params: [String: Any] = [
             "request_id": requestId,
             "answer": answer
-        ])
+        ]
+        if let questionId, !questionId.isEmpty {
+            params["question_id"] = questionId
+        }
+        let result = try await rpc("clarify.respond", params: params)
+        let status = result.objectValue?["status"]?.stringValue?.lowercased()
+        if status == "expired" {
+            return .expired
+        }
+        let remaining = result.objectValue?["remaining"]?.arrayValue?
+            .compactMap { $0.stringValue }
+            ?? []
+        return .accepted(remaining: remaining)
     }
 
     func respondToApproval(sessionId: String, choice: String) async throws {
@@ -2031,50 +2094,121 @@ enum MessageNormalizer {
             || head.hasPrefix("[recent summary (")
     }
 
-    /// Normalizes the gateway's native clarification event. Current Hermes
-    /// sends string choices, while older integrations may send label/value
-    /// objects; accepting both keeps the card answerable across gateways.
+    /// Normalizes the gateway's native clarification event into one
+    /// batch-capable activity. Current Hermes sends
+    /// `clarify.request { questions: [{qid, question, choices, multi_select}] }`;
+    /// older shapes send one scalar `question`. The scalar form normalizes
+    /// into a one-question batch so the rest of the app never branches on the
+    /// wire generation. Returns nil for payloads with no request id or no
+    /// answerable question — deliberately dropped, never half-presented.
     static func clarifyActivity(from payload: [String: AnyCodable]) -> ClarifyActivity? {
         let requestIDCandidates = ["request_id", "requestId", "id"]
             .compactMap { payload[$0]?.stringValue }
         let requestId = requestIDCandidates
             .first(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let questionCandidates = ["question", "prompt", "text"]
-            .compactMap { key in payload[key].map { extractContent($0) } }
-        let question = questionCandidates
-            .first(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard !requestId.isEmpty, !question.isEmpty else { return nil }
+        guard !requestId.isEmpty else { return nil }
 
-        let rawChoices = payload["choices"]?.arrayValue ?? payload["options"]?.arrayValue ?? []
+        if let rawQuestions = payload["questions"]?.arrayValue, !rawQuestions.isEmpty {
+            let questions = rawQuestions.compactMap { entry -> ClarifyQuestion? in
+                clarifyQuestion(from: entry.objectValue ?? [:])
+            }
+            if !questions.isEmpty {
+                return ClarifyActivity(requestId: requestId, questions: questions)
+            }
+            // A `questions[]` payload where nothing survived parsing falls
+            // through to the scalar shape so a hypothetical hybrid payload
+            // still presents; otherwise it drops below.
+        }
+
+        // Legacy scalar shape (also the single-question form current gateways
+        // still emit — it keeps the exact pre-batch payload).
+        guard let question = scalarClarifyText(in: payload), !question.isEmpty else {
+            return nil
+        }
+        let choices = clarifyChoices(from: payload)
+        let multiSelect = payload["multi_select"]?.boolValue == true && !choices.isEmpty
+        return ClarifyActivity(
+            requestId: requestId,
+            questions: [
+                ClarifyQuestion(
+                    id: "q0",
+                    question: question,
+                    choices: choices,
+                    multiSelect: multiSelect
+                )
+            ]
+        )
+    }
+
+    /// One batch question. The gateway `qid` is the identity and is preserved
+    /// verbatim — it is what per-question `clarify.respond` keys on. A qid-less
+    /// entry has no per-question protocol address (an absent `question_id`
+    /// would cancel the whole request server-side) and a question with no text
+    /// is unanswerable; both are rejected deliberately.
+    private static func clarifyQuestion(from object: [String: AnyCodable]) -> ClarifyQuestion? {
+        let text = scalarClarifyText(in: object) ?? ""
+        guard !text.isEmpty else { return nil }
+        guard let qid = ["qid", "question_id", "id"]
+            .compactMap { object[$0]?.stringValue }
+            .first(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })?
+            .trimmingCharacters(in: .whitespacesAndNewlines), !qid.isEmpty else {
+            return nil
+        }
+        let choices = clarifyChoices(from: object)
+        let multiSelect = object["multi_select"]?.boolValue == true && !choices.isEmpty
+        return ClarifyQuestion(id: qid, question: text, choices: choices, multiSelect: multiSelect)
+    }
+
+    private static func scalarClarifyText(in object: [String: AnyCodable]) -> String? {
+        ["question", "prompt", "text"]
+            .compactMap { key in object[key].map { extractContent($0) } }
+            .first { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Choices accept the native string form plus the older label/value object
+    /// integration; duplicates by value are dropped.
+    private static func clarifyChoices(from object: [String: AnyCodable]) -> [ClarifyChoice] {
+        let rawChoices = object["choices"]?.arrayValue ?? object["options"]?.arrayValue ?? []
         let choices = rawChoices.compactMap { choice -> ClarifyChoice? in
             if let text = choice.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
                 return ClarifyChoice(label: text, value: text)
             }
-            guard let object = choice.objectValue else { return nil }
+            guard let choice = choice.objectValue else { return nil }
             let labelCandidates = ["label", "title", "text", "name", "value"]
-                .compactMap { key in object[key].map { extractContent($0) } }
+                .compactMap { key in choice[key].map { extractContent($0) } }
             let label = labelCandidates
                 .first(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             let valueCandidates = ["value", "answer", "id"]
-                .compactMap { key in object[key].map { extractContent($0) } }
+                .compactMap { key in choice[key].map { extractContent($0) } }
             let value = valueCandidates
                 .first(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? label
             guard !label.isEmpty, !value.isEmpty else { return nil }
             return ClarifyChoice(label: label, value: value)
         }
-        let uniqueChoices = choices.reduce(into: [ClarifyChoice]()) { result, choice in
+        return choices.reduce(into: [ClarifyChoice]()) { result, choice in
             if !result.contains(where: { $0.value == choice.value }) { result.append(choice) }
         }
-        return ClarifyActivity(
-            requestId: requestId,
-            question: question,
-            choices: uniqueChoices,
-            status: .pending
-        )
+    }
+
+    /// Reconstructs a clarification from the gateway's authoritative
+    /// `pending_clarify` snapshot (`session.resume`): the same payload as the
+    /// one-shot `clarify.request`, plus the answers locked before the client
+    /// detached, keyed by `qid`.
+    static func pendingClarifyActivity(from payload: [String: AnyCodable]) -> ClarifyActivity? {
+        guard var activity = clarifyActivity(from: payload) else { return nil }
+        let answers = payload["answers"]?.objectValue ?? [:]
+        guard !answers.isEmpty else { return activity }
+        for index in activity.questions.indices {
+            guard let answer = answers[activity.questions[index].id]?.stringValue,
+                  !answer.isEmpty else { continue }
+            activity.questions[index].status = .answered
+            activity.questions[index].answer = answer
+        }
+        return activity
     }
 
     /// Normalizes Hermes' session-scoped command approval event. The current

@@ -3505,6 +3505,14 @@ final class AppState: ObservableObject {
             includePendingApprovals: restorePendingDecisionCards
         )
         messages = mergeCachedReviews(into: restored, sessionId: result.sessionId)
+        // The gateway's authoritative pending clarification restores the
+        // answerable card even when the one-shot clarify.request fired while
+        // this device was detached; answers locked before the detach come
+        // back keyed by qid and stay locked. Keyed by request_id, so a resume
+        // refresh updates an existing card instead of duplicating it.
+        if let pendingClarify = result.snapshot.pendingClarify {
+            applyClarifyActivity(pendingClarify)
+        }
         noteChatViewportTranscriptReplacement()
         // An authoritative resume/reconcile just replaced the transcript:
         // whatever rows a failed freshness read could not see are now either
@@ -3626,12 +3634,18 @@ final class AppState: ObservableObject {
     ) {
         for index in messages.indices {
             if var clarify = messages[index].clarify,
-               clarify.status == .submitting,
+               clarify.questions.contains(where: { $0.status == .submitting }),
                let key = SessionPresentationCache.decisionKey(for: messages[index]),
                keys.contains(key) {
-                clarify.status = .pending
-                clarify.answer = nil
-                clarify.error = nil
+                // A restored .submitting question has no knowable outcome —
+                // its RPC died with the previous process. Answered sibling
+                // questions stay locked; only the in-flight ones reset.
+                for questionIndex in clarify.questions.indices
+                where clarify.questions[questionIndex].status == .submitting {
+                    clarify.questions[questionIndex].status = .pending
+                    clarify.questions[questionIndex].answer = nil
+                    clarify.questions[questionIndex].error = nil
+                }
                 messages[index].clarify = clarify
             }
             if var approval = messages[index].approval,
@@ -8381,16 +8395,32 @@ final class AppState: ObservableObject {
         await recoverComposerSubmission(using: currentContext)
     }
 
-    func respondToClarify(requestId: String, answer: String) async {
+    /// Answers one question of a clarification request. Batch questions route
+    /// per question (`question_id` + the gateway's authoritative `remaining`
+    /// list); a `nil` questionId targets the card's single question — the
+    /// shape every push-relay card and legacy gateway produces.
+    func respondToClarify(requestId: String, questionId: String? = nil, answer: String) async {
         let trimmedAnswer = answer.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedAnswer.isEmpty,
               let index = messages.firstIndex(where: { $0.clarify?.requestId == requestId }),
-              let current = messages[index].clarify,
-              current.status == .pending || current.status == .error else { return }
+              var activity = messages[index].clarify,
+              !activity.isExpired else { return }
 
-        messages[index].clarify?.status = .submitting
-        messages[index].clarify?.answer = trimmedAnswer
-        messages[index].clarify?.error = nil
+        let questionIndex: Int?
+        if let questionId {
+            questionIndex = activity.questions.firstIndex { $0.id == questionId }
+        } else {
+            // Request-level answer: only valid while exactly one question is
+            // open; a batch must always answer through its qids.
+            questionIndex = activity.questions.count == 1 ? 0 : activity.questions.firstIndex { $0.status == .pending || $0.status == .error }
+        }
+        guard let questionIndex,
+              activity.questions[questionIndex].status == .pending
+                  || activity.questions[questionIndex].status == .error else { return }
+
+        activity.questions[questionIndex].status = .submitting
+        activity.questions[questionIndex].error = nil
+        messages[index].clarify = activity
         setRunning(true)
         cacheMessagePresentation()
 
@@ -8405,29 +8435,63 @@ final class AppState: ObservableObject {
             return
         }
         guard let client else {
-            messages[index].clarify?.status = .error
-            messages[index].clarify?.answer = nil
-            messages[index].clarify?.error = "Gateway connection is unavailable."
-            cacheMessagePresentation()
+            markClarifyQuestionError(
+                requestId: requestId,
+                questionId: activity.questions[questionIndex].id,
+                message: "Gateway connection is unavailable."
+            )
             return
         }
         do {
-            try await client.respondToClarification(requestId: requestId, answer: trimmedAnswer)
-            guard let updatedIndex = messages.firstIndex(where: { $0.clarify?.requestId == requestId }) else { return }
-            messages[updatedIndex].clarify?.status = .answered
-            cacheMessagePresentation()
+            let outcome = try await client.respondToClarification(
+                requestId: requestId,
+                answer: trimmedAnswer,
+                questionId: activity.questions[questionIndex].id
+            )
+            applyClarifyResponseOutcome(
+                outcome,
+                requestId: requestId,
+                questionId: activity.questions[questionIndex].id,
+                answer: trimmedAnswer
+            )
         } catch {
-            guard let updatedIndex = messages.firstIndex(where: { $0.clarify?.requestId == requestId }) else { return }
-            messages[updatedIndex].clarify?.status = .error
-            messages[updatedIndex].clarify?.answer = nil
             if Self.isExpiredPromptError(error) {
-                messages[updatedIndex].clarify?.error = "This question is no longer active — Hermes timed it out and continued."
+                // Older gateways report expiry as RPC 4009 instead of the
+                // typed `expired` status — same teardown either way.
+                expireClarifyRequest(requestId: requestId)
             } else {
-                messages[updatedIndex].clarify?.error = "Hermes did not accept that answer."
-                errorMessage = error.localizedDescription
+                markClarifyQuestionError(
+                    requestId: requestId,
+                    questionId: activity.questions[questionIndex].id,
+                    message: "Hermes did not accept that answer.",
+                    globalMessage: error.localizedDescription
+                )
             }
-            cacheMessagePresentation()
         }
+    }
+
+    /// Restores exactly one question to an answerable/error state after a
+    /// failed respond; answered and in-flight-free sibling questions keep
+    /// their state.
+    private func markClarifyQuestionError(
+        requestId: String,
+        questionId: String,
+        message: String,
+        globalMessage: String? = nil
+    ) {
+        guard let index = messages.firstIndex(where: { $0.clarify?.requestId == requestId }),
+              var activity = messages[index].clarify,
+              let questionIndex = activity.questions.firstIndex(where: { $0.id == questionId }) else {
+            return
+        }
+        activity.questions[questionIndex].status = .error
+        activity.questions[questionIndex].answer = nil
+        activity.questions[questionIndex].error = message
+        messages[index].clarify = activity
+        if let globalMessage {
+            errorMessage = globalMessage
+        }
+        cacheMessagePresentation()
     }
 
     private func respondToRelayClarify(requestId: String, answer: String) async {
@@ -8436,28 +8500,36 @@ final class AppState: ObservableObject {
                 requestId: requestId,
                 answer: answer
             )
-            guard let updatedIndex = messages.firstIndex(where: { $0.clarify?.requestId == requestId }) else { return }
+            guard let updatedIndex = messages.firstIndex(where: { $0.clarify?.requestId == requestId }),
+                  var activity = messages[updatedIndex].clarify,
+                  !activity.questions.isEmpty else { return }
+            // Relay cards are single-question by construction: the notifier
+            // mints one request per pushed decision.
             switch outcome {
             case .answered:
-                messages[updatedIndex].clarify?.status = .answered
-                messages[updatedIndex].clarify?.answer = answer
+                activity.questions[0].status = .answered
+                activity.questions[0].answer = answer
             case .alreadyAnsweredElsewhere:
                 // Another device resolved the decision with its own answer;
                 // settle the card but do not display this device's rejected
                 // text as if it were what Hermes received.
-                messages[updatedIndex].clarify?.status = .answered
-                messages[updatedIndex].clarify?.answer = nil
+                activity.questions[0].status = .answered
+                activity.questions[0].answer = nil
             case .noLongerActive:
-                messages[updatedIndex].clarify?.status = .error
-                messages[updatedIndex].clarify?.answer = nil
-                messages[updatedIndex].clarify?.error = "This question is no longer active — it was timed out or already resolved."
+                activity.questions[0].status = .error
+                activity.questions[0].answer = nil
+                activity.questions[0].error = "This question is no longer active — it was timed out or already resolved."
             }
+            messages[updatedIndex].clarify = activity
             cacheMessagePresentation()
         } catch {
-            guard let updatedIndex = messages.firstIndex(where: { $0.clarify?.requestId == requestId }) else { return }
-            messages[updatedIndex].clarify?.status = .error
-            messages[updatedIndex].clarify?.answer = nil
-            messages[updatedIndex].clarify?.error = error.localizedDescription
+            guard let updatedIndex = messages.firstIndex(where: { $0.clarify?.requestId == requestId }),
+                  var activity = messages[updatedIndex].clarify,
+                  !activity.questions.isEmpty else { return }
+            activity.questions[0].status = .error
+            activity.questions[0].answer = nil
+            activity.questions[0].error = error.localizedDescription
+            messages[updatedIndex].clarify = activity
             cacheMessagePresentation()
         }
     }
@@ -10644,7 +10716,7 @@ final class AppState: ObservableObject {
                 .messageInterrupted(let sessionId), .sessionBusy(let sessionId, _),
                 .sessionInfo(let sessionId, _), .sessionTitle(let sessionId, _, _),
                 .toolStart(let sessionId, _, _),
-                .toolComplete(let sessionId, _, _), .reviewSummary(let sessionId, _), .clarify(let sessionId, _, _, _),
+                .toolComplete(let sessionId, _, _), .reviewSummary(let sessionId, _), .clarify(let sessionId, _), .clarifyExpire(let sessionId, _),
                 .approval(let sessionId, _),
                 .contextUpdate(let sessionId, _, _, _), .cwdUpdate(let sessionId, _),
                 .modelUpdate(let sessionId, _, _), .agentCount(let sessionId, _),
@@ -10755,6 +10827,12 @@ final class AppState: ObservableObject {
                 authoritativeYolo: authoritativeYolo,
                 authoritativeApprovalsMode: authoritativeApprovalsMode
             )
+            // Some gateway generations also carry `pending_clarify` on the
+            // session.info snapshot; wherever it appears it is the same
+            // authoritative state as the resume copy.
+            if let pendingClarify = snapshot.pendingClarify {
+                applyClarifyActivity(pendingClarify)
+            }
             if let running = snapshot.running {
                 setRunning(running)
             }
@@ -10833,63 +10911,12 @@ final class AppState: ObservableObject {
                 activity: activity
             ))
 
-        case .clarify(_, let requestId, let question, let choices):
-            let activity = ClarifyActivity(
-                requestId: requestId,
-                question: question,
-                choices: choices.map { ClarifyChoice(label: $0.label, value: $0.value) },
-                status: .pending
-            )
-            if let index = messages.firstIndex(where: { $0.clarify?.requestId == requestId }) {
-                messages[index].content = question
-                messages[index].clarify = activity
-            } else {
-                // A still-pending push-delivered card for the same question is
-                // superseded by the live event (different ids: gateway vs
-                // plugin-minted), so one logical clarify never renders two
-                // answerable cards. Resolved history stays visible, and a
-                // .submitting card is left alone: its relay answer may already
-                // be in flight and will settle it by request id.
-                var supersededRequestIds: [String] = []
-                let liveQuestion = question.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-                messages.removeAll { message in
-                    guard let clarify = message.clarify,
-                          clarify.requestId.hasPrefix(PendingDecisionPayload.relayRequestPrefix),
-                          clarify.status == .pending,
-                          clarify.question.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == liveQuestion else {
-                        return false
-                    }
-                    supersededRequestIds.append(clarify.requestId)
-                    return true
-                }
-                // The superseded card must also leave the presentation cache —
-                // the ordinary flush re-appends still-pending stored cards, so
-                // an in-memory-only removal would resurface as a duplicate
-                // answerable card after the next cold-start resume.
-                let cacheSessionIDs = [
-                    activeSessionId,
-                    reconciliation?.requestedSessionId,
-                    reconciliation?.resolvedSessionId
-                ].compactMap { $0 }
-                for requestId in supersededRequestIds {
-                    sessionPresentationCache.removePendingDecision(
-                        key: "clarify:\(requestId)",
-                        profile: activeProfile,
-                        sessionIDs: cacheSessionIDs
-                    )
-                }
-                // The clarify row must sit above the live reasoning card's
-                // eventual commit — settle the segment before it lands.
-                settleReasoningSegmentIntoTranscript()
-                messages.append(ChatMessage(
-                    id: "clarify-\(requestId)",
-                    role: .clarify,
-                    content: question,
-                    timestamp: Self.localTimestamp(),
-                    clarify: activity
-                ))
-            }
+        case .clarify(_, let activity):
+            applyClarifyActivity(activity)
             setRunning(true)
+
+        case .clarifyExpire(_, let requestId):
+            expireClarifyRequest(requestId: requestId)
 
         case .approval(_, let activity):
             if let index = messages.lastIndex(where: {
@@ -10941,6 +10968,135 @@ final class AppState: ObservableObject {
         case .unparsed:
             break
         }
+    }
+
+    // MARK: - Clarify lifecycle
+
+    /// Upserts one normalized clarification card, keyed by the gateway
+    /// `request_id`. Re-delivered events (WS replay buffers, resume replays)
+    /// update the existing card in place rather than duplicating it, and they
+    /// never unlock a question this device already answered or has an answer
+    /// in flight for — those local states are strictly newer than a replayed
+    /// one-shot event.
+    private func applyClarifyActivity(_ activity: ClarifyActivity) {
+        if let index = messages.firstIndex(where: { $0.clarify?.requestId == activity.requestId }) {
+            var merged = activity
+            if let existing = messages[index].clarify {
+                merged.isExpired = merged.isExpired || existing.isExpired
+                for questionIndex in merged.questions.indices {
+                    guard let prior = existing.questions.first(where: { $0.id == merged.questions[questionIndex].id }),
+                          prior.status == .answered || prior.status == .submitting else { continue }
+                    merged.questions[questionIndex].status = prior.status
+                    merged.questions[questionIndex].answer = prior.answer
+                }
+            }
+            messages[index].content = merged.displayQuestion
+            messages[index].clarify = merged
+            return
+        }
+
+        // A still-pending push-delivered card for the same question is
+        // superseded by the live event (different ids: gateway vs
+        // plugin-minted), so one logical clarify never renders two
+        // answerable cards. Resolved history stays visible, and a
+        // .submitting card is left alone: its relay answer may already
+        // be in flight and will settle it by request id. Correlation stays
+        // question-text-based because the notifier mints its own ids and
+        // reduces a batch to its first question; native batch identity is
+        // always the gateway request_id.
+        var supersededRequestIds: [String] = []
+        let liveQuestion = activity.correlationQuestion
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        messages.removeAll { message in
+            guard let clarify = message.clarify,
+                  clarify.requestId.hasPrefix(PendingDecisionPayload.relayRequestPrefix),
+                  clarify.status == .pending,
+                  clarify.correlationQuestion.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == liveQuestion else {
+                return false
+            }
+            supersededRequestIds.append(clarify.requestId)
+            return true
+        }
+        // The superseded card must also leave the presentation cache —
+        // the ordinary flush re-appends still-pending stored cards, so
+        // an in-memory-only removal would resurface as a duplicate
+        // answerable card after the next cold-start resume.
+        let cacheSessionIDs = [
+            activeSessionId,
+            reconciliation?.requestedSessionId,
+            reconciliation?.resolvedSessionId
+        ].compactMap { $0 }
+        for requestId in supersededRequestIds {
+            sessionPresentationCache.removePendingDecision(
+                key: "clarify:\(requestId)",
+                profile: activeProfile,
+                sessionIDs: cacheSessionIDs
+            )
+        }
+        // The clarify row must sit above the live reasoning card's
+        // eventual commit — settle the segment before it lands.
+        settleReasoningSegmentIntoTranscript()
+        messages.append(ChatMessage(
+            id: "clarify-\(activity.requestId)",
+            role: .clarify,
+            content: activity.displayQuestion,
+            timestamp: Self.localTimestamp(),
+            clarify: activity
+        ))
+    }
+
+    /// Applies `clarify.expire { request_id }`: unanswered questions stop
+    /// presenting answer controls and a late response can no longer make the
+    /// request read as answered. Request identity — never question text —
+    /// decides which card is torn down, so unrelated clarifies are untouched.
+    private func expireClarifyRequest(requestId: String) {
+        guard let index = messages.firstIndex(where: { $0.clarify?.requestId == requestId }),
+              var activity = messages[index].clarify,
+              !activity.isExpired else { return }
+        activity.isExpired = true
+        for questionIndex in activity.questions.indices
+        where activity.questions[questionIndex].status != .answered {
+            activity.questions[questionIndex].status = .expired
+            activity.questions[questionIndex].error = nil
+        }
+        activity.error = "This question is no longer active — Hermes timed it out and continued."
+        messages[index].clarify = activity
+        cacheMessagePresentation()
+    }
+
+    /// Applies the typed `clarify.respond` outcome to the matching card. The
+    /// gateway's `remaining` list is the authority on whether one sub-question
+    /// was locked or the whole request completed, and an expired outcome never
+    /// reads as success. Only the targeted question mutates on failure, so one
+    /// question's network error cannot corrupt unrelated answered questions.
+    private func applyClarifyResponseOutcome(
+        _ outcome: HermesClient.ClarifyResponseOutcome,
+        requestId: String,
+        questionId: String,
+        answer: String
+    ) {
+        guard let index = messages.firstIndex(where: { $0.clarify?.requestId == requestId }),
+              var activity = messages[index].clarify else { return }
+        switch outcome {
+        case .expired:
+            activity.isExpired = true
+            for questionIndex in activity.questions.indices
+            where activity.questions[questionIndex].status != .answered {
+                activity.questions[questionIndex].status = .expired
+                activity.questions[questionIndex].error = nil
+            }
+            activity.error = "This question is no longer active — Hermes timed it out and continued."
+        case .accepted:
+            guard let questionIndex = activity.questions.firstIndex(where: { $0.id == questionId }) else {
+                return
+            }
+            activity.questions[questionIndex].status = .answered
+            activity.questions[questionIndex].answer = answer
+            activity.questions[questionIndex].error = nil
+        }
+        messages[index].clarify = activity
+        cacheMessagePresentation()
     }
 
     /// A reasoning delta belongs exactly where Hermes emitted it. Gateways can

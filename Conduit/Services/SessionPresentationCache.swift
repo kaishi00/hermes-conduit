@@ -283,7 +283,7 @@ final class SessionPresentationCache {
                     merged.append(ChatMessage(
                         id: cachedMessage?.id ?? "clarify-\(clarify.requestId)",
                         role: .clarify,
-                        content: clarify.question,
+                        content: clarify.displayQuestion,
                         timestamp: cachedMessage?.timestamp ?? "",
                         clarify: clarify
                     ))

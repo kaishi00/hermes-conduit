@@ -1932,7 +1932,11 @@ struct ToolCard: View {
 struct ClarifyCard: View {
     let message: ChatMessage
     @EnvironmentObject var appState: AppState
-    @State private var customAnswer = ""
+    // Per-question draft state, keyed by the gateway qid: typed custom text
+    // and in-progress multi-select selections. Multi-select intentionally
+    // buffers locally — an RPC fires only on that question's confirm.
+    @State private var customAnswers: [String: String] = [:]
+    @State private var multiSelections: [String: Set<String>] = [:]
 
     var body: some View {
         if let clarify = message.clarify {
@@ -1946,7 +1950,7 @@ struct ClarifyCard: View {
                             .tracking(0.5)
                             .foregroundStyle(statusColor(for: clarify.status))
                         SelectableTextView(
-                            text: clarify.question,
+                            text: headerText(for: clarify),
                             font: .preferredFont(forTextStyle: .subheadline).withTraits(.traitBold),
                             textColor: .label
                         )
@@ -1955,83 +1959,21 @@ struct ClarifyCard: View {
                     Spacer(minLength: 8)
                     if clarify.status == .submitting {
                         ProgressView().controlSize(.small)
-                    } else if clarify.status == .answered, clarify.answer != nil {
-                        // Only this device's accepted answer earns the check;
-                        // an answered-elsewhere settle renders no checkmark so
-                        // the header agrees with the body copy.
+                    } else if clarify.status == .answered {
                         Image(systemName: "checkmark.circle.fill")
                             .foregroundStyle(.green)
                     }
                     MessageTimestampLabel(timestamp: message.timestamp, tone: .supporting)
                 }
 
-                if clarify.status == .answered, let answer = clarify.answer {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("YOUR ANSWER")
-                            .font(.caption2.weight(.bold))
-                            .tracking(0.5)
-                            .foregroundStyle(.green)
-                        SelectableTextView(
-                            text: answer,
-                            font: .preferredFont(forTextStyle: .subheadline),
-                            textColor: .label
-                        )
-                    }
-                    .padding(12)
-                    .background(Color.green.opacity(0.10), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                } else if clarify.status == .answered {
-                    // Answered elsewhere (relay 409): settled, but this device's
-                    // rejected text must not display as what Hermes received —
-                    // and the disabled controls should not linger either.
-                    Text("Answered on another device")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(clarify.choices) { choice in
-                        Button {
-                            send(choice.value, for: clarify)
-                        } label: {
-                            HStack {
-                                Text(choice.label)
-                                    .font(.body)
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.caption)
-                            }
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
-                            .conduitGlassControl(cornerRadius: 14, tint: .conduitAccent.opacity(0.12))
-                            .foregroundStyle(.primary)
-                        }
-                        .disabled(!canRespond(clarify.status))
-                    }
-
-                    HStack(spacing: 8) {
-                        TextField(
-                            clarify.choices.isEmpty ? "Type your answer…" : "Something else…",
-                            text: $customAnswer,
-                            axis: .vertical
-                        )
-                        .lineLimit(1...4)
-                        .submitLabel(.send)
-                        .onSubmit { send(customAnswer, for: clarify) }
-                        .disabled(!canRespond(clarify.status))
-
-                        Button {
-                            send(customAnswer, for: clarify)
-                        } label: {
-                            Image(systemName: "arrow.up")
-                                .font(.subheadline.weight(.bold))
-                                .frame(width: 36, height: 36)
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.white)
-                        .background(Color.orange, in: Circle())
-                        .disabled(customAnswer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !canRespond(clarify.status))
-                        .opacity(customAnswer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !canRespond(clarify.status) ? 0.45 : 1)
-                    }
-                    .padding(8)
-                    .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                ForEach(clarify.questions) { question in
+                    ClarifyQuestionRow(
+                        question: question,
+                        customAnswer: bindingForCustomAnswer(question),
+                        selection: bindingForSelection(question),
+                        onSend: { answer in send(answer, for: question, in: clarify) },
+                        onConfirmMultiSelect: { confirmMultiSelect(for: question, in: clarify) }
+                    )
                 }
 
                 if let error = clarify.error, !error.isEmpty {
@@ -2045,15 +1987,46 @@ struct ClarifyCard: View {
         }
     }
 
-    private func canRespond(_ status: ClarifyActivity.Status) -> Bool {
-        status == .pending || status == .error
+    /// One-question cards keep the exact legacy header (the question itself);
+    /// a batch summarizes here because every question renders its own row.
+    private func headerText(for clarify: ClarifyActivity) -> String {
+        guard clarify.questions.count > 1 else {
+            return clarify.questions.first?.question ?? ""
+        }
+        return "Hermes asked \(clarify.questions.count) questions before it can continue"
     }
 
-    private func send(_ answer: String, for clarify: ClarifyActivity) {
+    private func bindingForCustomAnswer(_ question: ClarifyQuestion) -> Binding<String> {
+        Binding(
+            get: { customAnswers[question.id] ?? "" },
+            set: { customAnswers[question.id] = $0 }
+        )
+    }
+
+    private func bindingForSelection(_ question: ClarifyQuestion) -> Binding<Set<String>> {
+        Binding(
+            get: { multiSelections[question.id] ?? [] },
+            set: { multiSelections[question.id] = $0 }
+        )
+    }
+
+    private func send(_ answer: String, for question: ClarifyQuestion, in clarify: ClarifyActivity) {
         let trimmed = answer.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, canRespond(clarify.status) else { return }
-        customAnswer = ""
-        Task { await appState.respondToClarify(requestId: clarify.requestId, answer: trimmed) }
+        guard !trimmed.isEmpty, isAnswerable(question) else { return }
+        customAnswers[question.id] = ""
+        Task { await appState.respondToClarify(requestId: clarify.requestId, questionId: question.id, answer: trimmed) }
+    }
+
+    private func confirmMultiSelect(for question: ClarifyQuestion, in clarify: ClarifyActivity) {
+        // Preserve the gateway's choice order rather than selection order.
+        let values = question.choices.filter { multiSelections[question.id]?.contains($0.value) == true }
+            .map(\.value)
+        guard !values.isEmpty else { return }
+        send(ClarifyQuestion.multiSelectAnswer(values), for: question, in: clarify)
+    }
+
+    private func isAnswerable(_ question: ClarifyQuestion) -> Bool {
+        question.status == .pending || question.status == .error
     }
 
     private func statusTitle(for status: ClarifyActivity.Status) -> String {
@@ -2062,6 +2035,7 @@ struct ClarifyCard: View {
         case .submitting: return "SENDING ANSWER"
         case .answered: return "ANSWERED"
         case .error: return "TRY AGAIN"
+        case .expired: return "EXPIRED"
         }
     }
 
@@ -2070,7 +2044,257 @@ struct ClarifyCard: View {
         case .pending, .submitting: return .orange
         case .answered: return .green
         case .error: return .red
+        case .expired: return .secondary
         }
+    }
+}
+
+/// One question inside a clarification card: single-choice buttons, genuine
+/// multi-select toggles with a confirm step, or a free-text field. Each row
+/// owns its answer/lock lifecycle — one question submitting or failing never
+/// disables its siblings, and an accepted answer renders locked.
+struct ClarifyQuestionRow: View {
+    let question: ClarifyQuestion
+    @Binding var customAnswer: String
+    @Binding var selection: Set<String>
+    let onSend: (String) -> Void
+    let onConfirmMultiSelect: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 6) {
+                SelectableTextView(
+                    text: question.question,
+                    font: .preferredFont(forTextStyle: .subheadline).withTraits(.traitBold),
+                    textColor: .label
+                )
+                .frame(maxWidth: .infinity, alignment: .leading)
+                statusIcon
+            }
+
+            switch question.status {
+            case .answered:
+                answeredBlock
+            case .expired:
+                Text("No longer active")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            case .submitting:
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("Locking your answer…")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            case .pending, .error:
+                controls
+                if let error = question.error, !error.isEmpty {
+                    Label(error, systemImage: "exclamationmark.circle")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+            }
+        }
+        .padding(12)
+        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    @ViewBuilder
+    private var statusIcon: some View {
+        switch question.status {
+        case .answered:
+            Image(systemName: "checkmark.circle.fill")
+                .font(.caption)
+                .foregroundStyle(.green)
+        case .error:
+            Image(systemName: "exclamationmark.circle.fill")
+                .font(.caption)
+                .foregroundStyle(.red)
+        case .expired:
+            Image(systemName: "clock.badge.xmark")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        case .pending, .submitting:
+            EmptyView()
+        }
+    }
+
+    @ViewBuilder
+    private var answeredBlock: some View {
+        if let answer = question.resolvedAnswer, !answer.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("YOUR ANSWER")
+                    .font(.caption2.weight(.bold))
+                    .tracking(0.5)
+                    .foregroundStyle(.green)
+                SelectableTextView(
+                    text: answer,
+                    font: .preferredFont(forTextStyle: .subheadline),
+                    textColor: .label
+                )
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.green.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        } else {
+            // Answered elsewhere (relay 409): settled, but this device's
+            // rejected text must not display as what Hermes received.
+            Text("Answered on another device")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private var controls: some View {
+        if question.multiSelect {
+            multiSelectControls
+        } else {
+            singleChoiceControls
+        }
+    }
+
+    @ViewBuilder
+    private var singleChoiceControls: some View {
+        ForEach(question.choices) { choice in
+            Button {
+                onSend(choice.value)
+            } label: {
+                HStack {
+                    Text(choice.label)
+                        .font(.body)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .conduitGlassControl(cornerRadius: 14, tint: .conduitAccent.opacity(0.12))
+                .foregroundStyle(.primary)
+            }
+            .disabled(!isAnswerable)
+        }
+
+        HStack(spacing: 8) {
+            TextField(
+                question.choices.isEmpty ? "Type your answer…" : "Something else…",
+                text: $customAnswer,
+                axis: .vertical
+            )
+            .lineLimit(1...4)
+            .submitLabel(.send)
+            .onSubmit { submitCustomAnswer() }
+            .disabled(!isAnswerable)
+
+            Button {
+                submitCustomAnswer()
+            } label: {
+                Image(systemName: "arrow.up")
+                    .font(.subheadline.weight(.bold))
+                    .frame(width: 36, height: 36)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.white)
+            .background(Color.orange, in: Circle())
+            .disabled(!canSubmitCustomAnswer)
+            .opacity(canSubmitCustomAnswer ? 1 : 0.45)
+        }
+        .padding(8)
+        .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private var multiSelectControls: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(question.choices) { choice in
+                Button {
+                    toggle(choice.value)
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: selection.contains(choice.value) ? "checkmark.circle.fill" : "circle")
+                            .foregroundStyle(selection.contains(choice.value) ? Color.orange : Color.secondary)
+                        Text(choice.label)
+                            .font(.body)
+                            .foregroundStyle(.primary)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .conduitGlassControl(cornerRadius: 14, tint: selection.contains(choice.value) ? .conduitAccent.opacity(0.2) : .conduitAccent.opacity(0.12))
+                }
+                .buttonStyle(.plain)
+                .disabled(!isAnswerable)
+            }
+
+            Button {
+                onConfirmMultiSelect()
+            } label: {
+                HStack {
+                    Text(confirmTitle)
+                        .font(.subheadline.weight(.semibold))
+                    Spacer()
+                    Image(systemName: "arrow.up")
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .conduitGlassControl(cornerRadius: 14, tint: .conduitAccent.opacity(0.14))
+                .foregroundStyle(.primary)
+            }
+            .disabled(selection.isEmpty || !isAnswerable)
+            .opacity(selection.isEmpty || !isAnswerable ? 0.45 : 1)
+
+            HStack(spacing: 8) {
+                TextField(
+                    "Or type a custom answer…",
+                    text: $customAnswer,
+                    axis: .vertical
+                )
+                .lineLimit(1...4)
+                .submitLabel(.send)
+                .onSubmit { submitCustomAnswer() }
+                .disabled(!isAnswerable)
+
+                Button {
+                    submitCustomAnswer()
+                } label: {
+                    Image(systemName: "arrow.up")
+                        .font(.subheadline.weight(.bold))
+                        .frame(width: 36, height: 36)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.white)
+                .background(Color.orange, in: Circle())
+                .disabled(!canSubmitCustomAnswer)
+                .opacity(canSubmitCustomAnswer ? 1 : 0.45)
+            }
+            .padding(8)
+            .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+    }
+
+    private var confirmTitle: String {
+        selection.isEmpty ? "Select to confirm" : "Confirm \(selection.count) selected"
+    }
+
+    private var isAnswerable: Bool {
+        question.status == .pending || question.status == .error
+    }
+
+    private var canSubmitCustomAnswer: Bool {
+        isAnswerable && !customAnswer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func toggle(_ value: String) {
+        guard isAnswerable else { return }
+        if selection.contains(value) {
+            selection.remove(value)
+        } else {
+            selection.insert(value)
+        }
+    }
+
+    private func submitCustomAnswer() {
+        guard canSubmitCustomAnswer else { return }
+        onSend(customAnswer)
     }
 }
 
