@@ -96,10 +96,10 @@ enum StreamEventParser {
             return .clarify(sessionId: sessionId, activity: clarify)
 
         case "clarify.expire":
-            let requestId = payload?["request_id"]?.stringValue
-                ?? payload?["requestId"]?.stringValue
-                ?? ""
-            guard !requestId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+            let requestId = (payload?["request_id"]?.stringValue
+                ?? payload?["requestId"]?.stringValue ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !requestId.isEmpty else { return nil }
             return .clarifyExpire(sessionId: sessionId, requestId: requestId)
 
         case "approval.request":

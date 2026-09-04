@@ -332,6 +332,160 @@ final class ClarifyBatchStateTests: XCTestCase {
 
     // MARK: - Duplicate / replay identity
 
+    func testLegacyScalarCardAnswersAtRequestLevelWithoutQuestionID() async throws {
+        // A legacy scalar card's question id is minted locally ("q0"); the
+        // wire frame must keep the legacy request-level shape the gateway
+        // has always accepted, never a question_id the server cannot know.
+        let (appState, _) = makeAppState()
+        appState.messages = [
+            ChatMessage(
+                id: "clarify-req-legacy",
+                role: .clarify,
+                content: "Pick",
+                timestamp: "1",
+                clarify: ClarifyActivity(
+                    requestId: "req-legacy",
+                    question: "Pick",
+                    choices: [ClarifyChoice(label: "a", value: "a")]
+                )
+            )
+        ]
+        let transport = ClarifyFakeTransport()
+        let socket = ClarifyFakeSocket()
+        try await installConnectedClient(appState, socket: socket, transport: transport)
+
+        let request = try await respond(
+            appState: appState,
+            socket: socket,
+            requestId: "req-legacy",
+            questionId: "q0",
+            answer: "a",
+            result: ["status": "ok"]
+        )
+
+        let params = try XCTUnwrap(request["params"] as? [String: Any])
+        XCTAssertEqual(params["request_id"] as? String, "req-legacy")
+        XCTAssertNil(params["question_id"], "A synthetic qid must never ride the wire")
+        let settled = try XCTUnwrap(clarifyCard(in: appState, requestId: "req-legacy"))
+        XCTAssertEqual(settled.questions[0].status, .answered)
+        XCTAssertEqual(settled.status, .answered)
+    }
+
+    func testGatewayBatchQIDAlwaysRidesTheWireEvenWhenQ0() async throws {
+        // A REAL gateway batch can mint "q0" as its first qid — the synthetic
+        // marker, not the id value, decides the wire shape.
+        let (appState, _) = makeAppState()
+        var activity = ClarifyActivity(
+            requestId: "req-real",
+            questions: [ClarifyQuestion(id: "q0", question: "Real?", choices: [ClarifyChoice(label: "x", value: "x")])]
+        )
+        activity.questions[0].isSyntheticID = false
+        appState.messages = [
+            ChatMessage(id: "clarify-req-real", role: .clarify, content: "real", timestamp: "1", clarify: activity)
+        ]
+        let transport = ClarifyFakeTransport()
+        let socket = ClarifyFakeSocket()
+        try await installConnectedClient(appState, socket: socket, transport: transport)
+
+        let request = try await respond(
+            appState: appState,
+            socket: socket,
+            requestId: "req-real",
+            questionId: "q0",
+            answer: "x",
+            result: ["status": "ok", "remaining": []]
+        )
+
+        let params = try XCTUnwrap(request["params"] as? [String: Any])
+        XCTAssertEqual(params["question_id"] as? String, "q0", "A gateway-minted qid is addressed per question")
+    }
+
+    func testAcceptedOutcomeSettlesSiblingsTheGatewayNoLongerLists() async throws {
+        // `remaining` is the gateway's authority on what is still open. A
+        // sibling it no longer lists was locked by another surface; settle it
+        // without claiming this device's answer text.
+        let (appState, _) = makeAppState()
+        appState.messages = [
+            ChatMessage(id: "clarify-req-batch", role: .clarify, content: "batch", timestamp: "1", clarify: makeBatchActivity())
+        ]
+        let transport = ClarifyFakeTransport()
+        let socket = ClarifyFakeSocket()
+        try await installConnectedClient(appState, socket: socket, transport: transport)
+
+        try await respond(
+            appState: appState,
+            socket: socket,
+            requestId: "req-batch",
+            questionId: "environment",
+            answer: "staging",
+            result: ["status": "ok", "remaining": ["notes"]]
+        )
+
+        let settled = try XCTUnwrap(clarifyCard(in: appState, requestId: "req-batch"))
+        XCTAssertEqual(settled.questions[0].status, .answered)
+        XCTAssertEqual(settled.questions[0].answer, "staging")
+        XCTAssertEqual(settled.questions[1].status, .answered, "Absent from remaining ⇒ locked elsewhere")
+        XCTAssertNil(settled.questions[1].answer, "The locked-elsewhere row must not display this device's answer text")
+        XCTAssertEqual(settled.questions[2].status, .pending, "Still listed in remaining ⇒ stays answerable")
+    }
+
+    func testAcceptedOutcomeCannotResurrectAnExpiredRequest() async throws {
+        // Expire lands while the respond RPC is in flight (reconnect race);
+        // the accepted response that arrives afterwards must not flip the
+        // expired card back to answered.
+        let (appState, _) = makeAppState()
+        appState.messages = [
+            ChatMessage(id: "clarify-req-batch", role: .clarify, content: "batch", timestamp: "1", clarify: makeBatchActivity())
+        ]
+        let transport = ClarifyFakeTransport()
+        let socket = ClarifyFakeSocket()
+        try await installConnectedClient(appState, socket: socket, transport: transport)
+
+        let sent = ClarifyGate()
+        socket.onSend = { sent.signal() }
+        let task = Task {
+            await appState.respondToClarify(
+                requestId: "req-batch",
+                questionId: "environment",
+                answer: "staging"
+            )
+        }
+        try await sent.wait("the clarify.respond request to be sent")
+        let request = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(try XCTUnwrap(socket.sentTexts.last).utf8)) as? [String: Any]
+        )
+        let id = try XCTUnwrap(request["id"] as? Int)
+
+        // Expire arrives before the RPC response.
+        appState.handleStreamEvent(.clarifyExpire(sessionId: "stored-a", requestId: "req-batch"))
+
+        let response: [String: Any] = [
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": ["status": "ok", "remaining": []]
+        ]
+        socket.deliver(String(decoding: try JSONSerialization.data(withJSONObject: response), as: UTF8.self))
+        _ = await task.value
+
+        let settled = try XCTUnwrap(clarifyCard(in: appState, requestId: "req-batch"))
+        XCTAssertEqual(settled.status, .expired, "A late accepted outcome cannot make an expired request read as answered")
+        XCTAssertTrue(settled.isExpired)
+    }
+
+    func testReplayAfterExpireKeepsQuestionsExpired() {
+        let (appState, _) = makeAppState()
+        appState.messages = [
+            ChatMessage(id: "clarify-req-batch", role: .clarify, content: "batch", timestamp: "1", clarify: makeBatchActivity())
+        ]
+        appState.handleStreamEvent(.clarifyExpire(sessionId: "stored-a", requestId: "req-batch"))
+        appState.handleStreamEvent(.clarify(sessionId: "stored-a", activity: makeBatchActivity()))
+
+        let settled = try XCTUnwrap(clarifyCard(in: appState, requestId: "req-batch"))
+        XCTAssertEqual(settled.status, .expired, "A replayed one-shot event must not re-arm an expired card")
+        XCTAssertEqual(settled.questions[0].status, .expired)
+        XCTAssertEqual(settled.questions[2].status, .expired)
+    }
+
     func testDuplicateClarifyEventUpdatesInsteadOfDuplicating() async throws {
         let (appState, _) = makeAppState()
         appState.messages = [

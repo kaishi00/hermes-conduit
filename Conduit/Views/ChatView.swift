@@ -1959,16 +1959,30 @@ struct ClarifyCard: View {
                     Spacer(minLength: 8)
                     if clarify.status == .submitting {
                         ProgressView().controlSize(.small)
-                    } else if clarify.status == .answered {
+                    } else if clarify.status == .answered,
+                              clarify.questions.contains(where: { $0.answer != nil }) {
+                        // Only an answer this device holds earns the check;
+                        // an answered-elsewhere settle renders no checkmark so
+                        // the header agrees with the body copy.
                         Image(systemName: "checkmark.circle.fill")
                             .foregroundStyle(.green)
                     }
                     MessageTimestampLabel(timestamp: message.timestamp, tone: .supporting)
                 }
 
+                if !headerText(for: clarify).isEmpty {
+                    SelectableTextView(
+                        text: headerText(for: clarify),
+                        font: .preferredFont(forTextStyle: .subheadline).withTraits(.traitBold),
+                        textColor: .label
+                    )
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
                 ForEach(clarify.questions) { question in
                     ClarifyQuestionRow(
                         question: question,
+                        showsTitle: clarify.questions.count > 1,
                         customAnswer: bindingForCustomAnswer(question),
                         selection: bindingForSelection(question),
                         onSend: { answer in send(answer, for: question, in: clarify) },
@@ -1987,12 +2001,11 @@ struct ClarifyCard: View {
         }
     }
 
-    /// One-question cards keep the exact legacy header (the question itself);
-    /// a batch summarizes here because every question renders its own row.
+    /// One-question cards keep the exact legacy header (the question itself,
+    /// no separate row title); a batch summarizes here and every question row
+    /// carries its own title.
     private func headerText(for clarify: ClarifyActivity) -> String {
-        guard clarify.questions.count > 1 else {
-            return clarify.questions.first?.question ?? ""
-        }
+        guard clarify.questions.count > 1 else { return "" }
         return "Hermes asked \(clarify.questions.count) questions before it can continue"
     }
 
@@ -2052,9 +2065,12 @@ struct ClarifyCard: View {
 /// One question inside a clarification card: single-choice buttons, genuine
 /// multi-select toggles with a confirm step, or a free-text field. Each row
 /// owns its answer/lock lifecycle — one question submitting or failing never
-/// disables its siblings, and an accepted answer renders locked.
+/// disables its siblings, and an accepted answer renders locked. In a batch
+/// each row draws its own grouped box and title; a single-question card keeps
+/// the legacy flat layout (the card header already carries the title).
 struct ClarifyQuestionRow: View {
     let question: ClarifyQuestion
+    var showsTitle: Bool = true
     @Binding var customAnswer: String
     @Binding var selection: Set<String>
     let onSend: (String) -> Void
@@ -2062,15 +2078,19 @@ struct ClarifyQuestionRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 6) {
-                SelectableTextView(
-                    text: question.question,
-                    font: .preferredFont(forTextStyle: .subheadline).withTraits(.traitBold),
-                    textColor: .label
-                )
-                .frame(maxWidth: .infinity, alignment: .leading)
-                statusIcon
+            if showsTitle {
+                HStack(alignment: .top, spacing: 6) {
+                    SelectableTextView(
+                        text: question.question,
+                        font: .preferredFont(forTextStyle: .subheadline).withTraits(.traitBold),
+                        textColor: .label
+                    )
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    statusIcon
+                }
             }
+            // Without a title (single-question card) the card header already
+            // carries the question text and the status title/icon.
 
             switch question.status {
             case .answered:
@@ -2095,8 +2115,13 @@ struct ClarifyQuestionRow: View {
                 }
             }
         }
-        .padding(12)
-        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(showsTitle ? 12 : 0)
+        .background {
+            if showsTitle {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color.primary.opacity(0.04))
+            }
+        }
     }
 
     @ViewBuilder
@@ -2285,11 +2310,14 @@ struct ClarifyQuestionRow: View {
 
     private func toggle(_ value: String) {
         guard isAnswerable else { return }
-        if selection.contains(value) {
-            selection.remove(value)
-        } else {
-            selection.insert(value)
+        // Explicit copy-mutate-assign through the binding (a Binding<Set>'s
+        // wrappedValue also supports in-place mutation, but the explicit form
+        // makes the write-back unmistakable).
+        var updated = selection
+        if !updated.insert(value).inserted {
+            updated.remove(value)
         }
+        selection = updated
     }
 
     private func submitCustomAnswer() {

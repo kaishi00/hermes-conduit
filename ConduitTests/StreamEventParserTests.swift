@@ -497,6 +497,23 @@ final class StreamEventParserTests: XCTestCase {
         XCTAssertNil(event)
     }
 
+    func testClarifyBatchDeduplicatesRepeatedQIDs() {
+        // Repeated qids would violate Identifiable in the card's ForEach and
+        // make per-question answers ambiguous; keep the first occurrence.
+        let event = parse(#"""
+        {"type": "clarify.request", "session_id": "s1", "payload": {"request_id": "req-1", "questions": [
+            {"qid": "dup", "question": "First", "choices": ["a"]},
+            {"qid": "dup", "question": "Second", "choices": ["b"]},
+            {"qid": "ok", "question": "Valid", "choices": ["c"]}
+        ]}}
+        """#)
+        guard case .clarify(_, let activity) = event else {
+            return XCTFail("Expected clarify")
+        }
+        XCTAssertEqual(activity.questions.map(\.id), ["dup", "ok"])
+        XCTAssertEqual(activity.questions[0].question, "First")
+    }
+
     func testClarifyBatchWithMissingRequestIDReturnsNil() {
         let event = parse(#"""
         {"type": "clarify.request", "session_id": "s1", "payload": {"questions": [{"qid": "a", "question": "Q?", "choices": ["x"]}]}}

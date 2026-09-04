@@ -2110,8 +2110,15 @@ enum MessageNormalizer {
         guard !requestId.isEmpty else { return nil }
 
         if let rawQuestions = payload["questions"]?.arrayValue, !rawQuestions.isEmpty {
-            let questions = rawQuestions.compactMap { entry -> ClarifyQuestion? in
-                clarifyQuestion(from: entry.objectValue ?? [:])
+            // Preserve gateway order; drop duplicate qids — questions key the
+            // UI (Identifiable ForEach) and per-question respond, so a repeat
+            // qid would crash the render and make answers ambiguous.
+            var questions: [ClarifyQuestion] = []
+            for entry in rawQuestions {
+                guard let question = clarifyQuestion(from: entry.objectValue ?? [:]) else { continue }
+                if !questions.contains(where: { $0.id == question.id }) {
+                    questions.append(question)
+                }
             }
             if !questions.isEmpty {
                 return ClarifyActivity(requestId: requestId, questions: questions)
@@ -2197,14 +2204,23 @@ enum MessageNormalizer {
     /// Reconstructs a clarification from the gateway's authoritative
     /// `pending_clarify` snapshot (`session.resume`): the same payload as the
     /// one-shot `clarify.request`, plus the answers locked before the client
-    /// detached, keyed by `qid`.
+    /// detached, keyed by `qid`. Locked answers are accepted in either wire
+    /// form — the array string the app sends, or a real JSON array echo.
     static func pendingClarifyActivity(from payload: [String: AnyCodable]) -> ClarifyActivity? {
         guard var activity = clarifyActivity(from: payload) else { return nil }
         let answers = payload["answers"]?.objectValue ?? [:]
         guard !answers.isEmpty else { return activity }
         for index in activity.questions.indices {
-            guard let answer = answers[activity.questions[index].id]?.stringValue,
-                  !answer.isEmpty else { continue }
+            guard let raw = answers[activity.questions[index].id], raw != .null else { continue }
+            let answer: String?
+            if let text = raw.stringValue {
+                answer = text
+            } else if let values = raw.arrayValue?.compactMap(\.stringValue) {
+                answer = ClarifyQuestion.multiSelectAnswer(values)
+            } else {
+                answer = nil
+            }
+            guard let answer, !answer.isEmpty else { continue }
             activity.questions[index].status = .answered
             activity.questions[index].answer = answer
         }

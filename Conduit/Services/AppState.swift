@@ -8442,17 +8442,31 @@ final class AppState: ObservableObject {
             )
             return
         }
+        let question = activity.questions[questionIndex]
+        // The wire answer for a multi-select question must be the array form
+        // Hermes' batch parser accepts; typed custom text arrives as a bare
+        // string and is wrapped here so every multi-select path is uniform.
+        let wireAnswer: String
+        if question.multiSelect,
+           JSONSerialization.jsonObject(with: Data(trimmedAnswer.utf8)) as? [String] == nil {
+            wireAnswer = ClarifyQuestion.multiSelectAnswer([trimmedAnswer])
+        } else {
+            wireAnswer = trimmedAnswer
+        }
         do {
             let outcome = try await client.respondToClarification(
                 requestId: requestId,
-                answer: trimmedAnswer,
-                questionId: activity.questions[questionIndex].id
+                answer: wireAnswer,
+                // Only gateway-minted qids may address a question. A locally
+                // synthesized id (legacy scalar card) rides the request-level
+                // respond shape every gateway generation accepts.
+                questionId: question.isSyntheticID ? nil : question.id
             )
             applyClarifyResponseOutcome(
                 outcome,
                 requestId: requestId,
-                questionId: activity.questions[questionIndex].id,
-                answer: trimmedAnswer
+                questionId: question.id,
+                answer: wireAnswer
             )
         } catch {
             if Self.isExpiredPromptError(error) {
@@ -8462,7 +8476,7 @@ final class AppState: ObservableObject {
             } else {
                 markClarifyQuestionError(
                     requestId: requestId,
-                    questionId: activity.questions[questionIndex].id,
+                    questionId: question.id,
                     message: "Hermes did not accept that answer.",
                     globalMessage: error.localizedDescription
                 )
@@ -10982,12 +10996,28 @@ final class AppState: ObservableObject {
         if let index = messages.firstIndex(where: { $0.clarify?.requestId == activity.requestId }) {
             var merged = activity
             if let existing = messages[index].clarify {
+                // Expiry is sticky for this request id: a replayed one-shot
+                // event must not re-arm controls the gateway already expired.
                 merged.isExpired = merged.isExpired || existing.isExpired
+                let incomingIDs = Set(merged.questions.map(\.id))
                 for questionIndex in merged.questions.indices {
                     guard let prior = existing.questions.first(where: { $0.id == merged.questions[questionIndex].id }),
-                          prior.status == .answered || prior.status == .submitting else { continue }
+                          prior.status == .answered || prior.status == .submitting || prior.status == .expired else { continue }
+                    // Local answered/submitting state is strictly newer than a
+                    // replayed pending event; expired state stays expired.
                     merged.questions[questionIndex].status = prior.status
                     merged.questions[questionIndex].answer = prior.answer
+                }
+                // Questions only the local card holds survive the merge — a
+                // partial replay must not erase rows the user can still see.
+                let survivingExtras = existing.questions.filter { !incomingIDs.contains($0.id) }
+                merged.questions.append(contentsOf: survivingExtras)
+            }
+            if merged.isExpired {
+                for questionIndex in merged.questions.indices
+                where merged.questions[questionIndex].status != .answered {
+                    merged.questions[questionIndex].status = .expired
+                    merged.questions[questionIndex].error = nil
                 }
             }
             messages[index].content = merged.displayQuestion
@@ -11060,9 +11090,15 @@ final class AppState: ObservableObject {
             activity.questions[questionIndex].status = .expired
             activity.questions[questionIndex].error = nil
         }
-        activity.error = "This question is no longer active — Hermes timed it out and continued."
+        activity.error = Self.clarifyExpiredNotice(for: activity.questions.count)
         messages[index].clarify = activity
         cacheMessagePresentation()
+    }
+
+    private static func clarifyExpiredNotice(for questionCount: Int) -> String {
+        questionCount > 1
+            ? "These questions are no longer active — Hermes timed them out and continued."
+            : "This question is no longer active — Hermes timed it out and continued."
     }
 
     /// Applies the typed `clarify.respond` outcome to the matching card. The
@@ -11086,14 +11122,29 @@ final class AppState: ObservableObject {
                 activity.questions[questionIndex].status = .expired
                 activity.questions[questionIndex].error = nil
             }
-            activity.error = "This question is no longer active — Hermes timed it out and continued."
-        case .accepted:
-            guard let questionIndex = activity.questions.firstIndex(where: { $0.id == questionId }) else {
+            activity.error = Self.clarifyExpiredNotice(for: activity.questions.count)
+        case .accepted(let remaining):
+            // A late accepted outcome can never resurrect an expired request.
+            guard !activity.isExpired,
+                  let questionIndex = activity.questions.firstIndex(where: { $0.id == questionId }) else {
                 return
             }
             activity.questions[questionIndex].status = .answered
             activity.questions[questionIndex].answer = answer
             activity.questions[questionIndex].error = nil
+            // The remaining list is the gateway's authority on what is still
+            // open. A locally pending question it no longer lists was locked
+            // by another surface — settle it without claiming this device's
+            // answer text. In-flight (.submitting) and retried (.error)
+            // questions are left to their own outcomes.
+            let open = Set(remaining)
+            for index in activity.questions.indices
+            where index != questionIndex
+                && activity.questions[index].status == .pending
+                && !open.contains(activity.questions[index].id) {
+                activity.questions[index].status = .answered
+                activity.questions[index].answer = nil
+            }
         }
         messages[index].clarify = activity
         cacheMessagePresentation()

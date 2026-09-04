@@ -923,6 +923,27 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertEqual(activity?.questions[0].status, .pending)
     }
 
+    func testPendingClarifyActivityAcceptsArrayValuedAnswers() {
+        // A gateway may echo a locked multi-select answer as a real JSON
+        // array rather than the array string the app sends; restore it either
+        // way so a locked question never reopens.
+        let activity = MessageNormalizer.pendingClarifyActivity(from: [
+            "request_id": .string("req-batch"),
+            "questions": .array([
+                .object([
+                    "qid": .string("tests"),
+                    "question": .string("Which tests?"),
+                    "choices": .array([.string("unit"), .string("ui")]),
+                    "multi_select": .bool(true)
+                ])
+            ]),
+            "answers": .object(["tests": .array([.string("unit"), .string("ui")])])
+        ])
+
+        XCTAssertEqual(activity?.questions[0].status, .answered)
+        XCTAssertEqual(activity?.questions[0].resolvedAnswer, "unit, ui")
+    }
+
     func testPendingClarifyActivityRejectsPayloadWithoutQuestions() {
         XCTAssertNil(MessageNormalizer.pendingClarifyActivity(from: [
             "request_id": .string("req-1")

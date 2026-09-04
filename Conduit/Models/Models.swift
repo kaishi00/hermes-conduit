@@ -132,6 +132,12 @@ struct ClarifyQuestion: Codable, Equatable, Identifiable {
     /// exposes them through `resolvedAnswer` for display.
     var answer: String?
     var error: String?
+    /// True when `id` was minted locally for a legacy scalar payload rather
+    /// than supplied by the gateway. Synthetic ids must never ride the wire
+    /// as `question_id` — the server has no such qid, and a real gateway
+    /// batch can also mint q0-style ids, so the flag (not the id value) is
+    /// what routes legacy answers through the request-level respond shape.
+    var isSyntheticID: Bool
 
     enum Status: String, Codable {
         case pending
@@ -142,7 +148,7 @@ struct ClarifyQuestion: Codable, Equatable, Identifiable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, question, choices, status, answer, error
+        case id, question, choices, status, answer, error, isSyntheticID
         case multiSelect = "multi_select"
     }
 
@@ -156,7 +162,8 @@ struct ClarifyQuestion: Codable, Equatable, Identifiable {
         multiSelect: Bool = false,
         status: Status = .pending,
         answer: String? = nil,
-        error: String? = nil
+        error: String? = nil,
+        isSyntheticID: Bool = false
     ) {
         self.id = id
         self.question = question
@@ -165,6 +172,31 @@ struct ClarifyQuestion: Codable, Equatable, Identifiable {
         self.status = status
         self.answer = answer
         self.error = error
+        self.isSyntheticID = isSyntheticID
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        question = try container.decode(String.self, forKey: .question)
+        choices = try container.decode([ClarifyChoice].self, forKey: .choices)
+        multiSelect = try container.decodeIfPresent(Bool.self, forKey: .multiSelect) ?? false
+        status = try container.decodeIfPresent(Status.self, forKey: .status) ?? .pending
+        answer = try container.decodeIfPresent(String.self, forKey: .answer)
+        error = try container.decodeIfPresent(String.self, forKey: .error)
+        isSyntheticID = try container.decodeIfPresent(Bool.self, forKey: .isSyntheticID) ?? false
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(question, forKey: .question)
+        try container.encode(choices, forKey: .choices)
+        if multiSelect { try container.encode(true, forKey: .multiSelect) }
+        try container.encode(status, forKey: .status)
+        try container.encodeIfPresent(answer, forKey: .answer)
+        try container.encodeIfPresent(error, forKey: .error)
+        if isSyntheticID { try container.encode(true, forKey: .isSyntheticID) }
     }
 
     /// The accepted answer in display form. A multi-select wire answer is a
@@ -225,7 +257,9 @@ struct ClarifyActivity: Codable, Equatable {
     }
 
     /// Convenience for single-question producers (the push-relay payload and
-    /// tests) that normalizes into a one-question batch.
+    /// tests) that normalizes into a one-question batch. The locally minted
+    /// "q0" identity is marked synthetic: it must never ride the wire as
+    /// `question_id`, because the gateway has no such qid.
     init(
         requestId: String,
         question: String,
@@ -245,7 +279,8 @@ struct ClarifyActivity: Codable, Equatable {
                     multiSelect: multiSelect,
                     status: status,
                     answer: answer,
-                    error: error
+                    error: error,
+                    isSyntheticID: true
                 )
             ],
             error: nil
@@ -259,7 +294,7 @@ struct ClarifyActivity: Codable, Equatable {
         if isExpired { return .expired }
         let statuses = questions.map(\.status)
         if statuses.contains(.submitting) { return .submitting }
-        if !statuses.isEmpty && statuses.allSatisfy({ $0 == .answered || $0 == .expired }) { return .answered }
+        if !statuses.isEmpty && statuses.allSatisfy({ $0 == .answered }) { return .answered }
         if statuses.contains(.pending) { return .pending }
         if statuses.contains(.error) { return .error }
         return .pending
@@ -300,21 +335,25 @@ struct ClarifyActivity: Codable, Equatable {
         }
         // Migration: presentation caches written by older builds stored the
         // legacy single-question fields. Decode what is still usable instead
-        // of failing the whole cache load.
+        // of failing the whole cache load; a degenerate empty-text record
+        // yields an empty question list rather than a phantom question.
         let question = (try? container.decode(String.self, forKey: .question)) ?? ""
         let choices = (try? container.decode([ClarifyChoice].self, forKey: .choices)) ?? []
         let status = (try? container.decode(ClarifyQuestion.Status.self, forKey: .status)) ?? .pending
         let answer = try? container.decode(String.self, forKey: .answer)
-        questions = [
-            ClarifyQuestion(
-                id: "q0",
-                question: question,
-                choices: choices,
-                multiSelect: false,
-                status: status,
-                answer: answer
-            )
-        ]
+        questions = question.isEmpty
+            ? []
+            : [
+                ClarifyQuestion(
+                    id: "q0",
+                    question: question,
+                    choices: choices,
+                    multiSelect: false,
+                    status: status,
+                    answer: answer,
+                    isSyntheticID: true
+                )
+            ]
     }
 
     func encode(to encoder: Encoder) throws {
