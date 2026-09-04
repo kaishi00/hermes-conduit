@@ -1603,22 +1603,22 @@ final class SessionPresentationCacheTests: XCTestCase {
             ChatMessage(
                 id: "clarify-\(pendingClarify.requestId)",
                 role: .clarify,
-                content: pendingClarify.question,
+                content: pendingClarify.displayQuestion,
                 timestamp: "2024-01-01",
                 clarify: pendingClarify
             )
         ], profile: profile, sessionIDs: [sessionId])
         let resolvedClarify = ClarifyActivity(
             requestId: pendingClarify.requestId,
-            question: pendingClarify.question,
-            choices: pendingClarify.choices,
+            question: pendingClarify.questions[0].question,
+            choices: pendingClarify.questions[0].choices,
             status: .answered,
             answer: "red"
         )
         let gatewayMessage = ChatMessage(
             id: "clarify-\(pendingClarify.requestId)",
             role: .clarify,
-            content: resolvedClarify.question,
+            content: resolvedClarify.displayQuestion,
             timestamp: "2024-01-02",
             clarify: resolvedClarify
         )

@@ -8448,7 +8448,7 @@ final class AppState: ObservableObject {
         // string and is wrapped here so every multi-select path is uniform.
         let wireAnswer: String
         if question.multiSelect,
-           JSONSerialization.jsonObject(with: Data(trimmedAnswer.utf8)) as? [String] == nil {
+           (try? JSONSerialization.jsonObject(with: Data(trimmedAnswer.utf8))) as? [String] == nil {
             wireAnswer = ClarifyQuestion.multiSelectAnswer([trimmedAnswer])
         } else {
             wireAnswer = trimmedAnswer

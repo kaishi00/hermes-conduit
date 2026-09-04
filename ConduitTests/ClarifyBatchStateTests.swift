@@ -67,6 +67,7 @@ final class ClarifyBatchStateTests: XCTestCase {
             profile: "default",
             transportFactory: { transport }
         )
+        transport.nextSocket = { socket }
         appState.connection = connection
         appState.client = client
         let connectTask = Task { try await client.connect() }
@@ -148,7 +149,6 @@ final class ClarifyBatchStateTests: XCTestCase {
 
     func testAnsweringFirstBatchQuestionLocksOnlyThatQuestion() async throws {
         let (appState, _) = makeAppState()
-        defer { appState.sessionPresentationCacheForTesting?.clear() }
         appState.messages = [
             ChatMessage(id: "clarify-req-batch", role: .clarify, content: "batch", timestamp: "1", clarify: makeBatchActivity())
         ]
@@ -472,7 +472,7 @@ final class ClarifyBatchStateTests: XCTestCase {
         XCTAssertTrue(settled.isExpired)
     }
 
-    func testReplayAfterExpireKeepsQuestionsExpired() {
+    func testReplayAfterExpireKeepsQuestionsExpired() throws {
         let (appState, _) = makeAppState()
         appState.messages = [
             ChatMessage(id: "clarify-req-batch", role: .clarify, content: "batch", timestamp: "1", clarify: makeBatchActivity())
@@ -582,15 +582,21 @@ final class ClarifyBatchStateTests: XCTestCase {
     }
 
     func testResumeReplayUpdatesAnExistingPendingClarifyCardInPlace() throws {
-        let (appState, _) = makeAppState()
-        // A live card already present (the one-shot event fired, one answer
-        // locked), then a reconnect resume reports the same pending request.
-        var live = makeBatchActivity()
-        live.questions[0].status = .answered
-        live.questions[0].answer = "staging"
-        appState.messages = [
-            ChatMessage(id: "clarify-req-batch", role: .clarify, content: "batch", timestamp: "1", clarify: live)
-        ]
+        // A card answered on this device (persisted via the presentation
+        // cache, as it would be in a live session), then a reconnect resume
+        // reports the same pending request. Resume owns the transcript, so
+        // the surviving card comes from the cache — the pending_clarify
+        // replay must update it in place, not duplicate it and not unlock
+        // the accepted answer.
+        let (appState, cache) = makeAppState()
+        var card = makeBatchActivity()
+        card.questions[0].status = .answered
+        card.questions[0].answer = "staging"
+        cache.recordPendingDecision(
+            ChatMessage(id: "clarify-req-batch", role: .clarify, content: "batch", timestamp: "1", clarify: card),
+            profile: appState.activeProfile,
+            sessionIDs: ["stored-a"]
+        )
         let result = SessionResumeResult(
             sessionId: "stored-a",
             messages: [],
@@ -619,6 +625,7 @@ final class ClarifyBatchStateTests: XCTestCase {
         let cards = appState.messages.filter { $0.role == .clarify && $0.clarify?.requestId == "req-batch" }
         XCTAssertEqual(cards.count, 1, "A reconnect resume must update, not duplicate, the existing card")
         XCTAssertEqual(cards.first?.clarify?.questions[0].status, .answered)
+        XCTAssertEqual(cards.first?.clarify?.questions[0].answer, "staging")
         XCTAssertEqual(cards.first?.clarify?.questions[1].status, .pending)
     }
 
@@ -685,7 +692,6 @@ final class ClarifyBatchStateTests: XCTestCase {
 
 // MARK: - Test doubles (mirrors the HermesClientTests fakes; private to this file)
 
-@MainActor
 private final class ClarifyGate: @unchecked Sendable {
     private let lock = NSLock()
     private var signalled = false
@@ -777,6 +783,7 @@ private final class ClarifyFakeSocket: HermesWebSocket {
 }
 
 private final class ClarifyFakeTransport: HermesWebSocketTransport {
+    var nextSocket: (() -> ClarifyFakeSocket)?
     private var openCallbacks: [ObjectIdentifier: () -> Void] = [:]
     private var earlyOpenRequests = Set<ObjectIdentifier>()
 
@@ -785,7 +792,7 @@ private final class ClarifyFakeTransport: HermesWebSocketTransport {
         onOpen: @escaping (any HermesWebSocket) -> Void,
         onCloseBeforeOpen: @escaping (any HermesWebSocket) -> Void
     ) -> any HermesWebSocket {
-        let socket = ClarifyFakeSocket()
+        let socket = nextSocket?() ?? ClarifyFakeSocket()
         openCallbacks[ObjectIdentifier(socket)] = { onOpen(socket) }
         if earlyOpenRequests.remove(ObjectIdentifier(socket)) != nil,
            let callback = openCallbacks.removeValue(forKey: ObjectIdentifier(socket)) {

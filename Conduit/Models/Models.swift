@@ -200,7 +200,8 @@ struct ClarifyQuestion: Codable, Equatable, Identifiable {
     }
 
     /// The accepted answer in display form. A multi-select wire answer is a
-    /// JSON array of chosen values; map each back to its label when possible.
+    /// JSON array of chosen values, rendered back in gateway choice order —
+    /// restored answers from any surface then always read consistently.
     var resolvedAnswer: String? {
         guard let answer, !answer.isEmpty else { return nil }
         guard multiSelect,
@@ -208,8 +209,11 @@ struct ClarifyQuestion: Codable, Equatable, Identifiable {
               let values = try? JSONSerialization.jsonObject(with: data) as? [String] else {
             return answer
         }
-        let labels = values.map { value in
-            choices.first { $0.value == value }?.label ?? value
+        let selected = Set(values)
+        var labels = choices.filter { selected.contains($0.value) }.map(\.label)
+        for value in values where !choices.contains(where: { $0.value == value }) {
+            // Values that matched no offered choice keep their wire order.
+            labels.append(value)
         }
         return labels.joined(separator: ", ")
     }
