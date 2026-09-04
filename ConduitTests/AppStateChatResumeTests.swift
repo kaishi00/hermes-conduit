@@ -784,6 +784,16 @@ final class AppStateChatResumeTests: XCTestCase {
         // A pushed batch decision must produce the SAME batch card model as a
         // native clarify — one ClarifyCard, every question present, relay
         // routing by the conduit-push- id prefix.
+        let cacheSuite = "conduit.tests.notification-clarify-batch-open-\(UUID().uuidString)"
+        guard let cacheDefaults = UserDefaults(suiteName: cacheSuite) else {
+            XCTFail("Could not create isolated UserDefaults suite")
+            return
+        }
+        let cache = SessionPresentationCache(defaults: cacheDefaults)
+        defer {
+            cache.clear()
+            cacheDefaults.removePersistentDomain(forName: cacheSuite)
+        }
         let harness = makeHarness(
             lifecycleOperations: ChatResumeLifecycleOperations(
                 loadCatalog: { _, _ in [self.session("stored-a")] },
@@ -795,7 +805,8 @@ final class AppStateChatResumeTests: XCTestCase {
                     )
                 },
                 refreshContext: { _, _ in }
-            )
+            ),
+            sessionPresentationCache: cache
         )
         let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
         harness.appState.connection = connection
@@ -1028,7 +1039,21 @@ final class AppStateChatResumeTests: XCTestCase {
         // push just-resumed session is exactly when the gateway client may
         // still be nil. (Unpaired in tests, so the relay call surfaces its
         // own error rather than the gateway-unavailable one.)
-        let harness = makeHarness()
+        //
+        // Isolated presentation cache: respondToClarify flushes the card, and
+        // since errored clarifies count as unresolved decisions, a shared
+        // cache would leak this card into later tests' resume merges.
+        let cacheSuite = "conduit.tests.relay-clarify-no-client-\(UUID().uuidString)"
+        guard let cacheDefaults = UserDefaults(suiteName: cacheSuite) else {
+            XCTFail("Could not create isolated UserDefaults suite")
+            return
+        }
+        let cache = SessionPresentationCache(defaults: cacheDefaults)
+        defer {
+            cache.clear()
+            cacheDefaults.removePersistentDomain(forName: cacheSuite)
+        }
+        let harness = makeHarness(sessionPresentationCache: cache)
         harness.appState.activeSessionId = "stored-a"
         harness.appState.messages = [
             ChatMessage(
