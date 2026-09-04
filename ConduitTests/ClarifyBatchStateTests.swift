@@ -966,6 +966,8 @@ final class ClarifyBatchStateTests: XCTestCase {
     // MARK: - Push/live supersede correlation
 
     func testFullBatchPushCardSupersededByMatchingLiveBatch() {
+        // The new notifier relays the SAME question set the gateway asked,
+        // so a live event with identical texts supersedes the push copy.
         let pushed = ClarifyActivity(
             requestId: "conduit-push-batch1",
             questions: [
@@ -973,18 +975,32 @@ final class ClarifyBatchStateTests: XCTestCase {
                 ClarifyQuestion(id: "tests", question: "Which tests?", choices: [])
             ]
         )
-        let live = makeBatchActivity()
+        let live = ClarifyActivity(
+            requestId: "gateway-rid-1",
+            questions: [
+                ClarifyQuestion(id: "environment", question: "Which environment?", choices: []),
+                ClarifyQuestion(id: "tests", question: "Which tests?", choices: [])
+            ]
+        )
         XCTAssertTrue(AppState.pushCardSupersededBy(pushed, live: live))
+        // A different question count is a different request even when every
+        // pushed text happens to appear in the live batch.
+        XCTAssertFalse(AppState.pushCardSupersededBy(pushed, live: makeBatchActivity()))
     }
 
     func testSinglePushCardMatchingOnlyOneBatchQuestionIsNotSuperseded() {
-        // A genuine single-question push card whose text happens to match one
-        // question of a live batch is a DIFFERENT request — it must survive.
+        // A genuine single-question push card (real qid from the batch
+        // payload) whose text happens to match one question of a live batch
+        // is a DIFFERENT request — it must survive. (A synthetic-id card is
+        // by definition the legacy collapsed copy and keeps the loose
+        // first-question correlation.)
         let pushed = ClarifyActivity(
             requestId: "conduit-push-other",
-            question: "Which tests should run?",
-            choices: [ClarifyChoice(label: "unit", value: "unit")]
+            questions: [
+                ClarifyQuestion(id: "tests", question: "Which tests should run?", choices: [ClarifyChoice(label: "unit", value: "unit")])
+            ]
         )
+        XCTAssertFalse(pushed.questions[0].isSyntheticID)
         let live = makeBatchActivity()
         XCTAssertFalse(AppState.pushCardSupersededBy(pushed, live: live))
     }

@@ -293,9 +293,12 @@ struct ClarifyActivity: Codable, Equatable {
 
     /// Request-level status, derived so a partially answered batch stays
     /// presentable: one locked sub-question never marks the card ANSWERED,
-    /// and a question that still needs input outranks one that errored.
+    /// and a question that still needs input outranks one that errored. A
+    /// per-question expired state derives expired even if the flag was lost
+    /// (e.g. a legacy cache migration) — an expired question must never
+    /// re-open as answerable.
     var status: Status {
-        if isExpired { return .expired }
+        if isExpired || questions.contains(where: { $0.status == .expired }) { return .expired }
         let statuses = questions.map(\.status)
         if statuses.contains(.submitting) { return .submitting }
         if !statuses.isEmpty && statuses.allSatisfy({ $0 == .answered }) { return .answered }
