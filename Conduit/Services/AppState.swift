@@ -3511,7 +3511,7 @@ final class AppState: ObservableObject {
         // back keyed by qid and stay locked. Keyed by request_id, so a resume
         // refresh updates an existing card instead of duplicating it.
         if let pendingClarify = result.snapshot.pendingClarify {
-            applyClarifyActivity(pendingClarify)
+            applyClarifyActivity(pendingClarify, source: .authoritativeSnapshot)
         }
         noteChatViewportTranscriptReplacement()
         // An authoritative resume/reconcile just replaced the transcript:
@@ -3622,8 +3622,14 @@ final class AppState: ObservableObject {
 
     static func hasPendingDecision(in messages: [ChatMessage]) -> Bool {
         messages.contains { message in
-            let clarifyPending = message.clarify?.status == .pending || message.clarify?.status == .submitting
-            let approvalPending = message.approval?.status == .pending || message.approval?.status == .submitting
+            // A retryable `.error` question/decision is still unresolved —
+            // the card remains answerable and must not read as completed.
+            let clarifyPending = message.clarify.map {
+                SessionPresentationCache.isPendingDecision($0.status)
+            } ?? false
+            let approvalPending = message.approval.map {
+                SessionPresentationCache.isPendingDecision($0.status)
+            } ?? false
             return clarifyPending || approvalPending
         }
     }
@@ -6159,7 +6165,24 @@ final class AppState: ObservableObject {
             let message = ChatMessage(
                 id: "clarify-\(requestId)",
                 role: .clarify,
-                content: question,
+                content: activity.displayQuestion,
+                timestamp: Self.localTimestamp(),
+                clarify: activity
+            )
+            sessionPresentationCache.recordPendingDecision(
+                message,
+                profile: activeProfile,
+                sessionIDs: sessionIDs
+            )
+        case let .clarifyBatch(requestId, questions):
+            // Batch relay decision (current notifier): the SAME batch
+            // ClarifyActivity/ClarifyCard model as native clarifies — the
+            // transport is the only difference.
+            let activity = ClarifyActivity(requestId: requestId, questions: questions)
+            let message = ChatMessage(
+                id: "clarify-\(requestId)",
+                role: .clarify,
+                content: activity.displayQuestion,
                 timestamp: Self.localTimestamp(),
                 clarify: activity
             )
@@ -8430,8 +8453,19 @@ final class AppState: ObservableObject {
         // Routed BEFORE the gateway-client guard: the relay answer needs only
         // the relay registration, and answering from a freshly-resumed push
         // is exactly when the gateway client may still be reconnecting.
+        // Batch relay decisions answer per question; the legacy scalar relay
+        // card keeps the whole-decision response shape.
         if requestId.hasPrefix(PendingDecisionPayload.relayRequestPrefix) {
-            await respondToRelayClarify(requestId: requestId, answer: trimmedAnswer)
+            let target = activity.questions[questionIndex]
+            if target.isSyntheticID {
+                await respondToRelayClarify(requestId: requestId, answer: trimmedAnswer)
+            } else {
+                await respondToRelayClarifyQuestion(
+                    requestId: requestId,
+                    questionId: target.id,
+                    answer: trimmedAnswer
+                )
+            }
             return
         }
         guard let client else {
@@ -8506,6 +8540,72 @@ final class AppState: ObservableObject {
             errorMessage = globalMessage
         }
         cacheMessagePresentation()
+    }
+
+    /// Answers ONE question of a batch relay decision. First-answer-wins per
+    /// question: only the targeted qid locks; sibling questions stay open
+    /// until their own answers land.
+    private func respondToRelayClarifyQuestion(
+        requestId: String,
+        questionId: String,
+        answer: String
+    ) async {
+        do {
+            let outcome = try await PushNotificationService.shared.respondToRelayDecisionQuestion(
+                requestId: requestId,
+                questionId: questionId,
+                answer: answer
+            )
+            guard let index = messages.firstIndex(where: { $0.clarify?.requestId == requestId }),
+                  var activity = messages[index].clarify,
+                  let questionIndex = activity.questions.firstIndex(where: { $0.id == questionId }) else {
+                return
+            }
+            switch outcome {
+            case .locked(let remaining):
+                activity.questions[questionIndex].status = .answered
+                activity.questions[questionIndex].answer = answer
+                activity.questions[questionIndex].error = nil
+                // An explicit remaining list is authoritative about what is
+                // still open, exactly like the native gateway's contract.
+                if let remaining {
+                    let open = Set(remaining)
+                    for sibling in activity.questions.indices
+                    where sibling != questionIndex
+                        && activity.questions[sibling].status == .pending
+                        && !open.contains(activity.questions[sibling].id) {
+                        activity.questions[sibling].status = .answered
+                        activity.questions[sibling].answer = nil
+                    }
+                }
+            case .questionAlreadyLocked:
+                // Another device locked this qid first; settle it without
+                // displaying this device's rejected text.
+                activity.questions[questionIndex].status = .answered
+                activity.questions[questionIndex].answer = nil
+            case .noLongerActive:
+                activity.isExpired = true
+                for questionIndex in activity.questions.indices
+                where activity.questions[questionIndex].status != .answered {
+                    activity.questions[questionIndex].status = .expired
+                    activity.questions[questionIndex].error = nil
+                }
+                activity.error = Self.clarifyExpiredNotice(for: activity.questions.count)
+            }
+            messages[index].clarify = activity
+            cacheMessagePresentation()
+        } catch {
+            guard let index = messages.firstIndex(where: { $0.clarify?.requestId == requestId }),
+                  var activity = messages[index].clarify,
+                  let questionIndex = activity.questions.firstIndex(where: { $0.id == questionId }) else {
+                return
+            }
+            activity.questions[questionIndex].status = .error
+            activity.questions[questionIndex].answer = nil
+            activity.questions[questionIndex].error = error.localizedDescription
+            messages[index].clarify = activity
+            cacheMessagePresentation()
+        }
     }
 
     private func respondToRelayClarify(requestId: String, answer: String) async {
@@ -10845,7 +10945,7 @@ final class AppState: ObservableObject {
             // session.info snapshot; wherever it appears it is the same
             // authoritative state as the resume copy.
             if let pendingClarify = snapshot.pendingClarify {
-                applyClarifyActivity(pendingClarify)
+                applyClarifyActivity(pendingClarify, source: .authoritativeSnapshot)
             }
             if let running = snapshot.running {
                 setRunning(running)
@@ -10926,7 +11026,7 @@ final class AppState: ObservableObject {
             ))
 
         case .clarify(_, let activity):
-            applyClarifyActivity(activity)
+            applyClarifyActivity(activity, source: .streamEvent)
             setRunning(true)
 
         case .clarifyExpire(_, let requestId):
@@ -10986,32 +11086,68 @@ final class AppState: ObservableObject {
 
     // MARK: - Clarify lifecycle
 
+    /// How a clarification activity reached AppState. Replay defenses for the
+    /// one-shot stream event are deliberately weaker than the gateway's
+    /// authoritative `pending_clarify` snapshot — they are not equally
+    /// authoritative and must not share one merge policy.
+    enum ClarifyActivitySource {
+        /// A duplicate/replayed one-shot `clarify.request` (WS replay
+        /// buffer). Local states are strictly newer than the stale event.
+        case streamEvent
+        /// `session.resume` / `session.info` `pending_clarify`: the
+        /// gateway's current truth. Its question list and locked
+        /// `answers[qid]` outrank local presentation state.
+        case authoritativeSnapshot
+    }
+
     /// Upserts one normalized clarification card, keyed by the gateway
-    /// `request_id`. Re-delivered events (WS replay buffers, resume replays)
-    /// update the existing card in place rather than duplicating it, and they
-    /// never unlock a question this device already answered or has an answer
-    /// in flight for — those local states are strictly newer than a replayed
-    /// one-shot event.
-    private func applyClarifyActivity(_ activity: ClarifyActivity) {
+    /// `request_id`. Re-delivered events update the existing card in place
+    /// rather than duplicating it. Merge policy differs by source:
+    ///
+    /// - `.streamEvent`: a replayed event is stale by definition — never
+    ///   unlock a question this device answered or has in flight, never
+    ///   resurrect an expired request, and keep rows only the local card
+    ///   holds.
+    /// - `.authoritativeSnapshot`: the gateway's question list and locked
+    ///   answers win outright — a locally cached `.submitting`/`.error`
+    ///   presentation must not override the server, and the snapshot's
+    ///   existence proves the request is still active, so a locally sticky
+    ///   expired flag yields to it.
+    private func applyClarifyActivity(
+        _ activity: ClarifyActivity,
+        source: ClarifyActivitySource
+    ) {
         if let index = messages.firstIndex(where: { $0.clarify?.requestId == activity.requestId }) {
             var merged = activity
             if let existing = messages[index].clarify {
-                // Expiry is sticky for this request id: a replayed one-shot
-                // event must not re-arm controls the gateway already expired.
-                merged.isExpired = merged.isExpired || existing.isExpired
-                let incomingIDs = Set(merged.questions.map(\.id))
-                for questionIndex in merged.questions.indices {
-                    guard let prior = existing.questions.first(where: { $0.id == merged.questions[questionIndex].id }),
-                          prior.status == .answered || prior.status == .submitting || prior.status == .expired else { continue }
-                    // Local answered/submitting state is strictly newer than a
-                    // replayed pending event; expired state stays expired.
-                    merged.questions[questionIndex].status = prior.status
-                    merged.questions[questionIndex].answer = prior.answer
+                switch source {
+                case .streamEvent:
+                    // Expiry is sticky for this request id: a replayed
+                    // one-shot event must not re-arm controls the gateway
+                    // already expired.
+                    merged.isExpired = merged.isExpired || existing.isExpired
+                    let incomingIDs = Set(merged.questions.map(\.id))
+                    for questionIndex in merged.questions.indices {
+                        guard let prior = existing.questions.first(where: { $0.id == merged.questions[questionIndex].id }),
+                              prior.status == .answered || prior.status == .submitting || prior.status == .expired else { continue }
+                        // Local answered/submitting state is strictly newer
+                        // than a replayed pending event; expired state stays
+                        // expired.
+                        merged.questions[questionIndex].status = prior.status
+                        merged.questions[questionIndex].answer = prior.answer
+                    }
+                    // Questions only the local card holds survive the merge —
+                    // a partial replay must not erase rows the user can still
+                    // see.
+                    let survivingExtras = existing.questions.filter { !incomingIDs.contains($0.id) }
+                    merged.questions.append(contentsOf: survivingExtras)
+                case .authoritativeSnapshot:
+                    // The snapshot already carries the gateway's locked
+                    // answers (normalizer applies `answers[qid]`). Nothing
+                    // local outranks it — least of all a `.submitting` from a
+                    // previous process whose RPC outcome is unknown.
+                    merged.isExpired = false
                 }
-                // Questions only the local card holds survive the merge — a
-                // partial replay must not erase rows the user can still see.
-                let survivingExtras = existing.questions.filter { !incomingIDs.contains($0.id) }
-                merged.questions.append(contentsOf: survivingExtras)
             }
             if merged.isExpired {
                 for questionIndex in merged.questions.indices
@@ -11019,30 +11155,36 @@ final class AppState: ObservableObject {
                     merged.questions[questionIndex].status = .expired
                     merged.questions[questionIndex].error = nil
                 }
+                // The user-facing explanation must survive any merge that
+                // keeps the expired state — an EXPIRED card with no notice
+                // reads as a broken card.
+                if (merged.error ?? "").isEmpty {
+                    merged.error = Self.clarifyExpiredNotice(for: merged.questions.count)
+                }
             }
             messages[index].content = merged.displayQuestion
             messages[index].clarify = merged
             return
         }
 
-        // A still-pending push-delivered card for the same question is
+        // A still-pending push-delivered card for the same logical clarify is
         // superseded by the live event (different ids: gateway vs
         // plugin-minted), so one logical clarify never renders two
         // answerable cards. Resolved history stays visible, and a
         // .submitting card is left alone: its relay answer may already
-        // be in flight and will settle it by request id. Correlation stays
-        // question-text-based because the notifier mints its own ids and
-        // reduces a batch to its first question; native batch identity is
-        // always the gateway request_id.
+        // be in flight and will settle it by request id.
+        //
+        // Correlation is deliberately conservative (see
+        // pushCardSupersededBy): the plugin mints its own request ids, so no
+        // trustworthy shared identifier exists — question text is the only
+        // compatibility signal, and a full batch push must match the whole
+        // question set, never just its first question.
         var supersededRequestIds: [String] = []
-        let liveQuestion = activity.correlationQuestion
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
         messages.removeAll { message in
             guard let clarify = message.clarify,
                   clarify.requestId.hasPrefix(PendingDecisionPayload.relayRequestPrefix),
                   clarify.status == .pending,
-                  clarify.correlationQuestion.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == liveQuestion else {
+                  Self.pushCardSupersededBy(clarify, live: activity) else {
                 return false
             }
             supersededRequestIds.append(clarify.requestId)
@@ -11101,6 +11243,36 @@ final class AppState: ObservableObject {
             : "This question is no longer active — Hermes timed it out and continued."
     }
 
+    /// Whether a still-pending push-delivered card describes the same logical
+    /// clarify as a live gateway event and must be superseded by it.
+    ///
+    /// Documented limitation: the notifier plugin mints its own
+    /// `conduit-push-…` request ids, so no trustworthy shared identifier
+    /// exists between the push copy and the gateway copy — normalized
+    /// question text is the only compatibility signal. To keep that weak
+    /// signal safe:
+    ///
+    /// - A legacy collapsed push card (scalar payload, synthetic qid) keeps
+    ///   the historical first-question correlation: the old notifier reduced
+    ///   a batch to question 1, so its lone text matching ANY live question
+    ///   means "same request, collapsed".
+    /// - A full batch push card (real qids) must match the ENTIRE question
+    ///   set. Two unrelated requests that merely share a first question —
+    ///   or a genuine single-question push against a bigger live batch —
+    ///   never cross-supersede.
+    static func pushCardSupersededBy(_ pushed: ClarifyActivity, live: ClarifyActivity) -> Bool {
+        func normalized(_ text: String) -> String {
+            text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        }
+        let liveTexts = Set(live.questions.map { normalized($0.question) })
+        guard !liveTexts.isEmpty else { return false }
+        if pushed.questions.contains(where: \.isSyntheticID) {
+            return liveTexts.contains(normalized(pushed.correlationQuestion))
+        }
+        return pushed.questions.count == live.questions.count
+            && pushed.questions.allSatisfy { liveTexts.contains(normalized($0.question)) }
+    }
+
     /// Applies the typed `clarify.respond` outcome to the matching card. The
     /// gateway's `remaining` list is the authority on whether one sub-question
     /// was locked or the whole request completed, and an expired outcome never
@@ -11132,18 +11304,21 @@ final class AppState: ObservableObject {
             activity.questions[questionIndex].status = .answered
             activity.questions[questionIndex].answer = answer
             activity.questions[questionIndex].error = nil
-            // The remaining list is the gateway's authority on what is still
-            // open. A locally pending question it no longer lists was locked
-            // by another surface — settle it without claiming this device's
-            // answer text. In-flight (.submitting) and retried (.error)
-            // questions are left to their own outcomes.
-            let open = Set(remaining)
-            for index in activity.questions.indices
-            where index != questionIndex
-                && activity.questions[index].status == .pending
-                && !open.contains(activity.questions[index].id) {
-                activity.questions[index].status = .answered
-                activity.questions[index].answer = nil
+            // Sibling reconciliation is allowed ONLY on an explicit remaining
+            // list — the gateway's authority on what is still open. A locally
+            // pending question it no longer lists was locked by another
+            // surface; settle it without claiming this device's answer text.
+            // An OMITTED remaining field (older/minimal gateways) carries no
+            // sibling information, so only the submitted question is marked.
+            if let remaining {
+                let open = Set(remaining)
+                for index in activity.questions.indices
+                where index != questionIndex
+                    && activity.questions[index].status == .pending
+                    && !open.contains(activity.questions[index].id) {
+                    activity.questions[index].status = .answered
+                    activity.questions[index].answer = nil
+                }
             }
         }
         messages[index].clarify = activity

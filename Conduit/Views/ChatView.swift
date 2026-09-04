@@ -1929,6 +1929,41 @@ struct ToolCard: View {
 
 // MARK: - Clarify Card
 
+/// Where the visible question text lives on one clarification card. The
+/// header always renders the returned text exactly once; rows render their
+/// own titles only in a batch, so a single question is never title-less and
+/// a batch summary is never duplicated.
+enum ClarifyCardLayout {
+    /// One question: the header carries the question itself and the row
+    /// renders controls only — the exact legacy clarify card layout.
+    case singleQuestion
+    /// Several questions: the header summarizes once and every row carries
+    /// its own question title.
+    case batch
+
+    init(questionCount: Int) {
+        self = questionCount > 1 ? .batch : .singleQuestion
+    }
+
+    /// Text rendered in the card header beneath the status title.
+    func headerText(for activity: ClarifyActivity) -> String {
+        switch self {
+        case .singleQuestion:
+            return activity.questions.first?.question ?? ""
+        case .batch:
+            return "Hermes asked \(activity.questions.count) questions before it can continue"
+        }
+    }
+
+    /// Whether a question row draws its own title line.
+    var rowsShowTitles: Bool {
+        switch self {
+        case .singleQuestion: return false
+        case .batch: return true
+        }
+    }
+}
+
 struct ClarifyCard: View {
     let message: ChatMessage
     @EnvironmentObject var appState: AppState
@@ -1940,6 +1975,7 @@ struct ClarifyCard: View {
 
     var body: some View {
         if let clarify = message.clarify {
+            let layout = ClarifyCardLayout(questionCount: clarify.questions.count)
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 8) {
                     Image(systemName: "questionmark.bubble")
@@ -1950,7 +1986,7 @@ struct ClarifyCard: View {
                             .tracking(0.5)
                             .foregroundStyle(statusColor(for: clarify.status))
                         SelectableTextView(
-                            text: headerText(for: clarify),
+                            text: layout.headerText(for: clarify),
                             font: .preferredFont(forTextStyle: .subheadline).withTraits(.traitBold),
                             textColor: .label
                         )
@@ -1970,19 +2006,10 @@ struct ClarifyCard: View {
                     MessageTimestampLabel(timestamp: message.timestamp, tone: .supporting)
                 }
 
-                if !headerText(for: clarify).isEmpty {
-                    SelectableTextView(
-                        text: headerText(for: clarify),
-                        font: .preferredFont(forTextStyle: .subheadline).withTraits(.traitBold),
-                        textColor: .label
-                    )
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-
                 ForEach(clarify.questions) { question in
                     ClarifyQuestionRow(
                         question: question,
-                        showsTitle: clarify.questions.count > 1,
+                        showsTitle: layout.rowsShowTitles,
                         customAnswer: bindingForCustomAnswer(question),
                         selection: bindingForSelection(question),
                         onSend: { answer in send(answer, for: question, in: clarify) },
@@ -1999,14 +2026,6 @@ struct ClarifyCard: View {
             .padding(16)
             .conduitGlassSurface(cornerRadius: 22, tint: .conduitAccent.opacity(0.08))
         }
-    }
-
-    /// One-question cards keep the exact legacy header (the question itself,
-    /// no separate row title); a batch summarizes here and every question row
-    /// carries its own title.
-    private func headerText(for clarify: ClarifyActivity) -> String {
-        guard clarify.questions.count > 1 else { return "" }
-        return "Hermes asked \(clarify.questions.count) questions before it can continue"
     }
 
     private func bindingForCustomAnswer(_ question: ClarifyQuestion) -> Binding<String> {
@@ -2237,6 +2256,7 @@ struct ClarifyQuestionRow: View {
                     HStack(spacing: 10) {
                         Image(systemName: selection.contains(choice.value) ? "checkmark.circle.fill" : "circle")
                             .foregroundStyle(selection.contains(choice.value) ? Color.orange : Color.secondary)
+                            .accessibilityHidden(true)
                         Text(choice.label)
                             .font(.body)
                             .foregroundStyle(.primary)
@@ -2248,6 +2268,11 @@ struct ClarifyQuestionRow: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(!isAnswerable)
+                // VoiceOver announces "«choice», selected/not selected" from
+                // one label + trait pair; the decorative checkmark image is
+                // hidden so the state is never announced twice.
+                .accessibilityLabel(choice.label)
+                .accessibilityAddTraits(selection.contains(choice.value) ? .isSelected : [])
             }
 
             Button {

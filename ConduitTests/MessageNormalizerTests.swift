@@ -438,6 +438,75 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertEqual(choices, ["Red", "Blue"])
     }
 
+    func testNotificationPayloadCarriesBatchClarifyDecision() {
+        // Current notifier: the pushed decision preserves the FULL question
+        // set — qids, choices, and multi_select — with no reduction to the
+        // first question.
+        let service = PushNotificationService(retryDelay: .zero)
+        defer {
+            if let target = service.pendingTarget {
+                service.clearPendingTarget(target)
+            }
+        }
+        service.receiveNotificationPayload([
+            "conduit": [
+                "session_id": "runtime-1",
+                "profile": "default",
+                "type": "input.needed",
+                "decision": [
+                    "kind": "clarify",
+                    "request_id": "conduit-push-batch1",
+                    "questions": [
+                        ["qid": "environment", "question": "Which environment?", "choices": ["staging", "prod"], "multi_select": false],
+                        ["qid": "tests", "question": "Which tests?", "choices": ["unit", "ui"], "multi_select": true],
+                        ["qid": "notes", "question": "Any additional notes?", "choices": []]
+                    ] as [[String: Any]],
+                ] as [String: Any],
+            ] as [String: Any],
+        ])
+
+        guard case let .clarifyBatch(requestId, questions) = service.pendingTarget?.decision else {
+            return XCTFail("Expected a batch clarify decision carried on the notification target")
+        }
+        XCTAssertEqual(requestId, "conduit-push-batch1")
+        XCTAssertEqual(questions.map(\.id), ["environment", "tests", "notes"], "qids are preserved as identity")
+        XCTAssertEqual(questions.map(\.question), ["Which environment?", "Which tests?", "Any additional notes?"])
+        XCTAssertEqual(questions[0].choices.map(\.value), ["staging", "prod"])
+        XCTAssertTrue(questions[1].multiSelect, "multi_select must survive the push payload")
+        XCTAssertFalse(questions[0].multiSelect)
+        XCTAssertTrue(questions[2].choices.isEmpty, "Free-text questions survive the push payload")
+        XCTAssertFalse(questions[0].isSyntheticID, "Pushed batch qids are gateway identities, not synthetic")
+    }
+
+    func testNotificationPayloadBatchClarifyFallsBackToScalarWhenQuestionsUnusable() {
+        let service = PushNotificationService(retryDelay: .zero)
+        defer {
+            if let target = service.pendingTarget {
+                service.clearPendingTarget(target)
+            }
+        }
+        service.receiveNotificationPayload([
+            "conduit": [
+                "session_id": "runtime-1",
+                "profile": "default",
+                "type": "input.needed",
+                "decision": [
+                    "kind": "clarify",
+                    "request_id": "conduit-push-batch2",
+                    "questions": [["question": "No qid"]] as [[String: Any]],
+                    "question": "Scalar fallback",
+                    "choices": ["a"]
+                ] as [String: Any],
+            ] as [String: Any],
+        ])
+        guard case let .clarify(requestId, question, choices) = service.pendingTarget?.decision else {
+            return XCTFail("Expected the legacy scalar decode when no batch question survives")
+        }
+        XCTAssertEqual(requestId, "conduit-push-batch2")
+        XCTAssertEqual(question, "Scalar fallback")
+        XCTAssertEqual(choices, ["a"])
+    }
+
     func testNotificationPayloadClarifyDecisionRejectedWithoutRequestId() {
         let service = PushNotificationService(retryDelay: .zero)
         defer {

@@ -646,7 +646,30 @@ final class HermesClientTests: XCTestCase {
             params["question_id"],
             "The legacy request-level response must not carry a question id"
         )
-        XCTAssertEqual(outcome, .accepted(remaining: []), "A missing remaining list completes the request")
+        XCTAssertEqual(
+            outcome, .accepted(remaining: nil),
+            "An omitted remaining field must stay nil — it is not an explicit empty list"
+        )
+        XCTAssertFalse(outcome.requestCompleted, "Omitted remaining carries no completion signal")
+    }
+
+    func testClarifyRespondExplicitEmptyRemainingIsDistinctFromOmitted() async throws {
+        // `remaining: []` is the gateway's explicit completion confirmation;
+        // an omitted field is silence. The outcome must model the difference.
+        let (_, explicit) = try await capturedClarifyRespond(
+            result: ["status": "ok", "remaining": []],
+            questionId: "q0"
+        )
+        XCTAssertEqual(explicit, .accepted(remaining: []))
+        XCTAssertTrue(explicit.requestCompleted)
+
+        let (_, omitted) = try await capturedClarifyRespond(
+            result: ["status": "ok"],
+            questionId: "q0"
+        )
+        XCTAssertEqual(omitted, .accepted(remaining: nil))
+        XCTAssertFalse(omitted.requestCompleted)
+        XCTAssertNotEqual(explicit, omitted)
     }
 
     func testClarifyRespondExpiredStatusDoesNotReadAsSuccess() async throws {

@@ -35,6 +35,10 @@ struct ConduitNotificationTarget: Equatable, Identifiable {
 enum PendingDecisionPayload: Equatable {
     case approval(sessionKey: String, description: String, choices: [String])
     case clarify(requestId: String, question: String, choices: [String])
+    /// Batch decision payload (current notifier): the full question set with
+    /// gateway qids preserved. Consumed into the same `ClarifyActivity`
+    /// batch model as native clarifies — no separate push card exists.
+    case clarifyBatch(requestId: String, questions: [ClarifyQuestion])
 
     /// Request ids minted by the notifier plugin's clarify loop; answers to
     /// these route through the relay instead of `clarify.respond`.
@@ -255,8 +259,22 @@ final class PushNotificationService: ObservableObject {
         }
     }
 
-    /// Outcome of answering a plugin-minted clarify (`conduit-push-…`) through
-    /// the relay's decision loop.
+    /// Outcome of answering ONE question of a batch relay decision
+    /// (`question_id` scoped). The relay applies first-answer-wins per
+    /// question: only the targeted qid locks; other qids stay open.
+    enum RelayQuestionOutcome: Equatable {
+        /// The qid locked. `remaining` mirrors the relay's open-qid list when
+        /// reported; nil means the relay did not say.
+        case locked(remaining: [String]?)
+        /// Another device locked this qid first.
+        case questionAlreadyLocked
+        /// The decision is gone (timed out or completed elsewhere).
+        case noLongerActive
+    }
+
+    /// Outcome of answering a whole plugin-minted clarify
+    /// (`conduit-push-…`) through the relay's decision loop (legacy
+    /// single-question shape).
     enum RelayDecisionOutcome {
         case answered
         /// The decision expired (clarify timed out server-side or was answered
@@ -280,6 +298,16 @@ final class PushNotificationService: ObservableObject {
         }
     }
 
+    /// Raw relay decision respond result. 404 and 409 are distinct server
+    /// states and must not be collapsed: 404 = decision gone, 409 = already
+    /// locked (whole decision for the legacy shape, that question only for
+    /// the batch shape).
+    private enum RelayRespondOutcome {
+        case accepted(remaining: [String]?)
+        case noLongerActive
+        case alreadyLocked
+    }
+
     /// Answers a plugin-minted clarify decision through the relay. The gateway
     /// polls the relay for this answer while its clarify middleware blocks, so
     /// the agent thread unblocks exactly as if `clarify.respond` had been used.
@@ -288,24 +316,58 @@ final class PushNotificationService: ObservableObject {
         requestId: String,
         answer: String
     ) async throws -> RelayDecisionOutcome {
+        switch try await relayDecisionRespond(requestId: requestId, body: ["answer": answer]) {
+        case .accepted: return .answered
+        case .alreadyLocked: return .alreadyAnsweredElsewhere
+        case .noLongerActive: return .noLongerActive
+        }
+    }
+
+    /// Answers ONE question of a batch relay decision. Requires a relay +
+    /// notifier pair that ships the batch decision contract; a batch card only
+    /// exists when the batch-capable plugin pushed it.
+    @discardableResult
+    func respondToRelayDecisionQuestion(
+        requestId: String,
+        questionId: String,
+        answer: String
+    ) async throws -> RelayQuestionOutcome {
+        switch try await relayDecisionRespond(
+            requestId: requestId,
+            body: ["question_id": questionId, "answer": answer]
+        ) {
+        case .accepted(let remaining): return .locked(remaining: remaining)
+        case .alreadyLocked: return .questionAlreadyLocked
+        case .noLongerActive: return .noLongerActive
+        }
+    }
+
+    /// Shared relay decision POST. Contract: 200 = accepted (body may carry
+    /// `remaining`), 404 = decision no longer active, 409 = already locked.
+    private func relayDecisionRespond(
+        requestId: String,
+        body: [String: String]
+    ) async throws -> RelayRespondOutcome {
         guard let registration else { throw RelayDecisionError.unregistered }
         var request = URLRequest(url: relayURL.appending(path: "/v1/decisions/\(requestId)/respond"))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(registration.credential)", forHTTPHeaderField: "Authorization")
-        request.httpBody = try JSONSerialization.data(withJSONObject: ["answer": answer])
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse else {
                 throw RelayDecisionError.transport("invalid response")
             }
+            let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+            let remaining = json?["remaining"] as? [String]
             switch http.statusCode {
             case 200:
-                return .answered
+                return .accepted(remaining: remaining)
             case 404:
                 return .noLongerActive
             case 409:
-                return .alreadyAnsweredElsewhere
+                return .alreadyLocked
             default:
                 throw RelayDecisionError.server(http.statusCode)
             }
@@ -492,9 +554,21 @@ final class PushNotificationService: ObservableObject {
             guard let requestId = (decision["request_id"] as? String)?
                 .trimmingCharacters(in: .whitespacesAndNewlines),
                 requestId.hasPrefix(PendingDecisionPayload.relayRequestPrefix),
-                requestId.count > PendingDecisionPayload.relayRequestPrefix.count,
-                let question = (decision["question"] as? String)?
-                    .trimmingCharacters(in: .whitespacesAndNewlines),
+                requestId.count > PendingDecisionPayload.relayRequestPrefix.count else {
+                return nil
+            }
+            // Batch form (current notifier): questions[] with qids preserved.
+            if let rawQuestions = decision["questions"] as? [[String: Any]],
+               !rawQuestions.isEmpty {
+                let questions = rawQuestions.compactMap(Self.pushClarifyQuestion(from:))
+                if !questions.isEmpty {
+                    return .clarifyBatch(requestId: requestId, questions: questions)
+                }
+                // A questions[] payload where nothing survived falls through
+                // to the legacy scalar decoding below.
+            }
+            guard let question = (decision["question"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
                 !question.isEmpty else {
                 return nil
             }
@@ -505,6 +579,30 @@ final class PushNotificationService: ObservableObject {
         default:
             return nil
         }
+    }
+
+    /// One pushed batch question. The plugin relays the gateway's wire entry
+    /// (qid/question/choices/multi_select); qids are preserved as identity —
+    /// they are NOT synthetic, so per-question relay answers can address
+    /// them.
+    private static func pushClarifyQuestion(from entry: [String: Any]) -> ClarifyQuestion? {
+        guard let question = (entry["question"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            !question.isEmpty else {
+            return nil
+        }
+        guard let qid = (entry["qid"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            !qid.isEmpty else {
+            return nil
+        }
+        let rawChoices = entry["choices"] as? [Any] ?? []
+        let choices = rawChoices
+            .compactMap { ($0 as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .map { ClarifyChoice(label: $0, value: $0) }
+        let multiSelect = (entry["multi_select"] as? Bool) == true && !choices.isEmpty
+        return ClarifyQuestion(id: qid, question: question, choices: choices, multiSelect: multiSelect)
     }
 
     private func requestDeviceToken() async throws -> String {

@@ -1116,18 +1116,21 @@ final class HermesClient: ObservableObject {
     /// lock from full completion; `expired` is a successful RPC whose status
     /// says the request timed out server-side (the clarify bridge sets
     /// `allow_expired`, so a late answer never errors) and must not read as
-    /// success.
+    /// success. `remaining` keeps the wire's presence semantics: an explicit
+    /// empty list confirms completion, while an omitted field (older or
+    /// minimal gateways) carries no sibling information at all.
     enum ClarifyResponseOutcome: Equatable {
-        case accepted(remaining: [String])
+        case accepted(remaining: [String]?)
         case expired
 
         var isExpired: Bool { self == .expired }
 
-        /// True when the accepted outcome completed the whole request (no
-        /// questions remain unlocked).
+        /// True only on an explicit `remaining: []` — the gateway's own
+        /// confirmation that every question is resolved. An omitted
+        /// remaining field must never be inferred as completion.
         var requestCompleted: Bool {
             switch self {
-            case .accepted(let remaining): return remaining.isEmpty
+            case .accepted(let remaining): return remaining?.isEmpty == true
             case .expired: return false
             }
         }
@@ -1156,9 +1159,11 @@ final class HermesClient: ObservableObject {
         if status == "expired" {
             return .expired
         }
-        let remaining = result.objectValue?["remaining"]?.arrayValue?
-            .compactMap { $0.stringValue }
-            ?? []
+        // Presence matters: `remaining` omitted and `remaining: []` are
+        // different protocol states.
+        let remaining: [String]? = result.objectValue?["remaining"]?.arrayValue.map {
+            $0.compactMap(\.stringValue)
+        }
         return .accepted(remaining: remaining)
     }
 
@@ -2142,7 +2147,11 @@ enum MessageNormalizer {
                     id: "q0",
                     question: question,
                     choices: choices,
-                    multiSelect: multiSelect
+                    multiSelect: multiSelect,
+                    // Locally minted UI identity: it must never ride the
+                    // wire as question_id (real gateway batches also use
+                    // q0-style ids, so the flag — not the value — decides).
+                    isSyntheticID: true
                 )
             ]
         )

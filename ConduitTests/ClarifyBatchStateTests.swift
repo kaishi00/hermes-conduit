@@ -484,6 +484,73 @@ final class ClarifyBatchStateTests: XCTestCase {
         XCTAssertEqual(settled.status, .expired, "A replayed one-shot event must not re-arm an expired card")
         XCTAssertEqual(settled.questions[0].status, .expired)
         XCTAssertEqual(settled.questions[2].status, .expired)
+        XCTAssertFalse(
+            (settled.error ?? "").isEmpty,
+            "The user-facing expiry explanation must survive the replay merge"
+        )
+    }
+
+    func testAcceptedOutcomeWithOmittedRemainingSettlesOnlyTheSubmittedQuestion() async throws {
+        // An omitted remaining field carries no sibling information: only
+        // the question we submitted may be marked accepted.
+        let (appState, _) = makeAppState()
+        appState.messages = [
+            ChatMessage(id: "clarify-req-batch", role: .clarify, content: "batch", timestamp: "1", clarify: makeBatchActivity())
+        ]
+        let transport = ClarifyFakeTransport()
+        let socket = ClarifyFakeSocket()
+        try await installConnectedClient(appState, socket: socket, transport: transport)
+
+        try await respond(
+            appState: appState,
+            socket: socket,
+            requestId: "req-batch",
+            questionId: "environment",
+            answer: "staging",
+            result: ["status": "ok"]
+        )
+
+        let settled = try XCTUnwrap(clarifyCard(in: appState, requestId: "req-batch"))
+        XCTAssertEqual(settled.questions[0].status, .answered)
+        XCTAssertEqual(settled.questions[0].answer, "staging")
+        XCTAssertEqual(settled.questions[1].status, .pending, "Omitted remaining must not infer siblings were answered elsewhere")
+        XCTAssertEqual(settled.questions[2].status, .pending)
+        XCTAssertEqual(settled.status, .pending)
+    }
+
+    func testLegacyScalarWirePayloadAnswersAtRequestLevelEndToEnd() async throws {
+        // Integration path: raw legacy clarify payload → MessageNormalizer →
+        // AppState card → respondToClarify → captured JSON-RPC frame. The
+        // locally synthesized qid must never appear as question_id on the
+        // wire — provenance (isSyntheticID), not the id string, decides.
+        let (appState, _) = makeAppState()
+        let activity = try XCTUnwrap(MessageNormalizer.clarifyActivity(from: [
+            "request_id": .string("req-legacy"),
+            "question": .string("Pick one"),
+            "choices": .array([.string("a"), .string("b")])
+        ]))
+        XCTAssertTrue(activity.questions[0].isSyntheticID, "The scalar parser must flag its synthesized id")
+        appState.messages = [
+            ChatMessage(id: "clarify-req-legacy", role: .clarify, content: activity.displayQuestion, timestamp: "1", clarify: activity)
+        ]
+        let transport = ClarifyFakeTransport()
+        let socket = ClarifyFakeSocket()
+        try await installConnectedClient(appState, socket: socket, transport: transport)
+
+        let request = try await respond(
+            appState: appState,
+            socket: socket,
+            requestId: "req-legacy",
+            questionId: "q0",
+            answer: "a",
+            result: ["status": "ok"]
+        )
+
+        let params = try XCTUnwrap(request["params"] as? [String: Any])
+        XCTAssertNil(params["question_id"], "A wire-parsed legacy card must keep the request-level respond shape")
+        XCTAssertEqual(params["answer"] as? String, "a")
+        let settled = try XCTUnwrap(clarifyCard(in: appState, requestId: "req-legacy"))
+        XCTAssertEqual(settled.status, .answered)
     }
 
     func testDuplicateClarifyEventUpdatesInsteadOfDuplicating() async throws {
@@ -584,10 +651,9 @@ final class ClarifyBatchStateTests: XCTestCase {
     func testResumeReplayUpdatesAnExistingPendingClarifyCardInPlace() throws {
         // A card answered on this device (persisted via the presentation
         // cache, as it would be in a live session), then a reconnect resume
-        // reports the same pending request. Resume owns the transcript, so
-        // the surviving card comes from the cache — the pending_clarify
-        // replay must update it in place, not duplicate it and not unlock
-        // the accepted answer.
+        // reports the same pending request WITH the locked answer. The
+        // snapshot's own answers[qid] — not local memory — is what keeps the
+        // question locked across the resume.
         let (appState, cache) = makeAppState()
         var card = makeBatchActivity()
         card.questions[0].status = .answered
@@ -615,7 +681,8 @@ final class ClarifyBatchStateTests: XCTestCase {
                             "question": .string("Any additional notes?"),
                             "choices": .array([])
                         ])
-                    ])
+                    ]),
+                    "answers": .object(["environment": .string("staging")])
                 ])
             ])
         )
@@ -627,6 +694,105 @@ final class ClarifyBatchStateTests: XCTestCase {
         XCTAssertEqual(cards.first?.clarify?.questions[0].status, .answered)
         XCTAssertEqual(cards.first?.clarify?.questions[0].answer, "staging")
         XCTAssertEqual(cards.first?.clarify?.questions[1].status, .pending)
+    }
+
+    // MARK: - Authoritative pending_clarify vs replayed stream events
+
+    func testAuthoritativeSnapshotOverridesCachedSubmittingWhenGatewaySaysAnswered() throws {
+        // Local q0 = submitting (RPC outcome unknown, previous process), and
+        // the gateway's pending_clarify reports answers[q0] locked. The
+        // server wins: q0 restores answered, not stuck on "Locking your
+        // answer…".
+        let (appState, cache) = makeAppState()
+        var card = makeBatchActivity()
+        card.questions[0].status = .submitting
+        card.questions[0].answer = "staging"
+        cache.recordPendingDecision(
+            ChatMessage(id: "clarify-req-batch", role: .clarify, content: "batch", timestamp: "1", clarify: card),
+            profile: appState.activeProfile,
+            sessionIDs: ["stored-a"]
+        )
+        let result = SessionResumeResult(
+            sessionId: "stored-a",
+            messages: [],
+            snapshot: SessionRuntimeSnapshot(object: [
+                "running": .bool(true),
+                "pending_clarify": .object([
+                    "request_id": .string("req-batch"),
+                    "questions": .array([
+                        .object([
+                            "qid": .string("environment"),
+                            "question": .string("Which environment?"),
+                            "choices": .array([.string("staging"), .string("prod")])
+                        ])
+                    ]),
+                    "answers": .object(["environment": .string("staging")])
+                ])
+            ])
+        )
+
+        XCTAssertTrue(appState.applyChatResume(result))
+
+        let restored = try XCTUnwrap(clarifyCard(in: appState, requestId: "req-batch"))
+        XCTAssertEqual(restored.questions[0].status, .answered, "The gateway's locked answer outranks local .submitting")
+        XCTAssertEqual(restored.questions[0].answer, "staging")
+    }
+
+    func testAuthoritativeSnapshotOverridesCachedSubmittingWhenGatewaySaysPending() throws {
+        // Local q0 = submitting, but the gateway reports the question still
+        // open (the answer never landed). The snapshot must reopen it —
+        // never leave it spinning forever.
+        let (appState, cache) = makeAppState()
+        var card = makeBatchActivity()
+        card.questions[0].status = .submitting
+        card.questions[0].answer = ClarifyQuestion.multiSelectAnswer(["unit"])
+        cache.recordPendingDecision(
+            ChatMessage(id: "clarify-req-batch", role: .clarify, content: "batch", timestamp: "1", clarify: card),
+            profile: appState.activeProfile,
+            sessionIDs: ["stored-a"]
+        )
+        let result = SessionResumeResult(
+            sessionId: "stored-a",
+            messages: [],
+            snapshot: SessionRuntimeSnapshot(object: [
+                "running": .bool(true),
+                "pending_clarify": .object([
+                    "request_id": .string("req-batch"),
+                    "questions": .array([
+                        .object([
+                            "qid": .string("environment"),
+                            "question": .string("Which environment?"),
+                            "choices": .array([.string("staging"), .string("prod")])
+                        ])
+                    ])
+                ])
+            ])
+        )
+
+        XCTAssertTrue(appState.applyChatResume(result))
+
+        let restored = try XCTUnwrap(clarifyCard(in: appState, requestId: "req-batch"))
+        XCTAssertEqual(restored.questions[0].status, .pending, "The gateway's open question must not stay stuck submitting")
+        XCTAssertNil(restored.questions[0].answer)
+    }
+
+    func testReplayedOneShotEventStillPreservesLocalAnsweredState() throws {
+        // The STREAM source keeps its defensive replay semantics: a stale
+        // duplicate of clarify.request must not reopen a locally accepted
+        // answer (only the authoritative snapshot may override local state).
+        let (appState, _) = makeAppState()
+        var live = makeBatchActivity()
+        live.questions[0].status = .answered
+        live.questions[0].answer = "staging"
+        appState.messages = [
+            ChatMessage(id: "clarify-req-batch", role: .clarify, content: "batch", timestamp: "1", clarify: live)
+        ]
+
+        appState.handleStreamEvent(.clarify(sessionId: "stored-a", activity: makeBatchActivity()))
+
+        let settled = try XCTUnwrap(clarifyCard(in: appState, requestId: "req-batch"))
+        XCTAssertEqual(settled.questions[0].status, .answered)
+        XCTAssertEqual(settled.questions[0].answer, "staging")
     }
 
     func testRestoredSubmittingQuestionResetsWithoutUnlockingAnsweredSiblings() throws {
@@ -657,6 +823,182 @@ final class ClarifyBatchStateTests: XCTestCase {
         XCTAssertEqual(restored.questions[0].answer, "staging")
         XCTAssertEqual(restored.questions[1].status, .pending, "An in-flight question resets to answerable")
         XCTAssertNil(restored.questions[1].answer)
+    }
+
+    // MARK: - Retryable errors stay unresolved decisions
+
+    func testErroredClarifySurvivesPendingDecisionPersistence() throws {
+        // A .error question remains answerable, so it must be persisted and
+        // restored as an unresolved decision — never pruned as completed.
+        let (appState, cache) = makeAppState()
+        var card = makeBatchActivity()
+        card.questions[0].status = .answered
+        card.questions[0].answer = "staging"
+        card.questions[1].status = .error
+        card.questions[1].error = "Hermes did not accept that answer."
+        card.questions[2].status = .error
+        card.questions[2].error = "Hermes did not accept that answer."
+        cache.recordPendingDecision(
+            ChatMessage(id: "clarify-req-batch", role: .clarify, content: "batch", timestamp: "1", clarify: card),
+            profile: appState.activeProfile,
+            sessionIDs: ["stored-a"]
+        )
+        XCTAssertTrue(
+            SessionPresentationCache.isPendingDecision(card.status),
+            "A partially answered batch with retryable errors is still unresolved"
+        )
+
+        let restored = cache.merge(
+            [],
+            profile: appState.activeProfile,
+            sessionIDs: ["stored-a"],
+            includePendingClarifications: true
+        )
+        let restoredCard = try XCTUnwrap(restored.first { $0.clarify?.requestId == "req-batch" }?.clarify)
+        XCTAssertEqual(restoredCard.questions[0].status, .answered)
+        XCTAssertEqual(restoredCard.questions[1].status, .error, "The retryable question must survive as answerable")
+        XCTAssertEqual(restoredCard.questions[2].status, .error)
+    }
+
+    func testSingleQuestionErroredClarifySurvivesPendingDecisionPersistence() throws {
+        let (appState, cache) = makeAppState()
+        let card = ClarifyActivity(
+            requestId: "req-solo",
+            question: "Pick",
+            choices: [ClarifyChoice(label: "a", value: "a")],
+            status: .error,
+            error: "Hermes did not accept that answer."
+        )
+        XCTAssertTrue(SessionPresentationCache.isPendingDecision(card.status))
+        cache.recordPendingDecision(
+            ChatMessage(id: "clarify-req-solo", role: .clarify, content: "Pick", timestamp: "1", clarify: card),
+            profile: appState.activeProfile,
+            sessionIDs: ["stored-a"]
+        )
+        let restored = cache.merge(
+            [],
+            profile: appState.activeProfile,
+            sessionIDs: ["stored-a"],
+            includePendingClarifications: true
+        )
+        XCTAssertEqual(restored.first { $0.clarify?.requestId == "req-solo" }?.clarify?.questions[0].status, .error)
+    }
+
+    func testResolvedClarifyIsNotRestoredAsAnswerable() throws {
+        let (appState, cache) = makeAppState()
+        let answered = ClarifyActivity(
+            requestId: "req-done",
+            question: "Pick",
+            choices: [ClarifyChoice(label: "a", value: "a")],
+            status: .answered,
+            answer: "a"
+        )
+        let expired = ClarifyActivity(
+            requestId: "req-gone",
+            question: "Later",
+            choices: [ClarifyChoice(label: "b", value: "b")],
+            status: .expired
+        )
+        XCTAssertFalse(SessionPresentationCache.isPendingDecision(answered.status))
+        XCTAssertFalse(SessionPresentationCache.isPendingDecision(expired.status))
+        for card in [answered, expired] {
+            cache.recordPendingDecision(
+                ChatMessage(id: "clarify-\(card.requestId)", role: .clarify, content: "x", timestamp: "1", clarify: card),
+                profile: appState.activeProfile,
+                sessionIDs: ["stored-a"]
+            )
+        }
+        let restored = cache.merge(
+            [],
+            profile: appState.activeProfile,
+            sessionIDs: ["stored-a"],
+            includePendingClarifications: true
+        )
+        XCTAssertFalse(restored.contains { $0.clarify?.requestId == "req-done" && $0.clarify?.status == .pending })
+        XCTAssertFalse(restored.contains { $0.clarify?.requestId == "req-gone" && $0.clarify?.status == .pending })
+    }
+
+    // MARK: - Card layout (visible question text placement)
+
+    func testSingleQuestionCardLayoutCarriesQuestionTextInHeader() {
+        // One-question native clarify: the question text appears exactly
+        // once — in the header — and rows render controls only.
+        let activity = ClarifyActivity(
+            requestId: "req-solo",
+            question: "Which environment should I use?",
+            choices: [ClarifyChoice(label: "Staging", value: "staging")]
+        )
+        let layout = ClarifyCardLayout(questionCount: activity.questions.count)
+        XCTAssertEqual(layout, .singleQuestion)
+        XCTAssertEqual(layout.headerText(for: activity), "Which environment should I use?")
+        XCTAssertFalse(layout.rowsShowTitles, "The row must not duplicate the header question")
+    }
+
+    func testSingleQuestionRelayCardLayoutCarriesQuestionTextInHeader() {
+        // One-question push/relay clarify normalizes through the same
+        // convenience path and must render its visible question text too.
+        let activity = ClarifyActivity(
+            requestId: "conduit-push-abc123",
+            question: "Which color?",
+            choices: [ClarifyChoice(label: "Red", value: "Red")]
+        )
+        let layout = ClarifyCardLayout(questionCount: activity.questions.count)
+        XCTAssertEqual(layout.headerText(for: activity), "Which color?")
+        XCTAssertFalse(layout.rowsShowTitles)
+    }
+
+    func testBatchCardLayoutRendersSummaryOnceAndRowTitles() {
+        let activity = makeBatchActivity()
+        let layout = ClarifyCardLayout(questionCount: activity.questions.count)
+        XCTAssertEqual(layout, .batch)
+        let header = layout.headerText(for: activity)
+        XCTAssertTrue(header.contains("3"), header)
+        XCTAssertFalse(
+            activity.questions.contains { $0.question == header },
+            "The batch summary is its own line, never a copy of a question"
+        )
+        XCTAssertTrue(layout.rowsShowTitles, "Each batch row must carry its own question title")
+        // The summary text appears only via headerText — a second render
+        // would duplicate it.
+        XCTAssertEqual([layout.headerText(for: activity)].filter { $0 == header }.count, 1)
+    }
+
+    // MARK: - Push/live supersede correlation
+
+    func testFullBatchPushCardSupersededByMatchingLiveBatch() {
+        let pushed = ClarifyActivity(
+            requestId: "conduit-push-batch1",
+            questions: [
+                ClarifyQuestion(id: "environment", question: "Which environment?", choices: []),
+                ClarifyQuestion(id: "tests", question: "Which tests?", choices: [])
+            ]
+        )
+        let live = makeBatchActivity()
+        XCTAssertTrue(AppState.pushCardSupersededBy(pushed, live: live))
+    }
+
+    func testSinglePushCardMatchingOnlyOneBatchQuestionIsNotSuperseded() {
+        // A genuine single-question push card whose text happens to match one
+        // question of a live batch is a DIFFERENT request — it must survive.
+        let pushed = ClarifyActivity(
+            requestId: "conduit-push-other",
+            question: "Which tests should run?",
+            choices: [ClarifyChoice(label: "unit", value: "unit")]
+        )
+        let live = makeBatchActivity()
+        XCTAssertFalse(AppState.pushCardSupersededBy(pushed, live: live))
+    }
+
+    func testLegacyCollapsedPushCardStillSupersedesByFirstQuestion() {
+        // The old notifier reduces a batch to question 1: its lone synthetic
+        // card must still supersede a live batch containing that question.
+        let pushed = ClarifyActivity(
+            requestId: "conduit-push-old",
+            question: "Which environment?",
+            choices: [ClarifyChoice(label: "staging", value: "staging")]
+        )
+        XCTAssertTrue(pushed.questions[0].isSyntheticID)
+        XCTAssertTrue(AppState.pushCardSupersededBy(pushed, live: makeBatchActivity()))
     }
 
     // MARK: - Model helpers

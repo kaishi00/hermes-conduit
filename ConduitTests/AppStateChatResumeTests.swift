@@ -780,6 +780,46 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(restoredCard?.clarify?.questions.first?.choices.map(\.label), ["Red", "Blue"])
     }
 
+    func testPushedBatchClarifyDecisionRendersOneCardWithAllQuestions() async throws {
+        // A pushed batch decision must produce the SAME batch card model as a
+        // native clarify — one ClarifyCard, every question present, relay
+        // routing by the conduit-push- id prefix.
+        let harness = makeHarness()
+        harness.appState.activeSessionId = "stored-a"
+
+        let opened = await harness.appState.openNotificationTarget(
+            ConduitNotificationTarget(
+                profile: nil,
+                sessionId: "stored-a",
+                type: "input.needed",
+                decision: .clarifyBatch(
+                    requestId: "conduit-push-batch9",
+                    questions: [
+                        ClarifyQuestion(id: "environment", question: "Which environment?", choices: [
+                            ClarifyChoice(label: "staging", value: "staging"),
+                            ClarifyChoice(label: "prod", value: "prod")
+                        ]),
+                        ClarifyQuestion(id: "tests", question: "Which tests?", choices: [
+                            ClarifyChoice(label: "unit", value: "unit"),
+                            ClarifyChoice(label: "ui", value: "ui")
+                        ], multiSelect: true)
+                    ]
+                )
+            )
+        )
+
+        XCTAssertTrue(opened)
+        let cards = harness.appState.messages.filter { $0.role == .clarify }
+        XCTAssertEqual(cards.count, 1, "One pushed batch decision renders exactly one card")
+        let card = try XCTUnwrap(cards.first?.clarify)
+        XCTAssertEqual(card.requestId, "conduit-push-batch9")
+        XCTAssertEqual(card.questions.count, 2, "No reduction to the first question")
+        XCTAssertEqual(card.questions.map(\.id), ["environment", "tests"])
+        XCTAssertTrue(card.questions[1].multiSelect)
+        XCTAssertTrue(card.requestId.hasPrefix(PendingDecisionPayload.relayRequestPrefix), "Answers must route through the relay transport")
+        XCTAssertEqual(card.status, .pending)
+    }
+
     func testLiveClarifyEventSupersedesPushDeliveredCardForSameQuestion() async {
         let harness = makeHarness()
         harness.appState.activeSessionId = "stored-a"
