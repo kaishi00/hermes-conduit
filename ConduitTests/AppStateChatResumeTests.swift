@@ -784,7 +784,23 @@ final class AppStateChatResumeTests: XCTestCase {
         // A pushed batch decision must produce the SAME batch card model as a
         // native clarify — one ClarifyCard, every question present, relay
         // routing by the conduit-push- id prefix.
-        let harness = makeHarness()
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in [self.session("stored-a")] },
+                openSession: { _, sessionID, _ in
+                    SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: [:])
+                    )
+                },
+                refreshContext: { _, _ in }
+            )
+        )
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        harness.appState.connection = connection
+        harness.appState.client = HermesClient(connection: connection, profile: "default")
+        harness.appState.sessions = [session("stored-a")]
         harness.appState.activeSessionId = "stored-a"
 
         let opened = await harness.appState.openNotificationTarget(
