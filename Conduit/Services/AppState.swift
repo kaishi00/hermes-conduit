@@ -2249,6 +2249,8 @@ final class AppState: ObservableObject {
             handedOffAutomaticIntent = continuation.handedOffAutomaticIntent
             isConnected = true
             isConnecting = false
+            // A fresh healthy session never inherits an older banner error.
+            errorMessage = nil
             reconnectAttempts = 0
             connectedAt = Date()
             KeychainHelper.saveConnection(conn)
@@ -2492,6 +2494,10 @@ final class AppState: ObservableObject {
         KeychainHelper.clearConnection()
         turnState = .idle
         retireOutstandingPreferredReturnSurfaceRequests()
+        // The banner content belonged to the session being torn down; with
+        // the LoginView onAppear consume gone, this is what keeps a
+        // connected-era error from resurfacing stale after re-login.
+        errorMessage = nil
         showLogin = true
         // Typed handoff to the login card (consumed once there). Deliberately
         // NOT errorMessage: that string feeds the connected composer banner,
@@ -4400,6 +4406,8 @@ final class AppState: ObservableObject {
                   let activeClient = self.client, activeClient === client else { return }
             isConnected = true
             isConnecting = false
+            // A fresh healthy session never inherits an older banner error.
+            errorMessage = nil
             reconnectAttempts = 0
             connectedAt = Date()
             guard let continuation = await synchronizeTransportContinuation(

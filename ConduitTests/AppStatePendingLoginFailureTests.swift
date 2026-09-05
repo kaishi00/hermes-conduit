@@ -43,11 +43,28 @@ final class AppStatePendingLoginFailureTests: XCTestCase {
         )
         XCTAssertEqual(appState.pendingLoginFailure?.message, "Hermes rejected the saved session.")
         XCTAssertNil(appState.pendingLoginFailure?.helpDestination)
-        XCTAssertFalse(appState.pendingLoginFailure?.offersRecoveryActions ?? true)
+        XCTAssertEqual(appState.pendingLoginFailure?.offersRecoveryActions, false)
         XCTAssertNil(
             appState.errorMessage,
             "Login-bound failures must not leak into the connected composer banner"
         )
+    }
+
+    func testConnectPolicyFailureHandsOffTypedPendingFailure() async {
+        // The AppState.connect URL-policy guard is the third login-bound
+        // handoff site: a connection attempt whose base URL fails policy must
+        // land on the login card as a typed classified presentation — never
+        // as a raw string in errorMessage.
+        let appState = makeAppState()
+
+        await appState.connect(with: HermesConnection(baseUrl: "not a dashboard url", ticket: "ticket"))
+
+        XCTAssertTrue(appState.showLogin)
+        XCTAssertFalse(appState.isConnected)
+        XCTAssertFalse(appState.isConnecting)
+        XCTAssertEqual(appState.pendingLoginFailure?.title, "Check the dashboard address")
+        XCTAssertEqual(appState.pendingLoginFailure?.helpDestination, .start)
+        XCTAssertNil(appState.errorMessage)
     }
 
     func testPendingLoginFailureCarriesFullClassifiedPresentation() {

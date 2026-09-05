@@ -98,7 +98,9 @@ struct LoginView: View {
         .onReceive(appState.$pendingLoginFailure) { pending in
             // Typed handoff from AppState (rejected saved password,
             // requireSignIn). Unlike an onAppear string read, this fires even
-            // when the login card is already mounted. Consume once.
+            // when the login card is already mounted; @Published guarantees
+            // the current value replays to this new subscriber on mount, so
+            // both orderings are covered. Consume once.
             guard let pending else { return }
             failure = pending
             appState.pendingLoginFailure = nil
@@ -125,9 +127,12 @@ struct LoginView: View {
                 },
                 onError: { classifiedFailure, detail in
                     // Fixed classified copy only — the dashboard-provided
-                    // detail is diagnostic (default os privacy redacts it in
-                    // release builds) and never reaches the login card.
-                    Self.logger.error("Auth WebView sign-in error: \(detail)")
+                    // detail is logged for diagnosis (default os privacy
+                    // redacts it in release builds) and never reaches the
+                    // login card.
+                    Self.logger.error(
+                        "Auth WebView sign-in error: \(String(describing: classifiedFailure), privacy: .public) detail: \(detail)"
+                    )
                     failure = .presenting(classifiedFailure)
                 }
             )
