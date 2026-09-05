@@ -99,6 +99,41 @@ final class ConnectionFailureTests: XCTestCase {
         XCTAssertEqual(ConnectionFailureClassifier.classify(URLError(.networkConnectionLost)), .unreachable)
     }
 
+    func testBadURLClassifiesAsInvalidAddress() {
+        XCTAssertEqual(ConnectionFailureClassifier.classify(URLError(.badURL)), .invalidAddress)
+    }
+
+    func testATSErrorClassifiesAsInsecureTransport() {
+        XCTAssertEqual(
+            ConnectionFailureClassifier.classify(URLError(.appTransportSecurityRequiresSecureConnection)),
+            .insecureTransport
+        )
+    }
+
+    func testOfflineFamilyCodesClassifyAsOffline() {
+        // notConnectedToInternet is covered above; pin the rest of the family.
+        XCTAssertEqual(ConnectionFailureClassifier.classify(URLError(.dataNotAllowed)), .offline)
+        XCTAssertEqual(ConnectionFailureClassifier.classify(URLError(.internationalRoamingOff)), .offline)
+    }
+
+    func testBadServerResponseClassifiesAsUnexpectedServerResponse() {
+        // NativeAuthClient.perform throws this when no usable response
+        // arrives; it must not degrade to the unknown bucket.
+        XCTAssertEqual(ConnectionFailureClassifier.classify(URLError(.badServerResponse)), .unexpectedServerResponse)
+    }
+
+    func testCancelledURLErrorClassifiesAsUnknownNotCredentials() {
+        // LoginView intercepts CancellationError before classification (and
+        // NativeAuthClient converts URLError.cancelled into CancellationError),
+        // so a cancelled transport that ever escaped would land here: generic
+        // copy, never a credentials or rate-limit claim. This pins that.
+        let presentation = ConnectionFailurePresentation.presenting(
+            ConnectionFailureClassifier.classify(URLError(.cancelled))
+        )
+        XCTAssertEqual(presentation.title, "Couldn’t connect")
+        XCTAssertNotEqual(presentation.helpDestination, .credentials)
+    }
+
     func testCertificateUntrustedClassifiesAsTLSTrustPresentation() {
         let presentation = ConnectionFailurePresentation.presenting(
             ConnectionFailureClassifier.classify(URLError(.serverCertificateUntrusted))
@@ -353,7 +388,21 @@ final class ConnectionFailureTests: XCTestCase {
             ConnectionFailureClassifier.classify(URLError(.unknown))
         )
         XCTAssertEqual(presentation.title, "Couldn’t connect")
+        // Try-only behavior: recovery actions render, but no Troubleshoot
+        // button without a trustworthy destination.
+        XCTAssertTrue(presentation.offersRecoveryActions)
         XCTAssertNil(presentation.helpDestination)
+    }
+
+    func testAuthClientNoResponseLoginFailureDoesNotBlameCredentials() {
+        let description = AuthClientError.loginFailed(
+            status: nil,
+            detail: "No response"
+        ).errorDescription
+        XCTAssertFalse(
+            description?.lowercased().contains("credentials") ?? true,
+            "A no-response login failure must not read as a credentials problem"
+        )
     }
 
     // MARK: - Presentation models

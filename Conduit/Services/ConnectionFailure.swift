@@ -118,6 +118,11 @@ enum ConnectionFailureClassifier {
             return .offline
         case .networkConnectionLost:
             return .unreachable
+        case .badServerResponse, .httpTooManyRedirects:
+            // NativeAuthClient.perform throws badServerResponse when no
+            // usable response arrives — a dashboard-behavior problem, not an
+            // unknown one.
+            return .unexpectedServerResponse
         case .serverCertificateHasBadDate, .serverCertificateNotYetValid:
             return .tlsBadDate
         case .serverCertificateUntrusted, .serverCertificateHasUnknownRoot:
@@ -253,7 +258,7 @@ extension ConnectionFailure {
                 + "Service Auth policy for this Access application, or turn off "
                 + "\"Use Cloudflare Access service token\" to sign in interactively."
         case .sessionTicketFailure:
-            return "Signing in succeeded, but Conduit could not start a Hermes session. The dashboard may be busy or restarting — try again."
+            return "Signing in succeeded, but Conduit could not start a Hermes session. The dashboard may be busy, restarting, or it did not accept the new session — try again."
         case .dashboardUnavailable:
             return "The dashboard is reachable but reported a server error. It may be restarting or unhealthy — try again in a moment."
         case .unexpectedServerResponse:

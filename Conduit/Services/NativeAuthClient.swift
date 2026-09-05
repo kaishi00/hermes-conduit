@@ -44,7 +44,12 @@ enum AuthClientError: LocalizedError {
             if status == 429 {
                 return "Too many login attempts. Try again shortly."
             }
-            if let status, !(401...403).contains(status) {
+            guard let status else {
+                // No HTTP response arrived; the credentials were never
+                // evaluated and must not be blamed.
+                return "Login failed: no response from the dashboard."
+            }
+            if !(401...403).contains(status) {
                 return "Login failed: HTTP \(status)"
             }
             return "Login failed. Check your dashboard credentials and try again."

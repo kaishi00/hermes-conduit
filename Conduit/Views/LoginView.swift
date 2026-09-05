@@ -87,6 +87,14 @@ struct LoginView: View {
             }
         }
         .onAppear {
+            // A classified sign-in failure from AppState (e.g. a rejected
+            // saved password at launch, or requireSignIn) surfaces here once
+            // and is consumed, so it cannot resurface stale in the connected
+            // composer banner later.
+            if let message = appState.errorMessage, !message.isEmpty {
+                failure = .notice(title: "Sign-in didn’t complete", message: message)
+                appState.errorMessage = nil
+            }
             guard serverUrl.isEmpty else { return }
             serverUrl = appState.lastDashboardURL
             if let access = KeychainHelper.loadCloudflareAccess(for: serverUrl) {
@@ -313,6 +321,7 @@ struct LoginView: View {
                                 Button("Try Again") {
                                     Task { await connect() }
                                 }
+                                .disabled(isConnecting)
                                 .accessibilityIdentifier("login.error.try-again")
 
                                 if let destination = failure.helpDestination {
@@ -382,6 +391,10 @@ struct LoginView: View {
 
     @MainActor
     private func connect() async {
+        // The Connect button is disabled while connecting, but Try Again and
+        // the return-key chain also reach this method: never let a second
+        // auth sequence run concurrently (Hermes throttles password login).
+        guard !isConnecting else { return }
         let cleaned = serverUrl.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty else {
             // The return-key chain can reach submit without the Connect
@@ -410,7 +423,10 @@ struct LoginView: View {
         do {
             normalized = try ConnectionURLPolicy.normalizedBaseURL(cleaned)
         } catch {
-            Self.logger.error("Login URL normalization failed: \(String(describing: error), privacy: .public)")
+            // Log the type-safe classification, never the raw error: its
+            // associated values can carry server-provided detail text that
+            // must not reach the unified log unredacted.
+            Self.logger.error("Login URL normalization failed: \(String(describing: ConnectionFailureClassifier.classify(error)), privacy: .public)")
             failure = .presenting(ConnectionFailureClassifier.classify(error))
             return
         }
@@ -447,7 +463,7 @@ struct LoginView: View {
         } catch is CancellationError {
             return
         } catch {
-            Self.logger.error("Login connection failed: \(String(describing: error), privacy: .public)")
+            Self.logger.error("Login connection failed: \(String(describing: ConnectionFailureClassifier.classify(error)), privacy: .public)")
             failure = .presenting(ConnectionFailureClassifier.classify(error))
         }
     }
