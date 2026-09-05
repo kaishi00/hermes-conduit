@@ -327,16 +327,31 @@ final class ConnectionFailureTests: XCTestCase {
         XCTAssertEqual(presentation.helpDestination, .dashboard)
     }
 
-    func testProviderDiscovery429AlsoClassifiesAsRateLimited() {
-        // The documented throttle targets /auth/password-login, but a 429
-        // from any auth endpoint is a throttle, never bad credentials.
-        let presentation = ConnectionFailurePresentation.presenting(
-            ConnectionFailureClassifier.classify(
-                AuthClientError.providerDiscoveryFailed(status: 429, detail: "HTTP 429")
-            )
+    func testProviderDiscovery429DoesNotAdoptLoginCooldownPresentation() {
+        // Only /auth/password-login is throttled by Hermes (10/60s/IP). A 429
+        // from provider discovery is unexpected server behavior — not a login
+        // cooldown — and retrying it consumes no password-login budget, so
+        // the login-cooldown presentation (no actions) must not apply.
+        let failure = ConnectionFailureClassifier.classify(
+            AuthClientError.providerDiscoveryFailed(status: 429, detail: "HTTP 429")
         )
+        XCTAssertEqual(failure, .unexpectedServerResponse)
+        let presentation = ConnectionFailurePresentation.presenting(failure)
+        XCTAssertEqual(presentation.title, "Unexpected response")
+        XCTAssertNotEqual(presentation.title, "Too many login attempts")
+        XCTAssertFalse(presentation.message.contains("Wait about a minute"))
+        XCTAssertTrue(presentation.offersRecoveryActions)
+    }
+
+    func testPasswordLogin429StillAdoptsLoginCooldownPresentation() {
+        // The stage-gating above must not dilute the real throttled endpoint.
+        let failure = ConnectionFailureClassifier.classify(
+            AuthClientError.loginFailed(status: 429, detail: "Too many login attempts. Try again shortly.")
+        )
+        XCTAssertEqual(failure, .rateLimited)
+        let presentation = ConnectionFailurePresentation.presenting(failure)
         XCTAssertEqual(presentation.title, "Too many login attempts")
-        XCTAssertNotEqual(presentation.helpDestination, .credentials)
+        XCTAssertFalse(presentation.offersRecoveryActions)
     }
 
     func testDiscoveryWithoutHTTPResponseClassifiesAsUnexpectedServerResponse() {
@@ -402,6 +417,36 @@ final class ConnectionFailureTests: XCTestCase {
         XCTAssertFalse(
             description?.lowercased().contains("credentials") ?? true,
             "A no-response login failure must not read as a credentials problem"
+        )
+    }
+
+    // MARK: - AuthWebView failure routing (fixed classified copy)
+
+    func testAuthWebViewTicketFailurePresentationIsFixedClassifiedCopy() {
+        // The dashboard controls the ticket-payload text (payload["error"]).
+        // The login card must render only Conduit's fixed session-ticket
+        // copy — the exact-equality assertions break if payload text is ever
+        // interpolated into the presentation again.
+        let presentation = ConnectionFailurePresentation.presenting(.sessionTicketFailure)
+        XCTAssertEqual(presentation.title, "Could not start the session")
+        XCTAssertEqual(
+            presentation.message,
+            "Signing in succeeded, but Conduit could not start a Hermes session. The dashboard may be busy, restarting, or it did not accept the new session — try again."
+        )
+        XCTAssertEqual(presentation.helpDestination, .dashboard)
+        XCTAssertTrue(presentation.offersRecoveryActions)
+    }
+
+    func testAuthWebViewNormalizationFailureClassifiesAsInvalidAddress() {
+        // AuthWebView's request-construction failures classify through the
+        // same ConnectionURLPolicyError mapping as the login form.
+        XCTAssertEqual(
+            ConnectionFailureClassifier.classify(ConnectionURLPolicyError.invalidURL),
+            .invalidAddress
+        )
+        XCTAssertEqual(
+            ConnectionFailurePresentation.presenting(.invalidAddress).title,
+            "Check the dashboard address"
         )
     }
 

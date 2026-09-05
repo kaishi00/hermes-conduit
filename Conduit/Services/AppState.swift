@@ -755,6 +755,14 @@ final class AppState: ObservableObject {
     /// tell whether Settings owns the surface across a background/foreground cycle.
     @Published var isSettingsSheetPresented = false
     @Published var errorMessage: String?
+    /// A classified sign-in failure awaiting presentation on the login card.
+    /// Typed (not a string) so LoginView renders the full presentation —
+    /// title, actions, help routing — and delivered as a publisher so the
+    /// handoff works even when LoginView is already mounted (onReceive fires
+    /// on new emissions and replays the current value on mount). Consumed
+    /// once by LoginView; never read by the connected composer banner, so a
+    /// sign-in failure cannot resurface stale over a healthy session.
+    @Published var pendingLoginFailure: ConnectionFailurePresentation?
     @Published var showLogin = true
     @Published private(set) var composerPrefillText = ""
     @Published private(set) var composerPrefillToken = UUID()
@@ -2160,7 +2168,8 @@ final class AppState: ObservableObject {
             cancelChatResumeTransportRecovery()
         }
         // Preserve which URL-policy rule failed instead of reporting every
-        // normalization failure as insecure transport.
+        // normalization failure as insecure transport, and hand the login
+        // card a typed classified presentation rather than a string.
         let normalizedBaseURL: String
         do {
             normalizedBaseURL = try ConnectionURLPolicy.normalizedBaseURL(conn.baseUrl)
@@ -2168,7 +2177,7 @@ final class AppState: ObservableObject {
             isConnecting = false
             isConnected = false
             showLogin = true
-            errorMessage = error.localizedDescription
+            pendingLoginFailure = .presenting(ConnectionFailureClassifier.classify(error))
             return
         }
         prepareChatResumeForConnection(to: normalizedBaseURL)
@@ -2441,11 +2450,10 @@ final class AppState: ObservableObject {
         } catch {
             // A rejected saved password falls back to the native login screen
             // without erasing it, allowing the user to correct the account.
-            // Classified copy instead of raw Foundation strings.
+            // The typed classified handoff replaces the old string write, so
+            // the composer banner never inherits a stale sign-in message.
             showLogin = true
-            errorMessage = ConnectionFailurePresentation
-                .presenting(ConnectionFailureClassifier.classify(error))
-                .message
+            pendingLoginFailure = .presenting(ConnectionFailureClassifier.classify(error))
         }
     }
 
@@ -2458,7 +2466,10 @@ final class AppState: ObservableObject {
         }
     }
 
-    private func requireSignIn(message: String) {
+    /// Forces the sign-in screen with a message destined for the login card.
+    /// Internal (not private) so the typed pending-failure handoff contract
+    /// stays unit-testable.
+    func requireSignIn(message: String) {
         cancelChatResumeTransportRecovery()
         invalidateReconciliation()
         cancelSecondaryProfileTitleRecovery()
@@ -2482,7 +2493,11 @@ final class AppState: ObservableObject {
         turnState = .idle
         retireOutstandingPreferredReturnSurfaceRequests()
         showLogin = true
-        errorMessage = message
+        // Typed handoff to the login card (consumed once there). Deliberately
+        // NOT errorMessage: that string feeds the connected composer banner,
+        // where a stale sign-in message would outlive the successful
+        // re-login that follows this screen.
+        pendingLoginFailure = .notice(title: "Sign-in didn’t complete", message: message)
     }
 
     // MARK: - Authoritative reconciliation

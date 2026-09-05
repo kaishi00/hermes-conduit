@@ -87,14 +87,6 @@ struct LoginView: View {
             }
         }
         .onAppear {
-            // A classified sign-in failure from AppState (e.g. a rejected
-            // saved password at launch, or requireSignIn) surfaces here once
-            // and is consumed, so it cannot resurface stale in the connected
-            // composer banner later.
-            if let message = appState.errorMessage, !message.isEmpty {
-                failure = .notice(title: "Sign-in didn’t complete", message: message)
-                appState.errorMessage = nil
-            }
             guard serverUrl.isEmpty else { return }
             serverUrl = appState.lastDashboardURL
             if let access = KeychainHelper.loadCloudflareAccess(for: serverUrl) {
@@ -102,6 +94,14 @@ struct LoginView: View {
                 cloudflareClientID = access.clientID
                 cloudflareClientSecret = access.clientSecret
             }
+        }
+        .onReceive(appState.$pendingLoginFailure) { pending in
+            // Typed handoff from AppState (rejected saved password,
+            // requireSignIn). Unlike an onAppear string read, this fires even
+            // when the login card is already mounted. Consume once.
+            guard let pending else { return }
+            failure = pending
+            appState.pendingLoginFailure = nil
         }
         .sheet(item: $connectionSetupDestination) { destination in
             ConnectionSetupView(initialDestination: destination)
@@ -123,8 +123,12 @@ struct LoginView: View {
                     await appState.connect(with: HermesConnection(baseUrl: baseUrl, ticket: ticket))
                 }
                 },
-                onError: { message in
-                    failure = .notice(title: "Sign-in didn’t complete", message: message)
+                onError: { classifiedFailure, detail in
+                    // Fixed classified copy only — the dashboard-provided
+                    // detail is diagnostic (default os privacy redacts it in
+                    // release builds) and never reaches the login card.
+                    Self.logger.error("Auth WebView sign-in error: \(detail)")
+                    failure = .presenting(classifiedFailure)
                 }
             )
         }
@@ -572,7 +576,10 @@ struct AuthWebView: UIViewRepresentable {
     let url: String
     let cloudflareAccess: CloudflareAccessCredentials?
     let onTicket: (String, String) -> Void
-    let onError: (String) -> Void
+    /// Classified failure + raw diagnostic detail. The dashboard controls the
+    /// detail text (e.g. `payload["error"]`), so it is never rendered — the
+    /// login card shows only the fixed copy for the classification.
+    let onError: (ConnectionFailure, String) -> Void
 
     func makeUIView(context: Context) -> WKWebView {
         let normalized = try? ConnectionURLPolicy.normalizedBaseURL(url)
@@ -589,13 +596,13 @@ struct AuthWebView: UIViewRepresentable {
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
         guard let normalized else {
-            onError(ConnectionURLPolicyError.invalidURL.localizedDescription)
+            onError(.invalidAddress, "dashboard URL failed normalization in AuthWebView")
             return webView
         }
         if let request = try? Self.dashboardRequest(normalizedBaseURL: normalized, cloudflareAccess: cloudflareAccess) {
             webView.load(request)
         } else {
-            onError(ConnectionURLPolicyError.invalidURL.localizedDescription)
+            onError(.invalidAddress, "dashboard sign-in request construction failed")
         }
         return webView
     }
@@ -693,8 +700,13 @@ struct AuthWebView: UIViewRepresentable {
             let status = payload["status"] as? Int ?? 0
             guard status != 401 else { return } // The dashboard is still showing its sign-in route.
             guard let ticket = payload["ticket"] as? String, !ticket.isEmpty else {
+                // The classification is Conduit's, never the payload's: a
+                // completed dashboard sign-in that fails to mint a ticket is
+                // a session-ticket failure regardless of what the payload
+                // says. Payload text is carried as diagnostic detail only.
                 let detail = payload["error"] as? String
-                parent.onError(detail ?? "Unable to start the Hermes session\(status == 0 ? "" : " (\(status))").")
+                    ?? "Unable to start the Hermes session\(status == 0 ? "" : " (\(status))")"
+                parent.onError(.sessionTicketFailure, detail)
                 return
             }
             // Persist the HttpOnly dashboard session before dismissing this

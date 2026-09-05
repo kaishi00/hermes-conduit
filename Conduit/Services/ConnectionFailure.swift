@@ -136,15 +136,21 @@ enum ConnectionFailureClassifier {
 
     private static func classifyHTTPStatus(_ status: Int?, stage: AuthStage) -> ConnectionFailure {
         guard let status else { return .unexpectedServerResponse }
-        if status == 429 {
-            // Hermes throttles password login per client IP. A throttle is
-            // never bad credentials, at any stage.
-            return .rateLimited
-        }
-        if stage == .passwordLogin, status == 401 || status == 403 {
+        if stage == .passwordLogin {
+            // Only the endpoint Hermes actually throttles (/auth/password-login,
+            // 10 req/60s/IP) may claim the login-cooldown presentation. A 429
+            // from any other auth endpoint is unexpected server behavior, not
+            // a login cooldown — and retrying it does not consume the
+            // password-login budget, so its presentation keeps recovery
+            // actions.
+            if status == 429 {
+                return .rateLimited
+            }
             // Only the password-authentication stage may claim "bad
             // credentials"; 401s elsewhere are a misrouted/odd deployment.
-            return .authenticationRejected
+            if status == 401 || status == 403 {
+                return .authenticationRejected
+            }
         }
         if (500...599).contains(status) {
             return .dashboardUnavailable
