@@ -121,9 +121,10 @@ final class AppStatePendingLoginFailureTests: XCTestCase {
 
     func testSilentRenewalWithoutReauthAttemptClassifiesBridgeSignInRequiredAsLoginRequired() {
         // No saved credentials → no re-auth attempt: the bare bridge
-        // signInRequired means the WebKit session expired. That must read as
-        // sign-in-required copy — never the unknown "Couldn't connect"
-        // degradation, and never a raw error string.
+        // signInRequired covers both an expired WebKit session and no usable
+        // sign-in session at all, so the copy must stay neutral — never the
+        // unknown "Couldn't connect" degradation, never a raw error string,
+        // and no expiration claim either way.
         let presentation = AppState.silentRenewalSignInFailure(
             reauthError: nil,
             bridgeError: DashboardTicketBridgeError.signInRequired
