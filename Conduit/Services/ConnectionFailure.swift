@@ -284,7 +284,7 @@ extension ConnectionFailure {
         case .rateLimited:
             return "Hermes temporarily blocked additional login attempts. Wait about a minute before trying again."
         case .loginRequired:
-            return "Your dashboard session has expired. Sign in again to reconnect."
+            return "Conduit needs you to sign in to the dashboard to reconnect."
         case .cloudflareTokenRejected:
             return "Cloudflare Access did not accept the configured service token. "
                 + "Verify the Client ID / Secret and that the token is allowed by a "

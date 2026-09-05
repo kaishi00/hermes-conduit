@@ -131,7 +131,7 @@ final class AppStatePendingLoginFailureTests: XCTestCase {
         XCTAssertEqual(presentation.title, "Sign-in required")
         XCTAssertEqual(
             presentation.message,
-            "Your dashboard session has expired. Sign in again to reconnect."
+            "Conduit needs you to sign in to the dashboard to reconnect."
         )
         XCTAssertNil(presentation.helpDestination)
     }
