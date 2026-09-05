@@ -118,6 +118,13 @@ struct MainView: View {
         }
         .background(windowWidthReader)
         .onPreferenceChange(MainViewWindowWidthKey.self) { availableWindowWidth = $0 }
+        .onChange(of: isPersistentSidebarActive) { _, persistentActive in
+            // Hard invariant: the persistent layout must never coexist with
+            // showSidebar == true — that flag suppresses streaming/reasoning
+            // publication. A resize, rotation, or the Appearance toggle can
+            // activate the persistent layout while the drawer is presented.
+            if persistentActive { appState.dismissSidebarDrawer() }
+        }
         .task(id: voiceCapabilityRefreshKey) {
             await appState.refreshVoiceCapabilities()
         }
