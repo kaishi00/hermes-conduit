@@ -52,6 +52,28 @@ final class AuthWebViewNavigationPolicyTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(received.first).1, "construction failed")
     }
 
+    func testConstructionFailurePassesExplicitFailureThroughDeferredReport() throws {
+        // The seam's failure parameter defaults to .invalidAddress (both
+        // current call sites are address-class), but an explicit failure must
+        // pass through untouched so a future construction failure of another
+        // class is not silently misclassified.
+        let reported = expectation(description: "deferred onError")
+        var received: (ConnectionFailure, String)?
+
+        AuthWebView.reportConstructionFailure(
+            { failure, detail in
+                received = (failure, detail)
+                reported.fulfill()
+            },
+            detail: "handshake collapsed",
+            failure: .tlsFailure
+        )
+        wait(for: [reported], timeout: 2)
+
+        XCTAssertEqual(try XCTUnwrap(received).0, .tlsFailure)
+        XCTAssertEqual(try XCTUnwrap(received).1, "handshake collapsed")
+    }
+
     // MARK: - Subframes (Turnstile / identity-provider operation)
 
     func testSubframeAboutBlankAndSrcdocAreAllowedForTurnstile() throws {

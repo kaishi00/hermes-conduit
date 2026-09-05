@@ -2475,9 +2475,10 @@ final class AppState: ObservableObject {
     /// rendered via errorDescription. Internal for unit testing.
     static func silentRenewalSignInFailure(
         reauthError: Error?,
-        bridgeError: Error
+        bridgeError: DashboardTicketBridgeError
     ) -> ConnectionFailurePresentation {
-        .presenting(ConnectionFailureClassifier.classify(reauthError ?? bridgeError))
+        .presenting(reauthError.map(ConnectionFailureClassifier.classify)
+            ?? ConnectionFailureClassifier.classify(bridgeError))
     }
 
     /// Forces the sign-in screen with a classified failure presentation.
@@ -4396,6 +4397,11 @@ final class AppState: ObservableObject {
                         )
                         guard refreshTransportContinuation() else { return }
                         return
+                    } catch is CancellationError {
+                        // A superseded reconnect owns the flow from here; do
+                        // not force the user to the sign-in card for an
+                        // intentional cancellation.
+                        return
                     } catch {
                         guard refreshTransportContinuation() else { return }
                         // The silent re-auth failure (429 throttle, 401
@@ -4411,7 +4417,7 @@ final class AppState: ObservableObject {
                 requireSignIn(
                     failure: Self.silentRenewalSignInFailure(
                         reauthError: silentRenewalReauthError,
-                        bridgeError: error
+                        bridgeError: bridgeError
                     )
                 )
             } else {

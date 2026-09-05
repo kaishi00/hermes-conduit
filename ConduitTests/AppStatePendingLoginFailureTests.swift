@@ -88,6 +88,7 @@ final class AppStatePendingLoginFailureTests: XCTestCase {
             "A reconnect 429 must not surface raw AuthClientError.errorDescription"
         )
         XCTAssertEqual(presentation.offersRecoveryActions, false)
+        XCTAssertNil(presentation.helpDestination)
     }
 
     func testSilentRenewal401And503DoNotSurfaceRawErrorDescription() {
@@ -118,15 +119,33 @@ final class AppStatePendingLoginFailureTests: XCTestCase {
         XCTAssertFalse(outagePresentation.message.contains("HTTP 503"))
     }
 
-    func testSilentRenewalWithoutReauthAttemptStillClassifiesBridgeError() {
+    func testSilentRenewalWithoutReauthAttemptClassifiesBridgeSignInRequiredAsLoginRequired() {
         // No saved credentials → no re-auth attempt: the bare bridge
-        // signInRequired still gets a classified (graceful) presentation.
+        // signInRequired means the WebKit session expired. That must read as
+        // sign-in-required copy — never the unknown "Couldn't connect"
+        // degradation, and never a raw error string.
         let presentation = AppState.silentRenewalSignInFailure(
             reauthError: nil,
             bridgeError: DashboardTicketBridgeError.signInRequired
         )
-        XCTAssertFalse(presentation.title.isEmpty)
+        XCTAssertEqual(presentation.title, "Sign-in required")
+        XCTAssertEqual(
+            presentation.message,
+            "Your dashboard session has expired. Sign in again to reconnect."
+        )
         XCTAssertNil(presentation.helpDestination)
+    }
+
+    func testSilentRenewalOfflineReauthClassifiesAsOfflineWithNetworkHelp() {
+        // Reconnect during a Wi-Fi blip: the most visible non-HTTP reauth
+        // scenario gets the offline presentation, not unknown.
+        let presentation = AppState.silentRenewalSignInFailure(
+            reauthError: URLError(.notConnectedToInternet),
+            bridgeError: DashboardTicketBridgeError.signInRequired
+        )
+        XCTAssertEqual(presentation.title, "No network connection")
+        XCTAssertEqual(presentation.helpDestination, .network)
+        XCTAssertTrue(presentation.offersRecoveryActions)
     }
 
     func testRequireSignInFailureOverloadPreservesFullPresentation() {

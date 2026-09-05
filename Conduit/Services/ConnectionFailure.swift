@@ -36,6 +36,10 @@ enum ConnectionFailure: Equatable {
     /// IP, HTTP 429). Distinct from `.authenticationRejected`: a throttle is
     /// not a wrong password, and the copy must not invite immediate retries.
     case rateLimited
+    /// The dashboard bridge reports the WebKit session is gone (interactive
+    /// sign-in has expired or never happened). The login form itself is the
+    /// remedy — no troubleshooting destination would help.
+    case loginRequired
     case cloudflareTokenRejected
     case sessionTicketFailure
 
@@ -55,6 +59,9 @@ enum ConnectionFailureClassifier {
     private enum AuthStage {
         case providerDiscovery
         case passwordLogin
+        /// Dashboard-ticket bridge requests (WebKit-side ticket minting):
+        /// like provider discovery, a 401/403 here is never bad credentials.
+        case ticketMint
     }
 
     static func classify(_ error: Error) -> ConnectionFailure {
@@ -66,6 +73,9 @@ enum ConnectionFailureClassifier {
         }
         if let urlError = error as? URLError {
             return classify(urlError)
+        }
+        if let bridgeError = error as? DashboardTicketBridgeError {
+            return classify(bridgeError)
         }
         // URLSession surfaces transport failures as NSError values in the
         // NSURLErrorDomain (e.g. injected through URLProtocol test seams).
@@ -99,6 +109,20 @@ enum ConnectionFailureClassifier {
             return classifyHTTPStatus(status, stage: .providerDiscovery)
         case .cloudflareServiceTokenRejected:
             return .cloudflareTokenRejected
+        }
+    }
+
+    /// Dashboard-ticket bridge failures. signInRequired means the WebKit
+    /// sign-in session is gone — the login form itself is the remedy, so it
+    /// must classify as login-required rather than degrade to unknown.
+    static func classify(_ bridgeError: DashboardTicketBridgeError) -> ConnectionFailure {
+        switch bridgeError {
+        case .signInRequired:
+            return .loginRequired
+        case .http(let status, _):
+            return classifyHTTPStatus(status, stage: .ticketMint)
+        case .notReady, .requestFailed, .oversizedResponse:
+            return .unexpectedServerResponse
         }
     }
 
@@ -226,6 +250,7 @@ extension ConnectionFailure {
         case .tlsFailure: return "Secure connection failed"
         case .authenticationRejected: return "Login failed"
         case .rateLimited: return "Too many login attempts"
+        case .loginRequired: return "Sign-in required"
         case .cloudflareTokenRejected: return "Cloudflare rejected the service token"
         case .sessionTicketFailure: return "Could not start the session"
         case .dashboardUnavailable: return "Dashboard unavailable"
@@ -258,6 +283,8 @@ extension ConnectionFailure {
             return "Hermes rejected that username or password. Check your dashboard credentials and try again."
         case .rateLimited:
             return "Hermes temporarily blocked additional login attempts. Wait about a minute before trying again."
+        case .loginRequired:
+            return "Your dashboard session has expired. Sign in again to reconnect."
         case .cloudflareTokenRejected:
             return "Cloudflare Access did not accept the configured service token. "
                 + "Verify the Client ID / Secret and that the token is allowed by a "
@@ -284,6 +311,7 @@ extension ConnectionFailure {
         case .tlsUntrusted, .tlsBadDate, .tlsFailure: return .tls
         case .authenticationRejected: return .credentials
         case .rateLimited: return nil
+        case .loginRequired: return nil
         case .cloudflareTokenRejected: return .cloudflare
         case .sessionTicketFailure, .dashboardUnavailable, .unexpectedServerResponse: return .dashboard
         case .unknown: return nil

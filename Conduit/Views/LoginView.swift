@@ -619,10 +619,11 @@ struct AuthWebView: UIViewRepresentable {
     /// callback so the deferral contract stays unit-testable.
     static func reportConstructionFailure(
         _ onError: @escaping (ConnectionFailure, String) -> Void,
-        detail: String
+        detail: String,
+        failure: ConnectionFailure = .invalidAddress
     ) {
         DispatchQueue.main.async {
-            onError(.invalidAddress, detail)
+            onError(failure, detail)
         }
     }
 
