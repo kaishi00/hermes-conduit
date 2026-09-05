@@ -116,12 +116,128 @@ struct ClarifyChoice: Codable, Equatable, Identifiable {
     var id: String { value }
 }
 
-struct ClarifyActivity: Codable, Equatable {
-    var requestId: String
+/// One question inside a clarification request. Current Hermes gateways send
+/// batches (`clarify.request { questions: [...] }`) where each entry carries a
+/// gateway-minted `qid`; the legacy scalar payload normalizes into a batch of
+/// exactly one of these. `id` is the wire identity — it is what
+/// `clarify.respond { question_id }` keys per-question answers by.
+struct ClarifyQuestion: Codable, Equatable, Identifiable {
+    var id: String
     var question: String
     var choices: [ClarifyChoice]
+    var multiSelect: Bool
     var status: Status
+    /// The accepted answer exactly as it travels the wire. Multi-select
+    /// answers are a JSON array string of chosen values; `ClarifyQuestion`
+    /// exposes them through `resolvedAnswer` for display.
     var answer: String?
+    var error: String?
+    /// True when `id` was minted locally for a legacy scalar payload rather
+    /// than supplied by the gateway. Synthetic ids must never ride the wire
+    /// as `question_id` — the server has no such qid, and a real gateway
+    /// batch can also mint q0-style ids, so the flag (not the id value) is
+    /// what routes legacy answers through the request-level respond shape.
+    var isSyntheticID: Bool
+
+    enum Status: String, Codable {
+        case pending
+        case submitting
+        case answered
+        case error
+        case expired
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, question, choices, status, answer, error, isSyntheticID
+        case multiSelect = "multi_select"
+    }
+
+    /// True when the question offers no choices and expects typed text.
+    var isFreeText: Bool { choices.isEmpty }
+
+    init(
+        id: String,
+        question: String,
+        choices: [ClarifyChoice],
+        multiSelect: Bool = false,
+        status: Status = .pending,
+        answer: String? = nil,
+        error: String? = nil,
+        isSyntheticID: Bool = false
+    ) {
+        self.id = id
+        self.question = question
+        self.choices = choices
+        self.multiSelect = multiSelect
+        self.status = status
+        self.answer = answer
+        self.error = error
+        self.isSyntheticID = isSyntheticID
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        question = try container.decode(String.self, forKey: .question)
+        choices = try container.decode([ClarifyChoice].self, forKey: .choices)
+        multiSelect = try container.decodeIfPresent(Bool.self, forKey: .multiSelect) ?? false
+        status = try container.decodeIfPresent(Status.self, forKey: .status) ?? .pending
+        answer = try container.decodeIfPresent(String.self, forKey: .answer)
+        error = try container.decodeIfPresent(String.self, forKey: .error)
+        isSyntheticID = try container.decodeIfPresent(Bool.self, forKey: .isSyntheticID) ?? false
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(question, forKey: .question)
+        try container.encode(choices, forKey: .choices)
+        if multiSelect { try container.encode(true, forKey: .multiSelect) }
+        try container.encode(status, forKey: .status)
+        try container.encodeIfPresent(answer, forKey: .answer)
+        try container.encodeIfPresent(error, forKey: .error)
+        if isSyntheticID { try container.encode(true, forKey: .isSyntheticID) }
+    }
+
+    /// The accepted answer in display form. A multi-select wire answer is a
+    /// JSON array of chosen values, rendered back in gateway choice order —
+    /// restored answers from any surface then always read consistently.
+    var resolvedAnswer: String? {
+        guard let answer, !answer.isEmpty else { return nil }
+        guard multiSelect,
+              let data = answer.data(using: .utf8),
+              let values = try? JSONSerialization.jsonObject(with: data) as? [String] else {
+            return answer
+        }
+        let selected = Set(values)
+        var labels = choices.filter { selected.contains($0.value) }.map(\.label)
+        for value in values where !choices.contains(where: { $0.value == value }) {
+            // Values that matched no offered choice keep their wire order.
+            labels.append(value)
+        }
+        return labels.joined(separator: ", ")
+    }
+
+    /// Serializes a multi-select submission into the wire form Hermes' batch
+    /// answer parser accepts (a JSON array string of the chosen values).
+    static func multiSelectAnswer(_ values: [String]) -> String {
+        guard let data = try? JSONSerialization.data(withJSONObject: values) else { return "" }
+        return String(decoding: data, as: UTF8.self)
+    }
+}
+
+/// A clarification request: the gateway's `clarify.request`, normalized into
+/// one batch-capable model for both the current `questions[]` protocol and
+/// the legacy scalar shape (which becomes a one-question batch). Answering is
+/// per question (`clarify.respond { question_id }`); `status` summarizes the
+/// request for headers, persistence pruning, and supersede logic.
+struct ClarifyActivity: Codable, Equatable {
+    var requestId: String
+    var questions: [ClarifyQuestion]
+    /// Set when the gateway expired the request (`clarify.expire` or an
+    /// expired `clarify.respond` outcome). A late answer can never make an
+    /// expired request appear successfully answered.
+    var isExpired: Bool
     var error: String?
 
     enum Status: String, Codable {
@@ -129,6 +245,130 @@ struct ClarifyActivity: Codable, Equatable {
         case submitting
         case answered
         case error
+        case expired
+    }
+
+    init(
+        requestId: String,
+        questions: [ClarifyQuestion],
+        isExpired: Bool = false,
+        error: String? = nil
+    ) {
+        self.requestId = requestId
+        self.questions = questions
+        self.isExpired = isExpired
+        self.error = error
+    }
+
+    /// Convenience for single-question producers (the push-relay payload and
+    /// tests) that normalizes into a one-question batch. The locally minted
+    /// "q0" identity is marked synthetic: it must never ride the wire as
+    /// `question_id`, because the gateway has no such qid.
+    init(
+        requestId: String,
+        question: String,
+        choices: [ClarifyChoice],
+        multiSelect: Bool = false,
+        status: ClarifyQuestion.Status = .pending,
+        answer: String? = nil,
+        error: String? = nil
+    ) {
+        self.init(
+            requestId: requestId,
+            questions: [
+                ClarifyQuestion(
+                    id: "q0",
+                    question: question,
+                    choices: choices,
+                    multiSelect: multiSelect,
+                    status: status,
+                    answer: answer,
+                    error: error,
+                    isSyntheticID: true
+                )
+            ],
+            error: nil
+        )
+    }
+
+    /// Request-level status, derived so a partially answered batch stays
+    /// presentable: one locked sub-question never marks the card ANSWERED,
+    /// and a question that still needs input outranks one that errored. A
+    /// per-question expired state derives expired even if the flag was lost
+    /// (e.g. a legacy cache migration) — an expired question must never
+    /// re-open as answerable.
+    var status: Status {
+        if isExpired || questions.contains(where: { $0.status == .expired }) { return .expired }
+        let statuses = questions.map(\.status)
+        if statuses.contains(.submitting) { return .submitting }
+        if !statuses.isEmpty && statuses.allSatisfy({ $0 == .answered }) { return .answered }
+        if statuses.contains(.pending) { return .pending }
+        if statuses.contains(.error) { return .error }
+        return .pending
+    }
+
+    /// Visible question text for the transcript row: the joined question
+    /// texts, identical to the legacy scalar text for one-question batches.
+    var displayQuestion: String {
+        questions.map(\.question).joined(separator: "\n")
+    }
+
+    /// Correlation text for superseding a pending push-delivered card. The
+    /// notifier reduces a batch to its first question, so that is what a live
+    /// gateway event must match against.
+    var correlationQuestion: String {
+        questions.first?.question ?? ""
+    }
+
+    // MARK: Codable (with legacy-shape migration)
+
+    private enum CodingKeys: String, CodingKey {
+        case requestId = "request_id"
+        case questions
+        case isExpired
+        case error
+        // Legacy single-question shape.
+        case question, choices, status, answer
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        requestId = try container.decode(String.self, forKey: .requestId)
+        isExpired = try container.decodeIfPresent(Bool.self, forKey: .isExpired) ?? false
+        error = try container.decodeIfPresent(String.self, forKey: .error)
+        if let questions = try? container.decode([ClarifyQuestion].self, forKey: .questions), !questions.isEmpty {
+            self.questions = questions
+            return
+        }
+        // Migration: presentation caches written by older builds stored the
+        // legacy single-question fields. Decode what is still usable instead
+        // of failing the whole cache load; a degenerate empty-text record
+        // yields an empty question list rather than a phantom question.
+        let question = (try? container.decode(String.self, forKey: .question)) ?? ""
+        let choices = (try? container.decode([ClarifyChoice].self, forKey: .choices)) ?? []
+        let status = (try? container.decode(ClarifyQuestion.Status.self, forKey: .status)) ?? .pending
+        let answer = try? container.decode(String.self, forKey: .answer)
+        questions = question.isEmpty
+            ? []
+            : [
+                ClarifyQuestion(
+                    id: "q0",
+                    question: question,
+                    choices: choices,
+                    multiSelect: false,
+                    status: status,
+                    answer: answer,
+                    isSyntheticID: true
+                )
+            ]
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(requestId, forKey: .requestId)
+        try container.encode(questions, forKey: .questions)
+        try container.encode(isExpired, forKey: .isExpired)
+        try container.encodeIfPresent(error, forKey: .error)
     }
 }
 

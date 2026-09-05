@@ -563,6 +563,155 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
+    // MARK: - clarify.respond
+
+    /// Connects a client, sends the clarify.respond RPC produced by `send`,
+    /// captures the outbound frame, and completes it with `result`.
+    private func capturedClarifyRespond(
+        result: [String: Any],
+        questionId: String?,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async throws -> (request: [String: Any], outcome: HermesClient.ClarifyResponseOutcome) {
+        let transport = FakeTransport()
+        let socket = FakeSocket()
+        transport.nextSocket = { socket }
+        let client = makeClient(transport: transport)
+        let connectTask = Task { try? await client.connect() }
+        transport.open(socket)
+        try await awaitCompletion(of: connectTask, "connect() to complete", file: file, line: line)
+
+        let sent = Gate()
+        socket.onSend = { sent.signal() }
+        let respondTask = Task<HermesClient.ClarifyResponseOutcome, Error> {
+            try await client.respondToClarification(
+                requestId: "req-1",
+                answer: "staging",
+                questionId: questionId
+            )
+        }
+        try await sent.wait("the clarify.respond request to be sent", file: file, line: line)
+
+        let request = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(try XCTUnwrap(socket.sentTexts.last, file: file, line: line).utf8)) as? [String: Any],
+            file: file,
+            line: line
+        )
+        let id = try XCTUnwrap(request["id"] as? Int, file: file, line: line)
+        let response: [String: Any] = [
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": result
+        ]
+        socket.deliver(String(data: try JSONSerialization.data(withJSONObject: response), encoding: .utf8)!)
+
+        let outcome = try await awaitResult(of: respondTask, "the clarify.respond response", file: file, line: line)
+        client.disconnect()
+        return (request, outcome)
+    }
+
+    func testClarifyRespondForBatchQuestionSendsQuestionIDAndReportsRemaining() async throws {
+        let (request, outcome) = try await capturedClarifyRespond(
+            result: ["status": "ok", "remaining": ["qid-2", "qid-3"]],
+            questionId: "environment"
+        )
+        XCTAssertEqual(request["method"] as? String, "clarify.respond")
+        let params = try XCTUnwrap(request["params"] as? [String: Any])
+        XCTAssertEqual(params["request_id"] as? String, "req-1")
+        XCTAssertEqual(params["answer"] as? String, "staging")
+        XCTAssertEqual(
+            params["question_id"] as? String, "environment",
+            "A batch sub-question must address its gateway qid"
+        )
+        XCTAssertEqual(outcome, .accepted(remaining: ["qid-2", "qid-3"]))
+        XCTAssertFalse(outcome.requestCompleted, "A non-empty remaining list means the request is still open")
+    }
+
+    func testClarifyRespondLastQuestionReportsCompletion() async throws {
+        let (_, outcome) = try await capturedClarifyRespond(
+            result: ["status": "ok", "remaining": []],
+            questionId: "notes"
+        )
+        XCTAssertEqual(outcome, .accepted(remaining: []))
+        XCTAssertTrue(outcome.requestCompleted, "An empty remaining list completes the request")
+    }
+
+    func testClarifyRespondWithoutQuestionIDOmitsParameterForRequestLevelAnswer() async throws {
+        let (request, outcome) = try await capturedClarifyRespond(
+            result: ["status": "ok"],
+            questionId: nil
+        )
+        let params = try XCTUnwrap(request["params"] as? [String: Any])
+        XCTAssertNil(
+            params["question_id"],
+            "The legacy request-level response must not carry a question id"
+        )
+        XCTAssertEqual(
+            outcome, .accepted(remaining: nil),
+            "An omitted remaining field must stay nil — it is not an explicit empty list"
+        )
+        XCTAssertFalse(outcome.requestCompleted, "Omitted remaining carries no completion signal")
+    }
+
+    func testClarifyRespondExplicitEmptyRemainingIsDistinctFromOmitted() async throws {
+        // `remaining: []` is the gateway's explicit completion confirmation;
+        // an omitted field is silence. The outcome must model the difference.
+        let (_, explicit) = try await capturedClarifyRespond(
+            result: ["status": "ok", "remaining": []],
+            questionId: "q0"
+        )
+        XCTAssertEqual(explicit, .accepted(remaining: []))
+        XCTAssertTrue(explicit.requestCompleted)
+
+        let (_, omitted) = try await capturedClarifyRespond(
+            result: ["status": "ok"],
+            questionId: "q0"
+        )
+        XCTAssertEqual(omitted, .accepted(remaining: nil))
+        XCTAssertFalse(omitted.requestCompleted)
+        XCTAssertNotEqual(explicit, omitted)
+    }
+
+    func testClarifyRespondExpiredStatusDoesNotReadAsSuccess() async throws {
+        // The clarify bridge sets allow_expired, so a timed-out request
+        // resolves as a SUCCESSFUL RPC whose status is "expired" — never
+        // shown as an accepted answer.
+        let (_, outcome) = try await capturedClarifyRespond(
+            result: ["status": "expired"],
+            questionId: "environment"
+        )
+        XCTAssertEqual(outcome, .expired)
+        XCTAssertTrue(outcome.isExpired)
+        XCTAssertFalse(outcome.requestCompleted)
+    }
+
+    // MARK: - pending_clarify restore
+
+    func testResumeSnapshotParsesPendingClarifyBatchWithLockedAnswers() throws {
+        let snapshot = SessionRuntimeSnapshot(object: [
+            "running": .bool(true),
+            "pending_clarify": .object([
+                "request_id": .string("req-batch"),
+                "questions": .array([
+                    .object(["qid": .string("environment"), "question": .string("Which environment?"), "choices": .array([.string("staging")]), "multi_select": .bool(false)]),
+                    .object(["qid": .string("tests"), "question": .string("Which tests?"), "choices": .array([.string("unit"), .string("ui")]), "multi_select": .bool(true)])
+                ]),
+                "answers": .object(["environment": .string("staging")])
+            ])
+        ])
+        let pending = try XCTUnwrap(snapshot.pendingClarify)
+        XCTAssertEqual(pending.requestId, "req-batch")
+        XCTAssertEqual(pending.questions.count, 2)
+        XCTAssertEqual(pending.questions[0].status, .answered, "The answer Hermes reports locked must restore as locked")
+        XCTAssertEqual(pending.questions[0].answer, "staging")
+        XCTAssertEqual(pending.questions[1].status, .pending, "Unanswered questions stay answerable")
+    }
+
+    func testResumeSnapshotWithoutPendingClarifyParsesNil() {
+        let snapshot = SessionRuntimeSnapshot(object: ["running": .bool(false)])
+        XCTAssertNil(snapshot.pendingClarify)
+    }
+
     // MARK: - Helpers
 
     private final class ResultBox<T>: @unchecked Sendable {

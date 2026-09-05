@@ -15,14 +15,18 @@ final class SessionPresentationCache {
     static let shared = SessionPresentationCache()
     static let maxUnconfirmedPendingDecisionAge: TimeInterval = 24 * 60 * 60
 
-    /// Returns whether a clarification or approval presentation still needs a
-    /// user decision. Keep this rule shared by resume pruning and cache saves.
+    /// Returns whether a clarification presentation still needs a user
+    /// decision. Keep this rule shared by resume pruning and cache saves. A
+    /// retryable `.error` question is still unanswered — it must survive as
+    /// an unresolved decision, never be pruned as completed.
     static func isPendingDecision(_ status: ClarifyActivity.Status) -> Bool {
-        status == .pending || status == .submitting
+        status == .pending || status == .submitting || status == .error
     }
 
     static func isPendingDecision(_ status: ApprovalActivity.Status) -> Bool {
-        status == .pending || status == .submitting
+        // An errored approval is still retryable (the card re-arms its
+        // controls), so it remains an unresolved decision for pruning.
+        status == .pending || status == .submitting || status == .error
     }
 
     /// Stable identity for a decision card, regardless of whether it is still
@@ -283,7 +287,7 @@ final class SessionPresentationCache {
                     merged.append(ChatMessage(
                         id: cachedMessage?.id ?? "clarify-\(clarify.requestId)",
                         role: .clarify,
-                        content: clarify.question,
+                        content: clarify.displayQuestion,
                         timestamp: cachedMessage?.timestamp ?? "",
                         clarify: clarify
                     ))

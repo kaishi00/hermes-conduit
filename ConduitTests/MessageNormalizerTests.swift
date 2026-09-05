@@ -438,6 +438,212 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertEqual(choices, ["Red", "Blue"])
     }
 
+    func testNotificationPayloadCarriesBatchClarifyDecision() {
+        // Current notifier: the pushed decision preserves the FULL question
+        // set — qids, choices, and multi_select — with no reduction to the
+        // first question.
+        let service = PushNotificationService(retryDelay: .zero)
+        defer {
+            if let target = service.pendingTarget {
+                service.clearPendingTarget(target)
+            }
+        }
+        service.receiveNotificationPayload([
+            "conduit": [
+                "session_id": "runtime-1",
+                "profile": "default",
+                "type": "input.needed",
+                "decision": [
+                    "kind": "clarify",
+                    "request_id": "conduit-push-batch1",
+                    "questions": [
+                        ["qid": "environment", "question": "Which environment?", "choices": ["staging", "prod"], "multi_select": false],
+                        ["qid": "tests", "question": "Which tests?", "choices": ["unit", "ui"], "multi_select": true],
+                        ["qid": "notes", "question": "Any additional notes?", "choices": []]
+                    ] as [[String: Any]],
+                ] as [String: Any],
+            ] as [String: Any],
+        ])
+
+        guard case let .clarifyBatch(requestId, questions) = service.pendingTarget?.decision else {
+            return XCTFail("Expected a batch clarify decision carried on the notification target")
+        }
+        XCTAssertEqual(requestId, "conduit-push-batch1")
+        XCTAssertEqual(questions.map(\.id), ["environment", "tests", "notes"], "qids are preserved as identity")
+        XCTAssertEqual(questions.map(\.question), ["Which environment?", "Which tests?", "Any additional notes?"])
+        XCTAssertEqual(questions[0].choices.map(\.value), ["staging", "prod"])
+        XCTAssertTrue(questions[1].multiSelect, "multi_select must survive the push payload")
+        XCTAssertFalse(questions[0].multiSelect)
+        XCTAssertTrue(questions[2].choices.isEmpty, "Free-text questions survive the push payload")
+        XCTAssertFalse(questions[0].isSyntheticID, "Pushed batch qids are gateway identities, not synthetic")
+    }
+
+    func testNotificationPayloadBatchClarifyFallsBackToScalarWhenQuestionsUnusable() {
+        let service = PushNotificationService(retryDelay: .zero)
+        defer {
+            if let target = service.pendingTarget {
+                service.clearPendingTarget(target)
+            }
+        }
+        service.receiveNotificationPayload([
+            "conduit": [
+                "session_id": "runtime-1",
+                "profile": "default",
+                "type": "input.needed",
+                "decision": [
+                    "kind": "clarify",
+                    "request_id": "conduit-push-batch2",
+                    "questions": [["question": "No qid"]] as [[String: Any]],
+                    "question": "Scalar fallback",
+                    "choices": ["a"]
+                ] as [String: Any],
+            ] as [String: Any],
+        ])
+        guard case let .clarify(requestId, question, choices) = service.pendingTarget?.decision else {
+            return XCTFail("Expected the legacy scalar decode when no batch question survives")
+        }
+        XCTAssertEqual(requestId, "conduit-push-batch2")
+        XCTAssertEqual(question, "Scalar fallback")
+        XCTAssertEqual(choices, ["a"])
+    }
+
+    // MARK: - APNs payload layout selection (notifier 0.3+ single-copy shape)
+
+    /// Wraps a Conduit payload in the raw APNs notification layout.
+    private func receiveAPNsPayload(_ service: PushNotificationService, payload: [String: Any]) {
+        service.receiveNotificationPayload(payload)
+    }
+
+    func testNotificationPayloadNestedRichConduitParsesBatchDecision() {
+        // Notifier 0.3+ optimized layout: top-level conduit is a routing
+        // stub, body.conduit carries the structured decision. The nested
+        // copy must win — a `direct ?? nested` choice would silently drop
+        // the answerable card.
+        let service = PushNotificationService(retryDelay: .zero)
+        defer {
+            if let target = service.pendingTarget {
+                service.clearPendingTarget(target)
+            }
+        }
+        receiveAPNsPayload(service, payload: [
+            "aps": ["alert": ["title": "Input needed", "body": "Which environment?"]],
+            "body": [
+                "conduit": [
+                    "type": "input.needed",
+                    "session_id": "runtime-1",
+                    "profile": "default",
+                    "decision": [
+                        "kind": "clarify",
+                        "request_id": "conduit-push-opt1",
+                        "question": "Which environment?",
+                        "questions": [
+                            ["qid": "q0", "question": "Which environment?", "choices": ["staging", "prod"], "multi_select": false],
+                            ["qid": "q1", "question": "Which tests?", "choices": ["unit", "ui"], "multi_select": true],
+                        ] as [[String: Any]],
+                    ] as [String: Any],
+                ] as [String: Any],
+            ],
+            "conduit": [
+                "type": "input.needed",
+                "session_id": "runtime-1",
+                "profile": "default",
+            ] as [String: Any],
+        ])
+
+        guard case let .clarifyBatch(requestId, questions) = service.pendingTarget?.decision else {
+            return XCTFail("The nested rich decision must be selected over the routing-only stub")
+        }
+        XCTAssertEqual(requestId, "conduit-push-opt1")
+        XCTAssertEqual(questions.map(\.id), ["q0", "q1"], "the full batch survives the payload selection")
+    }
+
+    func testNotificationPayloadNestedOnlyConduitStillParses() {
+        // Current-generation layout without a top-level copy at all.
+        let service = PushNotificationService(retryDelay: .zero)
+        defer {
+            if let target = service.pendingTarget {
+                service.clearPendingTarget(target)
+            }
+        }
+        service.receiveNotificationPayload([
+            "body": [
+                "conduit": [
+                    "session_id": "runtime-1",
+                    "type": "input.needed",
+                    "decision": [
+                        "kind": "clarify",
+                        "request_id": "conduit-push-nested1",
+                        "question": "Which color?",
+                        "choices": ["Red", "Blue"],
+                    ] as [String: Any],
+                ] as [String: Any],
+            ] as [String: Any],
+        ])
+        guard case let .clarify(requestId, question, choices) = service.pendingTarget?.decision else {
+            return XCTFail("Expected the nested-only decision to parse")
+        }
+        XCTAssertEqual(requestId, "conduit-push-nested1")
+        XCTAssertEqual(question, "Which color?")
+        XCTAssertEqual(choices, ["Red", "Blue"])
+    }
+
+    func testNotificationPayloadLegacyTopLevelConduitStillParses() {
+        // Legacy layout: only the top-level conduit copy exists.
+        let service = PushNotificationService(retryDelay: .zero)
+        defer {
+            if let target = service.pendingTarget {
+                service.clearPendingTarget(target)
+            }
+        }
+        service.receiveNotificationPayload([
+            "conduit": [
+                "session_id": "runtime-1",
+                "profile": "default",
+                "type": "input.needed",
+                "decision": [
+                    "kind": "clarify",
+                    "request_id": "conduit-push-legacy1",
+                    "question": "Legacy?",
+                    "choices": ["a"],
+                ] as [String: Any],
+            ] as [String: Any],
+        ])
+        guard case let .clarify(requestId, question, _) = service.pendingTarget?.decision else {
+            return XCTFail("Expected the legacy top-level decision to parse")
+        }
+        XCTAssertEqual(requestId, "conduit-push-legacy1")
+        XCTAssertEqual(question, "Legacy?")
+    }
+
+    func testNotificationPayloadWithoutDecisionNavigatesWithoutInventingACard() {
+        // Plain fallback banner (decision stripped or disabled): routing must
+        // still work, and no ClarifyActivity may be invented.
+        let service = PushNotificationService(retryDelay: .zero)
+        defer {
+            if let target = service.pendingTarget {
+                service.clearPendingTarget(target)
+            }
+        }
+        service.receiveNotificationPayload([
+            "body": [
+                "conduit": [
+                    "type": "input.needed",
+                    "session_id": "runtime-1",
+                    "profile": "default",
+                ] as [String: Any],
+            ] as [String: Any],
+            "conduit": [
+                "type": "input.needed",
+                "session_id": "runtime-1",
+                "profile": "default",
+            ] as [String: Any],
+        ])
+        let target = service.pendingTarget
+        XCTAssertNotNil(target, "The plain notification still routes to the session")
+        XCTAssertEqual(target?.sessionId, "runtime-1")
+        XCTAssertNil(target?.decision, "A plain fallback banner must never invent an answerable card")
+    }
+
     func testNotificationPayloadClarifyDecisionRejectedWithoutRequestId() {
         let service = PushNotificationService(retryDelay: .zero)
         defer {
@@ -822,9 +1028,10 @@ final class MessageNormalizerTests: XCTestCase {
         ])
 
         XCTAssertEqual(activity?.requestId, "clarify-1")
-        XCTAssertEqual(activity?.question, "Which environment should I use?")
-        XCTAssertEqual(activity?.choices.map(\.label), ["Staging", "Production"])
-        XCTAssertEqual(activity?.choices.map(\.value), ["Staging", "Production"])
+        XCTAssertEqual(activity?.questions.count, 1)
+        XCTAssertEqual(activity?.questions[0].question, "Which environment should I use?")
+        XCTAssertEqual(activity?.questions[0].choices.map(\.label), ["Staging", "Production"])
+        XCTAssertEqual(activity?.questions[0].choices.map(\.value), ["Staging", "Production"])
     }
 
     func testClarifyActivityKeepsLegacyStructuredChoices() {
@@ -837,8 +1044,168 @@ final class MessageNormalizerTests: XCTestCase {
         ])
 
         XCTAssertEqual(activity?.requestId, "clarify-2")
-        XCTAssertEqual(activity?.question, "Pick one")
-        XCTAssertEqual(activity?.choices, [ClarifyChoice(label: "Use current branch", value: "current")])
+        XCTAssertEqual(activity?.questions[0].question, "Pick one")
+        XCTAssertEqual(activity?.questions[0].choices, [ClarifyChoice(label: "Use current branch", value: "current")])
+    }
+
+    func testClarifyActivityNormalizesLegacyScalarIntoOneQuestionBatch() {
+        // The legacy scalar payload must normalize into the SAME batch model
+        // the current questions[] protocol produces — one internal shape, no
+        // parallel scalar implementation.
+        let activity = MessageNormalizer.clarifyActivity(from: [
+            "request_id": .string("clarify-3"),
+            "question": .string("Solo"),
+            "choices": .array([.string("a")])
+        ])
+        XCTAssertEqual(activity?.questions.count, 1)
+        XCTAssertEqual(activity?.displayQuestion, "Solo")
+        XCTAssertEqual(activity?.correlationQuestion, "Solo")
+        XCTAssertEqual(activity?.status, .pending)
+    }
+
+    func testClarifyActivityParsesCurrentBatchQuestionsProtocol() {
+        let activity = MessageNormalizer.clarifyActivity(from: [
+            "request_id": .string("req-1"),
+            "questions": .array([
+                .object([
+                    "qid": .string("environment"),
+                    "question": .string("Which environment?"),
+                    "choices": .array([.string("staging"), .string("prod")]),
+                    "multi_select": .bool(false)
+                ]),
+                .object([
+                    "qid": .string("tests"),
+                    "question": .string("Which tests should run?"),
+                    "choices": .array([.string("unit"), .string("integration"), .string("ui")]),
+                    "multi_select": .bool(true)
+                ]),
+                .object([
+                    "qid": .string("notes"),
+                    "question": .string("Any additional notes?"),
+                    "choices": .array([])
+                ])
+            ])
+        ])
+
+        XCTAssertEqual(activity?.questions.map(\.id), ["environment", "tests", "notes"])
+        XCTAssertEqual(activity?.displayQuestion, "Which environment?\nWhich tests should run?\nAny additional notes?")
+        XCTAssertEqual(activity?.correlationQuestion, "Which environment?", "Supersede correlation uses the first question, matching the notifier's reduction")
+        XCTAssertEqual(activity?.questions[1].multiSelect, true)
+        XCTAssertEqual(activity?.questions[2].choices.isEmpty, true)
+    }
+
+    func testPendingClarifyActivityRestoresAnswersKeyedByQID() {
+        let activity = MessageNormalizer.pendingClarifyActivity(from: [
+            "request_id": .string("req-batch"),
+            "questions": .array([
+                .object([
+                    "qid": .string("environment"),
+                    "question": .string("Which environment?"),
+                    "choices": .array([.string("staging"), .string("prod")]),
+                    "multi_select": .bool(false)
+                ]),
+                .object([
+                    "qid": .string("notes"),
+                    "question": .string("Notes?"),
+                    "choices": .array([])
+                ])
+            ]),
+            "answers": .object(["environment": .string("staging")])
+        ])
+
+        XCTAssertEqual(activity?.requestId, "req-batch")
+        XCTAssertEqual(activity?.questions[0].status, .answered, "Answers locked before the detach restore locked")
+        XCTAssertEqual(activity?.questions[0].answer, "staging")
+        XCTAssertEqual(activity?.questions[1].status, .pending)
+    }
+
+    func testPendingClarifyActivityWithoutAnswersLeavesEverythingAnswerable() {
+        let activity = MessageNormalizer.pendingClarifyActivity(from: [
+            "request_id": .string("req-batch"),
+            "questions": .array([
+                .object(["qid": .string("a"), "question": .string("Q?"), "choices": .array([.string("x")])])
+            ])
+        ])
+        XCTAssertEqual(activity?.questions[0].status, .pending)
+    }
+
+    func testPendingClarifyActivityAcceptsArrayValuedAnswers() {
+        // A gateway may echo a locked multi-select answer as a real JSON
+        // array rather than the array string the app sends; restore it either
+        // way so a locked question never reopens.
+        let activity = MessageNormalizer.pendingClarifyActivity(from: [
+            "request_id": .string("req-batch"),
+            "questions": .array([
+                .object([
+                    "qid": .string("tests"),
+                    "question": .string("Which tests?"),
+                    "choices": .array([.string("unit"), .string("ui")]),
+                    "multi_select": .bool(true)
+                ])
+            ]),
+            "answers": .object(["tests": .array([.string("unit"), .string("ui")])])
+        ])
+
+        XCTAssertEqual(activity?.questions[0].status, .answered)
+        XCTAssertEqual(activity?.questions[0].resolvedAnswer, "unit, ui")
+    }
+
+    func testPendingClarifyActivityRejectsPayloadWithoutQuestions() {
+        XCTAssertNil(MessageNormalizer.pendingClarifyActivity(from: [
+            "request_id": .string("req-1")
+        ]))
+    }
+
+    func testNotificationPayloadBatchClarifyDeduplicatesIdentities() {
+        // Duplicate qids and duplicate choice values collapse (first wins) —
+        // they would render as duplicate Identifiable rows and answer
+        // ambiguously per question.
+        let service = PushNotificationService(retryDelay: .zero)
+        defer {
+            if let target = service.pendingTarget {
+                service.clearPendingTarget(target)
+            }
+        }
+        service.receiveNotificationPayload([
+            "conduit": [
+                "session_id": "runtime-1",
+                "profile": "default",
+                "type": "input.needed",
+                "decision": [
+                    "kind": "clarify",
+                    "request_id": "conduit-push-dedupe",
+                    "questions": [
+                        ["qid": "q0", "question": "Which environment?", "choices": ["staging", "staging", "prod"], "multi_select": false],
+                        ["qid": "q0", "question": "Duplicate qid dropped", "choices": ["x"], "multi_select": false],
+                        ["qid": "q1", "question": "Which tests?", "choices": ["unit", "ui"], "multi_select": true],
+                    ] as [[String: Any]],
+                ] as [String: Any],
+            ] as [String: Any],
+        ])
+
+        guard case let .clarifyBatch(requestId, questions) = service.pendingTarget?.decision else {
+            return XCTFail("Expected a batch clarify decision carried on the notification target")
+        }
+        XCTAssertEqual(requestId, "conduit-push-dedupe")
+        XCTAssertEqual(questions.map(\.id), ["q0", "q1"], "duplicate qids collapse to the first occurrence")
+        XCTAssertEqual(questions[0].choices.map(\.value), ["staging", "prod"], "duplicate choice values collapse")
+        XCTAssertEqual(questions[0].question, "Which environment?", "the surviving qid keeps the FIRST entry's text")
+    }
+
+    func testRelayTransportPolicyRequiresHTTPSExceptLoopback() {
+        func url(_ string: String) -> URL { URL(string: string)! }
+        // HTTPS is always allowed.
+        XCTAssertTrue(RelayTransportPolicy.allowsCredentialTransport(url("https://push.milim.dev/v1/meta")))
+        // The pairing credential is a bearer secret: arbitrary cleartext
+        // relays are refused.
+        XCTAssertFalse(RelayTransportPolicy.allowsCredentialTransport(url("http://push.milim.dev/v1/meta")))
+        XCTAssertFalse(RelayTransportPolicy.allowsCredentialTransport(url("http://192.168.1.10:8080/v1/meta")))
+        XCTAssertFalse(RelayTransportPolicy.allowsCredentialTransport(url("ftp://push.milim.dev")))
+        // Bounded development exception: a loopback relay never exposes the
+        // credential off the machine.
+        XCTAssertTrue(RelayTransportPolicy.allowsCredentialTransport(url("http://localhost:8080/v1/meta")))
+        XCTAssertTrue(RelayTransportPolicy.allowsCredentialTransport(url("http://127.0.0.1:9000/v1/decisions/x/respond")))
+        XCTAssertTrue(RelayTransportPolicy.allowsCredentialTransport(url("http://[::1]:8080/v1/meta")))
     }
 
     func testApprovalActivityNormalizesGatewayChoices() {

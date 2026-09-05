@@ -485,7 +485,7 @@ final class SessionPresentationCacheTests: XCTestCase {
         XCTAssertNotNil(restoredClarify, "Pending clarification should be restored from cache")
         XCTAssertEqual(restoredClarify?.clarify?.requestId, "req-123")
         XCTAssertEqual(restoredClarify?.clarify?.status, .pending)
-        XCTAssertEqual(restoredClarify?.clarify?.choices.count, 2)
+        XCTAssertEqual(restoredClarify?.clarify?.questions.first?.choices.count, 2)
     }
 
     func testMergeDoesNotRestoreClarificationWhenNotRequested() {
@@ -1003,7 +1003,7 @@ final class SessionPresentationCacheTests: XCTestCase {
             ChatMessage(
                 id: "clarify-req-apply-resume",
                 role: .clarify,
-                content: clarify.question,
+                content: clarify.displayQuestion,
                 timestamp: "2024-01-01",
                 clarify: clarify
             )
@@ -1137,7 +1137,7 @@ final class SessionPresentationCacheTests: XCTestCase {
         let gatewayMessage = ChatMessage(
             id: "clarify-gateway-pending",
             role: .clarify,
-            content: clarify.question,
+            content: clarify.displayQuestion,
             timestamp: "2024-01-01",
             clarify: clarify
         )
@@ -1264,7 +1264,7 @@ final class SessionPresentationCacheTests: XCTestCase {
         let message = ChatMessage(
             id: "clarify-expiring",
             role: .clarify,
-            content: clarify.question,
+            content: clarify.displayQuestion,
             timestamp: "2024-01-01",
             clarify: clarify
         )
@@ -1327,7 +1327,7 @@ final class SessionPresentationCacheTests: XCTestCase {
             ChatMessage(
                 id: "clarify-warm-expiring",
                 role: .clarify,
-                content: clarify.question,
+                content: clarify.displayQuestion,
                 timestamp: "2024-01-01",
                 clarify: clarify
             )
@@ -1382,7 +1382,7 @@ final class SessionPresentationCacheTests: XCTestCase {
             ChatMessage(
                 id: "clarify-background",
                 role: .clarify,
-                content: clarify.question,
+                content: clarify.displayQuestion,
                 timestamp: "2024-01-01",
                 clarify: clarify
             )
@@ -1603,22 +1603,22 @@ final class SessionPresentationCacheTests: XCTestCase {
             ChatMessage(
                 id: "clarify-\(pendingClarify.requestId)",
                 role: .clarify,
-                content: pendingClarify.question,
+                content: pendingClarify.displayQuestion,
                 timestamp: "2024-01-01",
                 clarify: pendingClarify
             )
         ], profile: profile, sessionIDs: [sessionId])
         let resolvedClarify = ClarifyActivity(
             requestId: pendingClarify.requestId,
-            question: pendingClarify.question,
-            choices: pendingClarify.choices,
+            question: pendingClarify.questions[0].question,
+            choices: pendingClarify.questions[0].choices,
             status: .answered,
             answer: "red"
         )
         let gatewayMessage = ChatMessage(
             id: "clarify-\(pendingClarify.requestId)",
             role: .clarify,
-            content: resolvedClarify.question,
+            content: resolvedClarify.displayQuestion,
             timestamp: "2024-01-02",
             clarify: resolvedClarify
         )
@@ -1728,7 +1728,7 @@ final class SessionPresentationCacheTests: XCTestCase {
             ChatMessage(
                 id: "clarify-running",
                 role: .clarify,
-                content: clarify.question,
+                content: clarify.displayQuestion,
                 timestamp: "2024-01-01",
                 clarify: clarify
             )
@@ -1778,7 +1778,7 @@ final class SessionPresentationCacheTests: XCTestCase {
         let gatewayMessage = ChatMessage(
             id: "clarify-gateway-pending-false",
             role: .clarify,
-            content: clarify.question,
+            content: clarify.displayQuestion,
             timestamp: "2024-01-01",
             clarify: clarify
         )

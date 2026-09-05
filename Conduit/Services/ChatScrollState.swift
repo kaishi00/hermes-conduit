@@ -311,11 +311,18 @@ enum ChatMessageScrollTargets {
 
         fingerprint.append(message.tool?.name)
 
-        fingerprint.append(message.clarify?.question)
-        fingerprint.append(message.clarify?.choices.count)
-        message.clarify?.choices.forEach { choice in
-            fingerprint.append(choice.label)
-            fingerprint.append(choice.value)
+        // Row identity only: statuses and answers mutate while the user works
+        // through a batch and must not re-anchor the scroll position.
+        fingerprint.append(message.clarify?.requestId)
+        fingerprint.append(message.clarify?.questions.count)
+        message.clarify?.questions.forEach { question in
+            fingerprint.append(question.id)
+            fingerprint.append(question.question)
+            fingerprint.append(question.choices.count)
+            question.choices.forEach { choice in
+                fingerprint.append(choice.label)
+                fingerprint.append(choice.value)
+            }
         }
 
         fingerprint.append(message.approval?.command)

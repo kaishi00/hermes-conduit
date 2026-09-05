@@ -777,7 +777,74 @@ final class AppStateChatResumeTests: XCTestCase {
         let restoredCard = harness.appState.messages.first { $0.role == .clarify }
         XCTAssertEqual(restoredCard?.clarify?.requestId, "conduit-push-abc123")
         XCTAssertEqual(restoredCard?.clarify?.status, .pending, "A relay-delivered clarify must render as a normal answerable card")
-        XCTAssertEqual(restoredCard?.clarify?.choices.map(\.label), ["Red", "Blue"])
+        XCTAssertEqual(restoredCard?.clarify?.questions.first?.choices.map(\.label), ["Red", "Blue"])
+    }
+
+    func testPushedBatchClarifyDecisionRendersOneCardWithAllQuestions() async throws {
+        // A pushed batch decision must produce the SAME batch card model as a
+        // native clarify — one ClarifyCard, every question present, relay
+        // routing by the conduit-push- id prefix.
+        let cacheSuite = "conduit.tests.notification-clarify-batch-open-\(UUID().uuidString)"
+        guard let cacheDefaults = UserDefaults(suiteName: cacheSuite) else {
+            XCTFail("Could not create isolated UserDefaults suite")
+            return
+        }
+        let cache = SessionPresentationCache(defaults: cacheDefaults)
+        defer {
+            cache.clear()
+            cacheDefaults.removePersistentDomain(forName: cacheSuite)
+        }
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in [self.session("stored-a")] },
+                openSession: { _, sessionID, _ in
+                    SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: [:])
+                    )
+                },
+                refreshContext: { _, _ in }
+            ),
+            sessionPresentationCache: cache
+        )
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        harness.appState.connection = connection
+        harness.appState.client = HermesClient(connection: connection, profile: "default")
+        harness.appState.sessions = [session("stored-a")]
+        harness.appState.activeSessionId = "stored-a"
+
+        let opened = await harness.appState.openNotificationTarget(
+            ConduitNotificationTarget(
+                profile: nil,
+                sessionId: "stored-a",
+                type: "input.needed",
+                decision: .clarifyBatch(
+                    requestId: "conduit-push-batch9",
+                    questions: [
+                        ClarifyQuestion(id: "environment", question: "Which environment?", choices: [
+                            ClarifyChoice(label: "staging", value: "staging"),
+                            ClarifyChoice(label: "prod", value: "prod")
+                        ]),
+                        ClarifyQuestion(id: "tests", question: "Which tests?", choices: [
+                            ClarifyChoice(label: "unit", value: "unit"),
+                            ClarifyChoice(label: "ui", value: "ui")
+                        ], multiSelect: true)
+                    ]
+                )
+            )
+        )
+
+        XCTAssertTrue(opened)
+        let cards = harness.appState.messages.filter { $0.role == .clarify }
+        XCTAssertEqual(cards.count, 1, "One pushed batch decision renders exactly one card")
+        let card = try XCTUnwrap(cards.first?.clarify)
+        XCTAssertEqual(card.requestId, "conduit-push-batch9")
+        XCTAssertEqual(card.questions.count, 2, "No reduction to the first question")
+        XCTAssertEqual(card.questions.map(\.id), ["environment", "tests"])
+        XCTAssertTrue(card.questions[1].multiSelect)
+        XCTAssertTrue(card.requestId.hasPrefix(PendingDecisionPayload.relayRequestPrefix), "Answers must route through the relay transport")
+        XCTAssertEqual(card.status, .pending)
     }
 
     func testLiveClarifyEventSupersedesPushDeliveredCardForSameQuestion() async {
@@ -803,9 +870,16 @@ final class AppStateChatResumeTests: XCTestCase {
         harness.appState.handleStreamEvent(
             .clarify(
                 sessionId: "stored-a",
-                requestId: "gateway-rid-1",
-                question: "Which color?",
-                choices: [("Red", "Red")]
+                activity: ClarifyActivity(
+                    requestId: "gateway-rid-1",
+                    questions: [
+                        ClarifyQuestion(
+                            id: "q0",
+                            question: "Which color?",
+                            choices: [ClarifyChoice(label: "Red", value: "Red")]
+                        )
+                    ]
+                )
             )
         )
 
@@ -840,9 +914,12 @@ final class AppStateChatResumeTests: XCTestCase {
         harness.appState.handleStreamEvent(
             .clarify(
                 sessionId: "stored-a",
-                requestId: "gateway-rid-1",
-                question: "which color?",
-                choices: [("Red", "Red")]
+                activity: ClarifyActivity(
+                    requestId: "gateway-rid-1",
+                    questions: [
+                        ClarifyQuestion(id: "q0", question: "which color?", choices: [ClarifyChoice(label: "Red", value: "Red")])
+                    ]
+                )
             )
         )
 
@@ -894,9 +971,12 @@ final class AppStateChatResumeTests: XCTestCase {
         harness.appState.handleStreamEvent(
             .clarify(
                 sessionId: "stored-a",
-                requestId: "gateway-rid-1",
-                question: "Which color?",
-                choices: [("Red", "Red")]
+                activity: ClarifyActivity(
+                    requestId: "gateway-rid-1",
+                    questions: [
+                        ClarifyQuestion(id: "q0", question: "Which color?", choices: [ClarifyChoice(label: "Red", value: "Red")])
+                    ]
+                )
             )
         )
 
@@ -936,9 +1016,12 @@ final class AppStateChatResumeTests: XCTestCase {
         harness.appState.handleStreamEvent(
             .clarify(
                 sessionId: "stored-a",
-                requestId: "gateway-rid-2",
-                question: "Which color?",
-                choices: [("Red", "Red")]
+                activity: ClarifyActivity(
+                    requestId: "gateway-rid-2",
+                    questions: [
+                        ClarifyQuestion(id: "q0", question: "Which color?", choices: [ClarifyChoice(label: "Red", value: "Red")])
+                    ]
+                )
             )
         )
 
@@ -946,7 +1029,7 @@ final class AppStateChatResumeTests: XCTestCase {
         // later clarify with identical text.
         let clarifyCards = harness.appState.messages.filter { $0.role == .clarify }
         XCTAssertEqual(clarifyCards.count, 2)
-        XCTAssertTrue(clarifyCards.contains { $0.clarify?.status == .answered && $0.clarify?.answer == "Red" })
+        XCTAssertTrue(clarifyCards.contains { $0.clarify?.status == .answered && $0.clarify?.questions.first?.answer == "Red" })
         XCTAssertTrue(clarifyCards.contains { $0.clarify?.requestId == "gateway-rid-2" })
     }
 
@@ -956,7 +1039,21 @@ final class AppStateChatResumeTests: XCTestCase {
         // push just-resumed session is exactly when the gateway client may
         // still be nil. (Unpaired in tests, so the relay call surfaces its
         // own error rather than the gateway-unavailable one.)
-        let harness = makeHarness()
+        //
+        // Isolated presentation cache: respondToClarify flushes the card, and
+        // since errored clarifies count as unresolved decisions, a shared
+        // cache would leak this card into later tests' resume merges.
+        let cacheSuite = "conduit.tests.relay-clarify-no-client-\(UUID().uuidString)"
+        guard let cacheDefaults = UserDefaults(suiteName: cacheSuite) else {
+            XCTFail("Could not create isolated UserDefaults suite")
+            return
+        }
+        let cache = SessionPresentationCache(defaults: cacheDefaults)
+        defer {
+            cache.clear()
+            cacheDefaults.removePersistentDomain(forName: cacheSuite)
+        }
+        let harness = makeHarness(sessionPresentationCache: cache)
         harness.appState.activeSessionId = "stored-a"
         harness.appState.messages = [
             ChatMessage(
@@ -981,7 +1078,7 @@ final class AppStateChatResumeTests: XCTestCase {
         let card = harness.appState.messages.first { $0.role == .clarify }
         XCTAssertEqual(card?.clarify?.status, .error)
         XCTAssertEqual(
-            card?.clarify?.error,
+            card?.clarify?.questions.first?.error,
             "This device is not paired with a push relay.",
             "The relay path must run before the gateway-client guard and surface relay errors"
         )

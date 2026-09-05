@@ -35,6 +35,10 @@ struct ConduitNotificationTarget: Equatable, Identifiable {
 enum PendingDecisionPayload: Equatable {
     case approval(sessionKey: String, description: String, choices: [String])
     case clarify(requestId: String, question: String, choices: [String])
+    /// Batch decision payload (current notifier): the full question set with
+    /// gateway qids preserved. Consumed into the same `ClarifyActivity`
+    /// batch model as native clarifies — no separate push card exists.
+    case clarifyBatch(requestId: String, questions: [ClarifyQuestion])
 
     /// Request ids minted by the notifier plugin's clarify loop; answers to
     /// these route through the relay instead of `clarify.respond`.
@@ -103,6 +107,23 @@ struct RelayMetaInfo: Decodable, Equatable {
         case version
         case capabilities
         case gateways
+    }
+}
+
+/// Transport policy for the user-configurable relay URL. The pairing
+/// credential is a bearer secret: it is only sent over HTTPS, with one
+/// clearly bounded exception — plain HTTP to a loopback host, where the
+/// credential never leaves the machine (self-hosted local relay
+/// development). Arbitrary cleartext relays are refused rather than
+/// silently allowed.
+enum RelayTransportPolicy {
+    static func allowsCredentialTransport(_ url: URL) -> Bool {
+        guard let scheme = url.scheme?.lowercased() else { return false }
+        if scheme == "https" { return true }
+        if scheme == "http", let host = url.host?.lowercased() {
+            return host == "localhost" || host == "127.0.0.1" || host == "::1"
+        }
+        return false
     }
 }
 
@@ -241,8 +262,18 @@ final class PushNotificationService: ObservableObject {
         }
         isFetchingMeta = true
         defer { isFetchingMeta = false }
-        var request = URLRequest(url: relayURL.appending(path: "/v1/meta"))
-        request.setValue("Bearer \(registration.credential)", forHTTPHeaderField: "Authorization")
+        let request: URLRequest
+        do {
+            // An insecure custom relay URL degrades to the unknown-meta state
+            // instead of shipping the credential over cleartext.
+            request = authorizedRequest(
+                url: try authenticatedRelayURL("/v1/meta"),
+                credential: registration.credential
+            )
+        } catch {
+            relayMeta = nil
+            return
+        }
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
@@ -255,12 +286,30 @@ final class PushNotificationService: ObservableObject {
         }
     }
 
-    /// Outcome of answering a plugin-minted clarify (`conduit-push-…`) through
-    /// the relay's decision loop.
+    /// Outcome of answering ONE question of a batch relay decision
+    /// (`question_id` scoped). The relay applies first-answer-wins per
+    /// question: only the targeted qid locks; other qids stay open.
+    enum RelayQuestionOutcome: Equatable {
+        /// The qid locked. `remaining` mirrors the relay's open-qid list when
+        /// reported; nil means the relay did not say.
+        case locked(remaining: [String]?)
+        /// Another device locked this qid first. Only this question settles
+        /// as answered elsewhere; siblings stay open.
+        case questionAlreadyLocked
+        /// The relay RELEASED the whole decision (the native gateway path
+        /// resolved the clarify): the entire pushed card must be retired.
+        case decisionReleased
+        /// The decision is gone (timed out or completed elsewhere).
+        case noLongerActive
+    }
+
+    /// Outcome of answering a whole plugin-minted clarify
+    /// (`conduit-push-…`) through the relay's decision loop (legacy
+    /// single-question shape).
     enum RelayDecisionOutcome {
         case answered
-        /// The decision expired (clarify timed out server-side or was answered
-        /// on another surface first).
+        /// The decision expired (clarify timed out server-side), was answered
+        /// on another surface first, or was released by the native path.
         case noLongerActive
         /// Another device already answered this decision.
         case alreadyAnsweredElsewhere
@@ -270,14 +319,45 @@ final class PushNotificationService: ObservableObject {
         case unregistered
         case transport(String)
         case server(Int)
+        case insecureTransport
 
         var errorDescription: String? {
             switch self {
             case .unregistered: return "This device is not paired with a push relay."
             case .transport(let message): return "Could not reach the push relay: \(message)"
             case .server(let status): return "The push relay rejected the answer (HTTP \(status))."
+            case .insecureTransport:
+                return "The relay URL must use HTTPS (plain HTTP is only allowed for a localhost relay)."
             }
         }
+    }
+
+    /// Composes a credential-bearing relay endpoint and enforces the
+    /// transport policy before any `Authorization: Bearer` header is attached.
+    func authenticatedRelayURL(_ path: String) throws -> URL {
+        let url = relayURL.appending(path: path)
+        guard RelayTransportPolicy.allowsCredentialTransport(url) else {
+            throw RelayDecisionError.insecureTransport
+        }
+        return url
+    }
+
+    private func authorizedRequest(url: URL, credential: String) -> URLRequest {
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(credential)", forHTTPHeaderField: "Authorization")
+        return request
+    }
+
+    /// Raw relay decision respond result. 404, 409, and 410 are distinct
+    /// server states and must not be collapsed: 404 = unknown decision,
+    /// 409 = already locked (whole decision for the legacy shape, that
+    /// question only for the batch shape), 410 = the decision was RELEASED
+    /// because the native gateway path resolved the clarify.
+    private enum RelayRespondOutcome {
+        case accepted(remaining: [String]?)
+        case noLongerActive
+        case alreadyLocked
+        case released
     }
 
     /// Answers a plugin-minted clarify decision through the relay. The gateway
@@ -288,24 +368,62 @@ final class PushNotificationService: ObservableObject {
         requestId: String,
         answer: String
     ) async throws -> RelayDecisionOutcome {
+        switch try await relayDecisionRespond(requestId: requestId, body: ["answer": answer]) {
+        case .accepted: return .answered
+        case .alreadyLocked: return .alreadyAnsweredElsewhere
+        case .released, .noLongerActive: return .noLongerActive
+        }
+    }
+
+    /// Answers ONE question of a batch relay decision. Requires a relay +
+    /// notifier pair that ships the batch decision contract; a batch card only
+    /// exists when the batch-capable plugin pushed it.
+    @discardableResult
+    func respondToRelayDecisionQuestion(
+        requestId: String,
+        questionId: String,
+        answer: String
+    ) async throws -> RelayQuestionOutcome {
+        switch try await relayDecisionRespond(
+            requestId: requestId,
+            body: ["question_id": questionId, "answer": answer]
+        ) {
+        case .accepted(let remaining): return .locked(remaining: remaining)
+        case .alreadyLocked: return .questionAlreadyLocked
+        case .released: return .decisionReleased
+        case .noLongerActive: return .noLongerActive
+        }
+    }
+
+    /// Shared relay decision POST. Contract: 200 = accepted (body may carry
+    /// `remaining`), 404 = unknown decision, 409 = already locked, 410 =
+    /// decision released by the native path.
+    private func relayDecisionRespond(
+        requestId: String,
+        body: [String: String]
+    ) async throws -> RelayRespondOutcome {
         guard let registration else { throw RelayDecisionError.unregistered }
-        var request = URLRequest(url: relayURL.appending(path: "/v1/decisions/\(requestId)/respond"))
+        var request = URLRequest(url: try authenticatedRelayURL("/v1/decisions/\(requestId)/respond"))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(registration.credential)", forHTTPHeaderField: "Authorization")
-        request.httpBody = try JSONSerialization.data(withJSONObject: ["answer": answer])
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse else {
                 throw RelayDecisionError.transport("invalid response")
             }
+            let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+            let remaining = json?["remaining"] as? [String]
             switch http.statusCode {
             case 200:
-                return .answered
+                return .accepted(remaining: remaining)
             case 404:
                 return .noLongerActive
             case 409:
-                return .alreadyAnsweredElsewhere
+                return .alreadyLocked
+            case 410:
+                return .released
             default:
                 throw RelayDecisionError.server(http.statusCode)
             }
@@ -340,9 +458,11 @@ final class PushNotificationService: ObservableObject {
         defer { isWorking = false }
         if let registration {
             do {
-                var request = URLRequest(url: relayURL.appending(path: "/v1/installations/\(registration.installationID)"))
+                var request = authorizedRequest(
+                    url: try authenticatedRelayURL("/v1/installations/\(registration.installationID)"),
+                    credential: registration.credential
+                )
                 request.httpMethod = "DELETE"
-                request.setValue("Bearer \(registration.credential)", forHTTPHeaderField: "Authorization")
                 _ = try await URLSession.shared.data(for: request)
             } catch {
                 // The local credential is still removed: a later enable creates
@@ -375,9 +495,11 @@ final class PushNotificationService: ObservableObject {
         isWorking = true
         defer { isWorking = false }
         do {
-            var request = URLRequest(url: relayURL.appending(path: "/v1/installations/\(registration.installationID)/pairings"))
+            var request = authorizedRequest(
+                url: try authenticatedRelayURL("/v1/installations/\(registration.installationID)/pairings"),
+                credential: registration.credential
+            )
             request.httpMethod = "POST"
-            request.setValue("Bearer \(registration.credential)", forHTTPHeaderField: "Authorization")
             let (data, response) = try await URLSession.shared.data(for: request)
             try validate(response: response, data: data)
             let pairing = try JSONDecoder().decode(PairingResponse.self, from: data)
@@ -443,8 +565,21 @@ final class PushNotificationService: ObservableObject {
     private func notificationTarget(from userInfo: [AnyHashable: Any]) -> ConduitNotificationTarget? {
         let direct = userInfo["conduit"] as? [String: Any]
         let nested = (userInfo["body"] as? [String: Any])?["conduit"] as? [String: Any]
-        guard let payload = direct ?? nested,
-              let sessionId = payload["session_id"] as? String,
+        // The relay's optimized APNs layout keeps the structured decision
+        // ONLY in body.conduit, with the top-level conduit copy reduced to a
+        // routing stub for raw-APNs readers — so whichever copy actually
+        // carries a decision must win, nested first (that is where the
+        // optimized layout puts it). Payloads without a decision anywhere
+        // fall back to plain routing, preferring the legacy top-level copy.
+        let payload: [String: Any]
+        if nested?["decision"] is [String: Any] {
+            payload = nested ?? [:]
+        } else if direct?["decision"] is [String: Any] {
+            payload = direct ?? [:]
+        } else {
+            payload = direct ?? nested ?? [:]
+        }
+        guard let sessionId = payload["session_id"] as? String,
               !sessionId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         let profile = (payload["profile"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
         let type = (payload["type"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -492,9 +627,30 @@ final class PushNotificationService: ObservableObject {
             guard let requestId = (decision["request_id"] as? String)?
                 .trimmingCharacters(in: .whitespacesAndNewlines),
                 requestId.hasPrefix(PendingDecisionPayload.relayRequestPrefix),
-                requestId.count > PendingDecisionPayload.relayRequestPrefix.count,
-                let question = (decision["question"] as? String)?
-                    .trimmingCharacters(in: .whitespacesAndNewlines),
+                requestId.count > PendingDecisionPayload.relayRequestPrefix.count else {
+                return nil
+            }
+            // Batch form (current notifier): questions[] with qids preserved.
+            // The parser upholds the same guarantees as the native parser:
+            // duplicate qids collapse (first wins) so SwiftUI Identifiable
+            // lists and per-question answer targets stay unambiguous.
+            if let rawQuestions = decision["questions"] as? [[String: Any]],
+               !rawQuestions.isEmpty {
+                var questions: [ClarifyQuestion] = []
+                var seenQids = Set<String>()
+                for entry in rawQuestions {
+                    guard let question = Self.pushClarifyQuestion(from: entry),
+                          seenQids.insert(question.id).inserted else { continue }
+                    questions.append(question)
+                }
+                if !questions.isEmpty {
+                    return .clarifyBatch(requestId: requestId, questions: questions)
+                }
+                // A questions[] payload where nothing survived falls through
+                // to the legacy scalar decoding below.
+            }
+            guard let question = (decision["question"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
                 !question.isEmpty else {
                 return nil
             }
@@ -505,6 +661,33 @@ final class PushNotificationService: ObservableObject {
         default:
             return nil
         }
+    }
+
+    /// One pushed batch question. The plugin relays the gateway's wire entry
+    /// (qid/question/choices/multi_select); qids are preserved as identity —
+    /// they are NOT synthetic, so per-question relay answers can address
+    /// them.
+    private static func pushClarifyQuestion(from entry: [String: Any]) -> ClarifyQuestion? {
+        guard let question = (entry["question"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            !question.isEmpty else {
+            return nil
+        }
+        guard let qid = (entry["qid"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            !qid.isEmpty else {
+            return nil
+        }
+        let rawChoices = entry["choices"] as? [Any] ?? []
+        // Duplicate choice values collapse (first wins) — they would render
+        // as duplicate rows and answer ambiguously.
+        var seenValues = Set<String>()
+        let choices = rawChoices
+            .compactMap { ($0 as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && seenValues.insert($0).inserted }
+            .map { ClarifyChoice(label: $0, value: $0) }
+        let multiSelect = (entry["multi_select"] as? Bool) == true && !choices.isEmpty
+        return ClarifyQuestion(id: qid, question: question, choices: choices, multiSelect: multiSelect)
     }
 
     private func requestDeviceToken() async throws -> String {
@@ -533,18 +716,26 @@ final class PushNotificationService: ObservableObject {
     private func updateRegistration(deviceToken: String? = nil) async throws {
         guard let registration else { return }
         let body = UpdateRegistrationRequest(deviceToken: deviceToken ?? self.deviceToken, preferences: preferences)
-        var request = try jsonRequest(path: "/v1/installations/\(registration.installationID)", method: "PUT", body: body)
-        request.setValue("Bearer \(registration.credential)", forHTTPHeaderField: "Authorization")
+        var request = try jsonRequest(path: "/v1/installations/\(registration.installationID)", method: "PUT", body: body, credential: registration.credential)
         let (data, response) = try await URLSession.shared.data(for: request)
         try validate(response: response, data: data)
         self.registration?.preferences = preferences
         persistRegistration()
     }
 
-    private func jsonRequest<Body: Encodable>(path: String, method: String, body: Body) throws -> URLRequest {
-        var request = URLRequest(url: relayURL.appending(path: path))
+    private func jsonRequest<Body: Encodable>(path: String, method: String, body: Body, credential: String? = nil) throws -> URLRequest {
+        let url = relayURL.appending(path: path)
+        // A request carrying the pairing credential enforces the transport
+        // policy (HTTPS, or loopback HTTP for self-hosted development).
+        if let credential, !RelayTransportPolicy.allowsCredentialTransport(url) {
+            throw RelayDecisionError.insecureTransport
+        }
+        var request = URLRequest(url: url)
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let credential {
+            request.setValue("Bearer \(credential)", forHTTPHeaderField: "Authorization")
+        }
         request.httpBody = try JSONEncoder().encode(body)
         return request
     }
