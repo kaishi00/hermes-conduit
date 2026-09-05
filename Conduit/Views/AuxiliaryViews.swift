@@ -1371,9 +1371,11 @@ private struct AppearanceSettingsDetail: View {
     @EnvironmentObject private var appState: AppState
     let theme: ThemePreference
     let saveTheme: (ThemePreference) -> Void
+    @AppStorage("conduit.ipadPersistentSidebar") private var iPadPersistentSidebar = false
     @State private var selected: ThemePreference
     @State private var isChangingIcon = false
     init(theme: ThemePreference, saveTheme: @escaping (ThemePreference) -> Void) { self.theme = theme; self.saveTheme = saveTheme; _selected = State(initialValue: theme) }
+    private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
     var body: some View {
         SettingsDetailContainer {
             ConduitSettingsSection(title: "Theme", symbol: "circle.lefthalf.filled", tint: .conduitAccent) {
@@ -1426,6 +1428,16 @@ private struct AppearanceSettingsDetail: View {
                         .disabled(isChangingIcon)
                         .accessibilityLabel("Use \(choice.title.lowercased()) app icon")
                     }
+                }
+            }
+
+            if isPad {
+                ConduitSettingsSection(title: "Layout", symbol: "sidebar.left", tint: .conduitAura) {
+                    Toggle("Persistent session sidebar", isOn: $iPadPersistentSidebar)
+                        .tint(.conduitAccent)
+                    Text("Keep Sessions, Cron, and Kanban visible beside the current conversation when the window is wide enough.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
             }
         }.navigationTitle("Appearance")

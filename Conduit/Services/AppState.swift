@@ -736,6 +736,15 @@ final class AppState: ObservableObject {
             }
         }
     }
+    /// Closes the modal sessions drawer if it is open. Session-opening flows
+    /// inside the sidebar call this unconditionally: in drawer mode it
+    /// dismisses the sheet, while in the iPad persistent-sidebar layout the
+    /// drawer is never presented (`showSidebar` stays false), so this is a
+    /// no-op and the persistent column remains visible.
+    func dismissSidebarDrawer() {
+        guard showSidebar else { return }
+        showSidebar = false
+    }
     @Published var showModelPicker = false
     @Published var showContextSheet = false
     @Published var showWorkspaceSheet = false
