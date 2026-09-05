@@ -111,6 +111,7 @@ final class ComposerPasteTextViewTests: XCTestCase {
 
     func testProgrammaticTextApplicationDoesNotPublishAsUserEditing() {
         var value = "old"
+        var userEditCount = 0
         let view = ComposerPasteTextView(
             text: Binding(get: { value }, set: { value = $0 }),
             isFocused: .constant(false),
@@ -118,7 +119,8 @@ final class ComposerPasteTextViewTests: XCTestCase {
             enabled: true,
             onPastedImage: { _ in },
             onPastedImageError: { _ in },
-            editorIdentity: UUID()
+            editorIdentity: UUID(),
+            onUserEdit: { userEditCount += 1 }
         )
         let coordinator = ComposerPasteTextView.Coordinator(view)
         coordinator.isApplyingProgrammaticState = true
@@ -129,6 +131,208 @@ final class ComposerPasteTextViewTests: XCTestCase {
         coordinator.textViewDidChange(textView)
 
         XCTAssertEqual(value, "old")
+        XCTAssertEqual(
+            userEditCount, 0,
+            "A programmatic replacement must never claim session ownership"
+        )
+    }
+
+    /// The ownership signal for the composer-race fix: a genuine user edit
+    /// must claim ownership synchronously in the delegate callback, BEFORE
+    /// the SwiftUI binding observes the new text.
+    func testUserEditInvokesOnUserEditBeforeBindingUpdate() {
+        var value = ""
+        var events: [String] = []
+        let view = ComposerPasteTextView(
+            text: Binding(
+                get: { value },
+                set: { value = $0; events.append("binding") }
+            ),
+            isFocused: .constant(false),
+            measuredHeight: .constant(44),
+            enabled: true,
+            onPastedImage: { _ in },
+            onPastedImageError: { _ in },
+            editorIdentity: UUID(),
+            onUserEdit: { events.append("onUserEdit") }
+        )
+        let coordinator = ComposerPasteTextView.Coordinator(view)
+
+        let textView = ImagePasteTextView()
+        textView.text = "typed"
+        coordinator.textViewDidChange(textView)
+
+        XCTAssertEqual(events, ["onUserEdit", "binding"])
+        XCTAssertEqual(value, "typed")
+    }
+
+    /// Every genuine mutation claims ownership; the per-generation latch that
+    /// collapses repeated claims into one automatic-restoration cancellation
+    /// lives in AppState (testComposerUserEditLatchesUntilNextAutomaticWorkGeneration)
+    /// and must stay out of the bridge.
+    func testRepeatedUserEditsInvokeOnUserEditEachTime() {
+        var value = ""
+        var userEditCount = 0
+        let view = ComposerPasteTextView(
+            text: Binding(get: { value }, set: { value = $0 }),
+            isFocused: .constant(false),
+            measuredHeight: .constant(44),
+            enabled: true,
+            onPastedImage: { _ in },
+            onPastedImageError: { _ in },
+            editorIdentity: UUID(),
+            onUserEdit: { userEditCount += 1 }
+        )
+        let coordinator = ComposerPasteTextView.Coordinator(view)
+        let textView = ImagePasteTextView()
+
+        textView.text = "a"
+        coordinator.textViewDidChange(textView)
+        textView.text = "ab"
+        coordinator.textViewDidChange(textView)
+        textView.text = "a"
+        coordinator.textViewDidChange(textView)
+
+        XCTAssertEqual(userEditCount, 3)
+        XCTAssertEqual(value, "a")
+    }
+
+    /// The `isActive` half of the guard is load-bearing for ownership: a
+    /// delegate delivery racing `dismantleUIView`/`deactivate` must not claim.
+    func testInactiveCoordinatorDoesNotClaimOwnershipOnUserEdit() {
+        var value = ""
+        var userEditCount = 0
+        let view = ComposerPasteTextView(
+            text: Binding(get: { value }, set: { value = $0 }),
+            isFocused: .constant(false),
+            measuredHeight: .constant(44),
+            enabled: true,
+            onPastedImage: { _ in },
+            onPastedImageError: { _ in },
+            editorIdentity: UUID(),
+            onUserEdit: { userEditCount += 1 }
+        )
+        let coordinator = ComposerPasteTextView.Coordinator(view)
+        coordinator.isActive = false
+
+        let textView = ImagePasteTextView()
+        textView.text = "typed"
+        coordinator.textViewDidChange(textView)
+
+        XCTAssertEqual(userEditCount, 0)
+        XCTAssertEqual(value, "")
+    }
+
+    /// A programmatic replacement that arrives while IME composition is
+    /// active is deferred until the composition ends. When it lands, it must
+    /// do so without an ownership claim: the replacement is applied through
+    /// the programmatic machinery, and no `textViewDidChange` ownership
+    /// callback fires for it.
+    func testDeferredIMEProgrammaticReplacementDoesNotClaimOwnership() {
+        var value = ""
+        var userEditCount = 0
+        let editorIdentity = UUID()
+        let view = ComposerPasteTextView(
+            text: Binding(get: { value }, set: { value = $0 }),
+            isFocused: .constant(false),
+            measuredHeight: .constant(44),
+            enabled: true,
+            onPastedImage: { _ in },
+            onPastedImageError: { _ in },
+            editorIdentity: editorIdentity,
+            onUserEdit: { userEditCount += 1 }
+        )
+        let coordinator = ComposerPasteTextView.Coordinator(view)
+        let textView = ImagePasteTextView()
+        // Establish the editor identity first — production does this on the
+        // first updateUIView pass, before any replacement can be deferred.
+        coordinator.apply(
+            text: "",
+            programmaticRevision: 0,
+            editorIdentity: editorIdentity,
+            to: textView
+        )
+
+        // Active IME composition.
+        textView.setMarkedText("に", selectedRange: NSRange(location: 0, length: 0))
+        XCTAssertNotNil(textView.markedTextRange, "Test fixture requires marked text")
+
+        // The replacement is queued, not applied, and claims nothing.
+        coordinator.apply(
+            text: "replaced",
+            programmaticRevision: 1,
+            editorIdentity: editorIdentity,
+            to: textView
+        )
+        XCTAssertNotEqual(textView.text, "replaced")
+        XCTAssertEqual(userEditCount, 0)
+
+        // Composition ends without a user edit; the next revision-gated pass
+        // lands the deferred replacement through the programmatic path.
+        textView.setMarkedText("", selectedRange: NSRange(location: 0, length: 0))
+        coordinator.apply(
+            text: "replaced",
+            programmaticRevision: 1,
+            editorIdentity: editorIdentity,
+            to: textView
+        )
+
+        XCTAssertEqual(textView.text, "replaced")
+        XCTAssertEqual(
+            userEditCount, 0,
+            "A deferred programmatic replacement must not become a user ownership claim"
+        )
+    }
+
+    /// The production-realistic commit interleaving: the user accepts the
+    /// composition, the delegate fires ONCE for that genuine commit, and the
+    /// deferred replacement landing at the end of the same callback (through
+    /// the flag-guarded programmatic path) must not claim a second time.
+    func testCompositionCommitClaimsOnceWhileDeferredReplacementLands() {
+        var value = ""
+        var userEditCount = 0
+        let editorIdentity = UUID()
+        let view = ComposerPasteTextView(
+            text: Binding(get: { value }, set: { value = $0 }),
+            isFocused: .constant(false),
+            measuredHeight: .constant(44),
+            enabled: true,
+            onPastedImage: { _ in },
+            onPastedImageError: { _ in },
+            editorIdentity: editorIdentity,
+            onUserEdit: { userEditCount += 1 }
+        )
+        let coordinator = ComposerPasteTextView.Coordinator(view)
+        let textView = ImagePasteTextView()
+        coordinator.apply(
+            text: "",
+            programmaticRevision: 0,
+            editorIdentity: editorIdentity,
+            to: textView
+        )
+
+        // Composition active, intentional replacement queued.
+        textView.setMarkedText("に", selectedRange: NSRange(location: 0, length: 0))
+        coordinator.apply(
+            text: "replaced",
+            programmaticRevision: 1,
+            editorIdentity: editorIdentity,
+            to: textView
+        )
+        XCTAssertEqual(userEditCount, 0)
+
+        // The user accepts the composition: the marked text commits and the
+        // delegate delivers the change. The claim fires for the commit; the
+        // deferred replacement lands inside the same callback, guarded.
+        textView.setMarkedText("", selectedRange: NSRange(location: 0, length: 0))
+        coordinator.textViewDidChange(textView)
+
+        XCTAssertEqual(
+            userEditCount, 1,
+            "The genuine composition commit claims exactly once"
+        )
+        XCTAssertEqual(textView.text, "replaced")
+        XCTAssertEqual(value, "replaced")
     }
 
     func testInactiveCoordinatorDoesNotPublishFocusOrMeasuredHeightChanges() {

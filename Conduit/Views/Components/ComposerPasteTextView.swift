@@ -48,6 +48,18 @@ struct ComposerPasteTextView: UIViewRepresentable {
     /// press consumed; a declined action keeps the default text behavior.
     /// ComposerBar stays the owner of the actual send/steer/interrupt action.
     var onSubmitFromReturn: (() -> Bool)? = nil
+    /// Invoked synchronously from `textViewDidChange` — the earliest
+    /// authoritative point a text mutation is known to be genuine user input
+    /// (typing, deletion, paste), after the active/programmatic guards and
+    /// before the SwiftUI binding updates. IME composition updates, commits,
+    /// discards, and autocorrect substitutions also count: they are all
+    /// user-driven mutations, and the extra claims are harmless under
+    /// AppState's per-generation latch. Programmatic replacements ride the
+    /// revision machinery inside `isApplyingProgrammaticState` and never
+    /// reach this callback. ComposerBar forwards this to
+    /// `AppState.noteComposerUserEdit()` so an in-flight automatic foreground
+    /// return loses session-selection authority the moment the user edits.
+    var onUserEdit: (() -> Void)? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -142,6 +154,11 @@ struct ComposerPasteTextView: UIViewRepresentable {
 
         func textViewDidChange(_ textView: UITextView) {
             guard isActive, !isApplyingProgrammaticState else { return }
+            // Ownership claim first: this delegate callback is the earliest
+            // point the mutation is provably user input. Everything below
+            // (binding write, flush of a deferred programmatic replacement)
+            // happens after the user already owns the conversation.
+            parent.onUserEdit?()
             lastTextReportedByUIKit = textView.text
             parent.text = textView.text
             textView.scrollRangeToVisible(textView.selectedRange)
