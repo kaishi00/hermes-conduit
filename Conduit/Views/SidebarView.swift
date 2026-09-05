@@ -10,6 +10,10 @@ import SwiftUI
 struct SidebarView: View {
     @EnvironmentObject var appState: AppState
     let onRequestSettings: () -> Void
+    /// Drawer mode keeps the current modal-sheet behavior; persistent mode
+    /// renders the same content as a fixed root-layout column with no close
+    /// control and no dismissal.
+    var presentation: SidebarPresentation = .drawer
     @AppStorage("conduit.sidebarTab") private var selectedTabRaw = SidebarTab.sessions.rawValue
 
     private var selectedTab: SidebarTab {
@@ -68,15 +72,17 @@ struct SidebarView: View {
                             .conduitGlassControl(cornerRadius: 18)
                             .accessibilityLabel("Settings")
 
-                            Button {
-                                dismiss()
-                            } label: {
-                                Image(systemName: "xmark")
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .frame(width: 44, height: 44)
+                            if presentation == .drawer {
+                                Button {
+                                    dismiss()
+                                } label: {
+                                    Image(systemName: "xmark")
+                                        .font(.system(size: 15, weight: .semibold))
+                                        .frame(width: 44, height: 44)
+                                }
+                                .conduitGlassControl(cornerRadius: 18)
+                                .accessibilityLabel("Close sessions")
                             }
-                            .conduitGlassControl(cornerRadius: 18)
-                            .accessibilityLabel("Close sessions")
                         }
                     }
 
@@ -174,7 +180,7 @@ struct SessionList: View {
             HStack(spacing: 10) {
                 Button {
                     Haptics.medium()
-                    appState.showSidebar = false
+                    appState.dismissSidebarDrawer()
                     Task { await appState.createNewSession() }
                 } label: {
                     HStack(spacing: 6) {
@@ -449,7 +455,7 @@ struct SessionList: View {
     private func sessionRow(_ session: SessionSummary) -> some View {
         Button {
             Haptics.light()
-            appState.showSidebar = false
+            appState.dismissSidebarDrawer()
             appState.requestOpenSession(session.id)
         } label: {
             SessionRow(
@@ -785,7 +791,7 @@ private struct ProjectSessionsSheet: View {
                             Section(lane.title) {
                                 ForEach(lane.sessions) { session in
                                     Button {
-                                        appState.showSidebar = false
+                                        appState.dismissSidebarDrawer()
                                         dismiss()
                                         appState.requestOpenSession(session.id)
                                     } label: {
@@ -810,7 +816,7 @@ private struct ProjectSessionsSheet: View {
                 if let path = project.primaryPath, !path.isEmpty {
                     ToolbarItem(placement: .topBarLeading) {
                         Button {
-                            appState.showSidebar = false
+                            appState.dismissSidebarDrawer()
                             dismiss()
                             Task { await appState.createNewSession(cwd: path) }
                         } label: {
@@ -1068,7 +1074,7 @@ struct CronList: View {
                 Section("Recent runs") {
                     ForEach(appState.activeProfileCronSessions.prefix(20)) { session in
                     Button {
-                        appState.showSidebar = false
+                        appState.dismissSidebarDrawer()
                         appState.requestOpenSession(session.id)
                     } label: {
                         SessionRow(session: session, isSelected: session.id == appState.activeSessionId).contentShape(Rectangle())
@@ -1160,7 +1166,7 @@ private struct CronJobDetailSheet: View {
                         ConduitSettingsSection(title: "Run history", symbol: "clock.arrow.circlepath", tint: .conduitAura) {
                             if appState.cronRuns.isEmpty { Text("This job has not run yet.").font(.footnote).foregroundStyle(.secondary) }
                             ForEach(appState.cronRuns) { run in
-                                Button { appState.showSidebar = false; dismiss(); appState.requestOpenSession(run.id) } label: {
+                                Button { appState.dismissSidebarDrawer(); dismiss(); appState.requestOpenSession(run.id) } label: {
                                     HStack { VStack(alignment: .leading) { Text(run.title ?? run.preview ?? run.id).lineLimit(1); Text(run.model ?? "Hermes").font(.caption).foregroundStyle(.secondary) }; Spacer(); Text(run.lastActive.map(String.init) ?? "").font(.caption2).foregroundStyle(.tertiary) }
                                 }
                                 .buttonStyle(.plain)
