@@ -27,6 +27,31 @@ final class AuthWebViewNavigationPolicyTests: XCTestCase {
         )
     }
 
+    // MARK: - Construction-failure deferral
+
+    func testConstructionFailureReportsOnNextMainRunloopTurnNotSynchronously() throws {
+        // makeUIView runs inside SwiftUI's representable update pass; a
+        // synchronous onError would mutate LoginView @State mid-render. The
+        // report must be deferred to the next main-runloop turn.
+        let reported = expectation(description: "deferred onError")
+        var received: [(ConnectionFailure, String)] = []
+
+        AuthWebView.reportConstructionFailure({ failure, detail in
+            received.append((failure, detail))
+            reported.fulfill()
+        }, detail: "construction failed")
+
+        XCTAssertTrue(
+            received.isEmpty,
+            "Construction failures must not invoke onError synchronously during the representable update pass"
+        )
+        waitForExpectations(timeout: 2)
+
+        XCTAssertEqual(received.count, 1)
+        XCTAssertEqual(try XCTUnwrap(received.first).0, .invalidAddress)
+        XCTAssertEqual(try XCTUnwrap(received.first).1, "construction failed")
+    }
+
     // MARK: - Subframes (Turnstile / identity-provider operation)
 
     func testSubframeAboutBlankAndSrcdocAreAllowedForTurnstile() throws {

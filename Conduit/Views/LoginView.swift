@@ -601,15 +601,29 @@ struct AuthWebView: UIViewRepresentable {
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
         guard let normalized else {
-            onError(.invalidAddress, "dashboard URL failed normalization in AuthWebView")
+            Self.reportConstructionFailure(onError, detail: "dashboard URL failed normalization in AuthWebView")
             return webView
         }
         if let request = try? Self.dashboardRequest(normalizedBaseURL: normalized, cloudflareAccess: cloudflareAccess) {
             webView.load(request)
         } else {
-            onError(.invalidAddress, "dashboard sign-in request construction failed")
+            Self.reportConstructionFailure(onError, detail: "dashboard sign-in request construction failed")
         }
         return webView
+    }
+
+    /// Construction-time failures cannot synchronously mutate the owning
+    /// view's state: makeUIView runs inside SwiftUI's representable update
+    /// pass, and an immediate onError would write LoginView @State mid-render.
+    /// Report on the next main-runloop turn instead. Static with an injected
+    /// callback so the deferral contract stays unit-testable.
+    static func reportConstructionFailure(
+        _ onError: @escaping (ConnectionFailure, String) -> Void,
+        detail: String
+    ) {
+        DispatchQueue.main.async {
+            onError(.invalidAddress, detail)
+        }
     }
 
     /// The dashboard sign-in request the WebView boots with. Extracted so the

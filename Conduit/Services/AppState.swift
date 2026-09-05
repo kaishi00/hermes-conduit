@@ -2468,10 +2468,35 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Forces the sign-in screen with a message destined for the login card.
-    /// Internal (not private) so the typed pending-failure handoff contract
-    /// stays unit-testable.
+    /// Classification seam for the silent-renewal sign-in handoff: when a
+    /// saved-password re-auth was attempted and failed, that error (429
+    /// throttle, 401 rejection, 503 outage) explains far more than the bare
+    /// bridge signInRequired. The winning error is classified — never
+    /// rendered via errorDescription. Internal for unit testing.
+    static func silentRenewalSignInFailure(
+        reauthError: Error?,
+        bridgeError: Error
+    ) -> ConnectionFailurePresentation {
+        .presenting(ConnectionFailureClassifier.classify(reauthError ?? bridgeError))
+    }
+
+    /// Forces the sign-in screen with a classified failure presentation.
+    /// Prefer this overload whenever the failure derives from an Error — the
+    /// full presentation (title, actions, help routing) reaches the login
+    /// card untouched.
+    func requireSignIn(failure: ConnectionFailurePresentation) {
+        performSignInRequired(pendingFailure: failure)
+    }
+
+    /// Forces the sign-in screen with a human-authored notice message. Only
+    /// for genuinely hand-written strings — Error-derived text must go
+    /// through requireSignIn(failure:) so it is classified, never rendered
+    /// raw.
     func requireSignIn(message: String) {
+        performSignInRequired(pendingFailure: .notice(title: "Sign-in didn’t complete", message: message))
+    }
+
+    private func performSignInRequired(pendingFailure: ConnectionFailurePresentation) {
         cancelChatResumeTransportRecovery()
         invalidateReconciliation()
         cancelSecondaryProfileTitleRecovery()
@@ -2499,11 +2524,7 @@ final class AppState: ObservableObject {
         // connected-era error from resurfacing stale after re-login.
         errorMessage = nil
         showLogin = true
-        // Typed handoff to the login card (consumed once there). Deliberately
-        // NOT errorMessage: that string feeds the connected composer banner,
-        // where a stale sign-in message would outlive the successful
-        // re-login that follows this screen.
-        pendingLoginFailure = .notice(title: "Sign-in didn’t complete", message: message)
+        pendingLoginFailure = pendingFailure
     }
 
     // MARK: - Authoritative reconciliation
@@ -4352,6 +4373,7 @@ final class AppState: ObservableObject {
         } catch {
             guard refreshTransportContinuation() else { return }
             if let bridgeError = error as? DashboardTicketBridgeError, case .signInRequired = bridgeError {
+                var silentRenewalReauthError: Error?
                 if let credentials = KeychainHelper.loadCredentials(),
                    credentials.baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/")) == savedConnection.baseUrl.trimmingCharacters(in: CharacterSet(charactersIn: "/")) {
                     do {
@@ -4376,12 +4398,22 @@ final class AppState: ObservableObject {
                         return
                     } catch {
                         guard refreshTransportContinuation() else { return }
-                        // This only determines whether recovery can be silent.
-                        // Preserve the saved credentials for the login screen.
+                        // The silent re-auth failure (429 throttle, 401
+                        // rejection, 503 outage…) is the most diagnostic
+                        // explanation for the forced sign-in; carry it to the
+                        // classifier. This only determines whether recovery
+                        // can be silent. Preserve the saved credentials for
+                        // the login screen.
+                        silentRenewalReauthError = error
                     }
                 }
                 guard refreshTransportContinuation() else { return }
-                requireSignIn(message: error.localizedDescription)
+                requireSignIn(
+                    failure: Self.silentRenewalSignInFailure(
+                        reauthError: silentRenewalReauthError,
+                        bridgeError: error
+                    )
+                )
             } else {
                 guard refreshTransportContinuation() else { return }
                 isConnected = false

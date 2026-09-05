@@ -67,6 +67,93 @@ final class AppStatePendingLoginFailureTests: XCTestCase {
         XCTAssertNil(appState.errorMessage)
     }
 
+    // MARK: - Silent-renewal sign-in handoff
+
+    func testSilentRenewal429ClassifiesAsRateLimitedWithoutRawErrorDescription() {
+        let reauthError = AuthClientError.loginFailed(
+            status: 429,
+            detail: "Too many login attempts. Try again shortly."
+        )
+        let presentation = AppState.silentRenewalSignInFailure(
+            reauthError: reauthError,
+            bridgeError: DashboardTicketBridgeError.signInRequired
+        )
+        XCTAssertEqual(presentation.title, "Too many login attempts")
+        XCTAssertEqual(
+            presentation.message,
+            "Hermes temporarily blocked additional login attempts. Wait about a minute before trying again."
+        )
+        XCTAssertNotEqual(
+            presentation.message, reauthError.errorDescription,
+            "A reconnect 429 must not surface raw AuthClientError.errorDescription"
+        )
+        XCTAssertEqual(presentation.offersRecoveryActions, false)
+    }
+
+    func testSilentRenewal401And503DoNotSurfaceRawErrorDescription() {
+        // 401 during silent re-auth: the password was already known-good at
+        // some point, but the endpoint rejection is still the best
+        // explanation — presented as classified copy, never the raw string.
+        let rejection = AuthClientError.loginFailed(status: 401, detail: "HTTP 401")
+        let rejectedPresentation = AppState.silentRenewalSignInFailure(
+            reauthError: rejection,
+            bridgeError: DashboardTicketBridgeError.signInRequired
+        )
+        XCTAssertEqual(rejectedPresentation.title, "Login failed")
+        XCTAssertEqual(
+            rejectedPresentation.message,
+            "Hermes rejected that username or password. Check your dashboard credentials and try again."
+        )
+        XCTAssertNotEqual(rejectedPresentation.message, rejection.errorDescription)
+
+        // 503: server outage, distinct copy, raw "Login failed: HTTP 503"
+        // must never reach the card.
+        let outage = AuthClientError.loginFailed(status: 503, detail: "HTTP 503")
+        let outagePresentation = AppState.silentRenewalSignInFailure(
+            reauthError: outage,
+            bridgeError: DashboardTicketBridgeError.signInRequired
+        )
+        XCTAssertEqual(outagePresentation.title, "Dashboard unavailable")
+        XCTAssertNotEqual(outagePresentation.message, outage.errorDescription)
+        XCTAssertFalse(outagePresentation.message.contains("HTTP 503"))
+    }
+
+    func testSilentRenewalWithoutReauthAttemptStillClassifiesBridgeError() {
+        // No saved credentials → no re-auth attempt: the bare bridge
+        // signInRequired still gets a classified (graceful) presentation.
+        let presentation = AppState.silentRenewalSignInFailure(
+            reauthError: nil,
+            bridgeError: DashboardTicketBridgeError.signInRequired
+        )
+        XCTAssertFalse(presentation.title.isEmpty)
+        XCTAssertNil(presentation.helpDestination)
+    }
+
+    func testRequireSignInFailureOverloadPreservesFullPresentation() {
+        // The failure overload must carry the presentation through untouched
+        // (title, actions, destination) — unlike the message overload, which
+        // wraps hand-written strings in a generic notice.
+        let appState = makeAppState()
+        let presentation = AppState.silentRenewalSignInFailure(
+            reauthError: AuthClientError.loginFailed(status: 429, detail: "Too many login attempts"),
+            bridgeError: DashboardTicketBridgeError.signInRequired
+        )
+
+        appState.requireSignIn(failure: presentation)
+
+        XCTAssertTrue(appState.showLogin)
+        XCTAssertEqual(appState.pendingLoginFailure, presentation)
+        XCTAssertNil(appState.errorMessage)
+    }
+
+    func testRequireSignInMessageOverloadWrapsHumanAuthoredStringsAsNotice() {
+        let appState = makeAppState()
+        appState.requireSignIn(message: "Your dashboard session ended.")
+
+        XCTAssertEqual(appState.pendingLoginFailure?.title, "Sign-in didn’t complete")
+        XCTAssertEqual(appState.pendingLoginFailure?.message, "Your dashboard session ended.")
+    }
+
     func testPendingLoginFailureCarriesFullClassifiedPresentation() {
         // The typed handoff preserves title/actions/destination — the round-1
         // string handoff discarded all of that on the restore path.
