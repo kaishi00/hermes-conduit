@@ -755,6 +755,14 @@ final class AppState: ObservableObject {
     /// tell whether Settings owns the surface across a background/foreground cycle.
     @Published var isSettingsSheetPresented = false
     @Published var errorMessage: String?
+    /// A classified sign-in failure awaiting presentation on the login card.
+    /// Typed (not a string) so LoginView renders the full presentation —
+    /// title, actions, help routing — and delivered as a publisher so the
+    /// handoff works even when LoginView is already mounted (onReceive fires
+    /// on new emissions and replays the current value on mount). Consumed
+    /// once by LoginView; never read by the connected composer banner, so a
+    /// sign-in failure cannot resurface stale over a healthy session.
+    @Published var pendingLoginFailure: ConnectionFailurePresentation?
     @Published var showLogin = true
     @Published private(set) var composerPrefillText = ""
     @Published private(set) var composerPrefillToken = UUID()
@@ -2159,11 +2167,17 @@ final class AppState: ObservableObject {
         if cancelsResumeRestoration {
             cancelChatResumeTransportRecovery()
         }
-        guard let normalizedBaseURL = try? ConnectionURLPolicy.normalizedBaseURL(conn.baseUrl) else {
+        // Preserve which URL-policy rule failed instead of reporting every
+        // normalization failure as insecure transport, and hand the login
+        // card a typed classified presentation rather than a string.
+        let normalizedBaseURL: String
+        do {
+            normalizedBaseURL = try ConnectionURLPolicy.normalizedBaseURL(conn.baseUrl)
+        } catch {
             isConnecting = false
             isConnected = false
             showLogin = true
-            errorMessage = ConnectionURLPolicyError.insecureTransport.localizedDescription
+            pendingLoginFailure = .presenting(ConnectionFailureClassifier.classify(error))
             return
         }
         prepareChatResumeForConnection(to: normalizedBaseURL)
@@ -2235,6 +2249,8 @@ final class AppState: ObservableObject {
             handedOffAutomaticIntent = continuation.handedOffAutomaticIntent
             isConnected = true
             isConnecting = false
+            // A fresh healthy session never inherits an older banner error.
+            errorMessage = nil
             reconnectAttempts = 0
             connectedAt = Date()
             KeychainHelper.saveConnection(conn)
@@ -2436,8 +2452,10 @@ final class AppState: ObservableObject {
         } catch {
             // A rejected saved password falls back to the native login screen
             // without erasing it, allowing the user to correct the account.
+            // The typed classified handoff replaces the old string write, so
+            // the composer banner never inherits a stale sign-in message.
             showLogin = true
-            errorMessage = error.localizedDescription
+            pendingLoginFailure = .presenting(ConnectionFailureClassifier.classify(error))
         }
     }
 
@@ -2450,7 +2468,36 @@ final class AppState: ObservableObject {
         }
     }
 
-    private func requireSignIn(message: String) {
+    /// Classification seam for the silent-renewal sign-in handoff: when a
+    /// saved-password re-auth was attempted and failed, that error (429
+    /// throttle, 401 rejection, 503 outage) explains far more than the bare
+    /// bridge signInRequired. The winning error is classified — never
+    /// rendered via errorDescription. Internal for unit testing.
+    static func silentRenewalSignInFailure(
+        reauthError: Error?,
+        bridgeError: DashboardTicketBridgeError
+    ) -> ConnectionFailurePresentation {
+        .presenting(reauthError.map(ConnectionFailureClassifier.classify)
+            ?? ConnectionFailureClassifier.classify(bridgeError))
+    }
+
+    /// Forces the sign-in screen with a classified failure presentation.
+    /// Prefer this overload whenever the failure derives from an Error — the
+    /// full presentation (title, actions, help routing) reaches the login
+    /// card untouched.
+    func requireSignIn(failure: ConnectionFailurePresentation) {
+        performSignInRequired(pendingFailure: failure)
+    }
+
+    /// Forces the sign-in screen with a human-authored notice message. Only
+    /// for genuinely hand-written strings — Error-derived text must go
+    /// through requireSignIn(failure:) so it is classified, never rendered
+    /// raw.
+    func requireSignIn(message: String) {
+        performSignInRequired(pendingFailure: .notice(title: "Sign-in didn’t complete", message: message))
+    }
+
+    private func performSignInRequired(pendingFailure: ConnectionFailurePresentation) {
         cancelChatResumeTransportRecovery()
         invalidateReconciliation()
         cancelSecondaryProfileTitleRecovery()
@@ -2473,8 +2520,12 @@ final class AppState: ObservableObject {
         KeychainHelper.clearConnection()
         turnState = .idle
         retireOutstandingPreferredReturnSurfaceRequests()
+        // The banner content belonged to the session being torn down; with
+        // the LoginView onAppear consume gone, this is what keeps a
+        // connected-era error from resurfacing stale after re-login.
+        errorMessage = nil
         showLogin = true
-        errorMessage = message
+        pendingLoginFailure = pendingFailure
     }
 
     // MARK: - Authoritative reconciliation
@@ -4323,6 +4374,7 @@ final class AppState: ObservableObject {
         } catch {
             guard refreshTransportContinuation() else { return }
             if let bridgeError = error as? DashboardTicketBridgeError, case .signInRequired = bridgeError {
+                var silentRenewalReauthError: Error?
                 if let credentials = KeychainHelper.loadCredentials(),
                    credentials.baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/")) == savedConnection.baseUrl.trimmingCharacters(in: CharacterSet(charactersIn: "/")) {
                     do {
@@ -4345,14 +4397,29 @@ final class AppState: ObservableObject {
                         )
                         guard refreshTransportContinuation() else { return }
                         return
+                    } catch is CancellationError {
+                        // A superseded reconnect owns the flow from here; do
+                        // not force the user to the sign-in card for an
+                        // intentional cancellation.
+                        return
                     } catch {
                         guard refreshTransportContinuation() else { return }
-                        // This only determines whether recovery can be silent.
-                        // Preserve the saved credentials for the login screen.
+                        // The silent re-auth failure (429 throttle, 401
+                        // rejection, 503 outage…) is the most diagnostic
+                        // explanation for the forced sign-in; carry it to the
+                        // classifier. This only determines whether recovery
+                        // can be silent. Preserve the saved credentials for
+                        // the login screen.
+                        silentRenewalReauthError = error
                     }
                 }
                 guard refreshTransportContinuation() else { return }
-                requireSignIn(message: error.localizedDescription)
+                requireSignIn(
+                    failure: Self.silentRenewalSignInFailure(
+                        reauthError: silentRenewalReauthError,
+                        bridgeError: bridgeError
+                    )
+                )
             } else {
                 guard refreshTransportContinuation() else { return }
                 isConnected = false
@@ -4377,6 +4444,8 @@ final class AppState: ObservableObject {
                   let activeClient = self.client, activeClient === client else { return }
             isConnected = true
             isConnecting = false
+            // A fresh healthy session never inherits an older banner error.
+            errorMessage = nil
             reconnectAttempts = 0
             connectedAt = Date()
             guard let continuation = await synchronizeTransportContinuation(
