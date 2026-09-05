@@ -1780,6 +1780,41 @@ final class AppState: ObservableObject {
         chatResumeRestorationRequest = nil
     }
 
+    /// A genuine composer edit is explicit ownership of the visible
+    /// conversation, exactly like sending, navigating, or scrolling: any
+    /// automatic-return work still in flight (a foreground health check that
+    /// may yet fall back to a reconnect, an in-flight `.automaticReturn`
+    /// reconnect or sync, an armed retry timer, an unconsumed restoration
+    /// request) loses its authority to select a different session. Transport
+    /// recovery itself is not stopped — `cancelChatResumeRestoration()`
+    /// demotes the in-flight and queued purpose to `.preserveCurrent`, so a
+    /// reconnect that is already running hands off and preserves this
+    /// session.
+    ///
+    /// Only the first edit that finds automatic work outstanding does
+    /// anything. With nothing outstanding this is a pure no-op, so calling it
+    /// per keystroke publishes no state and cannot invalidate the viewport
+    /// that a later, unrelated foreground return will need.
+    func noteComposerUserEdit() {
+        guard automaticChatResumeWorkMayStillSelectSession else { return }
+        cancelChatResumeRestoration()
+    }
+
+    /// Whether any automatic-return work is outstanding that could still
+    /// replace the active session. `activeAutomaticChatResumeWork` alone is
+    /// not evidence: a completed foreground refresh leaves its token behind,
+    /// and nothing ever re-reads it once the scene attempt and its operations
+    /// have finished.
+    private var automaticChatResumeWorkMayStillSelectSession: Bool {
+        scenePhaseAttemptID != nil
+            || reconnectTask != nil
+            || activeAutomaticSyncOperation != nil
+            || activeAutomaticReconnectOperation != nil
+            || recoverySequence.currentPurpose == .automaticReturn
+            || recoverySequence.queuedReconnectPurpose == .automaticReturn
+            || chatResumeRestorationRequest != nil
+    }
+
     private func cancelChatResumeTransportRecovery() {
         cancelExplicitSessionOpen()
         cancelScheduledReconnect()

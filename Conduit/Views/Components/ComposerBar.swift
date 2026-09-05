@@ -34,6 +34,12 @@ struct ComposerBar: View {
     /// an UNCHANGED revision and can never rewrite the editor or move the
     /// cursor mid-typing.
     @State private var composerRevision: UInt64 = 0
+    /// Set by `replaceComposerText(_:)` when it actually changes the visible
+    /// text, and consumed by the next `onChange(of: text)`. That observer is
+    /// the only place the composer can tell a genuine user edit (the UIKit
+    /// editor moved the binding; revision unchanged) from a programmatic
+    /// replacement, and only the former may claim session ownership.
+    @State private var hasPendingProgrammaticReplacement = false
     @State private var loadedDraftKey: ComposerDraftKey?
     @State private var photoImportContext: AsyncAttachmentContext?
     @State private var photoImportGeneration: UInt64 = 0
@@ -153,8 +159,14 @@ struct ComposerBar: View {
 
     /// The only sanctioned way to replace composer content programmatically.
     /// Advances the editor's programmatic revision alongside the text so the
-    /// change is applied to the UIKit editor exactly once.
+    /// change is applied to the UIKit editor exactly once, and marks real
+    /// replacements so the text-change observer never mistakes them for user
+    /// input. Writing an unchanged value marks nothing: its observer never
+    /// fires, and a leaked mark would swallow the next genuine keystroke's
+    /// ownership signal.
     private func replaceComposerText(_ newValue: String) {
+        hasPendingProgrammaticReplacement =
+            ComposerTextChangeSource.marksPendingReplacement(from: text, to: newValue)
         text = newValue
         composerRevision &+= 1
     }
@@ -249,9 +261,21 @@ struct ComposerBar: View {
         .padding(.top, 8)
         .padding(.bottom, 10)
         .onChange(of: text) { _, newValue in
+            let changeSource = ComposerTextChangeSource.classify(
+                hasPendingProgrammaticReplacement: hasPendingProgrammaticReplacement
+            )
+            hasPendingProgrammaticReplacement = false
             let isProgrammaticDraftRestore = suppressNextTextChangeSuggestions
             suppressNextTextChangeSuggestions = false
             composerErrorMessage = nil
+            // Typing into the visible conversation claims it: a foreground
+            // resume/reconnect still in flight may repair the transport but
+            // may no longer switch sessions underneath the user. Draft
+            // restores, prefill, and slash insertion are programmatic and
+            // must not claim anything.
+            if changeSource == .userEdit {
+                appState.noteComposerUserEdit()
+            }
             if newValue.isEmpty {
                 composerTextHeight = ComposerPasteTextView.minimumHeight
             }
@@ -958,6 +982,32 @@ struct ComposerBar: View {
         let approvals = appState.runtime.yolo ? ", auto-approve enabled" : ""
         let activity = appState.turnState == .running ? ", agent working" : ""
         return "\(model), \(reasoning)\(approvals)\(activity)"
+    }
+}
+
+// MARK: - Text-Change Ownership
+
+/// Classifies a composer text mutation for session ownership. The
+/// classification feeds `AppState.noteComposerUserEdit()`, which cancels
+/// automatic foreground-return restoration — so it must fire for genuine
+/// typing only. Draft restores, prefills, slash insertions, post-send
+/// collapses, and failed-submit restores are programmatic replacements;
+/// ordinary SwiftUI re-renders never produce a text change at all.
+enum ComposerTextChangeSource: Equatable {
+    case userEdit
+    case programmaticReplacement
+
+    /// `replaceComposerText(_:)` marks a replacement as pending when it
+    /// actually changes the visible text; the next observed text change
+    /// consumes the mark.
+    static func marksPendingReplacement(from oldText: String, to newText: String) -> Bool {
+        oldText != newText
+    }
+
+    static func classify(
+        hasPendingProgrammaticReplacement: Bool
+    ) -> ComposerTextChangeSource {
+        hasPendingProgrammaticReplacement ? .programmaticReplacement : .userEdit
     }
 }
 
