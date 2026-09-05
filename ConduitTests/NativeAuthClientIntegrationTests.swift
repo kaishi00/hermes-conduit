@@ -427,7 +427,7 @@ final class NativeAuthClientIntegrationTests: XCTestCase {
             ).connect(username: "chris", password: "correct-password")
             return XCTFail("Expected a ticket response without a ticket to fail")
         } catch let error as AuthClientError {
-            guard case .ticketFailed(let detail) = error else {
+            guard case .ticketFailed(_, let detail) = error else {
                 return XCTFail("Expected ticket failure, got \(error)")
             }
             XCTAssertEqual(detail, "No ticket in response")

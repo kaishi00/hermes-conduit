@@ -2159,11 +2159,16 @@ final class AppState: ObservableObject {
         if cancelsResumeRestoration {
             cancelChatResumeTransportRecovery()
         }
-        guard let normalizedBaseURL = try? ConnectionURLPolicy.normalizedBaseURL(conn.baseUrl) else {
+        // Preserve which URL-policy rule failed instead of reporting every
+        // normalization failure as insecure transport.
+        let normalizedBaseURL: String
+        do {
+            normalizedBaseURL = try ConnectionURLPolicy.normalizedBaseURL(conn.baseUrl)
+        } catch {
             isConnecting = false
             isConnected = false
             showLogin = true
-            errorMessage = ConnectionURLPolicyError.insecureTransport.localizedDescription
+            errorMessage = error.localizedDescription
             return
         }
         prepareChatResumeForConnection(to: normalizedBaseURL)
@@ -2436,8 +2441,11 @@ final class AppState: ObservableObject {
         } catch {
             // A rejected saved password falls back to the native login screen
             // without erasing it, allowing the user to correct the account.
+            // Classified copy instead of raw Foundation strings.
             showLogin = true
-            errorMessage = error.localizedDescription
+            errorMessage = ConnectionFailurePresentation
+                .presenting(ConnectionFailureClassifier.classify(error))
+                .message
         }
     }
 

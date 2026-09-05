@@ -18,9 +18,13 @@ struct DashboardCredentials: Codable, Equatable {
 
 enum AuthClientError: LocalizedError {
     case invalidURL
-    case loginFailed(String)
-    case ticketFailed(String)
-    case providerDiscoveryFailed(String)
+    /// `status` is the HTTP status the dashboard answered with, or `nil` when
+    /// no HTTP response arrived. Carried on the error (rather than folded
+    /// into `detail`) so failure classification is code-based: 401/403 at the
+    /// password stage mean rejected credentials, while 5xx does not.
+    case loginFailed(status: Int?, detail: String)
+    case ticketFailed(status: Int?, detail: String)
+    case providerDiscoveryFailed(status: Int?, detail: String)
     /// A configured Cloudflare Access service token did not satisfy the
     /// edge: provider discovery was still answered with a redirect to the
     /// Cloudflare Access login page. Distinct from `.loginFailed`/`.ticketFailed`
@@ -32,11 +36,21 @@ enum AuthClientError: LocalizedError {
         switch self {
         case .invalidURL:
             return "Invalid dashboard URL."
-        case .loginFailed(let detail):
-            return "Login failed: \(detail)"
-        case .ticketFailed(let detail):
-            return "Could not get session ticket: \(detail)"
-        case .providerDiscoveryFailed(let detail):
+        case .loginFailed(let status, _):
+            // Never expose a bare "HTTP 401" as the credential-rejection
+            // message; other statuses keep the status for diagnosis (the
+            // presentation layer owns user-facing copy). 429 must not read
+            // as a credentials problem wherever this string surfaces.
+            if status == 429 {
+                return "Too many login attempts. Try again shortly."
+            }
+            if let status, !(401...403).contains(status) {
+                return "Login failed: HTTP \(status)"
+            }
+            return "Login failed. Check your dashboard credentials and try again."
+        case .ticketFailed(_, let detail):
+            return "Could not start the Hermes session: \(detail)"
+        case .providerDiscoveryFailed(_, let detail):
             return "Could not check dashboard sign-in options: \(detail)"
         case .cloudflareServiceTokenRejected:
             return "Cloudflare Access did not accept the configured service token. "
@@ -101,7 +115,7 @@ struct NativeAuthClient {
         let request = try request(path: "/api/auth/providers")
         let result = try await perform(request)
         guard let http = result.response as? HTTPURLResponse else {
-            throw AuthClientError.providerDiscoveryFailed("No response")
+            throw AuthClientError.providerDiscoveryFailed(status: nil, detail: "No response")
         }
         switch http.statusCode {
         case 301, 302, 303, 307, 308:
@@ -123,7 +137,10 @@ struct NativeAuthClient {
             break
         }
         guard (200...299).contains(http.statusCode) else {
-            throw AuthClientError.providerDiscoveryFailed(parseError(result.data) ?? "HTTP \(http.statusCode)")
+            throw AuthClientError.providerDiscoveryFailed(
+                status: http.statusCode,
+                detail: parseError(result.data) ?? "HTTP \(http.statusCode)"
+            )
         }
 
         if let json = try? JSONSerialization.jsonObject(with: result.data) as? [String: Any] {
@@ -144,13 +161,16 @@ struct NativeAuthClient {
 
         let result = try await perform(request)
         guard let http = result.response as? HTTPURLResponse else {
-            throw AuthClientError.loginFailed("No response")
+            throw AuthClientError.loginFailed(status: nil, detail: "No response")
         }
         guard (200...299).contains(http.statusCode) else {
-            throw AuthClientError.loginFailed(parseError(result.data) ?? "HTTP \(http.statusCode)")
+            throw AuthClientError.loginFailed(
+                status: http.statusCode,
+                detail: parseError(result.data) ?? "HTTP \(http.statusCode)"
+            )
         }
         guard http.url != nil else {
-            throw AuthClientError.loginFailed("Response URL missing")
+            throw AuthClientError.loginFailed(status: http.statusCode, detail: "Response URL missing")
         }
 
         // Redirect responses may set the session before the final JSON landing.
@@ -177,15 +197,18 @@ struct NativeAuthClient {
 
         let result = try await perform(request)
         guard let http = result.response as? HTTPURLResponse else {
-            throw AuthClientError.ticketFailed("No response")
+            throw AuthClientError.ticketFailed(status: nil, detail: "No response")
         }
         guard (200...299).contains(http.statusCode) else {
-            throw AuthClientError.ticketFailed(parseError(result.data) ?? "HTTP \(http.statusCode)")
+            throw AuthClientError.ticketFailed(
+                status: http.statusCode,
+                detail: parseError(result.data) ?? "HTTP \(http.statusCode)"
+            )
         }
         guard let json = try? JSONSerialization.jsonObject(with: result.data) as? [String: Any],
               let ticket = json["ticket"] as? String,
               !ticket.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw AuthClientError.ticketFailed("No ticket in response")
+            throw AuthClientError.ticketFailed(status: http.statusCode, detail: "No ticket in response")
         }
 
         // A deployment may rotate its session while minting the ticket. Keep
@@ -206,7 +229,8 @@ struct NativeAuthClient {
             // Fail here so an operator sees why, instead of an
             // indistinguishable ticket 401 downstream.
             throw AuthClientError.ticketFailed(
-                "Login succeeded but no host-scoped session cookie was accepted"
+                status: nil,
+                detail: "Login succeeded but no host-scoped session cookie was accepted"
             )
         }
         return try await mintWsTicket(authenticatedCookies: authenticatedCookies)

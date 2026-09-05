@@ -9,8 +9,11 @@
 
 import SwiftUI
 import WebKit
+import os
 
 struct LoginView: View {
+    private static let logger = Logger(subsystem: "com.milim.relay", category: "login")
+
     @EnvironmentObject var appState: AppState
     @Environment(\.colorScheme) private var colorScheme
     @State private var serverUrl = ""
@@ -23,7 +26,13 @@ struct LoginView: View {
     @State var cloudflareClientSecret = ""
     @State private var isConnecting = false
     @State private var showWebView = false
-    @State private var error: String?
+    /// The presented failure state: classified connection failures with
+    /// recovery actions, or plain validation notices. The view never renders
+    /// raw Foundation error strings directly.
+    @State private var failure: ConnectionFailurePresentation?
+    /// Non-nil presents the Connection Setup shell, pre-seeded with the
+    /// classified help destination (or `.start` from the entry point).
+    @State private var connectionSetupDestination: ConnectionHelpDestination?
     /// Set only by the user's Cloudflare toggle (never by the onAppear
     /// Keychain restore), so a returning saved-token user is not scrolled
     /// away from the top of the form every time the login screen appears.
@@ -86,6 +95,9 @@ struct LoginView: View {
                 cloudflareClientSecret = access.clientSecret
             }
         }
+        .sheet(item: $connectionSetupDestination) { destination in
+            ConnectionSetupView(initialDestination: destination)
+        }
         .sheet(isPresented: $showWebView) {
             AuthWebView(
                 url: serverUrl,
@@ -104,7 +116,7 @@ struct LoginView: View {
                 }
                 },
                 onError: { message in
-                    error = message
+                    failure = .notice(title: "Sign-in didn’t complete", message: message)
                 }
             )
         }
@@ -141,6 +153,37 @@ struct LoginView: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.conduitAccent)
 
+                // Connection Setup entry point (visible, secondary to
+                // Connect, never auto-opened). Round 1 opens the shell;
+                // the guided assistant fills it in later.
+                Button {
+                    connectionSetupDestination = .start
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "questionmark.circle")
+                            .font(.body)
+                            .foregroundStyle(.conduitAccent)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Need help connecting?")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(.primary)
+                            Text("Set up your Hermes connection")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.tertiary)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .conduitGlassSurface(cornerRadius: 14, tint: .conduitAura.opacity(0.06))
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("login.connection-setup")
+
                 TextField("https://hermes.example", text: $serverUrl)
                     .textContentType(.URL)
                     .textInputAutocapitalization(.never)
@@ -159,6 +202,7 @@ struct LoginView: View {
                     .textContentType(.username)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
+                    .accessibilityIdentifier("login.username")
                     .submitLabel(LoginField.username.submitKeyboardLabel(cloudflareTokenEntryEnabled: cloudflareEnabled))
                     .focused($focusedField, equals: .username)
                     .onSubmit { handleSubmit(from: .username) }
@@ -169,6 +213,7 @@ struct LoginView: View {
 
                 SecureField("Password", text: $password)
                     .textContentType(.password)
+                    .accessibilityIdentifier("login.password")
                     .submitLabel(LoginField.password.submitKeyboardLabel(cloudflareTokenEntryEnabled: cloudflareEnabled))
                     .focused($focusedField, equals: .password)
                     .onSubmit { handleSubmit(from: .password) }
@@ -245,14 +290,40 @@ struct LoginView: View {
                     }
                 }
                 .padding(.horizontal, 2)
-                if let error {
-                    HStack(alignment: .top, spacing: 8) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.footnote)
-                        Text(error)
-                            .font(.footnote)
-                            .multilineTextAlignment(.leading)
-                            .fixedSize(horizontal: false, vertical: true)
+                if let failure {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.footnote)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(failure.title)
+                                    .font(.footnote.weight(.semibold))
+                                    .multilineTextAlignment(.leading)
+                                    .accessibilityIdentifier("login.error.title")
+                                if !failure.message.isEmpty {
+                                    Text(failure.message)
+                                        .font(.footnote)
+                                        .multilineTextAlignment(.leading)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+                        }
+                        if failure.offersRecoveryActions {
+                            HStack(spacing: 16) {
+                                Button("Try Again") {
+                                    Task { await connect() }
+                                }
+                                .accessibilityIdentifier("login.error.try-again")
+
+                                if let destination = failure.helpDestination {
+                                    Button("Troubleshoot Connection") {
+                                        connectionSetupDestination = destination
+                                    }
+                                    .accessibilityIdentifier("login.error.troubleshoot")
+                                }
+                            }
+                            .font(.footnote.weight(.semibold))
+                        }
                     }
                     .foregroundStyle(.red)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -317,7 +388,7 @@ struct LoginView: View {
             // button ever being enabled (e.g. a whitespace-only URL).
             // Surface the standard invalid-URL feedback instead of a silent
             // no-op.
-            error = ConnectionURLPolicyError.invalidURL.localizedDescription
+            failure = .notice(title: "Enter a valid dashboard URL.")
             focusedField = .server
             return
         }
@@ -327,17 +398,25 @@ struct LoginView: View {
         // password value itself is sent untrimmed.
         guard !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               !password.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            error = "Enter your dashboard username and password."
+            failure = .notice(title: "Enter your dashboard username and password.")
             focusedField = username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .username : .password
             return
         }
-        guard let normalized = try? ConnectionURLPolicy.normalizedBaseURL(cleaned) else {
-            error = ConnectionURLPolicyError.insecureTransport.localizedDescription
+        // Preserve WHICH URL-policy rule failed: a malformed address and an
+        // insecure remote transport are different mistakes with different
+        // fixes, so they classify differently instead of collapsing into one
+        // insecure-transport message.
+        let normalized: String
+        do {
+            normalized = try ConnectionURLPolicy.normalizedBaseURL(cleaned)
+        } catch {
+            Self.logger.error("Login URL normalization failed: \(String(describing: error), privacy: .public)")
+            failure = .presenting(ConnectionFailureClassifier.classify(error))
             return
         }
         serverUrl = normalized
         appState.rememberDashboardURL(serverUrl)
-        error = nil
+        failure = nil
         isConnecting = true
         defer { isConnecting = false }
 
@@ -368,7 +447,8 @@ struct LoginView: View {
         } catch is CancellationError {
             return
         } catch {
-            self.error = error.localizedDescription
+            Self.logger.error("Login connection failed: \(String(describing: error), privacy: .public)")
+            failure = .presenting(ConnectionFailureClassifier.classify(error))
         }
     }
 

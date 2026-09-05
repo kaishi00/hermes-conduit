@@ -24,6 +24,10 @@ final class LoginKeyboardUITests: XCTestCase {
         static let cloudflareClientID = "login.cloudflare-client-id"
         static let cloudflareClientSecret = "login.cloudflare-client-secret"
         static let connect = "login.connect"
+        static let connectionSetup = "login.connection-setup"
+        static let errorTitle = "login.error.title"
+        static let troubleshoot = "login.error.troubleshoot"
+        static let connectionSetupDone = "connection-setup.done"
     }
 
     override func setUpWithError() throws {
@@ -84,6 +88,166 @@ final class LoginKeyboardUITests: XCTestCase {
         XCTAssertTrue(
             pollHittability(of: connect, timeout: 5),
             "Connect must remain reachable with the keyboard visible"
+        )
+    }
+
+    // MARK: - Connection Setup affordance (Round 1)
+
+    /// The permanent "Need help connecting?" affordance must be visible near
+    /// the top of the login card and open the Connection Setup shell without
+    /// touching any other control.
+    func testConnectionSetupAffordanceIsReachableAndOpensShell() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        let serverField = app.textFields[Identity.serverURL]
+        XCTAssertTrue(serverField.waitForExistence(timeout: 10), "Login screen did not appear. Tree:\n\(app.debugDescription)")
+
+        let setup = app.buttons[Identity.connectionSetup]
+        XCTAssertTrue(
+            setup.waitForExistence(timeout: 5),
+            "Connection Setup affordance must be visible on the login card. Tree:\n\(app.debugDescription)"
+        )
+        if !setup.isHittable { app.swipeDown() }
+        XCTAssertTrue(pollHittability(of: setup, timeout: 5), "Connection Setup affordance must be hittable at the top of the login card")
+
+        setup.tap()
+        let sheetDone = app.buttons[Identity.connectionSetupDone]
+        XCTAssertTrue(
+            sheetDone.waitForExistence(timeout: 5),
+            "Connection Setup sheet must open from the affordance. Tree:\n\(app.debugDescription)"
+        )
+
+        sheetDone.tap()
+        XCTAssertTrue(
+            serverField.waitForExistence(timeout: 5),
+            "Dismissing the Connection Setup sheet must return to the login form"
+        )
+    }
+
+    /// Fills the username/password fields so the Connect button is enabled
+    /// (its trimmed-presence rule disables it while either is empty).
+    private func fillRequiredCredentials(_ app: XCUIApplication) throws {
+        let username = app.textFields["login.username"]
+        XCTAssertTrue(username.waitForExistence(timeout: 5), "Username field did not appear. Tree:\n\(app.debugDescription)")
+        username.tap()
+        username.typeText("ui-test-user")
+
+        let password = app.secureTextFields["login.password"]
+        XCTAssertTrue(password.waitForExistence(timeout: 5), "Password field did not appear. Tree:\n\(app.debugDescription)")
+        password.tap()
+        password.typeText("ui-test-password")
+    }
+
+    /// Types text after clearing any existing content. The login screen
+    /// prefills the server URL from the last saved dashboard address
+    /// (LoginView.onAppear), so appended typing would form an unpredictable
+    /// value. Deletes past the start of an empty field are no-ops, so the
+    /// overshooting delete count lands on exactly `text` no matter where the
+    /// tap placed the cursor.
+    private func clearAndType(_ text: String, into field: XCUIElement) {
+        field.tap()
+        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 60))
+        field.typeText(text)
+    }
+
+    /// Dismisses the keyboard via its toolbar Done affordance. XCUI can
+    /// report controls under the keyboard window as hittable, so a raw tap
+    /// lands on the keyboard instead of the control (observed directly:
+    /// Connect at y≈498 behind a keyboard starting at y=491 reported
+    /// hittable). Waiting for the Done button to disappear means Connect is
+    /// genuinely tappable afterwards.
+    private func dismissKeyboard(_ app: XCUIApplication) {
+        let done = app.buttons["Done"]
+        guard done.waitForExistence(timeout: 3) else { return }
+        done.tap()
+        let deadline = Date().addingTimeInterval(3)
+        while Date() < deadline, done.exists {
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+    }
+
+    /// A malformed dashboard URL classifies locally (no network I/O) into the
+    /// invalid-address failure: the error presentation must show actionable
+    /// copy and a Troubleshoot action that lands in the Connection Setup
+    /// shell — and it must not trap Connect below the keyboard/viewport.
+    func testMalformedURLShowsActionableErrorWithTroubleshootAndConnectStaysReachable() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        let serverField = app.textFields[Identity.serverURL]
+        XCTAssertTrue(serverField.waitForExistence(timeout: 10), "Login screen did not appear. Tree:\n\(app.debugDescription)")
+        // No scheme → invalidURL policy failure; classification never hits
+        // the network, so this stays deterministic offline. Any prefilled
+        // dashboard address is cleared first.
+        clearAndType("not-a-dashboard-url", into: serverField)
+        try fillRequiredCredentials(app)
+        dismissKeyboard(app)
+
+        let connect = app.buttons[Identity.connect]
+        XCTAssertTrue(connect.waitForExistence(timeout: 5))
+        if !connect.isHittable { app.swipeUp() }
+        XCTAssertTrue(pollHittability(of: connect, timeout: 5), "Connect must be reachable to submit the malformed URL")
+        connect.tap()
+
+        let errorTitle = app.staticTexts[Identity.errorTitle]
+        XCTAssertTrue(
+            errorTitle.waitForExistence(timeout: 5),
+            "Classified invalid-address failure must appear. Tree:\n\(app.debugDescription)"
+        )
+        XCTAssertEqual(errorTitle.label, "Check the dashboard address")
+
+        let troubleshoot = app.buttons[Identity.troubleshoot]
+        XCTAssertTrue(troubleshoot.waitForExistence(timeout: 5), "Invalid-address failure must offer Troubleshoot Connection")
+        if !troubleshoot.isHittable { app.swipeUp() }
+        XCTAssertTrue(pollHittability(of: troubleshoot, timeout: 5))
+        troubleshoot.tap()
+        XCTAssertTrue(
+            app.buttons[Identity.connectionSetupDone].waitForExistence(timeout: 5),
+            "Troubleshoot Connection must open the Connection Setup shell"
+        )
+        app.buttons[Identity.connectionSetupDone].tap()
+
+        XCTAssertTrue(serverField.waitForExistence(timeout: 5), "Dismissing the sheet must return to the login form")
+        if !connect.isHittable { app.swipeUp() }
+        XCTAssertTrue(
+            pollHittability(of: connect, timeout: 5),
+            "Connect must remain reachable under the multiline error presentation"
+        )
+    }
+
+    /// Remote plain HTTP classifies locally into the insecure-transport
+    /// failure (still no network I/O: the policy rejects before any request),
+    /// with its own title distinct from the malformed-URL case.
+    func testRemotePlainHTTPShowsInsecureTransportErrorAndConnectStaysReachable() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        let serverField = app.textFields[Identity.serverURL]
+        XCTAssertTrue(serverField.waitForExistence(timeout: 10), "Login screen did not appear. Tree:\n\(app.debugDescription)")
+        // TEST-NET-3 documentation address: never routed, and the transport
+        // policy rejects it before any connection attempt.
+        clearAndType("http://203.0.113.10:9119", into: serverField)
+        try fillRequiredCredentials(app)
+        dismissKeyboard(app)
+
+        let connect = app.buttons[Identity.connect]
+        XCTAssertTrue(connect.waitForExistence(timeout: 5))
+        if !connect.isHittable { app.swipeUp() }
+        XCTAssertTrue(pollHittability(of: connect, timeout: 5), "Connect must be reachable to submit the insecure URL")
+        connect.tap()
+
+        let errorTitle = app.staticTexts[Identity.errorTitle]
+        XCTAssertTrue(
+            errorTitle.waitForExistence(timeout: 5),
+            "Classified insecure-transport failure must appear. Tree:\n\(app.debugDescription)"
+        )
+        XCTAssertEqual(errorTitle.label, "Insecure dashboard address")
+
+        if !connect.isHittable { app.swipeUp() }
+        XCTAssertTrue(
+            pollHittability(of: connect, timeout: 5),
+            "Connect must remain reachable under the insecure-transport error presentation"
         )
     }
 

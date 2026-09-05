@@ -60,7 +60,7 @@ final class NativeAuthClientTests: XCTestCase {
             _ = try await client.connect(username: "chris", password: "correct-password")
             return XCTFail("Expected the ticket request without an applicable login cookie to be rejected")
         } catch let error as AuthClientError {
-            guard case .ticketFailed(let detail) = error else {
+            guard case .ticketFailed(_, let detail) = error else {
                 return XCTFail("Expected ticket failure, got \(error)")
             }
             XCTAssertEqual(detail, "Unauthorized")
@@ -98,7 +98,7 @@ final class NativeAuthClientTests: XCTestCase {
             _ = try await client.authProviders()
             XCTFail("Expected provider discovery to fail for a non-redirect 3xx response")
         } catch let error as AuthClientError {
-            guard case .providerDiscoveryFailed(let detail) = error else {
+            guard case .providerDiscoveryFailed(_, let detail) = error else {
                 return XCTFail("Expected provider discovery failure, got \(error)")
             }
             XCTAssertEqual(detail, "HTTP 300")
@@ -128,7 +128,7 @@ final class NativeAuthClientTests: XCTestCase {
             _ = try await client.authProviders()
             XCTFail("Expected provider discovery to fail for a server error")
         } catch let error as AuthClientError {
-            guard case .providerDiscoveryFailed(let detail) = error else {
+            guard case .providerDiscoveryFailed(_, let detail) = error else {
                 return XCTFail("Expected provider discovery failure, got \(error)")
             }
             XCTAssertEqual(detail, "origin unavailable")
@@ -390,7 +390,7 @@ final class NativeAuthClientTests: XCTestCase {
             _ = try await client.connect(username: "chris", password: "correct-password")
             XCTFail("Expected connect to fail when no host-scoped session cookie is accepted")
         } catch let error as AuthClientError {
-            guard case .ticketFailed(let detail) = error else {
+            guard case .ticketFailed(_, let detail) = error else {
                 return XCTFail("Expected ticket failure, got \(error)")
             }
             XCTAssertEqual(detail, "Login succeeded but no host-scoped session cookie was accepted")
