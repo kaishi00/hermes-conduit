@@ -153,7 +153,10 @@ struct ComposerBar: View {
 
     /// The only sanctioned way to replace composer content programmatically.
     /// Advances the editor's programmatic revision alongside the text so the
-    /// change is applied to the UIKit editor exactly once.
+    /// change is applied to the UIKit editor exactly once, and so the bridge
+    /// can keep these replacements from ever surfacing as user input — the
+    /// user-edit ownership signal lives in that bridge's
+    /// `textViewDidChange`, guarded by the same machinery.
     private func replaceComposerText(_ newValue: String) {
         text = newValue
         composerRevision &+= 1
@@ -359,7 +362,8 @@ struct ComposerBar: View {
                         // failure mode is newline insertion, and
                         // submitFromReturnKey() re-checks the live gate.
                         canSubmitFromReturn: ComposerReturnKey.canSubmit(action: action),
-                        onSubmitFromReturn: { submitFromReturnKey() }
+                        onSubmitFromReturn: { submitFromReturnKey() },
+                        onUserEdit: { appState.noteComposerUserEdit() }
                     )
                     .id(editorIdentity)
                     .padding(.horizontal, 5)

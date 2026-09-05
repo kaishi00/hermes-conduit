@@ -1660,6 +1660,7 @@ final class AppState: ObservableObject {
     }
 
     func beginAutomaticChatResumeWork() -> ChatResumeAutomaticWorkToken {
+        composerEditClaimedAutomaticWork = false
         if let activeAutomaticChatResumeWork,
            chatResumeCoordinator.isCurrent(activeAutomaticChatResumeWork) {
             return activeAutomaticChatResumeWork
@@ -1778,6 +1779,57 @@ final class AppState: ObservableObject {
         activeAutomaticChatResumeWork = nil
         recoverySequence.preserveTransportAfterAutomaticIntentCancellation()
         chatResumeRestorationRequest = nil
+    }
+
+    /// A genuine composer edit is explicit ownership of the visible
+    /// conversation, exactly like sending, navigating, or scrolling: any
+    /// automatic-return work still in flight (a foreground health check that
+    /// may yet fall back to a reconnect, an in-flight `.automaticReturn`
+    /// reconnect or sync, an armed retry timer, an unconsumed restoration
+    /// request) loses its authority to select a different session. Transport
+    /// recovery itself is not stopped — `cancelChatResumeRestoration()`
+    /// demotes the in-flight and queued purpose to `.preserveCurrent`, so a
+    /// reconnect that is already running hands off and preserves this
+    /// session, and a foreground attempt whose health check fails after the
+    /// edit repairs the transport with `.preserveCurrent` instead of
+    /// `.automaticReturn`.
+    ///
+    /// At most one cancellation lands per automatic-work generation: the
+    /// first edit that finds work outstanding claims it, later edits during
+    /// the same window are latched no-ops (`chatResumeRestorationRequest` is
+    /// `@Published`, so a per-keystroke nil write would re-render ChatView),
+    /// and a new foreground/reconnect generation re-arms through
+    /// `beginAutomaticChatResumeWork()`. With nothing outstanding this is a
+    /// pure no-op, so calling it per keystroke publishes no state and cannot
+    /// invalidate the viewport that a later, unrelated foreground return
+    /// will need.
+    func noteComposerUserEdit() {
+        guard automaticChatResumeWorkMayStillSelectSession else { return }
+        guard !composerEditClaimedAutomaticWork else { return }
+        composerEditClaimedAutomaticWork = true
+        cancelChatResumeRestoration()
+    }
+
+    /// Latch for `noteComposerUserEdit()`: set once an edit has invalidated
+    /// the current generation's automatic-return intent, cleared when the
+    /// next generation begins. Every automatic generation mints its token
+    /// here (a cancelled token is stale, so a new one is always minted), so
+    /// clearing at entry re-arms the composer for each new window.
+    private var composerEditClaimedAutomaticWork = false
+
+    /// Whether any automatic-return work is outstanding that could still
+    /// replace the active session. `activeAutomaticChatResumeWork` alone is
+    /// not evidence: a completed foreground refresh leaves its token behind,
+    /// and nothing ever re-reads it once the scene attempt and its operations
+    /// have finished.
+    private var automaticChatResumeWorkMayStillSelectSession: Bool {
+        scenePhaseAttemptID != nil
+            || reconnectTask != nil
+            || activeAutomaticSyncOperation != nil
+            || activeAutomaticReconnectOperation != nil
+            || recoverySequence.currentPurpose == .automaticReturn
+            || recoverySequence.queuedReconnectPurpose == .automaticReturn
+            || chatResumeRestorationRequest != nil
     }
 
     private func cancelChatResumeTransportRecovery() {
@@ -4532,9 +4584,18 @@ final class AppState: ObservableObject {
                             automaticWorkToken: automaticWorkToken
                         )
                     } catch {
-                        guard self.scenePhaseAttemptIsCurrent(sceneAttemptID),
-                              self.automaticChatResumeWorkIsCurrent(automaticWorkToken) else {
+                        guard self.scenePhaseAttemptIsCurrent(sceneAttemptID) else {
                             self.settleReconciliation(token)
+                            return
+                        }
+                        if !self.automaticChatResumeWorkIsCurrent(automaticWorkToken) {
+                            // The automatic intent was invalidated mid-check
+                            // (composer edit, explicit viewport action): the
+                            // user owns the visible conversation, so repair
+                            // the transport without letting recovery select a
+                            // session.
+                            self.settleReconciliation(token)
+                            await self.reconnectForRetry(purpose: .preserveCurrent)
                             return
                         }
                         lifecycleLog.notice(
@@ -4544,9 +4605,13 @@ final class AppState: ObservableObject {
                         self.settleReconciliation(token)
                     }
                 } else {
-                    guard self.scenePhaseAttemptIsCurrent(sceneAttemptID),
-                          self.automaticChatResumeWorkIsCurrent(automaticWorkToken) else {
+                    guard self.scenePhaseAttemptIsCurrent(sceneAttemptID) else {
                         self.settleReconciliation(token)
+                        return
+                    }
+                    if !self.automaticChatResumeWorkIsCurrent(automaticWorkToken) {
+                        self.settleReconciliation(token)
+                        await self.reconnectForRetry(purpose: .preserveCurrent)
                         return
                     }
                     lifecycleLog.notice(
