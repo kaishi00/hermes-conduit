@@ -3678,6 +3678,140 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertNil(harness.appState.chatResumeRestorationRequest)
     }
 
+    /// The first edit in an outstanding window cancels once; later edits in
+    /// the same automatic-work generation are latched no-ops. Otherwise every
+    /// keystroke of the reported scenario (typing while the foreground
+    /// health check hangs) would re-write the @Published restoration request
+    /// and re-render ChatView. The reconnect here is parked for the whole
+    /// window, so the composer edit is the only state changer.
+    func testComposerUserEditLatchesUntilNextAutomaticWorkGeneration() async {
+        let mintGate = ControlledSuspension()
+        let visible = session("stored-a")
+        let savedOlder = session("stored-b")
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                connectClient: { _ in },
+                loadCatalog: { _, _ in [savedOlder, visible] },
+                mintTicket: { _ in
+                    await mintGate.suspend()
+                    return "fresh-ticket"
+                },
+                openSession: { _, sessionID, _ in
+                    SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                refreshContext: { _, _ in },
+                loadProfiles: {},
+                loadBusyInputMode: { _ in },
+                loadProfileDisplayPreferences: {},
+                loadSlashCommands: {}
+            )
+        )
+        harness.coordinator.rememberSessionID(savedOlder.id, for: "default")
+        let savedConnection = HermesConnection(
+            baseUrl: "https://127.0.0.1:1",
+            ticket: "saved-ticket"
+        )
+        harness.appState.connection = savedConnection
+        harness.appState.client = HermesClient(connection: savedConnection, profile: "default")
+        harness.appState.sessions = [savedOlder, visible]
+        harness.appState.activeSessionId = visible.id
+
+        let reconnect = Task { @MainActor in
+            await harness.appState.reconnectForRetry(purpose: .automaticReturn)
+        }
+        await mintGate.waitUntilSuspended()
+
+        var publishedCount = 0
+        let observer = harness.appState.objectWillChange.sink { _ in
+            publishedCount += 1
+        }
+        defer { observer.cancel() }
+
+        harness.appState.noteComposerUserEdit()
+        harness.appState.noteComposerUserEdit()
+        harness.appState.noteComposerUserEdit()
+
+        XCTAssertEqual(
+            publishedCount, 1,
+            "Exactly one cancellation may land per automatic-work generation"
+        )
+
+        mintGate.resume()
+        await reconnect.value
+    }
+
+    /// The published-restoration-request guard arm: an edit while a
+    /// restoration request awaits consumption must cancel it.
+    func testComposerUserEditCancelsPublishedRestorationRequest() async {
+        let harness = makeHarness()
+        installComposerClient(in: harness)
+        let request = publishRestoration(in: harness)
+
+        harness.appState.noteComposerUserEdit()
+
+        assertRestorationCancelled(request, in: harness)
+        XCTAssertEqual(harness.recoverySequence.currentPurpose, .preserveCurrent)
+    }
+
+    /// The in-flight sync leg: an edit while an `.automaticReturn` sync is
+    /// suspended on its catalog fetch must stop it from selecting a session
+    /// — every post-fetch checkpoint is token-guarded, so the sync settles
+    /// without resuming anything.
+    func testComposerUserEditDuringInFlightAutomaticReturnSyncDoesNotSelectSession() async {
+        let catalogGate = ControlledSuspension()
+        let visible = session("stored-a")
+        let savedOlder = session("stored-b")
+        var openedSessionIDs: [String] = []
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in
+                    await catalogGate.suspend()
+                    return [savedOlder, visible]
+                },
+                openSession: { _, sessionID, _ in
+                    openedSessionIDs.append(sessionID)
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                refreshContext: { _, _ in }
+            )
+        )
+        harness.coordinator.rememberSessionID(savedOlder.id, for: "default")
+        installComposerClient(in: harness)
+        harness.appState.sessions = [savedOlder, visible]
+        harness.appState.activeSessionId = visible.id
+        let automaticWork = harness.appState.beginAutomaticChatResumeWork()
+
+        let sync = Task { @MainActor in
+            await harness.appState.syncSession(
+                purpose: .automaticReturn,
+                using: nil,
+                automaticWorkToken: automaticWork
+            )
+        }
+        await catalogGate.waitUntilSuspended()
+
+        harness.appState.noteComposerUserEdit()
+
+        catalogGate.resume()
+        await sync.value
+
+        XCTAssertEqual(
+            harness.appState.activeSessionId, visible.id,
+            "The invalidated sync must not select the saved session"
+        )
+        XCTAssertEqual(openedSessionIDs, [], "No session may be resumed after the edit")
+        XCTAssertEqual(harness.appState.turnState, .idle)
+        XCTAssertEqual(harness.recoverySequence.currentPurpose, .preserveCurrent)
+    }
+
     private func assertComposerEditStopsAutomaticSessionSelection(
         behavior: ChatResumeBehavior,
         userEditsDuringReconnect: Bool,

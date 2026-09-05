@@ -7594,11 +7594,12 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
     /// The slow/flaky health-check window: the foreground attempt suspends
     /// inside the transport liveness check, the user starts typing into the
     /// visible conversation, and the health check then fails. The failure's
-    /// fallback may no longer select a session — the edit invalidated the
-    /// automatic-return token, so the reconnect is skipped entirely and a
-    /// later recovery proceeds with `.preserveCurrent`. Without the edit the
+    /// fallback must no longer select a session by resume policy: the edit
+    /// invalidated the automatic-return token, so the recovery proceeds as a
+    /// `.preserveCurrent` repair — the transport is restored and the visible
+    /// session is resumed, never the saved (older) one. Without the edit the
     /// same failure still falls back to `.automaticReturn` and restores the
-    /// saved (older) session — the reported symptom.
+    /// saved session — the reported symptom.
     func testForegroundHealthCheckFailureRespectsComposerUserEditOwnership() async throws {
         try await assertForegroundHealthCheckFailureFallback(
             userEditsDuringHealthCheck: true
@@ -7686,17 +7687,23 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
 
         if userEditsDuringHealthCheck {
             XCTAssertEqual(
-                mintCount, 0,
-                "The invalidated foreground attempt must not fall back to an automatic reconnect",
+                mintCount, 1,
+                "The invalidated foreground attempt must still repair the transport, without resume-policy selection",
                 file: file, line: line
             )
-            XCTAssertEqual(openedSessionIDs, [], file: file, line: line)
+            XCTAssertEqual(
+                openedSessionIDs, [visible.id],
+                "The repair must resume the visible session, never the saved one",
+                file: file, line: line
+            )
             XCTAssertEqual(harness.appState.activeSessionId, visible.id, file: file, line: line)
             XCTAssertEqual(
                 harness.recoverySequence.currentPurpose, .preserveCurrent,
-                "Later recovery must preserve the session the user is editing",
+                "The repair recovery must proceed with .preserveCurrent",
                 file: file, line: line
             )
+            XCTAssertTrue(harness.appState.isConnected, file: file, line: line)
+            XCTAssertEqual(harness.appState.turnState, .idle, file: file, line: line)
         } else {
             XCTAssertEqual(mintCount, 1, file: file, line: line)
             XCTAssertEqual(openedSessionIDs, [savedOlder.id], file: file, line: line)

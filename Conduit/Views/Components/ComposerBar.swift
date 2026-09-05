@@ -39,6 +39,11 @@ struct ComposerBar: View {
     /// the only place the composer can tell a genuine user edit (the UIKit
     /// editor moved the binding; revision unchanged) from a programmatic
     /// replacement, and only the former may claim session ownership.
+    /// Single-consumer invariant: the mark is set only immediately before a
+    /// text write and cleared only by the text-change observer, so it never
+    /// outlives the change it describes (an A→B→A pair inside one render
+    /// transaction would leak it onto the next keystroke — no such caller
+    /// exists; keep it that way).
     @State private var hasPendingProgrammaticReplacement = false
     @State private var loadedDraftKey: ComposerDraftKey?
     @State private var photoImportContext: AsyncAttachmentContext?
@@ -992,7 +997,11 @@ struct ComposerBar: View {
 /// automatic foreground-return restoration — so it must fire for genuine
 /// typing only. Draft restores, prefills, slash insertions, post-send
 /// collapses, and failed-submit restores are programmatic replacements;
-/// ordinary SwiftUI re-renders never produce a text change at all.
+/// ordinary SwiftUI re-renders never produce a text change at all. Ownership
+/// boundaries beyond text are deliberate: adding an attachment does not
+/// claim the conversation, and voice-transcript prefill arrives through
+/// `replaceComposerText` (programmatic) even though the voice flow itself
+/// manages its own session handling.
 enum ComposerTextChangeSource: Equatable {
     case userEdit
     case programmaticReplacement
