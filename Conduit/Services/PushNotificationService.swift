@@ -565,8 +565,21 @@ final class PushNotificationService: ObservableObject {
     private func notificationTarget(from userInfo: [AnyHashable: Any]) -> ConduitNotificationTarget? {
         let direct = userInfo["conduit"] as? [String: Any]
         let nested = (userInfo["body"] as? [String: Any])?["conduit"] as? [String: Any]
-        guard let payload = direct ?? nested,
-              let sessionId = payload["session_id"] as? String,
+        // The relay's optimized APNs layout keeps the structured decision
+        // ONLY in body.conduit, with the top-level conduit copy reduced to a
+        // routing stub for raw-APNs readers — so whichever copy actually
+        // carries a decision must win, nested first (that is where the
+        // optimized layout puts it). Payloads without a decision anywhere
+        // fall back to plain routing, preferring the legacy top-level copy.
+        let payload: [String: Any]
+        if nested?["decision"] is [String: Any] {
+            payload = nested ?? [:]
+        } else if direct?["decision"] is [String: Any] {
+            payload = direct ?? [:]
+        } else {
+            payload = direct ?? nested ?? [:]
+        }
+        guard let sessionId = payload["session_id"] as? String,
               !sessionId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         let profile = (payload["profile"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
         let type = (payload["type"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)

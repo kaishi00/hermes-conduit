@@ -507,6 +507,143 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertEqual(choices, ["a"])
     }
 
+    // MARK: - APNs payload layout selection (notifier 0.3+ single-copy shape)
+
+    /// Wraps a Conduit payload in the raw APNs notification layout.
+    private func receiveAPNsPayload(_ service: PushNotificationService, payload: [String: Any]) {
+        service.receiveNotificationPayload(payload)
+    }
+
+    func testNotificationPayloadNestedRichConduitParsesBatchDecision() {
+        // Notifier 0.3+ optimized layout: top-level conduit is a routing
+        // stub, body.conduit carries the structured decision. The nested
+        // copy must win — a `direct ?? nested` choice would silently drop
+        // the answerable card.
+        let service = PushNotificationService(retryDelay: .zero)
+        defer {
+            if let target = service.pendingTarget {
+                service.clearPendingTarget(target)
+            }
+        }
+        receiveAPNsPayload(service, payload: [
+            "aps": ["alert": ["title": "Input needed", "body": "Which environment?"]],
+            "body": [
+                "conduit": [
+                    "type": "input.needed",
+                    "session_id": "runtime-1",
+                    "profile": "default",
+                    "decision": [
+                        "kind": "clarify",
+                        "request_id": "conduit-push-opt1",
+                        "question": "Which environment?",
+                        "questions": [
+                            ["qid": "q0", "question": "Which environment?", "choices": ["staging", "prod"], "multi_select": false],
+                            ["qid": "q1", "question": "Which tests?", "choices": ["unit", "ui"], "multi_select": true],
+                        ] as [[String: Any]],
+                    ] as [String: Any],
+                ] as [String: Any],
+            ],
+            "conduit": [
+                "type": "input.needed",
+                "session_id": "runtime-1",
+                "profile": "default",
+            ] as [String: Any],
+        ])
+
+        guard case let .clarifyBatch(requestId, questions) = service.pendingTarget?.decision else {
+            return XCTFail("The nested rich decision must be selected over the routing-only stub")
+        }
+        XCTAssertEqual(requestId, "conduit-push-opt1")
+        XCTAssertEqual(questions.map(\.id), ["q0", "q1"], "the full batch survives the payload selection")
+    }
+
+    func testNotificationPayloadNestedOnlyConduitStillParses() {
+        // Current-generation layout without a top-level copy at all.
+        let service = PushNotificationService(retryDelay: .zero)
+        defer {
+            if let target = service.pendingTarget {
+                service.clearPendingTarget(target)
+            }
+        }
+        service.receiveNotificationPayload([
+            "body": [
+                "conduit": [
+                    "session_id": "runtime-1",
+                    "type": "input.needed",
+                    "decision": [
+                        "kind": "clarify",
+                        "request_id": "conduit-push-nested1",
+                        "question": "Which color?",
+                        "choices": ["Red", "Blue"],
+                    ] as [String: Any],
+                ] as [String: Any],
+            ] as [String: Any],
+        ])
+        guard case let .clarify(requestId, question, choices) = service.pendingTarget?.decision else {
+            return XCTFail("Expected the nested-only decision to parse")
+        }
+        XCTAssertEqual(requestId, "conduit-push-nested1")
+        XCTAssertEqual(question, "Which color?")
+        XCTAssertEqual(choices, ["Red", "Blue"])
+    }
+
+    func testNotificationPayloadLegacyTopLevelConduitStillParses() {
+        // Legacy layout: only the top-level conduit copy exists.
+        let service = PushNotificationService(retryDelay: .zero)
+        defer {
+            if let target = service.pendingTarget {
+                service.clearPendingTarget(target)
+            }
+        }
+        service.receiveNotificationPayload([
+            "conduit": [
+                "session_id": "runtime-1",
+                "profile": "default",
+                "type": "input.needed",
+                "decision": [
+                    "kind": "clarify",
+                    "request_id": "conduit-push-legacy1",
+                    "question": "Legacy?",
+                    "choices": ["a"],
+                ] as [String: Any],
+            ] as [String: Any],
+        ])
+        guard case let .clarify(requestId, question, _) = service.pendingTarget?.decision else {
+            return XCTFail("Expected the legacy top-level decision to parse")
+        }
+        XCTAssertEqual(requestId, "conduit-push-legacy1")
+        XCTAssertEqual(question, "Legacy?")
+    }
+
+    func testNotificationPayloadWithoutDecisionNavigatesWithoutInventingACard() {
+        // Plain fallback banner (decision stripped or disabled): routing must
+        // still work, and no ClarifyActivity may be invented.
+        let service = PushNotificationService(retryDelay: .zero)
+        defer {
+            if let target = service.pendingTarget {
+                service.clearPendingTarget(target)
+            }
+        }
+        service.receiveNotificationPayload([
+            "body": [
+                "conduit": [
+                    "type": "input.needed",
+                    "session_id": "runtime-1",
+                    "profile": "default",
+                ] as [String: Any],
+            ] as [String: Any],
+            "conduit": [
+                "type": "input.needed",
+                "session_id": "runtime-1",
+                "profile": "default",
+            ] as [String: Any],
+        ])
+        let target = service.pendingTarget
+        XCTAssertNotNil(target, "The plain notification still routes to the session")
+        XCTAssertEqual(target?.sessionId, "runtime-1")
+        XCTAssertNil(target?.decision, "A plain fallback banner must never invent an answerable card")
+    }
+
     func testNotificationPayloadClarifyDecisionRejectedWithoutRequestId() {
         let service = PushNotificationService(retryDelay: .zero)
         defer {
