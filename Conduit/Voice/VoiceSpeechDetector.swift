@@ -38,6 +38,11 @@ struct VoiceSpeechDetectorConstants: Equatable {
     /// accepted as speech: a single isolated noisy buffer never starts a
     /// turn.
     var speechStartDebounceSamples = 2
+    /// Bound on speech-plausible warmup samples that arrive before any
+    /// genuinely quiet sample: past this many skips the warmup force-arms
+    /// (falling back to the conservative ceiling-only behavior), so a
+    /// permanently loud room can never stay disarmed forever.
+    var maximumWarmupSkips = 12
     /// Fresh capture windows spend this many events establishing the noise
     /// floor (with fast adaptation) before sub-ceiling speech-start is
     /// armed, so a loud room cannot misclassify its own ambience during
@@ -70,6 +75,7 @@ struct VoiceSpeechDetector {
     /// Asymmetric EMA of observed input while no speech is active.
     private(set) var noiseFloor: Float
     private var warmupRemaining: Int
+    private var warmupSkippedSamples = 0
     private var candidateSamples = 0
     private(set) var isSpeechActive = false
 
@@ -112,14 +118,34 @@ struct VoiceSpeechDetector {
             return level >= speechContinuationThreshold ? .continued : .none
         }
         if warmupRemaining > 0 {
-            // Fresh window: every sample (either direction, fast) teaches
-            // the floor before sub-ceiling speech-start is armed. The floor
-            // is capped at the minimum start threshold so a user speaking
-            // immediately is never learned permanently as noise — the worst
-            // case is a short blind window, after which quiet speech is
-            // recognized.
-            adaptNoiseFloor(level, warmup: true)
-            warmupRemaining -= 1
+            // Fresh window: establish the floor before sub-ceiling
+            // speech-start is armed. Genuinely quiet samples teach the floor
+            // fast and advance the warmup. Speech-plausible samples at cold
+            // start are ambiguous — they must not start speech, and they
+            // must not be learned as noise quickly — so they only creep the
+            // floor up slowly with a bounded skip count: a permanently loud
+            // room still arms (falling back to the conservative ceiling-only
+            // behavior) within a fraction of a second, while an immediately
+            // speaking user is merely delayed, never swallowed permanently.
+            if level < constants.minimumSpeechStartThreshold {
+                adaptNoiseFloor(
+                    level,
+                    alpha: constants.warmupAdaptationAlpha,
+                    ceiling: constants.minimumSpeechStartThreshold
+                )
+                warmupRemaining -= 1
+                warmupSkippedSamples = 0
+            } else {
+                adaptNoiseFloor(
+                    level,
+                    alpha: constants.noiseFloorRiseAlpha,
+                    ceiling: constants.maximumNoiseFloor
+                )
+                warmupSkippedSamples += 1
+                if warmupSkippedSamples >= constants.maximumWarmupSkips {
+                    warmupRemaining = 0
+                }
+            }
             if level >= constants.maximumSpeechStartThreshold {
                 // An unambiguous level is speech even before the floor has
                 // been established.
@@ -139,7 +165,13 @@ struct VoiceSpeechDetector {
             // Clearly below the start threshold: ambient input adapts the
             // floor, and any pending candidate was an isolated spike.
             candidateSamples = 0
-            adaptNoiseFloor(level)
+            adaptNoiseFloor(
+                level,
+                alpha: level < noiseFloor
+                    ? constants.noiseFloorFallAlpha
+                    : constants.noiseFloorRiseAlpha,
+                ceiling: constants.maximumNoiseFloor
+            )
             return .none
         }
         // Suspected speech onset: count it, but never feed it to the floor —
@@ -156,6 +188,7 @@ struct VoiceSpeechDetector {
     mutating func reset() {
         noiseFloor = constants.minimumNoiseFloor
         warmupRemaining = constants.warmupEvents
+        warmupSkippedSamples = 0
         candidateSamples = 0
         isSpeechActive = false
     }
@@ -166,13 +199,14 @@ struct VoiceSpeechDetector {
     /// capped at the minimum speech-start threshold, so speech-level input
     /// arriving at cold start can never raise the threshold above the
     /// point where that same speech stays detectable.
-    private mutating func adaptNoiseFloor(_ level: Float, warmup: Bool = false) {
-        let alpha = warmup
-            ? constants.warmupAdaptationAlpha
-            : (level < noiseFloor ? constants.noiseFloorFallAlpha : constants.noiseFloorRiseAlpha)
+    /// Moves the noise floor toward `level` by `alpha` (EMA), clamped to
+    /// `ceiling`. Asymmetry lives at the call sites: quiet input pulls the
+    /// floor down fast, louder input raises it slowly, suspected speech
+    /// never feeds it, and warmup caps the floor at the minimum start
+    /// threshold so speech-level input at cold start is never learned as
+    /// noise.
+    private mutating func adaptNoiseFloor(_ level: Float, alpha: Float, ceiling: Float) {
         noiseFloor += (level - noiseFloor) * alpha
-        let warmupCeiling = constants.minimumSpeechStartThreshold
-        let ceiling = warmup ? min(warmupCeiling, constants.maximumNoiseFloor) : constants.maximumNoiseFloor
         noiseFloor = min(ceiling, max(constants.minimumNoiseFloor, noiseFloor))
     }
 }

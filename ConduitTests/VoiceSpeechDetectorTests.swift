@@ -121,6 +121,15 @@ final class VoiceSpeechDetectorTests: XCTestCase {
         XCTAssertEqual(louder.observe(0.075), .started, "the conservative ceiling starts immediately even when adapted higher")
     }
 
+    func testSteadyLoudAmbientNoiseFromColdStartNeverBecomesSpeech() {
+        var detector = VoiceSpeechDetector()
+        // A permanently loud room: warmup skips creep the floor toward the
+        // ambience, then the warmup force-arms with the conservative
+        // ceiling-only behavior — ambience below 0.075 never becomes a turn.
+        let detections = (0..<20).map { _ in detector.observe(0.05) }
+        XCTAssertTrue(detections.allSatisfy { $0 == .none }, "steady loud ambience must never be classified as speech")
+    }
+
     func testImmediateQuietSpeechDuringWarmupIsNotLearnedAsNoise() {
         var detector = VoiceSpeechDetector()
         // The user starts speaking immediately, inside the warmup window:

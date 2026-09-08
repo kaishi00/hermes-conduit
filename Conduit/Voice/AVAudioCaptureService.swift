@@ -215,8 +215,10 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
                 // Capture-generation fence: pause()/stop() tear the tap
                 // down, but a frame already in flight across this hop
                 // belongs to the previous generation and must not surface
-                // into the new one.
-                guard let self, !self.paused else { return }
+                // into the new one. (A stop immediately followed by a
+                // restart re-arms these flags; the controller additionally
+                // gates on its own session state.)
+                guard let self, !self.paused, self.shouldKeepEngineRunning else { return }
                 self.consume(copy)
             }
         }

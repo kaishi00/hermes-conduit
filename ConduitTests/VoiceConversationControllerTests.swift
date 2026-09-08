@@ -989,10 +989,13 @@ final class VoiceConversationControllerTests: XCTestCase {
         try? await Task.sleep(nanoseconds: 80_000_000)
         XCTAssertEqual(controller.microphoneLevel, 0, accuracy: 0.0001, "stale level events must not cross the pause boundary")
 
-        // Stop boundary: same contract after the session is torn down.
-        await controller.startListening()
+        // Stop boundary: re-establish a live capture baseline first (resume
+        // clears the user pause), then confirm a stale event cannot cross
+        // the stop.
+        await controller.resumeMicrophone()
         capture.emit(.level(0.4, date: Date()))
         try? await Task.sleep(nanoseconds: 80_000_000)
+        XCTAssertEqual(controller.microphoneLevel, 0.4, accuracy: 0.0001, "baseline must be live before the stop boundary")
         controller.stop()
         capture.emit(.level(0.6, date: Date()))
         try? await Task.sleep(nanoseconds: 80_000_000)
