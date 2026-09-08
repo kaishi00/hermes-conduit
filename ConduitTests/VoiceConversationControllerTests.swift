@@ -879,6 +879,47 @@ final class VoiceConversationControllerTests: XCTestCase {
         XCTAssertEqual(controller.state, .thinking)
     }
 
+    func testRouteChangeMidListeningRelearnsNoiseFloor() async {
+        let capture = MockCapture(permissionGranted: true)
+        let gateway = MockGateway(transcript: "After route change")
+        var submitted: [String] = []
+        let controller = VoiceConversationController(
+            capture: capture,
+            playback: MockPlayback(),
+            gateway: gateway,
+            submit: { submitted.append($0); return true },
+            interrupt: {}
+        )
+        await controller.startListening()
+
+        // Old microphone: establish a loud floor.
+        let start = Date()
+        for index in 0..<40 {
+            controller.ingestAudioLevel(0.03, at: start.addingTimeInterval(Double(index) * 0.025))
+        }
+
+        // A different microphone arrives mid-listening: the floor must
+        // re-learn instead of keeping the old room's estimate.
+        capture.emit(.routeChanged)
+        try? await Task.sleep(nanoseconds: 80_000_000)
+
+        // New microphone's quiet speech: recognized against the re-learned
+        // floor, then trailing silence finishes and submits the turn.
+        let speech = start.addingTimeInterval(2.0)
+        let samples: [(Float, TimeInterval)] = [
+            (0.003, 0.00), (0.004, 0.03), (0.003, 0.06), (0.003, 0.09),
+            (0.018, 0.12), (0.026, 0.17), (0.034, 0.22), (0.028, 0.27),
+            (0.004, 1.60)
+        ]
+        for (level, offset) in samples {
+            controller.ingestAudioLevel(level, at: speech.addingTimeInterval(offset))
+        }
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(submitted, ["After route change"], "a route change must re-learn the noise floor for the new microphone")
+        XCTAssertEqual(controller.state, .thinking)
+    }
+
     func testCaptureLevelPublishesMicrophoneLevelDuringListening() async {
         let capture = MockCapture(permissionGranted: true)
         let controller = VoiceConversationController(
@@ -911,7 +952,10 @@ final class VoiceConversationControllerTests: XCTestCase {
         let testTask = Task { await controller.runTranscriptionTest(duration: 0.3) }
         try? await Task.sleep(nanoseconds: 80_000_000)
         capture.emit(.level(0.4, date: Date()))
-        capture.emit(.level(0.5, date: Date().addingTimeInterval(0.02)))
+        // Level publication is meter-resolution (~20 Hz throttle), so space
+        // the second sample past the publication window.
+        try? await Task.sleep(nanoseconds: 80_000_000)
+        capture.emit(.level(0.5, date: Date()))
         try? await Task.sleep(nanoseconds: 60_000_000)
         XCTAssertEqual(controller.microphoneLevel, 0.5, accuracy: 0.0001, "provider tests still receive visible microphone-level updates")
 
@@ -919,6 +963,42 @@ final class VoiceConversationControllerTests: XCTestCase {
         XCTAssertTrue(result.passed)
         XCTAssertEqual(controller.microphoneLevel, 0, accuracy: 0.0001, "provider-test completion resets the meter")
         XCTAssertTrue(submitted.isEmpty, "conversational VAD must not run during a provider test")
+    }
+
+    func testSpeechTestRouteChangeDoesNotLeakSuspensionState() async {
+        let capture = MockCapture(permissionGranted: true)
+        let playback = MockPlayback()
+        let gateway = MockGateway(transcript: "test", startsPlaybackOnOpen: true)
+        let policy = RoutePolicyBox(.speakerSafeHalfDuplex)
+        let gate = InterruptGate()
+        playback.drainGate = gate
+        let controller = VoiceConversationController(
+            capture: capture,
+            playback: playback,
+            gateway: gateway,
+            routePolicyProvider: { policy.policy },
+            submit: { _ in true },
+            interrupt: {}
+        )
+
+        let testTask = Task { await controller.runSpeechTest(text: "hello") }
+        // Deterministic mid-playback park: drain() holds the test task while
+        // state is .speaking.
+        await gate.waitUntilEntered()
+        XCTAssertEqual(controller.state, .speaking, "the TTS provider test is mid-playback")
+
+        // A route change during a provider test must not pollute the
+        // speaker-safe suspension state: the TTS test owns the session and
+        // no conversational capture is live.
+        capture.emit(.routeChanged)
+        try? await Task.sleep(nanoseconds: 80_000_000)
+        XCTAssertFalse(controller.isPlaybackCaptureSuspended, "route changes during provider tests must not suspend capture")
+
+        gate.release()
+        let result = await testTask.value
+        XCTAssertTrue(result.passed)
+        XCTAssertEqual(controller.state, .idle)
+        XCTAssertFalse(controller.isPlaybackCaptureSuspended, "suspension state must not outlive the provider test")
     }
 
     func testMicrophoneLevelResetsAcrossLifecycleBoundaries() async {
@@ -1643,6 +1723,9 @@ private final class MockCapture: AudioCaptureService {
 private final class MockPlayback: SpeechPlaybackService {
     var isPlaying = false
     var ownershipIntent: VoiceAudioIntent = .standalonePlayback
+    /// When set, `drain()` parks until the gate is released, so tests can
+    /// hold a playback operation open deterministically.
+    var drainGate: InterruptGate?
     /// The ownership intent in force when playback last started, so tests can
     /// assert which session policy a flow claimed.
     private(set) var intentAtLastStart: VoiceAudioIntent?
@@ -1656,7 +1739,10 @@ private final class MockPlayback: SpeechPlaybackService {
         isPlaying = true
     }
     func finish() throws {}
-    func drain() async { isPlaying = false }
+    func drain() async {
+        isPlaying = false
+        await drainGate?.waitInInterrupt()
+    }
     func stop() { isPlaying = false }
 }
 

@@ -99,15 +99,52 @@ struct VoiceSpeechDetector {
     }
 
     mutating func observe(_ level: Float) -> VoiceSpeechDetection {
-        // Baseline decision kept from the legacy detector: the fixed
-        // conservative threshold decides alone. The adaptive floor,
-        // warmup, and debounce paths land with the #130 fix.
+        // Garbage samples (NaN, negative) must not poison the noise floor
+        // or wedge threshold comparisons; treat them as silence.
+        guard level.isFinite, level >= 0 else {
+            candidateSamples = 0
+            return .none
+        }
+        if isSpeechActive {
+            // Hysteresis: an active utterance survives level dips via the
+            // lower continuation threshold; trailing-silence timing stays
+            // with the controller.
+            return level >= speechContinuationThreshold ? .continued : .none
+        }
+        if warmupRemaining > 0 {
+            // Fresh window: every sample (either direction, fast) teaches
+            // the floor before sub-ceiling speech-start is armed.
+            adaptNoiseFloor(level, warmup: true)
+            warmupRemaining -= 1
+            if level >= constants.maximumSpeechStartThreshold {
+                // An unambiguous level is speech even before the floor has
+                // been established.
+                isSpeechActive = true
+                return .started
+            }
+            return .none
+        }
         if level >= constants.maximumSpeechStartThreshold {
-            if isSpeechActive { return .continued }
+            // At or above the conservative legacy threshold the sample is
+            // unambiguous speech and starts immediately.
             isSpeechActive = true
+            candidateSamples = 0
             return .started
         }
-        return .none
+        guard level >= speechStartThreshold else {
+            // Clearly below the start threshold: ambient input adapts the
+            // floor, and any pending candidate was an isolated spike.
+            candidateSamples = 0
+            adaptNoiseFloor(level)
+            return .none
+        }
+        // Suspected speech onset: count it, but never feed it to the floor —
+        // raising the threshold mid-onset would swallow real speech.
+        candidateSamples += 1
+        guard candidateSamples >= constants.speechStartDebounceSamples else { return .none }
+        isSpeechActive = true
+        candidateSamples = 0
+        return .started
     }
 
     /// Clears speech state and the learned noise floor so nothing from one
@@ -117,5 +154,16 @@ struct VoiceSpeechDetector {
         warmupRemaining = constants.warmupEvents
         candidateSamples = 0
         isSpeechActive = false
+    }
+
+    /// Tracks the ambient level with an asymmetric EMA: quiet input pulls
+    /// the floor down quickly, louder input raises it slowly, and suspected
+    /// speech never feeds it.
+    private mutating func adaptNoiseFloor(_ level: Float, warmup: Bool = false) {
+        let alpha = warmup
+            ? constants.warmupAdaptationAlpha
+            : (level < noiseFloor ? constants.noiseFloorFallAlpha : constants.noiseFloorRiseAlpha)
+        noiseFloor += (level - noiseFloor) * alpha
+        noiseFloor = min(constants.maximumNoiseFloor, max(constants.minimumNoiseFloor, noiseFloor))
     }
 }

@@ -69,11 +69,11 @@ struct VoiceConversationSheet: View {
                     .foregroundStyle(.secondary)
                 VoiceInputLevelMeter(level: inputMeterLevel, isActive: isInputMeterActive)
                     .frame(height: 20)
+                    .accessibilityHint(Text(isInputMeterActive
+                        ? "Shows audio reaching Conduit while the microphone is live."
+                        : "The microphone is not capturing right now."))
                 Spacer(minLength: 0)
             }
-            .accessibilityHint(Text(isInputMeterActive
-                ? "Shows audio reaching Conduit while the microphone is live."
-                : "The microphone is not capturing right now."))
         }
     }
 

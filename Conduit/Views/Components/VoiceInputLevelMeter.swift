@@ -10,7 +10,8 @@ import SwiftUI
 /// only — the speech detector never consumes this value.
 enum VoiceLevelMeterMath {
     static func displayFraction(forLevel level: Float) -> Double {
-        guard level.isFinite, level > 0 else { return 0 }
+        guard level > 0 else { return 0 }
+        guard level.isFinite else { return 1 }
         let decibels = 20.0 * log10(Double(level))
         return min(1, max(0, (decibels + 60) / 60))
     }
@@ -42,17 +43,21 @@ struct VoiceInputLevelMeter: View {
         .accessibilityValue(Text(accessibilityValue))
         .onAppear { animatedFraction = targetFraction }
         .onChange(of: targetFraction) { _, newValue in
-            withAnimation(.easeOut(duration: 0.12)) {
-                animatedFraction = newValue
-            }
+            // Assignment only: the per-bar animation modifier owns motion,
+            // so level events never stack conflicting animation transactions.
+            animatedFraction = newValue
         }
     }
 
+    /// Staircase bars with fixed heights: only fill/opacity animates, so a
+    /// level burst never shifts layout. The top bar lights at ~5/6, leaving
+    /// headroom above 0 dBFS clipping.
     private func bar(_ index: Int) -> some View {
         let lit = animatedFraction >= Double(index + 1) / 6.0
         return Capsule()
             .fill(lit ? Color.conduitAccent.opacity(0.85) : Color.secondary.opacity(0.25))
-            .frame(width: 5, height: lit ? CGFloat(6 + index * 3) : 6)
+            .frame(width: 5, height: CGFloat(6 + index * 3))
+            .opacity(lit ? 1 : 0.6)
             .animation(.easeOut(duration: 0.12), value: lit)
     }
 

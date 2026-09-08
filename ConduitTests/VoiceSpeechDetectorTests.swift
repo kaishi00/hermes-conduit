@@ -50,8 +50,9 @@ final class VoiceSpeechDetectorTests: XCTestCase {
             detections.append(detector.observe(sample))
         }
 
-        XCTAssertEqual(detections.first, .none, "the first quiet sample is still a single candidate")
-        XCTAssertEqual(Array(detections.dropFirst().prefix(2)), [.started, .continued], "the relative rise must be recognized")
+        // Full sequence: the first quiet sample is a single candidate
+        // (still .none), then the corroborating samples accept speech.
+        XCTAssertEqual(detections, [.none, .started, .continued], "the relative rise must be recognized")
     }
 
     func testSingleIsolatedSpikeDoesNotStartSpeech() {
@@ -94,6 +95,31 @@ final class VoiceSpeechDetectorTests: XCTestCase {
         var detector = VoiceSpeechDetector()
         XCTAssertEqual(detector.observe(0.1), .started, "an unambiguous level is speech regardless of warmup")
     }
+
+    func testNonFiniteLevelsAreIgnoredWithoutPoisoningTheFloor() {
+        var detector = VoiceSpeechDetector()
+        for _ in 0..<6 { _ = detector.observe(0.003) }
+
+        XCTAssertEqual(detector.observe(Float.nan), .none)
+        XCTAssertTrue(detector.noiseFloor.isFinite, "non-finite input must not poison the noise floor")
+        XCTAssertEqual(detector.observe(0.026), .none, "the garbage sample must not become a candidate")
+        XCTAssertEqual(detector.observe(0.026), .started, "the detector still works after non-finite input")
+    }
+
+    func testThresholdBoundaries() {
+        // Quiet room: the adaptive start threshold sits at its absolute
+        // minimum, and the minimum still needs corroboration.
+        var quiet = VoiceSpeechDetector()
+        for _ in 0..<6 { _ = quiet.observe(0.003) }
+        XCTAssertEqual(quiet.observe(0.012), .none, "the minimum start threshold needs a second candidate")
+        XCTAssertEqual(quiet.observe(0.012), .started)
+
+        // Louder room: the adapted threshold rises toward its ceiling, and
+        // a sample exactly at the conservative ceiling starts immediately.
+        var louder = VoiceSpeechDetector()
+        for _ in 0..<6 { _ = louder.observe(0.02) }
+        XCTAssertEqual(louder.observe(0.075), .started, "the conservative ceiling starts immediately even when adapted higher")
+    }
 }
 
 /// Presentation-only mapping tests, independent of the VAD tests.
@@ -121,5 +147,6 @@ final class VoiceLevelMeterMathTests: XCTestCase {
     func testFullScaleInputClampsToFull() {
         XCTAssertEqual(VoiceLevelMeterMath.displayFraction(forLevel: 1), 1, accuracy: 0.0001)
         XCTAssertEqual(VoiceLevelMeterMath.displayFraction(forLevel: 5), 1, accuracy: 0.0001, "over-range input clamps")
+        XCTAssertEqual(VoiceLevelMeterMath.displayFraction(forLevel: .infinity), 1, accuracy: 0.0001, "+Inf is full scale")
     }
 }
