@@ -123,33 +123,52 @@ final class VoiceSpeechDetectorTests: XCTestCase {
 
     func testSteadyLoudAmbientNoiseFromColdStartNeverBecomesSpeech() {
         var detector = VoiceSpeechDetector()
-        // A permanently loud room: warmup skips creep the floor toward the
-        // ambience, then the warmup force-arms with the conservative
-        // ceiling-only behavior — ambience below 0.075 never becomes a turn.
-        let detections = (0..<20).map { _ in detector.observe(0.05) }
+        // A permanently loud room: steady elevated ambience calibrates the
+        // floor (never starts a turn) and ceiling-only detection applies
+        // afterward.
+        let detections = (0..<40).map { _ in detector.observe(0.05) }
         XCTAssertTrue(detections.allSatisfy { $0 == .none }, "steady loud ambience must never be classified as speech")
+        XCTAssertEqual(detector.noiseFloor, 0.05, accuracy: 0.005, "the steady signal becomes the calibrated floor")
     }
 
-    func testImmediateQuietSpeechDuringWarmupIsNotLearnedAsNoise() {
+    func testCalibratedLoudRoomRecognizesLaterVariableRise() {
         var detector = VoiceSpeechDetector()
-        // The user starts speaking immediately, inside the warmup window:
-        // speech-level samples must not raise the learned floor above the
-        // minimum start threshold, or the whole utterance gets swallowed.
-        for sample: Float in [0.018, 0.026, 0.034, 0.028] {
-            XCTAssertEqual(detector.observe(sample), .none)
+        for _ in 0..<40 { _ = detector.observe(0.05) }
+        XCTAssertEqual(detector.noiseFloor, 0.05, accuracy: 0.005)
+
+        // A genuine variable rise above the calibrated floor is speech even
+        // though the room calibrated loud.
+        let samples: [Float] = [0.09, 0.12, 0.08, 0.11]
+        let detections = samples.map { detector.observe($0) }
+        XCTAssertTrue(detections.contains(.started), "a later real rise must still be recognized in a loud room")
+    }
+
+    func testImmediateQuietSpeechWithNaturalDynamicsIsAccepted() {
+        var detector = VoiceSpeechDetector()
+
+        // A user who starts talking at capture frame 1, with no initial
+        // silence: natural amplitude variation over a sustained run.
+        let samples: [Float] = [
+            0.018, 0.024, 0.032, 0.027,
+            0.035, 0.023, 0.031, 0.026,
+            0.034, 0.021
+        ]
+
+        let detections = samples.map {
+            detector.observe($0)
         }
+
+        XCTAssertTrue(
+            detections.contains(.started),
+            "quiet speech beginning at capture frame 1 must not require the user to stop and try again"
+        )
+        // The suspected-speech window must not have been taught into the
+        // noise floor: speech-level cold-start input is never learned as
+        // ambience.
         XCTAssertLessThanOrEqual(
             detector.noiseFloor,
-            VoiceSpeechDetectorConstants().minimumSpeechStartThreshold,
-            "warmup must never learn speech-level input as the noise floor"
+            VoiceSpeechDetectorConstants().minimumSpeechStartThreshold
         )
-
-        // After a few genuinely quiet samples the floor settles and the
-        // same quiet speech is recognized again — it was never permanently
-        // learned as noise.
-        for _ in 0..<8 { _ = detector.observe(0.004) }
-        XCTAssertEqual(detector.observe(0.026), .none, "the first quiet sample is a single candidate")
-        XCTAssertEqual(detector.observe(0.026), .started, "quiet speech is recognized again after the floor settles")
     }
 }
 
