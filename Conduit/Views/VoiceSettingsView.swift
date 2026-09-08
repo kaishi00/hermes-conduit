@@ -388,10 +388,12 @@ struct VoiceSettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            if isRecordingASRTest {
-                // Live only while the ASR test records — never during TTS
-                // playback. Movement proves microphone capture; a still
-                // meter points at the microphone/session/route instead.
+            // The meter is visible only while the ASR test is actually
+            // recording (state .listening): once the sample is complete and
+            // the state becomes .transcribing, capture input is no longer
+            // the interesting signal, so the meter hides instead of
+            // freezing at its last value. Never shown during TTS playback.
+            if isRecordingASRTest, conversationController.state == .listening {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Microphone input")
                         .font(.caption)

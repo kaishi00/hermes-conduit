@@ -608,6 +608,16 @@ final class VoiceConversationController: ObservableObject {
             // Conversation. Publication is meter-resolution (~20 Hz), not
             // tap-buffer resolution: every assignment re-renders observing
             // surfaces.
+            //
+            // Stale events from a previous capture generation must never
+            // cross into the current one: a buffered tap event delivered
+            // after pause()/stop()/suspension would otherwise un-zero the
+            // reset meter or feed the detector a window that no longer
+            // exists. Provider tests are live capture and still count.
+            let captureLive = !isMicrophonePaused
+                && !isPlaybackCaptureSuspended
+                && isVoiceSessionActive
+            guard captureLive || isProviderTestRunning else { return }
             if lastMeterPublication == nil || date.timeIntervalSince(lastMeterPublication!) >= 0.05 {
                 microphoneLevel = level
                 lastMeterPublication = date

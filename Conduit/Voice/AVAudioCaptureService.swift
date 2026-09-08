@@ -211,7 +211,14 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
                 destinationData.copyMemory(from: sourceData, byteCount: byteCount)
                 destination[index].mDataByteSize = source[index].mDataByteSize
             }
-            Task { @MainActor [weak self] in self?.consume(copy) }
+            Task { @MainActor [weak self] in
+                // Capture-generation fence: pause()/stop() tear the tap
+                // down, but a frame already in flight across this hop
+                // belongs to the previous generation and must not surface
+                // into the new one.
+                guard let self, !self.paused else { return }
+                self.consume(copy)
+            }
         }
         engine.prepare()
         try engine.start()

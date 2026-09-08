@@ -949,8 +949,10 @@ final class VoiceConversationControllerTests: XCTestCase {
             interrupt: {}
         )
 
-        let testTask = Task { await controller.runTranscriptionTest(duration: 0.3) }
-        try? await Task.sleep(nanoseconds: 80_000_000)
+        // A long recording window gives the injected samples a wide
+        // deterministic margin — no wall-clock race against test completion.
+        let testTask = Task { await controller.runTranscriptionTest(duration: 2) }
+        try? await Task.sleep(nanoseconds: 100_000_000)
         capture.emit(.level(0.4, date: Date()))
         // Level publication is meter-resolution (~20 Hz throttle), so space
         // the second sample past the publication window.
@@ -963,6 +965,39 @@ final class VoiceConversationControllerTests: XCTestCase {
         XCTAssertTrue(result.passed)
         XCTAssertEqual(controller.microphoneLevel, 0, accuracy: 0.0001, "provider-test completion resets the meter")
         XCTAssertTrue(submitted.isEmpty, "conversational VAD must not run during a provider test")
+    }
+
+    func testStaleCaptureLevelEventsDoNotCrossCaptureGenerations() async {
+        let capture = MockCapture(permissionGranted: true)
+        let controller = VoiceConversationController(
+            capture: capture,
+            playback: MockPlayback(),
+            gateway: MockGateway(),
+            submit: { _ in true },
+            interrupt: {}
+        )
+        await controller.startListening()
+        capture.emit(.level(0.4, date: Date()))
+        try? await Task.sleep(nanoseconds: 80_000_000)
+        XCTAssertEqual(controller.microphoneLevel, 0.4, accuracy: 0.0001)
+
+        // Pause boundary: a buffered level event from the previous capture
+        // generation is delivered after the pause reset — it must be
+        // dropped, not re-freeze the meter at a non-zero value.
+        controller.pauseMicrophone()
+        capture.emit(.level(0.6, date: Date()))
+        try? await Task.sleep(nanoseconds: 80_000_000)
+        XCTAssertEqual(controller.microphoneLevel, 0, accuracy: 0.0001, "stale level events must not cross the pause boundary")
+
+        // Stop boundary: same contract after the session is torn down.
+        await controller.startListening()
+        capture.emit(.level(0.4, date: Date()))
+        try? await Task.sleep(nanoseconds: 80_000_000)
+        controller.stop()
+        capture.emit(.level(0.6, date: Date()))
+        try? await Task.sleep(nanoseconds: 80_000_000)
+        XCTAssertEqual(controller.state, .idle)
+        XCTAssertEqual(controller.microphoneLevel, 0, accuracy: 0.0001, "stale level events must not cross the stop boundary")
     }
 
     func testSpeechTestRouteChangeDoesNotLeakSuspensionState() async {

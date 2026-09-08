@@ -113,7 +113,11 @@ struct VoiceSpeechDetector {
         }
         if warmupRemaining > 0 {
             // Fresh window: every sample (either direction, fast) teaches
-            // the floor before sub-ceiling speech-start is armed.
+            // the floor before sub-ceiling speech-start is armed. The floor
+            // is capped at the minimum start threshold so a user speaking
+            // immediately is never learned permanently as noise — the worst
+            // case is a short blind window, after which quiet speech is
+            // recognized.
             adaptNoiseFloor(level, warmup: true)
             warmupRemaining -= 1
             if level >= constants.maximumSpeechStartThreshold {
@@ -158,12 +162,17 @@ struct VoiceSpeechDetector {
 
     /// Tracks the ambient level with an asymmetric EMA: quiet input pulls
     /// the floor down quickly, louder input raises it slowly, and suspected
-    /// speech never feeds it.
+    /// speech never feeds it. During warmup the floor is additionally
+    /// capped at the minimum speech-start threshold, so speech-level input
+    /// arriving at cold start can never raise the threshold above the
+    /// point where that same speech stays detectable.
     private mutating func adaptNoiseFloor(_ level: Float, warmup: Bool = false) {
         let alpha = warmup
             ? constants.warmupAdaptationAlpha
             : (level < noiseFloor ? constants.noiseFloorFallAlpha : constants.noiseFloorRiseAlpha)
         noiseFloor += (level - noiseFloor) * alpha
-        noiseFloor = min(constants.maximumNoiseFloor, max(constants.minimumNoiseFloor, noiseFloor))
+        let warmupCeiling = constants.minimumSpeechStartThreshold
+        let ceiling = warmup ? min(warmupCeiling, constants.maximumNoiseFloor) : constants.maximumNoiseFloor
+        noiseFloor = min(ceiling, max(constants.minimumNoiseFloor, noiseFloor))
     }
 }

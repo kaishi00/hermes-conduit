@@ -120,6 +120,28 @@ final class VoiceSpeechDetectorTests: XCTestCase {
         for _ in 0..<6 { _ = louder.observe(0.02) }
         XCTAssertEqual(louder.observe(0.075), .started, "the conservative ceiling starts immediately even when adapted higher")
     }
+
+    func testImmediateQuietSpeechDuringWarmupIsNotLearnedAsNoise() {
+        var detector = VoiceSpeechDetector()
+        // The user starts speaking immediately, inside the warmup window:
+        // speech-level samples must not raise the learned floor above the
+        // minimum start threshold, or the whole utterance gets swallowed.
+        for sample: Float in [0.018, 0.026, 0.034, 0.028] {
+            XCTAssertEqual(detector.observe(sample), .none)
+        }
+        XCTAssertLessThanOrEqual(
+            detector.noiseFloor,
+            VoiceSpeechDetectorConstants().minimumSpeechStartThreshold,
+            "warmup must never learn speech-level input as the noise floor"
+        )
+
+        // After a few genuinely quiet samples the floor settles and the
+        // same quiet speech is recognized again — it was never permanently
+        // learned as noise.
+        for _ in 0..<8 { _ = detector.observe(0.004) }
+        XCTAssertEqual(detector.observe(0.026), .none, "the first quiet sample is a single candidate")
+        XCTAssertEqual(detector.observe(0.026), .started, "quiet speech is recognized again after the floor settles")
+    }
 }
 
 /// Presentation-only mapping tests, independent of the VAD tests.
