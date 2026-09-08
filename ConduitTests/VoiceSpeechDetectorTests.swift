@@ -24,7 +24,8 @@ final class VoiceSpeechDetectorTests: XCTestCase {
             detections,
             [
                 .none, .none, .none, .none,
-                .none, .started, .continued, .continued,
+                .none, .none, .none, .started,
+                .continued, .continued,
                 .none, .none
             ],
             "a clear rise above the observed noise floor must be accepted as speech"
@@ -67,8 +68,17 @@ final class VoiceSpeechDetectorTests: XCTestCase {
     func testSpeechContinuationUsesLowerHysteresisThreshold() {
         var detector = VoiceSpeechDetector()
         for _ in 0..<6 { _ = detector.observe(0.003) }
-        XCTAssertEqual(detector.observe(0.026), .none)
-        XCTAssertEqual(detector.observe(0.03), .started, "two consecutive quiet-of-legacy samples accept speech")
+        // Four speech-plausible samples with natural variation fill the
+        // cold-start dynamics window (range 0.014 ≥ 0.012).
+        let run: [Float] = [0.026, 0.038, 0.024, 0.032]
+        var detections: [VoiceSpeechDetection] = []
+        for (index, sample) in run.enumerated() {
+            detections.append(detector.observe(sample))
+            if index < run.count - 1 {
+                XCTAssertEqual(detections.last, .none, "no single sub-ceiling sample may start a turn")
+            }
+        }
+        XCTAssertEqual(detections.last, .started, "the varied run is accepted as speech onset")
 
         // Below the speech-start threshold but above the hysteresis floor:
         // an active utterance keeps going.
@@ -107,10 +117,10 @@ final class VoiceSpeechDetectorTests: XCTestCase {
     }
 
     func testThresholdBoundaries() {
-        // Quiet room: the adaptive start threshold sits at its absolute
-        // minimum, and the minimum still needs corroboration.
+        // Quiet room, fully calibrated: the adaptive start threshold sits at
+        // its absolute minimum, and the minimum still needs corroboration.
         var quiet = VoiceSpeechDetector()
-        for _ in 0..<6 { _ = quiet.observe(0.003) }
+        for _ in 0..<16 { _ = quiet.observe(0.003) }
         XCTAssertEqual(quiet.observe(0.012), .none, "the minimum start threshold needs a second candidate")
         XCTAssertEqual(quiet.observe(0.012), .started)
 

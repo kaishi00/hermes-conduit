@@ -265,6 +265,7 @@ private final class RecordingVoiceAudioSession: VoiceAudioSessionControlling {
 @MainActor
 private final class StubPermissionCapture: AudioCaptureService {
     let events: AsyncStream<VoiceCaptureEvent>
+    let captureGeneration: UInt64 = 0
     private var continuation: AsyncStream<VoiceCaptureEvent>.Continuation?
 
     init() {

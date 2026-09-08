@@ -32,6 +32,11 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
     private let maximumPreRollBytes = Int(AVAudioCaptureService.outputSampleRate * AVAudioCaptureService.preRollDuration) * AVAudioCaptureService.outputBytesPerFrame
     private var activelyRecording = false
     private var paused = false
+    /// Monotonic identity of the installed input-tap/rendering lifetime.
+    /// Bumped at every teardown (pause/stop) and every tap reinstall, so
+    /// frames queued from a previous generation can be recognized and
+    /// dropped after the boundary.
+    private(set) var captureGeneration: UInt64 = 0
     private var shouldKeepEngineRunning = false
     private var lastCaptureFailure: String?
     private var continuation: AsyncStream<VoiceCaptureEvent>.Continuation?
@@ -118,6 +123,7 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
         guard !paused else { return }
         paused = true
         shouldKeepEngineRunning = false
+        captureGeneration &+= 1
         teardownRendering()
         releaseLease()
     }
@@ -155,6 +161,7 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
         activelyRecording = false
         paused = false
         shouldKeepEngineRunning = false
+        captureGeneration &+= 1
         teardownRendering()
         releaseLease()
     }
@@ -192,7 +199,12 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
             throw VoiceAudioError.unavailable("The selected microphone is unavailable.")
         }
         converter = nil
-        input.removeTap(onBus: 0)
+        // A freshly installed tap begins a new rendering generation: frames
+        // it produces are stamped with this identity, and any teardown
+        // invalidates it so queued frames from the old tap are recognized
+        // as stale.
+        captureGeneration &+= 1
+        let frameGeneration = captureGeneration
         input.installTap(onBus: 0, bufferSize: 1_024, format: nil) { [weak self] buffer, _ in
             // AVAudioEngine owns and reuses tap buffers as soon as this block
             // returns. Copy the frame bytes before crossing onto MainActor so
@@ -216,10 +228,10 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
                 // down, but a frame already in flight across this hop
                 // belongs to the previous generation and must not surface
                 // into the new one. (A stop immediately followed by a
-                // restart re-arms these flags; the controller additionally
-                // gates on its own session state.)
+                // restart re-arms these flags; the frame's own generation
+                // and the controller's generation check cover that case.)
                 guard let self, !self.paused, self.shouldKeepEngineRunning else { return }
-                self.consume(copy)
+                self.consume(copy, generation: frameGeneration)
             }
         }
         engine.prepare()
@@ -239,7 +251,7 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
         coordinator.release(lease)
     }
 
-    private func consume(_ buffer: AVAudioPCMBuffer) {
+    private func consume(_ buffer: AVAudioPCMBuffer, generation: UInt64) {
         guard !paused else { return }
         if converter == nil || !Self.converter(converter, accepts: buffer.format) {
             converter = AVAudioConverter(from: buffer.format, to: outputFormat)
@@ -286,7 +298,7 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
         lastCaptureFailure = nil
         appendPreRoll(pcm)
         if activelyRecording { capturedPCM.append(pcm) }
-        continuation?.yield(.level(encoded.peak, date: Date()))
+        continuation?.yield(.level(encoded.peak, date: Date(), generation: generation))
     }
 
     private func appendPreRoll(_ pcm: Data) {

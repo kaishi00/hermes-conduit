@@ -600,7 +600,7 @@ final class VoiceConversationController: ObservableObject {
 
     private func handleCaptureEvent(_ event: VoiceCaptureEvent) {
         switch event {
-        case .level(let level, let date):
+        case .level(let level, let date, let generation):
             // Raw capture level always feeds the visible input meter —
             // including provider tests, where seeing "the microphone hears
             // me" distinguishes capture failure from detection failure —
@@ -609,14 +609,14 @@ final class VoiceConversationController: ObservableObject {
             // tap-buffer resolution: every assignment re-renders observing
             // surfaces.
             //
-            // Stale events from a previous capture generation must never
-            // cross into the current one: a buffered tap event delivered
-            // after pause()/stop()/suspension would otherwise un-zero the
-            // reset meter or feed the detector a window that no longer
-            // exists. Provider tests are live capture and still count; the
-            // isProviderTestRunning clause is defense-in-depth, since the
-            // transcription test also raises isVoiceSessionActive and
-            // captureLive already covers it today.
+            // Generation identity first: a frame is valid only for the
+            // input-tap generation that produced it, so queued frames from
+            // a torn-down tap are rejected even when a new generation is
+            // already live. Then defense in depth — logical capture state:
+            // stale events must also not reach presentation or VAD during
+            // a user pause, a #146 suspension, or after the voice session
+            // ended. Provider tests are live capture and still count.
+            guard generation == capture.captureGeneration else { return }
             let captureLive = !isMicrophonePaused
                 && !isPlaybackCaptureSuspended
                 && isVoiceSessionActive

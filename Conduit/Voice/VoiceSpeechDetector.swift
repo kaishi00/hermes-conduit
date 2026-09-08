@@ -38,18 +38,19 @@ struct VoiceSpeechDetectorConstants: Equatable {
     /// accepted as speech: a single isolated noisy buffer never starts a
     /// turn.
     var speechStartDebounceSamples = 2
-    /// Bound on speech-plausible warmup samples that arrive before any
-    /// genuinely quiet sample: past this many skips the warmup force-arms
-    /// (falling back to the conservative ceiling-only behavior), so a
-    /// permanently loud room can never stay disarmed forever.
-    var maximumWarmupSkips = 12
-    /// Fresh capture windows spend this many events establishing the noise
-    /// floor (with fast adaptation) before sub-ceiling speech-start is
-    /// armed, so a loud room cannot misclassify its own ambience during
-    /// cold start.
-    var warmupEvents = 4
-    /// Noise-floor adaptation speed while warming up a fresh window.
-    var warmupAdaptationAlpha: Float = 0.4
+    /// Bounded length of the cold-start calibration phase, in events: once
+    /// it expires without speech-like dynamics, the steady signal becomes
+    /// the calibrated ambient floor and normal adaptive detection arms.
+    var coldStartMaximumEvents = 16
+    /// Speech-plausible samples retained for the cold-start dynamics check.
+    var coldStartCandidateSamples = 4
+    /// Cold-start speech onset requires the candidate window to vary by at
+    /// least this much between its quietest and loudest sample: steady input
+    /// is ambience, modulated input is speech.
+    var coldStartMinimumDynamicRange: Float = 0.012
+    /// Noise-floor adaptation speed for genuinely quiet samples during cold
+    /// start.
+    var coldStartQuietAdaptationAlpha: Float = 0.4
     /// Noise-floor adaptation speed toward quieter input.
     var noiseFloorFallAlpha: Float = 0.2
     /// Noise-floor adaptation speed toward louder input while no speech is
@@ -74,15 +75,17 @@ struct VoiceSpeechDetector {
     private(set) var constants: VoiceSpeechDetectorConstants
     /// Asymmetric EMA of observed input while no speech is active.
     private(set) var noiseFloor: Float
-    private var warmupRemaining: Int
-    private var warmupSkippedSamples = 0
+    private var coldStartRemaining: Int
+    /// Recent speech-plausible samples during cold start, for the dynamics
+    /// check that distinguishes speech from steady ambience.
+    private var coldStartWindow: [Float] = []
     private var candidateSamples = 0
     private(set) var isSpeechActive = false
 
     init(constants: VoiceSpeechDetectorConstants = .init()) {
         self.constants = constants
         noiseFloor = constants.minimumNoiseFloor
-        warmupRemaining = constants.warmupEvents
+        coldStartRemaining = constants.coldStartMaximumEvents
     }
 
     /// Noise-floor-relative level that continues an active utterance
@@ -117,40 +120,52 @@ struct VoiceSpeechDetector {
             // with the controller.
             return level >= speechContinuationThreshold ? .continued : .none
         }
-        if warmupRemaining > 0 {
-            // Fresh window: establish the floor before sub-ceiling
-            // speech-start is armed. Genuinely quiet samples teach the floor
-            // fast and advance the warmup. Speech-plausible samples at cold
-            // start are ambiguous — they must not start speech, and they
-            // must not be learned as noise quickly — so they only creep the
-            // floor up slowly with a bounded skip count: a permanently loud
-            // room still arms (falling back to the conservative ceiling-only
-            // behavior) within a fraction of a second, while an immediately
-            // speaking user is merely delayed, never swallowed permanently.
-            if level < constants.minimumSpeechStartThreshold {
-                adaptNoiseFloor(
-                    level,
-                    alpha: constants.warmupAdaptationAlpha,
-                    ceiling: constants.minimumSpeechStartThreshold
-                )
-                warmupRemaining -= 1
-                warmupSkippedSamples = 0
-            } else {
-                adaptNoiseFloor(
-                    level,
-                    alpha: constants.noiseFloorRiseAlpha,
-                    ceiling: constants.maximumNoiseFloor
-                )
-                warmupSkippedSamples += 1
-                if warmupSkippedSamples >= constants.maximumWarmupSkips {
-                    warmupRemaining = 0
-                }
-            }
+        if coldStartRemaining > 0 {
+            coldStartRemaining -= 1
+            // An unambiguous level is speech even before the floor has been
+            // established (a user speaking from the very first frame).
             if level >= constants.maximumSpeechStartThreshold {
-                // An unambiguous level is speech even before the floor has
-                // been established.
                 isSpeechActive = true
                 return .started
+            }
+            if level < constants.minimumSpeechStartThreshold {
+                // Quiet ambience teaches the floor fast.
+                adaptNoiseFloor(
+                    level,
+                    alpha: constants.coldStartQuietAdaptationAlpha,
+                    ceiling: constants.minimumSpeechStartThreshold
+                )
+                coldStartWindow.removeAll()
+                return .none
+            }
+            // Speech-plausible input at cold start is ambiguous — it must
+            // neither start speech against an unlearned floor nor be learned
+            // as noise — so it is collected for a dynamics check: real
+            // speech varies; steady ambience does not.
+            coldStartWindow.append(level)
+            if coldStartWindow.count > constants.coldStartCandidateSamples {
+                coldStartWindow.removeFirst()
+            }
+            if coldStartWindow.count == constants.coldStartCandidateSamples,
+               let loudest = coldStartWindow.max(), let quietest = coldStartWindow.min(),
+               loudest - quietest >= constants.coldStartMinimumDynamicRange {
+                isSpeechActive = true
+                coldStartWindow.removeAll()
+                return .started
+            }
+            if coldStartRemaining == 0 {
+                // The bounded cold start expires on a steady speech-plausible
+                // run: adopt its mean as the ambient floor and arm normal
+                // adaptive detection against it — no phantom, and a later
+                // genuine rise is still recognized.
+                noiseFloor = min(
+                    constants.maximumNoiseFloor,
+                    max(
+                        constants.minimumNoiseFloor,
+                        coldStartWindow.reduce(0, +) / Float(coldStartWindow.count)
+                    )
+                )
+                coldStartWindow.removeAll()
             }
             return .none
         }
@@ -187,8 +202,8 @@ struct VoiceSpeechDetector {
     /// capture window shapes the next one.
     mutating func reset() {
         noiseFloor = constants.minimumNoiseFloor
-        warmupRemaining = constants.warmupEvents
-        warmupSkippedSamples = 0
+        coldStartRemaining = constants.coldStartMaximumEvents
+        coldStartWindow.removeAll()
         candidateSamples = 0
         isSpeechActive = false
     }
@@ -196,10 +211,7 @@ struct VoiceSpeechDetector {
     /// Moves the noise floor toward `level` by `alpha` (EMA), clamped to
     /// `ceiling`. Asymmetry lives at the call sites: quiet input pulls the
     /// floor down fast, louder input raises it slowly, and suspected speech
-    /// never feeds it. During warmup, sub-threshold samples teach the floor
-    /// fast (capped at the minimum start threshold) while speech-plausible
-    /// samples only creep it slowly with a bounded skip count, so immediate
-    /// quiet speech is delayed, never learned as noise.
+    /// never feeds it.
     private mutating func adaptNoiseFloor(_ level: Float, alpha: Float, ceiling: Float) {
         noiseFloor += (level - noiseFloor) * alpha
         noiseFloor = min(ceiling, max(constants.minimumNoiseFloor, noiseFloor))

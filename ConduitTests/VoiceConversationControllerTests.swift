@@ -931,7 +931,7 @@ final class VoiceConversationControllerTests: XCTestCase {
         )
         await controller.startListening()
 
-        capture.emit(.level(0.034, date: Date()))
+        capture.emit(level: 0.034)
         try? await Task.sleep(nanoseconds: 80_000_000)
 
         XCTAssertEqual(controller.microphoneLevel, 0.034, accuracy: 0.0001, "raw capture level must reach the published meter")
@@ -953,11 +953,11 @@ final class VoiceConversationControllerTests: XCTestCase {
         // deterministic margin — no wall-clock race against test completion.
         let testTask = Task { await controller.runTranscriptionTest(duration: 2) }
         try? await Task.sleep(nanoseconds: 100_000_000)
-        capture.emit(.level(0.4, date: Date()))
+        capture.emit(level: 0.4)
         // Level publication is meter-resolution (~20 Hz throttle), so space
         // the second sample past the publication window.
         try? await Task.sleep(nanoseconds: 80_000_000)
-        capture.emit(.level(0.5, date: Date()))
+        capture.emit(level: 0.5)
         try? await Task.sleep(nanoseconds: 60_000_000)
         XCTAssertEqual(controller.microphoneLevel, 0.5, accuracy: 0.0001, "provider tests still receive visible microphone-level updates")
 
@@ -969,38 +969,41 @@ final class VoiceConversationControllerTests: XCTestCase {
 
     func testStaleCaptureLevelEventsDoNotCrossCaptureGenerations() async {
         let capture = MockCapture(permissionGranted: true)
+        let gateway = MockGateway(transcript: "fresh")
         let controller = VoiceConversationController(
             capture: capture,
             playback: MockPlayback(),
-            gateway: MockGateway(),
+            gateway: gateway,
             submit: { _ in true },
             interrupt: {}
         )
         await controller.startListening()
-        capture.emit(.level(0.4, date: Date()))
+        let generationA = capture.captureGeneration
+
+        // Capture A produces a level event; the meter follows it.
+        capture.emit(level: 0.4)
         try? await Task.sleep(nanoseconds: 80_000_000)
         XCTAssertEqual(controller.microphoneLevel, 0.4, accuracy: 0.0001)
 
-        // Pause boundary: a buffered level event from the previous capture
-        // generation is delivered after the pause reset — it must be
-        // dropped, not re-freeze the meter at a non-zero value.
-        controller.pauseMicrophone()
-        capture.emit(.level(0.6, date: Date()))
-        try? await Task.sleep(nanoseconds: 80_000_000)
-        XCTAssertEqual(controller.microphoneLevel, 0, accuracy: 0.0001, "stale level events must not cross the pause boundary")
-
-        // Stop boundary: re-establish a live capture baseline first (resume
-        // clears the user pause), then confirm a stale event cannot cross
-        // the stop.
-        await controller.resumeMicrophone()
-        capture.emit(.level(0.4, date: Date()))
-        try? await Task.sleep(nanoseconds: 80_000_000)
-        XCTAssertEqual(controller.microphoneLevel, 0.4, accuracy: 0.0001, "baseline must be live before the stop boundary")
+        // Capture A is torn down (stop): its generation is invalidated.
         controller.stop()
-        capture.emit(.level(0.6, date: Date()))
+        XCTAssertNotEqual(capture.captureGeneration, generationA, "stop must invalidate the capture generation")
+
+        // Capture B starts; a delayed frame from generation A arrives after
+        // the teardown and must be rejected.
+        await controller.startListening()
+        let generationB = capture.captureGeneration
+        XCTAssertNotEqual(generationA, generationB)
+        capture.emit(.level(0.9, date: Date(), generation: generationA))
         try? await Task.sleep(nanoseconds: 80_000_000)
-        XCTAssertEqual(controller.state, .idle)
-        XCTAssertEqual(controller.microphoneLevel, 0, accuracy: 0.0001, "stale level events must not cross the stop boundary")
+        XCTAssertEqual(controller.microphoneLevel, 0, accuracy: 0.0001, "a stale generation's level must not update the meter")
+        XCTAssertEqual(controller.state, .listening)
+
+        // The live generation's events are accepted normally.
+        capture.emit(level: 0.3)
+        try? await Task.sleep(nanoseconds: 80_000_000)
+        XCTAssertEqual(controller.microphoneLevel, 0.3, accuracy: 0.0001, "the live generation's events update the meter")
+        XCTAssertEqual(controller.state, .listening)
     }
 
     func testSpeechTestRouteChangeDoesNotLeakSuspensionState() async {
@@ -1049,7 +1052,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             interrupt: {}
         )
         await controller.startListening()
-        capture.emit(.level(0.4, date: Date()))
+        capture.emit(level: 0.4)
         try? await Task.sleep(nanoseconds: 80_000_000)
         XCTAssertEqual(controller.microphoneLevel, 0.4, accuracy: 0.0001)
 
@@ -1059,7 +1062,7 @@ final class VoiceConversationControllerTests: XCTestCase {
 
         // Audio interruption.
         await controller.startListening()
-        capture.emit(.level(0.4, date: Date()))
+        capture.emit(level: 0.4)
         try? await Task.sleep(nanoseconds: 80_000_000)
         capture.emit(.interrupted)
         try? await Task.sleep(nanoseconds: 80_000_000)
@@ -1068,7 +1071,7 @@ final class VoiceConversationControllerTests: XCTestCase {
 
         // Session stop.
         await controller.startListening()
-        capture.emit(.level(0.4, date: Date()))
+        capture.emit(level: 0.4)
         try? await Task.sleep(nanoseconds: 80_000_000)
         controller.stop()
         XCTAssertEqual(controller.microphoneLevel, 0, accuracy: 0.0001)
@@ -1234,7 +1237,7 @@ final class VoiceSpeakerSafeBargeInTests: XCTestCase {
         controller.receiveAssistantEvent(.started(sessionID: "session"))
         // Ambient audio still reaches the published meter while Hermes is
         // only thinking (capture live, barge-in monitoring armed).
-        capture.emit(.level(0.02, date: Date()))
+        capture.emit(level: 0.02)
         try? await Task.sleep(nanoseconds: 50_000_000)
         XCTAssertEqual(controller.microphoneLevel, 0.02, accuracy: 0.0001)
 
@@ -1709,6 +1712,9 @@ private final class InterruptGate {
 @MainActor
 private final class MockCapture: AudioCaptureService {
     let events: AsyncStream<VoiceCaptureEvent>
+    /// Mirrors the production service: bumped on every lifecycle boundary
+    /// (start/pause/resume/stop) so generation-tagged events can be tested.
+    var captureGeneration: UInt64 = 0
     private var continuation: AsyncStream<VoiceCaptureEvent>.Continuation?
     let permissionGranted: Bool
     let startError: Error?
@@ -1735,6 +1741,7 @@ private final class MockCapture: AudioCaptureService {
         startCount += 1
         lastStartIncludePreRoll = includePreRoll
         mockPaused = false
+        captureGeneration &+= 1
         if let startError { throw startError }
     }
     func beginBargeInMonitoring() throws { didBeginMonitoring = true }
@@ -1744,17 +1751,27 @@ private final class MockCapture: AudioCaptureService {
         guard !mockPaused else { return }
         mockPaused = true
         pauseCount += 1
+        captureGeneration &+= 1
     }
     func resume() throws {
         mockPaused = false
         resumeCount += 1
+        captureGeneration &+= 1
     }
     func finishUtterance() throws -> VoiceCapturedAudio {
         finishUtteranceCount += 1
         return VoiceCapturedAudio(wavData: Data([1]), pcm16Data: Data([1, 0]), sampleRate: 16_000, duration: 0.01)
     }
-    func stop() { mockPaused = false }
+    func stop() {
+        mockPaused = false
+        captureGeneration &+= 1
+    }
     func emit(_ event: VoiceCaptureEvent) { continuation?.yield(event) }
+    /// Emits a level event stamped with the current capture generation —
+    /// the normal path for live frames.
+    func emit(level: Float, at date: Date = Date()) {
+        continuation?.yield(.level(level, date: date, generation: captureGeneration))
+    }
 }
 
 @MainActor

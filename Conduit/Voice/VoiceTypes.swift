@@ -147,7 +147,11 @@ struct VoiceCapturedAudio: Equatable {
 }
 
 enum VoiceCaptureEvent: Equatable {
-    case level(Float, date: Date)
+    /// Raw converted microphone peak. `generation` identifies the
+    /// input-tap/rendering lifetime that produced the frame, so the
+    /// controller can drop events queued before a pause/stop/restart: a
+    /// frame is valid only for the generation that produced it.
+    case level(Float, date: Date, generation: UInt64)
     case interrupted
     case routeChanged
 }
@@ -182,6 +186,11 @@ struct VoiceProviderTestResult: Equatable {
 @MainActor
 protocol AudioCaptureService: AnyObject {
     var events: AsyncStream<VoiceCaptureEvent> { get }
+    /// Monotonic identity of the currently installed input-tap/rendering
+    /// lifetime. Bumped whenever the tap is torn down or reinstalled; level
+    /// events carry the generation that produced them so stale frames from
+    /// a previous generation can be rejected.
+    var captureGeneration: UInt64 { get }
     func requestPermission() async -> Bool
     func startListening(includePreRoll: Bool) throws
     func beginBargeInMonitoring() throws
