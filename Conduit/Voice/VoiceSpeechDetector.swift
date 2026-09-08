@@ -193,18 +193,13 @@ struct VoiceSpeechDetector {
         isSpeechActive = false
     }
 
-    /// Tracks the ambient level with an asymmetric EMA: quiet input pulls
-    /// the floor down quickly, louder input raises it slowly, and suspected
-    /// speech never feeds it. During warmup the floor is additionally
-    /// capped at the minimum speech-start threshold, so speech-level input
-    /// arriving at cold start can never raise the threshold above the
-    /// point where that same speech stays detectable.
     /// Moves the noise floor toward `level` by `alpha` (EMA), clamped to
     /// `ceiling`. Asymmetry lives at the call sites: quiet input pulls the
-    /// floor down fast, louder input raises it slowly, suspected speech
-    /// never feeds it, and warmup caps the floor at the minimum start
-    /// threshold so speech-level input at cold start is never learned as
-    /// noise.
+    /// floor down fast, louder input raises it slowly, and suspected speech
+    /// never feeds it. During warmup, sub-threshold samples teach the floor
+    /// fast (capped at the minimum start threshold) while speech-plausible
+    /// samples only creep it slowly with a bounded skip count, so immediate
+    /// quiet speech is delayed, never learned as noise.
     private mutating func adaptNoiseFloor(_ level: Float, alpha: Float, ceiling: Float) {
         noiseFloor += (level - noiseFloor) * alpha
         noiseFloor = min(ceiling, max(constants.minimumNoiseFloor, noiseFloor))

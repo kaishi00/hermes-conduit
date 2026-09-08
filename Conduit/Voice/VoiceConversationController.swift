@@ -613,7 +613,10 @@ final class VoiceConversationController: ObservableObject {
             // cross into the current one: a buffered tap event delivered
             // after pause()/stop()/suspension would otherwise un-zero the
             // reset meter or feed the detector a window that no longer
-            // exists. Provider tests are live capture and still count.
+            // exists. Provider tests are live capture and still count; the
+            // isProviderTestRunning clause is defense-in-depth, since the
+            // transcription test also raises isVoiceSessionActive and
+            // captureLive already covers it today.
             let captureLive = !isMicrophonePaused
                 && !isPlaybackCaptureSuspended
                 && isVoiceSessionActive
