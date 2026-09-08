@@ -63,6 +63,17 @@ struct VoiceConversationSheet: View {
             }
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Voice status: \(statusTitle). \(statusDetail)")
+            HStack(spacing: 8) {
+                Text("Mic input")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                VoiceInputLevelMeter(level: inputMeterLevel, isActive: isInputMeterActive)
+                    .frame(height: 20)
+                Spacer(minLength: 0)
+            }
+            .accessibilityHint(Text(isInputMeterActive
+                ? "Shows audio reaching Conduit while the microphone is live."
+                : "The microphone is not capturing right now."))
         }
     }
 
@@ -122,6 +133,25 @@ struct VoiceConversationSheet: View {
     /// an interrupt while playback is suspended.
     private var isInterruptAvailable: Bool {
         controller.isPlaybackCaptureSuspended && !controller.isMicrophonePaused
+    }
+
+    /// The input meter is live exactly when microphone capture is live:
+    /// listening, and (on headset routes) the thinking/speaking/muted
+    /// windows where barge-in monitoring is actually armed. A user-paused
+    /// mic, transcribing, and #146 speaker-safe suspension all read as
+    /// inactive/zero — there, the status text explains why (e.g. "Hermes is
+    /// speaking / Tap Interrupt to speak."), so a zero meter never implies
+    /// malfunction.
+    private var isInputMeterActive: Bool {
+        guard !controller.isMicrophonePaused, !controller.isPlaybackCaptureSuspended else { return false }
+        switch controller.state {
+        case .listening, .thinking, .speaking, .muted: return true
+        case .idle, .transcribing, .failed: return false
+        }
+    }
+
+    private var inputMeterLevel: Float {
+        isInputMeterActive ? controller.microphoneLevel : 0
     }
 
     private var microphoneLabel: String {

@@ -269,11 +269,18 @@ final class VoiceConversationControllerTests: XCTestCase {
 
     func testVoiceDefaultsMirrorHermesDesktopVAD() {
         let configuration = VoiceConversationController.Configuration()
-        XCTAssertEqual(configuration.voiceActivityThreshold, 0.075)
+        // Barge-in keeps the conservative fixed threshold (issue #130).
+        XCTAssertEqual(configuration.bargeInActivityThreshold, 0.075)
         XCTAssertEqual(configuration.trailingSilence, 1.25)
         XCTAssertEqual(configuration.idleSilence, 12)
         XCTAssertEqual(configuration.maximumUtterance, 60)
         XCTAssertEqual(configuration.bargeInDuration, 0.3)
+        // The adaptive listening detector's ceiling can never exceed the
+        // conservative barge-in threshold.
+        XCTAssertEqual(
+            configuration.speechDetector.maximumSpeechStartThreshold,
+            configuration.bargeInActivityThreshold
+        )
     }
 
     func testAssistantDeltasStayInOnePersistentSpeechStream() async {
@@ -780,6 +787,174 @@ final class VoiceConversationControllerTests: XCTestCase {
 
         XCTAssertEqual(playback.intentAtLastStart, .conversationPlayback)
     }
+
+    // MARK: - Issue #130: adaptive listening VAD + live input meter
+
+    func testQuietSpeechBelowLegacyThresholdSubmitsTurn() async {
+        let capture = MockCapture(permissionGranted: true)
+        let gateway = MockGateway(transcript: "Quiet words")
+        var submitted: [String] = []
+        let controller = VoiceConversationController(
+            capture: capture,
+            playback: MockPlayback(),
+            gateway: gateway,
+            submit: { submitted.append($0); return true },
+            interrupt: {}
+        )
+        controller.beginVoiceTurn(sessionID: "session")
+        await controller.startListening()
+
+        // Ambient floor (detector warmup), then quiet speech whose peaks
+        // never reach the legacy fixed threshold, then trailing silence.
+        let start = Date()
+        let samples: [(Float, TimeInterval)] = [
+            (0.003, 0.00), (0.004, 0.03), (0.003, 0.06), (0.003, 0.09),
+            (0.018, 0.12), (0.026, 0.17), (0.034, 0.22), (0.028, 0.27),
+            (0.004, 1.60), (0.003, 1.65)
+        ]
+        for (level, offset) in samples {
+            controller.ingestAudioLevel(level, at: start.addingTimeInterval(offset))
+        }
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(submitted, ["Quiet words"], "quiet-but-valid speech must not get stuck in Listening")
+        XCTAssertEqual(controller.state, .thinking)
+        XCTAssertEqual(capture.finishUtteranceCount, 1)
+        // The completed utterance resets the visible meter.
+        XCTAssertEqual(controller.microphoneLevel, 0, accuracy: 0.0001)
+    }
+
+    func testSteadyAmbientNoiseDoesNotCreateTurns() async {
+        let capture = MockCapture(permissionGranted: true)
+        let gateway = MockGateway(transcript: "phantom")
+        var submitted: [String] = []
+        let controller = VoiceConversationController(
+            capture: capture,
+            playback: MockPlayback(),
+            gateway: gateway,
+            submit: { submitted.append($0); return true },
+            interrupt: {}
+        )
+        await controller.startListening()
+
+        // Constant room noise around 0.015 for two seconds: well above the
+        // absolute floor minimum, never a meaningful speech rise.
+        let start = Date()
+        for index in 0..<80 {
+            controller.ingestAudioLevel(0.015, at: start.addingTimeInterval(Double(index) * 0.025))
+        }
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertTrue(submitted.isEmpty, "ambient noise alone must never become a user turn")
+        XCTAssertEqual(controller.state, .listening)
+        XCTAssertEqual(capture.finishUtteranceCount, 0)
+    }
+
+    func testLouderRoomAdaptsAndStillRecognizesRelativeSpeechRise() async {
+        let capture = MockCapture(permissionGranted: true)
+        let gateway = MockGateway(transcript: "Louder words")
+        var submitted: [String] = []
+        let controller = VoiceConversationController(
+            capture: capture,
+            playback: MockPlayback(),
+            gateway: gateway,
+            submit: { submitted.append($0); return true },
+            interrupt: {}
+        )
+        await controller.startListening()
+
+        // A louder room: the adaptive threshold rises with the observed
+        // floor, then a clear relative rise still counts as speech even
+        // though it stays below the legacy fixed threshold.
+        let start = Date()
+        for index in 0..<40 {
+            controller.ingestAudioLevel(0.02, at: start.addingTimeInterval(Double(index) * 0.025))
+        }
+        controller.ingestAudioLevel(0.065, at: start.addingTimeInterval(1.1))
+        controller.ingestAudioLevel(0.07, at: start.addingTimeInterval(1.15))
+        controller.ingestAudioLevel(0.02, at: start.addingTimeInterval(2.6))
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(submitted, ["Louder words"], "the detector must adapt upward with the room")
+        XCTAssertEqual(controller.state, .thinking)
+    }
+
+    func testCaptureLevelPublishesMicrophoneLevelDuringListening() async {
+        let capture = MockCapture(permissionGranted: true)
+        let controller = VoiceConversationController(
+            capture: capture,
+            playback: MockPlayback(),
+            gateway: MockGateway(),
+            submit: { _ in true },
+            interrupt: {}
+        )
+        await controller.startListening()
+
+        capture.emit(.level(0.034, date: Date()))
+        try? await Task.sleep(nanoseconds: 80_000_000)
+
+        XCTAssertEqual(controller.microphoneLevel, 0.034, accuracy: 0.0001, "raw capture level must reach the published meter")
+    }
+
+    func testProviderTestShowsLevelWithoutConversationalVAD() async {
+        let capture = MockCapture(permissionGranted: true)
+        let gateway = MockGateway(transcript: "Should not submit")
+        var submitted: [String] = []
+        let controller = VoiceConversationController(
+            capture: capture,
+            playback: MockPlayback(),
+            gateway: gateway,
+            submit: { submitted.append($0); return true },
+            interrupt: {}
+        )
+
+        let testTask = Task { await controller.runTranscriptionTest(duration: 0.3) }
+        try? await Task.sleep(nanoseconds: 80_000_000)
+        capture.emit(.level(0.4, date: Date()))
+        capture.emit(.level(0.5, date: Date().addingTimeInterval(0.02)))
+        try? await Task.sleep(nanoseconds: 60_000_000)
+        XCTAssertEqual(controller.microphoneLevel, 0.5, accuracy: 0.0001, "provider tests still receive visible microphone-level updates")
+
+        let result = await testTask.value
+        XCTAssertTrue(result.passed)
+        XCTAssertEqual(controller.microphoneLevel, 0, accuracy: 0.0001, "provider-test completion resets the meter")
+        XCTAssertTrue(submitted.isEmpty, "conversational VAD must not run during a provider test")
+    }
+
+    func testMicrophoneLevelResetsAcrossLifecycleBoundaries() async {
+        let capture = MockCapture(permissionGranted: true)
+        let controller = VoiceConversationController(
+            capture: capture,
+            playback: MockPlayback(),
+            gateway: MockGateway(),
+            submit: { _ in true },
+            interrupt: {}
+        )
+        await controller.startListening()
+        capture.emit(.level(0.4, date: Date()))
+        try? await Task.sleep(nanoseconds: 80_000_000)
+        XCTAssertEqual(controller.microphoneLevel, 0.4, accuracy: 0.0001)
+
+        // Explicit pause.
+        controller.pauseMicrophone()
+        XCTAssertEqual(controller.microphoneLevel, 0, accuracy: 0.0001)
+
+        // Audio interruption.
+        await controller.startListening()
+        capture.emit(.level(0.4, date: Date()))
+        try? await Task.sleep(nanoseconds: 80_000_000)
+        capture.emit(.interrupted)
+        try? await Task.sleep(nanoseconds: 80_000_000)
+        XCTAssertEqual(controller.state, .failed("Audio was interrupted."))
+        XCTAssertEqual(controller.microphoneLevel, 0, accuracy: 0.0001)
+
+        // Session stop.
+        await controller.startListening()
+        capture.emit(.level(0.4, date: Date()))
+        try? await Task.sleep(nanoseconds: 80_000_000)
+        controller.stop()
+        XCTAssertEqual(controller.microphoneLevel, 0, accuracy: 0.0001)
+    }
 }
 
 /// Speaker feedback-loop regressions: on routes whose output can feed the
@@ -918,6 +1093,76 @@ final class VoiceSpeakerSafeBargeInTests: XCTestCase {
         XCTAssertEqual(controller.lastBargeInState, .speaking)
         XCTAssertEqual(controller.state, .listening)
         XCTAssertEqual(capture.lastStartIncludePreRoll, true, "genuine headset barge-in keeps pre-roll")
+    }
+
+    func testPlaybackSuspensionResetsMicrophoneLevel() async {
+        let capture = MockCapture(permissionGranted: true)
+        let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
+        let policy = RoutePolicyBox(.speakerSafeHalfDuplex)
+        let controller = VoiceConversationController(
+            capture: capture,
+            playback: MockPlayback(),
+            gateway: gateway,
+            routePolicyProvider: { policy.policy },
+            submit: { _ in true },
+            interrupt: {}
+        )
+        controller.beginVoiceTurn(sessionID: "session")
+        await controller.startListening()
+        let start = Date()
+        controller.ingestAudioLevel(0.1, at: start)
+        controller.ingestAudioLevel(0, at: start.addingTimeInterval(1.3))
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        controller.receiveAssistantEvent(.started(sessionID: "session"))
+        // Ambient audio still reaches the published meter while Hermes is
+        // only thinking (capture live, barge-in monitoring armed).
+        capture.emit(.level(0.02, date: Date()))
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(controller.microphoneLevel, 0.02, accuracy: 0.0001)
+
+        controller.receiveAssistantEvent(.delta(sessionID: "session", text: "Answer."))
+        try? await Task.sleep(nanoseconds: 80_000_000)
+
+        XCTAssertTrue(controller.isPlaybackCaptureSuspended)
+        XCTAssertEqual(controller.microphoneLevel, 0, accuracy: 0.0001, "speaker-safe suspension must zero the visible meter")
+    }
+
+    func testBargeInKeepsConservativeThresholdIndependentOfAdaptiveListening() async {
+        let capture = MockCapture(permissionGranted: true)
+        let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
+        var interrupts = 0
+        let policy = RoutePolicyBox(.fullDuplex)
+        let controller = VoiceConversationController(
+            capture: capture,
+            playback: MockPlayback(),
+            gateway: gateway,
+            routePolicyProvider: { policy.policy },
+            submit: { _ in true },
+            interrupt: { interrupts += 1 }
+        )
+
+        await Self.driveToSpeaking(controller, gateway: gateway)
+        XCTAssertEqual(controller.state, .speaking)
+
+        // Levels the adaptive listening detector would accept as speech,
+        // but below the conservative barge-in threshold: ambient chatter
+        // must not interrupt Hermes on a headset.
+        let chatter = Date()
+        controller.ingestAudioLevel(0.02, at: chatter)
+        controller.ingestAudioLevel(0.03, at: chatter.addingTimeInterval(0.16))
+        controller.ingestAudioLevel(0.03, at: chatter.addingTimeInterval(0.32))
+        try? await Task.sleep(nanoseconds: 80_000_000)
+        XCTAssertEqual(interrupts, 0, "sub-threshold levels must not trigger barge-in")
+        XCTAssertEqual(controller.state, .speaking)
+
+        // Sustained input over the unchanged barge-in threshold still does.
+        let bargeInStart = Date()
+        controller.ingestAudioLevel(0.1, at: bargeInStart)
+        controller.ingestAudioLevel(0.1, at: bargeInStart.addingTimeInterval(0.31))
+        try? await Task.sleep(nanoseconds: 80_000_000)
+        XCTAssertEqual(interrupts, 1)
+        XCTAssertEqual(controller.state, .listening)
+        XCTAssertEqual(capture.lastStartIncludePreRoll, true)
     }
 
     func testUserPauseRemainsAuthoritativeAcrossAutomaticSuspension() async {
