@@ -243,6 +243,40 @@ final class ChatTypographyTests: XCTestCase {
     }
 
     @MainActor
+    func testRenderCacheAcceptsConduitPrimaryUserBubbleStyle() {
+        // User bubbles on the inbox canvas pass .conduitPrimaryText with
+        // usesAccentSurface == false. That pair must not trap in Debug.
+        let rendering = MarkdownRenderCache.rendering(
+            source: "hello from the user bubble",
+            recognizesGatewayMedia: false,
+            foregroundStyle: .conduitPrimaryText,
+            usesAccentSurface: false,
+            isStreaming: false,
+            chatTextSize: .default
+        )
+        XCTAssertFalse(rendering.blocks.isEmpty)
+        let again = MarkdownRenderCache.rendering(
+            source: "hello from the user bubble",
+            recognizesGatewayMedia: false,
+            foregroundStyle: .conduitPrimaryText,
+            usesAccentSurface: false,
+            isStreaming: false,
+            chatTextSize: .default
+        )
+        XCTAssertTrue(again === rendering)
+        let primary = MarkdownRenderCache.rendering(
+            source: "hello from the user bubble",
+            recognizesGatewayMedia: false,
+            foregroundStyle: .primary,
+            usesAccentSurface: false,
+            isStreaming: false,
+            chatTextSize: .default
+        )
+        XCTAssertFalse(primary === rendering,
+                       "conduitPrimary and primary must not share a cache entry")
+    }
+
+    @MainActor
     func testStreamingAndSettledConvergeOnOneTypography() throws {
         // Stable chunks (isStreaming: false) and the live tail
         // (isStreaming: true) resolve through the same ChatTypography value,
@@ -677,10 +711,12 @@ final class ChatTypographyTests: XCTestCase {
         let message = assistantMessage()
         let baseline = SettledAssistantMessageContent(
             message: message, displayName: "Hermes", avatarURL: nil,
+            profileID: "default",
             gatewayResolver: nil, sizeCategory: .large, chatTextSize: .default
         )
         let sameInputs = SettledAssistantMessageContent(
             message: message, displayName: "Hermes", avatarURL: nil,
+            profileID: "default",
             gatewayResolver: nil, sizeCategory: .large, chatTextSize: .default
         )
         XCTAssertEqual(baseline, sameInputs,
@@ -688,6 +724,7 @@ final class ChatTypographyTests: XCTestCase {
 
         let resized = SettledAssistantMessageContent(
             message: message, displayName: "Hermes", avatarURL: nil,
+            profileID: "default",
             gatewayResolver: nil, sizeCategory: .large, chatTextSize: .larger
         )
         XCTAssertNotEqual(baseline, resized,
@@ -715,14 +752,17 @@ final class ChatTypographyTests: XCTestCase {
         let message = assistantMessage()
         let baseline = SettledThinkingCardContent(
             message: message, displayName: "Hermes", avatarURL: nil,
+            profileID: "default",
             sizeCategory: .large, chatTextSize: .default
         )
         XCTAssertEqual(baseline, SettledThinkingCardContent(
             message: message, displayName: "Hermes", avatarURL: nil,
+            profileID: "default",
             sizeCategory: .large, chatTextSize: .default
         ))
         XCTAssertNotEqual(baseline, SettledThinkingCardContent(
             message: message, displayName: "Hermes", avatarURL: nil,
+            profileID: "default",
             sizeCategory: .large, chatTextSize: .largest
         ))
     }

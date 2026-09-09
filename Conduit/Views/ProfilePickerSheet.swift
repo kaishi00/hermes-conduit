@@ -23,7 +23,7 @@ struct ProfilePickerSheet: View {
                         HStack(alignment: .top, spacing: 12) {
                             Text(isReordering
                                  ? "Use the arrows to choose the order profiles appear throughout Conduit."
-                                 : "Sessions and settings follow the active profile. Photos stay only on this device.")
+                                 : "Sessions and settings follow the active profile. Avatar choices stay only on this device.")
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                             Spacer(minLength: 0)
@@ -79,30 +79,41 @@ private struct ProfilePickerRow: View {
     let moveEarlier: () -> Void
     let moveLater: () -> Void
     let select: () -> Void
-    @State private var showingImagePicker = false
-    @State private var pickedImage: UIImage?
-    @State private var saveError: String?
+    @State private var showingAvatarPicker = false
     private var isCurrent: Bool { profile == appState.activeProfile }
 
     var body: some View {
         HStack(spacing: 12) {
             Group {
                 if isReordering {
-                    ProfileAvatarView(profile: profile, displayName: appState.profileDisplayName(profile), url: appState.profileAvatarURL(for: profile), size: 48)
+                    AgentAvatar(
+                        profileID: profile,
+                        displayName: appState.profileDisplayName(profile),
+                        photoURL: appState.profileAvatarURL(for: profile),
+                        size: 48,
+                        state: appState.avatarState(for: profile)
+                    )
                 } else {
                     Button {
                         Haptics.selection()
-                        showingImagePicker = true
+                        showingAvatarPicker = true
                     } label: {
                 ZStack(alignment: .bottomTrailing) {
-                    ProfileAvatarView(profile: profile, displayName: appState.profileDisplayName(profile), url: appState.profileAvatarURL(for: profile), size: 48)
-                    Image(systemName: "camera.fill").font(.caption2.weight(.bold)).foregroundStyle(Color.conduitBackgroundColor)
+                    AgentAvatar(
+                        profileID: profile,
+                        displayName: appState.profileDisplayName(profile),
+                        photoURL: appState.profileAvatarURL(for: profile),
+                        size: 48,
+                        state: appState.avatarState(for: profile)
+                    )
+                    Image(systemName: "paintpalette.fill").font(.caption2.weight(.bold)).foregroundStyle(Color.conduitBackgroundColor)
                         .frame(width: 20, height: 20).background(Color.conduitAccent, in: Circle())
                         .overlay { Circle().strokeBorder(.background, lineWidth: 1) }
                 }
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("Choose photo for \(appState.profileDisplayName(profile))")
+                    .accessibilityLabel("Choose avatar for \(appState.profileDisplayName(profile))")
+                    .accessibilityIdentifier("avatar.edit.\(profile)")
                 }
             }
 
@@ -135,34 +146,13 @@ private struct ProfilePickerRow: View {
             } else {
                 Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
             }
-            if !isReordering, appState.profileAvatarURL(for: profile) != nil {
-                Button(role: .destructive) {
-                    Haptics.warning()
-                    appState.removeProfileAvatar(for: profile)
-                } label: {
-                    Image(systemName: "trash").font(.caption.weight(.semibold)).frame(width: 30, height: 30)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Remove photo for \(appState.profileDisplayName(profile))")
-            }
+
         }
         .padding(12)
         .conduitGlassSurface(cornerRadius: 20, tint: isCurrent ? .conduitAccent.opacity(0.12) : .clear)
-        .overlay(alignment: .bottomLeading) {
-            if let saveError { Text(saveError).font(.caption2).foregroundStyle(.red).padding(.horizontal, 12).padding(.bottom, 4) }
-        }
-        .sheet(isPresented: $showingImagePicker) {
-            ImagePicker(image: $pickedImage)
-        }
-        .onChange(of: pickedImage) { _, newImage in
-            guard let newImage else { return }
-            if let data = newImage.pngData() {
-                do {
-                    try appState.saveProfileAvatar(data, for: profile)
-                    saveError = nil
-                } catch { saveError = error.localizedDescription }
-            }
-            pickedImage = nil
+        .sheet(isPresented: $showingAvatarPicker) {
+            ProfileAvatarPickerSheet(profile: profile, displayName: appState.profileDisplayName(profile),
+                                     photoURL: appState.profileAvatarURL(for: profile))
         }
     }
 }
@@ -172,26 +162,7 @@ struct ProfileAvatarView: View {
     let displayName: String
     let url: URL?
     var size: CGFloat = 30
-    private var initials: String {
-        let letters = displayName.split(separator: " ").prefix(2).compactMap(\.first)
-        return letters.isEmpty ? "H" : String(letters).uppercased()
-    }
     var body: some View {
-        Group {
-            if let url, let image = UIImage(contentsOfFile: url.path) {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: size, height: size)
-                    .clipped()
-            } else {
-                Text(initials).font(.system(size: max(10, size * 0.36), weight: .bold, design: .rounded))
-                    .foregroundStyle(Color.conduitAccent).frame(width: size, height: size)
-                    .background(Color.conduitAccent.opacity(0.17))
-            }
-        }
-        .frame(width: size, height: size)
-        .clipShape(Circle())
-        .overlay { Circle().strokeBorder(Color.conduitAccent.opacity(0.28), lineWidth: 1) }
+        AgentAvatar(profileID: profile, displayName: displayName, photoURL: url, size: size)
     }
 }

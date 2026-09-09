@@ -2,7 +2,9 @@
 //  ChatView.swift
 //  Conduit
 //
-//  The main chat screen. This is THE APP — everything else is a drawer.
+//  Conversation surface. Compact navigation hosts Inbox as the root and
+//  pushes this view for the active session; iPad persistent layout keeps it
+//  beside the inbox column.
 //
 
 import SwiftUI
@@ -346,15 +348,7 @@ struct ChatView: View {
                 }
             }
         }
-        .scrollDismissesKeyboard(.interactively)
-        .onTapGesture {
-            UIApplication.shared.sendAction(
-                #selector(UIResponder.resignFirstResponder),
-                to: nil,
-                from: nil,
-                for: nil
-            )
-        }
+        .conversationKeyboardDismissal()
         .background {
             GeometryReader { geometry in
                 Color.clear.preference(
@@ -366,21 +360,13 @@ struct ChatView: View {
         .simultaneousGesture(chatDragGesture(proxy: proxy))
         .overlay(alignment: .bottomTrailing) {
             if !followsLatest && !isNearBottom {
-                Button {
+                ScrollToLatestButton {
                     ChatViewportTrace.shared.log("event explicitLatest (button)")
                     performViewportEffects(
                         viewport.explicitLatestRequested(),
                         using: proxy
                     )
-                } label: {
-                    Image(systemName: "arrow.down")
-                        .font(.system(size: 15, weight: .bold))
-                        .frame(width: 44, height: 44)
                 }
-                .conduitGlassControl(cornerRadius: 22, tint: .conduitAccent.opacity(0.14))
-                .accessibilityLabel("Scroll to latest message")
-                .padding(.trailing, 18)
-                .padding(.bottom, 14)
             }
         }
     }
@@ -416,6 +402,10 @@ struct ChatView: View {
                 )
             }
             .onDisappear {
+                // Capture the last real conversation viewport before removing
+                // the provider. Inbox Back / layout host swap must not lose
+                // reading position; do not save inbox geometry as chat geometry.
+                appState.captureChatViewportForUnmount()
                 performViewportEffects(viewport.viewDisappeared(), using: proxy)
                 backfillViewportTask?.cancel()
                 appState.removeChatViewportSnapshotProvider(id: viewportSnapshotProviderID)
@@ -847,23 +837,7 @@ struct ChatView: View {
         _ command: ChatViewportCommand,
         using proxy: ScrollViewProxy
     ) {
-        ChatViewportTrace.shared.log(
-            "scroll \(command.destination) gen=\(command.generation) animated=\(command.animated)"
-        )
-        var transaction = Transaction()
-        transaction.animation = command.animated ? ConduitMotion.response : nil
-        withTransaction(transaction) {
-            switch command.destination {
-            case .bottom(let anchorID):
-                proxy.scrollTo(anchorID, anchor: .bottom)
-            case .top(let anchorID, _):
-                proxy.scrollTo(anchorID, anchor: .top)
-            case .message(let id):
-                proxy.scrollTo(id, anchor: .top)
-            case .prependAnchor(let id):
-                proxy.scrollTo(id, anchor: .top)
-            }
-        }
+        ConversationViewportScrolling.run(command, using: proxy)
     }
 }
 
@@ -913,40 +887,6 @@ enum ChatTitleScrollViewportSnapshot {
     }
 }
 
-private struct ChatBottomMarkerPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat? = nil
-    static func reduce(value: inout CGFloat?, nextValue: () -> CGFloat?) {
-        value = nextValue() ?? value
-    }
-}
-
-private struct ChatViewportFramePreferenceKey: PreferenceKey {
-    static var defaultValue: CGRect? = nil
-    static func reduce(value: inout CGRect?, nextValue: () -> CGRect?) {
-        value = nextValue() ?? value
-    }
-}
-
-private struct ChatRenderedScrollContentPreferenceKey: PreferenceKey {
-    static var defaultValue: ChatRenderedScrollContent? = nil
-    static func reduce(
-        value: inout ChatRenderedScrollContent?,
-        nextValue: () -> ChatRenderedScrollContent?
-    ) {
-        value = nextValue() ?? value
-    }
-}
-
-private struct ChatRenderedScrollTargetsPreferenceKey: PreferenceKey {
-    static var defaultValue = ChatRenderedScrollTargets()
-
-    static func reduce(
-        value: inout ChatRenderedScrollTargets,
-        nextValue: () -> ChatRenderedScrollTargets
-    ) {
-        ChatRenderedScrollTargets.reduce(value: &value, nextValue: nextValue())
-    }
-}
 // MARK: - Message Bubble
 
 /// Routes a transcript row to its presentation. The expensive settled
@@ -1052,7 +992,7 @@ struct UserMessageContent: View, Equatable {
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
             if !message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                MarkdownText(source: message.content, foregroundStyle: .white, usesAccentSurface: true)
+                MarkdownText(source: message.content, foregroundStyle: .conduitPrimaryText, usesAccentSurface: false)
             }
 
             if let attachments = message.attachments {
@@ -1068,18 +1008,14 @@ struct UserMessageContent: View, Equatable {
         .padding(.horizontal, 17)
         .padding(.vertical, 11)
         .background(
-            LinearGradient(
-                colors: [.conduitAccent, .conduitAccent.opacity(0.76)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            ),
+            Color.conduitRaisedSurface,
             in: RoundedRectangle(cornerRadius: 21, style: .continuous)
         )
         .overlay {
             RoundedRectangle(cornerRadius: 21, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.20), lineWidth: 1)
+                .strokeBorder(Color.conduitSeparator, lineWidth: 1)
         }
-        .shadow(color: Color.conduitAccent.opacity(0.16), radius: 14, y: 6)
+        .foregroundStyle(Color.conduitPrimaryText)
         .textSelection(.enabled)
     }
 }
@@ -1180,10 +1116,10 @@ private struct UserImageAttachmentPreview: View {
                     systemImage: (gatewayLoadFailed || localPreviewFailed) ? "photo.badge.exclamationmark" : "photo"
                 )
                 .font(.caption.weight(.medium))
-                .foregroundStyle(.white)
+                .foregroundStyle(Color.conduitPrimaryText)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)
-                .background(Color.white.opacity(0.13), in: Capsule())
+                .background(Color.conduitCanvas.opacity(0.7), in: Capsule())
             }
         }
         .task(id: "\(attachment.uri)|\(gatewayResolver?.profile ?? "")") {
@@ -1225,14 +1161,14 @@ private struct UserImageAttachmentPreview: View {
     private var loadingPlaceholder: some View {
         HStack(spacing: 8) {
             ProgressView()
-                .tint(.white)
+                .tint(Color.conduitPrimaryText)
             Text("Loading image...")
         }
         .font(.caption.weight(.medium))
-        .foregroundStyle(.white)
+        .foregroundStyle(Color.conduitPrimaryText)
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
-        .background(Color.white.opacity(0.13), in: Capsule())
+        .background(Color.conduitCanvas.opacity(0.7), in: Capsule())
     }
 
     private var isGatewayImage: Bool {
@@ -1247,7 +1183,7 @@ private struct UserImageAttachmentPreview: View {
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .overlay {
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.22), lineWidth: 1)
+                        .strokeBorder(Color.conduitSeparator, lineWidth: 1)
                 }
                 .accessibilityLabel("Attached image: \(attachment.name)")
     }
@@ -1269,11 +1205,11 @@ private struct UserDocumentAttachmentChip: View {
     var body: some View {
         Label(attachment.name, systemImage: "doc")
             .font(.caption.weight(.medium))
-            .foregroundStyle(.white)
+            .foregroundStyle(Color.conduitPrimaryText)
             .lineLimit(1)
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
-            .background(Color.white.opacity(0.13), in: Capsule())
+            .background(Color.conduitCanvas.opacity(0.7), in: Capsule())
     }
 }
 
@@ -1286,6 +1222,7 @@ struct SettledAssistantMessageContent: View, Equatable {
     let message: ChatMessage
     let displayName: String
     let avatarURL: URL?
+    let profileID: String
     let gatewayResolver: GatewayMediaDataURLResolver?
     /// Explicit Dynamic Type input (read by the shell): equality describes
     /// every visual input, so a category change re-opens the gate and
@@ -1305,6 +1242,7 @@ struct SettledAssistantMessageContent: View, Equatable {
         lhs.message == rhs.message
             && lhs.displayName == rhs.displayName
             && lhs.avatarURL == rhs.avatarURL
+            && lhs.profileID == rhs.profileID
             && lhs.gatewayResolver === rhs.gatewayResolver
             && lhs.sizeCategory == rhs.sizeCategory
             && lhs.chatTextSize == rhs.chatTextSize
@@ -1317,7 +1255,8 @@ struct SettledAssistantMessageContent: View, Equatable {
             HStack(spacing: 8) {
                 ConduitAgentMark(
                     avatarURL: avatarURL,
-                    displayName: displayName
+                    displayName: displayName,
+                    profileID: profileID
                 )
 
                 Text(displayName)
@@ -1455,6 +1394,7 @@ struct AssistantBubble: View {
                 message: message,
                 displayName: appState.profileDisplayName(appState.activeProfile),
                 avatarURL: appState.profileAvatarURL(for: appState.activeProfile),
+                profileID: appState.activeProfile,
                 gatewayResolver: gatewayResolver,
                 sizeCategory: sizeCategory,
                 chatTextSize: chatTextSize
@@ -1660,6 +1600,7 @@ struct SettledThinkingCardContent: View, Equatable {
     let message: ChatMessage
     let displayName: String
     let avatarURL: URL?
+    let profileID: String
     /// Explicit Dynamic Type input — see SettledAssistantMessageContent.
     let sizeCategory: ContentSizeCategory
     /// Explicit chat text-size input — see SettledAssistantMessageContent.
@@ -1670,6 +1611,7 @@ struct SettledThinkingCardContent: View, Equatable {
         lhs.message == rhs.message
             && lhs.displayName == rhs.displayName
             && lhs.avatarURL == rhs.avatarURL
+            && lhs.profileID == rhs.profileID
             && lhs.sizeCategory == rhs.sizeCategory
             && lhs.chatTextSize == rhs.chatTextSize
     }
@@ -1678,7 +1620,8 @@ struct SettledThinkingCardContent: View, Equatable {
         HStack(alignment: .top, spacing: 10) {
             ConduitAgentMark(
                 avatarURL: avatarURL,
-                displayName: displayName
+                displayName: displayName,
+                profileID: profileID
             )
 
             DisclosureGroup(isExpanded: $expanded) {
@@ -1718,6 +1661,7 @@ struct ThinkingCard: View {
                 message: message,
                 displayName: appState.profileDisplayName(appState.activeProfile),
                 avatarURL: appState.profileAvatarURL(for: appState.activeProfile),
+                profileID: appState.activeProfile,
                 sizeCategory: sizeCategory,
                 chatTextSize: chatTextSize
             )
@@ -2522,7 +2466,9 @@ struct StreamingBubble: View {
                 ConduitAgentMark(
                     isActive: true,
                     avatarURL: appState.profileAvatarURL(for: appState.activeProfile),
-                    displayName: appState.profileDisplayName(appState.activeProfile)
+                    displayName: appState.profileDisplayName(appState.activeProfile),
+                    profileID: appState.activeProfile,
+                    state: appState.avatarState(for: appState.activeProfile)
                 )
 
                 Text(appState.profileDisplayName(appState.activeProfile))
@@ -2563,7 +2509,9 @@ struct TypingIndicator: View {
             ConduitAgentMark(
                 isActive: true,
                 avatarURL: appState.profileAvatarURL(for: appState.activeProfile),
-                displayName: appState.profileDisplayName(appState.activeProfile)
+                displayName: appState.profileDisplayName(appState.activeProfile),
+                profileID: appState.activeProfile,
+                state: appState.avatarState(for: appState.activeProfile)
             )
 
             WorkingStatusLabel()
@@ -2649,32 +2597,25 @@ struct EmptyChatState: View {
             }
         }
         .padding(28)
-        .conduitGlassSurface(cornerRadius: 28, tint: .conduitAccent.opacity(0.06))
+        .conduitRaisedSurface(cornerRadius: 28)
     }
 }
 struct ConduitAgentMark: View {
     var isActive = false
     var avatarURL: URL?
     var displayName = "Hermes"
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var isBreathing = false
+    var profileID: String = "default"
+    var state: AgentAvatarState = .working
 
     var body: some View {
-        ProfileAvatarView(profile: "", displayName: displayName, url: avatarURL)
-            .overlay {
-                Circle()
-                    .strokeBorder(Color.conduitAccent.opacity(isActive ? 0.52 : 0.22), lineWidth: 1)
-            }
-            .shadow(color: Color.conduitAccent.opacity(isActive ? 0.42 : 0), radius: isBreathing ? 9 : 3)
-            .scaleEffect(isBreathing ? 1.06 : 1)
-            .task(id: isActive) {
-                guard isActive, !reduceMotion else {
-                    isBreathing = false
-                    return
-                }
-                withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) {
-                    isBreathing = true
-                }
-            }
+        AgentAvatar(
+            profileID: profileID,
+            displayName: displayName,
+            photoURL: avatarURL,
+            size: 30,
+            state: isActive ? state : .idle,
+            animates: isActive
+        )
+        .accessibilityHidden(true)
     }
 }

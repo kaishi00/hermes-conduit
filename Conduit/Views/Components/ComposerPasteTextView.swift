@@ -24,6 +24,7 @@ struct ComposerPasteTextView: UIViewRepresentable {
     @Binding var isFocused: Bool
     @Binding var measuredHeight: CGFloat
     let enabled: Bool
+    var accessibilityIdentifier: String? = nil
     let onPastedImage: (PastedImage) -> Void
     let onPastedImageError: (String) -> Void
     let editorIdentity: UUID
@@ -78,6 +79,7 @@ struct ComposerPasteTextView: UIViewRepresentable {
         view.alwaysBounceVertical = false
         view.showsVerticalScrollIndicator = true
         view.keyboardDismissMode = .interactive
+        view.accessibilityIdentifier = accessibilityIdentifier
         view.minimumReportedHeight = Self.minimumHeight
         view.maximumReportedHeight = Self.maximumHeight
         view.editorIdentity = editorIdentity
@@ -121,6 +123,7 @@ struct ComposerPasteTextView: UIViewRepresentable {
         uiView.returnKeySends = returnKeySends
         uiView.canSubmitFromReturn = canSubmitFromReturn
         uiView.onSubmitFromReturn = onSubmitFromReturn
+        uiView.accessibilityIdentifier = accessibilityIdentifier
         if isFocused, !uiView.isFirstResponder { uiView.becomeFirstResponder() }
         if !isFocused, uiView.isFirstResponder { uiView.resignFirstResponder() }
     }

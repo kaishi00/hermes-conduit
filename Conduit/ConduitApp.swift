@@ -68,7 +68,9 @@ struct ConduitApp: App {
 #if DEBUG
             // The fixture is compiled out of release builds, so the launch
             // argument branch must be too.
-            if ProcessInfo.processInfo.arguments.contains(SelectionFixtureView.launchArgument) {
+            if ProcessInfo.processInfo.arguments.contains("--avatar-gallery") {
+                AgentAvatarGallery()
+            } else if ProcessInfo.processInfo.arguments.contains(SelectionFixtureView.launchArgument) {
                 SelectionFixtureView()
             } else {
                 rootContent

@@ -273,16 +273,15 @@ enum MarkdownRenderCache {
         isStreaming: Bool,
         chatTextSize: ChatTextSize
     ) -> MarkdownRendering {
-        // `foregroundStyle` is deliberately absent from the key: only two
-        // values are ever passed (.primary / .white), each uniquely tied to
-        // `usesAccentSurface` (false / true), so keying on that is stable —
-        // whereas `String(describing:)` of a SwiftUI Color is not (its
-        // description is undocumented and can drift for adaptive colors). The
-        // assert fails loudly in debug if a third style is ever introduced;
-        // promote it to an explicit key token then.
-        assert(
-            usesAccentSurface ? foregroundStyle == .white : foregroundStyle == .primary,
-            "MarkdownRenderCache keys on usesAccentSurface, not foregroundStyle; a new style needs an explicit key token."
+        // `foregroundStyle` is represented by an explicit token rather than
+        // `String(describing: Color)` (undocumented and unstable for adaptive
+        // colours). Known pairings:
+        //   usesAccentSurface == true  → .white
+        //   usesAccentSurface == false → .primary or .conduitPrimaryText
+        // (user bubbles on the inbox canvas use the conduit token).
+        let styleToken = styleKeyToken(
+            foregroundStyle: foregroundStyle,
+            usesAccentSurface: usesAccentSurface
         )
 
         // Fonts resolve against the current Dynamic Type size AND the
@@ -294,7 +293,7 @@ enum MarkdownRenderCache {
         // this function.
         let key = [
             recognizesGatewayMedia ? "1" : "0",
-            usesAccentSurface ? "1" : "0",
+            styleToken,
             UIApplication.shared.preferredContentSizeCategory.rawValue,
             chatTextSize.cacheIdentity,
             source
@@ -327,6 +326,30 @@ enum MarkdownRenderCache {
             cache.setObject(rendering, forKey: key, cost: cost)
         }
         return rendering
+    }
+
+    /// Stable cache identity for the (usesAccentSurface, foregroundStyle) pair.
+    private static func styleKeyToken(
+        foregroundStyle: Color,
+        usesAccentSurface: Bool
+    ) -> String {
+        if usesAccentSurface {
+            assert(
+                foregroundStyle == .white,
+                "MarkdownRenderCache accent surface must use .white; add an explicit key token for new styles."
+            )
+            return "white"
+        }
+        if foregroundStyle == .primary {
+            return "primary"
+        }
+        if foregroundStyle == .conduitPrimaryText {
+            return "conduitPrimary"
+        }
+        assertionFailure(
+            "MarkdownRenderCache keys on an explicit style token; a new non-accent foregroundStyle needs one."
+        )
+        return "other"
     }
 }
 

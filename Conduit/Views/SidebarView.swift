@@ -95,7 +95,7 @@ struct SidebarView: View {
                                         selectedTabRaw = tab.rawValue
                                     }
                                 } label: {
-                                    Label(tab.rawValue, systemImage: tab.icon)
+                                    Label(tab.title, systemImage: tab.icon)
                                         .font(.caption.weight(.semibold))
                                         .frame(maxWidth: .infinity)
                                         .frame(height: 40)
@@ -145,6 +145,10 @@ struct SidebarView: View {
 
 struct SessionList: View {
     @EnvironmentObject var appState: AppState
+    /// When set (inbox shell), opens go through the shell presentation path
+    /// instead of assuming a drawer-over-chat layout.
+    var onOpenSession: ((String) -> Void)? = nil
+    var onCreateSession: (() -> Void)? = nil
     @State private var searchText = ""
     @State private var showFilterOrder = false
     @State private var showArchivedSessions = false
@@ -180,8 +184,12 @@ struct SessionList: View {
             HStack(spacing: 10) {
                 Button {
                     Haptics.medium()
-                    appState.dismissSidebarDrawer()
-                    Task { await appState.createNewSession() }
+                    if let onCreateSession {
+                        onCreateSession()
+                    } else {
+                        appState.dismissSidebarDrawer()
+                        Task { await appState.createNewSession() }
+                    }
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "plus.circle.fill")
@@ -308,7 +316,18 @@ struct SessionList: View {
             ArchivedSessionsSheet()
         }
         .sheet(item: $selectedProject) { project in
-            ProjectSessionsSheet(project: project)
+            ProjectSessionsSheet(
+                project: project,
+                onOpenSession: onOpenSession,
+                onCreateSession: { path in
+                    if let onCreateSession {
+                        onCreateSession()
+                    } else if let path {
+                        appState.dismissSidebarDrawer()
+                        Task { await appState.createNewSession(cwd: path) }
+                    }
+                }
+            )
         }
         .sheet(isPresented: $showProjectCreator) {
             ProjectCreateSheet()
@@ -455,8 +474,12 @@ struct SessionList: View {
     private func sessionRow(_ session: SessionSummary) -> some View {
         Button {
             Haptics.light()
-            appState.dismissSidebarDrawer()
-            appState.requestOpenSession(session.id)
+            if let onOpenSession {
+                onOpenSession(session.id)
+            } else {
+                appState.dismissSidebarDrawer()
+                appState.requestOpenSession(session.id)
+            }
         } label: {
             SessionRow(
                 session: session,
@@ -535,14 +558,30 @@ struct SessionList: View {
     }
 }
 
-private struct SessionFilterOrderSheet: View {
+struct SessionFilterOrderSheet: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
     @State private var editMode: EditMode = .active
+    @AppStorage("conduit.sessionSourceFilter") private var selectedSourceRaw: String = "all"
+
+    private var selectedSource: SessionSource? {
+        selectedSourceRaw == "all" ? nil : SessionSource(rawValue: selectedSourceRaw)
+    }
 
     var body: some View {
         NavigationStack {
             List {
+                Section {
+                    sourceChoice(title: "All", source: nil)
+                    ForEach(appState.sessionFilterOrder, id: \.self) { source in
+                        sourceChoice(title: source.label, source: source)
+                    }
+                } header: {
+                    Text("Show")
+                } footer: {
+                    Text("Applies to the Chats list. Clear from the chip on Chats when a filter is active.")
+                }
+
                 Section {
                     ForEach(appState.sessionFilterOrder, id: \.self) { source in
                         Label(source.label, systemImage: source.iconName)
@@ -551,8 +590,10 @@ private struct SessionFilterOrderSheet: View {
                     .onMove { from, to in
                         appState.moveSessionFilters(fromOffsets: from, toOffset: to)
                     }
+                } header: {
+                    Text("Order")
                 } footer: {
-                    Text("Drag categories into the order you prefer. All remains first in the session drawer.")
+                    Text("Drag categories into the order you prefer.")
                 }
             }
             .environment(\.editMode, $editMode)
@@ -565,9 +606,28 @@ private struct SessionFilterOrderSheet: View {
             }
         }
     }
+
+    private func sourceChoice(title: String, source: SessionSource?) -> some View {
+        let selected = selectedSource == source
+        return Button {
+            Haptics.selection()
+            selectedSourceRaw = source?.rawValue ?? "all"
+        } label: {
+            HStack {
+                Text(title)
+                    .foregroundStyle(Color.primary)
+                Spacer()
+                if selected {
+                    Image(systemName: "checkmark")
+                        .foregroundStyle(Color.accentColor)
+                }
+            }
+        }
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
 }
 
-private struct ArchivedSessionsSheet: View {
+struct ArchivedSessionsSheet: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
     @State private var searchText = ""
@@ -765,6 +825,8 @@ private struct ProjectSessionsSheet: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
     let project: ProjectSummary
+    var onOpenSession: ((String) -> Void)? = nil
+    var onCreateSession: ((String?) -> Void)? = nil
     @State private var detail: ProjectSessionDetail?
     @State private var isLoading = true
 
@@ -791,9 +853,14 @@ private struct ProjectSessionsSheet: View {
                             Section(lane.title) {
                                 ForEach(lane.sessions) { session in
                                     Button {
-                                        appState.dismissSidebarDrawer()
-                                        dismiss()
-                                        appState.requestOpenSession(session.id)
+                                        if let onOpenSession {
+                                            dismiss()
+                                            onOpenSession(session.id)
+                                        } else {
+                                            appState.dismissSidebarDrawer()
+                                            dismiss()
+                                            appState.requestOpenSession(session.id)
+                                        }
                                     } label: {
                                         SessionRow(session: session, isSelected: session.id == appState.activeSessionId)
                                             .contentShape(Rectangle())
@@ -816,9 +883,14 @@ private struct ProjectSessionsSheet: View {
                 if let path = project.primaryPath, !path.isEmpty {
                     ToolbarItem(placement: .topBarLeading) {
                         Button {
-                            appState.dismissSidebarDrawer()
-                            dismiss()
-                            Task { await appState.createNewSession(cwd: path) }
+                            if let onCreateSession {
+                                dismiss()
+                                onCreateSession(path)
+                            } else {
+                                appState.dismissSidebarDrawer()
+                                dismiss()
+                                Task { await appState.createNewSession(cwd: path) }
+                            }
                         } label: {
                             Image(systemName: "plus.bubble")
                         }
@@ -838,7 +910,7 @@ private struct ProjectSessionsSheet: View {
     }
 }
 
-private struct ProjectCreateSheet: View {
+struct ProjectCreateSheet: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
@@ -1026,6 +1098,7 @@ private struct ProjectFolderPickerSheet: View {
 
 struct CronList: View {
     @EnvironmentObject var appState: AppState
+    var onOpenSession: ((String) -> Void)? = nil
     @State private var searchText = ""
     @State private var selectedJob: CronJob?
     @AppStorage("conduit.cronJobsExpanded") private var cronJobsExpanded = true
@@ -1074,8 +1147,12 @@ struct CronList: View {
                 Section("Recent runs") {
                     ForEach(appState.activeProfileCronSessions.prefix(20)) { session in
                     Button {
-                        appState.dismissSidebarDrawer()
-                        appState.requestOpenSession(session.id)
+                        if let onOpenSession {
+                            onOpenSession(session.id)
+                        } else {
+                            appState.dismissSidebarDrawer()
+                            appState.requestOpenSession(session.id)
+                        }
                     } label: {
                         SessionRow(session: session, isSelected: session.id == appState.activeSessionId).contentShape(Rectangle())
                     }
@@ -1092,7 +1169,7 @@ struct CronList: View {
         .listStyle(.plain)
         .task(id: appState.activeProfile) { await appState.refreshCronContent() }
         .refreshable { await appState.refreshCronContent() }
-        .sheet(item: $selectedJob) { CronJobDetailSheet(job: $0) }
+        .sheet(item: $selectedJob) { CronJobDetailSheet(job: $0, onOpenSession: onOpenSession) }
     }
 
     private var filteredJobs: [CronJob] {
@@ -1130,6 +1207,7 @@ private struct CronJobDetailSheet: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
     let job: CronJob
+    var onOpenSession: ((String) -> Void)? = nil
 
     var body: some View {
         NavigationStack {
@@ -1166,7 +1244,16 @@ private struct CronJobDetailSheet: View {
                         ConduitSettingsSection(title: "Run history", symbol: "clock.arrow.circlepath", tint: .conduitAura) {
                             if appState.cronRuns.isEmpty { Text("This job has not run yet.").font(.footnote).foregroundStyle(.secondary) }
                             ForEach(appState.cronRuns) { run in
-                                Button { appState.dismissSidebarDrawer(); dismiss(); appState.requestOpenSession(run.id) } label: {
+                                Button {
+                                    if let onOpenSession {
+                                        dismiss()
+                                        onOpenSession(run.id)
+                                    } else {
+                                        appState.dismissSidebarDrawer()
+                                        dismiss()
+                                        appState.requestOpenSession(run.id)
+                                    }
+                                } label: {
                                     HStack { VStack(alignment: .leading) { Text(run.title ?? run.preview ?? run.id).lineLimit(1); Text(run.model ?? "Hermes").font(.caption).foregroundStyle(.secondary) }; Spacer(); Text(run.lastActive.map(String.init) ?? "").font(.caption2).foregroundStyle(.tertiary) }
                                 }
                                 .buttonStyle(.plain)

@@ -11,6 +11,17 @@ final class KanbanTests: XCTestCase {
         XCTAssertEqual(SidebarTab.migrated(rawValue: "Kanban"), .kanban)
     }
 
+    func testChatsHomePaneDefaultsToBotsAndHonoursStoredSessions() {
+        XCTAssertEqual(ChatsHomePane.bots.rawValue, "bots")
+        XCTAssertEqual(ChatsHomePane.sessions.rawValue, "sessions")
+        XCTAssertEqual(ChatsHomePane.bots.title, "Bots")
+        XCTAssertEqual(ChatsHomePane.sessions.title, "Sessions")
+        XCTAssertEqual(ChatsHomePane.migrated(rawValue: nil), .bots)
+        XCTAssertEqual(ChatsHomePane.migrated(rawValue: "nonsense"), .bots)
+        XCTAssertEqual(ChatsHomePane.migrated(rawValue: "sessions"), .sessions)
+        XCTAssertEqual(ChatsHomePane.migrated(rawValue: "bots"), .bots)
+    }
+
     func testLockedLanesMatchUpstreamAndAreNotManualDestinations() {
         // apps/desktop/src/plugins/kanban/ui.tsx: LOCKED_COLUMNS
         XCTAssertEqual(KanbanStatusPresentation.lockedDestinations, ["review", "running", "scheduled"])

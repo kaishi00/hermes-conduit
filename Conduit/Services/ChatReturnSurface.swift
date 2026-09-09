@@ -4,9 +4,12 @@ import Foundation
 ///
 /// This is a presentation-layer preference only: it decides what the user
 /// sees on top, while `ChatResumeBehavior` independently decides which
-/// conversation is active underneath. Choosing `.sessions` still performs
-/// the normal chat resume behind the drawer; dismissing the drawer without
-/// picking another conversation reveals the restored chat.
+/// conversation is active underneath. Choosing `.sessions` (Bots view) still
+/// performs the normal chat resume behind the home surface; dismissing Bots
+/// without picking another conversation reveals the restored chat.
+///
+/// Raw values stay `conversation` / `sessions` for persistence compatibility.
+/// The displayed title for `.sessions` is Bots.
 enum ChatReturnSurface: String, CaseIterable, Hashable {
     case conversation
     case sessions
@@ -14,7 +17,7 @@ enum ChatReturnSurface: String, CaseIterable, Hashable {
     var title: String {
         switch self {
         case .conversation: "Conversation"
-        case .sessions: "Sessions"
+        case .sessions: "Bots"
         }
     }
 }

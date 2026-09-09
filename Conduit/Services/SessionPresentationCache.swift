@@ -121,6 +121,9 @@ final class SessionPresentationCache {
         var updatedAt: Date
         var messages: [CachedMessage]
         var unconfirmedPendingDecisionAt: Date?
+        /// One-line last user/assistant content for inbox rows. Optional for
+        /// older cache payloads that only stored presentation fingerprints.
+        var activityPreview: String?
     }
 
     /// A resume without explicit active-turn confirmation is inherently
@@ -146,6 +149,38 @@ final class SessionPresentationCache {
         return sessionIDs
             .compactMap { stored[key(profile: profile, sessionID: $0)]?.unconfirmedPendingDecisionAt }
             .min()
+    }
+
+    /// Short last-activity snippet for inbox rows. Prefers the freshest
+    /// matching alias; returns nil when the session was never saved locally
+    /// or only has fingerprint-era cache without a preview.
+    func activityPreview(profile: String, sessionIDs: [String]) -> String? {
+        let stored = load()
+        let candidates = sessionIDs.compactMap { id -> CachedSession? in
+            stored[key(profile: profile, sessionID: id)]
+        }
+        guard let best = candidates.max(by: { lhs, rhs in
+            lhs.updatedAt == rhs.updatedAt
+                ? lhs.messages.count < rhs.messages.count
+                : lhs.updatedAt < rhs.updatedAt
+        }) else { return nil }
+        let trimmed = best.activityPreview?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    static let maxActivityPreviewLength = 120
+
+    static func activityPreview(from messages: [ChatMessage]) -> String? {
+        for message in messages.reversed() {
+            guard message.role == .user || message.role == .assistant else { continue }
+            let oneLine = message.content
+                .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !oneLine.isEmpty else { continue }
+            return String(oneLine.prefix(maxActivityPreviewLength))
+        }
+        return nil
     }
 
     func isUnconfirmedPendingDecisionExpired(since date: Date?) -> Bool {
@@ -491,13 +526,17 @@ final class SessionPresentationCache {
         let existingUnconfirmedAt = ids.lazy
             .compactMap { store[self.key(profile: profile, sessionID: $0)]?.unconfirmedPendingDecisionAt }
             .first
+        let existingPreview = ids.lazy
+            .compactMap { store[self.key(profile: profile, sessionID: $0)]?.activityPreview }
+            .first
         let unconfirmedAt = unconfirmedPendingDecisionKeys.isEmpty
             ? nil
             : (existingUnconfirmedAt ?? now())
         let session = CachedSession(
             updatedAt: now(),
             messages: records,
-            unconfirmedPendingDecisionAt: unconfirmedAt
+            unconfirmedPendingDecisionAt: unconfirmedAt,
+            activityPreview: Self.activityPreview(from: messages) ?? existingPreview
         )
         for id in ids {
             store[key(profile: profile, sessionID: id)] = session

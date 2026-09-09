@@ -595,6 +595,7 @@ private struct SettingsHome: View {
     /// Set by the wizard's completion when the applied plan changes the
     /// saved configuration; surfaced as an alert only after the wizard sheet
     /// has dismissed (one presentation context at a time).
+    @State private var showMessagingSetup = false
     @State private var pendingAppliedNotice = false
     @State private var appliedConnectionNotice = false
 
@@ -617,6 +618,11 @@ private struct SettingsHome: View {
                         settingsLink(.profile, icon: "person.crop.circle", title: profileDisplayName, detail: "Profile-specific preferences")
                     }
                     homeSection("Hermes", tint: .conduitAura) {
+                        settingsActionRow(icon: "bubble.left.and.bubble.right", title: "Messaging", detail: "Persistent bot DMs and groups", identifier: "settings.messaging") {
+                            showMessagingSetup = true
+                        }
+                        .sheet(isPresented: $showMessagingSetup) { MessagingSettingsView() }
+
                         settingsLink(.model, icon: "cpu", title: "Model", detail: "Default model and reasoning")
                         settingsLink(.chat, icon: "bubble.left.and.bubble.right", title: "Chat", detail: "Response behavior, visibility, and timezone")
                         settingsLink(.voice, icon: "mic.and.signal.meter", title: "Voice", detail: "Speech providers, credentials, and device opt-in")
@@ -993,11 +999,11 @@ private struct ChatReturnBehaviorSettings: View {
                 .pickerStyle(.segmented)
                 .accessibilityHint(
                     surface == .sessions
-                        ? "Conduit opens to the session list. Used if you dismiss it without choosing another conversation."
+                        ? "Conduit opens to the bots view. Used if you leave it without choosing another conversation."
                         : "Conduit opens to your conversation."
                 )
                 if surface == .sessions {
-                    Text("Used if you dismiss the session list without choosing another conversation.")
+                    Text("Used if you leave the bots view without choosing another conversation.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -1529,7 +1535,7 @@ private struct AppearanceSettingsDetail: View {
                 ConduitSettingsSection(title: "Layout", symbol: "sidebar.left", tint: .conduitAura) {
                     Toggle("Persistent session sidebar", isOn: $iPadPersistentSidebar)
                         .tint(.conduitAccent)
-                    Text("Keep Sessions, Cron, and Kanban visible beside the current conversation when the window is wide enough.")
+                    Text("Keep Chats, Scheduled, and Boards visible beside the current conversation when the window is wide enough.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }

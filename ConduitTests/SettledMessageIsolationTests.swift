@@ -243,6 +243,7 @@ final class SettledMessageIsolationTests: XCTestCase {
             message: markdownMessage(),
             displayName: "Hermes",
             avatarURL: nil,
+            profileID: "default",
             gatewayResolver: resolver,
             sizeCategory: .large,
             chatTextSize: .default
@@ -251,6 +252,7 @@ final class SettledMessageIsolationTests: XCTestCase {
             message: markdownMessage(),
             displayName: "Hermes",
             avatarURL: nil,
+            profileID: "default",
             gatewayResolver: resolver,
             sizeCategory: .large,
             chatTextSize: .default
@@ -259,6 +261,7 @@ final class SettledMessageIsolationTests: XCTestCase {
             message: markdownMessage(),
             displayName: "Hermes",
             avatarURL: nil,
+            profileID: "default",
             gatewayResolver: otherResolver,
             sizeCategory: .large,
             chatTextSize: .default
@@ -267,6 +270,7 @@ final class SettledMessageIsolationTests: XCTestCase {
             message: markdownMessage(id: "m2"),
             displayName: "Hermes",
             avatarURL: nil,
+            profileID: "default",
             gatewayResolver: resolver,
             sizeCategory: .large,
             chatTextSize: .default
@@ -275,6 +279,7 @@ final class SettledMessageIsolationTests: XCTestCase {
             message: markdownMessage(),
             displayName: "Hermes",
             avatarURL: nil,
+            profileID: "default",
             gatewayResolver: resolver,
             sizeCategory: .extraExtraLarge,
             chatTextSize: .default

@@ -48,3 +48,9 @@ AGENTS.md
 .zcode/
 workflows/
 .test-runs/
+
+# Local toolchain downloads
+.tools/
+
+# Local Apple diagnostic dumps (not for the repo)
+.tmp-crashes/

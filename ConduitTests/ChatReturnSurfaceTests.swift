@@ -14,11 +14,24 @@ final class ChatReturnSurfaceTests: XCTestCase {
         PendingVoiceIntentStore.shared.clear()
     }
 
-    func testDefaultConversationPreferenceIssuesNoReturnSurfaceRequest() {
+    func testDefaultInboxPreferenceRequestsReturnSurface() {
         let harness = makeHarness()
         // Authenticated so the scene path reaches the preference guard —
-        // the assertion must depend on the .conversation default, not on the
-        // signed-out early return.
+        // the assertion must depend on the Inbox (.sessions) default.
+        harness.appState.connection = HermesConnection(
+            baseUrl: "https://one.example",
+            ticket: "ticket"
+        )
+
+        XCTAssertEqual(harness.appState.chatReturnSurface, .sessions)
+        harness.appState.handleScenePhase(.background)
+        harness.appState.handleScenePhase(.active)
+
+        XCTAssertEqual(harness.appState.preferredReturnSurfaceRequest, 1)
+    }
+
+    func testExplicitConversationPreferenceIssuesNoReturnSurfaceRequest() {
+        let harness = makeHarness(surface: .conversation)
         harness.appState.connection = HermesConnection(
             baseUrl: "https://one.example",
             ticket: "ticket"
@@ -474,12 +487,17 @@ final class ChatReturnSurfaceTests: XCTestCase {
         )
     }
 
-    func testInvalidPersistedReturnSurfaceFallsBackToConversation() {
+    func testInvalidPersistedReturnSurfaceFallsBackToInbox() {
         let harness = makeHarness(configureDefaults: { defaults in
             defaults.set("gibberish", forKey: AppState.chatReturnSurfaceKey)
         })
 
-        XCTAssertEqual(harness.appState.chatReturnSurface, .conversation)
+        XCTAssertEqual(harness.appState.chatReturnSurface, .sessions)
+    }
+
+    func testSessionsDisplayTitleIsBots() {
+        XCTAssertEqual(ChatReturnSurface.sessions.title, "Bots")
+        XCTAssertEqual(ChatReturnSurface.conversation.title, "Conversation")
     }
 
     func testSettingsSnapshotCarriesReturnSurface() {
@@ -560,7 +578,7 @@ private final class ReturnSurfaceSuspension {
 private extension ChatReturnSurfaceTests {
     func makeHarness(
         behavior: ChatResumeBehavior = .continueWhereLeftOff,
-        surface: ChatReturnSurface = .conversation,
+        surface: ChatReturnSurface = .sessions,
         configureDefaults: (UserDefaults) -> Void = { _ in },
         reconnectScheduler: ChatResumeReconnectScheduler? = nil,
         lifecycleOperations: ChatResumeLifecycleOperations = .live
@@ -579,7 +597,9 @@ private extension ChatReturnSurfaceTests {
             defaults.removePersistentDomain(forName: suite)
         }
         configureDefaults(defaults)
-        if surface != .conversation {
+        // Persist only non-default surfaces so absent-key tests exercise the
+        // Inbox fallback. Explicit Conversation must be written to defaults.
+        if surface != .sessions {
             defaults.set(surface.rawValue, forKey: AppState.chatReturnSurfaceKey)
         }
         let store = ChatResumeStore(defaults: defaults)

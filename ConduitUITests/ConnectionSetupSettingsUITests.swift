@@ -178,12 +178,13 @@ final class ConnectionSetupSettingsUITests: XCTestCase {
     // MARK: - Walk helpers
 
     private func openSettings(_ app: XCUIApplication) {
-        let sessions = app.buttons["Open sessions"]
-        XCTAssertTrue(sessions.waitForExistence(timeout: 10), "Main app shell did not appear. Tree:\n\(app.debugDescription)")
-        sessions.tap()
+        // Inbox is the compact root; Settings lives under the More menu.
+        let more = app.buttons["More"]
+        XCTAssertTrue(more.waitForExistence(timeout: 10), "Inbox shell did not appear. Tree:\n\(app.debugDescription)")
+        more.tap()
 
         let settings = app.buttons["Settings"]
-        XCTAssertTrue(settings.waitForExistence(timeout: 5), "Sidebar did not appear. Tree:\n\(app.debugDescription)")
+        XCTAssertTrue(settings.waitForExistence(timeout: 5), "More menu did not show Settings. Tree:\n\(app.debugDescription)")
         settings.tap()
     }
 

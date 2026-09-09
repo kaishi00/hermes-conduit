@@ -10,9 +10,9 @@
 
 import SwiftUI
 
-/// How the sessions sidebar is currently presented.
+/// How the inbox / sessions surface is currently presented.
 enum SidebarPresentation {
-    /// Modal drawer presented as a sheet over the chat (`appState.showSidebar`).
+    /// Compact layout uses inbox navigation (legacy name: drawer).
     case drawer
     /// Persistent column beside the chat on wide iPad windows. Part of the
     /// root layout — it never touches `appState.showSidebar`.
@@ -47,10 +47,10 @@ enum SidebarLayoutPolicy {
         return .persistent
     }
 
-    /// Whether a preferred-return-surface request should present the modal
-    /// drawer. An active persistent sidebar already *is* the Sessions
-    /// surface, so it consumes the request without opening a redundant
-    /// drawer; drawer layouts behave exactly as before.
+    /// Whether a preferred-return-surface request should present Inbox.
+    /// An active persistent sidebar already *is* the Inbox surface, so it
+    /// consumes the request without a redundant navigation; compact layouts
+    /// present Inbox when it is not already showing.
     static func shouldPresentDrawerForReturnSurface(
         persistentSidebarActive: Bool,
         drawerPresented: Bool

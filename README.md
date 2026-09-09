@@ -13,6 +13,7 @@ Start a conversation on desktop, pick it up on your phone. The session list is t
 
 ## Features
 
+- **Bots view** home by default (persistent DMs and groups when messaging is available); toggle to **Sessions** for the classic session list (New Chat, source filters, search), plus Scheduled jobs and Boards
 - **Streaming chat** with full Markdown (code blocks, math, Mermaid, task lists)
 - **Tool call inspection** and reasoning traces
 - **Voice mode** with push-to-talk, on-device speech recognition, server-side Whisper
@@ -20,9 +21,10 @@ Start a conversation on desktop, pick it up on your phone. The session list is t
 - **Model switching** and reasoning effort controls
 - **Slash commands** and workspace file browsing
 - **Session branching, pinning, and archiving**
-- **Capabilities tab** to toggle skills, tools, and MCP servers
 - **Scheduled jobs** viewer and connector monitoring
-- **Multi-profile support** with per-profile settings
+- **Kanban boards** for task workflows
+- **Multi-profile support** with per-profile settings, customizable animated characters, and photos
+- **Optional bot messaging** with persistent DMs and groups, capability-gated by installing [`bot-coms[messaging]`](https://github.com/jcmcneal/bot-coms) on a Hermes build with the backend plugin session service (see that repo’s [INSTALL](https://github.com/jcmcneal/bot-coms/blob/main/docs/INSTALL.md#persistent-messaging)); execution and session reuse belong to Hermes, with no separate messaging service to supervise
 - **Push notifications** for approvals, completed turns, failures, and background tasks
 - **Inline approvals** so you can approve or reject tool calls without typing
 - **Face ID** lock and credential storage
