@@ -496,8 +496,9 @@ assert_eq "infra recovery is not a test flake" "$(retried_classes)" "[]"
 # --- UI case 6: unclassified failure fails the lane without retry -------------
 begin_case "ui unclassified failure" "$WORK/u6"
 export INVOCATION_LOG="$WORK/u6-invocations.log"; : > "$INVOCATION_LOG"
-# Extraction must fail: the stub keeps its verdict to itself (no canned doc
-# is ever written), so the xcrun stub returns an invalid document.
+# Extraction must fail: the canned doc path never exists (and the stub never
+# writes it), so the xcrun stub returns an invalid document.
+export FAKE_CANNED="$WORK/does-not-exist-u6.json"
 export FAKE_UI_NO_DOC=1
 export FAKE_UI_FAIL_ONCE="" FAKE_UI_FAIL_ALWAYS="AlphaUITests" FAKE_UI_INFRA_ONCE="" FAKE_UI_HANG=""
 run_ui_lane "AlphaUITests,BetaUITests" 300 "AlphaUITests=200,BetaUITests=200"
