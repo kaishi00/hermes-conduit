@@ -272,19 +272,22 @@ RESET_USED=0
 ERASE_USED=0
 HUNG_CLASS=""
 
-# UI mode records the per-class attempt chain here (mode|n|class|status lines)
-# and serializes it to JSON at lane finish; unit mode passes JSON directly.
+# UI mode records the per-class attempt chain (mode|n|class|status lines) and
+# serializes it to JSON at lane finish; unit mode passes JSON directly and
+# creates none of these bookkeeping files.
 ATTEMPT_LINES="$RESULT_DIR/attempts-lines.txt"
-: > "$ATTEMPT_LINES"
-# UI classes that needed their targeted retry and PASSED on attempt 2: their
-# result bundles are preserved on a green lane and they are reported as
-# runner-level flakes instead of blending into a clean pass.
+# RETRIED = classes whose targeted retry rescued a TEST failure or timeout
+# (runner-level flakes; reported + both attempt bundles kept on a green
+# lane). INFRA_RECOVERED = the retry rescued an infrastructure wedge instead
+# (reported, but not a test flake; both attempt bundles also kept - the a1
+# bundle is the only evidence of the wedge).
 RETRIED_LINES="$RESULT_DIR/retried-classes.txt"
-: > "$RETRIED_LINES"
-# Classes whose retry rescued an INFRASTRUCTURE wedge (exit nonzero, zero
-# failing tests): reported separately from test flakes.
 INFRA_RECOVERED_LINES="$RESULT_DIR/infra-recovered-classes.txt"
-: > "$INFRA_RECOVERED_LINES"
+if [ "$KIND" = "ui" ]; then
+  : > "$ATTEMPT_LINES"
+  : > "$RETRIED_LINES"
+  : > "$INFRA_RECOVERED_LINES"
+fi
 
 record_attempt() { # $1=mode $2=n $3=class $4=status
   echo "$1|$2|$3|$4" >> "$ATTEMPT_LINES"
@@ -303,7 +306,11 @@ with open(sys.argv[1], encoding='utf-8') as fh:
         if len(fields) != 4:
             continue
         mode, n, cls, status = fields
-        out.append({'mode': mode, 'n': int(n), 'class': cls, 'status': status})
+        try:
+            n = int(n)
+        except ValueError:
+            continue
+        out.append({'mode': mode, 'n': n, 'class': cls, 'status': status})
 print(json.dumps(out))
 " "$ATTEMPT_LINES" 2>/dev/null || printf '[]'
 }
@@ -364,8 +371,9 @@ finish_lane() { # $1=status $2=attempts_json $3=isolation_json $4=exit_code
   # Bundles are created inside RESULT_DIR, so failed lanes upload them as
   # failure artifacts automatically. Successful lanes have already had their
   # timings extracted - delete the bundles to keep the artifact small, EXCEPT
-  # for classes that needed their targeted retry (both attempts are kept so a
-  # flake can be diagnosed from its failing attempt).
+  # for classes that needed their targeted retry (test-flake OR infra-wedge
+  # recovery: both attempt bundles are kept, since the attempt-1 bundle is
+  # the only evidence of what needed the retry).
   if [ "$1" = "pass" ]; then
     if [ "$KIND" = "ui" ]; then
       local b base cls
@@ -374,7 +382,8 @@ finish_lane() { # $1=status $2=attempts_json $3=isolation_json $4=exit_code
         base=$(basename "$b" .xcresult)
         cls=${base#class-}
         cls=${cls%-a[12]}
-        if ! grep -qx "$cls" "$RETRIED_LINES" 2>/dev/null; then
+        if ! grep -qx "$cls" "$RETRIED_LINES" 2>/dev/null \
+           && ! grep -qx "$cls" "$INFRA_RECOVERED_LINES" 2>/dev/null; then
           rm -rf "$b"
         fi
       done

@@ -221,10 +221,11 @@ ui_class_timeout = max(420s, ceil(estimate x 3.0))
 - estimates come from timing history (EWMA, outlier-clamped), so one
   anomalous run cannot inflate a class's watchdog;
 - UI lane ceilings are `sum(per-class budgets)`, and the outer GitHub job
-  ceiling is `ceil((2 x sum + (n_classes + 1) x 600s + 1200s) / 60)` minutes
-  - the worst in-script path is every class running its one targeted retry
-  AND each failing class paying one bounded erase/reboot recovery, plus
-  setup slack.
+  ceiling is `ceil((2 x sum + (n_classes + 1) x 600s + 2 x n_classes x 300s
+  + 1200s) / 60)` minutes - the worst in-script path is every class running
+  its one targeted retry, each failing class paying one bounded
+  erase/reboot recovery, and each attempt's timing extraction wedging to
+  the xcresulttool bound, plus setup slack.
 
 **Finalize grace.** When a watchdog expires but the log already carries
 xcodebuild's terminal result marker (`** TEST EXECUTE SUCCEEDED/FAILED **`),

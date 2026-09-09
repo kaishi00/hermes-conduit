@@ -28,6 +28,7 @@ from __future__ import annotations
 import argparse
 import datetime
 import json
+import math
 import os
 import re
 import subprocess
@@ -313,7 +314,8 @@ def merge_observation_parts(parts: list) -> dict:
     attempts keeps its LAST attempt's duration: the runner extracts every
     attempt, and on a green lane the last attempt of a retried class is the
     passing one. Case counts follow the same last-wins rule so a retried
-    class is not double-counted."""
+    class is not double-counted; a class whose duration is corrupt loses its
+    case count too, keeping counts consistent with classes."""
     classes: dict = {}
     cases_by_class: dict = {}
     bundles: list = []
@@ -321,21 +323,33 @@ def merge_observation_parts(parts: list) -> dict:
         if not isinstance(doc, dict) or not isinstance(doc.get("classes", {}), dict):
             warn("merge-parts: ignoring observation part with unexpected schema")
             continue
+        parsed_here: list = []
         for cname, secs in doc["classes"].items():
             # Extraction is best-effort: one corrupt duration must not lose
-            # the whole lane's timings.
+            # the whole lane's timings. nan/inf would survive float() and
+            # poison downstream planning math, so they are rejected too.
             try:
-                classes[cname] = float(secs)
+                value = float(secs)
+                if not math.isfinite(value) or value < 0:
+                    raise ValueError(secs)
             except (TypeError, ValueError):
                 warn(f"merge-parts: ignoring non-numeric duration for {cname!r}")
+                continue
+            classes[cname] = value
+            parsed_here.append(cname)
         for b in doc.get("bundles", []) or []:
             if b not in bundles:
                 bundles.append(b)
         counts = doc.get("counts", {})
         cases = counts.get("cases", 0) if isinstance(counts, dict) else 0
         if isinstance(cases, (int, float)) and not isinstance(cases, bool):
-            for cname in doc["classes"]:
-                cases_by_class[cname] = int(cases)
+            # Attribute this part's case count to the classes THIS part
+            # contributed (last-wins per class; single-class parts in
+            # practice, split evenly if a part ever carries several).
+            if parsed_here:
+                each, remainder = divmod(int(cases), len(parsed_here))
+                for i, cname in enumerate(parsed_here):
+                    cases_by_class[cname] = each + (1 if i < remainder else 0)
     return {
         "schema_version": SCHEMA_VERSION,
         "generated_at": now_iso(),
@@ -350,9 +364,12 @@ def merge_detail_parts(parts: list) -> dict:
     """parts: (filename, parsed doc) tuples in (class, attempt) order.
     Attempts and retried tests are concatenated across classes and attempts
     (each entry carries its class). FAILURES are per-class STATE, not an
-    append log: the class's highest attempt decides, so a class that failed
-    attempt 1 and passed the targeted retry leaves no stale failures behind
-    on a green lane."""
+    append log: the class's highest attempt PART decides, so a class that
+    failed attempt 1 and passed the targeted retry leaves no stale failures
+    behind on a green lane. (Limitation: if the winning attempt's extraction
+    itself failed, no part exists for it and the previous attempt's failures
+    stay - the lane verdict is never affected, and aggregate only renders
+    failures for non-pass lanes.)"""
     attempts: list = []
     retried: list = []
     failures_by_class: dict = {}
@@ -411,8 +428,9 @@ def merge_parts(parts_dir: str, observations_out: str, detail_out: str) -> int:
         with open(path, "w", encoding="utf-8", newline="\n") as fh:
             fh.write(json.dumps(doc, indent=2, sort_keys=True) + "\n")
     info(
-        f"merged {len(obs_files)} observation + {len(det_files)} detail parts "
-        f"({len(obs_doc['classes'])} classes, {len(det_doc['failures'])} failures)"
+        f"merged {len(obs_doc['classes'])} observation classes from "
+        f"{len(obs_files)} + {len(det_files)} part files "
+        f"({len(det_doc['failures'])} failures)"
     )
     return EXIT_OK
 

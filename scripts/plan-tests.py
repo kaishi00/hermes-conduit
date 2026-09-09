@@ -71,6 +71,10 @@ UI_CLASS_TIMEOUT_MULTIPLIER = 3.0
 # erase 180 + boot 60 + bootstatus 200 + diagnostics ~45, rounded up) - the
 # job ceiling must cover one per failing class, not a flat allowance.
 UI_RESET_OVERHEAD_S = 600
+# xcresulttool subprocess timeout in extract-test-timings.py. Extraction
+# runs outside the per-class budgets (after the invocation returns), up to
+# twice per class, so the ceiling reserves a bound for it as well.
+UI_EXTRACT_BOUND_S = 300
 JOB_TIMEOUT_MARGIN_S = 1200        # reset/erase overhead + setup/download slack
 UNIT_TARGET = "ConduitTests"
 UI_TARGET = "ConduitUITests"
@@ -247,7 +251,10 @@ def load_estimates(path, purpose: str) -> tuple:
         return {}, [f"{purpose} timing file has unexpected schema; falling back"]
     estimates, warns = {}, []
     for name, secs in doc["classes"].items():
-        if isinstance(secs, bool) or not isinstance(secs, (int, float)) or secs <= 0:
+        # math.isfinite: nan survives the <= 0 check and would poison every
+        # downstream ceil()/comparison in the planner.
+        if (isinstance(secs, bool) or not isinstance(secs, (int, float))
+                or not math.isfinite(secs) or secs <= 0):
             warns.append(f"{purpose}: ignoring non-positive timing for {name!r}")
             continue
         estimates[name] = float(secs)
@@ -312,14 +319,17 @@ def ui_class_timeout_for(estimate: float, floor_s: float, multiplier: float) -> 
 
 def ui_job_timeout_min(lane_timeout_s: int, n_classes: int, cfg: dict) -> int:
     """Outer emergency ceiling for a UI lane. Worst in-script path: every
-    class runs its targeted retry (2 x sum of per-class budgets) AND every
-    failing class pays one bounded erase/reboot recovery, plus setup/
-    download slack. Per-class watchdogs inside the runner are the real
-    enforcement; the ceiling only guarantees GitHub can never preempt
-    legitimate in-script recovery (which is what would erase the hung-class
-    attribution this lane exists to provide)."""
+    class runs its targeted retry (2 x sum of per-class budgets), each
+    failing class pays one bounded erase/reboot recovery, and per-attempt
+    timing extraction can wedge to the xcresulttool subprocess bound (up to
+    twice per class, outside the budgets) - plus setup/download slack.
+    Per-class watchdogs inside the runner are the real enforcement; the
+    ceiling only guarantees GitHub can never preempt legitimate in-script
+    recovery (which is what would erase the hung-class attribution this lane
+    exists to provide)."""
     total = (2 * lane_timeout_s
              + (n_classes + 1) * cfg["ui_reset_overhead_s"]
+             + 2 * n_classes * cfg["ui_extract_bound_s"]
              + cfg["job_timeout_margin_s"])
     return int(math.ceil(total / 60.0))
 
@@ -680,6 +690,7 @@ def _cfg_from_args(a) -> dict:
         "ui_class_timeout_min_s": a.ui_class_timeout_min_s,
         "ui_class_timeout_multiplier": a.ui_class_timeout_multiplier,
         "ui_reset_overhead_s": a.ui_reset_overhead_s,
+        "ui_extract_bound_s": a.ui_extract_bound_s,
         "job_timeout_margin_s": a.job_timeout_margin_s,
     }
 
@@ -753,6 +764,7 @@ def main(argv=None) -> int:
         p.add_argument("--ui-class-timeout-multiplier", type=float,
                        default=UI_CLASS_TIMEOUT_MULTIPLIER)
         p.add_argument("--ui-reset-overhead-s", type=int, default=UI_RESET_OVERHEAD_S)
+        p.add_argument("--ui-extract-bound-s", type=int, default=UI_EXTRACT_BOUND_S)
         p.add_argument("--job-timeout-margin-s", type=int, default=JOB_TIMEOUT_MARGIN_S)
         if cmd == "plan":
             p.add_argument("--out", default="plan.json")

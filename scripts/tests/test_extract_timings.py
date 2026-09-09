@@ -302,6 +302,28 @@ class MergePartsTests(unittest.TestCase):
             self.assertEqual(obs["classes"], {"GoodUITests": 7.0})
             self.assertEqual(obs["counts"], {"classes": 1, "cases": 3})
 
+    def test_merge_parts_rejects_non_finite_durations_and_ghost_counts(self):
+        # nan/inf survive float() and would poison downstream planning math;
+        # a rejected class must also lose its case count so counts stay
+        # consistent with classes.
+        with tempfile.TemporaryDirectory() as tmp:
+            parts = Path(tmp) / "parts"
+            parts.mkdir()
+            self._write_part(parts, "observations-NanUITests-a1.json",
+                             {"schema_version": 1, "bundles": [],
+                              "classes": {"NanUITests": "nan", "InfUITests": "inf"},
+                              "counts": {"classes": 2, "cases": 9}})
+            self._write_part(parts, "observations-OkUITests-a1.json",
+                             self._observation({"OkUITests": 2.0}, cases=1))
+            obs_out = Path(tmp) / "observations.json"
+            self.assertEqual(ext.merge_parts(str(parts), str(obs_out), ""), ext.EXIT_OK)
+            text = obs_out.read_text(encoding="utf-8")
+            self.assertNotIn("NaN", text)
+            self.assertNotIn("Infinity", text)
+            obs = json.loads(text)
+            self.assertEqual(obs["classes"], {"OkUITests": 2.0})
+            self.assertEqual(obs["counts"], {"classes": 1, "cases": 1})
+
     def test_merge_parts_case_counts_are_last_attempt_per_class(self):
         # A retried class must not count its cases twice.
         with tempfile.TemporaryDirectory() as tmp:

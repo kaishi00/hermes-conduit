@@ -501,6 +501,11 @@ assert_eq "Alpha invoked twice" "$(ui_invocations AlphaUITests)" "2"
 assert_eq "infra recovery is not a test flake" "$(retried_classes)" "[]"
 assert_eq "infra recovery reported separately" \
   "$(lane_field "['infra_recovered_classes']")" "['AlphaUITests']"
+if ls "$WORKCASE"/class-AlphaUITests-a*.xcresult >/dev/null 2>&1; then
+  ok "infra-recovered class keeps both attempt bundles on a green lane"
+else
+  bad "infra-recovered evidence bundles must be preserved on a green lane"
+fi
 
 # --- UI case 6: unclassified failure fails the lane without retry -------------
 begin_case "ui unclassified failure" "$WORK/u6"

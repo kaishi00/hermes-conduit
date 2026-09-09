@@ -177,6 +177,20 @@ class PlanningTests(unittest.TestCase):
             _d, plan = plan_from_tree(root, estimates)
             self.assertEqual(plan["estimates"]["AlphaTests"], 20.0)
 
+    def test_non_finite_timing_entries_are_ignored(self):
+        # nan survives a naive "secs <= 0" check and would poison every
+        # ceil()/comparison in the planner; inf does the same.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(make_repo(Path(tmp), ["AlphaTests"], []))
+            bad = Path(tmp) / "bad.json"
+            bad.write_text(
+                json.dumps({"classes": {"AlphaTests": float("nan"),
+                                        "BetaTests": float("inf")}}),
+                encoding="utf-8")
+            estimates, warns = planner.load_estimates(str(bad), "history")
+            self.assertEqual(estimates, {})
+            self.assertEqual(len(warns), 2)
+
     def test_no_history_still_generates_valid_plan(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(make_repo(Path(tmp), ["AlphaTests", "BetaTests"], ["UiTests"]))
@@ -345,9 +359,10 @@ class UiShardingTests(unittest.TestCase):
 
     def test_ui_job_ceiling_covers_worst_in_script_path(self):
         # Worst legit path: every class runs its targeted retry (2x its
-        # budget) AND every failing class pays one bounded erase/reboot
-        # recovery, plus setup slack. The GitHub ceiling must never preempt
-        # that path - otherwise the hung class is never named.
+        # budget), every failing class pays one bounded erase/reboot
+        # recovery, and every attempt's timing extraction can wedge to the
+        # xcresulttool bound - plus setup slack. The GitHub ceiling must
+        # never preempt that path - otherwise the hung class is never named.
         cfg = default_cfg()
         for n_classes in (1, 2, 3, 5):
             budgets = [planner.ui_class_timeout_for(est, cfg["ui_class_timeout_min_s"],
@@ -358,6 +373,7 @@ class UiShardingTests(unittest.TestCase):
                 lane_timeout, n_classes, cfg) * 60
             worst_path = (2 * lane_timeout
                           + (n_classes + 1) * cfg["ui_reset_overhead_s"]
+                          + 2 * n_classes * cfg["ui_extract_bound_s"]
                           + cfg["job_timeout_margin_s"])
             self.assertGreaterEqual(
                 ceiling_s, worst_path,
