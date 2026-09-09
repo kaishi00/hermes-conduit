@@ -205,6 +205,15 @@ def extract_from_doc(data: dict, xcresult_label: str) -> dict:
 # lane-result
 # ---------------------------------------------------------------------------
 
+def _num(value):
+    """Normalize a lane fact to None / int / bounded float so the artifact
+    never carries float noise like `600.0` for a whole-second budget."""
+    if value is None:
+        return None
+    number = float(value)
+    return int(number) if number.is_integer() else round(number, 3)
+
+
 def lane_result(args) -> int:
     result = {
         "schema_version": SCHEMA_VERSION,
@@ -213,9 +222,9 @@ def lane_result(args) -> int:
         "target": args.target,
         "classes": [c for c in args.classes.split(",") if c],
         "status": args.status,
-        "predicted_s": args.predicted_s,
-        "timeout_s": args.timeout_s,
-        "actual_s": round(args.actual_s, 1) if args.actual_s is not None else None,
+        "predicted_s": _num(args.predicted_s),
+        "timeout_s": _num(args.timeout_s),
+        "actual_s": _num(args.actual_s),
         "started_at": args.started_at,
         "finished_at": now_iso(),
         "attempts": [],

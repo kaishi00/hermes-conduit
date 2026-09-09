@@ -112,7 +112,7 @@ case "$UI_CLASS_TIMEOUT_MULTIPLIER" in
 esac
 
 LOG_DIR="$RESULT_DIR/logs"
-mkdir -p "$LOG_DIR"
+mkdir -p "$LOG_DIR" "$RESULT_DIR/parts"
 build_destination
 disable_pasteboard_sync
 
