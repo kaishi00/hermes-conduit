@@ -311,11 +311,24 @@ disable_pasteboard_sync() {
 }
 
 # Deterministic destination string shared by build and lane jobs. Sets the
-# global DESTINATION from SIMULATOR_NAME (and optional SIMULATOR_OS).
+# global DESTINATION from SIMULATOR_NAME (and optional SIMULATOR_OS). The
+# device is resolved once to its UDID so xcodebuild never disambiguates a
+# name that can match several runtimes/architectures - the source of the
+# "multiple matching destinations ... Using the first of multiple" warning,
+# where the wrong pick silently bypasses the OS pin. When the UDID cannot be
+# resolved (no jq, wedged CoreSimulatorService) the name-based form is kept
+# so behavior degrades to the historical lookup instead of failing.
 build_destination() {
   DESTINATION="platform=iOS Simulator,name=$SIMULATOR_NAME"
   if [ -n "${SIMULATOR_OS:-}" ]; then
     DESTINATION="$DESTINATION,OS=$SIMULATOR_OS"
+  fi
+  local udid
+  if udid=$(simulator_udid) && [ -n "$udid" ]; then
+    DESTINATION="platform=iOS Simulator,id=$udid"
+    echo "destination: '$SIMULATOR_NAME' resolved to UDID $udid"
+  else
+    echo "::warning::could not resolve simulator UDID - falling back to the name-based destination"
   fi
 }
 

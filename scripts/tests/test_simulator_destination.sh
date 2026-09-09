@@ -158,6 +158,44 @@ else
     "$(resolve_udid 'iPhone 99 Pro' '')" "MISS"
 fi
 
+echo "# build_destination: UDID-pinned destination with name-based fallback"
+
+resolve_destination() { # $1=name $2=os ('' = unset) $3=resolve-ok(1/0)
+  ( set -u
+    SIMULATOR_NAME="$1"
+    SIMULATOR_OS="$2"
+    FIXTURE="$WORK/devices.json"
+    # shellcheck disable=SC1090
+    source "$CILIB"
+    if [ "$3" = "1" ]; then
+      bounded_run() { BOUNDED_OUTPUT="$(cat "$FIXTURE")"; return 0; }
+    else
+      # A wedged CoreSimulatorService / missing jq: the UDID cannot be
+      # resolved and the historical name-based form must come back.
+      bounded_run() { return 1; }
+    fi
+    build_destination >/dev/null
+    printf '%s\n' "$DESTINATION"
+  )
+}
+
+if ! command -v jq >/dev/null 2>&1; then
+  skipping "build_destination fixture cases (jq not available on this host)"
+else
+  assert_eq "destination pins the resolved device UDID" \
+    "$(resolve_destination 'iPhone 17 Pro' '' 1)" \
+    "platform=iOS Simulator,id=UDID-26-10-PRO"
+  assert_eq "OS pin carries into the resolved destination" \
+    "$(resolve_destination 'iPhone 17 Pro' 26.0 1)" \
+    "platform=iOS Simulator,id=UDID-26-0-PRO"
+  assert_eq "unresolvable UDID falls back to the name-based destination" \
+    "$(resolve_destination 'iPhone 17 Pro' '' 0)" \
+    "platform=iOS Simulator,name=iPhone 17 Pro"
+  assert_eq "OS pin survives in the fallback destination" \
+    "$(resolve_destination 'iPhone 17 Pro' 26.1 0)" \
+    "platform=iOS Simulator,name=iPhone 17 Pro,OS=26.1"
+fi
+
 echo "# bash syntax gate"
 
 assert_status "ci-lib.sh parses" 0 bash -n "$CILIB"
