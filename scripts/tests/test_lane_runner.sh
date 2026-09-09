@@ -84,6 +84,11 @@ export PATH="$STUBS:$PATH"
 write_stub_xcodebuild
 write_stub_xcrun
 touch "$WORK/fake.xctestrun"
+# The stub xcodebuild invocations exit instantly; a full 15s poll interval
+# per invocation would dominate the suite's wall clock (and blow the plan
+# job's budget), so shrink the cadence. Behavior under test is unaffected:
+# the deadline math and kill semantics are identical at any cadence.
+export XCODEBUILD_POLL_INTERVAL_S=1
 
 begin_case() { # $1=name $2=workdir
   current="$1"

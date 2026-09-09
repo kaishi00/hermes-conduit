@@ -67,6 +67,12 @@ run_with_deadline() {
   local started deadline poll printed heartbeat timed_out now remaining runner grace
   local finalize_grace grace_granted marker
   finalize_grace="${XCODEBUILD_FINALIZE_GRACE_S:-180}"
+  # Poll cadence. 15s keeps hosted-lane log streaming and deadline checks
+  # cheap for minute-scale invocations; the state-machine tests shrink it so
+  # stub invocations (which exit instantly) do not each pay a full interval.
+  poll="${XCODEBUILD_POLL_INTERVAL_S:-15}"
+  case "$poll" in ''|*[!0-9]*) poll=15 ;; esac
+  [ "$poll" -lt 1 ] && poll=1
 
   started=$(date +%s)
   deadline=$(( started + budget ))
@@ -82,7 +88,6 @@ run_with_deadline() {
 
   # Poll liveness, stream new output, and enforce the deadline. Sleeps never
   # cross the deadline, so the kill lands within one poll of the budget.
-  poll=15
   printed=0
   heartbeat=0
   timed_out=0
@@ -108,7 +113,9 @@ run_with_deadline() {
     fi
     [ "$remaining" -lt "$poll" ] && poll="$remaining"
     sleep "$poll"
-    poll=15
+    poll="${XCODEBUILD_POLL_INTERVAL_S:-15}"
+    case "$poll" in ''|*[!0-9]*) poll=15 ;; esac
+    [ "$poll" -lt 1 ] && poll=1
   done
   stream_new_lines "$log" printed
 
