@@ -316,11 +316,13 @@ print(json.dumps(out))
 }
 
 retried_classes_csv() {
-  sed '/^$/d' "$RETRIED_LINES" | paste -sd ',' - 2>/dev/null || printf ''
+  [ -f "$RETRIED_LINES" ] || { printf ''; return 0; }
+  sed '/^$/d' "$RETRIED_LINES" 2>/dev/null | paste -sd ',' - 2>/dev/null || printf ''
 }
 
 infra_recovered_csv() {
-  sed '/^$/d' "$INFRA_RECOVERED_LINES" | paste -sd ',' - 2>/dev/null || printf ''
+  [ -f "$INFRA_RECOVERED_LINES" ] || { printf ''; return 0; }
+  sed '/^$/d' "$INFRA_RECOVERED_LINES" 2>/dev/null | paste -sd ',' - 2>/dev/null || printf ''
 }
 
 # Every class after $1 (the class being stopped on) that never ran must be

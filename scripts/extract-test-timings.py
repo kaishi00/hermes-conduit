@@ -331,7 +331,8 @@ def merge_observation_parts(parts: list) -> dict:
             try:
                 value = float(secs)
                 if not math.isfinite(value) or value < 0:
-                    raise ValueError(secs)
+                    raise ValueError(
+                        f"non-finite/negative duration for {cname!r}: {secs!r}")
             except (TypeError, ValueError):
                 warn(f"merge-parts: ignoring non-numeric duration for {cname!r}")
                 continue
@@ -342,14 +343,15 @@ def merge_observation_parts(parts: list) -> dict:
                 bundles.append(b)
         counts = doc.get("counts", {})
         cases = counts.get("cases", 0) if isinstance(counts, dict) else 0
-        if isinstance(cases, (int, float)) and not isinstance(cases, bool):
+        cases_ok = (isinstance(cases, (int, float)) and not isinstance(cases, bool)
+                    and math.isfinite(float(cases)))
+        if cases_ok and parsed_here:
             # Attribute this part's case count to the classes THIS part
             # contributed (last-wins per class; single-class parts in
             # practice, split evenly if a part ever carries several).
-            if parsed_here:
-                each, remainder = divmod(int(cases), len(parsed_here))
-                for i, cname in enumerate(parsed_here):
-                    cases_by_class[cname] = each + (1 if i < remainder else 0)
+            each, remainder = divmod(int(cases), len(parsed_here))
+            for i, cname in enumerate(parsed_here):
+                cases_by_class[cname] = each + (1 if i < remainder else 0)
     return {
         "schema_version": SCHEMA_VERSION,
         "generated_at": now_iso(),

@@ -328,8 +328,8 @@ def ui_job_timeout_min(lane_timeout_s: int, n_classes: int, cfg: dict) -> int:
     recovery (which is what would erase the hung-class attribution this lane
     exists to provide)."""
     total = (2 * lane_timeout_s
-             + (n_classes + 1) * cfg["ui_reset_overhead_s"]
-             + 2 * n_classes * cfg["ui_extract_bound_s"]
+             + (n_classes + 1) * cfg.get("ui_reset_overhead_s", UI_RESET_OVERHEAD_S)
+             + 2 * n_classes * cfg.get("ui_extract_bound_s", UI_EXTRACT_BOUND_S)
              + cfg["job_timeout_margin_s"])
     return int(math.ceil(total / 60.0))
 
