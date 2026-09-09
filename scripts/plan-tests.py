@@ -9,8 +9,12 @@ Replaces the static unit-a..unit-d shard system:
     silently miss CI);
   * assigns unit classes to a dynamic number of lanes with longest-
     processing-time-first balancing over historical duration estimates;
+  * balances UI classes into their own parallel lanes the same way, and
+    derives a PER-CLASS watchdog for every UI class (each class runs as its
+    own xcodebuild invocation, so a hang is attributed - and retried - at
+    class granularity);
   * derives measured per-lane watchdog budgets from those predictions;
-  * emits a GitHub Actions matrix JSON for dynamic unit lanes.
+  * emits GitHub Actions matrix JSON for the dynamic unit AND UI lanes.
 
 Subcommands
 -----------
@@ -45,22 +49,24 @@ MAX_LANES = 8
 TARGET_LANE_BUDGET_S = 240.0       # scale-out threshold per lane
 LANE_TIMEOUT_MIN_S = 600           # healthy lanes never get less than 10 min
 LANE_TIMEOUT_MULTIPLIER = 2.5      # headroom over prediction
-# UI lane floor. Raised from 600s after run #500: a healthy hosted UI
-# invocation spends ~2.5 min on xcodebuild/automation-session/simulator
-# startup BEFORE the first test and ~1 min finalizing the xcresult after
-# the last one, so ~225s of predicted tests needs ~500-600s wall clock on
-# the happy path alone - the old floor left no room for the native retry
-# iteration and was crossed while the tests were SUCCEEDING.
-UI_TIMEOUT_MIN_S = 900
-# Per-invocation Xcode/simulator overhead the UI lane pays exactly once per
-# xcodebuild run, independent of how long the tests take: process startup,
-# automation-session + simulator boot, app install, and xcresult
-# finalization. Measured on macos-26 hosted runners (~2.5 min before the
-# first test starts, ~1 min of teardown).
-UI_INVOCATION_OVERHEAD_S = 240
-# Native flake retry can execute the full class list a second time inside
-# the same invocation when a failure survives iteration 1.
-UI_RETRY_HEADROOM_FACTOR = 2.0
+# UI sharding. UI classes run in their own parallel lanes (same LPT balance
+# as units), each class as an INDEPENDENT xcodebuild invocation under its own
+# per-class watchdog. ui_target_budget_s decides how many lanes the measured
+# suite is worth; the clamp bounds hosted-runner usage (3 lanes for today's
+# ~22 min of cumulative UI work, more only if the suite grows).
+UI_TARGET_BUDGET_S = 480.0
+UI_MIN_LANES = 3
+UI_MAX_LANES = 4
+# Per-class UI watchdog = max(floor, estimate x multiplier). The floor covers
+# the fixed xcodebuild/automation-session/simulator overhead a hosted
+# invocation pays around even a tiny class (~2.5 min before the first test +
+# ~1 min finalizing the xcresult, measured on macos-26; run #500), with
+# headroom for the targeted one-shot retry of a legitimately slow class; the
+# multiplier gives slow-but-healthy classes room on slower runners without
+# letting any single class hold a lane hostage for the old 48-minute
+# suite-level watchdog.
+UI_CLASS_TIMEOUT_MIN_S = 420
+UI_CLASS_TIMEOUT_MULTIPLIER = 3.0
 JOB_TIMEOUT_MARGIN_S = 1200        # reset/erase overhead + setup/download slack
 UNIT_TARGET = "ConduitTests"
 UI_TARGET = "ConduitUITests"
@@ -274,25 +280,40 @@ def longest_processing_time_first(items: list, n_lanes: int) -> list:
     return lanes
 
 
+def ui_lane_count_for(total_predicted: float, n_classes: int, cfg: dict) -> int:
+    """Parallel UI lanes for the measured suite. Same shape as the unit
+    policy: ceil(total / per-lane budget), clamped, capped by class count so
+    no lane is ever empty. Today's ~1310s of UI work lands on 3 lanes."""
+    if n_classes == 0:
+        return 0
+    n = math.ceil(total_predicted / cfg["ui_target_budget_s"]) if total_predicted > 0 else 1
+    n = max(cfg["ui_min_lanes"], n)
+    n = min(cfg["ui_max_lanes"], n)
+    return min(n, n_classes)
+
+
 def timeout_for(predicted: float, floor_s: float, multiplier: float) -> int:
     return max(int(floor_s), int(math.ceil(predicted * multiplier)))
 
 
-def ui_timeout_for(predicted: float, floor_s: float, overhead_s: float,
-                   retry_factor: float) -> int:
-    """UI watchdog = predicted test time under both native iterations plus
-    one invocation's Xcode/simulator overhead, never below the floor.
+def ui_class_timeout_for(estimate: float, floor_s: float, multiplier: float) -> int:
+    """Watchdog for ONE UI test class (it runs as its own xcodebuild
+    invocation). The floor carries the fixed per-invocation simulator/Xcode
+    overhead that dominates small classes; the multiplier gives big classes
+    proportional headroom. With today's estimates this bounds worst-case hang
+    detection at 7-17 minutes per class instead of the old 48-minute
+    suite-level watchdog."""
+    return max(int(floor_s), int(math.ceil(estimate * multiplier)))
 
-    Unlike unit lanes (many classes amortizing one simulator boot), a UI
-    invocation pays large fixed overhead around the tests, and the native
-    retry can run the whole (small) class list twice. Formula:
 
-        timeout = max(floor, ceil(predicted * retry_factor + overhead))
-
-    With the measured overhead this yields 900s for today's ~226s UI
-    prediction (the old 600s floor was crossed by SUCCEEDING runs) and
-    grows linearly if the UI suite expands."""
-    return max(int(floor_s), int(math.ceil(predicted * retry_factor + overhead_s)))
+def ui_job_timeout_min(lane_timeout_s: int, cfg: dict) -> int:
+    """Outer emergency ceiling for a UI lane: worst in-script path is every
+    class running its targeted retry (2 x sum of per-class budgets) plus
+    bounded resets and setup/download slack. Per-class watchdogs inside the
+    runner are the real enforcement; the ceiling only guarantees GitHub can
+    never preempt legitimate in-script recovery."""
+    total = 2 * lane_timeout_s + cfg["job_timeout_margin_s"]
+    return int(math.ceil(total / 60.0))
 
 
 def job_timeout_min(lane_timeout_s: int, cfg: dict) -> int:
@@ -339,42 +360,55 @@ def build_plan(discovery: dict, cfg: dict, estimates: dict) -> dict:
             "job_timeout_min": job_timeout_min(timeout, cfg),
         })
 
-    ui_lane = None
+    ui_lanes = []
     if ui_names:
-        predicted = sum(ui_est.values())
-        timeout = ui_timeout_for(
-            predicted,
-            cfg["ui_timeout_min_s"],
-            cfg["ui_invocation_overhead_s"],
-            cfg["ui_retry_headroom_factor"],
-        )
-        ui_lane = {
-            "lane": "ui",
-            "target": UI_TARGET,
-            "classes": ui_names,
-            "class_estimates": ",".join(
-                "{0}={1:.1f}".format(c, ui_est[c]) for c in ui_names),
-            "predicted_s": round(predicted, 1),
-            "timeout_s": timeout,
-            "job_timeout_min": job_timeout_min(timeout, cfg),
-        }
+        ui_items = sorted(ui_est.items(), key=lambda kv: (-kv[1], kv[0]))
+        ui_total = sum(s for _n, s in ui_items)
+        n_ui_lanes = ui_lane_count_for(ui_total, len(ui_items), cfg)
+        for i, classes in enumerate(longest_processing_time_first(ui_items, n_ui_lanes), start=1):
+            predicted = sum(ui_est[c] for c in classes)
+            # Watchdog budget per class, from the same timing data that
+            # balanced the lane; the runner enforces them one class at a time.
+            class_timeouts = {
+                c: ui_class_timeout_for(
+                    ui_est[c], cfg["ui_class_timeout_min_s"],
+                    cfg["ui_class_timeout_multiplier"])
+                for c in classes
+            }
+            lane_timeout = sum(class_timeouts.values())
+            ui_lanes.append({
+                "lane": f"ui-{i}",
+                "target": UI_TARGET,
+                "classes": classes,
+                "class_estimates": ",".join(
+                    "{0}={1:.1f}".format(c, ui_est[c]) for c in classes),
+                "class_timeouts": ",".join(
+                    "{0}={1}".format(c, class_timeouts[c]) for c in classes),
+                "predicted_s": round(predicted, 1),
+                "timeout_s": lane_timeout,
+                "job_timeout_min": ui_job_timeout_min(lane_timeout, cfg),
+            })
 
     plan = {
         "schema_version": SCHEMA_VERSION,
         "config": {k: cfg[k] for k in (
             "default_estimate_s", "min_lanes", "max_lanes", "target_budget_s",
-            "lane_timeout_min_s", "timeout_multiplier", "ui_timeout_min_s",
-            "ui_invocation_overhead_s", "ui_retry_headroom_factor",
-            "job_timeout_margin_s")},
+            "lane_timeout_min_s", "timeout_multiplier", "ui_target_budget_s",
+            "ui_min_lanes", "ui_max_lanes", "ui_class_timeout_min_s",
+            "ui_class_timeout_multiplier", "job_timeout_margin_s")},
         "inventory": {"unit": unit_names, "ui": ui_names},
         "estimates": {n: round(v, 3) for n, v in sorted(
             list(unit_est.items()) + list(ui_est.items()))},
         "unit_lanes": unit_lanes,
-        "ui_lane": ui_lane,
+        "ui_lanes": ui_lanes,
         "imbalance_predicted_pct": round(
             imbalance_pct([l["predicted_s"] for l in unit_lanes]), 1),
+        "ui_imbalance_predicted_pct": round(
+            imbalance_pct([l["predicted_s"] for l in ui_lanes]), 1),
         "total_predicted_s": round(total, 1),
+        "ui_predicted_s": round(sum(ui_est.values()), 1),
         "lane_count": n_lanes,
+        "ui_lane_count": len(ui_lanes),
     }
     return plan
 
@@ -404,11 +438,20 @@ def validate_plan(plan: dict, discovery: dict) -> list:
     if len(assigned) != len(set(assigned)):
         errors.append("a unit class is assigned to more than one lane")
 
-    ui_assigned = list(plan["ui_lane"]["classes"]) if plan["ui_lane"] else []
+    ui_assigned = []
+    for lane in plan["ui_lanes"]:
+        if not lane["classes"]:
+            errors.append(f"empty UI lane generated: {lane['lane']}")
+        ui_assigned.extend(lane["classes"])
     if sorted(ui_assigned) != sorted(ui_names):
-        errors.append(
-            f"UI plan mismatch: planned {ui_assigned} vs discovered {ui_names}"
-        )
+        missing = sorted(set(ui_names) - set(ui_assigned))
+        extra = sorted(set(ui_assigned) - set(ui_names))
+        if missing:
+            errors.append(f"UI classes missing from plan: {missing}")
+        if extra:
+            errors.append(f"unknown classes in UI lanes: {extra}")
+    if len(ui_assigned) != len(set(ui_assigned)):
+        errors.append("a UI class is assigned to more than one lane")
     if set(ui_assigned) & set(assigned):
         errors.append("UI classes leaked into unit lanes")
 
@@ -422,6 +465,24 @@ def validate_plan(plan: dict, discovery: dict) -> list:
             f"lane count {plan['lane_count']} outside configured bounds "
             f"[{lo}, {hi}]"
         )
+    n_ui = len(ui_names)
+    ui_lo = min(plan["config"]["ui_min_lanes"], n_ui)
+    if plan["ui_lanes"]:
+        if plan["ui_lane_count"] < ui_lo or plan["ui_lane_count"] > plan["config"]["ui_max_lanes"]:
+            errors.append(
+                f"UI lane count {plan['ui_lane_count']} outside configured "
+                f"bounds [{ui_lo}, {plan['config']['ui_max_lanes']}]"
+            )
+        for lane in plan["ui_lanes"]:
+            timeout_names = set()
+            for pair in lane["class_timeouts"].split(","):
+                if "=" in pair:
+                    timeout_names.add(pair.split("=", 1)[0])
+            for c in lane["classes"]:
+                if c not in timeout_names:
+                    errors.append(f"UI lane {lane['lane']} has no watchdog for {c}")
+    elif ui_names:
+        errors.append("UI classes discovered but no UI lanes planned")
     return errors
 
 
@@ -449,23 +510,26 @@ def plan_summary_md(plan: dict, discovery: dict, source: str) -> str:
             f"| {lane['lane']} | {lane['predicted_s']:.0f}s | {lane['timeout_s']}s "
             f"| {lane['job_timeout_min']}m | {len(lane['classes'])} |"
         )
-    if plan["ui_lane"]:
-        ui = plan["ui_lane"]
+    for lane in plan["ui_lanes"]:
+        timeouts = [int(p.split("=", 1)[1]) for p in lane["class_timeouts"].split(",") if "=" in p]
         lines.append(
-            f"| {ui['lane']} | {ui['predicted_s']:.0f}s | {ui['timeout_s']}s "
-            f"| {ui['job_timeout_min']}m | {len(ui['classes'])} |"
+            f"| {lane['lane']} (UI) | {lane['predicted_s']:.0f}s | "
+            f"{max(timeouts)}s per class "
+            f"| {lane['job_timeout_min']}m | {len(lane['classes'])} |"
         )
     lines.append("")
-    lines.append(f"- Predicted imbalance: **{plan['imbalance_predicted_pct']}%**")
+    lines.append(f"- Predicted imbalance: **{plan['imbalance_predicted_pct']}%** "
+                 f"(unit) / **{plan['ui_imbalance_predicted_pct']}%** (UI)")
     lines.append("")
     lines.append("<details><summary>Lane membership</summary>")
     lines.append("")
     for lane in plan["unit_lanes"]:
         lines.append(f"- **{lane['lane']}**: {', '.join(lane['classes'])}")
-    if plan["ui_lane"]:
-        lines.append(
-            f"- **{plan['ui_lane']['lane']}**: {', '.join(plan['ui_lane']['classes'])}"
-        )
+    for lane in plan["ui_lanes"]:
+        timeouts = dict(p.split("=", 1) for p in lane["class_timeouts"].split(",") if p)
+        members = ", ".join(
+            f"{c} (watchdog {timeouts.get(c, '?')}s)" for c in lane["classes"])
+        lines.append(f"- **{lane['lane']}** (per-class invocations): {members}")
     lines.append("")
     lines.append("</details>")
     lines.append("")
@@ -483,6 +547,22 @@ def matrix_json(plan: dict) -> str:
             "target": lane["target"],
             "classes": ",".join(lane["classes"]),
             "class_estimates": estimates,
+            "predicted_s": lane["predicted_s"],
+            "timeout_s": lane["timeout_s"],
+            "job_timeout_min": lane["job_timeout_min"],
+        })
+    return json.dumps({"include": include}, sort_keys=False)
+
+
+def ui_matrix_json(plan: dict) -> str:
+    include = []
+    for lane in plan["ui_lanes"]:
+        include.append({
+            "lane": lane["lane"],
+            "target": lane["target"],
+            "classes": ",".join(lane["classes"]),
+            "class_estimates": lane["class_estimates"],
+            "class_timeouts": lane["class_timeouts"],
             "predicted_s": lane["predicted_s"],
             "timeout_s": lane["timeout_s"],
             "job_timeout_min": lane["job_timeout_min"],
@@ -580,9 +660,11 @@ def _cfg_from_args(a) -> dict:
         "target_budget_s": a.target_budget_s,
         "lane_timeout_min_s": a.lane_timeout_min_s,
         "timeout_multiplier": a.timeout_multiplier,
-        "ui_timeout_min_s": a.ui_timeout_min_s,
-        "ui_invocation_overhead_s": a.ui_invocation_overhead_s,
-        "ui_retry_headroom_factor": a.ui_retry_headroom_factor,
+        "ui_target_budget_s": a.ui_target_budget_s,
+        "ui_min_lanes": a.ui_min_lanes,
+        "ui_max_lanes": a.ui_max_lanes,
+        "ui_class_timeout_min_s": a.ui_class_timeout_min_s,
+        "ui_class_timeout_multiplier": a.ui_class_timeout_multiplier,
         "job_timeout_margin_s": a.job_timeout_margin_s,
     }
 
@@ -624,13 +706,13 @@ def _human_report(plan: dict, discovery: dict, source: str) -> str:
             "  {0}: predicted {1}s, watchdog {2}s, job ceiling {3}m, {4} classes".format(
                 lane["lane"], lane["predicted_s"], lane["timeout_s"],
                 lane["job_timeout_min"], len(lane["classes"])))
-    if plan["ui_lane"]:
-        ui = plan["ui_lane"]
+    for lane in plan["ui_lanes"]:
         out.append(
-            "  {0}: predicted {1}s, watchdog {2}s, job ceiling {3}m".format(
-                ui["lane"], ui["predicted_s"], ui["timeout_s"],
-                ui["job_timeout_min"]))
-    out.append(f"predicted imbalance: {plan['imbalance_predicted_pct']}%")
+            "  {0} (UI): predicted {1}s, per-class watchdogs [{2}], job ceiling {3}m".format(
+                lane["lane"], lane["predicted_s"], lane["class_timeouts"],
+                lane["job_timeout_min"]))
+    out.append(f"predicted imbalance: {plan['imbalance_predicted_pct']}% unit / "
+               f"{plan['ui_imbalance_predicted_pct']}% UI")
     return "\n".join(out)
 
 
@@ -649,13 +731,17 @@ def main(argv=None) -> int:
         p.add_argument("--target-budget-s", type=float, default=TARGET_LANE_BUDGET_S)
         p.add_argument("--lane-timeout-min-s", type=int, default=LANE_TIMEOUT_MIN_S)
         p.add_argument("--timeout-multiplier", type=float, default=LANE_TIMEOUT_MULTIPLIER)
-        p.add_argument("--ui-timeout-min-s", type=int, default=UI_TIMEOUT_MIN_S)
-        p.add_argument("--ui-invocation-overhead-s", type=int, default=UI_INVOCATION_OVERHEAD_S)
-        p.add_argument("--ui-retry-headroom-factor", type=float, default=UI_RETRY_HEADROOM_FACTOR)
+        p.add_argument("--ui-target-budget-s", type=float, default=UI_TARGET_BUDGET_S)
+        p.add_argument("--ui-min-lanes", type=int, default=UI_MIN_LANES)
+        p.add_argument("--ui-max-lanes", type=int, default=UI_MAX_LANES)
+        p.add_argument("--ui-class-timeout-min-s", type=int, default=UI_CLASS_TIMEOUT_MIN_S)
+        p.add_argument("--ui-class-timeout-multiplier", type=float,
+                       default=UI_CLASS_TIMEOUT_MULTIPLIER)
         p.add_argument("--job-timeout-margin-s", type=int, default=JOB_TIMEOUT_MARGIN_S)
         if cmd == "plan":
             p.add_argument("--out", default="plan.json")
             p.add_argument("--matrix-out", default="")
+            p.add_argument("--ui-matrix-out", default="")
             p.add_argument("--summary-out", default="")
 
     p = sub.add_parser("audit-xctestrun")
@@ -716,6 +802,10 @@ def main(argv=None) -> int:
         with open(a.matrix_out, "w", encoding="utf-8", newline="\n") as fh:
             fh.write(matrix_json(plan))
         print(f"matrix written: {a.matrix_out}")
+    if a.ui_matrix_out:
+        with open(a.ui_matrix_out, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(ui_matrix_json(plan))
+        print(f"UI matrix written: {a.ui_matrix_out}")
     if a.summary_out:
         with open(a.summary_out, "w", encoding="utf-8", newline="\n") as fh:
             fh.write(plan_summary_md(plan, discovery, source))

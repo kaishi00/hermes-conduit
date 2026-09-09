@@ -51,9 +51,11 @@ def default_cfg(**overrides):
         "target_budget_s": 240.0,
         "lane_timeout_min_s": 600,
         "timeout_multiplier": 2.5,
-        "ui_timeout_min_s": 900,
-        "ui_invocation_overhead_s": 240,
-        "ui_retry_headroom_factor": 2.0,
+        "ui_target_budget_s": 480.0,
+        "ui_min_lanes": 3,
+        "ui_max_lanes": 4,
+        "ui_class_timeout_min_s": 420,
+        "ui_class_timeout_multiplier": 3.0,
         "job_timeout_margin_s": 1200,
     }
     cfg.update(overrides)

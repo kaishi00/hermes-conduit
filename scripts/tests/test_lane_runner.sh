@@ -124,6 +124,72 @@ print([c['status'] for c in (d.get('isolation') or {}).get('classes', [])])
 " "$WORKCASE/lane-result.json" 2>/dev/null || echo NONE
 }
 
+retried_classes() {
+  python3 -c "
+import json, sys
+with open(sys.argv[1]) as fh:
+    d = json.load(fh)
+print(d.get('retried_classes'))
+" "$WORKCASE/lane-result.json" 2>/dev/null || echo NONE
+}
+
+run_ui_lane() { # $1=classes $2=lane-timeout(bookkeeping) $3=class-timeouts
+  _classes="$1"; _timeout="$2"; _cto="$3"
+  CLASS_TIMEOUT_MIN_S="1" CLASS_TIMEOUT_MULTIPLIER="0.1"     bash "$SCRIPTS/ci-test-lane.sh"     --kind ui --lane ui-t --target ConduitUITests     --classes "$_classes"     --class-timeouts "$_cto"     --predicted 42 --timeout "$_timeout"     --xctestrun "$WORK/fake.xctestrun"     --result-dir "$WORKCASE" >"$WORKCASE/stdout.log" 2>&1
+  echo $? > "$WORKCASE/exit-code"
+}
+
+# Stub that decides per class AND per attempt: classes listed in
+# $FAKE_UI_FAIL_ONCE fail attempt 1 (exit 65, Failed canned doc) and pass
+# their retry; $FAKE_UI_FAIL_ALWAYS classes always fail; $FAKE_UI_HANG
+# classes sleep past any budget; $FAKE_UI_INFRA_ONCE classes fail attempt 1
+# with an infrastructure-looking exit 70 and zero failing tests. Every
+# invocation rewrites the canned xcresult document to match its own verdict,
+# so the runner's classification sees the right detail.
+write_ui_stub_xcodebuild() {
+  cat > "$STUBS/xcodebuild" <<'EOF'
+#!/bin/bash
+cls=$(printf '%s\n' "$@" | grep 'only-testing:' | head -1 | sed 's|.*/||')
+attempt=a1
+printf '%s\n' "$@" | grep -q '\-a2\.xcresult' && attempt=a2
+echo "ui:$cls:$attempt" >> "$INVOCATION_LOG"
+# Real xcodebuild creates the result bundle directory; create it so cleanup
+# and bundle-preservation assertions exercise the real paths.
+for a in "$@"; do
+  case "$a" in
+    *.xcresult) mkdir -p "$a" ;;
+  esac
+done
+write_doc() { # $1=TestClass $2=Passed|Failed
+  [ -n "${FAKE_UI_NO_DOC:-}" ] && return 0
+  cat > "$FAKE_CANNED" <<DOC
+{"testNodes": [{"nodeType": "Test Plan", "name": "Conduit", "result": "Passed",
+  "children": [{"nodeType": "UI test bundle", "name": "ConduitUITests", "result": "Passed",
+    "children": [{"nodeType": "Test Suite", "name": "$1", "result": "Passed",
+      "children": [{"nodeType": "Test Case", "name": "testC()", "result": "$2",
+        "durationInSeconds": 0.1}]}]}]}]}
+DOC
+}
+case " $FAKE_UI_FAIL_ONCE " in *" $cls "*)
+  if [ "$attempt" = a1 ]; then write_doc "$cls" Failed; echo "Test Case failed (stub)"; exit 65; fi
+  write_doc "$cls" Passed; exit 0 ;;
+esac
+case " $FAKE_UI_FAIL_ALWAYS " in *" $cls "*) write_doc "$cls" Failed; echo "Test Case failed (stub)"; exit 65 ;; esac
+case " $FAKE_UI_INFRA_ONCE " in *" $cls "*)
+  if [ "$attempt" = a1 ]; then write_doc "$cls" Passed; echo "simulator crashed (stub)"; exit 70; fi
+  write_doc "$cls" Passed; exit 0 ;;
+esac
+case " $FAKE_UI_HANG " in *" $cls "*) sleep 300; exit 0 ;; esac
+write_doc "$cls" Passed
+exit 0
+EOF
+  chmod +x "$STUBS/xcodebuild"
+}
+
+ui_invocations() { # $1=class -> how many times that class was invoked
+  grep -c "^ui:$1:" "$INVOCATION_LOG" 2>/dev/null || true
+}
+
 
 
 # --- case 1: pass -------------------------------------------------------------
@@ -328,6 +394,133 @@ run_lane "AlphaTests,BetaTests" 3 fail65 1
 assert_eq "exit code" "$(cat "$WORKCASE/exit-code")" "1"
 assert_eq "verdict" "$(lane_field "['status']")" "fail"
 assert_eq "isolation statuses" "$(isolation_statuses)" "['fail', 'fail']"
+
+echo ""
+echo "unit+isolation state machine: $pass_count passed, $fail_count failed so far"
+
+# ===========================================================================
+# UI lane mode: per-class invocations, per-class watchdogs, targeted retry.
+# Runs even if unit cases failed so every case reports in one pass; the
+# single summary at the bottom decides the exit code.
+# ===========================================================================
+
+write_stub_xcrun
+write_ui_stub_xcodebuild
+touch "$WORK/fake.xctestrun"
+export FAKE_CANNED="$WORK/canned-ui.json"
+
+# --- UI case 1: every class passes once - one invocation per class ------------
+begin_case "ui all pass" "$WORK/u1"
+export INVOCATION_LOG="$WORK/u1-invocations.log"; : > "$INVOCATION_LOG"
+export FAKE_UI_FAIL_ONCE="" FAKE_UI_FAIL_ALWAYS="" FAKE_UI_INFRA_ONCE="" FAKE_UI_HANG=""
+run_ui_lane "AlphaUITests,BetaUITests" 300 "AlphaUITests=200,BetaUITests=200"
+assert_eq "exit code" "$(cat "$WORKCASE/exit-code")" "0"
+assert_eq "verdict" "$(lane_field "['status']")" "pass"
+assert_eq "attempts" "$(attempts_statuses)" "['passed', 'passed']"
+assert_eq "Alpha invoked once" "$(ui_invocations AlphaUITests)" "1"
+assert_eq "Beta invoked once" "$(ui_invocations BetaUITests)" "1"
+if grep -q -- "-retry-tests-on-failure" "$WORKCASE/stdout.log"; then
+  bad "UI classes must not run under native multi-iteration retry"
+else
+  ok "UI class invocations run without native retry flags"
+fi
+if [ -f "$WORKCASE/lane-result.json" ] && grep -q '"class": "AlphaUITests"' "$WORKCASE/lane-result.json"; then
+  ok "attempt chain records the owning class"
+else
+  bad "attempt chain must record the owning class"
+fi
+
+# --- UI case 2: flaky class passes on the targeted retry ----------------------
+begin_case "ui flaky class recovered" "$WORK/u2"
+export INVOCATION_LOG="$WORK/u2-invocations.log"; : > "$INVOCATION_LOG"
+export FAKE_UI_FAIL_ONCE="BetaUITests"
+run_ui_lane "AlphaUITests,BetaUITests,GammaUITests" 300 "AlphaUITests=200,BetaUITests=200,GammaUITests=200"
+assert_eq "exit code" "$(cat "$WORKCASE/exit-code")" "0"
+assert_eq "verdict" "$(lane_field "['status']")" "pass"
+assert_eq "attempts" "$(attempts_statuses)" "['passed', 'test-failures', 'passed', 'passed']"
+assert_eq "retried classes" "$(retried_classes)" "['BetaUITests']"
+assert_eq "Alpha never rerun" "$(ui_invocations AlphaUITests)" "1"
+assert_eq "Beta retried exactly once" "$(ui_invocations BetaUITests)" "2"
+assert_eq "Gamma still ran" "$(ui_invocations GammaUITests)" "1"
+if grep -q "PASSED on its targeted retry" "$WORKCASE/stdout.log"; then
+  ok "recovered flake reported loudly"
+else
+  bad "a retry pass must be reported as a flake, not hidden"
+fi
+if [ -d "$WORKCASE" ] && ls "$WORKCASE"/class-BetaUITests-a*.xcresult >/dev/null 2>&1; then
+  ok "both flake attempt bundles kept on a green lane"
+else
+  bad "flake attempt bundles must be preserved on a green lane"
+fi
+if ls "$WORKCASE"/class-AlphaUITests-a*.xcresult >/dev/null 2>&1; then
+  bad "clean class bundles should be pruned from a green lane artifact"
+else
+  ok "clean class bundles pruned from a green lane artifact"
+fi
+
+# --- UI case 3: class failing both attempts fails the lane, others still run --
+begin_case "ui class fails twice" "$WORK/u3"
+export INVOCATION_LOG="$WORK/u3-invocations.log"; : > "$INVOCATION_LOG"
+export FAKE_UI_FAIL_ONCE="" FAKE_UI_FAIL_ALWAYS="BetaUITests" FAKE_UI_INFRA_ONCE="" FAKE_UI_HANG=""
+run_ui_lane "AlphaUITests,BetaUITests,GammaUITests" 300 "AlphaUITests=200,BetaUITests=200,GammaUITests=200"
+assert_eq "exit code" "$(cat "$WORKCASE/exit-code")" "1"
+assert_eq "verdict" "$(lane_field "['status']")" "fail"
+assert_eq "attempts" "$(attempts_statuses)" "['passed', 'test-failures', 'test-failures', 'passed']"
+assert_eq "Beta retried once, not looped" "$(ui_invocations BetaUITests)" "2"
+assert_eq "Gamma ran after the failure" "$(ui_invocations GammaUITests)" "1"
+assert_eq "no false flake" "$(retried_classes)" "[]"
+
+# --- UI case 4: hung class identified after its one retry; lane stops ---------
+begin_case "ui hang identified and lane stops" "$WORK/u4"
+export INVOCATION_LOG="$WORK/u4-invocations.log"; : > "$INVOCATION_LOG"
+export FAKE_UI_FAIL_ONCE="" FAKE_UI_FAIL_ALWAYS="" FAKE_UI_INFRA_ONCE="" FAKE_UI_HANG="BetaUITests"
+run_ui_lane "AlphaUITests,BetaUITests,GammaUITests" 300 "AlphaUITests=200,BetaUITests=3,GammaUITests=200"
+assert_eq "exit code" "$(cat "$WORKCASE/exit-code")" "1"
+assert_eq "verdict" "$(lane_field "['status']")" "timeout"
+assert_eq "hung class" "$(lane_field "['hung_class']")" "BetaUITests"
+assert_eq "attempts" "$(attempts_statuses)" "['passed', 'timeout', 'timeout', 'not_diagnosed']"
+assert_eq "Beta hung twice, then stopped" "$(ui_invocations BetaUITests)" "2"
+assert_eq "Gamma never ran on the contaminated simulator" "$(ui_invocations GammaUITests)" "0"
+
+# --- UI case 5: infra failure recovers via the single class retry -------------
+begin_case "ui infra failure recovers" "$WORK/u5"
+export INVOCATION_LOG="$WORK/u5-invocations.log"; : > "$INVOCATION_LOG"
+export FAKE_UI_FAIL_ONCE="" FAKE_UI_FAIL_ALWAYS="" FAKE_UI_INFRA_ONCE="AlphaUITests" FAKE_UI_HANG=""
+run_ui_lane "AlphaUITests" 300 "AlphaUITests=200"
+assert_eq "exit code" "$(cat "$WORKCASE/exit-code")" "0"
+assert_eq "verdict" "$(lane_field "['status']")" "pass"
+assert_eq "attempts" "$(attempts_statuses)" "['infra-error', 'passed']"
+assert_eq "Alpha invoked twice" "$(ui_invocations AlphaUITests)" "2"
+assert_eq "infra recovery is not a test flake" "$(retried_classes)" "[]"
+
+# --- UI case 6: unclassified failure fails the lane without retry -------------
+begin_case "ui unclassified failure" "$WORK/u6"
+export INVOCATION_LOG="$WORK/u6-invocations.log"; : > "$INVOCATION_LOG"
+# Extraction must fail: the stub keeps its verdict to itself (no canned doc
+# is ever written), so the xcrun stub returns an invalid document.
+export FAKE_UI_NO_DOC=1
+export FAKE_UI_FAIL_ONCE="" FAKE_UI_FAIL_ALWAYS="AlphaUITests" FAKE_UI_INFRA_ONCE="" FAKE_UI_HANG=""
+run_ui_lane "AlphaUITests,BetaUITests" 300 "AlphaUITests=200,BetaUITests=200"
+assert_eq "exit code" "$(cat "$WORKCASE/exit-code")" "1"
+assert_eq "verdict" "$(lane_field "['status']")" "fail"
+assert_eq "attempts" "$(attempts_statuses)" "['unclassified', 'not_diagnosed']"
+assert_eq "Alpha not retried into green" "$(ui_invocations AlphaUITests)" "1"
+assert_eq "Beta never ran" "$(ui_invocations BetaUITests)" "0"
+
+# --- UI case 7: per-class watchdogs come from the planner table ---------------
+begin_case "ui per-class budgets honored" "$WORK/u7"
+export INVOCATION_LOG="$WORK/u7-invocations.log"; : > "$INVOCATION_LOG"
+export FAKE_CANNED="$WORK/canned-u7.json"
+export FAKE_UI_NO_DOC=""
+export FAKE_UI_FAIL_ONCE="" FAKE_UI_FAIL_ALWAYS="" FAKE_UI_INFRA_ONCE="" FAKE_UI_HANG="SlowUITests"
+# SlowUITests gets a 2s budget; it must be killed while FastUITests' 300s
+# budget is untouched (a lane-wide budget would kill both or neither).
+run_ui_lane "FastUITests,SlowUITests" 600 "FastUITests=300,SlowUITests=2"
+assert_eq "exit code" "$(cat "$WORKCASE/exit-code")" "1"
+assert_eq "verdict" "$(lane_field "['status']")" "timeout"
+assert_eq "hung class" "$(lane_field "['hung_class']")" "SlowUITests"
+assert_eq "Fast passed under its own larger budget" "$(attempts_statuses)" "['passed', 'timeout', 'timeout']"
+assert_eq "lane watchdog sum recorded" "$(lane_field "['timeout_s']")" "600"
 
 echo ""
 echo "lane-runner state machine: $pass_count passed, $fail_count failed"

@@ -15,7 +15,8 @@ quarantined, or moved to a nightly gate.
                           |
              +------------+------------+
              v                         v
-   plan.json / unit matrix      timing history (Actions cache)
+   plan.json / matrices        timing history (Actions cache)
+   (unit + UI)
              |
       build-for-testing (once, workspace-anchored DerivedData)
              |
@@ -23,11 +24,13 @@ quarantined, or moved to a nightly gate.
              |
    +---------+---------+---------+
    v         v         v         v
- unit-1    unit-2    ...      unit-N         ui lane
- (test-without-building, measured watchdogs, native flake retry,
-  class-granular hang isolation)
-   |         |         |         |           |
-   +---------+----+----+---------+-----------+
+ unit-1    unit-2    ...     ui-1   ui-2   ui-3 ...
+ (test-without-building from the SHARED products;
+  measured watchdogs; units use native flake retry,
+  UI runs each class as its own invocation with a
+  per-class watchdog and one targeted class retry)
+   |         |         |         |
+   +---------+----+----+---------+
                   v
           report job -> GitHub Step Summary
                   v
@@ -38,10 +41,10 @@ quarantined, or moved to a nightly gate.
 
 | Job | Runner | Purpose |
 |---|---|---|
-| `plan` | ubuntu | Discovery validation + planner unit tests + lane generation. Cheap guard before any macOS minutes are spent. |
+| `plan` | ubuntu | Discovery validation + planner unit tests + lane generation (unit AND UI matrices). Cheap guard before any macOS minutes are spent. |
 | `build` | macos-26 | `build-for-testing` exactly once; `.xctestrun` portability audit; uploads products. |
 | `unit` (matrix) | macos-26 | One dynamically planned lane per matrix entry. |
-| `ui` | macos-26 | ConduitUITests lane, separate from the unit pool. |
+| `ui` (matrix) | macos-26 | Dynamically planned UI lane; runs each class independently (see below). |
 | `report` | ubuntu | Aggregates lane results into the CI Test Report step summary. |
 | `timing-history-update` | ubuntu | Main-only: merges fresh timings into the history cache (EWMA). |
 
@@ -75,6 +78,33 @@ lanes = clamp(ceil(total_predicted / 240s), 4, 8), capped by class count
 so the suite scales toward more lanes as measured runtime grows. Predicted
 imbalance is reported in the plan summary and the CI Test Report.
 
+### Parallel UI lanes
+
+UI classes are balanced with the same LPT algorithm into their own parallel
+shards, so normal PR wall clock is governed by the slowest UI shard rather
+than the sum of the whole UI suite:
+
+```
+ui lanes = clamp(ceil(total_predicted / 480s), 3, 4), capped by class count
+```
+
+Today's ~22 minutes of cumulative UI work lands on 3 lanes of roughly
+7-8 predicted minutes each. The count scales out automatically if the UI
+suite grows (and shrinks if it drops below 3 classes).
+
+### Per-class UI execution
+
+Inside a UI shard, **every class is its own `xcodebuild
+test-without-building` invocation** from the shared build products (the app
+is never rebuilt). This makes hangs attributable to exactly one class,
+enables the per-class watchdogs, restricts any retry to the failed class,
+and records per-class timing history. The simulator is booted once at shard
+start so only the first class pays the cold-boot overhead; classes that pass
+move on immediately; a class that fails gets exactly ONE targeted retry of
+just that class - successful classes are never re-executed, and a retry pass
+is reported as a runner-level FLAKE (with both attempt result bundles kept),
+never hidden as a clean pass.
+
 ## Timing data
 
 * `scripts/test-timings.json` - checked-in **baseline fallback** (seconds per
@@ -107,6 +137,14 @@ lane time. If Xcode ever produces inherently non-portable products, the audit
 is the documented tripwire: revert to per-lane `build-for-testing` and keep
 the rest of CI v2.
 
+## Failure domains
+
+1. **Ordinary test failures** never rerun healthy work. Unit attempt 1 runs
+   with Xcode-native flake retry (`-retry-tests-on-failure
+   -test-iterations N`), which re-executes only the failing tests; survivors
+   fail the lane with the failing tests identified. UI classes get one
+   **targeted retry of just the failed class**; if the retry passes, the
+   class is reported as a runner-level flake and the lane continues.
 2. **Unclassifiable failure** - if an invocation exits nonzero and the
    XCTest result cannot be classified (timing/result extraction failed),
    the lane FAILS immediately. Timing extraction is best-effort and must
@@ -114,19 +152,22 @@ the rest of CI v2.
    retried into a green lane.
 3. **Infrastructure failure** - an invocation that exits nonzero with a
    KNOWN zero failing-test count (simulator crash, runner exit) gets
-   exactly one bounded recovery: reset the simulator, retry the lane once.
-   If that retry times out, handling falls through to isolation (4); if it
-   fails again without test results, the lane errors out.
-4. **Hang / timeout** - a different failure mode. After the watchdog kills
-   the xcodebuild process group, the simulator is reset **with erase** and
-   the lane enters **isolation immediately** (no second full-lane attempt):
-   classes re-run one at a time (heaviest estimate first, each under
-   `max(180s, 4 x estimate)`, bounded by the isolation budget). Isolation
-   STOPS at the first confirmed class-level hang - the culprit is
-   identified and later classes are recorded as `not_diagnosed` instead of
-   running on a potentially contaminated simulator ("Class C TIMEOUT;"
-   "Classes D, E not diagnosed" style). Recovery-to-green is only
-   legitimate when every isolated class completed successfully; any
+   exactly one bounded recovery: reset the simulator and retry. Units retry
+   the whole lane (it is one invocation); a UI lane retries only the
+   affected class. If that retry times out, handling falls through to (4);
+   if it fails again without test results, the lane errors out.
+4. **Hang / timeout** - a watchdog kill is positive identification of a
+   hang. Units erase the simulator and enter **isolation** immediately (no
+   second full-lane attempt): classes re-run one at a time (heaviest
+   estimate first, each under `max(180s, 4 x estimate)`, bounded by the
+   isolation budget). Isolation STOPS at the first confirmed class-level
+   hang - the culprit is identified and later classes are recorded as
+   `not_diagnosed` instead of running on a potentially contaminated
+   simulator. UI classes are already isolated: the simulator is erased and
+   the SAME class retries once under its own watchdog; a second timeout
+   names the hung class (`hung_class` in the lane result), fails the lane,
+   and later classes are recorded as `not_diagnosed`. Recovery-to-green is
+   only legitimate when the retried class completed successfully; any
    undiagnosed class fails the lane so unexecuted tests stay visible.
 
 ### Destination readiness gate
@@ -161,28 +202,27 @@ simulator resets and setup/download slack - so the ceiling can never preempt
 legitimate in-script recovery (the script watchdogs are the real
 enforcement).
 
-UI lanes pay large **fixed per-invocation overhead** that unit lanes amortize
-across far more test seconds: xcodebuild/automation-session startup and
-simulator boot before the first test (~2.5 min measured on macos-26 hosted
-runners), app install, and xcresult finalization after the last one (~1 min).
-Their budget is therefore
+UI classes each get their **own** watchdog, planned per class from the same
+timing data that balances the lanes:
 
 ```
-ui_timeout = max(UI_TIMEOUT_MIN_S, ceil(predicted x UI_RETRY_HEADROOM_FACTOR
-                                       + UI_INVOCATION_OVERHEAD_S))
-           = max(900s, ceil(predicted x 2.0 + 240s))
+ui_class_timeout = max(420s, ceil(estimate x 3.0))
 ```
 
-- the floor was raised 600 -> 900 s after run #500 crossed the old floor
-  while the tests were **succeeding** (predicted ~226 s + measured overhead
-  already needs ~500-600 s on the happy path, leaving no room for the native
-  retry iteration);
-- the retry term covers both native iterations executing the full (small)
-  class list when a failure survives iteration 1;
-- the formula grows linearly if the UI suite expands, so the floor stays a
-  floor rather than the whole budget. The dynamic job ceiling covers the
-  worst in-script path (initial invocation + post-reset retry + class
-  isolation) exactly as for units.
+- the floor carries the fixed xcodebuild/automation-session/simulator
+  overhead that dominates small classes (~2.5 min before the first test +
+  ~1 min of xcresult finalization on macos-26, measured - see the run #500
+  history for why this floor must not be lower), plus headroom for the
+  targeted retry of a legitimately slow class;
+- the 3x multiplier gives slow-but-healthy classes proportional room on
+  slower runners without letting any single class hold a lane hostage;
+- a class normally taking 2-4 minutes is caught in ~7-17 minutes if it
+  hangs, instead of the old single 2861s (~48 min) suite-level watchdog;
+- estimates come from timing history (EWMA, outlier-clamped), so one
+  anomalous run cannot inflate a class's watchdog;
+- UI lane ceilings are `sum(per-class budgets)`, and the outer GitHub job
+  ceiling is `ceil((2 x sum + 1200s) / 60)` minutes - the worst in-script
+  path is every class running its one targeted retry.
 
 **Finalize grace.** When a watchdog expires but the log already carries
 xcodebuild's terminal result marker (`** TEST EXECUTE SUCCEEDED/FAILED **`),
@@ -199,26 +239,40 @@ Every `simctl` operation is deadline-bounded; the process-group watchdog kill
 architecture.
 
 ## Observability
+
+Every lane uploads a `lane-<lane-name>` artifact (e.g. `lane-ui-1`,
+`lane-unit-3`) containing `lane-result.json` (status, attempt chain, hung
+class, retried classes, predicted vs actual), the merged per-class timings
+(`observations.json`) and per-test attempt details (`detail.json`), and a
+`logs/` directory. UI lanes log and name every invocation by class and
+attempt (`logs/class-<class>-a<N>.log`), keep per-attempt `.xcresult`
+bundles for failed lanes, and on a green lane preserve both attempt bundles
+of any class that needed its targeted retry. Timing history is recorded per
+class (UI included), which is what lets the planner balance UI shards from
+real runtimes.
+
 ## CI Gate (branch protection)
 
 The `CI Gate` job is the single stable required status check for branch
 protection. It passes only when:
 
 * `plan`, `build` and every dynamic `unit` lane succeed, and
-* `ui` succeeds (or is skipped because the repo contains no UI tests).
+* every dynamic `ui` lane succeeds (or is skipped entirely because the repo
+  contains no UI tests).
 
-The number of dynamic unit lanes can change between runs, so lane jobs must
-never be pinned individually. Configure repository branch protection to
-require **CI Gate**, replacing the obsolete **Build & Test** check from the
-previous architecture. The `Report` job is best-effort and must not be used
-as a required check.
+The number of dynamic unit AND UI lanes can change between runs, so lane
+jobs must never be pinned individually. Configure repository branch
+protection to require **CI Gate**, replacing the obsolete **Build & Test**
+check from the previous architecture. The `Report` job is best-effort and
+must not be used as a required check.
 
 Every run ends with a **CI Test Report** step summary: build duration,
-per-lane predicted vs actual runtimes, UI lane result, retries/flake
-warnings, hang isolation results with the identified class, slowest classes,
-predicted and actual lane imbalance, and overall wall clock. On failure it
-names the failing test, the lane, whether a simulator reset/erase occurred,
-and whether the retry passed.
+per-lane predicted vs actual runtimes (unit and UI), retries/flake warnings
+(native-test flakes and runner-level class retries), hang isolation results
+with the identified class, slowest classes, predicted and actual lane
+imbalance, and overall wall clock. On failure it names the failing test, the
+lane, whether a simulator reset/erase occurred, whether the targeted retry
+passed, and any classes left `not_diagnosed` after a confirmed hang.
 
 ## Adding a test
 

@@ -5,14 +5,16 @@ name: CI
 # Architecture (docs/CI.md):
 #   plan     (ubuntu, cheap)  validate inventory, run planner regression
 #                             tests, balance test classes into a dynamic
-#                             number of timing-weighted lanes, emit matrix.
+#                             number of timing-weighted lanes (unit AND UI),
+#                             emit both matrices.
 #   build    (macos, once)    build-for-testing exactly once into a
 #                             workspace-anchored DerivedData path; audit the
 #                             generated .xctestrun for absolute-path
 #                             portability; upload products as an artifact.
-#   unit/ui  (macos, matrix)  test-without-building from the downloaded
+#   unit/ui  (macos, matrix) test-without-building from the downloaded
 #                             products; measured watchdogs; native flake
-#                             retry; hang isolation at class granularity.
+#                             retry (units); per-class invocations, per-class
+#                             watchdogs and one targeted class retry (UI).
 #   report   (ubuntu, always) aggregate lane results into the step summary.
 #   timing-history-update (main only) EWMA-merge fresh per-class timings into
 #                             the timing-history cache.
@@ -52,12 +54,8 @@ jobs:
     outputs:
       matrix: "${{ steps.plan.outputs.matrix }}"
       lane-count: "${{ steps.plan.outputs.lane-count }}"
+      ui-matrix: "${{ steps.plan.outputs.ui-matrix }}"
       ui-classes: "${{ steps.plan.outputs.ui-classes }}"
-      ui-estimates: "${{ steps.plan.outputs.ui-estimates }}"
-      ui-target: "${{ steps.plan.outputs.ui-target }}"
-      ui-predicted: "${{ steps.plan.outputs.ui-predicted }}"
-      ui-timeout: "${{ steps.plan.outputs.ui-timeout }}"
-      ui-job-timeout: "${{ steps.plan.outputs.ui-job-timeout }}"
     steps:
       - uses: actions/checkout@v7
 
@@ -95,15 +93,12 @@ jobs:
             --baseline scripts/test-timings.json $HISTORY_ARG \
             --out ci-artifacts/plan.json \
             --matrix-out ci-artifacts/unit-matrix.json \
+            --ui-matrix-out ci-artifacts/ui-matrix.json \
             --summary-out ci-artifacts/plan-summary.md
           echo "matrix=$(jq -c . ci-artifacts/unit-matrix.json)" >> "$GITHUB_OUTPUT"
           echo "lane-count=$(jq -r '.lane_count' ci-artifacts/plan.json)" >> "$GITHUB_OUTPUT"
-          echo "ui-classes=$(jq -r '.ui_lane.classes | join(",")' ci-artifacts/plan.json)" >> "$GITHUB_OUTPUT"
-          echo "ui-estimates=$(jq -r '.ui_lane.class_estimates // ""' ci-artifacts/plan.json)" >> "$GITHUB_OUTPUT"
-          echo "ui-target=$(jq -r '.ui_lane.target // ""' ci-artifacts/plan.json)" >> "$GITHUB_OUTPUT"
-          echo "ui-predicted=$(jq -r '.ui_lane.predicted_s // 0' ci-artifacts/plan.json)" >> "$GITHUB_OUTPUT"
-          echo "ui-timeout=$(jq -r '.ui_lane.timeout_s // 900' ci-artifacts/plan.json)" >> "$GITHUB_OUTPUT"
-          echo "ui-job-timeout=$(jq -r '.ui_lane.job_timeout_min // 65' ci-artifacts/plan.json)" >> "$GITHUB_OUTPUT"
+          echo "ui-matrix=$(jq -c . ci-artifacts/ui-matrix.json)" >> "$GITHUB_OUTPUT"
+          echo "ui-classes=$(jq -r '[.ui_lanes[].classes[]] | join(",")' ci-artifacts/plan.json)" >> "$GITHUB_OUTPUT"
 
       - name: Plan summary
         run: cat ci-artifacts/plan-summary.md >> "$GITHUB_STEP_SUMMARY"
@@ -244,11 +239,17 @@ jobs:
           if-no-files-found: error
 
   ui:
-    name: UI tests
+    name: "UI - ${{ matrix.lane }}"
     needs: [plan, build]
     if: needs.plan.outputs.ui-classes != ''
     runs-on: macos-26
-    timeout-minutes: ${{ fromJSON(needs.plan.outputs.ui-job-timeout) }}
+    # Outer emergency ceiling only: every class's targeted retry plus bounded
+    # resets and setup slack all fit underneath it (see plan-tests.py); the
+    # per-class watchdogs inside ci-test-lane.sh are the real enforcement.
+    timeout-minutes: ${{ matrix.job_timeout_min }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.ui-matrix) }}
     steps:
       - uses: actions/checkout@v7
 
@@ -270,26 +271,34 @@ jobs:
             --xctestrun "$XCRUN_FILE" --workspace-root "$GITHUB_WORKSPACE"
 
       - name: Run UI lane
+        # Matrix values enter through the environment, never through bash
+        # template interpolation, so even a hostile class name cannot become
+        # code execution in the runner. The lane runner executes each class
+        # as an independent xcodebuild invocation under its own planned
+        # watchdog and retries only a failed class - once.
         env:
-          CLASS_TIMEOUT_MIN_S: "180"
-          CLASS_TIMEOUT_MULTIPLIER: "4.0"
+          UI_CLASS_TIMEOUT_MIN_S: "420"
+          UI_CLASS_TIMEOUT_MULTIPLIER: "3.0"
           CONDUIT_PERF_TRACE: "1"
-          UI_CLASSES: "${{ needs.plan.outputs.ui-classes }}"
-          UI_CLASS_ESTIMATES: "${{ needs.plan.outputs.ui-estimates }}"
-          UI_PREDICTED: "${{ needs.plan.outputs.ui-predicted }}"
-          UI_TIMEOUT: "${{ needs.plan.outputs.ui-timeout }}"
+          LANE_NAME: "${{ matrix.lane }}"
+          LANE_TARGET: "${{ matrix.target }}"
+          LANE_CLASSES: "${{ matrix.classes }}"
+          LANE_CLASS_ESTIMATES: "${{ matrix.class_estimates }}"
+          LANE_CLASS_TIMEOUTS: "${{ matrix.class_timeouts }}"
+          LANE_PREDICTED: "${{ matrix.predicted_s }}"
+          LANE_TIMEOUT: "${{ matrix.timeout_s }}"
         run: |
           bash scripts/ci-test-lane.sh \
             --kind ui \
-            --lane ui \
-            --target "${{ needs.plan.outputs.ui-target }}" \
-            --classes "$UI_CLASSES" \
-            --class-estimates "$UI_CLASS_ESTIMATES" \
-            --predicted "$UI_PREDICTED" \
-            --timeout "$UI_TIMEOUT" \
-            --iterations 2 \
+            --lane "$LANE_NAME" \
+            --target "$LANE_TARGET" \
+            --classes "$LANE_CLASSES" \
+            --class-estimates "$LANE_CLASS_ESTIMATES" \
+            --class-timeouts "$LANE_CLASS_TIMEOUTS" \
+            --predicted "$LANE_PREDICTED" \
+            --timeout "$LANE_TIMEOUT" \
             --xctestrun "$XCRUN_FILE" \
-            --result-dir ci-lane/ui
+            --result-dir "ci-lane/$LANE_NAME"
 
       - name: Dump simulator state (failure diagnostics)
         if: failure()
@@ -301,7 +310,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: lane-ui
+          name: lane-${{ matrix.lane }}
           path: ci-lane/
           retention-days: 7
           if-no-files-found: error

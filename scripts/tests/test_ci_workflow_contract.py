@@ -44,6 +44,45 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("CI Gate", text)
         self.assertNotIn("Build & Test", text)
 
+    def _job_text(self, job_key):
+        """Extract one job's text block (stdlib-only YAML slicing). Job keys
+        sit at exactly two spaces of indentation; their bodies are deeper."""
+        lines = self._workflow_text().splitlines()
+        start = None
+        for i, line in enumerate(lines):
+            if line.startswith("  ") and line.strip() == "{0}:".format(job_key):
+                start = i
+                break
+        if start is None:
+            self.fail("job {0!r} not found in ci.yml".format(job_key))
+        out = [lines[start]]
+        for line in lines[start + 1:]:
+            if line.startswith("  ") and line[2:3] not in ("", " ", "\t"):
+                break  # next sibling job key
+            out.append(line)
+        return "\n".join(out)
+
+    def test_ui_job_is_a_dynamic_matrix_with_per_class_runner(self):
+        text = self._workflow_text()
+        ui = self._job_text("ui")
+        # Matrix fanout comes from the planner, never a hard-coded class list,
+        # and one hung shard must not cancel the others.
+        self.assertIn("matrix: ${{ fromJSON(needs.plan.outputs.ui-matrix) }}", ui)
+        self.assertIn("fail-fast: false", ui)
+        self.assertIn('needs: [plan, build]', ui,
+                      "UI shards must consume the SHARED build products")
+        # Per-class runner invocation with planned watchdogs.
+        self.assertIn("--kind ui", ui)
+        self.assertIn("--class-timeouts", ui)
+        self.assertIn('--classes "$LANE_CLASSES"', ui)
+        self.assertNotIn(
+            "--iterations", ui,
+            "UI lanes must not use native multi-iteration retry; the runner "
+            "retries exactly the failed class once")
+        # The plan job must emit the UI matrix the job consumes.
+        self.assertIn("--ui-matrix-out", text)
+        self.assertIn('echo "ui-matrix=', text)
+
     def test_ci_gate_script_verdict_matches_spec_examples(self):
         spec = {
             ("success", "success", "success", "success"): True,

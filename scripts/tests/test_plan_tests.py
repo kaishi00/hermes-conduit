@@ -103,7 +103,8 @@ class PlanningTests(unittest.TestCase):
             _discovery, plan = plan_from_tree(root)
             for lane in plan["unit_lanes"]:
                 self.assertNotIn("SelectionObserverUITests", lane["classes"])
-            self.assertEqual(plan["ui_lane"]["classes"], ["SelectionObserverUITests"])
+            ui_assigned = [c for lane in plan["ui_lanes"] for c in lane["classes"]]
+            self.assertEqual(ui_assigned, ["SelectionObserverUITests"])
 
     def test_unknown_timing_entries_do_not_break_planning(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -190,34 +191,30 @@ class PlanningTests(unittest.TestCase):
             lane = plan["unit_lanes"][0]
             self.assertEqual(lane["predicted_s"], 200.0)
             self.assertEqual(lane["timeout_s"], 600)  # floor wins: max(600, 500)
-            # UI: max(900 floor, ceil(60*2 + 240)) = 900 (floor wins)
-            self.assertEqual(
-                plan["ui_lane"]["timeout_s"], 900)
+            # UI class watchdog: floor wins for a small class
+            # (max(420, ceil(60 x 3)) = 420).
+            ui_lane = plan["ui_lanes"][0]
+            self.assertEqual(ui_lane["class_timeouts"], "UiTests=420")
 
-    def test_ui_timeout_formula_covers_overhead_and_retry(self):
-        # The UI watchdog must budget measured invocation overhead plus both
-        # native retry iterations, not just the raw prediction (run #500
-        # crossed the old 600s floor while the tests were succeeding).
+    def test_ui_class_timeout_floor_and_multiplier(self):
         cfg = default_cfg()
-        # Today's UI prediction (~225.9s): formula yields 692s, floor wins.
+        # Small class: the floor carries the fixed per-invocation simulator
+        # overhead and wins over the estimate-based term.
         self.assertEqual(
-            planner.ui_timeout_for(225.9, cfg["ui_timeout_min_s"],
-                                   cfg["ui_invocation_overhead_s"],
-                                   cfg["ui_retry_headroom_factor"]),
-            900)
-        # A growing UI suite outgrows the floor linearly: 600s predicted ->
-        # 600*2 + 240 = 1440s, comfortably above any healthy invocation.
+            planner.ui_class_timeout_for(60.0, cfg["ui_class_timeout_min_s"],
+                                         cfg["ui_class_timeout_multiplier"]),
+            420)
+        # Big class: 3x the estimate with proportional headroom; today's
+        # slowest UI class (~333s) must be caught in well under 20 minutes.
         self.assertEqual(
-            planner.ui_timeout_for(600.0, cfg["ui_timeout_min_s"],
-                                   cfg["ui_invocation_overhead_s"],
-                                   cfg["ui_retry_headroom_factor"]),
-            1440)
-        # Tiny suites stay bounded by the floor, not the formula.
+            planner.ui_class_timeout_for(333.0, cfg["ui_class_timeout_min_s"],
+                                         cfg["ui_class_timeout_multiplier"]),
+            999)
+        # Fractional estimates round up, never down.
         self.assertEqual(
-            planner.ui_timeout_for(5.0, cfg["ui_timeout_min_s"],
-                                   cfg["ui_invocation_overhead_s"],
-                                   cfg["ui_retry_headroom_factor"]),
-            900)
+            planner.ui_class_timeout_for(140.1, cfg["ui_class_timeout_min_s"],
+                                         cfg["ui_class_timeout_multiplier"]),
+            421)
 
     def test_job_ceiling_covers_worst_in_script_path(self):
         # Ceiling must fit attempt1 + attempt2 + a full isolation pass plus
@@ -255,6 +252,83 @@ class PlanningTests(unittest.TestCase):
             self.assertEqual(plan["estimates"]["AlphaTests"], 33.0)
 
 
+class UiShardingTests(unittest.TestCase):
+    ESTIMATES = {
+        "ConnectionSetupTestConnectionUITests": 333.0,
+        "ConnectionSetupSettingsUITests": 296.8,
+        "ConnectionRepairUITests": 232.5,
+        "ConnectionSetupUITests": 215.9,
+        "LoginKeyboardUITests": 129.6,
+        "SelectionObserverUITests": 102.7,
+    }
+
+    def test_ui_classes_partition_exactly_once_across_three_lanes(self):
+        names = list(self.ESTIMATES)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(make_repo(Path(tmp), [], names))
+            discovery, plan = plan_from_tree(root, dict(self.ESTIMATES))
+            self.assertEqual(plan["ui_lane_count"], 3)
+            assigned = [c for lane in plan["ui_lanes"] for c in lane["classes"]]
+            self.assertEqual(sorted(assigned), sorted(names))
+            self.assertEqual(len(assigned), len(set(assigned)))
+            for lane in plan["ui_lanes"]:
+                self.assertTrue(lane["classes"])
+                self.assertEqual(lane["target"], "ConduitUITests")
+                # every class carries a planned per-class watchdog
+                timeouts = dict(p.split("=", 1) for p in lane["class_timeouts"].split(","))
+                self.assertEqual(sorted(timeouts), sorted(lane["classes"]))
+                for name, value in timeouts.items():
+                    self.assertEqual(
+                        int(value),
+                        planner.ui_class_timeout_for(
+                            self.ESTIMATES[name], 420, 3.0))
+                # lane watchdog sum feeds the job ceiling: worst path is a
+                # targeted retry of every class (2x) plus the setup margin.
+                expected_ceiling = planner.ui_job_timeout_min(
+                    lane["timeout_s"], default_cfg())
+                self.assertEqual(lane["job_timeout_min"], expected_ceiling)
+            self.assertEqual(planner.validate_plan(plan, discovery), [])
+
+    def test_ui_lpt_balance_matches_timing_data(self):
+        # Deterministic, timing-driven assignment for the live estimates:
+        # heaviest class first onto the lightest lane.
+        names = list(self.ESTIMATES)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(make_repo(Path(tmp), [], names))
+            _d, plan = plan_from_tree(root, dict(self.ESTIMATES))
+            loads = {
+                lane["lane"]: round(
+                    sum(self.ESTIMATES[c] for c in lane["classes"]), 1)
+                for lane in plan["ui_lanes"]
+            }
+            self.assertEqual(sorted(loads.values()), [426.4, 435.7, 448.4])
+            heaviest = max(plan["ui_lanes"], key=lambda l: loads[l["lane"]])
+            self.assertIn("ConnectionRepairUITests", heaviest["classes"])
+            self.assertIn("ConnectionSetupUITests", heaviest["classes"])
+
+    def test_ui_lane_count_scales_and_never_exceeds_classes(self):
+        cfg = default_cfg()
+        # tiny suite: cannot have more lanes than classes
+        self.assertEqual(planner.ui_lane_count_for(60.0, 2, cfg), 2)
+        # today's suite: ~1310s of work lands on the 3-lane target
+        self.assertEqual(planner.ui_lane_count_for(1310.4, 6, cfg), 3)
+        # a doubled suite scales out, but saturates at the configured max
+        self.assertEqual(planner.ui_lane_count_for(2600.0, 12, cfg), cfg["ui_max_lanes"])
+        # no classes: no lanes
+        self.assertEqual(planner.ui_lane_count_for(0.0, 0, cfg), 0)
+
+    def test_default_estimates_balance_ui_lanes_without_history(self):
+        names = ["New{0}UITests".format(i) for i in range(6)]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(make_repo(Path(tmp), [], names))
+            discovery, plan = plan_from_tree(root, {})
+            self.assertEqual(planner.validate_plan(plan, discovery), [])
+            self.assertEqual(plan["ui_lane_count"], 3)
+            # unseen classes all get the conservative default, so lanes are even
+            for lane in plan["ui_lanes"]:
+                self.assertEqual(lane["predicted_s"], 40.0)
+
+
 class CliTests(unittest.TestCase):
     def test_validate_cli_passes_on_clean_tree(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -284,15 +358,18 @@ class CliTests(unittest.TestCase):
             out2 = Path(tmp) / "plan2.json"
             mat1 = Path(tmp) / "matrix1.json"
             mat2 = Path(tmp) / "matrix2.json"
-            for out, mat in ((out1, mat1), (out2, mat2)):
+            uimat1 = Path(tmp) / "uimatrix1.json"
+            uimat2 = Path(tmp) / "uimatrix2.json"
+            for out, mat, uimat in ((out1, mat1, uimat1), (out2, mat2, uimat2)):
                 proc = subprocess.run(
                     [sys.executable, str(Path(SCRIPTS_DIR) / "plan-tests.py"),
                      "plan", "--repo-root", str(root), "--out", str(out),
-                     "--matrix-out", str(mat)],
+                     "--matrix-out", str(mat), "--ui-matrix-out", str(uimat)],
                     capture_output=True, text=True)
                 self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
             self.assertEqual(out1.read_bytes(), out2.read_bytes())
             self.assertEqual(mat1.read_bytes(), mat2.read_bytes())
+            self.assertEqual(uimat1.read_bytes(), uimat2.read_bytes())
             matrix = json.loads(mat1.read_text(encoding="utf-8"))
             self.assertIn("include", matrix)
             for entry in matrix["include"]:
@@ -302,6 +379,18 @@ class CliTests(unittest.TestCase):
                 self.assertIn("job_timeout_min", entry)
             # no empty lanes in the matrix either
             self.assertTrue(all(entry["classes"] for entry in matrix["include"]))
+            ui_matrix = json.loads(uimat1.read_text(encoding="utf-8"))
+            self.assertTrue(all(entry["classes"] for entry in ui_matrix["include"]))
+            for entry in ui_matrix["include"]:
+                self.assertIn("class_timeouts", entry)
+                self.assertTrue(entry["class_timeouts"])
+                self.assertIn("class_estimates", entry)
+                # every planned class has both an estimate and a watchdog
+                classes = entry["classes"].split(",")
+                timeout_map = dict(
+                    p.split("=", 1) for p in entry["class_timeouts"].split(","))
+                self.assertEqual(sorted(timeout_map), sorted(classes))
+                self.assertTrue(all(v.isdigit() for v in timeout_map.values()))
 
 
 class XctestrunAuditTests(unittest.TestCase):
