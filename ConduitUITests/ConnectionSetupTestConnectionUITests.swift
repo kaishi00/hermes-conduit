@@ -35,9 +35,9 @@ final class ConnectionSetupTestConnectionUITests: XCTestCase {
         // stage plus the ready message. The password is never rendered as
         // text anywhere.
         XCTAssertTrue(app.staticTexts["setup.test.ready"].waitForExistence(timeout: 5))
-        XCTAssertTrue(row(app, Identity.stageServer).exists)
-        XCTAssertTrue(row(app, Identity.stageDashboard).exists)
-        XCTAssertTrue(row(app, Identity.stageAuthentication).exists)
+        XCTAssertTrue(stageRow(app, Identity.stageServer).waitForExistence(timeout: 5))
+        XCTAssertTrue(stageRow(app, Identity.stageDashboard).waitForExistence(timeout: 5))
+        XCTAssertTrue(stageRow(app, Identity.stageAuthentication).waitForExistence(timeout: 5))
         XCTAssertFalse(app.staticTexts["round4-private-fixture"].exists)
 
         // The Round-3 typed handoff is unchanged: fields populate, nothing
@@ -63,15 +63,15 @@ final class ConnectionSetupTestConnectionUITests: XCTestCase {
         // stages remain visible, and the classified credential guidance
         // appears with Edit Credentials as the primary recovery action.
         XCTAssertTrue(app.staticTexts["setup.test.failure"].waitForExistence(timeout: 5))
-        XCTAssertTrue(row(app, Identity.stageServer).exists)
-        XCTAssertTrue(row(app, Identity.stageDashboard).exists)
-        XCTAssertTrue(row(app, Identity.stageAuthentication).exists)
+        XCTAssertTrue(stageRow(app, Identity.stageServer).waitForExistence(timeout: 5))
+        XCTAssertTrue(stageRow(app, Identity.stageDashboard).waitForExistence(timeout: 5))
+        XCTAssertTrue(stageRow(app, Identity.stageAuthentication).waitForExistence(timeout: 5))
         let failure = app.staticTexts["setup.test.failure"]
         XCTAssertEqual(
             failure.label,
             "Hermes rejected that username or password. Check your dashboard credentials and try again."
         )
-        XCTAssertTrue(app.buttons["setup.test.edit-credentials"].exists)
+        XCTAssertTrue(app.buttons["setup.test.edit-credentials"].waitForExistence(timeout: 5))
         // Retry exists but is never the primary action after rejected
         // credentials.
         XCTAssertTrue(app.buttons["setup.test.retry"].exists)
@@ -95,7 +95,7 @@ final class ConnectionSetupTestConnectionUITests: XCTestCase {
             app.buttons["setup.test.retry"].exists,
             "Rate limiting must not invite an immediate retry"
         )
-        XCTAssertTrue(app.buttons["setup.test.edit-credentials"].exists)
+        XCTAssertTrue(app.buttons["setup.test.edit-credentials"].waitForExistence(timeout: 5))
     }
 
     func testInteractiveSignInOutcomeShowsBrowserSignInAndHandsOff() {
@@ -127,8 +127,8 @@ final class ConnectionSetupTestConnectionUITests: XCTestCase {
             app.staticTexts["setup.test.ready"].exists,
             "The native ready message must not appear for interactive auth"
         )
-        let authRow = row(app, Identity.stageAuthentication)
-        XCTAssertTrue(authRow.exists)
+        let authRow = stageRow(app, Identity.stageAuthentication)
+        XCTAssertTrue(authRow.waitForExistence(timeout: 5))
         // Stage rows expose their combined accessibility label (objective
         // name + lowercase state word), so match case-insensitively.
         XCTAssertTrue(
@@ -144,8 +144,10 @@ final class ConnectionSetupTestConnectionUITests: XCTestCase {
         // screen with a Continue action that returns to Review.
         tapVisible(app.buttons[Identity.back], in: app)
         XCTAssertTrue(app.buttons[Identity.testContinue].waitForExistence(timeout: 5))
+        let authRowAfterBack = stageRow(app, Identity.stageAuthentication)
+        XCTAssertTrue(authRowAfterBack.waitForExistence(timeout: 5))
         XCTAssertTrue(
-            row(app, Identity.stageAuthentication).label.lowercased().contains("browser sign-in required")
+            authRowAfterBack.label.lowercased().contains("browser sign-in required")
         )
         tapVisible(app.buttons[Identity.testContinue], in: app)
         XCTAssertTrue(app.staticTexts["setup.test.interactive-ready"].waitForExistence(timeout: 5))
@@ -196,15 +198,19 @@ final class ConnectionSetupTestConnectionUITests: XCTestCase {
         tapVisible(app.buttons[Identity.next], in: app)
 
         XCTAssertTrue(app.buttons[Identity.testRun].waitForExistence(timeout: 5), "Test screen did not appear. Tree:\n\(app.debugDescription)")
-        XCTAssertTrue(row(app, Identity.stageServer).exists)
-        XCTAssertTrue(row(app, Identity.stageDashboard).exists)
-        XCTAssertTrue(row(app, Identity.stageAuthentication).exists)
+        XCTAssertTrue(stageRow(app, Identity.stageServer).waitForExistence(timeout: 5))
+        XCTAssertTrue(stageRow(app, Identity.stageDashboard).waitForExistence(timeout: 5))
+        XCTAssertTrue(stageRow(app, Identity.stageAuthentication).waitForExistence(timeout: 5))
     }
 
-    /// Stage rows are single combined accessibility elements, so query by
-    /// identifier across element types.
-    private func row(_ app: XCUIApplication, _ identifier: String) -> XCUIElement {
-        app.descendants(matching: .any).matching(identifier: identifier).firstMatch
+    /// Stage rows are single combined accessibility elements backed by an
+    /// `HStack` with `children: .ignore`, which XCTest exposes as an Other
+    /// element (verified by hierarchy inspection). A typed query evaluates
+    /// one narrow subtree instead of snapshotting every element type in the
+    /// application, which is what the broad `descendants(matching: .any)`
+    /// lookup paid for on every check.
+    private func stageRow(_ app: XCUIApplication, _ identifier: String) -> XCUIElement {
+        app.otherElements[identifier]
     }
 
     private func tapVisible(_ element: XCUIElement, in app: XCUIApplication) {
