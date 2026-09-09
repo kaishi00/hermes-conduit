@@ -13,8 +13,10 @@ name: CI
 #                             portability; upload products as an artifact.
 #   unit/ui  (macos, matrix) test-without-building from the downloaded
 #                             products; measured watchdogs; native flake
-#                             retry (units); per-class invocations, per-class
-#                             watchdogs and one targeted class retry (UI).
+#                             retry (units); one batched invocation per UI
+#                             shard with method-precise retry of only the
+#                             failed tests and a per-class diagnosis
+#                             fallback for timeouts/infrastructure wedges.
 #   report   (ubuntu, always) aggregate lane results into the step summary.
 #   timing-history-update (main only) EWMA-merge fresh per-class timings into
 #                             the timing-history cache.
@@ -273,11 +275,13 @@ jobs:
       - name: Run UI lane
         # Matrix values enter through the environment, never through bash
         # template interpolation, so even a hostile class name cannot become
-        # code execution in the runner. The lane runner executes each class
-        # as an independent xcodebuild invocation under the planner's
-        # per-class watchdog (--class-timeouts is the single source of
-        # watchdog policy and must cover every assigned class) and retries
-        # only a failed class - once.
+        # code execution in the runner. The lane runner executes all of the
+        # shard's classes in ONE batched xcodebuild invocation (watchdog =
+        # sum of the planner's per-class budgets; --class-timeouts is the
+        # single source of watchdog policy and must cover every assigned
+        # class). A failing batch retries exactly the failed tests - once -
+        # and falls back to per-class diagnosis for timeouts/infrastructure
+        # wedges.
         env:
           CONDUIT_PERF_TRACE: "1"
           LANE_NAME: "${{ matrix.lane }}"
