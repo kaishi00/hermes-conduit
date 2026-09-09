@@ -59,3 +59,23 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
     dependencies:
       - target: Conduit
+
+# CI gets its own shared scheme so local Cmd+U / debugger behavior stays
+# unchanged. UI tests do not need LLDB attached in hosted CI, and Xcode 26.x's
+# debugger-backed simulator launcher is the source of the intermittent
+# DebuggerVersionStore / "Timed out while launching application via Xcode"
+# failures seen on GitHub runners. PosixSpawn keeps the same tests and app
+# binary while removing that debugger-only launch path.
+schemes:
+  ConduitCI:
+    build:
+      targets:
+        Conduit: all
+        ConduitTests: [test]
+        ConduitUITests: [test]
+    test:
+      config: Debug
+      debugEnabled: false
+      targets:
+        - ConduitTests
+        - ConduitUITests

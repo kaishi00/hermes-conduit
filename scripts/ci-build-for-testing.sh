@@ -14,7 +14,12 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/ci-lib.sh"
 
 PROJECT="Conduit.xcodeproj"
-SCHEME="Conduit"
+# CI uses a dedicated shared scheme whose test action has debugging disabled.
+# Local developers keep using the normal Conduit scheme with debugger-backed
+# tests; hosted UI tests do not need LLDB and avoid Xcode 26.x's flaky
+# debugger simulator-launch path this way. Override remains available for
+# diagnosis or local script use.
+SCHEME="${SCHEME:-ConduitCI}"
 # Workspace-anchored by default: GITHUB_WORKSPACE is byte-identical across
 # GitHub-hosted runners for the same repository, which is what makes the
 # absolute paths inside the .xctestrun portable without rewriting anything.

@@ -16,6 +16,11 @@ struct AskHermesPromptView: View {
 
     @State private var copied = false
     @State private var copyCount = 0
+    // Keep the successful copy available as durable accessibility state even
+    // after the intentionally short visual confirmation disappears. Tying it
+    // to the prompt prevents a reused view from claiming a different prompt
+    // was copied.
+    @State private var lastCopiedPrompt: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -33,12 +38,14 @@ struct AskHermesPromptView: View {
                 Button {
                     UIPasteboard.general.string = prompt
                     copied = true
+                    lastCopiedPrompt = prompt
                     copyCount += 1
                 } label: {
                     Label("Copy Prompt", systemImage: copied ? "checkmark" : "doc.on.doc")
                         .font(.footnote.weight(.semibold))
                 }
                 .accessibilityIdentifier("setup.copy-prompt")
+                .accessibilityValue(Text(lastCopiedPrompt == prompt ? "Copied" : ""))
 
                 if copied {
                     Text("Copied")

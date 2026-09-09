@@ -172,9 +172,18 @@ final class ConnectionSetupUITests: XCTestCase {
         XCTAssertTrue(copyPrompt.waitForExistence(timeout: 5), "Copy Prompt must appear on the No path")
         if !copyPrompt.isHittable { app.swipeUp() }
         copyPrompt.tap()
-        XCTAssertTrue(
-            app.staticTexts["setup.copied-confirmation"].waitForExistence(timeout: 3),
-            "Copying must confirm to the user"
+        // The visual "Copied" label is intentionally transient (2s), which
+        // is shorter than XCTest's post-tap idle/snapshot work on hosted
+        // runners. Assert the button's durable accessibility state instead:
+        // it proves the copy action happened without racing the visual toast.
+        let copied = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == %@", "Copied"),
+            object: copyPrompt
+        )
+        XCTAssertEqual(
+            XCTWaiter.wait(for: [copied], timeout: 3),
+            .completed,
+            "Copying must confirm to accessibility after the visual toast expires"
         )
 
         let continueButton = app.buttons["setup.continue"]
