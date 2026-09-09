@@ -198,6 +198,45 @@ class MergePartsTests(unittest.TestCase):
             # the retried class keeps its PASSING (last) attempt's duration
             self.assertEqual(obs["classes"], {"AlphaUITests": 41.0, "BetaUITests": 12.0})
 
+    def test_merge_parts_diagnosis_supersedes_batch_parts(self):
+        # The batched shard attempt folds FIRST (it runs first in wall time);
+        # per-class diagnosis parts written after a killed batch must win
+        # last-wins for durations AND drop the batch attempt's failures, even
+        # though the lowercase "batch" stem would sort after the class names.
+        with tempfile.TemporaryDirectory() as tmp:
+            parts = Path(tmp) / "parts"
+            parts.mkdir()
+            self._write_part(parts, "observations-batch-a1.json",
+                             self._observation({"AlphaUITests": 60.0, "BetaUITests": 0.1}))
+            self._write_part(parts, "detail-batch-a1.json", {
+                "schema_version": 1, "generated_at": "t", "xcresult": "batch-a1",
+                "attempts": [{"class": "AlphaUITests", "test": "testA()",
+                              "attempts": [{"result": "Failed", "seconds": 1.0}],
+                              "final": "Failed", "attempts_count": 1}],
+                "failures": [{"class": "AlphaUITests", "test": "testA()"}],
+                "retried": [],
+            })
+            self._write_part(parts, "observations-AlphaUITests-a1.json",
+                             self._observation({"AlphaUITests": 200.0}))
+            self._write_part(parts, "detail-AlphaUITests-a1.json", {
+                "schema_version": 1, "generated_at": "t", "xcresult": "a1",
+                "attempts": [{"class": "AlphaUITests", "test": "testA()",
+                              "attempts": [{"result": "Passed", "seconds": 190.0}],
+                              "final": "Passed", "attempts_count": 1}],
+                "failures": [],
+                "retried": [],
+            })
+            obs_out = Path(tmp) / "observations.json"
+            det_out = Path(tmp) / "detail.json"
+            rc = ext.merge_parts(str(parts), str(obs_out), str(det_out))
+            self.assertEqual(rc, ext.EXIT_OK)
+            obs = json.loads(obs_out.read_text(encoding="utf-8"))
+            det = json.loads(det_out.read_text(encoding="utf-8"))
+            # diagnosis re-measured Alpha after the killed batch, and the
+            # batch's stale failure must not survive the superseding pass
+            self.assertEqual(obs["classes"], {"AlphaUITests": 200.0, "BetaUITests": 0.1})
+            self.assertEqual(det["failures"], [])
+
     def test_merge_parts_folds_details_across_classes(self):
         with tempfile.TemporaryDirectory() as tmp:
             parts = Path(tmp) / "parts"

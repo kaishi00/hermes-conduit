@@ -105,18 +105,23 @@ per-class budgets. A successful shard therefore pays Xcode/CoreSimulator/
 test-session startup once instead of once per class, while per-class timing
 history still comes from the shared extraction.
 
-Recovery never re-executes healthy work:
+Recovery never lets ordinary-failure retries re-execute healthy work:
 
 * **Ordinary test failures** retry ONLY the failed tests in one follow-up
   invocation - exact `Target/Class/testMethod` filters when the xcresult
-  identifies them, the failing class otherwise. Successful classes are never
-  re-executed, and a retry pass is reported as a runner-level FLAKE (with
-  both attempt result bundles kept), never hidden as a clean pass.
+  identifies them, the failing class otherwise - and only when every
+  assigned class actually ran (a batch that aborted before a class started
+  falls through to diagnosis below, so unexecuted classes can never be
+  retried into a green lane). Successful classes are never re-executed, and
+  a retry pass is reported as a runner-level FLAKE (with both attempt result
+  bundles kept), never hidden as a clean pass.
 * **Watchdog timeout / infrastructure wedge** of the batch cannot be
   attributed to a class: the simulator is erased and the affected classes
   re-run through **per-class diagnosis** - each class its own invocation
   under its own planned watchdog, with the same targeted-retry and hang
-  attribution rules as before. A class that hangs twice names the culprit
+  attribution rules as before. (Diagnosis necessarily re-runs classes that
+  already passed inside a killed batch - a dead invocation leaves no
+  trustworthy per-class result.) A class that hangs twice names the culprit
   (`hung_class` in the lane result) and stops the shard; a class whose
   retry fails again as an infrastructure failure is recorded as a persistent
   infrastructure failure and fails the lane while the remaining classes
@@ -263,12 +268,14 @@ ui_class_timeout = max(420s, ceil(estimate x 3.0))   # computed in plan-tests.py
   hangs, instead of the old single 2861s (~48 min) suite-level watchdog;
 - estimates come from timing history (EWMA, outlier-clamped), so one
   anomalous run cannot inflate a class's watchdog;
-- UI lane ceilings are `sum(per-class budgets)`, and the outer GitHub job
-  ceiling is `ceil((2 x sum + (n_classes + 1) x 600s + 2 x n_classes x 300s
-  + 1200s) / 60)` minutes - the worst in-script path is every class running
-  its one targeted retry, each failing class paying one bounded
-  erase/reboot recovery, and each attempt's timing extraction wedging to
-  the xcresulttool bound, plus setup slack.
+- UI lane ceilings are `sum(per-class budgets)` - the batched shard
+  invocation watchdog - and the outer GitHub job ceiling is
+  `ceil((3 x sum + (n_classes + 1) x 600s + 2 x n_classes x 300s
+  + 1200s) / 60)` minutes: the reachable worst in-script path is the batched
+  attempt followed by per-class diagnosis after a batch timeout or wedge
+  (one attempt + one targeted retry per class = 2x more), each failing class
+  paying one bounded erase/reboot recovery, and each attempt's timing
+  extraction wedging to the xcresulttool bound, plus setup slack.
 
 **Finalize grace.** When a watchdog expires but the log already carries
 xcodebuild's terminal result marker (`** TEST EXECUTE SUCCEEDED/FAILED **`),

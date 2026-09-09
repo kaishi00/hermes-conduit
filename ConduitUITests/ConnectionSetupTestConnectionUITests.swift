@@ -74,7 +74,7 @@ final class ConnectionSetupTestConnectionUITests: XCTestCase {
         XCTAssertTrue(app.buttons["setup.test.edit-credentials"].waitForExistence(timeout: 5))
         // Retry exists but is never the primary action after rejected
         // credentials.
-        XCTAssertTrue(app.buttons["setup.test.retry"].exists)
+        XCTAssertTrue(app.buttons["setup.test.retry"].waitForExistence(timeout: 5))
 
         tapVisible(app.buttons["setup.test.edit-credentials"], in: app)
         let username = app.textFields["setup.username"]

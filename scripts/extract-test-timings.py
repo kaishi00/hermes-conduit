@@ -5,11 +5,15 @@ Subcommands
 -----------
 extract      Read an .xcresult bundle via `xcrun xcresulttool` and normalize
              per-XCTest-class durations plus per-test retry attempts into JSON.
-merge-parts  Fold the per-class/per-attempt extraction parts written by the
-             UI lane runner (one xcodebuild invocation per class) into the
-             lane-level observations.json / detail.json documents. The last
-             extracted attempt of a class wins its duration - on a green lane
-             that is always the passing attempt.
+merge-parts  Fold the per-attempt extraction parts written by the
+             UI lane runner - the batched shard attempt (parts named
+             ...-batch-a<n>.json) plus every per-class diagnosis invocation
+             (...-<class>-a<n>.json) - into the lane-level
+             observations.json / detail.json documents. Parts fold in
+             wall-clock order (batch attempt first, per-class diagnosis
+             after, attempts numerically within a group) and the last fold
+             wins per class: on a green lane that is always the passing
+             attempt.
 lane-result  Merge bash-computed lane facts with extraction output into the
              canonical lane-result.json consumed by the report job.
 aggregate    Build the human-readable CI Test Report (GitHub Step Summary)
@@ -287,10 +291,16 @@ def _attempt_index(name: str) -> int:
 
 
 def _part_sort_key(name: str) -> tuple:
-    """Order parts by (class, attempt) so numeric attempts sort correctly
-    (a2 after a10 - plain filename sort would put a10 first)."""
+    """Chronological fold order. The batched shard attempt happens FIRST in
+    wall time and per-class diagnosis supersedes it, so batch-named parts
+    fold before every class-named part regardless of ASCII order (the
+    lowercase stem would otherwise sort after the class names and win
+    last-wins with stale killed-batch data). Within a group, (stem, attempt)
+    orders numeric attempts correctly (a2 after a10 - plain filename sort
+    would put a10 first)."""
     stem = re.sub(r"-a\d+\.json$", "", name)
-    return (stem, _attempt_index(name))
+    is_batch = 0 if _part_class(name) == "batch" else 1
+    return (is_batch, stem, _attempt_index(name))
 
 
 def _part_class(name: str) -> str:
@@ -385,6 +395,12 @@ def merge_detail_parts(parts: list) -> dict:
         retried.extend(_list_field(doc, "retried"))
         cls = _part_class(fname)
         failures_by_class[cls] = _list_field(doc, "failures")
+    # The synthetic "batch" key carries the batched shard attempt's failures.
+    # Once any per-class part exists, diagnosis results have superseded that
+    # attempt: keeping the batch entries would double-count failures from a
+    # superseded (possibly killed mid-run) invocation.
+    if "batch" in failures_by_class and any(k != "batch" for k in failures_by_class):
+        del failures_by_class["batch"]
     failures: list = []
     for cls in failures_by_class:
         failures.extend(failures_by_class[cls])

@@ -206,15 +206,22 @@ for a in "$@"; do
 done
 
 # Write the canned extraction document: one Test Suite node per Class:Result.
+# Classes listed in $FAKE_BATCH_SKIP_CLASSES get an extra Skipped test (final
+# != Passed, so the runner's retry filters must include it).
 write_doc_multi() {
   docfile="$1"; shift
   nodes=""
   sep=""
   for pair in "$@"; do
     c="${pair%%:*}"; r="${pair#*:}"
+    extra=""
+    case " $FAKE_BATCH_SKIP_CLASSES " in *" $c "*)
+      extra=",{\"nodeType\": \"Test Case\", \"name\": \"testD()\", \"result\": \"Skipped\",
+        \"durationInSeconds\": 0.1}" ;;
+    esac
     nodes="$nodes$sep{\"nodeType\": \"Test Suite\", \"name\": \"$c\", \"result\": \"$r\",
       \"children\": [{\"nodeType\": \"Test Case\", \"name\": \"testC()\", \"result\": \"$r\",
-      \"durationInSeconds\": 0.1}]}"
+      \"durationInSeconds\": 0.1}$extra]}"
     sep=","
   done
   cat > "$FAKE_CANNED" <<DOC
@@ -231,11 +238,18 @@ write_all_passed() {
   write_doc_multi "$FAKE_CANNED" $pairs
 }
 
+# The canned document must reflect an ABORTED batch: classes listed in
+# $FAKE_BATCH_OMIT_CLASSES never ran and get no Test Suite node at all.
+doc_classes=""
+for c in $classes; do
+  case " $FAKE_BATCH_OMIT_CLASSES " in *" $c "*) ;; *) doc_classes="$doc_classes $c" ;; esac
+done
+
 if [ "$mode" = "batch" ]; then
   case "$kind" in
     a1)
       echo "batch-a1" >> "$INVOCATION_LOG"
-      [ -n "${FAKE_UI_NO_DOC:-}" ] || write_all_passed $classes
+      [ -n "${FAKE_UI_NO_DOC:-}" ] || write_all_passed $doc_classes
       case "$FAKE_BATCH_A1" in
         hang)
           sleep 300
@@ -247,7 +261,7 @@ if [ "$mode" = "batch" ]; then
           ;;
         fail-test)
           pairs=""
-          for c in $classes; do
+          for c in $doc_classes; do
             case " $FAKE_BATCH_FAIL_CLASSES " in *" $c "*) pairs="$pairs $c:Failed" ;; *) pairs="$pairs $c:Passed" ;; esac
           done
           # NO_DOC keeps the canned document stale so extraction fails.
@@ -262,7 +276,7 @@ if [ "$mode" = "batch" ]; then
       ;;
     a2)
       echo "batch-a2 (filters:$methods)" >> "$INVOCATION_LOG"
-      [ -n "${FAKE_UI_NO_DOC:-}" ] || write_all_passed $classes
+      [ -n "${FAKE_UI_NO_DOC:-}" ] || write_all_passed $doc_classes
       case "$FAKE_BATCH_RETRY" in
         hang)
           sleep 300
@@ -274,7 +288,7 @@ if [ "$mode" = "batch" ]; then
           ;;
         fail)
           pairs=""
-          for c in $classes; do pairs="$pairs $c:Failed"; done
+          for c in $doc_classes; do pairs="$pairs $c:Failed"; done
           [ -n "${FAKE_UI_NO_DOC:-}" ] || write_doc_multi "$FAKE_CANNED" $pairs
           echo "Test Case failed (stub)"
           exit 65
@@ -384,12 +398,6 @@ run_lane "AlphaTests,BetaTests" 3 hang 1
 assert_eq "exit code" "$(cat "$WORKCASE/exit-code")" "1"
 assert_eq "verdict" "$(lane_field "['status']")" "timeout"
 assert_eq "isolation statuses" "$(isolation_statuses)" "['not_diagnosed', 'not_diagnosed']"
-if grep -q "undiagnosed classes" "$WORKCASE/stdout.log"; then
-  ok "undiagnosed classes reported"
-else
-  bad "undiagnosed classes must be reported loudly"
-fi
-
 if grep -q "undiagnosed classes" "$WORKCASE/stdout.log"; then
   ok "undiagnosed classes reported"
 else
@@ -704,6 +712,43 @@ assert_eq "hung class" "$(lane_field "['hung_class']")" "BetaUITests"
 assert_eq "attempts" "$(attempts_statuses)" \
   "['test-failures', 'timeout', 'timeout', 'timeout']"
 assert_eq "Alpha never re-ran after its batch pass" "$(class_invocations AlphaUITests)" "0"
+
+# --- UI case 12: batch aborted before a class ran -> diagnosis, no retry -----
+# A batch whose xcresult has no record of an assigned class can never be
+# retried into a green lane: the unexecuted class forces per-class diagnosis.
+begin_case "ui incomplete batch diagnoses instead of retrying" "$WORK/u12"
+export INVOCATION_LOG="$WORK/u12-invocations.log"; : > "$INVOCATION_LOG"
+export FAKE_UI_NO_DOC="" FAKE_UI_HANG=""
+export FAKE_BATCH_A1="fail-test" FAKE_BATCH_FAIL_CLASSES="BetaUITests" FAKE_BATCH_RETRY="pass"
+export FAKE_BATCH_SKIP_CLASSES="" FAKE_BATCH_OMIT_CLASSES="GammaUITests"
+export FAKE_UI_FAIL_ONCE="" FAKE_UI_FAIL_ALWAYS="" FAKE_UI_INFRA_ONCE="" FAKE_UI_INFRA_ALWAYS="" FAKE_UI_RECOVERY_FAILS=""
+run_ui_lane "AlphaUITests,BetaUITests,GammaUITests" 300 "AlphaUITests=200,BetaUITests=200,GammaUITests=200"
+assert_eq "exit code" "$(cat "$WORKCASE/exit-code")" "0"
+assert_eq "verdict" "$(lane_field "['status']")" "pass"
+assert_eq "attempts" "$(attempts_statuses)" \
+  "['incomplete', 'passed', 'passed', 'passed']"
+assert_eq "no targeted retry for an incomplete batch" "$(batch_invocations 'batch-a1')$(batch_invocations 'batch-a2 (filters: BetaUITests/testC())')" "10"
+assert_eq "every class diagnosed exactly once" \
+  "$(class_invocations AlphaUITests)$(class_invocations BetaUITests)$(class_invocations GammaUITests)" "111"
+if grep -q "batch aborted before executing" "$WORKCASE/stdout.log"; then
+  ok "incomplete batch announced the missing class"
+else
+  bad "an incomplete batch must name the unexecuted class"
+fi
+export FAKE_BATCH_OMIT_CLASSES=""
+
+# --- UI case 13: a Skipped final is non-passing and joins the retry ----------
+begin_case "ui skipped final joins the retry filters" "$WORK/u13"
+export INVOCATION_LOG="$WORK/u13-invocations.log"; : > "$INVOCATION_LOG"
+export FAKE_UI_NO_DOC="" FAKE_UI_HANG="" FAKE_BATCH_OMIT_CLASSES=""
+export FAKE_BATCH_A1="fail-test" FAKE_BATCH_FAIL_CLASSES="BetaUITests" FAKE_BATCH_RETRY="pass"
+export FAKE_BATCH_SKIP_CLASSES="BetaUITests"
+run_ui_lane "AlphaUITests,BetaUITests" 300 "AlphaUITests=200,BetaUITests=200"
+assert_eq "exit code" "$(cat "$WORKCASE/exit-code")" "0"
+assert_eq "verdict" "$(lane_field "['status']")" "pass"
+assert_eq "failed and skipped tests both retried" \
+  "$(batch_invocations 'batch-a2 (filters: BetaUITests/testC() BetaUITests/testD())')" "1"
+assert_eq "attempts" "$(attempts_statuses)" "['test-failures', 'passed']"
 
 # --- UI case 10: a class without a planned watchdog refuses to start ----------
 begin_case "ui missing watchdog entry rejected" "$WORK/u10"

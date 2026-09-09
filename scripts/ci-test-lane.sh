@@ -330,6 +330,28 @@ for line in out:
 " "$1" "$TARGET" 2>/dev/null || true
 }
 
+# Classes with NO attempt records in an extraction detail file: a batch that
+# aborted before a class ever started must not be retried into a green lane -
+# the unexecuted classes force per-class diagnosis instead.
+unexecuted_classes() { # $1 = detail.json
+  python3 -c "
+import json, sys
+try:
+    with open(sys.argv[1], encoding='utf-8') as fh:
+        d = json.load(fh)
+except Exception:
+    sys.exit(0)
+seen = set()
+for a in d.get('attempts', []):
+    cls = a.get('class')
+    if cls:
+        seen.add(cls)
+for cls in sys.argv[2].split(','):
+    if cls and cls not in seen:
+        print(cls)
+" "$1" "$CLASSES" 2>/dev/null || true
+}
+
 # Sum of the planned per-class watchdog budgets for the named classes. Used
 # as the watchdog of a batched invocation (sum of its members' budgets is a
 # safe upper bound: every member budget already covers a full invocation's
@@ -788,12 +810,37 @@ run_ui_lane() {
     record_attempt "batch" 1 "all" "unclassified"
     finish_lane "fail" "$(serialize_attempts)" "" 1
   fi
+
+  # A batch that aborted before a class ever started must not be retried
+  # into a green lane: any assigned class without an attempt record forces
+  # a full per-class diagnosis pass instead of the targeted retry.
+  MISSING_CLASSES=$(unexecuted_classes "$RESULT_DIR/parts/detail-batch-a1.json")
+  if [ -n "$MISSING_CLASSES" ]; then
+    record_attempt "batch" 1 "all" "incomplete"
+    echo "::warning::UI shard $LANE batch aborted before executing $(printf '%s, ' $MISSING_CLASSES)- erasing simulator and entering per-class diagnosis"
+    RESET_USED=1
+    ERASE_USED=1
+    if ! reset_and_boot_simulator 1; then
+      echo "::error::simulator recovery after the incomplete batch failed - the environment cannot be trusted; stopping the lane"
+      mark_all_not_diagnosed "${CLASSES_ARR[@]}"
+      finish_lane "error" "$(serialize_attempts)" "" 1
+    fi
+    run_class_diagnosis "${CLASSES_ARR[@]}"
+  fi
+
   RETRY_FILTERS=()
   while IFS= read -r filter; do
     [ -n "$filter" ] && RETRY_FILTERS+=("-only-testing:$filter")
   done <<EOF
 $RETRY_LINES
 EOF
+  if [ "${#RETRY_FILTERS[@]}" -eq 0 ]; then
+    # Unreachable via retry_filter_lines (it only prints non-empty lines),
+    # but an empty array expansion would crash bash 3.2 under set -u.
+    echo "::error::UI shard $LANE could not build retry filters for "${FAIL_COUNT1}" identified failure(s) - failing the lane"
+    record_attempt "batch" 1 "all" "unclassified"
+    finish_lane "fail" "$(serialize_attempts)" "" 1
+  fi
   RETRY_CLASSES=$(printf '%s\n' "$RETRY_LINES" | awk -F/ '{print $2}' | sort -u)
   retry_budget=$(sum_of_class_budgets $RETRY_CLASSES)
   record_attempt "batch" 1 "all" "test-failures"
@@ -810,6 +857,10 @@ EOF
       "$RESULT_DIR/parts/observations-batch-a2.json" \
       "$RESULT_DIR/parts/detail-batch-a2.json" \
       "$LOG_DIR/extract-batch-a2.log"
+    # The retry reran only the failed METHODS, so its observations carry
+    # method-only durations per class - the batch attempt owns class timing,
+    # so the retry's observations must not fold into the timing history.
+    rm -f "$RESULT_DIR/parts/observations-batch-a2.json"
     record_attempt "batch-retry" 2 "all" "passed"
     for cls in $RETRY_CLASSES; do
       echo "$cls" >> "$RETRIED_LINES"
@@ -838,6 +889,7 @@ EOF
     "$RESULT_DIR/parts/observations-batch-a2.json" \
     "$RESULT_DIR/parts/detail-batch-a2.json" \
     "$LOG_DIR/extract-batch-a2.log"
+  rm -f "$RESULT_DIR/parts/observations-batch-a2.json"
   FAIL_COUNT2=$(count_failures "$RESULT_DIR/parts/detail-batch-a2.json")
   if [ "$FAIL_COUNT2" -gt 0 ]; then
     echo "::error::UI shard $LANE tests FAILED again on the targeted retry ("${FAIL_COUNT2}" test(s) - real failures, not flakes) - failing the lane"
