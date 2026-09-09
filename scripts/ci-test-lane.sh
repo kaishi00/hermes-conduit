@@ -4,18 +4,25 @@
 # build products (test-without-building; never rebuilds).
 #
 # Unit lanes run all assigned classes in one xcodebuild invocation. UI lanes
-# are DIFFERENT: each UI class is its own xcodebuild invocation under its own
-# per-class watchdog (budgets planned by plan-tests.py), so one hung class can
-# never hold the rest of the suite hostage and failure is attributed - and
-# retried - at class granularity.
+# batch every class of the shard into ONE invocation on the healthy path
+# (multiple -only-testing filters), so a successful shard pays Xcode/
+# CoreSimulator/test-session startup once instead of once per class. Any
+# batch-level failure falls back to per-class diagnosis (each class its own
+# invocation under its own planned watchdog), so one hung class can never
+# hold the rest of the suite hostage and failure is still attributed - and
+# retried - at class granularity; ordinary test failures never even get
+# there: they retry ONLY the failed test methods (exact method when the
+# xcresult identifies them, the class otherwise) in a single follow-up
+# invocation, and healthy classes are never re-executed.
 #
 # Failure-domain policy (docs/CI.md):
 #   1. Ordinary test failures never rerun healthy work. Unit attempt 1 runs
 #      with Xcode-native flake retry (-retry-tests-on-failure -test-iterations N),
 #      which re-executes only the failing tests. If failures survive those
 #      iterations the lane fails with the failing tests identified - the
-#      healthy classes are never rerun. UI classes get one TARGETED retry of
-#      just the failed class; passing classes are never re-executed.
+#      healthy classes are never rerun. UI batches get one TARGETED retry of
+#      just the failed tests (methods when identifiable, else classes);
+#      passing classes are never re-executed.
 #   2. An invocation whose XCTest result CANNOT be classified (timing/result
 #      extraction failed) is a FAILURE. Timing extraction is best-effort and
 #      must never decide test correctness, so an unclassifiable failure is
@@ -23,22 +30,24 @@
 #   3. An invocation that exits nonzero with a KNOWN zero failing-test count
 #      is confidently an infrastructure failure (simulator crash, runner
 #      exit, ...): reset the simulator once and retry. Units retry the whole
-#      lane (it is one invocation); a UI lane retries only the affected
-#      class. If a UI class fails AGAIN as an infrastructure failure, it is
-#      recorded as a persistent infrastructure failure and the lane FAILS -
-#      but after a clean simulator reset the remaining classes still run, so
-#      one wedged class cannot suppress independent UI coverage. If the
-#      simulator recovery itself cannot be trusted (erase failed, UDID
-#      unresolvable, boot never completed), later results would be
-#      misleading: the lane stops there instead.
+#      lane (it is one invocation); a UI batch cannot attribute a wedge to a
+#      class, so it erases the simulator and re-runs the affected classes
+#      through per-class diagnosis. If a class fails AGAIN as an
+#      infrastructure failure there, it is recorded as a persistent
+#      infrastructure failure and the lane FAILS - but after a clean
+#      simulator reset the remaining classes still run, so one wedged class
+#      cannot suppress independent UI coverage. If the simulator recovery
+#      itself cannot be trusted (erase failed, UDID unresolvable, boot never
+#      completed), later results would be misleading: the lane stops there.
 #   4. A watchdog timeout is positive identification of a hang. Units erase
 #      and enter lane-level class-granular isolation (heaviest estimate
 #      first, bounded by the isolation budget, stopping at the first
-#      confirmed class-level hang). UI classes are already isolated: the
-#      simulator is erased and the SAME class retries once under its own
-#      budget; a second timeout names the hung class, fails the lane, and
-#      later classes are recorded as not_diagnosed so a contaminated
-#      simulator cannot produce misleading secondary failures.
+#      confirmed class-level hang). A UI batch timeout cannot name the hung
+#      class, so it erases and enters the same per-class diagnosis, where a
+#      class that hangs twice names the culprit, fails the lane, and stops
+#      it (its simulator state is contaminated) while earlier results are
+#      kept and later classes are recorded as not_diagnosed so a
+#      contaminated simulator cannot produce misleading secondary failures.
 #
 # UI watchdog budgets are owned by plan-tests.py alone: every UI lane
 # receives an explicit per-class budget table (--class-timeouts) and the
@@ -275,6 +284,65 @@ except Exception:
 " "$1" 2>/dev/null || echo -1
 }
 
+# Method-precise retry filters from an extraction detail file: one
+# ConduitUITests/Class/testMethod line per non-passing test when the
+# xcresult identifies it, ConduitUITests/Class when only the class is known
+# (a class-level line subsumes any method-level lines of the same class).
+# Anything whose FINAL result is not Passed is retried - Failed, but also
+# Crashed/Skipped entries left by an aborted run, so a partial batch can
+# never be retried into a false green. Empty output means nothing was
+# reliably identifiable.
+retry_filter_lines() { # $1 = detail.json
+  python3 -c "
+import json, sys
+try:
+    with open(sys.argv[1], encoding='utf-8') as fh:
+        d = json.load(fh)
+except Exception:
+    sys.exit(0)
+target = sys.argv[2]
+class_only = set()
+lines = []
+for a in d.get('attempts', []):
+    if str(a.get('final', '')).lower() == 'passed':
+        continue
+    cls = a.get('class')
+    if not cls:
+        continue
+    test = a.get('test')
+    if test:
+        lines.append(target + '/' + cls + '/' + test)
+    else:
+        class_only.add(cls)
+out = []
+seen = set()
+for line in lines:
+    cls = line.split('/')[1]
+    if cls in class_only:
+        continue
+    if line not in seen:
+        seen.add(line)
+        out.append(line)
+for cls in sorted(class_only):
+    out.append(target + '/' + cls)
+for line in out:
+    print(line)
+" "$1" "$TARGET" 2>/dev/null || true
+}
+
+# Sum of the planned per-class watchdog budgets for the named classes. Used
+# as the watchdog of a batched invocation (sum of its members' budgets is a
+# safe upper bound: every member budget already covers a full invocation's
+# fixed overhead on its own).
+sum_of_class_budgets() {
+  local total=0 cls budget
+  for cls in "$@"; do
+    budget=$(ui_budget_for "$cls")
+    total=$(( total + budget ))
+  done
+  echo "$total"
+}
+
 # --- lane bookkeeping --------------------------------------------------------
 STARTED_AT=$(now_iso)
 lane_start=$(date +%s)
@@ -345,17 +413,32 @@ persistent_infra_csv() {
   sed '/^$/d' "$PERSISTENT_INFRA_LINES" 2>/dev/null | paste -sd ',' - 2>/dev/null || printf ''
 }
 
-# Every class after $1 (the class being stopped on) that never ran must be
-# visible as not_diagnosed - unexecuted tests may never masquerade as passed
-# or as ordinary failures.
-mark_remaining_not_diagnosed() { # $1 = class the lane stopped on
+# Every class after $1 (the class the diagnosis stopped on) in the diagnosis
+# list ($2 onwards) that never ran must be visible as not_diagnosed -
+# unexecuted tests may never masquerade as passed or as ordinary failures.
+mark_remaining_not_diagnosed() { # $1 = class the diagnosis stopped on
+  local stopped="$1"
+  shift
   local seen=0 cls
-  for cls in "${CLASSES_ARR[@]}"; do
+  for cls in "$@"; do
     if [ "$seen" -eq 1 ]; then
       record_attempt "skipped" 0 "$cls" "not_diagnosed"
-      echo "::error::class $cls was NOT executed (lane stopped at $1) - recorded as not_diagnosed"
+      echo "::error::class $cls was NOT executed (lane stopped at $stopped) - recorded as not_diagnosed"
     fi
-    [ "$cls" = "$1" ] && seen=1
+    [ "$cls" = "$stopped" ] && seen=1
+  done
+}
+
+# Batch-level failures that abort before ANY per-class result exists: every
+# named class is recorded as not_diagnosed. Called with ALL assigned classes
+# when nothing attributable ran, or with just the retried classes when a
+# retry's simulator recovery failed (healthy batch-passing classes keep
+# their recorded results).
+mark_all_not_diagnosed() {
+  local cls
+  for cls in "$@"; do
+    record_attempt "skipped" 0 "$cls" "not_diagnosed"
+    echo "::error::class $cls was NOT executed - recorded as not_diagnosed"
   done
 }
 
@@ -394,11 +477,16 @@ finish_lane() { # $1=status $2=attempts_json $3=isolation_json $4=exit_code
   # Bundles are created inside RESULT_DIR, so failed lanes upload them as
   # failure artifacts automatically. Successful lanes have already had their
   # timings extracted - delete the bundles to keep the artifact small, EXCEPT
-  # for classes that needed their targeted retry (test-flake OR infra-wedge
+  # for attempts that needed their targeted retry (test-flake OR infra-wedge
   # recovery: both attempt bundles are kept, since the attempt-1 bundle is
   # the only evidence of what needed the retry).
   if [ "$1" = "pass" ]; then
     if [ "$KIND" = "ui" ]; then
+      # Batched shard: a clean first-attempt batch leaves no bundle behind;
+      # a batch that needed its targeted retry keeps BOTH bundles.
+      if [ ! -s "$RETRIED_LINES" ] && [ ! -s "$INFRA_RECOVERED_LINES" ]; then
+        rm -rf "$RESULT_DIR"/batch-a*.xcresult 2>/dev/null || true
+      fi
       local b base cls
       for b in "$RESULT_DIR"/class-*.xcresult; do
         [ -e "$b" ] || break
@@ -607,26 +695,194 @@ echo "::error::lane $LANE failed twice with zero failing tests (exit $status1, t
 finish_lane "error" '[{"n": 1, "mode": "lane", "status": "infra-error"}, {"n": 2, "mode": "lane-retry", "status": "infra-error"}]' "" 1
 }
 
-# --- UI lane: one independent invocation PER CLASS ----------------------------
-# Each class runs alone, under its own planned watchdog, and gets at most one
-# targeted retry. A pass moves on immediately; a retry pass is reported as a
-# runner-level flake (never an indistinguishable clean pass); a class that
-# fails both attempts fails the lane while the remaining classes still run;
-# a class that hangs twice names the culprit and stops the lane (its
-# simulator state is contaminated). The simulator is booted once up front so
-# only the first class pays the cold-boot overhead.
+# --- UI lane: one batched invocation per shard on the healthy path ------------
+# Every class of the shard runs in ONE xcodebuild invocation (multiple
+# -only-testing filters), so a healthy shard pays the Xcode/CoreSimulator/
+# test-session startup and result finalization once instead of once per
+# class. Recovery never re-executes healthy work:
+#   * ordinary test failures  -> one targeted retry invocation of ONLY the
+#     failed tests (exact methods when the xcresult identifies them, else
+#     their classes); a passing retry stays a reported flake;
+#   * watchdog timeout or infrastructure wedge -> erase the simulator and
+#     re-run the affected classes through run_class_diagnosis, which keeps
+#     the original per-class failure-domain properties (per-class watchdogs,
+#     one retry, hang attribution).
 run_ui_lane() {
   bounded_run 60 xcrun simctl shutdown all || true
   reset_and_boot_simulator 0
 
+  batch_budget=$(sum_of_class_budgets "${CLASSES_ARR[@]}")
+  status1=0
+  echo "::group::UI shard $LANE batch attempt 1 ("${#CLASSES_ARR[@]}" classes in one invocation, budget "${batch_budget}"s)"
+  xcodebuild_test "$batch_budget" "$LOG_DIR/batch-a1.log" \
+    "$RESULT_DIR/batch-a1.xcresult" 1 "${ONLY_TESTING[@]}" || status1=$?
+  echo "::endgroup::"
+
+  if [ "$status1" -ne 0 ] && [ "$status1" -ne 124 ]; then
+    # Classify the failure before deciding the retry's recovery actions.
+    extract_bundle "$RESULT_DIR/batch-a1.xcresult" \
+      "$RESULT_DIR/parts/observations-batch-a1.json" \
+      "$RESULT_DIR/parts/detail-batch-a1.json" \
+      "$LOG_DIR/extract-batch-a1.log"
+    FAIL_COUNT1=$(count_failures "$RESULT_DIR/parts/detail-batch-a1.json")
+    if [ "$FAIL_COUNT1" -eq -1 ]; then
+      echo "::error::UI shard $LANE batch failed (exit $status1) and its XCTest result could not be classified - failing the lane instead of retrying"
+      record_attempt "batch" 1 "all" "unclassified"
+      mark_all_not_diagnosed "${CLASSES_ARR[@]}"
+      finish_lane "fail" "$(serialize_attempts)" "" 1
+    fi
+  else
+    FAIL_COUNT1=""   # timeout: classified without extraction; pass: not needed
+  fi
+
+  if [ "$status1" -eq 0 ]; then
+    extract_bundle "$RESULT_DIR/batch-a1.xcresult" \
+      "$RESULT_DIR/parts/observations-batch-a1.json" \
+      "$RESULT_DIR/parts/detail-batch-a1.json" \
+      "$LOG_DIR/extract-batch-a1.log"
+    record_attempt "batch" 1 "all" "passed"
+    echo "UI shard $LANE: batch of "${#CLASSES_ARR[@]}" classes passed in one invocation"
+    finish_lane "pass" "$(serialize_attempts)" "" 0
+  fi
+
+  # --- batch timed out: no per-class attribution, diagnose class-by-class ----
+  if [ "$status1" -eq 124 ]; then
+    record_attempt "batch" 1 "all" "timeout"
+    echo "::warning::UI shard $LANE batch exceeded its "${batch_budget}"s watchdog - erasing simulator and entering per-class diagnosis"
+    bounded_run 45 xcrun simctl list devices >"$LOG_DIR/simctl-devices-after-timeout-batch-a1.txt" 2>&1 || true
+    RESET_USED=1
+    ERASE_USED=1
+    if ! reset_and_boot_simulator 1; then
+      echo "::error::simulator recovery after the batch timeout failed - the environment cannot be trusted; stopping the lane"
+      mark_all_not_diagnosed "${CLASSES_ARR[@]}"
+      finish_lane "error" "$(serialize_attempts)" "" 1
+    fi
+    run_class_diagnosis "${CLASSES_ARR[@]}"
+  fi
+
+  # --- batch infra wedge: zero identified failures, nonzero exit -----------
+  # A batch cannot attribute a wedge to a class: erase the simulator and
+  # re-run the whole shard through per-class diagnosis, which keeps the
+  # per-class watchdog, retry, and hang-attribution properties.
+  if [ "$status1" -ne 0 ] && [ "$FAIL_COUNT1" -eq 0 ]; then
+    record_attempt "batch" 1 "all" "infra-error"
+    echo "::warning::UI shard $LANE batch failed with zero failing tests (exit $status1) - infrastructure failure; erasing simulator and entering per-class diagnosis"
+    RESET_USED=1
+    ERASE_USED=1
+    if ! reset_and_boot_simulator 1; then
+      echo "::error::simulator recovery after the batch infrastructure failure failed - the environment cannot be trusted; stopping the lane"
+      mark_all_not_diagnosed "${CLASSES_ARR[@]}"
+      finish_lane "error" "$(serialize_attempts)" "" 1
+    fi
+    run_class_diagnosis "${CLASSES_ARR[@]}"
+  fi
+
+  # --- ordinary test failures: retry ONLY the failed tests --------------------
+  # Method-level when the xcresult identifies the test (the extraction's
+  # failure records carry class + test), class-level otherwise. Healthy
+  # classes are never re-executed, so a single failure can never grow into a
+  # shard-wide rerun.
+  RETRY_LINES=$(retry_filter_lines "$RESULT_DIR/parts/detail-batch-a1.json")
+  if [ -z "$RETRY_LINES" ]; then
+    echo "::error::UI shard $LANE had "${FAIL_COUNT1}" failing test(s) but none could be identified from the xcresult - failing the lane"
+    record_attempt "batch" 1 "all" "unclassified"
+    finish_lane "fail" "$(serialize_attempts)" "" 1
+  fi
+  RETRY_FILTERS=()
+  while IFS= read -r filter; do
+    [ -n "$filter" ] && RETRY_FILTERS+=("-only-testing:$filter")
+  done <<EOF
+$RETRY_LINES
+EOF
+  RETRY_CLASSES=$(printf '%s\n' "$RETRY_LINES" | awk -F/ '{print $2}' | sort -u)
+  retry_budget=$(sum_of_class_budgets $RETRY_CLASSES)
+  record_attempt "batch" 1 "all" "test-failures"
+  echo "UI shard $LANE: "${FAIL_COUNT1}" test(s) failed - targeted retry of only the failed tests ("$(printf '%s ' $RETRY_FILTERS)")"
+
+  status2=0
+  echo "::group::UI shard $LANE targeted retry (budget "${retry_budget}"s)"
+  xcodebuild_test "$retry_budget" "$LOG_DIR/batch-a2.log" \
+    "$RESULT_DIR/batch-a2.xcresult" 1 "${RETRY_FILTERS[@]}" || status2=$?
+  echo "::endgroup::"
+
+  if [ "$status2" -eq 0 ]; then
+    extract_bundle "$RESULT_DIR/batch-a2.xcresult" \
+      "$RESULT_DIR/parts/observations-batch-a2.json" \
+      "$RESULT_DIR/parts/detail-batch-a2.json" \
+      "$LOG_DIR/extract-batch-a2.log"
+    record_attempt "batch-retry" 2 "all" "passed"
+    for cls in $RETRY_CLASSES; do
+      echo "$cls" >> "$RETRIED_LINES"
+    done
+    # A test failure that a retry rescued is a runner-level flake: it stays
+    # visible instead of blending into a clean pass, and both attempt
+    # bundles are kept for diagnosis.
+    echo "::warning::UI shard $LANE PASSED on its targeted retry - runner-level flake ("$(printf '%s, ' $RETRY_CLASSES)"only the failed tests re-ran), reported, not hidden"
+    finish_lane "pass" "$(serialize_attempts)" "" 0
+  fi
+
+  if [ "$status2" -eq 124 ]; then
+    record_attempt "batch-retry" 2 "all" "timeout"
+    echo "::warning::UI shard $LANE targeted retry exceeded its "${retry_budget}"s watchdog - erasing simulator and entering per-class diagnosis of the retried classes"
+    RESET_USED=1
+    ERASE_USED=1
+    if ! reset_and_boot_simulator 1; then
+      echo "::error::simulator recovery after the retry timeout failed - the environment cannot be trusted; stopping the lane"
+      mark_all_not_diagnosed $RETRY_CLASSES
+      finish_lane "error" "$(serialize_attempts)" "" 1
+    fi
+    run_class_diagnosis $RETRY_CLASSES
+  fi
+
+  extract_bundle "$RESULT_DIR/batch-a2.xcresult" \
+    "$RESULT_DIR/parts/observations-batch-a2.json" \
+    "$RESULT_DIR/parts/detail-batch-a2.json" \
+    "$LOG_DIR/extract-batch-a2.log"
+  FAIL_COUNT2=$(count_failures "$RESULT_DIR/parts/detail-batch-a2.json")
+  if [ "$FAIL_COUNT2" -gt 0 ]; then
+    echo "::error::UI shard $LANE tests FAILED again on the targeted retry ("${FAIL_COUNT2}" test(s) - real failures, not flakes) - failing the lane"
+    record_attempt "batch-retry" 2 "all" "test-failures"
+    finish_lane "fail" "$(serialize_attempts)" "" 1
+  fi
+  if [ "$FAIL_COUNT2" -eq -1 ]; then
+    echo "::error::UI shard $LANE targeted retry failed (exit $status2) and its XCTest result could not be classified - failing the lane"
+    record_attempt "batch-retry" 2 "all" "unclassified"
+    finish_lane "fail" "$(serialize_attempts)" "" 1
+  fi
+
+  # Nonzero exit with a known zero failing-test count and no timeout: the
+  # retry itself wedged on the environment. A batch cannot attribute a wedge
+  # to a class, so erase and diagnose the retried classes one by one.
+  record_attempt "batch-retry" 2 "all" "infra-error"
+  echo "::warning::UI shard $LANE targeted retry hit an infrastructure failure (exit $status2, zero failing tests) - erasing simulator and entering per-class diagnosis of the retried classes"
+  RESET_USED=1
+  ERASE_USED=1
+  if ! reset_and_boot_simulator 1; then
+    echo "::error::simulator recovery after the retry infrastructure failure failed - the environment cannot be trusted; stopping the lane"
+    mark_all_not_diagnosed $RETRY_CLASSES
+    finish_lane "error" "$(serialize_attempts)" "" 1
+  fi
+  run_class_diagnosis $RETRY_CLASSES
+}
+
+# --- UI per-class diagnosis loop ----------------------------------------------
+# Each named class runs alone, under its own planned watchdog, and gets at
+# most one targeted retry. A pass moves on immediately; a retry pass is
+# reported as a runner-level flake (never an indistinguishable clean pass); a
+# class that fails both attempts fails the lane while the remaining classes
+# still run; a class that hangs twice names the culprit and stops the lane
+# (its simulator state is contaminated). Entered only after the simulator is
+# in a trusted, freshly-booted state. Always terminates the lane.
+run_class_diagnosis() {
+  DIAG_CLASSES_ARR=("$@")
   LANE_FAILED=0
-  for cls in "${CLASSES_ARR[@]}"; do
+  for cls in "${DIAG_CLASSES_ARR[@]}"; do
     budget=$(ui_budget_for "$cls")
     obs1="$RESULT_DIR/parts/observations-$cls-a1.json"
     det1="$RESULT_DIR/parts/detail-$cls-a1.json"
 
     status1=0
-    echo "::group::UI class $cls attempt 1 (budget "${budget}"s)"
+    echo "::group::UI diagnosis class $cls attempt 1 (budget "${budget}"s)"
     xcodebuild_test "$budget" "$LOG_DIR/class-$cls-a1.log" \
       "$RESULT_DIR/class-$cls-a1.xcresult" 1 "-only-testing:$TARGET/$cls" || status1=$?
     echo "::endgroup::"
@@ -639,7 +895,7 @@ run_ui_lane() {
       if [ "$FAIL_COUNT1" -eq -1 ]; then
         echo "::error::UI class $cls failed (exit $status1) and its XCTest result could not be classified - failing the lane instead of retrying"
         record_attempt "class" 1 "$cls" "unclassified"
-        mark_remaining_not_diagnosed "$cls"
+        mark_remaining_not_diagnosed "$cls" "${DIAG_CLASSES_ARR[@]}"
         finish_lane "fail" "$(serialize_attempts)" "" 1
       fi
     else
@@ -674,7 +930,7 @@ run_ui_lane() {
       ERASE_USED=1
       if ! reset_and_boot_simulator 1; then
         echo "::error::simulator recovery for UI class $cls failed - the environment cannot be trusted; stopping the lane"
-        mark_remaining_not_diagnosed "$cls"
+        mark_remaining_not_diagnosed "$cls" "${DIAG_CLASSES_ARR[@]}"
         finish_lane "error" "$(serialize_attempts)" "" 1
       fi
     elif [ "$FAIL_COUNT1" -eq 0 ]; then
@@ -683,17 +939,33 @@ run_ui_lane() {
       ERASE_USED=1
       if ! reset_and_boot_simulator 1; then
         echo "::error::simulator recovery for UI class $cls failed - the environment cannot be trusted; stopping the lane"
-        mark_remaining_not_diagnosed "$cls"
+        mark_remaining_not_diagnosed "$cls" "${DIAG_CLASSES_ARR[@]}"
         finish_lane "error" "$(serialize_attempts)" "" 1
       fi
     else
-      echo "UI class $cls failed ("${FAIL_COUNT1}" test(s) surviving) - targeted retry of this class once"
+      # Diagnosis mode retries at the same precision as the batch path: the
+      # failed methods when the extraction identifies them, the class
+      # otherwise.
+      DIAG_RETRY_LINES=$(retry_filter_lines "$det1")
+      echo "UI class $cls failed ("${FAIL_COUNT1}" test(s) surviving) - targeted retry"
     fi
+
+    DIAG_RETRY_FILTERS=()
+    if [ -n "${DIAG_RETRY_LINES:-}" ]; then
+      while IFS= read -r filter; do
+        [ -n "$filter" ] && DIAG_RETRY_FILTERS+=("-only-testing:$filter")
+      done <<EOF
+$DIAG_RETRY_LINES
+EOF
+    else
+      DIAG_RETRY_FILTERS+=("-only-testing:$TARGET/$cls")
+    fi
+    DIAG_RETRY_LINES=""
 
     status2=0
     echo "::group::UI class $cls attempt 2 (targeted retry)"
     xcodebuild_test "$budget" "$LOG_DIR/class-$cls-a2.log" \
-      "$RESULT_DIR/class-$cls-a2.xcresult" 1 "-only-testing:$TARGET/$cls" || status2=$?
+      "$RESULT_DIR/class-$cls-a2.xcresult" 1 "${DIAG_RETRY_FILTERS[@]}" || status2=$?
     echo "::endgroup::"
 
     if [ "$status2" -eq 0 ]; then
@@ -719,7 +991,7 @@ run_ui_lane() {
       echo "::error::UI class $cls HUNG again (exceeded its "${budget}"s class budget twice) - it is the identified culprit; failing the lane"
       HUNG_CLASS="$cls"
       record_attempt "class-retry" 2 "$cls" "timeout"
-      mark_remaining_not_diagnosed "$cls"
+      mark_remaining_not_diagnosed "$cls" "${DIAG_CLASSES_ARR[@]}"
       finish_lane "timeout" "$(serialize_attempts)" "" 1
     fi
 
@@ -737,7 +1009,7 @@ run_ui_lane() {
     if [ "$FAIL_COUNT2" -eq -1 ]; then
       echo "::error::UI class $cls failed again (exit $status2) and its XCTest result could not be classified - failing the lane"
       record_attempt "class-retry" 2 "$cls" "unclassified"
-      mark_remaining_not_diagnosed "$cls"
+      mark_remaining_not_diagnosed "$cls" "${DIAG_CLASSES_ARR[@]}"
       finish_lane "fail" "$(serialize_attempts)" "" 1
     fi
 
@@ -758,7 +1030,7 @@ run_ui_lane() {
     ERASE_USED=1
     if ! reset_and_boot_simulator 1; then
       echo "::error::simulator cleanup after the persistent infrastructure failure in UI class $cls failed - the environment cannot be trusted; stopping the lane"
-      mark_remaining_not_diagnosed "$cls"
+      mark_remaining_not_diagnosed "$cls" "${DIAG_CLASSES_ARR[@]}"
       finish_lane "error" "$(serialize_attempts)" "" 1
     fi
   done
