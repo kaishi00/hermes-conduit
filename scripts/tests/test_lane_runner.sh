@@ -429,6 +429,13 @@ if [ -f "$WORKCASE/lane-result.json" ] && grep -q '"class": "AlphaUITests"' "$WO
 else
   bad "attempt chain must record the owning class"
 fi
+assert_eq "merged per-class timings reach lane-result" \
+  "$(lane_field "['class_seconds']")" \
+  "{'AlphaUITests': 0.1, 'BetaUITests': 0.1}"
+assert_eq "merged case counts" "$(python3 -c "
+import json
+print(json.load(open('$WORKCASE/observations.json'))['counts']['cases'])
+" 2>/dev/null || echo NONE)" "2"
 
 # --- UI case 2: flaky class passes on the targeted retry ----------------------
 begin_case "ui flaky class recovered" "$WORK/u2"
@@ -492,6 +499,8 @@ assert_eq "verdict" "$(lane_field "['status']")" "pass"
 assert_eq "attempts" "$(attempts_statuses)" "['infra-error', 'passed']"
 assert_eq "Alpha invoked twice" "$(ui_invocations AlphaUITests)" "2"
 assert_eq "infra recovery is not a test flake" "$(retried_classes)" "[]"
+assert_eq "infra recovery reported separately" \
+  "$(lane_field "['infra_recovered_classes']")" "['AlphaUITests']"
 
 # --- UI case 6: unclassified failure fails the lane without retry -------------
 begin_case "ui unclassified failure" "$WORK/u6"

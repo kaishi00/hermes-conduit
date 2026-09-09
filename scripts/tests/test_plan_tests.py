@@ -283,9 +283,10 @@ class UiShardingTests(unittest.TestCase):
                         planner.ui_class_timeout_for(
                             self.ESTIMATES[name], 420, 3.0))
                 # lane watchdog sum feeds the job ceiling: worst path is a
-                # targeted retry of every class (2x) plus the setup margin.
+                # targeted retry of every class (2x), one bounded erase/
+                # reboot recovery per failing class, plus setup slack.
                 expected_ceiling = planner.ui_job_timeout_min(
-                    lane["timeout_s"], default_cfg())
+                    lane["timeout_s"], len(lane["classes"]), default_cfg())
                 self.assertEqual(lane["job_timeout_min"], expected_ceiling)
             self.assertEqual(planner.validate_plan(plan, discovery), [])
 
@@ -327,6 +328,40 @@ class UiShardingTests(unittest.TestCase):
             # unseen classes all get the conservative default, so lanes are even
             for lane in plan["ui_lanes"]:
                 self.assertEqual(lane["predicted_s"], 40.0)
+
+    def test_single_ui_class_repo_plans_and_validates(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(make_repo(Path(tmp), [], ["LoneUITests"]))
+            discovery, plan = plan_from_tree(root, {"LoneUITests": 100.0})
+            errors = planner.validate_plan(plan, discovery)
+            self.assertEqual(errors, [])
+            self.assertEqual(plan["ui_lane_count"], 1)
+            lane = plan["ui_lanes"][0]
+            self.assertEqual(lane["classes"], ["LoneUITests"])
+            self.assertEqual(lane["class_timeouts"], "LoneUITests=420")
+            matrix = json.loads(planner.ui_matrix_json(plan))
+            self.assertEqual(len(matrix["include"]), 1)
+            self.assertEqual(matrix["include"][0]["classes"], "LoneUITests")
+
+    def test_ui_job_ceiling_covers_worst_in_script_path(self):
+        # Worst legit path: every class runs its targeted retry (2x its
+        # budget) AND every failing class pays one bounded erase/reboot
+        # recovery, plus setup slack. The GitHub ceiling must never preempt
+        # that path - otherwise the hung class is never named.
+        cfg = default_cfg()
+        for n_classes in (1, 2, 3, 5):
+            budgets = [planner.ui_class_timeout_for(est, cfg["ui_class_timeout_min_s"],
+                                                    cfg["ui_class_timeout_multiplier"])
+                       for est in (333.0, 296.8, 232.5, 215.9, 129.6)[:n_classes]]
+            lane_timeout = sum(budgets)
+            ceiling_s = planner.ui_job_timeout_min(
+                lane_timeout, n_classes, cfg) * 60
+            worst_path = (2 * lane_timeout
+                          + (n_classes + 1) * cfg["ui_reset_overhead_s"]
+                          + cfg["job_timeout_margin_s"])
+            self.assertGreaterEqual(
+                ceiling_s, worst_path,
+                f"ceiling too small for {n_classes} classes")
 
 
 class CliTests(unittest.TestCase):

@@ -67,6 +67,10 @@ UI_MAX_LANES = 4
 # suite-level watchdog.
 UI_CLASS_TIMEOUT_MIN_S = 420
 UI_CLASS_TIMEOUT_MULTIPLIER = 3.0
+# Bounded cost of one failing class's erase/reboot recovery (shutdown 60 +
+# erase 180 + boot 60 + bootstatus 200 + diagnostics ~45, rounded up) - the
+# job ceiling must cover one per failing class, not a flat allowance.
+UI_RESET_OVERHEAD_S = 600
 JOB_TIMEOUT_MARGIN_S = 1200        # reset/erase overhead + setup/download slack
 UNIT_TARGET = "ConduitTests"
 UI_TARGET = "ConduitUITests"
@@ -306,13 +310,17 @@ def ui_class_timeout_for(estimate: float, floor_s: float, multiplier: float) -> 
     return max(int(floor_s), int(math.ceil(estimate * multiplier)))
 
 
-def ui_job_timeout_min(lane_timeout_s: int, cfg: dict) -> int:
-    """Outer emergency ceiling for a UI lane: worst in-script path is every
-    class running its targeted retry (2 x sum of per-class budgets) plus
-    bounded resets and setup/download slack. Per-class watchdogs inside the
-    runner are the real enforcement; the ceiling only guarantees GitHub can
-    never preempt legitimate in-script recovery."""
-    total = 2 * lane_timeout_s + cfg["job_timeout_margin_s"]
+def ui_job_timeout_min(lane_timeout_s: int, n_classes: int, cfg: dict) -> int:
+    """Outer emergency ceiling for a UI lane. Worst in-script path: every
+    class runs its targeted retry (2 x sum of per-class budgets) AND every
+    failing class pays one bounded erase/reboot recovery, plus setup/
+    download slack. Per-class watchdogs inside the runner are the real
+    enforcement; the ceiling only guarantees GitHub can never preempt
+    legitimate in-script recovery (which is what would erase the hung-class
+    attribution this lane exists to provide)."""
+    total = (2 * lane_timeout_s
+             + (n_classes + 1) * cfg["ui_reset_overhead_s"]
+             + cfg["job_timeout_margin_s"])
     return int(math.ceil(total / 60.0))
 
 
@@ -386,7 +394,8 @@ def build_plan(discovery: dict, cfg: dict, estimates: dict) -> dict:
                     "{0}={1}".format(c, class_timeouts[c]) for c in classes),
                 "predicted_s": round(predicted, 1),
                 "timeout_s": lane_timeout,
-                "job_timeout_min": ui_job_timeout_min(lane_timeout, cfg),
+                "job_timeout_min": ui_job_timeout_min(
+                    lane_timeout, len(classes), cfg),
             })
 
     plan = {
@@ -477,7 +486,12 @@ def validate_plan(plan: dict, discovery: dict) -> list:
             timeout_names = set()
             for pair in lane["class_timeouts"].split(","):
                 if "=" in pair:
-                    timeout_names.add(pair.split("=", 1)[0])
+                    name, value = pair.split("=", 1)
+                    timeout_names.add(name)
+                    if not value.isdigit():
+                        errors.append(
+                            f"UI lane {lane['lane']} has a non-numeric watchdog "
+                            f"for {name}: {value!r}")
             for c in lane["classes"]:
                 if c not in timeout_names:
                     errors.append(f"UI lane {lane['lane']} has no watchdog for {c}")
@@ -665,6 +679,7 @@ def _cfg_from_args(a) -> dict:
         "ui_max_lanes": a.ui_max_lanes,
         "ui_class_timeout_min_s": a.ui_class_timeout_min_s,
         "ui_class_timeout_multiplier": a.ui_class_timeout_multiplier,
+        "ui_reset_overhead_s": a.ui_reset_overhead_s,
         "job_timeout_margin_s": a.job_timeout_margin_s,
     }
 
@@ -737,6 +752,7 @@ def main(argv=None) -> int:
         p.add_argument("--ui-class-timeout-min-s", type=int, default=UI_CLASS_TIMEOUT_MIN_S)
         p.add_argument("--ui-class-timeout-multiplier", type=float,
                        default=UI_CLASS_TIMEOUT_MULTIPLIER)
+        p.add_argument("--ui-reset-overhead-s", type=int, default=UI_RESET_OVERHEAD_S)
         p.add_argument("--job-timeout-margin-s", type=int, default=JOB_TIMEOUT_MARGIN_S)
         if cmd == "plan":
             p.add_argument("--out", default="plan.json")

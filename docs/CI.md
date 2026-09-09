@@ -221,8 +221,10 @@ ui_class_timeout = max(420s, ceil(estimate x 3.0))
 - estimates come from timing history (EWMA, outlier-clamped), so one
   anomalous run cannot inflate a class's watchdog;
 - UI lane ceilings are `sum(per-class budgets)`, and the outer GitHub job
-  ceiling is `ceil((2 x sum + 1200s) / 60)` minutes - the worst in-script
-  path is every class running its one targeted retry.
+  ceiling is `ceil((2 x sum + (n_classes + 1) x 600s + 1200s) / 60)` minutes
+  - the worst in-script path is every class running its one targeted retry
+  AND each failing class paying one bounded erase/reboot recovery, plus
+  setup slack.
 
 **Finalize grace.** When a watchdog expires but the log already carries
 xcodebuild's terminal result marker (`** TEST EXECUTE SUCCEEDED/FAILED **`),
@@ -268,11 +270,12 @@ must not be used as a required check.
 
 Every run ends with a **CI Test Report** step summary: build duration,
 per-lane predicted vs actual runtimes (unit and UI), retries/flake warnings
-(native-test flakes and runner-level class retries), hang isolation results
-with the identified class, slowest classes, predicted and actual lane
-imbalance, and overall wall clock. On failure it names the failing test, the
-lane, whether a simulator reset/erase occurred, whether the targeted retry
-passed, and any classes left `not_diagnosed` after a confirmed hang.
+(native-test flakes, runner-level class retries, and infrastructure-wedge
+recoveries - each labeled for what it is), hang results with the identified
+class, slowest classes, predicted and actual lane imbalance, and overall
+wall clock. On failure it names the failing test, the lane, whether a
+simulator reset/erase occurred, whether the targeted retry passed, and any
+classes left `not_diagnosed` after a confirmed hang.
 
 ## Adding a test
 

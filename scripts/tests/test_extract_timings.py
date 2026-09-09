@@ -1,6 +1,7 @@
 """Regression coverage for scripts/extract-test-timings.py."""
 
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -132,8 +133,8 @@ class LaneResultTests(unittest.TestCase):
                 started_at="2026-08-29T00:00:00Z",
                 attempts_json='[{"n": 1, "mode": "lane", "status": "test-failures"}]',
                 isolation_json="", simulator_reset=True, simulator_erase=False,
-                hung_class="", retried_classes="", observations=str(obs),
-                detail=str(detail), out=str(out))
+                hung_class="", retried_classes="", infra_recovered_classes="",
+                observations=str(obs), detail=str(detail), out=str(out))
             rc = ext.lane_result(args)
             self.assertEqual(rc, ext.EXIT_OK)
             doc = json.loads(out.read_text(encoding="utf-8"))
@@ -158,6 +159,7 @@ class LaneResultTests(unittest.TestCase):
                               ' {"n": 2, "mode": "class-retry", "class": "BetaUITests", "status": "passed"}]',
                 isolation_json="", simulator_reset=False, simulator_erase=False,
                 hung_class="", retried_classes="BetaUITests",
+                infra_recovered_classes="",
                 observations="", detail="", out=str(out))
             rc = ext.lane_result(args)
             self.assertEqual(rc, ext.EXIT_OK)
@@ -251,6 +253,71 @@ class MergePartsTests(unittest.TestCase):
             obs = json.loads(obs_out.read_text(encoding="utf-8"))
             self.assertEqual(obs["classes"], {"GoodUITests": 5.0})
 
+    def test_merge_parts_flaky_class_leaves_no_stale_failures(self):
+        # End-to-end flake shape: attempt 1 of a class fails, the targeted
+        # retry passes. The merged detail must carry NO failures (the class's
+        # highest attempt decides) while the flake stays visible through
+        # retried data - a green lane must never ship phantom failures.
+        with tempfile.TemporaryDirectory() as tmp:
+            parts = Path(tmp) / "parts"
+            parts.mkdir()
+            self._write_part(parts, "detail-FlakyUITests-a1.json", {
+                "schema_version": 1, "generated_at": "t", "xcresult": "a1",
+                "attempts": [{"class": "FlakyUITests", "test": "testA()",
+                              "attempts": [{"result": "Failed", "seconds": 1.0}],
+                              "final": "Failed", "attempts_count": 1}],
+                "failures": [{"class": "FlakyUITests", "test": "testA()",
+                              "attempts": [{"result": "Failed", "seconds": 1.0}]}],
+                "retried": [],
+            })
+            self._write_part(parts, "detail-FlakyUITests-a2.json", {
+                "schema_version": 1, "generated_at": "t", "xcresult": "a2",
+                "attempts": [{"class": "FlakyUITests", "test": "testA()",
+                              "attempts": [{"result": "Passed", "seconds": 1.2}],
+                              "final": "Passed", "attempts_count": 1}],
+                "failures": [],
+                "retried": [],
+            })
+            det_out = Path(tmp) / "detail.json"
+            self.assertEqual(ext.merge_parts(str(parts), "", str(det_out)), ext.EXIT_OK)
+            det = json.loads(det_out.read_text(encoding="utf-8"))
+            self.assertEqual(det["failures"], [])
+            self.assertEqual(len(det["attempts"]), 2)
+
+    def test_merge_parts_tolerates_corrupt_durations_and_counts(self):
+        # A part with valid schema but garbage values must not crash the fold
+        # - extraction is best-effort and the rest of the lane still counts.
+        with tempfile.TemporaryDirectory() as tmp:
+            parts = Path(tmp) / "parts"
+            parts.mkdir()
+            self._write_part(parts, "observations-BadUITests-a1.json",
+                             {"schema_version": 1, "bundles": [],
+                              "classes": {"BadUITests": "not-a-number"},
+                              "counts": {"classes": 1, "cases": "x"}})
+            self._write_part(parts, "observations-GoodUITests-a1.json",
+                             self._observation({"GoodUITests": 7.0}, cases=3))
+            obs_out = Path(tmp) / "observations.json"
+            self.assertEqual(ext.merge_parts(str(parts), str(obs_out), ""), ext.EXIT_OK)
+            obs = json.loads(obs_out.read_text(encoding="utf-8"))
+            self.assertEqual(obs["classes"], {"GoodUITests": 7.0})
+            self.assertEqual(obs["counts"], {"classes": 1, "cases": 3})
+
+    def test_merge_parts_case_counts_are_last_attempt_per_class(self):
+        # A retried class must not count its cases twice.
+        with tempfile.TemporaryDirectory() as tmp:
+            parts = Path(tmp) / "parts"
+            parts.mkdir()
+            self._write_part(parts, "observations-AlphaUITests-a1.json",
+                             self._observation({"AlphaUITests": 30.0}, cases=4))
+            self._write_part(parts, "observations-AlphaUITests-a2.json",
+                             self._observation({"AlphaUITests": 41.0}, cases=4))
+            self._write_part(parts, "observations-BetaUITests-a1.json",
+                             self._observation({"BetaUITests": 12.0}, cases=2))
+            obs_out = Path(tmp) / "observations.json"
+            self.assertEqual(ext.merge_parts(str(parts), str(obs_out), ""), ext.EXIT_OK)
+            obs = json.loads(obs_out.read_text(encoding="utf-8"))
+            self.assertEqual(obs["counts"], {"classes": 2, "cases": 6})
+
     def test_merge_parts_without_parts_reports_schema_exit(self):
         with tempfile.TemporaryDirectory() as tmp:
             parts = Path(tmp) / "parts"
@@ -259,6 +326,44 @@ class MergePartsTests(unittest.TestCase):
                 ext.merge_parts(str(parts), "", ""), ext.EXIT_SCHEMA)
             self.assertEqual(
                 ext.merge_parts(str(Path(tmp) / "missing"), "", ""), ext.EXIT_SCHEMA)
+
+
+class CmdExtractFailureTests(unittest.TestCase):
+    """The `extract` CLI must fail safely (EXIT_SCHEMA) when xcresulttool is
+    unusable, and must never leave stale output files behind for the caller
+    to misread - this pins the failure path the UI lane's unclassified
+    classification depends on, platform-independently."""
+
+    def test_xcresulttool_failure_is_schema_exit_and_cleans_up(self):
+        import subprocess
+        import unittest.mock as mock
+        with tempfile.TemporaryDirectory() as tmp:
+            obs = str(Path(tmp) / "observations.json")
+            det = str(Path(tmp) / "detail.json")
+            Path(obs).write_text("{}", encoding="utf-8")   # stale from prior attempt
+            Path(det).write_text("{}", encoding="utf-8")
+            failed = subprocess.CompletedProcess(
+                args=["xcrun"], returncode=70, stdout="", stderr="xcrun: error")
+            with mock.patch.object(ext.subprocess, "run", return_value=failed):
+                rc = ext._cmd_extract(SimpleNamespace(
+                    xcresult="/nonexistent.xcresult",
+                    observations=obs, detail=det))
+            self.assertEqual(rc, ext.EXIT_SCHEMA)
+            self.assertFalse(os.path.exists(obs), "stale observations must be removed")
+            self.assertFalse(os.path.exists(det), "stale detail must be removed")
+
+    def test_missing_xcrun_is_schema_exit(self):
+        import subprocess
+        import unittest.mock as mock
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.object(
+                    ext.subprocess, "run",
+                    side_effect=FileNotFoundError("xcrun not found")):
+                rc = ext._cmd_extract(SimpleNamespace(
+                    xcresult="x.xcresult",
+                    observations=str(Path(tmp) / "o.json"),
+                    detail=str(Path(tmp) / "d.json")))
+            self.assertEqual(rc, ext.EXIT_SCHEMA)
 
 
 class AggregateTests(unittest.TestCase):
@@ -331,6 +436,7 @@ class AggregateTests(unittest.TestCase):
                 attempts_json="[not valid json",
                 isolation_json="", simulator_reset=False,
                 simulator_erase=False, hung_class="", retried_classes="",
+                infra_recovered_classes="",
                 observations=str(obs), detail=str(detail), out=str(out))
             rc = ext.lane_result(args)
             self.assertEqual(rc, ext.EXIT_OK)
@@ -470,7 +576,8 @@ class AggregateTests(unittest.TestCase):
             self._write_lane(tmp, "ui-1", "pass", 70.0)
             d = Path(tmp) / "ui-2"
             d.mkdir(parents=True, exist_ok=True)
-            doc = {"lane": "ui-2", "status": "timeout", "actual_s": 400.0,
+            doc = {"lane": "ui-2", "kind": "ui", "status": "timeout",
+                   "actual_s": 400.0,
                    "predicted_s": 30.0, "timeout_s": 420,
                    "started_at": "2026-08-29T10:00:00Z",
                    "finished_at": "2026-08-29T10:08:00Z",
@@ -490,8 +597,36 @@ class AggregateTests(unittest.TestCase):
             rc = ext.aggregate(args)
             self.assertEqual(rc, ext.EXIT_OK)
             text = out.read_text(encoding="utf-8")
-            self.assertIn("HANG identified", text)
+            self.assertIn("exceeded its per-class watchdog twice", text)
             self.assertIn("not_diagnosed", text)
+
+    def test_report_shows_infra_recovered_class_without_flake_alarm(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._write_plan(tmp)
+            d = Path(tmp) / "ui-1"
+            d.mkdir(parents=True, exist_ok=True)
+            doc = {"lane": "ui-1", "kind": "ui", "status": "pass",
+                   "actual_s": 600.0, "predicted_s": 60.0, "timeout_s": 900,
+                   "started_at": "2026-08-29T10:00:00Z",
+                   "finished_at": "2026-08-29T10:12:00Z",
+                   "flaky": [], "failures": [], "class_seconds": {},
+                   "retried_classes": [], "infra_recovered_classes": ["SlowUITests"],
+                   "attempts": [
+                       {"n": 1, "mode": "class", "class": "SlowUITests",
+                        "status": "infra-error"},
+                       {"n": 2, "mode": "class-retry", "class": "SlowUITests",
+                        "status": "passed"}]}
+            (d / "lane-result.json").write_text(json.dumps(doc), encoding="utf-8")
+            out = Path(tmp) / "summary.md"
+            args = SimpleNamespace(plan=str(plan), lanes_dir=str(tmp),
+                                   build_result="", out=str(out))
+            rc = ext.aggregate(args)
+            self.assertEqual(rc, ext.EXIT_OK)
+            text = out.read_text(encoding="utf-8")
+            self.assertIn("passed after an infrastructure retry", text)
+            self.assertIn("not a test flake", text)
+            self.assertNotIn("FLAKE WARNING", text)
+            self.assertNotIn("every test passed on its first attempt", text)
 
 
 if __name__ == "__main__":

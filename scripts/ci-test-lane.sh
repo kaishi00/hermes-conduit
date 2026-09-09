@@ -10,21 +10,21 @@
 # retried - at class granularity.
 #
 # Failure-domain policy (docs/CI.md):
-#   1. Ordinary test failures never rerun the lane. Unit attempt 1 runs with
-#      Xcode-native flake retry (-retry-tests-on-failure -test-iterations N),
+#   1. Ordinary test failures never rerun healthy work. Unit attempt 1 runs
+#      with Xcode-native flake retry (-retry-tests-on-failure -test-iterations N),
 #      which re-executes only the failing tests. If failures survive those
 #      iterations the lane fails with the failing tests identified - the
 #      healthy classes are never rerun. UI classes get one TARGETED retry of
 #      just the failed class; passing classes are never re-executed.
-#   2. An invocation that exits nonzero with a KNOWN zero failing-test count
+#   2. An invocation whose XCTest result CANNOT be classified (timing/result
+#      extraction failed) is a FAILURE. Timing extraction is best-effort and
+#      must never decide test correctness, so an unclassifiable failure is
+#      never retried into a green lane.
+#   3. An invocation that exits nonzero with a KNOWN zero failing-test count
 #      is confidently an infrastructure failure (simulator crash, runner
 #      exit, ...): reset the simulator once and retry. Units retry the whole
 #      lane (it is one invocation); a UI lane retries only the affected
 #      class. If a retry times out, it falls through to hang handling (4).
-#   3. An invocation whose XCTest result CANNOT be classified (timing/result
-#      extraction failed) is a FAILURE. Timing extraction is best-effort and
-#      must never decide test correctness, so an unclassifiable failure is
-#      never retried into a green lane.
 #   4. A watchdog timeout is positive identification of a hang. Units erase
 #      and enter lane-level class-granular isolation (heaviest estimate
 #      first, bounded by the isolation budget, stopping at the first
@@ -175,7 +175,7 @@ if [ -n "$CLASS_TIMEOUTS" ]; then
       exit 2
     fi
     case "$val" in
-      ''|*[!0-9.]*) echo "::error::--class-timeouts value for $name must be numeric, got '$val'"; exit 2 ;;
+      ''|*[!0-9]*) echo "::error::--class-timeouts value for $name must be a positive integer (seconds), got '$val'"; exit 2 ;;
     esac
     TM_NAMES+=("$name")
     TM_VALS+=("$val")
@@ -208,8 +208,9 @@ ui_budget_for() {
   fi
   est="$(estimate_for "$1" || true)"
   [ -z "$est" ] && est="$DEFAULT_ESTIMATE_S"
+  # Ceiling like the planner's math.ceil (truncation would shave budget).
   awk -v m="$UI_CLASS_TIMEOUT_MIN_S" -v k="$UI_CLASS_TIMEOUT_MULTIPLIER" -v e="$est" \
-    'BEGIN { t = m; if (e * k > t) t = e * k; printf "%d", t }'
+    'BEGIN { t = m; if (e * k > t) t = e * k; t = (t == int(t)) ? t : int(t) + 1; printf "%d", t }'
 }
 
 # Shared invocation: test-without-building from the downloaded products.
@@ -280,6 +281,10 @@ ATTEMPT_LINES="$RESULT_DIR/attempts-lines.txt"
 # runner-level flakes instead of blending into a clean pass.
 RETRIED_LINES="$RESULT_DIR/retried-classes.txt"
 : > "$RETRIED_LINES"
+# Classes whose retry rescued an INFRASTRUCTURE wedge (exit nonzero, zero
+# failing tests): reported separately from test flakes.
+INFRA_RECOVERED_LINES="$RESULT_DIR/infra-recovered-classes.txt"
+: > "$INFRA_RECOVERED_LINES"
 
 record_attempt() { # $1=mode $2=n $3=class $4=status
   echo "$1|$2|$3|$4" >> "$ATTEMPT_LINES"
@@ -294,7 +299,10 @@ with open(sys.argv[1], encoding='utf-8') as fh:
         line = line.strip()
         if not line:
             continue
-        mode, n, cls, status = line.split('|')
+        fields = line.split('|')
+        if len(fields) != 4:
+            continue
+        mode, n, cls, status = fields
         out.append({'mode': mode, 'n': int(n), 'class': cls, 'status': status})
 print(json.dumps(out))
 " "$ATTEMPT_LINES" 2>/dev/null || printf '[]'
@@ -302,6 +310,10 @@ print(json.dumps(out))
 
 retried_classes_csv() {
   sed '/^$/d' "$RETRIED_LINES" | paste -sd ',' - 2>/dev/null || printf ''
+}
+
+infra_recovered_csv() {
+  sed '/^$/d' "$INFRA_RECOVERED_LINES" | paste -sd ',' - 2>/dev/null || printf ''
 }
 
 # Every class after $1 (the class being stopped on) that never ran must be
@@ -343,6 +355,7 @@ finish_lane() { # $1=status $2=attempts_json $3=isolation_json $4=exit_code
     --attempts-json "$2" \
     --isolation-json "$3" \
     --retried-classes "$(retried_classes_csv)" \
+    --infra-recovered-classes "$(infra_recovered_csv)" \
     --hung-class "$HUNG_CLASS" \
     $reset_flag $erase_flag \
     --observations "$RESULT_DIR/observations.json" \
@@ -648,6 +661,7 @@ run_ui_lane() {
         "$LOG_DIR/extract-$cls-a2.log"
       record_attempt "class-retry" 2 "$cls" "passed"
       if [ "$a1_status" = "infra-error" ]; then
+        echo "$cls" >> "$INFRA_RECOVERED_LINES"
         echo "::warning::UI class $cls passed after its infrastructure retry - environment wedge recovered (not a test flake)"
       else
         # A test failure or a watchdog timeout that a retry rescued is a

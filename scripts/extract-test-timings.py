@@ -232,6 +232,8 @@ def lane_result(args) -> int:
         "simulator_erase": bool(args.simulator_erase),
         "hung_class": args.hung_class or None,
         "retried_classes": [c for c in (args.retried_classes or "").split(",") if c],
+        "infra_recovered_classes": [
+            c for c in (args.infra_recovered_classes or "").split(",") if c],
         "isolation": None,
     }
     # Every external input is best-effort: this script assembles the canonical
@@ -284,54 +286,87 @@ def _attempt_index(name: str) -> int:
 def _part_sort_key(name: str) -> tuple:
     """Order parts by (class, attempt) so numeric attempts sort correctly
     (a2 after a10 - plain filename sort would put a10 first)."""
-    stem = re.sub(r"-a\d+\.json$", ".json", name)
+    stem = re.sub(r"-a\d+\.json$", "", name)
     return (stem, _attempt_index(name))
 
 
+def _part_class(name: str) -> str:
+    """Class name embedded by the runner as observations-<class>-a<n>.json /
+    detail-<class>-a<n>.json. Swift test-class identifiers are \\w+."""
+    stem = re.sub(r"-a\d+\.json$", "", name)
+    return re.sub(r"^(observations|detail)-", "", stem)
+
+
+def _list_field(doc: dict, key: str) -> list:
+    """A list field from a part document; non-list junk degrades to empty
+    with a warning instead of being char-extended into the merged list."""
+    value = doc.get(key, []) or []
+    if isinstance(value, list):
+        return value
+    warn(f"merge-parts: ignoring non-list {key} in a detail part")
+    return []
+
+
 def merge_observation_parts(parts: list) -> dict:
-    """parts: parsed observations-*.json documents in load order. Returns the
-    lane-level observations document. A class seen in several attempts keeps
-    its LAST attempt's duration: the runner extracts every attempt, and on a
-    green lane the last attempt of a retried class is the passing one."""
+    """parts: (filename, parsed doc) tuples in (class, attempt) order.
+    Returns the lane-level observations document. A class seen in several
+    attempts keeps its LAST attempt's duration: the runner extracts every
+    attempt, and on a green lane the last attempt of a retried class is the
+    passing one. Case counts follow the same last-wins rule so a retried
+    class is not double-counted."""
     classes: dict = {}
+    cases_by_class: dict = {}
     bundles: list = []
-    for doc in parts:
+    for _name, doc in parts:
         if not isinstance(doc, dict) or not isinstance(doc.get("classes", {}), dict):
             warn("merge-parts: ignoring observation part with unexpected schema")
             continue
-        for name, secs in doc["classes"].items():
-            classes[name] = secs
+        for cname, secs in doc["classes"].items():
+            # Extraction is best-effort: one corrupt duration must not lose
+            # the whole lane's timings.
+            try:
+                classes[cname] = float(secs)
+            except (TypeError, ValueError):
+                warn(f"merge-parts: ignoring non-numeric duration for {cname!r}")
         for b in doc.get("bundles", []) or []:
             if b not in bundles:
                 bundles.append(b)
-    counts = {"classes": len(classes), "cases": sum(
-        int(d.get("counts", {}).get("cases", 0) or 0) for d in parts
-        if isinstance(d, dict))}
+        counts = doc.get("counts", {})
+        cases = counts.get("cases", 0) if isinstance(counts, dict) else 0
+        if isinstance(cases, (int, float)) and not isinstance(cases, bool):
+            for cname in doc["classes"]:
+                cases_by_class[cname] = int(cases)
     return {
         "schema_version": SCHEMA_VERSION,
         "generated_at": now_iso(),
         "xcresult": "merged-per-class-parts",
         "bundles": bundles,
-        "classes": {k: round(float(v), 3) for k, v in sorted(classes.items())},
-        "counts": counts,
+        "classes": {k: round(v, 3) for k, v in sorted(classes.items())},
+        "counts": {"classes": len(classes), "cases": sum(cases_by_class.values())},
     }
 
 
 def merge_detail_parts(parts: list) -> dict:
-    """parts: parsed detail-*.json documents in load order. Attempts,
-    failures, and retried tests are concatenated across classes and attempts
-    (each entry carries its class, and lane-result/report consumers only ever
-    append)."""
+    """parts: (filename, parsed doc) tuples in (class, attempt) order.
+    Attempts and retried tests are concatenated across classes and attempts
+    (each entry carries its class). FAILURES are per-class STATE, not an
+    append log: the class's highest attempt decides, so a class that failed
+    attempt 1 and passed the targeted retry leaves no stale failures behind
+    on a green lane."""
     attempts: list = []
-    failures: list = []
     retried: list = []
-    for doc in parts:
+    failures_by_class: dict = {}
+    for fname, doc in parts:
         if not isinstance(doc, dict):
             warn("merge-parts: ignoring detail part with unexpected schema")
             continue
-        attempts.extend(doc.get("attempts", []) or [])
-        failures.extend(doc.get("failures", []) or [])
-        retried.extend(doc.get("retried", []) or [])
+        attempts.extend(_list_field(doc, "attempts"))
+        retried.extend(_list_field(doc, "retried"))
+        cls = _part_class(fname)
+        failures_by_class[cls] = _list_field(doc, "failures")
+    failures: list = []
+    for cls in failures_by_class:
+        failures.extend(failures_by_class[cls])
     return {
         "schema_version": SCHEMA_VERSION,
         "generated_at": now_iso(),
@@ -359,14 +394,14 @@ def merge_parts(parts_dir: str, observations_out: str, detail_out: str) -> int:
     det_files.sort(key=_part_sort_key)
 
     def load_all(names):
-        docs = []
+        pairs = []
         for f in names:
             try:
                 with open(os.path.join(parts_dir, f), encoding="utf-8") as fh:
-                    docs.append(json.load(fh))
+                    pairs.append((f, json.load(fh)))
             except (OSError, json.JSONDecodeError) as exc:
                 warn(f"merge-parts: unreadable part {f} ignored ({exc})")
-        return docs
+        return pairs
 
     obs_doc = merge_observation_parts(load_all(obs_files))
     det_doc = merge_detail_parts(load_all(det_files))
@@ -502,8 +537,14 @@ def aggregate(args) -> int:
         (name, res) for name, res in sorted(results.items())
         if res.get("retried_classes")
     ]
+    # Infra-recovered classes also ran twice, but the retry rescued an
+    # environment wedge, not a test flake - reported, without the flake alarm.
+    infra_recovered_rows = [
+        (name, res) for name, res in sorted(results.items())
+        if res.get("infra_recovered_classes")
+    ]
     lines.append("## Retries & flaky tests")
-    if not flaky_rows and not retried_class_rows:
+    if not flaky_rows and not retried_class_rows and not infra_recovered_rows:
         lines.append("- None: every test passed on its first attempt.")
     else:
         for name, res in flaky_rows:
@@ -525,6 +566,12 @@ def aggregate(args) -> int:
                 lines.append(
                     f"  - **FLAKE WARNING**: `{cls}` passed only after retry - "
                     "investigate; its first-attempt result bundle is in the lane artifact."
+                )
+        for name, res in infra_recovered_rows:
+            for cls in res["infra_recovered_classes"]:
+                lines.append(
+                    f"- `{cls}` [{name}]: passed after an infrastructure retry "
+                    "(simulator/environment wedge recovered; not a test flake)"
                 )
     lines.append("")
 
@@ -550,10 +597,17 @@ def aggregate(args) -> int:
                 chain = " -> ".join(str(a.get("status", "?")) for a in attempts)
                 lines.append(f"- attempts: {chain}")
             if res.get("hung_class"):
-                lines.append(
-                    f"- **HANG identified by isolation mode: `{res['hung_class']}`** "
-                    "(lane timed out; class-granular rerun pinned this class)"
-                )
+                if res.get("kind") == "ui":
+                    lines.append(
+                        f"- **HUNG: `{res['hung_class']}` exceeded its per-class "
+                        "watchdog twice** (the targeted retry timed out too; "
+                        "later classes were recorded as not_diagnosed)"
+                    )
+                else:
+                    lines.append(
+                        f"- **HANG identified by isolation mode: `{res['hung_class']}`** "
+                        "(lane timed out; class-granular rerun pinned this class)"
+                    )
             if res.get("isolation"):
                 lines.append("- isolation per-class results:")
                 for cls in res["isolation"].get("classes", []):
@@ -677,6 +731,7 @@ def main(argv=None) -> int:
     p.add_argument("--attempts-json", default="")
     p.add_argument("--isolation-json", default="")
     p.add_argument("--retried-classes", default="")
+    p.add_argument("--infra-recovered-classes", default="")
     p.add_argument("--simulator-reset", action="store_true")
     p.add_argument("--simulator-erase", action="store_true")
     p.add_argument("--hung-class", default="")

@@ -56,6 +56,7 @@ def default_cfg(**overrides):
         "ui_max_lanes": 4,
         "ui_class_timeout_min_s": 420,
         "ui_class_timeout_multiplier": 3.0,
+        "ui_reset_overhead_s": 600,
         "job_timeout_margin_s": 1200,
     }
     cfg.update(overrides)
