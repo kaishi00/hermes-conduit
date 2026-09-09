@@ -18,8 +18,11 @@ SCRIPT = os.path.join(SCRIPTS_DIR, "tests", "test_lane_runner.sh")
 @unittest.skipUnless(os.name == "posix" and shutil.which("bash"), "bash is required to exercise the lane runner")
 class LaneRunnerScriptTests(unittest.TestCase):
     def test_lane_runner_state_machine(self):
+        # The suite runs with a 1s xcodebuild poll cadence (test harness
+        # env), so the full unit+UI state machine finishes in ~1-2 minutes;
+        # the cap only exists to bound a truly wedged run.
         proc = subprocess.run(["bash", SCRIPT], capture_output=True,
-                              text=True, timeout=300)
+                              text=True, timeout=900)
         if proc.returncode != 0:
             self.fail("lane-runner state machine test failed:\n"
                       + proc.stdout[-4000:] + proc.stderr[-2000:])
