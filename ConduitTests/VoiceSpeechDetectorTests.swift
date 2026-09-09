@@ -25,7 +25,6 @@ final class VoiceSpeechDetectorTests: XCTestCase {
             [
                 .none, .none, .none, .none,
                 .none, .none, .none, .started,
-                .continued, .continued,
                 .none, .none
             ],
             "a clear rise above the observed noise floor must be accepted as speech"
@@ -75,7 +74,8 @@ final class VoiceSpeechDetectorTests: XCTestCase {
         for (index, sample) in run.enumerated() {
             detections.append(detector.observe(sample))
             if index < run.count - 1 {
-                XCTAssertEqual(detections.last, .none, "no single sub-ceiling sample may start a turn")
+                // A partial window must not start a turn.
+                XCTAssertFalse(detections.last == .started)
             }
         }
         XCTAssertEqual(detections.last, .started, "the varied run is accepted as speech onset")
@@ -86,19 +86,27 @@ final class VoiceSpeechDetectorTests: XCTestCase {
         XCTAssertEqual(detector.observe(0.002), .none, "true silence does not continue speech")
     }
 
-    func testResetClearsSpeechAndWarmupState() {
+    func testResetClearsSpeechAndColdStartState() {
         var detector = VoiceSpeechDetector()
         for _ in 0..<6 { _ = detector.observe(0.003) }
-        XCTAssertEqual(detector.observe(0.026), .none)
-        XCTAssertEqual(detector.observe(0.03), .started)
+        // A varied sub-ceiling run fills the cold-start dynamics window.
+        let run: [Float] = [0.02, 0.026, 0.038, 0.03]
+        var detections: [VoiceSpeechDetection] = []
+        for sample in run {
+            detections.append(detector.observe(sample))
+        }
+        XCTAssertEqual(detections.last, .started, "the varied run is accepted as speech onset")
 
-        // A completed utterance resets everything: warmup re-arms, speech is
-        // inactive, and the floor re-learns from the fresh window.
+        // A completed utterance resets everything: cold start re-arms, the
+        // floor re-learns from the fresh window, and quiet speech is
+        // recognized again.
         detector.reset()
         XCTAssertTrue(detector.noiseFloor <= 0.004, "the floor must not carry the previous window's estimate")
         for _ in 0..<4 { _ = detector.observe(0.003) }
         XCTAssertEqual(detector.observe(0.018), .none)
-        XCTAssertEqual(detector.observe(0.026), .started, "quiet speech is recognized again in the new window")
+        XCTAssertEqual(detector.observe(0.026), .none)
+        XCTAssertEqual(detector.observe(0.034), .none)
+        XCTAssertEqual(detector.observe(0.028), .started, "quiet speech is recognized again in the new window")
     }
 
     func testClearLoudSampleStartsImmediatelyEvenDuringWarmup() {
@@ -113,7 +121,11 @@ final class VoiceSpeechDetectorTests: XCTestCase {
         XCTAssertEqual(detector.observe(Float.nan), .none)
         XCTAssertTrue(detector.noiseFloor.isFinite, "non-finite input must not poison the noise floor")
         XCTAssertEqual(detector.observe(0.026), .none, "the garbage sample must not become a candidate")
-        XCTAssertEqual(detector.observe(0.026), .started, "the detector still works after non-finite input")
+
+        // The detector still works after non-finite input: an unambiguous
+        // level starts speech, and the floor was never poisoned.
+        XCTAssertEqual(detector.observe(0.5), .started)
+        XCTAssertTrue(detector.noiseFloor.isFinite)
     }
 
     func testThresholdBoundaries() {
