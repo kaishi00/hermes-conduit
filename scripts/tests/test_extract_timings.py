@@ -550,8 +550,8 @@ simulator_erase=False, hung_class="", retried_classes="", persistent_infra_class
             rc = ext.aggregate(args)
             self.assertEqual(rc, ext.EXIT_OK)
             text = out.read_text(encoding="utf-8")
-            self.assertIn("per-class watchdog", text)
-            self.assertIn("a retry applies only to the failed class", text)
+            self.assertIn("ONE batched xcodebuild invocation", text)
+            self.assertIn("retries only the failed tests", text)
 
     def test_report_falls_back_to_legacy_ui_lane_shape(self):
         with tempfile.TemporaryDirectory() as tmp:

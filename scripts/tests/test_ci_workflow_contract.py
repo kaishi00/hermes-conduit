@@ -62,7 +62,7 @@ class WorkflowContractTests(unittest.TestCase):
             out.append(line)
         return "\n".join(out)
 
-    def test_ui_job_is_a_dynamic_matrix_with_per_class_runner(self):
+    def test_ui_job_is_a_dynamic_matrix_with_batched_lane_runner(self):
         text = self._workflow_text()
         ui = self._job_text("ui")
         # Matrix fanout comes from the planner, never a hard-coded class list,
@@ -71,14 +71,16 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("fail-fast: false", ui)
         self.assertIn('needs: [plan, build]', ui,
                       "UI shards must consume the SHARED build products")
-        # Per-class runner invocation with planned watchdogs.
+        # Batched lane runner invocation with the planned per-class watchdog
+        # table (the batch watchdog is its sum; the same table prices the
+        # per-class diagnosis fallback).
         self.assertIn("--kind ui", ui)
         self.assertIn("--class-timeouts", ui)
         self.assertIn('--classes "$LANE_CLASSES"', ui)
         self.assertNotIn(
             "--iterations", ui,
             "UI lanes must not use native multi-iteration retry; the runner "
-            "retries exactly the failed class once")
+            "retries exactly the failed tests once")
         # Watchdog policy has ONE source of truth: the planner's
         # --class-timeouts table. No duplicated floor/multiplier env here.
         self.assertNotIn("UI_CLASS_TIMEOUT_MIN_S", ui)

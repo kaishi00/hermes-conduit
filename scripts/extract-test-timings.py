@@ -541,8 +541,11 @@ def aggregate(args) -> int:
                 f"| {len(lane.get('classes', []))} |"
             )
         lines.append("")
-        lines.append("Each UI class runs as its own xcodebuild invocation under a "
-                     "per-class watchdog; a retry applies only to the failed class.")
+        lines.append("Each UI shard runs as ONE batched xcodebuild invocation; "
+                     "a failure retries only the failed tests (exact methods "
+                     "when the xcresult identifies them, else the class), and "
+                     "timeouts/infrastructure wedges fall back to per-class "
+                     "diagnosis.")
     else:
         lines.append("")
         lines.append("- No UI tests planned.")

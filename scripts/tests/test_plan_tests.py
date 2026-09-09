@@ -244,11 +244,36 @@ class PlanningTests(unittest.TestCase):
 
     def test_lane_count_edges(self):
         cfg = default_cfg()
-        self.assertEqual(planner.lane_count_for(0.0, 0, cfg), 0)     # no classes
-        self.assertEqual(planner.lane_count_for(20.0, 1, cfg), 1)    # 1 class
-        self.assertEqual(planner.lane_count_for(60.0, 3, cfg), 3)    # fewer than min
-        self.assertEqual(planner.lane_count_for(2000.0, 9, cfg), 8)  # saturates at max
-        self.assertEqual(planner.lane_count_for(961.0, 9, cfg), 5)   # ceil(961/240)=5
+        self.assertEqual(planner.lane_count_for([], cfg), 0)      # no classes
+        self.assertEqual(planner.lane_count_for([("ATests", 20.0)], cfg), 1)
+        # Three 20s classes: 60s of execution cannot justify a second
+        # 240s invocation, so the model consolidates to one lane.
+        tiny = [("ATests", 20.0), ("BTests", 20.0), ("CTests", 20.0)]
+        self.assertEqual(planner.lane_count_for(tiny, cfg), 1)
+        # A heavy outlier dominates every possible split: no extra lane can
+        # shorten the wall clock, so the model consolidates to one lane.
+        outlier = [("HostedTests", 2000.0), ("BTests", 30.0), ("CTests", 30.0)]
+        self.assertEqual(planner.lane_count_for(outlier, cfg), 1)
+        # Evenly huge classes keep scaling out to the configured max: every
+        # added lane removes ~900s of wall clock.
+        huge = [("H{0}Tests".format(i), 900.0) for i in range(8)]
+        self.assertEqual(planner.lane_count_for(huge, cfg), cfg["max_lanes"])
+        # 4 x 100s: modeled walls are 640/440/373/340 - lanes 3 and 4 each
+        # buy less than the 120s tolerance, so the suite lands on 2 lanes.
+        even = [("E{0}Tests".format(i), 100.0) for i in range(4)]
+        self.assertEqual(planner.lane_count_for(even, cfg), 2)
+
+    def test_modeled_wall_includes_invocation_overhead(self):
+        # The plan must carry the modeled wall (overhead + predicted) so the
+        # report shows what a lane actually costs, not just its test time.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(make_repo(Path(tmp), ["AlphaTests"], []))
+            _d, plan = plan_from_tree(root, {"AlphaTests": 100.0})
+            cfg = default_cfg()
+            lane = plan["unit_lanes"][0]
+            self.assertEqual(
+                lane["modeled_wall_s"],
+                cfg["invocation_overhead_s"] + 100.0)
 
     def test_history_wins_over_baseline(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -296,9 +321,10 @@ class UiShardingTests(unittest.TestCase):
                         int(value),
                         planner.ui_class_timeout_for(
                             self.ESTIMATES[name], 420, 3.0))
-                # lane watchdog sum feeds the job ceiling: worst path is a
-                # targeted retry of every class (2x), one bounded erase/
-                # reboot recovery per failing class, plus setup slack.
+                # lane watchdog sum feeds the job ceiling: worst path is the
+                # batched attempt + targeted retry, then a full per-class
+                # diagnosis pass (3x), one bounded erase/reboot recovery per
+                # failing class, plus setup slack.
                 expected_ceiling = planner.ui_job_timeout_min(
                     lane["timeout_s"], len(lane["classes"]), default_cfg())
                 self.assertEqual(lane["job_timeout_min"], expected_ceiling)
@@ -322,15 +348,21 @@ class UiShardingTests(unittest.TestCase):
             self.assertIn("ConnectionSetupUITests", heaviest["classes"])
 
     def test_ui_lane_count_scales_and_never_exceeds_classes(self):
+        # The unit selection function runs under the UI bounds.
         cfg = default_cfg()
-        # tiny suite: cannot have more lanes than classes
-        self.assertEqual(planner.ui_lane_count_for(60.0, 2, cfg), 2)
-        # today's suite: ~1310s of work lands on the 3-lane target
-        self.assertEqual(planner.ui_lane_count_for(1310.4, 6, cfg), 3)
-        # a doubled suite scales out, but saturates at the configured max
-        self.assertEqual(planner.ui_lane_count_for(2600.0, 12, cfg), cfg["ui_max_lanes"])
+        ui_cfg = dict(cfg, min_lanes=cfg["ui_min_lanes"], max_lanes=cfg["ui_max_lanes"])
         # no classes: no lanes
-        self.assertEqual(planner.ui_lane_count_for(0.0, 0, cfg), 0)
+        self.assertEqual(planner.lane_count_for([], ui_cfg), 0)
+        # 2 classes: never more lanes than classes, even with a 3-lane floor
+        two = [("ATests", 200.0), ("BTests", 200.0)]
+        self.assertEqual(planner.lane_count_for(two, ui_cfg), 2)
+        # today's suite: ~1310s over 6 classes lands on the 3-lane clamp
+        today = sorted(self.ESTIMATES.items(), key=lambda kv: (-kv[1], kv[0]))
+        self.assertEqual(planner.lane_count_for(today, ui_cfg), 3)
+        # a doubled suite scales out to the configured max (12 x ~217s: the
+        # 4th lane buys 217s of wall clock, well over the tolerance)
+        doubled = [("D{0}Tests".format(i), 217.0) for i in range(12)]
+        self.assertEqual(planner.lane_count_for(doubled, ui_cfg), cfg["ui_max_lanes"])
 
     def test_default_estimates_balance_ui_lanes_without_history(self):
         names = ["New{0}UITests".format(i) for i in range(6)]
@@ -358,11 +390,14 @@ class UiShardingTests(unittest.TestCase):
             self.assertEqual(matrix["include"][0]["classes"], "LoneUITests")
 
     def test_ui_job_ceiling_covers_worst_in_script_path(self):
-        # Worst legit path: every class runs its targeted retry (2x its
-        # budget), every failing class pays one bounded erase/reboot
-        # recovery, and every attempt's timing extraction can wedge to the
-        # xcresulttool bound - plus setup slack. The GitHub ceiling must
-        # never preempt that path - otherwise the hung class is never named.
+        # Worst legit path: the batched attempt (sum of per-class budgets)
+        # plus its targeted retry, THEN a batch-level timeout or wedge
+        # erases and re-enters per-class diagnosis (attempt + retry per
+        # class = 2x the sum), each failing class paying one bounded
+        # erase/reboot recovery, and every attempt's timing extraction can
+        # wedge to the xcresulttool bound - plus setup slack. The GitHub
+        # ceiling must never preempt that path - otherwise the hung class is
+        # never named.
         cfg = default_cfg()
         for n_classes in (1, 2, 3, 5):
             budgets = [planner.ui_class_timeout_for(est, cfg["ui_class_timeout_min_s"],
@@ -371,7 +406,7 @@ class UiShardingTests(unittest.TestCase):
             lane_timeout = sum(budgets)
             ceiling_s = planner.ui_job_timeout_min(
                 lane_timeout, n_classes, cfg) * 60
-            worst_path = (2 * lane_timeout
+            worst_path = (3 * lane_timeout
                           + (n_classes + 1) * cfg["ui_reset_overhead_s"]
                           + 2 * n_classes * cfg["ui_extract_bound_s"]
                           + cfg["job_timeout_margin_s"])
