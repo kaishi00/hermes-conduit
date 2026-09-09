@@ -235,6 +235,8 @@ def lane_result(args) -> int:
         "retried_classes": [c for c in (args.retried_classes or "").split(",") if c],
         "infra_recovered_classes": [
             c for c in (args.infra_recovered_classes or "").split(",") if c],
+        "persistent_infra_classes": [
+            c for c in (args.persistent_infra_classes or "").split(",") if c],
         "isolation": None,
     }
     # Every external input is best-effort: this script assembles the canonical
@@ -628,6 +630,12 @@ def aggregate(args) -> int:
                         f"- **HANG identified by isolation mode: `{res['hung_class']}`** "
                         "(lane timed out; class-granular rerun pinned this class)"
                     )
+            for cls in res.get("persistent_infra_classes", []) or []:
+                lines.append(
+                    f"- persistent infrastructure failure: `{cls}` (exited "
+                    "nonzero twice with zero failing tests; remaining classes "
+                    "still ran after a simulator reset)"
+                )
             if res.get("isolation"):
                 lines.append("- isolation per-class results:")
                 for cls in res["isolation"].get("classes", []):
@@ -752,6 +760,7 @@ def main(argv=None) -> int:
     p.add_argument("--isolation-json", default="")
     p.add_argument("--retried-classes", default="")
     p.add_argument("--infra-recovered-classes", default="")
+    p.add_argument("--persistent-infra-classes", default="")
     p.add_argument("--simulator-reset", action="store_true")
     p.add_argument("--simulator-erase", action="store_true")
     p.add_argument("--hung-class", default="")

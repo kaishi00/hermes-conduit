@@ -65,7 +65,7 @@ run_with_deadline() {
   local log="$2"
   shift 2
   local started deadline poll printed heartbeat timed_out now remaining runner grace
-  local finalize_grace grace_granted marker
+  local finalize_grace grace_granted
   finalize_grace="${XCODEBUILD_FINALIZE_GRACE_S:-180}"
   # Poll cadence. 15s keeps hosted-lane log streaming and deadline checks
   # cheap for minute-scale invocations; the state-machine tests shrink it so
@@ -253,32 +253,50 @@ simulator_udid() {
 }
 
 # Reset the simulator to a known-clean state. $1 = 1 erases the device before
-# booting (used after a timed-out attempt). Every simctl call is deadline-
-# bounded; failures degrade gracefully - xcodebuild boots the destination
-# itself, so the retry still happens.
+# booting (used before a retry after a timed-out or infrastructure-failed
+# attempt).
+#
+# Return value: when NO erase was requested the reset is best-effort and the
+# function returns 0 - xcodebuild boots the destination itself, so callers
+# degrade gracefully (every simctl call is deadline-bounded). When an erase
+# WAS requested the caller is about to trust this device with a retry, so a
+# failed erase, an unresolvable UDID, or a boot that never completes returns
+# 1: the environment cannot be trusted and the caller must not run further
+# classes on it.
 reset_and_boot_simulator() {
   local erase="${1:-0}"
   local udid
   bounded_run 60 xcrun simctl shutdown all || true
   if [ "$erase" -eq 1 ]; then
-    echo "::warning::previous attempt timed out - erasing simulator before retry"
-    if udid=$(simulator_udid); then
-      bounded_run 180 xcrun simctl erase "$udid" || true
-    else
-      echo "::warning::could not resolve simulator UDID for erase - retrying without erase"
+    echo "::warning::erasing simulator before the retry"
+    if ! udid=$(simulator_udid); then
+      echo "::error::could not resolve simulator UDID for erase - clean simulator recovery unavailable"
+      return 1
+    fi
+    if ! bounded_run 180 xcrun simctl erase "$udid"; then
+      echo "::error::simulator erase failed - clean simulator recovery unavailable"
+      return 1
     fi
   fi
   sleep 3
-  if udid=$(simulator_udid); then
-    bounded_run 60 xcrun simctl boot "$udid" || true
-    # Wait for a complete boot before handing the device to xcodebuild; a
-    # half-booted simulator wedges tests. bootstatus has no timeout flag on
-    # Xcode 26 (usage: bootstatus <device> [-bcd]) - the outer bounded_run
-    # supplies the deadline.
-    bounded_run 200 xcrun simctl bootstatus "$udid" -b || true
-  else
+  if ! udid=$(simulator_udid); then
     echo "::warning::could not resolve simulator UDID - letting xcodebuild boot the destination itself"
+    [ "$erase" -eq 1 ] && return 1
+    return 0
   fi
+  bounded_run 60 xcrun simctl boot "$udid" || true
+  # Wait for a complete boot before handing the device to xcodebuild; a
+  # half-booted simulator wedges tests. bootstatus has no timeout flag on
+  # Xcode 26 (usage: bootstatus <device> [-bcd]) - the outer bounded_run
+  # supplies the deadline.
+  if ! bounded_run 200 xcrun simctl bootstatus "$udid" -b; then
+    if [ "$erase" -eq 1 ]; then
+      echo "::error::simulator did not finish booting after erase - recovery cannot be trusted"
+      return 1
+    fi
+    echo "::warning::simulator bootstatus did not confirm - letting xcodebuild boot the destination itself"
+  fi
+  return 0
 }
 
 now_iso() {

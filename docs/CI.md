@@ -103,7 +103,11 @@ start so only the first class pays the cold-boot overhead; classes that pass
 move on immediately; a class that fails gets exactly ONE targeted retry of
 just that class - successful classes are never re-executed, and a retry pass
 is reported as a runner-level FLAKE (with both attempt result bundles kept),
-never hidden as a clean pass.
+never hidden as a clean pass. A class whose retry fails again as an
+infrastructure failure is recorded as a persistent infrastructure failure
+and fails the lane, but the remaining classes still run after a clean
+simulator reset; only a confirmed hang or an untrusted recovery stops a
+shard early.
 
 ## Timing data
 
@@ -154,8 +158,15 @@ the rest of CI v2.
    KNOWN zero failing-test count (simulator crash, runner exit) gets
    exactly one bounded recovery: reset the simulator and retry. Units retry
    the whole lane (it is one invocation); a UI lane retries only the
-   affected class. If that retry times out, handling falls through to (4);
-   if it fails again without test results, the lane errors out.
+   affected class. If a UI class fails AGAIN as an infrastructure failure,
+   it is recorded as a **persistent infrastructure failure** and the lane
+   fails - but the remaining classes still run after a clean simulator
+   reset, because the culprit is fully identified and a wedge must not
+   suppress otherwise-independent UI coverage. If that recovery itself
+   cannot be trusted (erase failed, UDID unresolvable, boot never
+   completed), later results would be misleading: the lane stops there and
+   the remaining classes are recorded as `not_diagnosed`. A retry that
+   times out falls through to hang handling (4).
 4. **Hang / timeout** - a watchdog kill is positive identification of a
    hang. Units erase the simulator and enter **isolation** immediately (no
    second full-lane attempt): classes re-run one at a time (heaviest
@@ -203,10 +214,14 @@ legitimate in-script recovery (the script watchdogs are the real
 enforcement).
 
 UI classes each get their **own** watchdog, planned per class from the same
-timing data that balances the lanes:
+timing data that balances the lanes. **`plan-tests.py` is the single
+authority for this policy**: every UI lane receives an explicit budget table
+(`--class-timeouts`) and the runner refuses to start unless it covers every
+assigned class - there is no fallback formula in `ci-test-lane.sh` to drift
+from the planner:
 
 ```
-ui_class_timeout = max(420s, ceil(estimate x 3.0))
+ui_class_timeout = max(420s, ceil(estimate x 3.0))   # computed in plan-tests.py only
 ```
 
 - the floor carries the fixed xcodebuild/automation-session/simulator

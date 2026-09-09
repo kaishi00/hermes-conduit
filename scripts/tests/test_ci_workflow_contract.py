@@ -79,6 +79,10 @@ class WorkflowContractTests(unittest.TestCase):
             "--iterations", ui,
             "UI lanes must not use native multi-iteration retry; the runner "
             "retries exactly the failed class once")
+        # Watchdog policy has ONE source of truth: the planner's
+        # --class-timeouts table. No duplicated floor/multiplier env here.
+        self.assertNotIn("UI_CLASS_TIMEOUT_MIN_S", ui)
+        self.assertNotIn("UI_CLASS_TIMEOUT_MULTIPLIER", ui)
         # The plan job must emit the UI matrix the job consumes.
         self.assertIn("--ui-matrix-out", text)
         self.assertIn('echo "ui-matrix=', text)

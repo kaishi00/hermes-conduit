@@ -134,6 +134,7 @@ class LaneResultTests(unittest.TestCase):
                 attempts_json='[{"n": 1, "mode": "lane", "status": "test-failures"}]',
                 isolation_json="", simulator_reset=True, simulator_erase=False,
                 hung_class="", retried_classes="", infra_recovered_classes="",
+                persistent_infra_classes="",
                 observations=str(obs), detail=str(detail), out=str(out))
             rc = ext.lane_result(args)
             self.assertEqual(rc, ext.EXIT_OK)
@@ -158,7 +159,7 @@ class LaneResultTests(unittest.TestCase):
                               ' {"n": 1, "mode": "class", "class": "BetaUITests", "status": "test-failures"},'
                               ' {"n": 2, "mode": "class-retry", "class": "BetaUITests", "status": "passed"}]',
                 isolation_json="", simulator_reset=False, simulator_erase=False,
-                hung_class="", retried_classes="BetaUITests",
+hung_class="", retried_classes="BetaUITests", persistent_infra_classes="",
                 infra_recovered_classes="",
                 observations="", detail="", out=str(out))
             rc = ext.lane_result(args)
@@ -457,7 +458,7 @@ class AggregateTests(unittest.TestCase):
                 started_at="2026-08-29T00:00:00Z",
                 attempts_json="[not valid json",
                 isolation_json="", simulator_reset=False,
-                simulator_erase=False, hung_class="", retried_classes="",
+simulator_erase=False, hung_class="", retried_classes="", persistent_infra_classes="",
                 infra_recovered_classes="",
                 observations=str(obs), detail=str(detail), out=str(out))
             rc = ext.lane_result(args)
@@ -649,6 +650,35 @@ class AggregateTests(unittest.TestCase):
             self.assertIn("not a test flake", text)
             self.assertNotIn("FLAKE WARNING", text)
             self.assertNotIn("every test passed on its first attempt", text)
+
+    def test_report_names_persistent_infra_failure_and_continued_classes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._write_plan(tmp)
+            d = Path(tmp) / "ui-2"
+            d.mkdir(parents=True, exist_ok=True)
+            doc = {"lane": "ui-2", "kind": "ui", "status": "fail",
+                   "actual_s": 700.0, "predicted_s": 60.0, "timeout_s": 900,
+                   "started_at": "2026-08-29T10:00:00Z",
+                   "finished_at": "2026-08-29T10:14:00Z",
+                   "flaky": [], "failures": [], "class_seconds": {},
+                   "retried_classes": [], "infra_recovered_classes": [],
+                   "persistent_infra_classes": ["WedgedUITests"],
+                   "attempts": [
+                       {"n": 1, "mode": "class", "class": "WedgedUITests",
+                        "status": "infra-error"},
+                       {"n": 2, "mode": "class-retry", "class": "WedgedUITests",
+                        "status": "infra-error"},
+                       {"n": 1, "mode": "class", "class": "HealthyUITests",
+                        "status": "passed"}]}
+            (d / "lane-result.json").write_text(json.dumps(doc), encoding="utf-8")
+            out = Path(tmp) / "summary.md"
+            args = SimpleNamespace(plan=str(plan), lanes_dir=str(tmp),
+                                   build_result="", out=str(out))
+            rc = ext.aggregate(args)
+            self.assertEqual(rc, ext.EXIT_OK)
+            text = out.read_text(encoding="utf-8")
+            self.assertIn("persistent infrastructure failure: `WedgedUITests`", text)
+            self.assertIn("remaining classes still ran", text)
 
 
 if __name__ == "__main__":

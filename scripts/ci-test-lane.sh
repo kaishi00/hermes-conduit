@@ -24,7 +24,13 @@
 #      is confidently an infrastructure failure (simulator crash, runner
 #      exit, ...): reset the simulator once and retry. Units retry the whole
 #      lane (it is one invocation); a UI lane retries only the affected
-#      class. If a retry times out, it falls through to hang handling (4).
+#      class. If a UI class fails AGAIN as an infrastructure failure, it is
+#      recorded as a persistent infrastructure failure and the lane FAILS -
+#      but after a clean simulator reset the remaining classes still run, so
+#      one wedged class cannot suppress independent UI coverage. If the
+#      simulator recovery itself cannot be trusted (erase failed, UDID
+#      unresolvable, boot never completed), later results would be
+#      misleading: the lane stops there instead.
 #   4. A watchdog timeout is positive identification of a hang. Units erase
 #      and enter lane-level class-granular isolation (heaviest estimate
 #      first, bounded by the isolation budget, stopping at the first
@@ -33,6 +39,11 @@
 #      budget; a second timeout names the hung class, fails the lane, and
 #      later classes are recorded as not_diagnosed so a contaminated
 #      simulator cannot produce misleading secondary failures.
+#
+# UI watchdog budgets are owned by plan-tests.py alone: every UI lane
+# receives an explicit per-class budget table (--class-timeouts) and the
+# runner refuses to start unless it covers every assigned class - there is
+# no fallback formula here to drift from the planner.
 #
 # Every simctl operation is deadline-bounded (ci-lib.sh). Bash 3.2 compatible.
 set -uo pipefail
@@ -98,18 +109,7 @@ CLASS_TIMEOUT_MIN_S="${CLASS_TIMEOUT_MIN_S:-180}"
 CLASS_TIMEOUT_MULTIPLIER="${CLASS_TIMEOUT_MULTIPLIER:-4.0}"
 DEFAULT_ESTIMATE_S="${DEFAULT_ESTIMATE_S:-20.0}"
 ISOLATION_BUDGET_S="${ISOLATION_BUDGET_S:-$TIMEOUT_S}"
-# Per-class UI watchdog fallbacks (the planner normally supplies explicit
-# budgets via --class-timeouts; these only cover a hand-run lane).
-UI_CLASS_TIMEOUT_MIN_S="${UI_CLASS_TIMEOUT_MIN_S:-420}"
-UI_CLASS_TIMEOUT_MULTIPLIER="${UI_CLASS_TIMEOUT_MULTIPLIER:-3.0}"
 SIMULATOR_NAME="${SIMULATOR_NAME:-iPhone 17 Pro}"
-
-case "$UI_CLASS_TIMEOUT_MIN_S" in
-  ''|*[!0-9]*) echo "::error::UI_CLASS_TIMEOUT_MIN_S must be a positive integer, got '$UI_CLASS_TIMEOUT_MIN_S'"; exit 2 ;;
-esac
-case "$UI_CLASS_TIMEOUT_MULTIPLIER" in
-  ''|*[!0-9.]*) echo "::error::UI_CLASS_TIMEOUT_MULTIPLIER must be a positive number, got '$UI_CLASS_TIMEOUT_MULTIPLIER'"; exit 2 ;;
-esac
 
 LOG_DIR="$RESULT_DIR/logs"
 mkdir -p "$LOG_DIR" "$RESULT_DIR/parts"
@@ -197,21 +197,31 @@ class_timeout_entry() {
   return 1
 }
 
-# Effective watchdog for one UI class: the planner's budget when supplied,
-# otherwise the same formula over the estimate (floor + multiplier).
+# Watchdog for one UI class. The PLANNER is the single authority for UI
+# watchdog policy: the table arrives via --class-timeouts (validated for full
+# coverage below), so this is a pure lookup - no fallback formula exists here
+# to drift from the planner.
 ui_budget_for() {
-  local planned est
+  local planned
   planned="$(class_timeout_entry "$1" || true)"
-  if [ -n "$planned" ]; then
-    echo "$planned"
-    return 0
+  if [ -z "$planned" ]; then
+    # Unreachable when the startup coverage check ran; a fatal guard anyway.
+    echo "::error::no planned watchdog for UI class $1 - --class-timeouts must cover every assigned class"
+    exit 2
   fi
-  est="$(estimate_for "$1" || true)"
-  [ -z "$est" ] && est="$DEFAULT_ESTIMATE_S"
-  # Ceiling like the planner's math.ceil (truncation would shave budget).
-  awk -v m="$UI_CLASS_TIMEOUT_MIN_S" -v k="$UI_CLASS_TIMEOUT_MULTIPLIER" -v e="$est" \
-    'BEGIN { t = m; if (e * k > t) t = e * k; t = (t == int(t)) ? t : int(t) + 1; printf "%d", t }'
+  printf '%s\n' "$planned"
 }
+
+# UI lanes may not start unless every assigned class has an explicit planned
+# watchdog. A silently missing budget would mean an unenforced invocation.
+if [ "$KIND" = "ui" ]; then
+  for cls in "${CLASSES_ARR[@]}"; do
+    if ! class_timeout_entry "$cls" >/dev/null; then
+      echo "::error::UI class $cls has no watchdog in --class-timeouts - refusing to run: plan-tests.py must supply a budget for every assigned class"
+      exit 2
+    fi
+  done
+fi
 
 # Shared invocation: test-without-building from the downloaded products.
 # Extra args (after the 4 named ones) are additional -only-testing filters.
@@ -283,10 +293,15 @@ ATTEMPT_LINES="$RESULT_DIR/attempts-lines.txt"
 # bundle is the only evidence of the wedge).
 RETRIED_LINES="$RESULT_DIR/retried-classes.txt"
 INFRA_RECOVERED_LINES="$RESULT_DIR/infra-recovered-classes.txt"
+# Classes whose BOTH attempts were infrastructure failures (exit nonzero,
+# zero failing tests, no hang): reported as persistent infra failures; the
+# lane keeps running the remaining classes.
+PERSISTENT_INFRA_LINES="$RESULT_DIR/persistent-infra-classes.txt"
 if [ "$KIND" = "ui" ]; then
   : > "$ATTEMPT_LINES"
   : > "$RETRIED_LINES"
   : > "$INFRA_RECOVERED_LINES"
+  : > "$PERSISTENT_INFRA_LINES"
 fi
 
 record_attempt() { # $1=mode $2=n $3=class $4=status
@@ -323,6 +338,11 @@ retried_classes_csv() {
 infra_recovered_csv() {
   [ -f "$INFRA_RECOVERED_LINES" ] || { printf ''; return 0; }
   sed '/^$/d' "$INFRA_RECOVERED_LINES" 2>/dev/null | paste -sd ',' - 2>/dev/null || printf ''
+}
+
+persistent_infra_csv() {
+  [ -f "$PERSISTENT_INFRA_LINES" ] || { printf ''; return 0; }
+  sed '/^$/d' "$PERSISTENT_INFRA_LINES" 2>/dev/null | paste -sd ',' - 2>/dev/null || printf ''
 }
 
 # Every class after $1 (the class being stopped on) that never ran must be
@@ -365,6 +385,7 @@ finish_lane() { # $1=status $2=attempts_json $3=isolation_json $4=exit_code
     --isolation-json "$3" \
     --retried-classes "$(retried_classes_csv)" \
     --infra-recovered-classes "$(infra_recovered_csv)" \
+    --persistent-infra-classes "$(persistent_infra_csv)" \
     --hung-class "$HUNG_CLASS" \
     $reset_flag $erase_flag \
     --observations "$RESULT_DIR/observations.json" \
@@ -634,8 +655,10 @@ run_ui_lane() {
     fi
 
     # Attempt 1 failed. Recovery: a hang or an infrastructure failure erases
-    # the simulator (a hang may have left it contaminated); an ordinary test
-    # failure retries as-is - the class is re-executed, nothing else.
+    # the simulator (a hang may have left it contaminated; a wedge may have
+    # left it unusable) - but only if the clean recovery itself can be
+    # trusted; an ordinary test failure retries as-is. The class is
+    # re-executed, nothing else.
     if [ "$status1" -eq 124 ]; then
       a1_status="timeout"
     elif [ "$FAIL_COUNT1" -gt 0 ]; then
@@ -649,12 +672,20 @@ run_ui_lane() {
       bounded_run 45 xcrun simctl list devices >"$LOG_DIR/simctl-devices-after-timeout-$cls-a1.txt" 2>&1 || true
       RESET_USED=1
       ERASE_USED=1
-      reset_and_boot_simulator 1
+      if ! reset_and_boot_simulator 1; then
+        echo "::error::simulator recovery for UI class $cls failed - the environment cannot be trusted; stopping the lane"
+        mark_remaining_not_diagnosed "$cls"
+        finish_lane "error" "$(serialize_attempts)" "" 1
+      fi
     elif [ "$FAIL_COUNT1" -eq 0 ]; then
       echo "::warning::UI class $cls failed with zero failing tests (exit $status1) - infrastructure failure; erasing simulator and retrying this class once"
       RESET_USED=1
       ERASE_USED=1
-      reset_and_boot_simulator 1
+      if ! reset_and_boot_simulator 1; then
+        echo "::error::simulator recovery for UI class $cls failed - the environment cannot be trusted; stopping the lane"
+        mark_remaining_not_diagnosed "$cls"
+        finish_lane "error" "$(serialize_attempts)" "" 1
+      fi
     else
       echo "UI class $cls failed ("${FAIL_COUNT1}" test(s) surviving) - targeted retry of this class once"
     fi
@@ -709,10 +740,27 @@ run_ui_lane() {
       mark_remaining_not_diagnosed "$cls"
       finish_lane "fail" "$(serialize_attempts)" "" 1
     fi
-    echo "::error::UI class $cls failed twice with zero failing tests (exit $status1, then $status2) - runner/simulator environment failure"
+
+    # Persistent infrastructure failure: the class exited nonzero twice with
+    # a KNOWN zero failing-test count and never hung. The culprit is fully
+    # identified and the environment is classifiable, so unlike a hang this
+    # must not suppress the remaining independent classes: record the
+    # persistent failure, fail the lane, clean the simulator, and continue.
+    if [ "$a1_status" = "infra-error" ]; then
+      echo "$cls" >> "$PERSISTENT_INFRA_LINES"
+      echo "::error::UI class $cls has a PERSISTENT infrastructure failure (exit $status1, then $status2, zero failing tests both times) - failing the lane; remaining classes still run after a simulator reset"
+    else
+      echo "::error::UI class $cls failed again with an infrastructure failure on its retry (exit $status1, then $status2) - failing the lane; remaining classes still run after a simulator reset"
+    fi
     record_attempt "class-retry" 2 "$cls" "infra-error"
-    mark_remaining_not_diagnosed "$cls"
-    finish_lane "error" "$(serialize_attempts)" "" 1
+    LANE_FAILED=1
+    RESET_USED=1
+    ERASE_USED=1
+    if ! reset_and_boot_simulator 1; then
+      echo "::error::simulator cleanup after the persistent infrastructure failure in UI class $cls failed - the environment cannot be trusted; stopping the lane"
+      mark_remaining_not_diagnosed "$cls"
+      finish_lane "error" "$(serialize_attempts)" "" 1
+    fi
   done
 
   if [ "$LANE_FAILED" -eq 1 ]; then

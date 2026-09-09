@@ -274,11 +274,11 @@ jobs:
         # Matrix values enter through the environment, never through bash
         # template interpolation, so even a hostile class name cannot become
         # code execution in the runner. The lane runner executes each class
-        # as an independent xcodebuild invocation under its own planned
-        # watchdog and retries only a failed class - once.
+        # as an independent xcodebuild invocation under the planner's
+        # per-class watchdog (--class-timeouts is the single source of
+        # watchdog policy and must cover every assigned class) and retries
+        # only a failed class - once.
         env:
-          UI_CLASS_TIMEOUT_MIN_S: "420"
-          UI_CLASS_TIMEOUT_MULTIPLIER: "3.0"
           CONDUIT_PERF_TRACE: "1"
           LANE_NAME: "${{ matrix.lane }}"
           LANE_TARGET: "${{ matrix.target }}"

@@ -64,6 +64,26 @@ if [ "$1" = "xcresulttool" ]; then
   echo "not json - schema change (stub)"
   exit 0
 fi
+if [ "$1" = "simctl" ]; then
+  # The erase-gated simulator recovery must be able to SUCCEED in tests, so
+  # simctl list -j serves one pinned device (matching the default
+  # SIMULATOR_NAME) for ci-lib's jq-based UDID resolution.
+  if [ "$2 $3 $4 $5" = "list devices available -j" ]; then
+    cat <<'DEV'
+{"devices" : {"com.apple.CoreSimulator.SimRuntime.iOS-26-0" : [
+  { "udid" : "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE",
+    "name" : "iPhone 17 Pro", "state" : "Shutdown" }]}}
+DEV
+    exit 0
+  fi
+  # Simulate an erase/reboot recovery that never completes: the lane must
+  # treat the environment as untrustworthy.
+  if [ "$FAKE_UI_RECOVERY_FAILS" = "1" ] && [ "$2" = "bootstatus" ]; then
+    echo "bootstatus failed (stub)"
+    exit 1
+  fi
+  exit 0
+fi
 exit 0
 EOF
   chmod +x "$STUBS/xcrun"
@@ -183,6 +203,9 @@ case " $FAKE_UI_FAIL_ALWAYS " in *" $cls "*) write_doc "$cls" Failed; echo "Test
 case " $FAKE_UI_INFRA_ONCE " in *" $cls "*)
   if [ "$attempt" = a1 ]; then write_doc "$cls" Passed; echo "simulator crashed (stub)"; exit 70; fi
   write_doc "$cls" Passed; exit 0 ;;
+esac
+case " $FAKE_UI_INFRA_ALWAYS " in *" $cls "*)
+  write_doc "$cls" Passed; echo "simulator crashed (stub)"; exit 70 ;;
 esac
 case " $FAKE_UI_HANG " in *" $cls "*) sleep 300; exit 0 ;; esac
 write_doc "$cls" Passed
@@ -417,7 +440,7 @@ export FAKE_CANNED="$WORK/canned-ui.json"
 # --- UI case 1: every class passes once - one invocation per class ------------
 begin_case "ui all pass" "$WORK/u1"
 export INVOCATION_LOG="$WORK/u1-invocations.log"; : > "$INVOCATION_LOG"
-export FAKE_UI_FAIL_ONCE="" FAKE_UI_FAIL_ALWAYS="" FAKE_UI_INFRA_ONCE="" FAKE_UI_HANG=""
+export FAKE_UI_FAIL_ONCE="" FAKE_UI_FAIL_ALWAYS="" FAKE_UI_INFRA_ONCE="" FAKE_UI_INFRA_ALWAYS="" FAKE_UI_HANG="" FAKE_UI_RECOVERY_FAILS=""
 run_ui_lane "AlphaUITests,BetaUITests" 300 "AlphaUITests=200,BetaUITests=200"
 assert_eq "exit code" "$(cat "$WORKCASE/exit-code")" "0"
 assert_eq "verdict" "$(lane_field "['status']")" "pass"
@@ -519,7 +542,7 @@ export INVOCATION_LOG="$WORK/u6-invocations.log"; : > "$INVOCATION_LOG"
 # writes it), so the xcrun stub returns an invalid document.
 export FAKE_CANNED="$WORK/does-not-exist-u6.json"
 export FAKE_UI_NO_DOC=1
-export FAKE_UI_FAIL_ONCE="" FAKE_UI_FAIL_ALWAYS="AlphaUITests" FAKE_UI_INFRA_ONCE="" FAKE_UI_HANG=""
+export FAKE_UI_FAIL_ONCE="" FAKE_UI_FAIL_ALWAYS="AlphaUITests" FAKE_UI_INFRA_ONCE="" FAKE_UI_INFRA_ALWAYS="" FAKE_UI_HANG="" FAKE_UI_RECOVERY_FAILS=""
 run_ui_lane "AlphaUITests,BetaUITests" 300 "AlphaUITests=200,BetaUITests=200"
 assert_eq "exit code" "$(cat "$WORKCASE/exit-code")" "1"
 assert_eq "verdict" "$(lane_field "['status']")" "fail"
@@ -541,6 +564,74 @@ assert_eq "verdict" "$(lane_field "['status']")" "timeout"
 assert_eq "hung class" "$(lane_field "['hung_class']")" "SlowUITests"
 assert_eq "Fast passed under its own larger budget" "$(attempts_statuses)" "['passed', 'timeout', 'timeout']"
 assert_eq "lane watchdog sum recorded" "$(lane_field "['timeout_s']")" "600"
+
+# --- UI case 8: persistent infra failure fails the lane, later classes run ---
+# Spec: class A exits nonzero twice with zero failing tests (never hangs, its
+# result stays classifiable). It is recorded as a persistent infrastructure
+# failure and the lane fails, but B and C must still execute - a wedged class
+# must not suppress independent UI coverage the way a hang does.
+begin_case "ui persistent infra failure continues lane" "$WORK/u8"
+export INVOCATION_LOG="$WORK/u8-invocations.log"; : > "$INVOCATION_LOG"
+export FAKE_CANNED="$WORK/canned-u8.json"
+export FAKE_UI_NO_DOC=""
+export FAKE_UI_FAIL_ONCE="" FAKE_UI_FAIL_ALWAYS="" FAKE_UI_INFRA_ONCE="" FAKE_UI_INFRA_ALWAYS="AlphaUITests" FAKE_UI_HANG="" FAKE_UI_RECOVERY_FAILS=""
+run_ui_lane "AlphaUITests,BetaUITests,GammaUITests" 600 "AlphaUITests=200,BetaUITests=200,GammaUITests=200"
+assert_eq "exit code" "$(cat "$WORKCASE/exit-code")" "1"
+assert_eq "verdict" "$(lane_field "['status']")" "fail"
+assert_eq "attempts" "$(attempts_statuses)" "['infra-error', 'infra-error', 'passed', 'passed']"
+assert_eq "persistent infra class named" \
+  "$(lane_field "['persistent_infra_classes']")" "['AlphaUITests']"
+assert_eq "persistent infra is not a flake" "$(retried_classes)" "[]"
+assert_eq "Alpha retried once, not looped" "$(ui_invocations AlphaUITests)" "2"
+assert_eq "Beta executed after the persistent failure" "$(ui_invocations BetaUITests)" "1"
+assert_eq "Gamma executed after the persistent failure" "$(ui_invocations GammaUITests)" "1"
+if grep -q "not_diagnosed" "$WORKCASE/lane-result.json"; then
+  bad "persistent infra failure must not mark healthy classes not_diagnosed"
+else
+  ok "no not_diagnosed entries after a persistent infra failure"
+fi
+
+# --- UI case 9: untrusted simulator recovery stops the lane ------------------
+# If the erase/reboot recovery cannot complete, later results would be
+# misleading: unlike a persistent infra failure, the lane stops and the
+# remaining classes are recorded as not_diagnosed.
+begin_case "ui recovery failure stops lane" "$WORK/u9"
+export INVOCATION_LOG="$WORK/u9-invocations.log"; : > "$INVOCATION_LOG"
+export FAKE_CANNED="$WORK/canned-u9.json"
+export FAKE_UI_FAIL_ONCE="" FAKE_UI_FAIL_ALWAYS="" FAKE_UI_INFRA_ONCE="AlphaUITests" FAKE_UI_INFRA_ALWAYS="" FAKE_UI_HANG="" FAKE_UI_RECOVERY_FAILS="1"
+run_ui_lane "AlphaUITests,BetaUITests" 600 "AlphaUITests=200,BetaUITests=200"
+assert_eq "exit code" "$(cat "$WORKCASE/exit-code")" "1"
+assert_eq "verdict" "$(lane_field "['status']")" "error"
+assert_eq "attempts" "$(attempts_statuses)" "['infra-error', 'not_diagnosed']"
+assert_eq "Beta never ran on an untrusted simulator" "$(ui_invocations BetaUITests)" "0"
+
+# --- UI case 10: a class without a planned watchdog refuses to start ---------
+# plan-tests.py is the single authority for UI watchdog budgets: the runner
+# must fail fast rather than run an unwatched class.
+begin_case "ui missing watchdog entry rejected" "$WORK/u10"
+export INVOCATION_LOG="$WORK/u10-invocations.log"; : > "$INVOCATION_LOG"
+run_ui_lane "AlphaUITests,BetaUITests" 300 "AlphaUITests=200"
+assert_eq "exit code" "$(cat "$WORKCASE/exit-code")" "2"
+if grep -q "BetaUITests has no watchdog in --class-timeouts" "$WORKCASE/stdout.log"; then
+  ok "missing watchdog entry named the uncovered class"
+else
+  bad "missing watchdog entry must be rejected naming the class"
+fi
+if [ -f "$WORKCASE/lane-result.json" ]; then
+  bad "no class may run when the watchdog table is incomplete"
+else
+  ok "lane never started with an incomplete watchdog table"
+fi
+
+# --- UI case 11: malformed watchdog entries are rejected ---------------------
+begin_case "ui malformed watchdog entry rejected" "$WORK/u11"
+run_ui_lane "AlphaUITests" 300 "AlphaUITests=abc"
+assert_eq "exit code" "$(cat "$WORKCASE/exit-code")" "2"
+if grep -q "must be a positive integer" "$WORKCASE/stdout.log"; then
+  ok "malformed watchdog value rejected"
+else
+  bad "malformed watchdog value must fail immediately"
+fi
 
 echo ""
 echo "lane-runner state machine: $pass_count passed, $fail_count failed"
