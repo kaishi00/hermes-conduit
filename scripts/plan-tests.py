@@ -8,11 +8,14 @@ Replaces the static unit-a..unit-d shard system:
   * validates complete, duplicate-free inventory (a new test class cannot
     silently miss CI);
   * assigns unit classes to a dynamic number of lanes with longest-
-    processing-time-first balancing over historical duration estimates;
+    processing-time-first balancing over historical duration estimates,
+    consolidating lanes whose split would not buy more than a wall-clock
+    tolerance once the fixed per-invocation Xcode/simulator startup cost is
+    modeled (predicted lane cost = invocation overhead + predicted execution);
   * balances UI classes into their own parallel lanes the same way, and
-    derives a PER-CLASS watchdog for every UI class (each class runs as its
-    own xcodebuild invocation, so a hang is attributed - and retried - at
-    class granularity);
+    derives a PER-CLASS watchdog for every UI class (the lane runs its
+    classes as one batched invocation priced at the sum of those budgets,
+    and the diagnosis fallback enforces them per class);
   * derives measured per-lane watchdog budgets from those predictions;
   * emits GitHub Actions matrix JSON for the dynamic unit AND UI lanes.
 
@@ -44,17 +47,26 @@ SCHEMA_VERSION = 1
 
 # Planning configuration (overridable via flags for tests).
 DEFAULT_ESTIMATE_S = 20.0          # unseen/new classes: conservative, not sticky
-MIN_LANES = 4
+MIN_LANES = 1
 MAX_LANES = 8
-TARGET_LANE_BUDGET_S = 240.0       # scale-out threshold per lane
 LANE_TIMEOUT_MIN_S = 600           # healthy lanes never get less than 10 min
 LANE_TIMEOUT_MULTIPLIER = 2.5      # headroom over prediction
-# UI sharding. UI classes run in their own parallel lanes (same LPT balance
-# as units), each class as an INDEPENDENT xcodebuild invocation under its own
-# per-class watchdog. ui_target_budget_s decides how many lanes the measured
-# suite is worth; the clamp bounds hosted-runner usage (3 lanes for today's
-# ~22 min of cumulative UI work, more only if the suite grows).
-UI_TARGET_BUDGET_S = 480.0
+# Modeled fixed cost of ONE xcodebuild invocation on a lane: process startup,
+# simulator boot, app/test-host install, and xcresult finalization. Measured
+# on macos-26 hosted runners as lane actual minus predicted execution
+# (~208-295s across the four unit lanes of run 34349843495; the UI per-class
+# floor below independently measured ~3.5 min for the same fixed cost, run
+# #500). A lane must buy more than lane_wall_tolerance_s of wall-clock
+# improvement to be worth spawning: more parallel jobs are not inherently
+# faster when every job pays this cost up front.
+INVOCATION_OVERHEAD_S = 240.0
+LANE_WALL_TOLERANCE_S = 120.0
+# UI sharding. UI classes are balanced into parallel lanes (same overhead-
+# aware consolidation as units) and every lane runs its classes as ONE
+# batched xcodebuild invocation. The clamp bounds hosted-runner usage
+# (3 lanes for today's ~22 min of cumulative UI work, more only if the suite
+# grows); the per-class watchdog table still travels with the lane for the
+# batched budget and the diagnosis fallback.
 UI_MIN_LANES = 3
 UI_MAX_LANES = 4
 # Per-class UI watchdog = max(floor, estimate x multiplier). The floor covers
@@ -265,13 +277,38 @@ def load_estimates(path, purpose: str) -> tuple:
 # planning
 # ---------------------------------------------------------------------------
 
-def lane_count_for(total_predicted: float, n_classes: int, cfg: dict) -> int:
+def lane_count_for(items: list, cfg: dict) -> int:
+    """Smallest lane count whose MODELED WALL CLOCK is within
+    lane_wall_tolerance_s of the best achievable wall clock within bounds.
+
+    Model: predicted lane cost = invocation_overhead_s (fixed: xcodebuild
+    startup + simulator boot + result finalization, paid by every lane) + the
+    lane's predicted test execution; lanes run in parallel, so the modeled
+    wall for n lanes is overhead + the heaviest LPT lane load. Another shard
+    only ever rebalances execution, but multiplies the paid fixed cost, so a
+    lane must buy at least lane_wall_tolerance_s of wall improvement to be
+    worth spawning. Splitting 200s of tests into two lanes is a net loss when
+    the invocation overhead is several minutes.
+
+    items: [(name, seconds)]; returns a count in
+    [min(min_lanes, n_classes), max_lanes], 0 when there are no classes."""
+    n_classes = len(items)
     if n_classes == 0:
         return 0
-    n = math.ceil(total_predicted / cfg["target_budget_s"]) if total_predicted > 0 else 1
-    n = max(cfg["min_lanes"], n)
-    n = min(cfg["max_lanes"], n)
-    return min(n, n_classes)
+    lo = min(cfg["min_lanes"], n_classes)
+    hi = min(cfg["max_lanes"], n_classes)
+    seconds_for = dict(items)
+    walls = {}
+    for n in range(lo, hi + 1):
+        lanes = longest_processing_time_first(items, n)
+        walls[n] = cfg["invocation_overhead_s"] + max(
+            sum(seconds_for[name] for name in lane) for lane in lanes
+        )
+    best = min(walls.values())
+    for n in sorted(walls):
+        if walls[n] <= best + cfg["lane_wall_tolerance_s"]:
+            return n
+    return lo  # unreachable: the best wall itself satisfies the tolerance
 
 
 def longest_processing_time_first(items: list, n_lanes: int) -> list:
@@ -291,45 +328,39 @@ def longest_processing_time_first(items: list, n_lanes: int) -> list:
     return lanes
 
 
-def ui_lane_count_for(total_predicted: float, n_classes: int, cfg: dict) -> int:
-    """Parallel UI lanes for the measured suite. Same shape as the unit
-    policy: ceil(total / per-lane budget), clamped, capped by class count so
-    no lane is ever empty. Today's ~1310s of UI work lands on 3 lanes."""
-    if n_classes == 0:
-        return 0
-    n = math.ceil(total_predicted / cfg["ui_target_budget_s"]) if total_predicted > 0 else 1
-    n = max(cfg["ui_min_lanes"], n)
-    n = min(cfg["ui_max_lanes"], n)
-    return min(n, n_classes)
-
-
 def timeout_for(predicted: float, floor_s: float, multiplier: float) -> int:
     return max(int(floor_s), int(math.ceil(predicted * multiplier)))
 
 
 def ui_class_timeout_for(estimate: float, floor_s: float, multiplier: float) -> int:
-    """Watchdog for ONE UI test class (it runs as its own xcodebuild
-    invocation). The floor carries the fixed per-invocation simulator/Xcode
-    overhead that dominates small classes; the multiplier gives big classes
-    proportional headroom. With today's estimates this bounds worst-case hang
-    detection at 7-17 minutes per class instead of the old 48-minute
-    suite-level watchdog."""
+    """Watchdog for ONE UI test class. It prices the class's share of the
+    batched shard invocation (the runner sums these budgets for the batch
+    watchdog) and the per-class diagnosis fallback invocation. The floor
+    carries the fixed per-invocation simulator/Xcode overhead that dominates
+    small classes; the multiplier gives big classes proportional headroom.
+    With today's estimates this bounds worst-case hang detection at 7-17
+    minutes per class instead of the old 48-minute suite-level watchdog."""
     return max(int(floor_s), int(math.ceil(estimate * multiplier)))
 
 
 def ui_job_timeout_min(lane_timeout_s: int, n_classes: int, cfg: dict) -> int:
-    """Outer emergency ceiling for a UI lane. Worst in-script path: every
-    class runs its targeted retry (2 x sum of per-class budgets), each
-    failing class pays one bounded erase/reboot recovery, and per-attempt
-    timing extraction can wedge to the xcresulttool subprocess bound (up to
-    twice per class, outside the budgets) - plus setup/download slack.
-    Per-class watchdogs inside the runner are the real enforcement; the
-    ceiling only guarantees GitHub can never preempt legitimate in-script
-    recovery (which is what would erase the hung-class attribution this lane
-    exists to provide)."""
-    total = (2 * lane_timeout_s
+    """Outer emergency ceiling for a UI lane. Two reachable worst paths:
+    (a) the batched shard attempt (the lane budget = sum of per-class
+    budgets) times out and per-class diagnosis follows (one attempt + one
+    targeted retry per class = 2x more) = 3x; (b) the batch completes with
+    failures in every class, the targeted retry (a budget covering all of
+    them) times out, and diagnosis of the retried classes follows = up to
+    4x. (b) dominates and prices the ceiling. Each failing class then pays
+    one bounded erase/reboot recovery; per-attempt timing extraction can
+    wedge to the xcresulttool subprocess bound (up to twice per diagnosis
+    class plus the batch's own classification extraction, outside the
+    budgets) - plus setup/download slack. Per-class watchdogs inside the
+    runner are the real enforcement; the ceiling only guarantees GitHub can
+    never preempt legitimate in-script recovery (which is what would erase
+    the hung-class attribution this lane exists to provide)."""
+    total = (4 * lane_timeout_s
              + (n_classes + 1) * cfg.get("ui_reset_overhead_s", UI_RESET_OVERHEAD_S)
-             + 2 * n_classes * cfg.get("ui_extract_bound_s", UI_EXTRACT_BOUND_S)
+             + (2 * n_classes + 1) * cfg.get("ui_extract_bound_s", UI_EXTRACT_BOUND_S)
              + cfg["job_timeout_margin_s"])
     return int(math.ceil(total / 60.0))
 
@@ -362,18 +393,20 @@ def build_plan(discovery: dict, cfg: dict, estimates: dict) -> dict:
 
     items = sorted(unit_est.items(), key=lambda kv: (-kv[1], kv[0]))
     total = sum(s for _n, s in items)
-    n_lanes = lane_count_for(total, len(items), cfg)
+    n_lanes = lane_count_for(items, cfg)
     lanes = longest_processing_time_first(items, n_lanes)
 
     unit_lanes = []
     for i, classes in enumerate(lanes, start=1):
         predicted = sum(unit_est[c] for c in classes)
+        modeled_wall = cfg["invocation_overhead_s"] + predicted
         timeout = timeout_for(predicted, cfg["lane_timeout_min_s"], cfg["timeout_multiplier"])
         unit_lanes.append({
             "lane": f"unit-{i}",
             "target": UNIT_TARGET,
             "classes": classes,
             "predicted_s": round(predicted, 1),
+            "modeled_wall_s": round(modeled_wall, 1),
             "timeout_s": timeout,
             "job_timeout_min": job_timeout_min(timeout, cfg),
         })
@@ -381,12 +414,14 @@ def build_plan(discovery: dict, cfg: dict, estimates: dict) -> dict:
     ui_lanes = []
     if ui_names:
         ui_items = sorted(ui_est.items(), key=lambda kv: (-kv[1], kv[0]))
-        ui_total = sum(s for _n, s in ui_items)
-        n_ui_lanes = ui_lane_count_for(ui_total, len(ui_items), cfg)
+        # Same overhead-aware selection as units, under the UI bounds.
+        ui_cfg = dict(cfg, min_lanes=cfg["ui_min_lanes"], max_lanes=cfg["ui_max_lanes"])
+        n_ui_lanes = lane_count_for(ui_items, ui_cfg)
         for i, classes in enumerate(longest_processing_time_first(ui_items, n_ui_lanes), start=1):
             predicted = sum(ui_est[c] for c in classes)
             # Watchdog budget per class, from the same timing data that
-            # balanced the lane; the runner enforces them one class at a time.
+            # balanced the lane: it prices the batched invocation (the sum)
+            # and every per-class diagnosis fallback invocation.
             class_timeouts = {
                 c: ui_class_timeout_for(
                     ui_est[c], cfg["ui_class_timeout_min_s"],
@@ -411,8 +446,9 @@ def build_plan(discovery: dict, cfg: dict, estimates: dict) -> dict:
     plan = {
         "schema_version": SCHEMA_VERSION,
         "config": {k: cfg[k] for k in (
-            "default_estimate_s", "min_lanes", "max_lanes", "target_budget_s",
-            "lane_timeout_min_s", "timeout_multiplier", "ui_target_budget_s",
+            "default_estimate_s", "min_lanes", "max_lanes",
+            "invocation_overhead_s", "lane_wall_tolerance_s",
+            "lane_timeout_min_s", "timeout_multiplier",
             "ui_min_lanes", "ui_max_lanes", "ui_class_timeout_min_s",
             "ui_class_timeout_multiplier", "job_timeout_margin_s")},
         "inventory": {"unit": unit_names, "ui": ui_names},
@@ -526,19 +562,26 @@ def plan_summary_md(plan: dict, discovery: dict, source: str) -> str:
         f"**{plan['total_predicted_s']:.0f}s** · lanes **{plan['lane_count']}** "
         f"(bounds {plan['config']['min_lanes']}-{plan['config']['max_lanes']})"
     )
+    lines.append(
+        f"- Modeled per-lane cost: **{plan['config']['invocation_overhead_s']:.0f}s** "
+        "fixed invocation overhead + predicted execution (another lane is only "
+        f"added when it buys more than "
+        f"**{plan['config']['lane_wall_tolerance_s']:.0f}s** of wall clock)"
+    )
     lines.append("")
-    lines.append("| Lane | Predicted | Watchdog | Job ceiling | Classes |")
-    lines.append("|---|---|---|---|---|")
+    lines.append("| Lane | Predicted | Modeled wall | Watchdog | Job ceiling | Classes |")
+    lines.append("|---|---|---|---|---|---|")
     for lane in plan["unit_lanes"]:
         lines.append(
-            f"| {lane['lane']} | {lane['predicted_s']:.0f}s | {lane['timeout_s']}s "
+            f"| {lane['lane']} | {lane['predicted_s']:.0f}s | {lane['modeled_wall_s']:.0f}s "
+            f"| {lane['timeout_s']}s "
             f"| {lane['job_timeout_min']}m | {len(lane['classes'])} |"
         )
     for lane in plan["ui_lanes"]:
         timeouts = [int(p.split("=", 1)[1]) for p in lane["class_timeouts"].split(",") if "=" in p]
         lines.append(
-            f"| {lane['lane']} (UI) | {lane['predicted_s']:.0f}s | "
-            f"{max(timeouts)}s per class "
+            f"| {lane['lane']} (UI) | {lane['predicted_s']:.0f}s | - "
+            f"| {max(timeouts)}s per class "
             f"| {lane['job_timeout_min']}m | {len(lane['classes'])} |"
         )
     lines.append("")
@@ -553,7 +596,8 @@ def plan_summary_md(plan: dict, discovery: dict, source: str) -> str:
         timeouts = dict(p.split("=", 1) for p in lane["class_timeouts"].split(",") if p)
         members = ", ".join(
             f"{c} (watchdog {timeouts.get(c, '?')}s)" for c in lane["classes"])
-        lines.append(f"- **{lane['lane']}** (per-class invocations): {members}")
+        lines.append(f"- **{lane['lane']}** (one batched invocation; per-class "
+                     f"diagnosis budgets): {members}")
     lines.append("")
     lines.append("</details>")
     lines.append("")
@@ -681,10 +725,10 @@ def _cfg_from_args(a) -> dict:
         "default_estimate_s": a.default_estimate_s,
         "min_lanes": a.min_lanes,
         "max_lanes": a.max_lanes,
-        "target_budget_s": a.target_budget_s,
+        "invocation_overhead_s": a.invocation_overhead_s,
+        "lane_wall_tolerance_s": a.lane_wall_tolerance_s,
         "lane_timeout_min_s": a.lane_timeout_min_s,
         "timeout_multiplier": a.timeout_multiplier,
-        "ui_target_budget_s": a.ui_target_budget_s,
         "ui_min_lanes": a.ui_min_lanes,
         "ui_max_lanes": a.ui_max_lanes,
         "ui_class_timeout_min_s": a.ui_class_timeout_min_s,
@@ -729,12 +773,12 @@ def _human_report(plan: dict, discovery: dict, source: str) -> str:
     out.append(f"timing source: {source}")
     for lane in plan["unit_lanes"]:
         out.append(
-            "  {0}: predicted {1}s, watchdog {2}s, job ceiling {3}m, {4} classes".format(
-                lane["lane"], lane["predicted_s"], lane["timeout_s"],
-                lane["job_timeout_min"], len(lane["classes"])))
+            "  {0}: predicted {1}s, modeled wall {2}s, watchdog {3}s, job ceiling {4}m, {5} classes".format(
+                lane["lane"], lane["predicted_s"], lane["modeled_wall_s"],
+                lane["timeout_s"], lane["job_timeout_min"], len(lane["classes"])))
     for lane in plan["ui_lanes"]:
         out.append(
-            "  {0} (UI): predicted {1}s, per-class watchdogs [{2}], job ceiling {3}m".format(
+            "  {0} (UI): predicted {1}s, batched invocation, per-class watchdogs [{2}], job ceiling {3}m".format(
                 lane["lane"], lane["predicted_s"], lane["class_timeouts"],
                 lane["job_timeout_min"]))
     out.append(f"predicted imbalance: {plan['imbalance_predicted_pct']}% unit / "
@@ -754,10 +798,10 @@ def main(argv=None) -> int:
         p.add_argument("--default-estimate-s", type=float, default=DEFAULT_ESTIMATE_S)
         p.add_argument("--min-lanes", type=int, default=MIN_LANES)
         p.add_argument("--max-lanes", type=int, default=MAX_LANES)
-        p.add_argument("--target-budget-s", type=float, default=TARGET_LANE_BUDGET_S)
+        p.add_argument("--invocation-overhead-s", type=float, default=INVOCATION_OVERHEAD_S)
+        p.add_argument("--lane-wall-tolerance-s", type=float, default=LANE_WALL_TOLERANCE_S)
         p.add_argument("--lane-timeout-min-s", type=int, default=LANE_TIMEOUT_MIN_S)
         p.add_argument("--timeout-multiplier", type=float, default=LANE_TIMEOUT_MULTIPLIER)
-        p.add_argument("--ui-target-budget-s", type=float, default=UI_TARGET_BUDGET_S)
         p.add_argument("--ui-min-lanes", type=int, default=UI_MIN_LANES)
         p.add_argument("--ui-max-lanes", type=int, default=UI_MAX_LANES)
         p.add_argument("--ui-class-timeout-min-s", type=int, default=UI_CLASS_TIMEOUT_MIN_S)

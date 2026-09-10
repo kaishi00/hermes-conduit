@@ -62,7 +62,7 @@ class WorkflowContractTests(unittest.TestCase):
             out.append(line)
         return "\n".join(out)
 
-    def test_ui_job_is_a_dynamic_matrix_with_per_class_runner(self):
+    def test_ui_job_is_a_dynamic_matrix_with_batched_lane_runner(self):
         text = self._workflow_text()
         ui = self._job_text("ui")
         # Matrix fanout comes from the planner, never a hard-coded class list,
@@ -71,14 +71,16 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("fail-fast: false", ui)
         self.assertIn('needs: [plan, build]', ui,
                       "UI shards must consume the SHARED build products")
-        # Per-class runner invocation with planned watchdogs.
+        # Batched lane runner invocation with the planned per-class watchdog
+        # table (the batch watchdog is its sum; the same table prices the
+        # per-class diagnosis fallback).
         self.assertIn("--kind ui", ui)
         self.assertIn("--class-timeouts", ui)
         self.assertIn('--classes "$LANE_CLASSES"', ui)
         self.assertNotIn(
             "--iterations", ui,
             "UI lanes must not use native multi-iteration retry; the runner "
-            "retries exactly the failed class once")
+            "retries exactly the failed tests once")
         # Watchdog policy has ONE source of truth: the planner's
         # --class-timeouts table. No duplicated floor/multiplier env here.
         self.assertNotIn("UI_CLASS_TIMEOUT_MIN_S", ui)
@@ -89,22 +91,23 @@ class WorkflowContractTests(unittest.TestCase):
 
     def test_ci_gate_script_verdict_matches_spec_examples(self):
         spec = {
-            ("success", "success", "success", "success"): True,
-            ("success", "success", "success", "skipped"): True,
-            ("success", "success", "failure", "success"): False,
-            ("success", "failure", "skipped", "skipped"): False,
-            ("cancelled", "success", "success", "success"): False,
-            ("success", "success", "cancelled", "success"): False,
+            ("success", "success", "success", "success", "success"): True,
+            ("success", "success", "success", "skipped", "success"): True,
+            ("success", "success", "success", "success", "failure"): False,
+            ("success", "success", "failure", "success", "success"): False,
+            ("success", "failure", "skipped", "skipped", "skipped"): False,
+            ("cancelled", "success", "success", "success", "success"): False,
+            ("success", "success", "cancelled", "success", "success"): False,
         }
-        for (plan, build, unit, ui), expected in spec.items():
+        for (plan, build, unit, ui, self_test), expected in spec.items():
             proc = subprocess.run(
                 [sys.executable, os.path.join(SCRIPTS_DIR, "ci-gate.py"),
                  "--plan", plan, "--build", build,
-                 "--unit", unit, "--ui", ui],
+                 "--unit", unit, "--ui", ui, "--self-test", self_test],
                 capture_output=True, text=True)
             self.assertEqual(
                 proc.returncode == 0, expected,
-                f"gate({plan},{build},{unit},{ui}) -> {proc.stdout}")
+                f"gate({plan},{build},{unit},{ui},{self_test}) -> {proc.stdout}")
 
 
 class TimingUpdateCliShapeTests(unittest.TestCase):

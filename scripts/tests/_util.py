@@ -46,12 +46,12 @@ def make_repo(root, unit_classes=(), ui_classes=(), extra_files=None):
 def default_cfg(**overrides):
     cfg = {
         "default_estimate_s": 20.0,
-        "min_lanes": 4,
+        "min_lanes": 1,
         "max_lanes": 8,
-        "target_budget_s": 240.0,
+        "invocation_overhead_s": 240.0,
+        "lane_wall_tolerance_s": 120.0,
         "lane_timeout_min_s": 600,
         "timeout_multiplier": 2.5,
-        "ui_target_budget_s": 480.0,
         "ui_min_lanes": 3,
         "ui_max_lanes": 4,
         "ui_class_timeout_min_s": 420,

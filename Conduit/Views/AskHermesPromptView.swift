@@ -16,6 +16,12 @@ struct AskHermesPromptView: View {
 
     @State private var copied = false
     @State private var copyCount = 0
+    /// Durable record of which prompt was last copied. The visible "Copied"
+    /// label intentionally disappears after ~2s, but the fact that THIS
+    /// prompt was copied must stay queryable through accessibility (VoiceOver
+    /// users re-reading the control, and automation) — keyed to the prompt
+    /// string so a reused card can never claim a different prompt was copied.
+    @State private var lastCopiedPrompt: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -33,12 +39,14 @@ struct AskHermesPromptView: View {
                 Button {
                     UIPasteboard.general.string = prompt
                     copied = true
+                    lastCopiedPrompt = prompt
                     copyCount += 1
                 } label: {
                     Label("Copy Prompt", systemImage: copied ? "checkmark" : "doc.on.doc")
                         .font(.footnote.weight(.semibold))
                 }
                 .accessibilityIdentifier("setup.copy-prompt")
+                .accessibilityValue(lastCopiedPrompt == prompt ? "Copied" : "")
 
                 if copied {
                     Text("Copied")

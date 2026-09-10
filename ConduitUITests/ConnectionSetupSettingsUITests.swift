@@ -45,7 +45,7 @@ final class ConnectionSetupSettingsUITests: XCTestCase {
         // The passwordless seed opens straight on the staged test with the
         // current URL preserved exactly — no first-run readiness questions,
         // no meaningless password field.
-        let preview = row(app, Identity.addressPreview)
+        let preview = addressPreview(app)
         XCTAssertTrue(preview.waitForExistence(timeout: 5), "Wizard did not open on the staged test. Tree:\n\(app.debugDescription)")
         XCTAssertEqual(preview.label, Identity.stubDashboardURL)
 
@@ -108,7 +108,7 @@ final class ConnectionSetupSettingsUITests: XCTestCase {
         openSettings(app)
         tapVisible(app.buttons[Identity.settingsRow], in: app)
 
-        let preview = row(app, Identity.addressPreview)
+        let preview = addressPreview(app)
         XCTAssertTrue(preview.waitForExistence(timeout: 5), "Wizard did not open on the staged test. Tree:\n\(app.debugDescription)")
         XCTAssertEqual(preview.label, Identity.stubDashboardURL)
 
@@ -121,8 +121,8 @@ final class ConnectionSetupSettingsUITests: XCTestCase {
         XCTAssertTrue(interactiveReady.waitForExistence(timeout: 5))
         XCTAssertTrue(interactiveReady.label.contains("browser-based sign-in"), "Got: \(interactiveReady.label)")
         XCTAssertFalse(app.staticTexts["setup.test.ready"].exists, "Interactive auth must never claim the connection is ready to use")
-        let authRow = row(app, "setup.test.stage.authentication")
-        XCTAssertTrue(authRow.exists)
+        let authRow = stageRow(app, "setup.test.stage.authentication")
+        XCTAssertTrue(authRow.waitForExistence(timeout: 5))
         XCTAssertTrue(authRow.label.lowercased().contains("browser sign-in required"), "Got: \(authRow.label)")
 
         tapVisible(app.buttons[Identity.useSettings], in: app)
@@ -147,7 +147,7 @@ final class ConnectionSetupSettingsUITests: XCTestCase {
         openSettings(app)
         tapVisible(app.buttons[Identity.settingsRow], in: app)
 
-        let preview = row(app, Identity.addressPreview)
+        let preview = addressPreview(app)
         XCTAssertTrue(preview.waitForExistence(timeout: 5), "Wizard did not open on the staged test. Tree:\n\(app.debugDescription)")
         XCTAssertEqual(preview.label, Identity.stubDashboardURL)
 
@@ -158,8 +158,8 @@ final class ConnectionSetupSettingsUITests: XCTestCase {
         // ready claim.
         let notice = app.staticTexts["setup.test.credentials-required"]
         XCTAssertTrue(notice.waitForExistence(timeout: 5))
-        let authRow = row(app, "setup.test.stage.authentication")
-        XCTAssertTrue(authRow.exists)
+        let authRow = stageRow(app, "setup.test.stage.authentication")
+        XCTAssertTrue(authRow.waitForExistence(timeout: 5))
         XCTAssertTrue(authRow.label.lowercased().contains("credentials required"), "Got: \(authRow.label)")
         XCTAssertFalse(app.staticTexts["setup.test.ready"].exists)
         XCTAssertFalse(app.staticTexts["setup.test.interactive-ready"].exists)
@@ -172,7 +172,7 @@ final class ConnectionSetupSettingsUITests: XCTestCase {
         XCTAssertTrue(username.waitForExistence(timeout: 5), "Credentials step did not appear. Tree:\n\(app.debugDescription)")
         let urlField = app.textFields[Identity.urlField]
         XCTAssertFalse(urlField.exists, "The URL is owned by the details step; credentials step only asks for credentials")
-        XCTAssertTrue(app.buttons[Identity.back].exists, "Back returns toward the tested connection")
+        XCTAssertTrue(app.buttons[Identity.back].waitForExistence(timeout: 5), "Back returns toward the tested connection")
     }
 
     // MARK: - Walk helpers
@@ -187,10 +187,20 @@ final class ConnectionSetupSettingsUITests: XCTestCase {
         settings.tap()
     }
 
-    /// Stage rows and the address preview are single combined accessibility
-    /// elements, so query by identifier across element types.
-    private func row(_ app: XCUIApplication, _ identifier: String) -> XCUIElement {
-        app.descendants(matching: .any).matching(identifier: identifier).firstMatch
+    /// The address preview is a single `Text` element, which XCTest exposes
+    /// as a static text (verified by hierarchy inspection).
+    private func addressPreview(_ app: XCUIApplication) -> XCUIElement {
+        app.staticTexts[Identity.addressPreview]
+    }
+
+    /// Stage rows are single combined accessibility elements backed by an
+    /// `HStack` with `children: .ignore`, which XCTest exposes as an Other
+    /// element (verified by hierarchy inspection). A typed query evaluates
+    /// one narrow subtree instead of snapshotting every element type in the
+    /// application, which is what the broad `descendants(matching: .any)`
+    /// lookup paid for on every check.
+    private func stageRow(_ app: XCUIApplication, _ identifier: String) -> XCUIElement {
+        app.otherElements[identifier]
     }
 
     private func tapVisible(_ element: XCUIElement, in app: XCUIApplication) {

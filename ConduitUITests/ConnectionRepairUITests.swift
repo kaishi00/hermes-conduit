@@ -110,7 +110,9 @@ final class ConnectionRepairUITests: XCTestCase {
         tapVisible(repair, in: app)
 
         // No retained failure: the repair opens straight on the staged test.
-        let preview = app.descendants(matching: .any).matching(identifier: "setup.address-preview").firstMatch
+        // The preview is a single Text element (exposed as a static text);
+        // a typed query keeps snapshot evaluation out of the whole tree.
+        let preview = app.staticTexts["setup.address-preview"]
         XCTAssertTrue(preview.waitForExistence(timeout: 5), "Repair did not open on the staged test. Tree:\n\(app.debugDescription)")
         XCTAssertEqual(preview.label, Identity.stubDashboardURL)
         tapVisible(app.buttons[Identity.testRun], in: app)
@@ -138,7 +140,7 @@ final class ConnectionRepairUITests: XCTestCase {
         XCTAssertTrue(repair.waitForExistence(timeout: 10))
         tapVisible(repair, in: app)
 
-        let preview = app.descendants(matching: .any).matching(identifier: "setup.address-preview").firstMatch
+        let preview = app.staticTexts["setup.address-preview"]
         XCTAssertTrue(preview.waitForExistence(timeout: 5))
         tapVisible(app.buttons[Identity.testRun], in: app)
 

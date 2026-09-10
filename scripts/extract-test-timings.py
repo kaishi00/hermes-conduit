@@ -5,11 +5,15 @@ Subcommands
 -----------
 extract      Read an .xcresult bundle via `xcrun xcresulttool` and normalize
              per-XCTest-class durations plus per-test retry attempts into JSON.
-merge-parts  Fold the per-class/per-attempt extraction parts written by the
-             UI lane runner (one xcodebuild invocation per class) into the
-             lane-level observations.json / detail.json documents. The last
-             extracted attempt of a class wins its duration - on a green lane
-             that is always the passing attempt.
+merge-parts  Fold the per-attempt extraction parts written by the
+             UI lane runner - the batched shard attempt (parts named
+             ...-batch-a<n>.json) plus every per-class diagnosis invocation
+             (...-<class>-a<n>.json) - into the lane-level
+             observations.json / detail.json documents. Parts fold in
+             wall-clock order (batch attempt first, per-class diagnosis
+             after, attempts numerically within a group) and the last fold
+             wins per class: on a green lane that is always the passing
+             attempt.
 lane-result  Merge bash-computed lane facts with extraction output into the
              canonical lane-result.json consumed by the report job.
 aggregate    Build the human-readable CI Test Report (GitHub Step Summary)
@@ -287,10 +291,16 @@ def _attempt_index(name: str) -> int:
 
 
 def _part_sort_key(name: str) -> tuple:
-    """Order parts by (class, attempt) so numeric attempts sort correctly
-    (a2 after a10 - plain filename sort would put a10 first)."""
+    """Chronological fold order, returned as (is_batch, stem, attempt):
+    batch-named parts fold before every class-named part regardless of
+    ASCII order (the lowercase stem would otherwise sort after the class
+    names and win last-wins with stale killed-batch data). Within a group
+    the constant is_batch field collapses and (stem, attempt) orders
+    numeric attempts correctly (a2 after a10 - plain filename sort would
+    put a10 first)."""
     stem = re.sub(r"-a\d+\.json$", "", name)
-    return (stem, _attempt_index(name))
+    is_batch = 0 if _part_class(name) == "batch" else 1
+    return (is_batch, stem, _attempt_index(name))
 
 
 def _part_class(name: str) -> str:
@@ -311,7 +321,9 @@ def _list_field(doc: dict, key: str) -> list:
 
 
 def merge_observation_parts(parts: list) -> dict:
-    """parts: (filename, parsed doc) tuples in (class, attempt) order.
+    """parts: (filename, parsed doc) tuples in chronological fold order (see
+    _part_sort_key: batch attempt first, per-class diagnosis after, numeric
+    attempts within a group).
     Returns the lane-level observations document. A class seen in several
     attempts keeps its LAST attempt's duration: the runner extracts every
     attempt, and on a green lane the last attempt of a retried class is the
@@ -365,7 +377,8 @@ def merge_observation_parts(parts: list) -> dict:
 
 
 def merge_detail_parts(parts: list) -> dict:
-    """parts: (filename, parsed doc) tuples in (class, attempt) order.
+    """parts: (filename, parsed doc) tuples in chronological fold order (see
+    _part_sort_key).
     Attempts and retried tests are concatenated across classes and attempts
     (each entry carries its class). FAILURES are per-class STATE, not an
     append log: the class's highest attempt PART decides, so a class that
@@ -385,6 +398,21 @@ def merge_detail_parts(parts: list) -> dict:
         retried.extend(_list_field(doc, "retried"))
         cls = _part_class(fname)
         failures_by_class[cls] = _list_field(doc, "failures")
+    # The synthetic "batch" key carries the batched shard attempt's failures.
+    # Per-class parts supersede that attempt FOR THE CLASSES THEY RE-EXECUTED
+    # (a per-class part exists exactly for a class diagnosis actually ran),
+    # so their batch entries are dropped; batch evidence for classes
+    # diagnosis never reached - a lane stopped at a hang, with later classes
+    # recorded as not_diagnosed - must SURVIVE so the red lane's report stays
+    # complete. Supersession is therefore per class, keyed on which classes
+    # produced per-class parts, never on mere part presence.
+    if "batch" in failures_by_class:
+        covered = {k for k in failures_by_class if k != "batch"}
+        if covered:
+            survivors = [f for f in failures_by_class.pop("batch")
+                         if f.get("class") not in covered]
+            if survivors:
+                failures_by_class["batch"] = survivors
     failures: list = []
     for cls in failures_by_class:
         failures.extend(failures_by_class[cls])
@@ -541,8 +569,11 @@ def aggregate(args) -> int:
                 f"| {len(lane.get('classes', []))} |"
             )
         lines.append("")
-        lines.append("Each UI class runs as its own xcodebuild invocation under a "
-                     "per-class watchdog; a retry applies only to the failed class.")
+        lines.append("Each UI shard runs as ONE batched xcodebuild invocation; "
+                     "a failure retries only the failed tests (exact methods "
+                     "when the xcresult identifies them, else the class), and "
+                     "timeouts/infrastructure wedges fall back to per-class "
+                     "diagnosis.")
     else:
         lines.append("")
         lines.append("- No UI tests planned.")

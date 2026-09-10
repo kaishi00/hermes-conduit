@@ -10,14 +10,13 @@ quarantined, or moved to a nightly gate.
 ```
                  test inventory (source scan)
                           |
-                   plan-tests.py
+  timing history (Actions cache) -> plan-tests.py
              (LPT timing balance, watchdog math)
-                          |
-             +------------+------------+
-             v                         v
-   plan.json / matrices        timing history (Actions cache)
-   (unit + UI)
-             |
+             |                         |
+   plan.json / matrices       CI tooling self-test (ubuntu;
+   (unit + UI)                planner tests, lane-runner state
+             |                machine, destination lookup - runs
+             |                concurrently, never delays the build)
       build-for-testing (once, workspace-anchored DerivedData)
              |
       .xctestrun + products artifact
@@ -27,8 +26,9 @@ quarantined, or moved to a nightly gate.
  unit-1    unit-2    ...     ui-1   ui-2   ui-3 ...
  (test-without-building from the SHARED products;
   measured watchdogs; units use native flake retry,
-  UI runs each class as its own invocation with a
-  per-class watchdog and one targeted class retry)
+  UI runs each shard as ONE batched invocation with
+  method-precise retry and a per-class diagnosis
+  fallback)
    |         |         |         |
    +---------+----+----+---------+
                   v
@@ -41,12 +41,19 @@ quarantined, or moved to a nightly gate.
 
 | Job | Runner | Purpose |
 |---|---|---|
-| `plan` | ubuntu | Discovery validation + planner unit tests + lane generation (unit AND UI matrices). Cheap guard before any macOS minutes are spent. |
+| `plan` | ubuntu | Discovery validation + lane generation (unit AND UI matrices). Cheap guard before any macOS minutes are spent. |
+| `self-test` | ubuntu | CI-tooling regression suites (planner tests, lane-runner state machine, destination lookup, gate/timing contracts) - concurrent with `build`, so the minutes-long bash state-machine suite never delays macOS work nor risks the plan job's timeout. |
 | `build` | macos-26 | `build-for-testing` exactly once; `.xctestrun` portability audit; uploads products. |
 | `unit` (matrix) | macos-26 | One dynamically planned lane per matrix entry. |
-| `ui` (matrix) | macos-26 | Dynamically planned UI lane; runs each class independently (see below). |
+| `ui` (matrix) | macos-26 | Dynamically planned UI lane; runs each shard as ONE batched invocation (see below). |
 | `report` | ubuntu | Aggregates lane results into the CI Test Report step summary. |
 | `timing-history-update` | ubuntu | Main-only: merges fresh timings into the history cache (EWMA). |
+
+The self-test job's timeout hierarchy is load-bearing: each synthetic hang
+in the state-machine suite is watchdog-killed within a 1-6 s test budget <
+the suite's Python wrapper subprocess cap (480 s; the suite measures
+~3.5-4 min on macOS) < the job's own 12-minute ceiling - GitHub must never
+be the first layer to kill a regression suite.
 
 ## Test discovery
 
@@ -69,45 +76,65 @@ quarantined, or moved to a nightly gate.
 
 Unit classes are balanced with **longest-processing-time-first** (LPT) over
 per-class duration estimates, with deterministic tie-breaking (estimate
-descending, then class name). Lane count is derived, not fixed:
+descending, then class name). Lane count is derived, not fixed, and accounts
+for the fixed cost of an xcodebuild invocation:
 
 ```
-lanes = clamp(ceil(total_predicted / 240s), 4, 8), capped by class count
+modeled wall(n) = invocation_overhead_s (240s) + heaviest LPT lane load
+lanes = smallest n in [1, 8] with modeled wall(n) within 120s of the best
+        achievable wall, capped by class count
 ```
 
-so the suite scales toward more lanes as measured runtime grows. Predicted
-imbalance is reported in the plan summary and the CI Test Report.
+Every lane pays the fixed startup/finalization cost, but lanes run in
+parallel - so adding a lane only rebalances execution while multiplying paid
+invocations. A lane is spawned only when it buys more than the 120 s wall
+tolerance. Splitting 200 s of tests into two 5-minute jobs (when the
+invocation overhead is several minutes) is a net loss; a heavy outlier class
+that dominates every possible split consolidates the suite into fewer lanes.
+Predicted imbalance is reported in the plan summary and the CI Test Report.
 
 ### Parallel UI lanes
 
-UI classes are balanced with the same LPT algorithm into their own parallel
-shards, so normal PR wall clock is governed by the slowest UI shard rather
-than the sum of the whole UI suite:
+UI classes are balanced with the same LPT algorithm and the same overhead-
+aware lane selection (bounds 3-4 instead of 1-8, so normal PR wall clock is
+governed by the slowest UI shard rather than the sum of the whole UI suite).
+Today's ~22 minutes of cumulative UI work lands on 3 lanes of roughly 7-8
+predicted minutes each. The count scales out automatically if the UI suite
+grows (and shrinks if it drops below 3 classes).
 
-```
-ui lanes = clamp(ceil(total_predicted / 480s), 3, 4), capped by class count
-```
+### Batched UI shards, per-class diagnosis
 
-Today's ~22 minutes of cumulative UI work lands on 3 lanes of roughly
-7-8 predicted minutes each. The count scales out automatically if the UI
-suite grows (and shrinks if it drops below 3 classes).
-
-### Per-class UI execution
-
-Inside a UI shard, **every class is its own `xcodebuild
+On the healthy path a UI shard runs **all of its classes in ONE `xcodebuild
 test-without-building` invocation** from the shared build products (the app
-is never rebuilt). This makes hangs attributable to exactly one class,
-enables the per-class watchdogs, restricts any retry to the failed class,
-and records per-class timing history. The simulator is booted once at shard
-start so only the first class pays the cold-boot overhead; classes that pass
-move on immediately; a class that fails gets exactly ONE targeted retry of
-just that class - successful classes are never re-executed, and a retry pass
-is reported as a runner-level FLAKE (with both attempt result bundles kept),
-never hidden as a clean pass. A class whose retry fails again as an
-infrastructure failure is recorded as a persistent infrastructure failure
-and fails the lane, but the remaining classes still run after a clean
-simulator reset; only a confirmed hang or an untrusted recovery stops a
-shard early.
+is never rebuilt), under a watchdog equal to the sum of the planner's
+per-class budgets. A successful shard therefore pays Xcode/CoreSimulator/
+test-session startup once instead of once per class, while per-class timing
+history still comes from the shared extraction.
+
+Recovery never lets ordinary-failure retries re-execute healthy work:
+
+* **Ordinary test failures** retry ONLY the non-passing tests (any final
+  result other than Passed) in one follow-up invocation - exact
+  `Target/Class/testMethod` filters when the xcresult identifies them, the
+  failing class otherwise - and only when every assigned class actually ran
+  (a batch that aborted before a class started - or an exit-0 batch whose
+  xcresult lacks a class's record - falls through to diagnosis below, so
+  unexecuted classes can never be retried into a green lane). Successful
+  classes are never re-executed, and a retry pass is reported as a
+  runner-level FLAKE (with both attempt result bundles kept), never hidden
+  as a clean pass.
+* **Watchdog timeout / infrastructure wedge** of the batch cannot be
+  attributed to a class: the simulator is erased and the affected classes
+  re-run through **per-class diagnosis** - each class its own invocation
+  under its own planned watchdog, with the same targeted-retry and hang
+  attribution rules as before. (Diagnosis necessarily re-runs classes that
+  already passed inside a killed batch - a dead invocation leaves no
+  trustworthy per-class result.) A class that hangs twice names the culprit
+  (`hung_class` in the lane result) and stops the shard; a class whose
+  retry fails again as an infrastructure failure is recorded as a persistent
+  infrastructure failure and fails the lane while the remaining classes
+  still run after a clean simulator reset; only an untrusted recovery stops
+  a shard without executing the remaining classes.
 
 ## Timing data
 
@@ -146,9 +173,11 @@ the rest of CI v2.
 1. **Ordinary test failures** never rerun healthy work. Unit attempt 1 runs
    with Xcode-native flake retry (`-retry-tests-on-failure
    -test-iterations N`), which re-executes only the failing tests; survivors
-   fail the lane with the failing tests identified. UI classes get one
-   **targeted retry of just the failed class**; if the retry passes, the
-   class is reported as a runner-level flake and the lane continues.
+   fail the lane with the failing tests identified. A failing UI batch gets
+   one **targeted retry of exactly the non-passing tests** (methods when the
+   xcresult identifies them, the class otherwise); if the retry passes, the
+   classes involved are reported as runner-level flakes and the lane
+   continues.
 2. **Unclassifiable failure** - if an invocation exits nonzero and the
    XCTest result cannot be classified (timing/result extraction failed),
    the lane FAILS immediately. Timing extraction is best-effort and must
@@ -157,16 +186,18 @@ the rest of CI v2.
 3. **Infrastructure failure** - an invocation that exits nonzero with a
    KNOWN zero failing-test count (simulator crash, runner exit) gets
    exactly one bounded recovery: reset the simulator and retry. Units retry
-   the whole lane (it is one invocation); a UI lane retries only the
-   affected class. If a UI class fails AGAIN as an infrastructure failure,
-   it is recorded as a **persistent infrastructure failure** and the lane
-   fails - but the remaining classes still run after a clean simulator
-   reset, because the culprit is fully identified and a wedge must not
-   suppress otherwise-independent UI coverage. If that recovery itself
-   cannot be trusted (erase failed, UDID unresolvable, boot never
-   completed), later results would be misleading: the lane stops there and
-   the remaining classes are recorded as `not_diagnosed`. A retry that
-   times out falls through to hang handling (4).
+   the whole lane (it is one invocation); a UI batch cannot attribute a
+   wedge to a class, so it erases the simulator and re-runs the affected
+   classes through per-class diagnosis. If a class fails AGAIN as an
+   infrastructure failure there, it is recorded as a **persistent
+   infrastructure failure** and the lane fails - but the remaining classes
+   still run after a clean simulator reset, because the culprit is fully
+   identified and a wedge must not suppress otherwise-independent UI
+   coverage. If that recovery itself cannot be trusted (erase failed, UDID
+   unresolvable, boot never completed), later results would be misleading:
+   the lane stops there and the remaining classes are recorded as
+   `not_diagnosed`. A retry that times out falls through to hang handling
+   (4).
 4. **Hang / timeout** - a watchdog kill is positive identification of a
    hang. Units erase the simulator and enter **isolation** immediately (no
    second full-lane attempt): classes re-run one at a time (heaviest
@@ -174,10 +205,10 @@ the rest of CI v2.
    isolation budget). Isolation STOPS at the first confirmed class-level
    hang - the culprit is identified and later classes are recorded as
    `not_diagnosed` instead of running on a potentially contaminated
-   simulator. UI classes are already isolated: the simulator is erased and
-   the SAME class retries once under its own watchdog; a second timeout
-   names the hung class (`hung_class` in the lane result), fails the lane,
-   and later classes are recorded as `not_diagnosed`. Recovery-to-green is
+   simulator. A UI batch timeout cannot name the hung class, so it erases
+   and enters the same per-class diagnosis; a class that hangs twice names
+   the hung class (`hung_class` in the lane result), fails the lane, and
+   later classes are recorded as `not_diagnosed`. Recovery-to-green is
    only legitimate when the retried class completed successfully; any
    undiagnosed class fails the lane so unexecuted tests stay visible.
 
@@ -204,6 +235,16 @@ destination xcodebuild will use. `SIMULATOR_OS` must be numeric dotted
 components (e.g. `26.0`); xcodebuild-only values such as `latest` are not
 supported by the pin and fail the gate.
 
+The resolved UDID is also what every invocation actually targets:
+`build_destination` emits `platform=iOS Simulator,id=<UDID>,arch=arm64`
+(falling back to the `name=` form only when the UDID cannot be resolved; the
+arch is `SIMULATOR_ARCH`-overridable), so build and lane jobs can never
+disambiguate a name that matches several runtimes and never have to choose
+between the arm64 and Rosetta-x86_64 candidates every Apple Silicon
+simulator registers - the source of the "multiple matching destinations"
+warning, where xcodebuild silently uses the first match and can bypass the
+OS pin.
+
 ## Watchdogs
 
 Unit lanes: `timeout = max(min_timeout, ceil(predicted x 2.5))` with a 600 s
@@ -214,7 +255,9 @@ legitimate in-script recovery (the script watchdogs are the real
 enforcement).
 
 UI classes each get their **own** watchdog, planned per class from the same
-timing data that balances the lanes. **`plan-tests.py` is the single
+timing data that balances the lanes: the shard's batched invocation is
+priced at the **sum** of those budgets, and the same table enforces every
+per-class diagnosis fallback invocation. **`plan-tests.py` is the single
 authority for this policy**: every UI lane receives an explicit budget table
 (`--class-timeouts`) and the runner refuses to start unless it covers every
 assigned class - there is no fallback formula in `ci-test-lane.sh` to drift
@@ -235,12 +278,16 @@ ui_class_timeout = max(420s, ceil(estimate x 3.0))   # computed in plan-tests.py
   hangs, instead of the old single 2861s (~48 min) suite-level watchdog;
 - estimates come from timing history (EWMA, outlier-clamped), so one
   anomalous run cannot inflate a class's watchdog;
-- UI lane ceilings are `sum(per-class budgets)`, and the outer GitHub job
-  ceiling is `ceil((2 x sum + (n_classes + 1) x 600s + 2 x n_classes x 300s
-  + 1200s) / 60)` minutes - the worst in-script path is every class running
-  its one targeted retry, each failing class paying one bounded
-  erase/reboot recovery, and each attempt's timing extraction wedging to
-  the xcresulttool bound, plus setup slack.
+- UI lane ceilings are `sum(per-class budgets)` - the batched shard
+  invocation watchdog - and the outer GitHub job ceiling is
+  `ceil((4 x sum + (n_classes + 1) x 600s + (2 x n_classes + 1) x 300s
+  + 1200s) / 60)` minutes. Two reachable worst paths: the batch times out
+  and per-class diagnosis follows (batch 1x + diagnosis 2x = 3x), or the
+  batch completes with failures in every class, its targeted retry (a full
+  budget sum) times out, and diagnosis of the retried classes follows
+  (1x + 1x + 2x = 4x) - the latter prices the ceiling. Each failing class
+  additionally pays one bounded erase/reboot recovery, and each attempt's
+  timing extraction can wedge to the xcresulttool bound, plus setup slack.
 
 **Finalize grace.** When a watchdog expires but the log already carries
 xcodebuild's terminal result marker (`** TEST EXECUTE SUCCEEDED/FAILED **`),
@@ -274,7 +321,7 @@ real runtimes.
 The `CI Gate` job is the single stable required status check for branch
 protection. It passes only when:
 
-* `plan`, `build` and every dynamic `unit` lane succeed, and
+* `plan`, `build`, `self-test` and every dynamic `unit` lane succeed, and
 * every dynamic `ui` lane succeeds (or is skipped entirely because the repo
   contains no UI tests).
 

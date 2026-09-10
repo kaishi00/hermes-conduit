@@ -198,6 +198,126 @@ class MergePartsTests(unittest.TestCase):
             # the retried class keeps its PASSING (last) attempt's duration
             self.assertEqual(obs["classes"], {"AlphaUITests": 41.0, "BetaUITests": 12.0})
 
+    def test_merge_parts_method_only_retry_never_shrinks_class_timing(self):
+        # The runner deletes a method-filtered retry's observations part
+        # (batch AND per-class diagnosis paths) BEFORE folding, because a
+        # method-only rerun must never become the class's duration sample.
+        # This pins the invariant end-to-end at the merge layer by folding
+        # exactly the parts the runner leaves behind: full class = 100s,
+        # method-only retry = 5s -> merged class timing stays 100s.
+        with tempfile.TemporaryDirectory() as tmp:
+            parts = Path(tmp) / "parts"
+            parts.mkdir()
+            self._write_part(parts, "observations-AlphaUITests-a1.json",
+                             self._observation({"AlphaUITests": 100.0}))
+            # What the runner leaves for a method-only retry: a DETAIL part
+            # (retry/flake evidence) and NO observations part.
+            self._write_part(parts, "detail-AlphaUITests-a1.json", {
+                "schema_version": 1, "generated_at": "t", "xcresult": "a1",
+                "attempts": [{"class": "AlphaUITests", "test": "testSlow()",
+                              "attempts": [{"result": "Failed", "seconds": 99.0}],
+                              "final": "Failed", "attempts_count": 1}],
+                "failures": [{"class": "AlphaUITests", "test": "testSlow()"}],
+                "retried": [],
+            })
+            self._write_part(parts, "detail-AlphaUITests-a2.json", {
+                "schema_version": 1, "generated_at": "t", "xcresult": "a2",
+                "attempts": [{"class": "AlphaUITests", "test": "testSlow()",
+                              "attempts": [{"result": "Passed", "seconds": 5.0}],
+                              "final": "Passed", "attempts_count": 1}],
+                "failures": [],
+                "retried": [{"class": "AlphaUITests", "test": "testSlow()",
+                             "attempts": [{"result": "Failed", "seconds": 99.0},
+                                          {"result": "Passed", "seconds": 5.0}],
+                             "final": "Passed"}],
+            })
+            obs_out = Path(tmp) / "observations.json"
+            det_out = Path(tmp) / "detail.json"
+            rc = ext.merge_parts(str(parts), str(obs_out), str(det_out))
+            self.assertEqual(rc, ext.EXIT_OK)
+            obs = json.loads(obs_out.read_text(encoding="utf-8"))
+            det = json.loads(det_out.read_text(encoding="utf-8"))
+            self.assertEqual(obs["classes"], {"AlphaUITests": 100.0})
+            # the retry's flake evidence still folds
+            self.assertEqual(len(det["retried"]), 1)
+            self.assertEqual(det["failures"], [])
+
+    def test_merge_parts_diagnosis_supersedes_batch_parts(self):
+        # The batched shard attempt folds FIRST (it runs first in wall time);
+        # per-class diagnosis parts written after a killed batch must win
+        # last-wins for durations AND drop the batch attempt's failures, even
+        # though the lowercase "batch" stem would sort after the class names.
+        with tempfile.TemporaryDirectory() as tmp:
+            parts = Path(tmp) / "parts"
+            parts.mkdir()
+            self._write_part(parts, "observations-batch-a1.json",
+                             self._observation({"AlphaUITests": 60.0, "BetaUITests": 0.1}))
+            self._write_part(parts, "detail-batch-a1.json", {
+                "schema_version": 1, "generated_at": "t", "xcresult": "batch-a1",
+                "attempts": [{"class": "AlphaUITests", "test": "testA()",
+                              "attempts": [{"result": "Failed", "seconds": 1.0}],
+                              "final": "Failed", "attempts_count": 1}],
+                "failures": [{"class": "AlphaUITests", "test": "testA()"}],
+                "retried": [],
+            })
+            self._write_part(parts, "observations-AlphaUITests-a1.json",
+                             self._observation({"AlphaUITests": 200.0}))
+            self._write_part(parts, "detail-AlphaUITests-a1.json", {
+                "schema_version": 1, "generated_at": "t", "xcresult": "a1",
+                "attempts": [{"class": "AlphaUITests", "test": "testA()",
+                              "attempts": [{"result": "Passed", "seconds": 190.0}],
+                              "final": "Passed", "attempts_count": 1}],
+                "failures": [],
+                "retried": [],
+            })
+            obs_out = Path(tmp) / "observations.json"
+            det_out = Path(tmp) / "detail.json"
+            rc = ext.merge_parts(str(parts), str(obs_out), str(det_out))
+            self.assertEqual(rc, ext.EXIT_OK)
+            obs = json.loads(obs_out.read_text(encoding="utf-8"))
+            det = json.loads(det_out.read_text(encoding="utf-8"))
+            # diagnosis re-measured Alpha after the killed batch, and the
+            # batch's stale failure must not survive the superseding pass
+            self.assertEqual(obs["classes"], {"AlphaUITests": 200.0, "BetaUITests": 0.1})
+            self.assertEqual(det["failures"], [])
+
+    def test_merge_parts_keeps_batch_failures_for_undiagnosed_classes(self):
+        # Diagnosis that stopped at a hang produced a part for Alpha only;
+        # the batch's failure record for Gamma (never re-executed, recorded
+        # not_diagnosed) must SURVIVE so the red lane's report stays
+        # complete. Supersession is per class, not per part presence.
+        with tempfile.TemporaryDirectory() as tmp:
+            parts = Path(tmp) / "parts"
+            parts.mkdir()
+            self._write_part(parts, "detail-batch-a1.json", {
+                "schema_version": 1, "generated_at": "t", "xcresult": "batch-a1",
+                "attempts": [
+                    {"class": "AlphaUITests", "test": "testA()",
+                     "attempts": [{"result": "Failed", "seconds": 1.0}],
+                     "final": "Failed", "attempts_count": 1},
+                    {"class": "GammaUITests", "test": "testG()",
+                     "attempts": [{"result": "Failed", "seconds": 2.0}],
+                     "final": "Failed", "attempts_count": 1},
+                ],
+                "failures": [{"class": "AlphaUITests", "test": "testA()"},
+                             {"class": "GammaUITests", "test": "testG()"}],
+                "retried": [],
+            })
+            self._write_part(parts, "detail-AlphaUITests-a1.json", {
+                "schema_version": 1, "generated_at": "t", "xcresult": "a1",
+                "attempts": [{"class": "AlphaUITests", "test": "testA()",
+                              "attempts": [{"result": "Passed", "seconds": 9.0}],
+                              "final": "Passed", "attempts_count": 1}],
+                "failures": [],
+                "retried": [],
+            })
+            det_out = Path(tmp) / "detail.json"
+            rc = ext.merge_parts(str(parts), "", str(det_out))
+            self.assertEqual(rc, ext.EXIT_OK)
+            det = json.loads(det_out.read_text(encoding="utf-8"))
+            self.assertEqual(det["failures"],
+                             [{"class": "GammaUITests", "test": "testG()"}])
+
     def test_merge_parts_folds_details_across_classes(self):
         with tempfile.TemporaryDirectory() as tmp:
             parts = Path(tmp) / "parts"
@@ -550,8 +670,8 @@ simulator_erase=False, hung_class="", retried_classes="", persistent_infra_class
             rc = ext.aggregate(args)
             self.assertEqual(rc, ext.EXIT_OK)
             text = out.read_text(encoding="utf-8")
-            self.assertIn("per-class watchdog", text)
-            self.assertIn("a retry applies only to the failed class", text)
+            self.assertIn("ONE batched xcodebuild invocation", text)
+            self.assertIn("retries only the failed tests", text)
 
     def test_report_falls_back_to_legacy_ui_lane_shape(self):
         with tempfile.TemporaryDirectory() as tmp:
