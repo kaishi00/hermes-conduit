@@ -621,6 +621,12 @@ final class VoiceConversationController: ObservableObject {
                 && !isPlaybackCaptureSuspended
                 && isVoiceSessionActive
             guard captureLive || isProviderTestRunning else { return }
+            // A same-generation event can still surface after
+            // finishUtterance() closed the turn: capture keeps running into
+            // the transcription wait. The meter was reset for that state and
+            // the UI hides it there, so republishing would only churn
+            // @Published state.
+            guard state != .transcribing else { return }
             if lastMeterPublication == nil || date.timeIntervalSince(lastMeterPublication!) >= 0.05 {
                 microphoneLevel = level
                 lastMeterPublication = date

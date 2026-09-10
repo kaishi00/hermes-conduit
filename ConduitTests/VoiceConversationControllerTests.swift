@@ -1012,9 +1012,19 @@ final class VoiceConversationControllerTests: XCTestCase {
         try? await Task.sleep(nanoseconds: 80_000_000)
         XCTAssertEqual(controller.microphoneLevel, 0, accuracy: 0.0001, "transcribing must not republish the mic meter")
 
-        // Let the held transcription finish so the flow ends cleanly.
-        try? await Task.sleep(nanoseconds: 700_000_000)
-        XCTAssertEqual(controller.state, .thinking)
+        // Let the held transcription finish, and pin that the gate is
+        // narrow: publication must resume once the state leaves
+        // .transcribing (barge-in monitoring windows depend on it).
+        let reachedThinking = await waitForState(.thinking, of: controller)
+        XCTAssertTrue(reachedThinking, "the held transcription must complete into .thinking")
+        capture.emit(level: 0.4)
+        try? await Task.sleep(nanoseconds: 80_000_000)
+        XCTAssertEqual(
+            controller.microphoneLevel,
+            0.4,
+            accuracy: 0.0001,
+            "the meter must resume publishing once transcription ends"
+        )
     }
 
     func testProviderTestLevelEventsDoNotRepublishMeterWhileTranscribing() async {
