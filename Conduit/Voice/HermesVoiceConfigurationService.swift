@@ -269,16 +269,21 @@ final class HermesVoiceConfigurationService: ObservableObject {
         // as unset when empty (the endpoint overrides).
         if stored.isEmpty {
             Self.removeNested(in: &config, dottedKey: key)
-            snapshot.values.removeValue(forKey: key)
         } else {
             Self.setNested(stored, in: &config, dottedKey: key)
-            snapshot.values[key] = stored
         }
         do {
             _ = try await requester.requestJSON(
                 path: profilePath("/api/config"), method: "PUT",
                 body: ["config": config]
             )
+            // The snapshot only reflects a confirmed write; a failed PUT
+            // must leave it matching the server.
+            if stored.isEmpty {
+                snapshot.values.removeValue(forKey: key)
+            } else {
+                snapshot.values[key] = stored
+            }
             if key == "stt.provider" { snapshot.selectedSTTProvider = value }
             if key == "tts.provider" { snapshot.selectedTTSProvider = value }
             return true
@@ -571,12 +576,12 @@ enum VoiceConfigurationParser {
 
     /// Save-time validation from the typed field metadata: a `.decimal`
     /// field with a `numericRange` must parse and stay inside the range.
-    /// A ranged decimal rejects empty values because Conduit's config
-    /// transport can only write strings — it cannot remove a key — and
-    /// Hermes parses the stored value with `float()`, where `""` is an
-    /// error rather than "unset" (text fields keep the clear-by-empty
-    /// contract: upstream treats empty endpoint overrides as unset).
-    /// Valid values are never rewritten into a default.
+    /// A ranged decimal rejects empty because Hermes parses the stored
+    /// value with `float()`, where `""` is an error; Conduit refuses
+    /// rather than silently removing a numeric override — save `1` for
+    /// the default rate. Text fields keep the clear-by-empty contract:
+    /// saving empty removes the override key, which upstream treats as
+    /// "use the default". Valid values are never rewritten into a default.
     static func validationMessage(for value: String, key: String) -> String? {
         guard let field = decimalField(for: key),
             case .decimal = field.kind,

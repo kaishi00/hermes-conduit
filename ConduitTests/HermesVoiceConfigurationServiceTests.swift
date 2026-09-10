@@ -829,6 +829,30 @@ final class HermesVoiceConfigurationServiceTests: XCTestCase {
         XCTAssertNil(service.snapshot.values["tts.elevenlabs.voice_id"])
     }
 
+    /// A failed config PUT must leave the snapshot matching the server: the
+    /// in-memory values only update once the write is confirmed, so the
+    /// settings UI never shows a cleared override that did not persist.
+    func testFailedClearKeepsSnapshotConsistentWithServer() async {
+        let requester = MockVoiceConfigurationRequester()
+        requester.routes = [
+            "/api/config": [
+                "stt": ["enabled": true, "provider": "openai"],
+                "tts": ["provider": "openai", "openai": ["base_url": "https://tts.example.com/v1"]]
+            ],
+            "/api/tools/toolsets/stt/config": ["providers": []],
+            "/api/tools/toolsets/tts/config": ["providers": []]
+        ]
+        requester.failingPUTPaths = ["/api/config"]
+        let service = HermesVoiceConfigurationService(requester: requester, profile: "default")
+        await service.reload()
+
+        let saved = await service.save(value: "", for: "tts.openai.base_url")
+
+        XCTAssertFalse(saved)
+        XCTAssertNotNil(service.errorMessage)
+        XCTAssertEqual(service.snapshot.values["tts.openai.base_url"], "https://tts.example.com/v1")
+    }
+
     /// Hermes keys ElevenLabs TTS as `voice_id`/`model_id`
     /// (tools/tts_tool_providers.py) and reads `base_url` for both
     /// whole-file and streaming synthesis. The old generic
