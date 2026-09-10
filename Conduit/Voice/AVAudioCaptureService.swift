@@ -29,7 +29,10 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
     private var converter: AVAudioConverter?
     // Capture state below is internal rather than private so ConduitTests
     // can drive the frame-admission seam directly with synthetic PCM
-    // buffers instead of audio hardware.
+    // buffers instead of audio hardware. Production code must mutate these
+    // only through the lifecycle methods; direct writes outside ConduitTests
+    // can create flag combinations the lifecycle never produces and are not
+    // supported.
     var capturedPCM = Data()
     var preRollPCM = Data()
     private let maximumPreRollBytes = Int(AVAudioCaptureService.outputSampleRate * AVAudioCaptureService.preRollDuration) * AVAudioCaptureService.outputBytesPerFrame
@@ -164,6 +167,8 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
         activelyRecording = false
         paused = false
         shouldKeepEngineRunning = false
+        // Deliberately unguarded (unlike pause): a redundant stop bumps the
+        // generation again, which is always fail-closed.
         captureGeneration &+= 1
         teardownRendering()
         releaseLease()

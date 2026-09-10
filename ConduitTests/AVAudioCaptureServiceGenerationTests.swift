@@ -72,6 +72,9 @@ final class AVAudioCaptureServiceGenerationTests: XCTestCase {
         service.shouldKeepEngineRunning = true
         service.activelyRecording = true
         service.capturedPCM = Data()
+        // Mirrors startListening(includePreRoll: false): a fresh capture
+        // window starts with empty captured audio.
+        XCTAssertTrue(service.capturedPCM.isEmpty)
         let generationB = service.captureGeneration
         XCTAssertNotEqual(generationA, generationB)
 
@@ -131,13 +134,20 @@ final class AVAudioCaptureServiceGenerationTests: XCTestCase {
         )
 
         // Only the admitted frame may surface a level event, tagged with its
-        // own generation.
-        try await Task.sleep(nanoseconds: 100_000_000)
+        // own generation. Drain with a deadline instead of a fixed sleep so
+        // a loaded CI runner cannot flake the delivery.
+        for _ in 0..<200 where collectedEvents.isEmpty {
+            await Task.yield()
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
         XCTAssertEqual(collectedEvents.count, 1, "a stale generation's frame must not emit a level event")
         guard case let .level(peak, _, generation) = collectedEvents.first else {
             return XCTFail("expected a level event from the admitted frame")
         }
-        XCTAssertEqual(peak, 0.25, accuracy: 0.01)
+        // The peak stays near the admitted frame's constant: the resampler's
+        // filter overshoots slightly at the first-buffer boundary, so the
+        // tolerance must allow that while staying far from the stale 0.9.
+        XCTAssertEqual(peak, 0.25, accuracy: 0.05)
         XCTAssertEqual(generation, generationB)
     }
 
@@ -161,7 +171,7 @@ final class AVAudioCaptureServiceGenerationTests: XCTestCase {
 
     private func startEventCollector(_ service: AVAudioCaptureService) {
         collectedEvents = []
-        eventCollector = Task { [weak self] in
+        eventCollector = Task { @MainActor [weak self] in
             for await event in service.events {
                 self?.collectedEvents.append(event)
             }
