@@ -43,6 +43,10 @@ struct VoiceTypedField: Equatable, Identifiable {
     let help: String
     let kind: Kind
     let defaultValue: String
+    /// Inclusive bounds for `.decimal` values when the provider documents
+    /// them (Hermes clamps `tts.openai.speed` to 0.25–4.0). Out-of-range
+    /// values are rejected at save time, never silently rewritten.
+    var numericRange: ClosedRange<Double>?
 
     var id: String { key }
 }
@@ -248,6 +252,10 @@ final class HermesVoiceConfigurationService: ObservableObject {
     }
 
     func save(value: String, for key: String) async -> Bool {
+        if let message = VoiceConfigurationParser.validationMessage(for: value, key: key) {
+            errorMessage = message
+            return false
+        }
         guard var config = try? await requester.requestJSON(path: profilePath("/api/config"), method: "GET", body: nil) else {
             errorMessage = "Could not load voice settings to save this change."
             return false
@@ -395,9 +403,12 @@ enum VoiceConfigurationParser {
         readiness: [VoiceProviderReadiness], credentials: [VoiceCredentialStatus]
     ) -> VoiceProviderConfiguration {
         let catalog = catalogDescriptor(id: id, kind: kind)
+        // Unknown providers get a neutral descriptor: Conduit does not claim
+        // streaming capability without positive evidence, and the runtime's
+        // existing whole-file fallback keeps them functional either way.
         let descriptor = catalog ?? VoiceProviderDescriptor(
             id: id, displayName: id.replacingOccurrences(of: "_", with: " ").capitalized,
-            kind: kind, supportsStreaming: kind == .tts
+            kind: kind, supportsStreaming: false
         )
         let row = readiness.first { $0.id == id && $0.kind == kind }
         let fields = typedFields(id: id, kind: kind)
@@ -433,6 +444,15 @@ enum VoiceConfigurationParser {
             return .init(id: id, displayName: "Nous Subscription", kind: kind, supportsStreaming: true)
         case ("openai", .tts):
             return .init(id: id, displayName: "OpenAI", kind: kind, supportsStreaming: true)
+        // Streaming claims mirror upstream's StreamingTTSProvider registry
+        // (tools/tts_streaming.py): elevenlabs, openai, gemini, and xai have
+        // chunked-PCM implementations; everything else stays unlabeled.
+        case ("elevenlabs", .tts):
+            return .init(id: id, displayName: "ElevenLabs", kind: kind, supportsStreaming: true)
+        case ("xai", .tts):
+            return .init(id: id, displayName: "xAI", kind: kind, supportsStreaming: true)
+        case ("gemini", .tts):
+            return .init(id: id, displayName: "Gemini", kind: kind, supportsStreaming: true)
         case ("stepfun", .stt):
             return .init(id: id, displayName: "StepFun", kind: kind, models: ["stepaudio-2.5-asr", "step-asr"], supportsStreaming: false)
         case ("stepfun", .tts):
@@ -453,16 +473,44 @@ enum VoiceConfigurationParser {
         // Hermes keys the ElevenLabs STT model `stt.elevenlabs.model_id`.
         let modelKey = kind == .stt && id == "elevenlabs" ? "model_id" : "model"
         let defaultModel = id == "local" && kind == .stt ? "base" : ""
+
+        // Hermes' ElevenLabs TTS section keys voice/model `voice_id`/`model_id`
+        // (tools/tts_tool_providers.py) and reads `base_url` for both
+        // whole-file and streaming synthesis; the generic `voice`/`model`/
+        // `language` keys were never read there. `wss_url` is deliberately
+        // not offered: upstream derives it from base_url when unset.
+        if kind == .tts, id == "elevenlabs" {
+            return [
+                VoiceTypedField(key: "tts.elevenlabs.voice_id", label: "Voice ID", help: "Voice from your ElevenLabs-compatible endpoint; built-in voices are suggestions.", kind: .text, defaultValue: ""),
+                VoiceTypedField(key: "tts.elevenlabs.model_id", label: "Model", help: "You can enter any installed model identifier.", kind: .text, defaultValue: ""),
+                VoiceTypedField(key: "tts.elevenlabs.base_url", label: "Base URL", help: Self.customEndpointHelp, kind: .text, defaultValue: "")
+            ]
+        }
+
         var shared = [
             VoiceTypedField(key: "\(root).\(modelKey)", label: "Model", help: "You can enter any installed model identifier.", kind: .text, defaultValue: defaultModel),
             VoiceTypedField(key: "\(root).language", label: "Language", help: "Leave blank for automatic language detection.", kind: .text, defaultValue: "")
         ]
         if kind == .tts {
-            let instructionKey = id == "xiaomi_mimo" ? "delivery_instructions" : "instruction"
             shared += [
-                .init(key: "\(root).voice", label: "Voice ID", help: "Built-in voices are suggestions; custom voice IDs remain supported.", kind: .text, defaultValue: ""),
-                .init(key: "\(root).\(instructionKey)", label: "Delivery instruction", help: "Optional speaking style guidance sent to the provider.", kind: .text, defaultValue: "")
+                .init(key: "\(root).voice", label: "Voice ID", help: "Built-in voices are suggestions; custom voice IDs remain supported.", kind: .text, defaultValue: "")
             ]
+            // OpenAI resolves speaking style through the per-request TTS tool
+            // parameter — upstream never reads tts.openai.instruction — so
+            // no editor is offered for that dead key. The managed Nous route
+            // shares the section and the same constraint.
+            if id != "openai" && id != "nous" {
+                let instructionKey = id == "xiaomi_mimo" ? "delivery_instructions" : "instruction"
+                shared += [
+                    .init(key: "\(root).\(instructionKey)", label: "Delivery instruction", help: "Optional speaking style guidance sent to the provider.", kind: .text, defaultValue: "")
+                ]
+            }
+            if id == "openai" || id == "nous" {
+                shared += [
+                    .init(key: "\(root).base_url", label: "Base URL", help: Self.customEndpointHelp, kind: .text, defaultValue: ""),
+                    .init(key: "\(root).speed", label: "Speed", help: "Speech rate multiplier. Hermes accepts 0.25–4.0.", kind: .decimal, defaultValue: "1", numericRange: 0.25...4.0)
+                ]
+            }
         }
         if id == "stepfun" {
             shared += [
@@ -478,6 +526,37 @@ enum VoiceConfigurationParser {
             }
         }
         return shared
+    }
+
+    /// Shared help copy for provider endpoint overrides: this redirects the
+    /// provider Hermes calls, never Conduit's own dashboard connection.
+    private static let customEndpointHelp = "Optional OpenAI-compatible speech endpoint Hermes should call (for example https://your-host/v1). Leave blank for the provider default. This does not change the server Conduit connects to."
+
+    /// Save-time validation from the typed field metadata: a `.decimal`
+    /// field with a `numericRange` must parse and stay inside the range.
+    /// Empty values clear the override and always validate; valid values are
+    /// never rewritten into a default.
+    static func validationMessage(for value: String, key: String) -> String? {
+        let parts = key.split(separator: ".").map(String.init)
+        guard parts.count >= 2 else { return nil }
+        let kind: VoiceProviderDescriptor.Kind = parts[0] == "stt" ? .stt : .tts
+        let provider = parts[1]
+        var candidateIDs = [provider]
+        if provider == "openai" { candidateIDs.append("nous") }
+        guard let field = candidateIDs.lazy.compactMap({ candidateID in
+            typedFields(id: candidateID, kind: kind).first(where: { $0.key == key })
+        }).first,
+            case .decimal = field.kind,
+            let range = field.numericRange else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        guard let parsed = Double(trimmed) else {
+            return "\(field.label) must be a number between \(range.lowerBound) and \(range.upperBound)."
+        }
+        guard range.contains(parsed) else {
+            return "\(field.label) must be between \(range.lowerBound) and \(range.upperBound); Hermes rejects values outside that range."
+        }
+        return nil
     }
 
     private static func providerIDs(_ schema: [String: Any]?) -> (stt: [String], tts: [String]) {

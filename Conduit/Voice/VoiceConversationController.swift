@@ -459,6 +459,10 @@ final class VoiceConversationController: ObservableObject {
         }
         do {
             state = .thinking
+            // The test passes only when the route actually delivered speech:
+            // a stream that connects and finishes silently is a failed
+            // provider test, not a passed one.
+            var deliveredAudio = false
             let stream = try await gateway.openSpeechStream(
                 onStart: { [weak self] rate in
                     guard let self else { return }
@@ -467,10 +471,12 @@ final class VoiceConversationController: ObservableObject {
                 },
                 onPCM16: { [weak self] data, rate in
                     guard let self else { return }
+                    deliveredAudio = true
                     _ = try self.playback.enqueuePCM16(data, sampleRate: rate)
                 },
                 onEncodedAudio: { [weak self] data in
                     guard let self else { return }
+                    deliveredAudio = true
                     try self.playback.playEncodedAudioData(data)
                     self.state = .speaking
                 }
@@ -488,6 +494,9 @@ final class VoiceConversationController: ObservableObject {
             await playback.drain()
             guard isCurrent(generation) else {
                 return .failure("The speech playback test was cancelled.")
+            }
+            guard deliveredAudio else {
+                return .failure("Hermes connected, but the selected speech provider returned no audio.")
             }
             return .success("Speech playback completed.")
         } catch {

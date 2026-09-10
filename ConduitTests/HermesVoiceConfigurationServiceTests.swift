@@ -599,6 +599,208 @@ final class HermesVoiceConfigurationServiceTests: XCTestCase {
             "This Hermes gateway does not provide voice endpoints. Text chat remains available."
         )
     }
+
+    // MARK: - TTS provider configuration parity (custom OpenAI-compatible endpoints)
+
+    /// Upstream reads `tts.openai.base_url` (tools/tts_tool_openai.py: the
+    /// config override beats the managed-gateway default) and accepts
+    /// `tts.openai.speed` clamped to 0.25–4.0. `tts.openai.instruction` is
+    /// never read upstream — speaking style arrives only through the
+    /// per-request TTS tool parameter — so the editor must not offer it.
+    /// The upstream-supported keys stay singular: no duplicate editors.
+    func testOpenAITTSExposesBaseURLAndSpeedWithoutDeadInstructionKey() {
+        let fields = VoiceConfigurationParser.typedFields(id: "openai", kind: .tts)
+        XCTAssertEqual(fields.first { $0.key == "tts.openai.base_url" }?.kind, .text)
+        let speed = fields.first { $0.key == "tts.openai.speed" }
+        XCTAssertEqual(speed?.kind, .decimal)
+        XCTAssertEqual(speed?.numericRange, 0.25...4.0)
+        XCTAssertFalse(fields.contains { $0.key == "tts.openai.instruction" })
+        XCTAssertEqual(fields.count, Set(fields.map(\.key)).count)
+        XCTAssertTrue(fields.contains { $0.key == "tts.openai.model" })
+        XCTAssertTrue(fields.contains { $0.key == "tts.openai.voice" })
+        XCTAssertTrue(fields.contains { $0.key == "tts.openai.language" })
+    }
+
+    /// The managed Nous TTS route shares the vendor config section upstream,
+    /// so its editors carry the same endpoint keys and the same dead-key
+    /// exclusion.
+    func testManagedNousTTSEditorsShareOpenAIEndpointKeys() {
+        let fields = VoiceConfigurationParser.typedFields(id: "nous", kind: .tts)
+        XCTAssertTrue(fields.contains { $0.key == "tts.openai.base_url" })
+        XCTAssertTrue(fields.contains { $0.key == "tts.openai.speed" })
+        XCTAssertFalse(fields.contains { $0.key == "tts.openai.instruction" })
+    }
+
+    /// Upstream clamps speed to [0.25, 4.0]. Conduit rejects out-of-range
+    /// values instead of silently rewriting them, and clearing (empty
+    /// string) always validates.
+    func testOpenAISpeedValidationRejectsValuesOutsideUpstreamRange() {
+        XCTAssertNil(VoiceConfigurationParser.validationMessage(for: "1", key: "tts.openai.speed"))
+        XCTAssertNil(VoiceConfigurationParser.validationMessage(for: "0.25", key: "tts.openai.speed"))
+        XCTAssertNil(VoiceConfigurationParser.validationMessage(for: "4.0", key: "tts.openai.speed"))
+        XCTAssertNil(VoiceConfigurationParser.validationMessage(for: "", key: "tts.openai.speed"))
+        XCTAssertNotNil(VoiceConfigurationParser.validationMessage(for: "0.1", key: "tts.openai.speed"))
+        XCTAssertNotNil(VoiceConfigurationParser.validationMessage(for: "4.5", key: "tts.openai.speed"))
+        XCTAssertNotNil(VoiceConfigurationParser.validationMessage(for: "fast", key: "tts.openai.speed"))
+    }
+
+    /// The save path must refuse an out-of-range speed before any config
+    /// write reaches the gateway.
+    func testSavingOutOfRangeOpenAISpeedIsRejectedBeforeConfigWrite() async {
+        let requester = MockVoiceConfigurationRequester()
+        requester.routes = [
+            "/api/config": ["stt": ["enabled": true, "provider": "openai"], "tts": ["provider": "openai"]],
+            "/api/tools/toolsets/stt/config": ["providers": []],
+            "/api/tools/toolsets/tts/config": ["providers": []]
+        ]
+        let service = HermesVoiceConfigurationService(requester: requester, profile: "default")
+        await service.reload()
+
+        let saved = await service.save(value: "9", for: "tts.openai.speed")
+
+        XCTAssertFalse(saved)
+        XCTAssertNotNil(service.errorMessage)
+        XCTAssertFalse(requester.recorded.contains { $0.method == "PUT" && $0.path == "/api/config" })
+    }
+
+    /// A configured custom endpoint parses into the snapshot values and the
+    /// OpenAI provider's editable fields.
+    func testConfiguredOpenAIBaseURLParsesIntoSnapshotAndFields() {
+        let snapshot = VoiceConfigurationParser.parse(
+            profile: "default", schema: nil,
+            config: [
+                "stt": ["enabled": true, "provider": "openai"],
+                "tts": ["provider": "openai", "openai": ["base_url": "https://tts.example.com/v1", "speed": 1.5]]
+            ],
+            sttReadiness: ["providers": []],
+            ttsReadiness: ["providers": [["name": "OpenAI TTS", "tts_provider": "openai", "status": "ready", "is_active": true]]],
+            environment: [:],
+            ttsToolsetConfigAvailable: true
+        )
+
+        XCTAssertEqual(snapshot.values["tts.openai.base_url"], "https://tts.example.com/v1")
+        XCTAssertEqual(snapshot.values["tts.openai.speed"], "1.5")
+        let openai = snapshot.ttsProviders.first { $0.descriptor.id == "openai" }
+        XCTAssertTrue(openai?.fields.contains { $0.key == "tts.openai.base_url" } ?? false)
+        XCTAssertTrue(openai?.fields.contains { $0.key == "tts.openai.speed" } ?? false)
+    }
+
+    /// Field saves flow through the profile-scoped full-document config
+    /// write — the exact dotted key, under the profile's request scope, with
+    /// pre-existing provider values preserved.
+    func testSavingOpenAIBaseURLWritesProfileScopedConfigKey() async throws {
+        let requester = MockVoiceConfigurationRequester()
+        requester.routes = [
+            "/api/config?profile=research": [
+                "stt": ["enabled": true, "provider": "openai"],
+                "tts": ["provider": "openai", "openai": ["voice": "alloy"]]
+            ],
+            "/api/tools/toolsets/stt/config?profile=research": ["providers": []],
+            "/api/tools/toolsets/tts/config?profile=research": ["providers": []]
+        ]
+        let service = HermesVoiceConfigurationService(requester: requester, profile: "research")
+        await service.reload()
+
+        let saved = await service.save(value: "https://tts.example.com/v1", for: "tts.openai.base_url")
+
+        XCTAssertTrue(saved)
+        let configPUT = requester.recorded.first { $0.method == "PUT" && $0.path == "/api/config?profile=research" }
+        let tts = try XCTUnwrap((configPUT?.body?["config"] as? [String: Any])?["tts"] as? [String: Any])
+        let openai = try XCTUnwrap(tts["openai"] as? [String: Any])
+        XCTAssertEqual(openai["base_url"] as? String, "https://tts.example.com/v1")
+        XCTAssertEqual(openai["voice"] as? String, "alloy")
+        XCTAssertEqual(service.snapshot.values["tts.openai.base_url"], "https://tts.example.com/v1")
+    }
+
+    /// Clearing saves an empty string through the same path: Hermes treats
+    /// an empty override as unset (`config_base_url or fallback_base or
+    /// DEFAULT_OPENAI_BASE_URL`), returning the provider to its default
+    /// endpoint behavior.
+    func testClearingOpenAIBaseURLSavesEmptyOverride() async throws {
+        let requester = MockVoiceConfigurationRequester()
+        requester.routes = [
+            "/api/config": [
+                "stt": ["enabled": true, "provider": "openai"],
+                "tts": ["provider": "openai", "openai": ["base_url": "https://tts.example.com/v1"]]
+            ],
+            "/api/tools/toolsets/stt/config": ["providers": []],
+            "/api/tools/toolsets/tts/config": ["providers": []]
+        ]
+        let service = HermesVoiceConfigurationService(requester: requester, profile: "default")
+        await service.reload()
+        XCTAssertEqual(service.snapshot.values["tts.openai.base_url"], "https://tts.example.com/v1")
+
+        let saved = await service.save(value: "", for: "tts.openai.base_url")
+
+        XCTAssertTrue(saved)
+        let configPUT = requester.recorded.first { $0.method == "PUT" && $0.path == "/api/config" }
+        let openai = try XCTUnwrap(
+            ((configPUT?.body?["config"] as? [String: Any])?["tts"] as? [String: Any])?["openai"] as? [String: Any]
+        )
+        XCTAssertEqual(openai["base_url"] as? String, "")
+        XCTAssertEqual(service.snapshot.values["tts.openai.base_url"], "")
+    }
+
+    /// Hermes keys ElevenLabs TTS as `voice_id`/`model_id`
+    /// (tools/tts_tool_providers.py) and reads `base_url` for both
+    /// whole-file and streaming synthesis. The old generic
+    /// `voice`/`model`/`language` keys were never read there.
+    func testElevenLabsTTSFieldsTargetUpstreamKeys() {
+        let fields = VoiceConfigurationParser.typedFields(id: "elevenlabs", kind: .tts)
+        XCTAssertEqual(fields.first { $0.key == "tts.elevenlabs.voice_id" }?.kind, .text)
+        XCTAssertEqual(fields.first { $0.key == "tts.elevenlabs.model_id" }?.kind, .text)
+        XCTAssertEqual(fields.first { $0.key == "tts.elevenlabs.base_url" }?.kind, .text)
+        XCTAssertFalse(fields.contains { $0.key == "tts.elevenlabs.model" })
+        XCTAssertFalse(fields.contains { $0.key == "tts.elevenlabs.voice" })
+        XCTAssertFalse(fields.contains { $0.key == "tts.elevenlabs.language" })
+        XCTAssertFalse(fields.contains { $0.key == "tts.elevenlabs.instruction" })
+    }
+
+    /// Provider-specific editors stay scoped: openai/elevenlabs fields must
+    /// not leak into other providers' editors, and unknown providers keep
+    /// the full generic surface (plugin configs live in their own sections
+    /// upstream).
+    func testProviderSpecificFieldsStayScopedToTheirProvider() {
+        for id in ["stepfun", "xiaomi_mimo", "acme_voice"] {
+            let fields = VoiceConfigurationParser.typedFields(id: id, kind: .tts)
+            XCTAssertFalse(fields.contains { $0.key == "tts.openai.base_url" }, id)
+            XCTAssertFalse(fields.contains { $0.key == "tts.openai.speed" }, id)
+            XCTAssertFalse(fields.contains { $0.key == "tts.elevenlabs.base_url" }, id)
+            XCTAssertTrue(fields.allSatisfy { $0.key.hasPrefix("tts.\(id).") }, id)
+        }
+        let unknown = VoiceConfigurationParser.typedFields(id: "acme_voice", kind: .tts)
+        XCTAssertTrue(unknown.contains { $0.key == "tts.acme_voice.model" })
+        XCTAssertTrue(unknown.contains { $0.key == "tts.acme_voice.language" })
+        XCTAssertTrue(unknown.contains { $0.key == "tts.acme_voice.voice" })
+        XCTAssertTrue(unknown.contains { $0.key == "tts.acme_voice.instruction" })
+    }
+
+    /// Streaming labels require positive evidence: a provider Conduit has no
+    /// catalog entry for must not be labeled streaming-capable.
+    func testUnknownTTSProviderDoesNotClaimStreamingCapability() {
+        let snapshot = VoiceConfigurationParser.parse(
+            profile: "default", schema: nil,
+            config: ["stt": ["enabled": true, "provider": "local"], "tts": ["provider": "acme_voice"]],
+            sttReadiness: ["providers": []],
+            ttsReadiness: ["providers": [["name": "Acme Voice", "tts_provider": "acme_voice", "status": "ready", "is_active": true]]],
+            environment: [:],
+            ttsToolsetConfigAvailable: true
+        )
+
+        let unknown = snapshot.ttsProviders.first { $0.descriptor.id == "acme_voice" }
+        XCTAssertEqual(unknown?.descriptor.displayName, "Acme Voice")
+        XCTAssertFalse(unknown?.descriptor.supportsStreaming ?? true)
+    }
+
+    /// Known streaming capability is catalogued from upstream evidence
+    /// (StreamingTTSProvider registrations: elevenlabs, openai, gemini,
+    /// xai) — and the claim stays attached to the right kind.
+    func testKnownStreamingTTSProvidersCarryPositiveEvidence() {
+        for id in ["elevenlabs", "xai", "gemini"] {
+            XCTAssertEqual(VoiceConfigurationParser.catalogDescriptor(id: id, kind: .tts)?.supportsStreaming, true, id)
+        }
+        XCTAssertEqual(VoiceConfigurationParser.catalogDescriptor(id: "elevenlabs", kind: .stt)?.supportsStreaming, false)
+    }
 }
 
 @MainActor

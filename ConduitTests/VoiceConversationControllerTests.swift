@@ -754,7 +754,7 @@ final class VoiceConversationControllerTests: XCTestCase {
         let controller = VoiceConversationController(
             capture: MockCapture(permissionGranted: true),
             playback: playback,
-            gateway: MockGateway(startsPlaybackOnOpen: true),
+            gateway: MockGateway(deliversPCM: true),
             submit: { _ in true },
             interrupt: {}
         )
@@ -763,6 +763,38 @@ final class VoiceConversationControllerTests: XCTestCase {
 
         XCTAssertTrue(result.passed)
         XCTAssertEqual(playback.intentAtLastStart, .standalonePlayback)
+    }
+
+    /// A stream that connects but delivers no usable audio must not pass the
+    /// provider test: socket success alone says nothing about whether the
+    /// configured TTS provider actually speaks.
+    func testSpeechTestFailsWhenStreamDeliversNoAudio() async {
+        let controller = VoiceConversationController(
+            capture: MockCapture(permissionGranted: true),
+            playback: MockPlayback(),
+            gateway: MockGateway(startsPlaybackOnOpen: true),
+            submit: { _ in true },
+            interrupt: {}
+        )
+
+        let result = await controller.runSpeechTest(text: "test")
+
+        XCTAssertFalse(result.passed)
+    }
+
+    /// The success contract: meaningful speech data reached playback.
+    func testSpeechTestSucceedsWhenPCMIsDelivered() async {
+        let controller = VoiceConversationController(
+            capture: MockCapture(permissionGranted: true),
+            playback: MockPlayback(),
+            gateway: MockGateway(deliversPCM: true),
+            submit: { _ in true },
+            interrupt: {}
+        )
+
+        let result = await controller.runSpeechTest(text: "test")
+
+        XCTAssertTrue(result.passed)
     }
 
     func testConversationSpeechClaimsConversationPlaybackOwnership() async {
@@ -1116,7 +1148,7 @@ final class VoiceConversationControllerTests: XCTestCase {
     func testSpeechTestRouteChangeDoesNotLeakSuspensionState() async {
         let capture = MockCapture(permissionGranted: true)
         let playback = MockPlayback()
-        let gateway = MockGateway(transcript: "test", startsPlaybackOnOpen: true)
+        let gateway = MockGateway(transcript: "test", startsPlaybackOnOpen: true, deliversPCM: true)
         let policy = RoutePolicyBox(.speakerSafeHalfDuplex)
         let gate = InterruptGate()
         playback.drainGate = gate
@@ -1933,6 +1965,10 @@ private final class MockGateway: VoiceGatewayService {
     let transcriptionDelayNanoseconds: UInt64
     let startsPlaybackOnOpen: Bool
     let blocksFirstStreamAppend: Bool
+    /// When true, opening a stream immediately delivers one PCM chunk (and
+    /// the matching start control), mirroring a streaming provider that is
+    /// actually producing speech.
+    let deliversPCM: Bool
     private(set) var transcriptionCount = 0
     private(set) var stream: MockSpeechStream?
     private(set) var streams: [MockSpeechStream] = []
@@ -1941,12 +1977,14 @@ private final class MockGateway: VoiceGatewayService {
         transcript: String = "test",
         transcriptionDelayNanoseconds: UInt64 = 0,
         startsPlaybackOnOpen: Bool = false,
-        blocksFirstStreamAppend: Bool = false
+        blocksFirstStreamAppend: Bool = false,
+        deliversPCM: Bool = false
     ) {
         self.transcript = transcript
         self.transcriptionDelayNanoseconds = transcriptionDelayNanoseconds
         self.startsPlaybackOnOpen = startsPlaybackOnOpen
         self.blocksFirstStreamAppend = blocksFirstStreamAppend
+        self.deliversPCM = deliversPCM
     }
     func transcribe(_ audio: VoiceCapturedAudio) async throws -> String {
         transcriptionCount += 1
@@ -1955,7 +1993,8 @@ private final class MockGateway: VoiceGatewayService {
     }
     func openSpeechStream(onStart: @escaping @MainActor (Double) throws -> Void, onPCM16: @escaping @MainActor (Data, Double) throws -> Void, onEncodedAudio: @escaping @MainActor (Data) throws -> Void) async throws -> VoiceSpeechStream {
         openCount += 1
-        if startsPlaybackOnOpen { try onStart(24_000) }
+        if startsPlaybackOnOpen || deliversPCM { try onStart(24_000) }
+        if deliversPCM { try onPCM16(Data([0x01, 0x00, 0x02, 0x00]), 24_000) }
         let stream = MockSpeechStream(blocksAppend: blocksFirstStreamAppend && openCount == 1)
         self.stream = stream
         streams.append(stream)

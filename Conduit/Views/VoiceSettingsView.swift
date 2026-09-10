@@ -532,6 +532,12 @@ private struct VoiceProviderFieldEditor: View {
     let isSaving: Bool
     let save: (String) async -> Void
 
+    /// Mirrors the service-side save guard so out-of-range numbers are
+    /// rejected locally before a config round trip.
+    private var validationMessage: String? {
+        VoiceConfigurationParser.validationMessage(for: value, key: field.key)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             switch field.kind {
@@ -555,6 +561,11 @@ private struct VoiceProviderFieldEditor: View {
                     .textFieldStyle(.roundedBorder)
                     .onSubmit { Task { await save(value) } }
             }
+            if let validationMessage {
+                Text(validationMessage)
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
             HStack {
                 Text(field.help).font(.caption).foregroundStyle(.secondary)
                 Spacer(minLength: 8)
@@ -563,7 +574,7 @@ private struct VoiceProviderFieldEditor: View {
                 } else {
                     Button(isSaving ? "Saving…" : "Save") { Task { await save(value) } }
                         .font(.caption.weight(.semibold))
-                        .disabled(isSaving)
+                        .disabled(isSaving || validationMessage != nil)
                 }
             }
         }
