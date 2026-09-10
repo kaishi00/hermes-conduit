@@ -49,12 +49,17 @@ extension AppState {
     /// failure means recorded lifecycle evidence (`lastConnectionFailure` or
     /// a presented login failure) — not merely “not connecting right now.”
     func voiceLaunchConnectionSnapshot() -> VoiceLaunchConnectionSnapshot {
-        VoiceLaunchConnectionSnapshot(
+        let loginRequiredOnlyEvidence = lastConnectionFailure == nil
+            && pendingLoginFailure != nil
+        return VoiceLaunchConnectionSnapshot(
             isConnected: isConnected,
             isConnecting: isConnecting,
             hasStableFailureEvidence: lastConnectionFailure != nil
                 || pendingLoginFailure != nil,
+            // Auth-required presentation is the positive evidence when the
+            // classifier has not recorded a typed failure yet.
             classifiedFailure: lastConnectionFailure
+                ?? (loginRequiredOnlyEvidence ? .loginRequired : nil)
         )
     }
 }

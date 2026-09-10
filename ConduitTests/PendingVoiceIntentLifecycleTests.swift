@@ -158,7 +158,9 @@ final class PendingVoiceIntentLifecycleTests: XCTestCase {
         // Auth-required presentation is also positive evidence.
         appState.lastConnectionFailure = nil
         appState.pendingLoginFailure = .presenting(.loginRequired)
-        XCTAssertEqual(appState.voiceLaunchConnectionSnapshot().phase, .stableFailure)
+        let loginRequired = appState.voiceLaunchConnectionSnapshot()
+        XCTAssertEqual(loginRequired.phase, .stableFailure)
+        XCTAssertEqual(loginRequired.classifiedFailure, .loginRequired)
     }
 
     // MARK: - Readiness / disconnected lifecycle
@@ -230,6 +232,20 @@ final class PendingVoiceIntentLifecycleTests: XCTestCase {
             PendingVoiceLaunchPolicy.stableFailureMessage(for: connection)
                 .contains(ConnectionFailure.loginRequired.userTitle)
         )
+    }
+
+    func testLoginFailureOnlyEvidenceStillSurfacesClassifiedCopy() {
+        // pendingLoginFailure without lastConnectionFailure must not degrade
+        // to the generic disconnected string.
+        let connection = VoiceLaunchConnectionSnapshot(
+            isConnected: false,
+            isConnecting: false,
+            hasStableFailureEvidence: true,
+            classifiedFailure: .loginRequired
+        )
+        let message = PendingVoiceLaunchPolicy.stableFailureMessage(for: connection)
+        XCTAssertTrue(message.contains(ConnectionFailure.loginRequired.userMessage))
+        XCTAssertNotEqual(message, PendingVoiceLaunchPolicy.disconnectedFailureMessage)
     }
 
     func testExpiredSiriLaunchFailsAndNeverWaitsForReconnect() {

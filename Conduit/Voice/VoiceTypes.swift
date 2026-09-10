@@ -110,7 +110,7 @@ struct PendingVoiceIntent: Equatable {
     /// App Intent execution for this main-app target shares the process with
     /// the scene, so the request never crosses a cold-launch persistence
     /// boundary that would require UserDefaults.
-    var externalLaunchDeadline: Date?
+    var externalLaunchDeadline: Date? = nil
 
     enum Source: String, Equatable { case composer, wakePhrase, siri }
 }

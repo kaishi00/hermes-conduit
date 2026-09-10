@@ -109,7 +109,10 @@ struct ConduitApp: App {
         let connection = appState.voiceLaunchConnectionSnapshot()
         // Phase (not a bare isConnected flag) so connecting → stableFailure
         // re-evaluates the pending request while remaining disconnected.
-        return "\(pendingVoiceIntents.revision):\(connection.phase.rawValue):\(pendingVoiceIntents.pendingSource?.rawValue ?? "none")"
+        // Do not embed pendingSource: take() clears it without a revision
+        // bump, and openVoiceConversation’s @Published mutations would flip
+        // the key mid-handler and cancel the in-flight route task.
+        return "\(pendingVoiceIntents.revision):\(connection.phase.rawValue)"
     }
 
     /// Deadline changes (new Siri enqueue / supersede) re-arm the wait; the
@@ -142,7 +145,7 @@ struct ConduitApp: App {
         let remaining = deadline.timeIntervalSinceNow
         if remaining > 0 {
             do {
-                try await Task.sleep(nanoseconds: UInt64(remaining * 1_000_000_000))
+                try await Task.sleep(for: .seconds(remaining))
             } catch {
                 // Superseded/cancelled waiter must not resolve a different intent.
                 return
