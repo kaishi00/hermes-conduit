@@ -38,7 +38,7 @@ jobs:
         env:
           OPENCODE_GO_API_KEY: ${{ secrets.OPENCODE_GO_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.OPENCODE_GH_PAT }}
-          MODEL: go-custom/deepseek-v4-flash
+          MODEL: go-custom/deepseek-flash
           USE_GITHUB_TOKEN: "true"
           PROMPT: |
             You are a code reviewer. DO NOT modify any files. DO NOT make commits.
