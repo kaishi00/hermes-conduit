@@ -106,7 +106,10 @@ struct ConduitApp: App {
     }
 
     private var voiceIntentRouteKey: String {
-        "\(pendingVoiceIntents.revision):\(appState.isConnected):\(pendingVoiceIntents.pendingSource?.rawValue ?? "none")"
+        let connection = appState.voiceLaunchConnectionSnapshot()
+        // Phase (not a bare isConnected flag) so connecting → stableFailure
+        // re-evaluates the pending request while remaining disconnected.
+        return "\(pendingVoiceIntents.revision):\(connection.phase.rawValue):\(pendingVoiceIntents.pendingSource?.rawValue ?? "none")"
     }
 
     /// Deadline changes (new Siri enqueue / supersede) re-arm the wait; the
@@ -117,11 +120,13 @@ struct ConduitApp: App {
     }
 
     /// Resolves the pending voice launch once. Connected Siri/in-app routes
-    /// consume the request; expired external requests fail with a visible
-    /// error and are discarded so a later reconnect cannot resurrect them.
+    /// consume the request; expired or stable-failed external requests fail
+    /// with a visible error and are discarded so a later reconnect cannot
+    /// resurrect them.
     private func resolvePendingVoiceIntent() async {
         let router = PendingVoiceIntentRouter(store: pendingVoiceIntents)
-        let outcome = await router.routePending(isConnected: appState.isConnected) { intent in
+        let connection = appState.voiceLaunchConnectionSnapshot()
+        let outcome = await router.routePending(connection: connection) { intent in
             await appState.openVoiceConversation(intent)
         }
         if case .failed(let message) = outcome {

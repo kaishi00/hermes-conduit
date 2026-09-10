@@ -77,11 +77,15 @@ final class PendingVoiceIntentRouter {
     /// - Expired external (Siri) requests are consumed and reported failed —
     ///   they never wait for a later reconnect.
     /// - Connected requests are consumed exactly once via `handler`.
+    /// - Stable connection/auth failures (positive evidence, not connecting)
+    ///   terminal-fail Siri launches immediately — the deadline is only a
+    ///   backstop for inconclusive states.
     /// - A false handler result requeues only in-app launches; Siri launches
     ///   fail terminally so Voice cannot open minutes later.
-    /// - Not-ready requests are retained without calling the handler.
+    /// - Connecting / inconclusive requests are retained without calling the
+    ///   handler.
     func routePending(
-        isConnected: Bool,
+        connection: VoiceLaunchConnectionSnapshot,
         now: Date = Date(),
         using handler: Handler
     ) async -> PendingVoiceIntentRouteOutcome {
@@ -89,7 +93,7 @@ final class PendingVoiceIntentRouter {
 
         switch PendingVoiceLaunchPolicy.readiness(
             for: intent,
-            isConnected: isConnected,
+            connection: connection,
             now: now
         ) {
         case .failed(let message):
