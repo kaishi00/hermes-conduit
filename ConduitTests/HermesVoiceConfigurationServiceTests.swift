@@ -682,7 +682,9 @@ final class HermesVoiceConfigurationServiceTests: XCTestCase {
 
     /// Locale canonicalization is scoped to the validated ranged decimal:
     /// an unrelated non-ranged decimal value such as a StepFun sample rate
-    /// of "24,000" must pass through untouched.
+    /// of "24,000" must pass through untouched. Text overrides persist
+    /// trimmed (pasted padding never reaches Hermes) while interior
+    /// whitespace stays verbatim.
     func testCommaCanonicalizationDoesNotRewriteUnrangedDecimalFields() {
         XCTAssertEqual(
             VoiceConfigurationParser.storedValue(for: "1,5", key: "tts.openai.speed"),
@@ -693,6 +695,14 @@ final class HermesVoiceConfigurationServiceTests: XCTestCase {
             "24,000"
         )
         XCTAssertNil(VoiceConfigurationParser.validationMessage(for: "24,000", key: "tts.stepfun.sample_rate"))
+        XCTAssertEqual(
+            VoiceConfigurationParser.storedValue(for: "  https://host/v1  ", key: "tts.openai.base_url"),
+            "https://host/v1"
+        )
+        XCTAssertEqual(
+            VoiceConfigurationParser.storedValue(for: "  alloy  voice  ", key: "tts.elevenlabs.voice_id"),
+            "alloy  voice"
+        )
     }
 
     /// Comma-decimal input from locale decimal pads is canonicalized to the

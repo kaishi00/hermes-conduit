@@ -543,6 +543,13 @@ private struct VoiceProviderFieldEditor: View {
         VoiceConfigurationParser.validationMessage(for: value, key: field.key)
     }
 
+    private var saveHint: Text {
+        if let validationMessage {
+            return Text("Cannot save. \(validationMessage)")
+        }
+        return Text("Saves \(field.label) to this Hermes profile.")
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             switch field.kind {
@@ -583,7 +590,7 @@ private struct VoiceProviderFieldEditor: View {
                     Button(isSaving ? "Saving…" : "Save") { Task { await save(value) } }
                         .font(.caption.weight(.semibold))
                         .disabled(isSaving || validationMessage != nil)
-                        .accessibilityHint(validationMessage != nil ? Text("Cannot save. \(validationMessage!)") : Text(""))
+                        .accessibilityHint(saveHint)
                 }
             }
         }
@@ -592,7 +599,7 @@ private struct VoiceProviderFieldEditor: View {
 
     /// Keyboard submit must respect the same guard as the Save button.
     private func submitIfValid() {
-        guard validationMessage == nil else { return }
+        guard !isSaving, validationMessage == nil else { return }
         Task { await save(value) }
     }
 }

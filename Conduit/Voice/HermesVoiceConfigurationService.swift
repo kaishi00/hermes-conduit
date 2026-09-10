@@ -267,7 +267,7 @@ final class HermesVoiceConfigurationService: ObservableObject {
         // Clearing REMOVES the override key: Hermes reads provider keys
         // like `config.get(key, default)`, which applies the default only
         // when the key is ABSENT, so a stored "" would be used verbatim.
-        let clears = stored.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let clears = stored.isEmpty
         if clears {
             Self.removeNested(in: &config, dottedKey: key)
         } else {
@@ -481,6 +481,11 @@ enum VoiceConfigurationParser {
         // Streaming claims mirror upstream's StreamingTTSProvider registry
         // (tools/tts_streaming.py): elevenlabs, openai, gemini, and xai have
         // chunked-PCM implementations; everything else stays unlabeled.
+        // stepfun/xiaomi_mimo are NOT upstream builtins — they are plugin
+        // rows observed live on real gateways, whose plugins implement
+        // their own streaming, so their flags come from that observation
+        // rather than the upstream registry. The label is informational;
+        // the runtime relies on the server's fallback signal either way.
         case ("elevenlabs", .tts):
             return .init(id: id, displayName: "ElevenLabs", kind: kind, supportsStreaming: true)
         case ("xai", .tts):
@@ -570,7 +575,7 @@ enum VoiceConfigurationParser {
 
     private static func decimalField(for key: String) -> VoiceTypedField? {
         let parts = key.split(separator: ".").map(String.init)
-        guard parts.count >= 2 else { return nil }
+        guard parts.count >= 2, parts[0] == "stt" || parts[0] == "tts" else { return nil }
         let kind: VoiceProviderDescriptor.Kind = parts[0] == "stt" ? .stt : .tts
         return typedFields(id: String(parts[1]), kind: kind).first(where: { $0.key == key })
     }
@@ -599,17 +604,20 @@ enum VoiceConfigurationParser {
         return nil
     }
 
-    /// The canonical form to persist for a value: RANGED decimal fields
-    /// (the OpenAI speed override) are stored with "." separators because
-    /// Hermes parses them with `float()`, and iOS decimal pads submit the
-    /// device locale's separator. Unranged decimals and text fields pass
-    /// through unchanged — this deliberately does not rewrite unrelated
-    /// values such as a StepFun sample rate of "24,000".
+    /// The canonical form to persist for a value: leading/trailing
+    /// whitespace never survives a save (the clear decision and the stored
+    /// payload derive from the same normalization), and RANGED decimal
+    /// fields (the OpenAI speed override) are additionally stored with "."
+    /// separators because Hermes parses them with `float()` while iOS
+    /// decimal pads submit the device locale's separator. Unranged decimals
+    /// and other text pass through otherwise untouched — this deliberately
+    /// does not rewrite values such as a StepFun sample rate of "24,000".
     static func storedValue(for value: String, key: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let field = decimalField(for: key),
             case .decimal = field.kind,
-            field.numericRange != nil else { return value }
-        return normalizedNumber(value)
+            field.numericRange != nil else { return trimmed }
+        return normalizedNumber(trimmed)
     }
 
     private static func normalizedNumber(_ value: String) -> String {

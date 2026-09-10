@@ -480,8 +480,12 @@ final class VoiceConversationController: ObservableObject {
                 },
                 onEncodedAudio: { [weak self] data in
                     guard let self else { return }
-                    deliveredAudio = true
+                    // Mirror the PCM path: only audio that actually reaches
+                    // playback counts as delivered, so an empty payload
+                    // cannot turn the test into a false pass.
+                    guard !data.isEmpty else { return }
                     try self.playback.playEncodedAudioData(data)
+                    deliveredAudio = true
                     self.state = .speaking
                 }
             )
