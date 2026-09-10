@@ -103,7 +103,20 @@ final class AVAudioCaptureServiceGenerationTests: XCTestCase {
         // policy rate; anything approaching the stale second's size means a
         // stale frame slipped through admission.
         XCTAssertLessThan(audio.pcm16Data.count, 2_000)
+        // No sample may carry the stale frame's unmistakable amplitude.
         for sample in samples {
+            XCTAssertLessThan(
+                abs(Float(sample)) / Float(Int16.max),
+                0.5,
+                "a stale generation's audio leaked into captured audio"
+            )
+        }
+        // The steady-state tail must be exactly the admitted frame's constant
+        // amplitude. AVAudioConverter primes its resampling filter on the
+        // first buffer after creation, so the leading samples legitimately
+        // ramp toward the constant.
+        let steadyState = samples.suffix(samples.count / 2)
+        for sample in steadyState {
             XCTAssertEqual(
                 Float(sample) / Float(Int16.max),
                 0.25,
