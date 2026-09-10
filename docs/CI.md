@@ -236,10 +236,12 @@ components (e.g. `26.0`); xcodebuild-only values such as `latest` are not
 supported by the pin and fail the gate.
 
 The resolved UDID is also what every invocation actually targets:
-`build_destination` emits `platform=iOS Simulator,id=<UDID>` (falling back
-to the `name=` form only when the UDID cannot be resolved), so build and
-lane jobs can never disambiguate a name that matches several
-runtimes/architectures - the source of the "multiple matching destinations"
+`build_destination` emits `platform=iOS Simulator,id=<UDID>,arch=arm64`
+(falling back to the `name=` form only when the UDID cannot be resolved; the
+arch is `SIMULATOR_ARCH`-overridable), so build and lane jobs can never
+disambiguate a name that matches several runtimes and never have to choose
+between the arm64 and Rosetta-x86_64 candidates every Apple Silicon
+simulator registers - the source of the "multiple matching destinations"
 warning, where xcodebuild silently uses the first match and can bypass the
 OS pin.
 

@@ -318,12 +318,15 @@ disable_pasteboard_sync() {
 
 # Deterministic destination string shared by build and lane jobs. Sets the
 # global DESTINATION from SIMULATOR_NAME (and optional SIMULATOR_OS). The
-# device is resolved once to its UDID so xcodebuild never disambiguates a
-# name that can match several runtimes/architectures - the source of the
-# "multiple matching destinations ... Using the first of multiple" warning,
-# where the wrong pick silently bypasses the OS pin. When the UDID cannot be
-# resolved (no jq, wedged CoreSimulatorService) the name-based form is kept
-# so behavior degrades to the historical lookup instead of failing.
+# device is resolved once to its UDID so xcodebuild never has to disambiguate
+# a name that can match several runtimes - and the arm64 slice is pinned too
+# (SIMULATOR_ARCH override), because every Apple Silicon simulator device
+# also registers an x86_64-under-Rosetta candidate, which alone triggers
+# xcodebuild's "Using the first of multiple matching destinations" warning
+# (run 34425462004: both candidates were the SAME UDID, differing only by
+# arch). When the UDID cannot be resolved (no jq, wedged
+# CoreSimulatorService) the name-based form is kept so behavior degrades to
+# the historical lookup instead of failing.
 build_destination() {
   DESTINATION="platform=iOS Simulator,name=$SIMULATOR_NAME"
   if [ -n "${SIMULATOR_OS:-}" ]; then
@@ -331,8 +334,8 @@ build_destination() {
   fi
   local udid
   if udid=$(simulator_udid) && [ -n "$udid" ]; then
-    DESTINATION="platform=iOS Simulator,id=$udid"
-    echo "destination: '$SIMULATOR_NAME' resolved to UDID $udid"
+    DESTINATION="platform=iOS Simulator,id=$udid,arch=${SIMULATOR_ARCH:-arm64}"
+    echo "destination: '$SIMULATOR_NAME' resolved to UDID $udid (arch ${SIMULATOR_ARCH:-arm64})"
   else
     echo "::warning::could not resolve simulator UDID - falling back to the name-based destination"
   fi

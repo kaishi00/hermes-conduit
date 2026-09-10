@@ -182,12 +182,15 @@ resolve_destination() { # $1=name $2=os ('' = unset) $3=resolve-ok(1/0)
 if ! command -v jq >/dev/null 2>&1; then
   skipping "build_destination fixture cases (jq not available on this host)"
 else
-  assert_eq "destination pins the resolved device UDID" \
+  assert_eq "destination pins the resolved device UDID and arch" \
     "$(resolve_destination 'iPhone 17 Pro' '' 1)" \
-    "platform=iOS Simulator,id=UDID-26-10-PRO"
+    "platform=iOS Simulator,id=UDID-26-10-PRO,arch=arm64"
   assert_eq "OS pin carries into the resolved destination" \
     "$(resolve_destination 'iPhone 17 Pro' 26.0 1)" \
-    "platform=iOS Simulator,id=UDID-26-0-PRO"
+    "platform=iOS Simulator,id=UDID-26-0-PRO,arch=arm64"
+  assert_eq "SIMULATOR_ARCH override carries into the destination" \
+    "$(SIMULATOR_ARCH=x86_64 resolve_destination 'iPhone 17 Pro' '' 1)" \
+    "platform=iOS Simulator,id=UDID-26-10-PRO,arch=x86_64"
   assert_eq "unresolvable UDID falls back to the name-based destination" \
     "$(resolve_destination 'iPhone 17 Pro' '' 0)" \
     "platform=iOS Simulator,name=iPhone 17 Pro"
