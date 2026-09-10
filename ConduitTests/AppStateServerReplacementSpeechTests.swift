@@ -591,6 +591,7 @@ private final class InterruptGate {
 @MainActor
 private final class GatedCapture: AudioCaptureService {
     let events = AsyncStream<VoiceCaptureEvent> { _ in }
+    let captureGeneration: UInt64 = 0
     private(set) var startListeningCount = 0
     private(set) var stopCount = 0
 

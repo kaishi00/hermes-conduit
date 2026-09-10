@@ -9,11 +9,15 @@ import Foundation
 @MainActor
 final class VoiceConversationController: ObservableObject {
     struct Configuration: Equatable {
-        var voiceActivityThreshold: Float = 0.075
+        /// Conservative acoustic barge-in threshold, unchanged from the
+        /// legacy single VAD threshold. Listening-side speech detection no
+        /// longer uses this value; it adapts via `speechDetector` instead.
+        var bargeInActivityThreshold: Float = 0.075
         var trailingSilence: TimeInterval = 1.25
         var idleSilence: TimeInterval = 12
         var maximumUtterance: TimeInterval = 60
         var bargeInDuration: TimeInterval = 0.3
+        var speechDetector = VoiceSpeechDetectorConstants()
     }
 
     @Published private(set) var state: VoiceConversationState = .idle
@@ -21,6 +25,16 @@ final class VoiceConversationController: ObservableObject {
     @Published private(set) var lastBargeInState: VoiceConversationState?
     @Published private(set) var isOutputMuted = false
     @Published private(set) var isMicrophonePaused = false
+    /// Latest raw microphone input peak from the capture service. This is
+    /// presentation state: it moves whenever audio reaches Conduit,
+    /// regardless of whether the speech detector classifies it as speech,
+    /// and returns to zero whenever capture is paused, stopped, suspended,
+    /// or interrupted.
+    @Published private(set) var microphoneLevel: Float = 0
+    /// Publication clock for meter throttling: level events arrive at tap
+    /// buffer rate (~50 Hz), far faster than any useful UI animation, and
+    /// every @Published assignment re-renders observing surfaces.
+    private var lastMeterPublication: Date?
     /// Automatic speaker-safe suspension while Hermes is audibly playing on
     /// a route whose output can feed the microphone. Deliberately separate
     /// from `isMicrophonePaused`: that flag is explicit user intent ("Microphone
@@ -67,6 +81,10 @@ final class VoiceConversationController: ObservableObject {
     private var speechDrainRevision: UInt64 = 0
     private var isProviderTestRunning = false
     private var activeAssistantTranscriptEntryID: UUID?
+    /// Adaptive listening-side speech detector (issue #130). Acoustic
+    /// barge-in does not use it; that path keeps the conservative fixed
+    /// threshold in `configuration.bargeInActivityThreshold`.
+    private var speechDetector: VoiceSpeechDetector
 
     init(
         capture: AudioCaptureService? = nil,
@@ -84,6 +102,7 @@ final class VoiceConversationController: ObservableObject {
         self.deviceTranscriber = deviceTranscriber ?? AppleOnDeviceSpeechTranscriber()
         self.gateway = gateway
         self.configuration = configuration
+        speechDetector = VoiceSpeechDetector(constants: configuration.speechDetector)
         // Built here (not as a default parameter value) so the live route
         // read stays in MainActor context, matching the capture default.
         if let routePolicyProvider {
@@ -210,6 +229,10 @@ final class VoiceConversationController: ObservableObject {
             // Defense in depth: capture must never end up live over audible
             // playback, whichever flag paused it.
             if isMicrophonePaused || isPlaybackCaptureSuspended { capture.pause() }
+            // Fresh listening window: the detector must not inherit noise or
+            // speech state from the previous one.
+            speechDetector.reset()
+            resetMicrophoneMeter()
             utteranceStartedAt = Date()
             lastSpeechAt = nil
             bargeInStartedAt = nil
@@ -227,6 +250,8 @@ final class VoiceConversationController: ObservableObject {
         // handled by the sheet, which shows the user-paused state whenever
         // `isMicrophonePaused` is set.
         capture.pause()
+        speechDetector.reset()
+        resetMicrophoneMeter()
         isMicrophonePaused = true
     }
 
@@ -253,7 +278,9 @@ final class VoiceConversationController: ObservableObject {
             isMicrophonePaused = false
             // Pause is a real resource pause, so resume opens a fresh
             // listening window: speech timestamps from before the pause must
-            // not immediately finish an utterance or idle-pause again.
+            // not immediately finish an utterance or idle-pause again, and
+            // the detector must not inherit pre-pause noise/speech state.
+            speechDetector.reset()
             utteranceStartedAt = Date()
             lastSpeechAt = nil
             bargeInStartedAt = nil
@@ -312,6 +339,8 @@ final class VoiceConversationController: ObservableObject {
         assistantFinished = false
         isMicrophonePaused = false
         isPlaybackCaptureSuspended = false
+        speechDetector.reset()
+        resetMicrophoneMeter()
         isVoiceSessionActive = false
         isAwaitingVoiceAssistant = false
         awaitedAssistantResponseStarted = false
@@ -364,6 +393,9 @@ final class VoiceConversationController: ObservableObject {
         defer {
             capture.stop()
             isProviderTestRunning = false
+            // The test recording is over: the meter must not freeze at the
+            // last captured level.
+            resetMicrophoneMeter()
             if isCurrent(generation) { state = .idle }
             isVoiceSessionActive = false
         }
@@ -382,6 +414,9 @@ final class VoiceConversationController: ObservableObject {
             }
             let audio = try capture.finishUtterance()
             state = .transcribing
+            // Recording is done: the settings meter must not freeze at the
+            // last captured level while the provider transcribes.
+            resetMicrophoneMeter()
             let transcript = try await transcribe(audio, gateway: gateway)
             guard isCurrent(generation) else {
                 return .failure("The speech-to-text test was cancelled.")
@@ -418,6 +453,7 @@ final class VoiceConversationController: ObservableObject {
             speechStream = nil
             playback.stop()
             isProviderTestRunning = false
+            resetMicrophoneMeter()
             if isCurrent(generation) { state = .idle }
             isVoiceSessionActive = false
         }
@@ -466,7 +502,10 @@ final class VoiceConversationController: ObservableObject {
         switch state {
         case .listening:
             if utteranceStartedAt == nil { utteranceStartedAt = date }
-            if level >= configuration.voiceActivityThreshold { lastSpeechAt = date }
+            switch speechDetector.observe(level) {
+            case .started, .continued: lastSpeechAt = date
+            case .none: break
+            }
             if let started = utteranceStartedAt, date.timeIntervalSince(started) >= configuration.maximumUtterance {
                 scheduleFinishUtterance()
             } else if let speech = lastSpeechAt, date.timeIntervalSince(speech) >= configuration.trailingSilence {
@@ -481,7 +520,7 @@ final class VoiceConversationController: ObservableObject {
             // even from a stale level event that slipped past the paused
             // tap.
             guard !isPlaybackCaptureSuspended else { break }
-            if level >= configuration.voiceActivityThreshold {
+            if level >= configuration.bargeInActivityThreshold {
                 if bargeInStartedAt == nil { bargeInStartedAt = date }
                 if let started = bargeInStartedAt,
                    date.timeIntervalSince(started) >= configuration.bargeInDuration {
@@ -560,21 +599,62 @@ final class VoiceConversationController: ObservableObject {
     }
 
     private func handleCaptureEvent(_ event: VoiceCaptureEvent) {
-        if isProviderTestRunning {
-            if case .interrupted = event { failForAudioInterruption() }
-            return
-        }
         switch event {
-        case .level(let level, let date): ingestAudioLevel(level, at: date)
+        case .level(let level, let date, let generation):
+            // Raw capture level always feeds the visible input meter —
+            // including provider tests, where seeing "the microphone hears
+            // me" distinguishes capture failure from detection failure —
+            // while conversational VAD stays exclusive to the live Voice
+            // Conversation. Publication is meter-resolution (~20 Hz), not
+            // tap-buffer resolution: every assignment re-renders observing
+            // surfaces.
+            //
+            // Generation identity first: a frame is valid only for the
+            // input-tap generation that produced it, so queued frames from
+            // a torn-down tap are rejected even when a new generation is
+            // already live. Then defense in depth — logical capture state:
+            // stale events must also not reach presentation or VAD during
+            // a user pause, a #146 suspension, or after the voice session
+            // ended. Provider tests are live capture and still count.
+            guard generation == capture.captureGeneration else { return }
+            let captureLive = !isMicrophonePaused
+                && !isPlaybackCaptureSuspended
+                && isVoiceSessionActive
+            guard captureLive || isProviderTestRunning else { return }
+            // A same-generation event can still surface after
+            // finishUtterance() closed the turn: capture keeps running into
+            // the transcription wait. The meter was reset for that state and
+            // the UI hides it there, so republishing would only churn
+            // @Published state.
+            guard state != .transcribing else { return }
+            if lastMeterPublication == nil || date.timeIntervalSince(lastMeterPublication!) >= 0.05 {
+                microphoneLevel = level
+                lastMeterPublication = date
+            }
+            guard !isProviderTestRunning else { return }
+            ingestAudioLevel(level, at: date)
         case .interrupted:
             failForAudioInterruption()
         case .routeChanged:
+            // Provider tests own the session exclusively; no capture is live
+            // during the TTS test, so route-driven suspension would only
+            // pollute speaker-safe state across the test boundary.
+            guard !isProviderTestRunning else { return }
             // AVAudioEngine's tap remains valid across normal Bluetooth/wired
-            // route changes. The next capture event re-establishes timing.
+            // route changes. The next capture event re-establishes timing,
+            // and a different microphone means a different noise floor.
             bargeInStartedAt = nil
             cachedRoutePolicy = nil
+            if state == .listening { speechDetector.reset() }
             suspendIfRouteBecameOpenSpeaker()
         }
+    }
+
+    /// Zeroes the visible meter and clears the publication clock so the
+    /// first event of a fresh capture window always publishes.
+    private func resetMicrophoneMeter() {
+        microphoneLevel = 0
+        lastMeterPublication = nil
     }
 
     /// Safety net for routes that change while Hermes is audibly speaking:
@@ -601,6 +681,11 @@ final class VoiceConversationController: ObservableObject {
         do {
             let audio = try capture.finishUtterance()
             state = .transcribing
+            // Utterance complete: the meter follows the now-inactive capture
+            // and the detector must not carry this turn's noise/speech state
+            // into the next one.
+            resetMicrophoneMeter()
+            speechDetector.reset()
             let transcript = try await transcribe(audio, gateway: gateway)
             guard isCurrent(generation) else { return }
             latestTranscript = transcript
@@ -701,6 +786,11 @@ final class VoiceConversationController: ObservableObject {
         guard !isPlaybackCaptureSuspended else { return }
         isPlaybackCaptureSuspended = true
         bargeInStartedAt = nil
+        // Capture is torn down for the duration of playback: the meter must
+        // read zero (not frozen) and the detector must not carry state into
+        // the next listening window.
+        speechDetector.reset()
+        resetMicrophoneMeter()
         capture.pause()
     }
 
@@ -719,6 +809,8 @@ final class VoiceConversationController: ObservableObject {
         assistantFinished = false
         isMicrophonePaused = false
         isPlaybackCaptureSuspended = false
+        speechDetector.reset()
+        resetMicrophoneMeter()
         isAwaitingVoiceAssistant = false
         awaitedAssistantResponseStarted = false
         // Terminal path: release session-ownership bookkeeping so audio-

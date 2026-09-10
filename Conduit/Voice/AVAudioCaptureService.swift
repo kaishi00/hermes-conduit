@@ -27,12 +27,23 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
         channels: AVAudioCaptureService.outputChannelCount
     )!
     private var converter: AVAudioConverter?
-    private var capturedPCM = Data()
-    private var preRollPCM = Data()
+    // Capture state below is internal rather than private so ConduitTests
+    // can drive the frame-admission seam directly with synthetic PCM
+    // buffers instead of audio hardware. Production code must mutate these
+    // only through the lifecycle methods; direct writes outside ConduitTests
+    // can create flag combinations the lifecycle never produces and are not
+    // supported.
+    var capturedPCM = Data()
+    var preRollPCM = Data()
     private let maximumPreRollBytes = Int(AVAudioCaptureService.outputSampleRate * AVAudioCaptureService.preRollDuration) * AVAudioCaptureService.outputBytesPerFrame
-    private var activelyRecording = false
-    private var paused = false
-    private var shouldKeepEngineRunning = false
+    var activelyRecording = false
+    var paused = false
+    /// Monotonic identity of the installed input-tap/rendering lifetime.
+    /// Bumped at every teardown (pause/stop) and every tap reinstall, so
+    /// frames queued from a previous generation can be recognized and
+    /// dropped after the boundary.
+    private(set) var captureGeneration: UInt64 = 0
+    var shouldKeepEngineRunning = false
     private var lastCaptureFailure: String?
     private var continuation: AsyncStream<VoiceCaptureEvent>.Continuation?
     /// Capture holds one lease for the whole capture window (listening,
@@ -118,6 +129,7 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
         guard !paused else { return }
         paused = true
         shouldKeepEngineRunning = false
+        captureGeneration &+= 1
         teardownRendering()
         releaseLease()
     }
@@ -155,6 +167,9 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
         activelyRecording = false
         paused = false
         shouldKeepEngineRunning = false
+        // Deliberately unguarded (unlike pause): a redundant stop bumps the
+        // generation again, which is always fail-closed.
+        captureGeneration &+= 1
         teardownRendering()
         releaseLease()
     }
@@ -192,7 +207,18 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
             throw VoiceAudioError.unavailable("The selected microphone is unavailable.")
         }
         converter = nil
+        // Defensive: a recovery restart (e.g. after a route change stops the
+        // engine) can reach startEngine while a stale tap still hangs on bus
+        // 0 even though the engine is not running. Removing first keeps the
+        // reinstall from stacking a second tap; removeTap is a no-op when
+        // none exists.
         input.removeTap(onBus: 0)
+        // A freshly installed tap begins a new rendering generation: frames
+        // it produces are stamped with this identity, and any teardown
+        // invalidates it so queued frames from the old tap are recognized
+        // as stale.
+        captureGeneration &+= 1
+        let frameGeneration = captureGeneration
         input.installTap(onBus: 0, bufferSize: 1_024, format: nil) { [weak self] buffer, _ in
             // AVAudioEngine owns and reuses tap buffers as soon as this block
             // returns. Copy the frame bytes before crossing onto MainActor so
@@ -211,7 +237,18 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
                 destinationData.copyMemory(from: sourceData, byteCount: byteCount)
                 destination[index].mDataByteSize = source[index].mDataByteSize
             }
-            Task { @MainActor [weak self] in self?.consume(copy) }
+            Task { @MainActor [weak self] in
+                // Capture-generation fence: pause()/stop() tear the tap
+                // down, but a frame already in flight across this hop
+                // belongs to the previous generation and must not surface
+                // into the new one — even when a stop was immediately
+                // followed by a restart that re-armed the live flags. The
+                // admission seam checks the frame's own generation against
+                // the currently installed tap before anything downstream
+                // (including consume's own defense-in-depth guard) runs.
+                guard let self, self.acceptsFrame(generation: frameGeneration) else { return }
+                self.consume(copy, generation: frameGeneration)
+            }
         }
         engine.prepare()
         try engine.start()
@@ -230,8 +267,22 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
         coordinator.release(lease)
     }
 
-    private func consume(_ buffer: AVAudioPCMBuffer) {
-        guard !paused else { return }
+    /// Single admission gate for tap frames on their way into PCM state.
+    /// A frame is admitted only when it was produced by the currently
+    /// installed tap generation while capture is unpaused and the engine is
+    /// expected to stay live. Both the MainActor hop and consume() gate on
+    /// this seam, so an invalidated generation's bytes can never reach
+    /// conversion state, pre-roll, captured audio, the meter, or VAD — even
+    /// when a stop was immediately followed by a restart that re-armed the
+    /// live flags.
+    func acceptsFrame(generation: UInt64) -> Bool {
+        generation == captureGeneration && !paused && shouldKeepEngineRunning
+    }
+
+    func consume(_ buffer: AVAudioPCMBuffer, generation: UInt64) {
+        // Defense-in-depth: the hop already admitted this frame, but any
+        // future caller path must equally fail closed before PCM admission.
+        guard acceptsFrame(generation: generation) else { return }
         if converter == nil || !Self.converter(converter, accepts: buffer.format) {
             converter = AVAudioConverter(from: buffer.format, to: outputFormat)
         }
@@ -277,7 +328,7 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
         lastCaptureFailure = nil
         appendPreRoll(pcm)
         if activelyRecording { capturedPCM.append(pcm) }
-        continuation?.yield(.level(encoded.peak, date: Date()))
+        continuation?.yield(.level(encoded.peak, date: Date(), generation: generation))
     }
 
     private func appendPreRoll(_ pcm: Data) {

@@ -7,6 +7,10 @@ import SwiftUI
 
 struct VoiceSettingsRoute: View {
     @StateObject private var service: HermesVoiceConfigurationService
+    /// The active VoiceConversationController, observed so the Record ASR
+    /// input meter tracks live capture without polling or a second capture
+    /// service.
+    @ObservedObject var conversationController: VoiceConversationController
     let actions: VoiceSettingsActions
     let voiceEnabled: Bool
     let transcriptionMode: VoiceTranscriptionMode
@@ -17,6 +21,7 @@ struct VoiceSettingsRoute: View {
     init(
         bridge: DashboardTicketBridge,
         profile: String,
+        conversationController: VoiceConversationController,
         actions: VoiceSettingsActions,
         voiceEnabled: Bool,
         transcriptionMode: VoiceTranscriptionMode,
@@ -25,6 +30,7 @@ struct VoiceSettingsRoute: View {
         setTranscriptionMode: @escaping (VoiceTranscriptionMode) async -> Bool
     ) {
         _service = StateObject(wrappedValue: HermesVoiceConfigurationService(bridge: bridge, profile: profile))
+        _conversationController = ObservedObject(wrappedValue: conversationController)
         self.actions = actions
         self.voiceEnabled = voiceEnabled
         self.transcriptionMode = transcriptionMode
@@ -36,6 +42,7 @@ struct VoiceSettingsRoute: View {
     var body: some View {
         VoiceSettingsView(
             service: service,
+            conversationController: conversationController,
             actions: actions,
             voiceEnabled: voiceEnabled,
             transcriptionMode: transcriptionMode,
@@ -64,6 +71,10 @@ struct VoiceSettingsActions {
 /// it has built the active VoiceConversationController.
 struct VoiceSettingsView: View {
     @ObservedObject var service: HermesVoiceConfigurationService
+    /// Observed so the Record ASR meter tracks the active controller's raw
+    /// microphone level (issue #130): a moving meter proves capture works
+    /// and localizes detection failures to the VAD/provider boundary.
+    @ObservedObject var conversationController: VoiceConversationController
     var actions = VoiceSettingsActions()
     let setVoiceEnabled: (Bool) async -> Bool
     let setTranscriptionMode: (VoiceTranscriptionMode) async -> Bool
@@ -73,12 +84,14 @@ struct VoiceSettingsView: View {
     @State private var savingField: String?
     @State private var testStatus: String?
     @State private var isRunningTest = false
+    @State private var isRecordingASRTest = false
     @State private var voiceEnabled: Bool
     @State private var transcriptionMode: VoiceTranscriptionMode
     @State private var appleSpeechAvailability: AppleSpeechRecognitionAvailability
 
     init(
         service: HermesVoiceConfigurationService,
+        conversationController: VoiceConversationController,
         actions: VoiceSettingsActions = VoiceSettingsActions(),
         voiceEnabled: Bool = false,
         transcriptionMode: VoiceTranscriptionMode = .hermes,
@@ -87,6 +100,7 @@ struct VoiceSettingsView: View {
         setTranscriptionMode: @escaping (VoiceTranscriptionMode) async -> Bool = { _ in false }
     ) {
         self.service = service
+        _conversationController = ObservedObject(wrappedValue: conversationController)
         self.actions = actions
         self.setVoiceEnabled = setVoiceEnabled
         self.setTranscriptionMode = setTranscriptionMode
@@ -374,6 +388,22 @@ struct VoiceSettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            // The meter is visible only while the ASR test is actually
+            // recording (state .listening): once the sample is complete and
+            // the state becomes .transcribing, capture input is no longer
+            // the interesting signal, so the meter hides instead of
+            // freezing at its last value. Never shown during TTS playback.
+            if isRecordingASRTest, conversationController.state == .listening {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Microphone input")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    VoiceInputLevelMeter(level: conversationController.microphoneLevel, isActive: true)
+                        .frame(height: 20)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(Text("Microphone input level"))
+            }
         }
     }
 
@@ -481,12 +511,14 @@ struct VoiceSettingsView: View {
         guard let action else { return }
         Task {
             isRunningTest = true
+            isRecordingASRTest = kind == .stt
             testStatus = kind == .stt ? "Listening for a short test…" : "Starting speech playback…"
             let result = await action()
             if kind == .stt, transcriptionMode == .appleOnDevice {
                 appleSpeechAvailability = AppleOnDeviceSpeechTranscriber.currentAvailability()
             }
             testStatus = result.message
+            isRecordingASRTest = false
             isRunningTest = false
         }
     }

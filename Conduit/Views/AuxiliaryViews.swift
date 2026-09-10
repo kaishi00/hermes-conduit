@@ -512,6 +512,7 @@ struct SettingsView: View {
                 VoiceSettingsRoute(
                     bridge: bridge,
                     profile: snapshot.profile,
+                    conversationController: appState.voiceConversationController,
                     actions: VoiceSettingsActions(
                         runASRTest: { await appState.runVoiceASRTest() },
                         runTTSTest: { await appState.runVoiceTTSTest() }

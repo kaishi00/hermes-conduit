@@ -309,6 +309,7 @@ private final class RecordingCapabilityRequester: VoiceConfigurationRequesting {
 @MainActor
 private final class MockVoiceCapture: AudioCaptureService {
     let events: AsyncStream<VoiceCaptureEvent>
+    let captureGeneration: UInt64 = 0
 
     init() {
         events = AsyncStream { _ in }
