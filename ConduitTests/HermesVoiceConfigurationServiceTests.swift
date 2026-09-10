@@ -768,16 +768,18 @@ final class HermesVoiceConfigurationServiceTests: XCTestCase {
         XCTAssertEqual(service.snapshot.values["tts.openai.base_url"], "https://tts.example.com/v1")
     }
 
-    /// Clearing saves an empty string through the same path: Hermes treats
-    /// an empty override as unset (`config_base_url or fallback_base or
-    /// DEFAULT_OPENAI_BASE_URL`), returning the provider to its default
-    /// endpoint behavior.
-    func testClearingOpenAIBaseURLSavesEmptyOverride() async throws {
+    /// Clearing a text override REMOVES the key from the profile config
+    /// rather than writing an empty string: Hermes reads provider keys with
+    /// `config.get(key, default)`, which only applies the default when the
+    /// key is absent — a stored "" would be used verbatim and break
+    /// synthesis. Removal is behavior-identical for keys upstream treats as
+    /// unset when empty (`base_url`'s falsy-or chains).
+    func testClearingOpenAIBaseURLRemovesTheOverride() async throws {
         let requester = MockVoiceConfigurationRequester()
         requester.routes = [
             "/api/config": [
                 "stt": ["enabled": true, "provider": "openai"],
-                "tts": ["provider": "openai", "openai": ["base_url": "https://tts.example.com/v1"]]
+                "tts": ["provider": "openai", "openai": ["base_url": "https://tts.example.com/v1", "voice": "alloy"]]
             ],
             "/api/tools/toolsets/stt/config": ["providers": []],
             "/api/tools/toolsets/tts/config": ["providers": []]
@@ -793,8 +795,38 @@ final class HermesVoiceConfigurationServiceTests: XCTestCase {
         let openai = try XCTUnwrap(
             ((configPUT?.body?["config"] as? [String: Any])?["tts"] as? [String: Any])?["openai"] as? [String: Any]
         )
-        XCTAssertEqual(openai["base_url"] as? String, "")
-        XCTAssertEqual(service.snapshot.values["tts.openai.base_url"], "")
+        XCTAssertNil(openai["base_url"])
+        // Unrelated provider values survive the removal.
+        XCTAssertEqual(openai["voice"] as? String, "alloy")
+        XCTAssertNil(service.snapshot.values["tts.openai.base_url"])
+    }
+
+    /// Clearing the ElevenLabs voice override removes `voice_id` entirely
+    /// (upstream reads it with `.get(key, DEFAULT)`), prunes the provider
+    /// section when it becomes empty, and leaves the snapshot consistent
+    /// with an absent override.
+    func testClearingElevenLabsVoiceIDRemovesTheOverride() async throws {
+        let requester = MockVoiceConfigurationRequester()
+        requester.routes = [
+            "/api/config": [
+                "stt": ["enabled": true, "provider": "local"],
+                "tts": ["provider": "elevenlabs", "elevenlabs": ["voice_id": "custom-voice"]]
+            ],
+            "/api/tools/toolsets/stt/config": ["providers": []],
+            "/api/tools/toolsets/tts/config": ["providers": []]
+        ]
+        let service = HermesVoiceConfigurationService(requester: requester, profile: "default")
+        await service.reload()
+
+        let saved = await service.save(value: "", for: "tts.elevenlabs.voice_id")
+
+        XCTAssertTrue(saved)
+        let configPUT = requester.recorded.first { $0.method == "PUT" && $0.path == "/api/config" }
+        let tts = try XCTUnwrap((configPUT?.body?["config"] as? [String: Any])?["tts"] as? [String: Any])
+        // The emptied section is pruned so no empty {} lingers in config.
+        XCTAssertNil(tts["elevenlabs"])
+        XCTAssertEqual(tts["provider"] as? String, "elevenlabs")
+        XCTAssertNil(service.snapshot.values["tts.elevenlabs.voice_id"])
     }
 
     /// Hermes keys ElevenLabs TTS as `voice_id`/`model_id`

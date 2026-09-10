@@ -19,14 +19,18 @@ The OpenAI TTS provider accepts two endpoint overrides:
 - `tts.openai.base_url` — points Hermes at any OpenAI-compatible speech
   endpoint (for example `https://your-host/v1`). This configures the provider
   **Hermes** calls; it does not change the server Conduit connects to, and it
-  is not the Hermes dashboard URL.
+  is not the Hermes dashboard URL. Clearing the field removes the override
+  key from the profile config, returning the provider to its default.
 - `tts.openai.speed` — speech rate multiplier; Hermes accepts 0.25–4.0 and
   Conduit rejects values outside that range rather than rewriting them.
   Clearing the field is refused (Hermes cannot parse an empty speed);
   save `1` to restore the default rate.
 
 The ElevenLabs provider exposes the analogous `tts.elevenlabs.base_url`
-(applied by Hermes to both whole-file and streaming synthesis). Its
+(applied by Hermes to both whole-file and streaming synthesis); its
+`voice_id`/`model_id` editors write the keys upstream actually reads.
+Clearing any text override removes the key from the profile config — Hermes
+falls back to the provider default when a key is absent. Its
 `wss_url` key is intentionally not offered: Hermes derives it from
 `base_url` when unset.
 

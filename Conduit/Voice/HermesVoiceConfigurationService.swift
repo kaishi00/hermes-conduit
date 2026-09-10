@@ -261,13 +261,24 @@ final class HermesVoiceConfigurationService: ObservableObject {
             errorMessage = "Could not load voice settings to save this change."
             return false
         }
-        Self.setNested(stored, in: &config, dottedKey: key)
+        // Clearing a text field removes the override key instead of writing
+        // an empty string: Hermes reads many provider keys with
+        // `config.get(key, default)`, which uses the default only when the
+        // key is ABSENT, so a stored "" would be used verbatim and break
+        // synthesis. Removal is behavior-identical for keys upstream treats
+        // as unset when empty (the endpoint overrides).
+        if stored.isEmpty {
+            Self.removeNested(in: &config, dottedKey: key)
+            snapshot.values.removeValue(forKey: key)
+        } else {
+            Self.setNested(stored, in: &config, dottedKey: key)
+            snapshot.values[key] = stored
+        }
         do {
             _ = try await requester.requestJSON(
                 path: profilePath("/api/config"), method: "PUT",
                 body: ["config": config]
             )
-            snapshot.values[key] = stored
             if key == "stt.provider" { snapshot.selectedSTTProvider = value }
             if key == "tts.provider" { snapshot.selectedTTSProvider = value }
             return true
@@ -340,6 +351,22 @@ final class HermesVoiceConfigurationService: ObservableObject {
         var child = object[key] as? [String: Any] ?? [:]
         setNested(value, in: &child, path: Array(path.dropFirst()), leaf: leaf)
         object[key] = child
+    }
+
+    /// Removes the value at a dotted key, pruning parent dictionaries that
+    /// become empty so a cleared override cannot leave an empty section
+    /// behind in the profile config.
+    private static func removeNested(in object: inout [String: Any], dottedKey: String) {
+        var path = dottedKey.split(separator: ".").map(String.init)
+        guard let leaf = path.popLast() else { return }
+        removeNested(in: &object, path: path, leaf: leaf)
+    }
+
+    private static func removeNested(in object: inout [String: Any], path: [String], leaf: String) {
+        guard let key = path.first else { object.removeValue(forKey: leaf); return }
+        guard var child = object[key] as? [String: Any] else { return }
+        removeNested(in: &child, path: Array(path.dropFirst()), leaf: leaf)
+        if child.isEmpty { object.removeValue(forKey: key) } else { object[key] = child }
     }
 }
 
