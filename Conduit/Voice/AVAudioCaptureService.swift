@@ -202,6 +202,12 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
             throw VoiceAudioError.unavailable("The selected microphone is unavailable.")
         }
         converter = nil
+        // Defensive: a recovery restart (e.g. after a route change stops the
+        // engine) can reach startEngine while a stale tap still hangs on bus
+        // 0 even though the engine is not running. Removing first keeps the
+        // reinstall from stacking a second tap; removeTap is a no-op when
+        // none exists.
+        input.removeTap(onBus: 0)
         // A freshly installed tap begins a new rendering generation: frames
         // it produces are stamped with this identity, and any teardown
         // invalidates it so queued frames from the old tap are recognized
@@ -230,9 +236,11 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
                 // Capture-generation fence: pause()/stop() tear the tap
                 // down, but a frame already in flight across this hop
                 // belongs to the previous generation and must not surface
-                // into the new one. (A stop immediately followed by a
-                // restart re-arms these flags; the frame's own generation
-                // and the controller's generation check cover that case.)
+                // into the new one — even when a stop was immediately
+                // followed by a restart that re-armed the live flags. The
+                // admission seam checks the frame's own generation against
+                // the currently installed tap before anything downstream
+                // (including consume's own defense-in-depth guard) runs.
                 guard let self, self.acceptsFrame(generation: frameGeneration) else { return }
                 self.consume(copy, generation: frameGeneration)
             }
@@ -255,14 +263,20 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
     }
 
     /// Single admission gate for tap frames on their way into PCM state.
-    /// Extracted so tests can pin the exact guard both the MainActor hop
-    /// and consume() evaluate before conversion, pre-roll, captured audio,
-    /// or level emission can observe a frame.
+    /// A frame is admitted only when it was produced by the currently
+    /// installed tap generation while capture is unpaused and the engine is
+    /// expected to stay live. Both the MainActor hop and consume() gate on
+    /// this seam, so an invalidated generation's bytes can never reach
+    /// conversion state, pre-roll, captured audio, the meter, or VAD — even
+    /// when a stop was immediately followed by a restart that re-armed the
+    /// live flags.
     func acceptsFrame(generation: UInt64) -> Bool {
-        !paused && shouldKeepEngineRunning
+        generation == captureGeneration && !paused && shouldKeepEngineRunning
     }
 
     func consume(_ buffer: AVAudioPCMBuffer, generation: UInt64) {
+        // Defense-in-depth: the hop already admitted this frame, but any
+        // future caller path must equally fail closed before PCM admission.
         guard acceptsFrame(generation: generation) else { return }
         if converter == nil || !Self.converter(converter, accepts: buffer.format) {
             converter = AVAudioConverter(from: buffer.format, to: outputFormat)
