@@ -459,6 +459,10 @@ final class VoiceConversationController: ObservableObject {
         }
         do {
             state = .thinking
+            // The test passes only when the route actually delivered speech:
+            // a stream that connects and finishes silently is a failed
+            // provider test, not a passed one.
+            var deliveredAudio = false
             let stream = try await gateway.openSpeechStream(
                 onStart: { [weak self] rate in
                     guard let self else { return }
@@ -467,11 +471,21 @@ final class VoiceConversationController: ObservableObject {
                 },
                 onPCM16: { [weak self] data, rate in
                     guard let self else { return }
-                    _ = try self.playback.enqueuePCM16(data, sampleRate: rate)
+                    // Only PCM the playback service actually accepted and
+                    // scheduled counts as delivered speech — an unaligned
+                    // or empty chunk schedules zero bytes and must not
+                    // turn the provider test into a false pass.
+                    let acceptedBytes = try self.playback.enqueuePCM16(data, sampleRate: rate)
+                    if acceptedBytes > 0 { deliveredAudio = true }
                 },
                 onEncodedAudio: { [weak self] data in
                     guard let self else { return }
+                    // Mirror the PCM path: only audio that actually reaches
+                    // playback counts as delivered, so an empty payload
+                    // cannot turn the test into a false pass.
+                    guard !data.isEmpty else { return }
                     try self.playback.playEncodedAudioData(data)
+                    deliveredAudio = true
                     self.state = .speaking
                 }
             )
@@ -488,6 +502,9 @@ final class VoiceConversationController: ObservableObject {
             await playback.drain()
             guard isCurrent(generation) else {
                 return .failure("The speech playback test was cancelled.")
+            }
+            guard deliveredAudio else {
+                return .failure("Hermes connected, but the selected speech provider returned no audio.")
             }
             return .success("Speech playback completed.")
         } catch {
