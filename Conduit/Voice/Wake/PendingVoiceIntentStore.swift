@@ -18,6 +18,14 @@ final class PendingVoiceIntentStore: ObservableObject {
     /// it rather than duplicating routing logic.
     var hasPendingIntent: Bool { pending != nil }
 
+    /// Absolute deadline of the pending external launch, if any.
+    var pendingExternalLaunchDeadline: Date? { pending?.externalLaunchDeadline }
+
+    var pendingSource: PendingVoiceIntent.Source? { pending?.source }
+
+    /// Test seam: the profile of the still-pending request, if any.
+    var pendingProfile: String? { pending?.profile }
+
     func enqueue(_ intent: PendingVoiceIntent) {
         // One voice sheet can only honor one launch request. The newest source
         // is intentional: it reflects the user's latest explicit action.
@@ -25,15 +33,35 @@ final class PendingVoiceIntentStore: ObservableObject {
         revision &+= 1
     }
 
+    /// Puts a temporarily-unroutable request back without treating it as a
+    /// new launch. A newer explicit enqueue (revision already advanced) wins;
+    /// this never resurrects an older request over a newer one. Skipping the
+    /// revision bump keeps the scene's revision-keyed task from hot-looping
+    /// while Hermes is still connecting.
+    func requeueAsDeferred(_ intent: PendingVoiceIntent) {
+        guard pending == nil else { return }
+        pending = intent
+    }
+
     func take() -> PendingVoiceIntent? {
-        defer { pending = nil }
-        return pending
+        let value = pending
+        pending = nil
+        return value
     }
 
     func clear() {
         pending = nil
         revision &+= 1
     }
+}
+
+/// Result of one routing attempt. Terminal outcomes consume the request;
+/// only `.deferred` retains it for a later lifecycle pass.
+enum PendingVoiceIntentRouteOutcome: Equatable {
+    case idle
+    case routed
+    case deferred
+    case failed(message: String)
 }
 
 @MainActor
@@ -44,11 +72,45 @@ final class PendingVoiceIntentRouter {
 
     init(store: PendingVoiceIntentStore = .shared) { self.store = store }
 
-    /// The UI/app-state integration calls this only after it is authenticated
-    /// and connected. A handler may return false to retain the intent for a
-    /// later lifecycle pass.
-    func routePending(using handler: Handler) async {
-        guard let intent = store.take() else { return }
-        if !(await handler(intent)) { store.enqueue(intent) }
+    /// Resolves the pending request against the current connection lifecycle.
+    ///
+    /// - Expired external (Siri) requests are consumed and reported failed —
+    ///   they never wait for a later reconnect.
+    /// - Connected requests are consumed exactly once via `handler`.
+    /// - A false handler result requeues only in-app launches; Siri launches
+    ///   fail terminally so Voice cannot open minutes later.
+    /// - Not-ready requests are retained without calling the handler.
+    func routePending(
+        isConnected: Bool,
+        now: Date = Date(),
+        using handler: Handler
+    ) async -> PendingVoiceIntentRouteOutcome {
+        guard let intent = store.take() else { return .idle }
+
+        switch PendingVoiceLaunchPolicy.readiness(
+            for: intent,
+            isConnected: isConnected,
+            now: now
+        ) {
+        case .failed(let message):
+            return .failed(message: message)
+        case .waiting:
+            store.requeueAsDeferred(intent)
+            return .deferred
+        case .ready:
+            break
+        }
+
+        if await handler(intent) {
+            return .routed
+        }
+
+        switch PendingVoiceLaunchPolicy.handlerFailureOutcome(for: intent) {
+        case .failed(let message):
+            return .failed(message: message)
+        case .ready, .waiting:
+            store.requeueAsDeferred(intent)
+            return .deferred
+        }
     }
 }

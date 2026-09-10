@@ -94,11 +94,10 @@ struct ConduitApp: App {
                 }
             }
             .task(id: voiceIntentRouteKey) {
-                guard appState.isConnected else { return }
-                let router = PendingVoiceIntentRouter(store: pendingVoiceIntents)
-                await router.routePending { intent in
-                    await appState.openVoiceConversation(intent)
-                }
+                await resolvePendingVoiceIntent()
+            }
+            .task(id: voiceIntentDeadlineKey) {
+                await waitOutPendingVoiceDeadline()
             }
     }
 
@@ -107,6 +106,43 @@ struct ConduitApp: App {
     }
 
     private var voiceIntentRouteKey: String {
-        "\(pendingVoiceIntents.revision):\(appState.isConnected)"
+        "\(pendingVoiceIntents.revision):\(appState.isConnected):\(pendingVoiceIntents.pendingSource?.rawValue ?? "none")"
+    }
+
+    /// Deadline changes (new Siri enqueue / supersede) re-arm the wait; the
+    /// revision already covers every other store mutation.
+    private var voiceIntentDeadlineKey: String {
+        guard let deadline = pendingVoiceIntents.pendingExternalLaunchDeadline else { return "none" }
+        return "\(pendingVoiceIntents.revision):\(Int(deadline.timeIntervalSinceReferenceDate))"
+    }
+
+    /// Resolves the pending voice launch once. Connected Siri/in-app routes
+    /// consume the request; expired external requests fail with a visible
+    /// error and are discarded so a later reconnect cannot resurrect them.
+    private func resolvePendingVoiceIntent() async {
+        let router = PendingVoiceIntentRouter(store: pendingVoiceIntents)
+        let outcome = await router.routePending(isConnected: appState.isConnected) { intent in
+            await appState.openVoiceConversation(intent)
+        }
+        if case .failed(let message) = outcome {
+            appState.errorMessage = message
+        }
+    }
+
+    /// Siri external launches are bounded: when the launch window ends
+    /// without Hermes becoming ready, fail the request immediately instead of
+    /// leaving it pending across an arbitrary later reconnect.
+    private func waitOutPendingVoiceDeadline() async {
+        guard let deadline = pendingVoiceIntents.pendingExternalLaunchDeadline else { return }
+        let remaining = deadline.timeIntervalSinceNow
+        if remaining > 0 {
+            do {
+                try await Task.sleep(nanoseconds: UInt64(remaining * 1_000_000_000))
+            } catch {
+                // Superseded/cancelled waiter must not resolve a different intent.
+                return
+            }
+        }
+        await resolvePendingVoiceIntent()
     }
 }
