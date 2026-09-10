@@ -22,6 +22,8 @@ The OpenAI TTS provider accepts two endpoint overrides:
   is not the Hermes dashboard URL.
 - `tts.openai.speed` — speech rate multiplier; Hermes accepts 0.25–4.0 and
   Conduit rejects values outside that range rather than rewriting them.
+  Clearing the field is refused (Hermes cannot parse an empty speed);
+  save `1` to restore the default rate.
 
 The ElevenLabs provider exposes the analogous `tts.elevenlabs.base_url`
 (applied by Hermes to both whole-file and streaming synthesis). Its

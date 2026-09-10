@@ -797,6 +797,25 @@ final class VoiceConversationControllerTests: XCTestCase {
         XCTAssertTrue(result.passed)
     }
 
+    /// The whole-file fallback route counts as delivered speech: a provider
+    /// that cannot stream still passes the test when its encoded audio
+    /// actually reaches playback.
+    func testSpeechTestSucceedsWhenEncodedAudioIsDelivered() async {
+        let playback = MockPlayback()
+        let controller = VoiceConversationController(
+            capture: MockCapture(permissionGranted: true),
+            playback: playback,
+            gateway: MockGateway(deliversEncodedAudio: true),
+            submit: { _ in true },
+            interrupt: {}
+        )
+
+        let result = await controller.runSpeechTest(text: "test")
+
+        XCTAssertTrue(result.passed)
+        XCTAssertEqual(playback.intentAtLastStart, .standalonePlayback)
+    }
+
     func testConversationSpeechClaimsConversationPlaybackOwnership() async {
         let playback = MockPlayback()
         let controller = VoiceConversationController(
@@ -1969,6 +1988,9 @@ private final class MockGateway: VoiceGatewayService {
     /// the matching start control), mirroring a streaming provider that is
     /// actually producing speech.
     let deliversPCM: Bool
+    /// When true, opening a stream immediately delivers whole-file encoded
+    /// audio, mirroring the whole-file fallback route.
+    let deliversEncodedAudio: Bool
     private(set) var transcriptionCount = 0
     private(set) var stream: MockSpeechStream?
     private(set) var streams: [MockSpeechStream] = []
@@ -1978,13 +2000,15 @@ private final class MockGateway: VoiceGatewayService {
         transcriptionDelayNanoseconds: UInt64 = 0,
         startsPlaybackOnOpen: Bool = false,
         blocksFirstStreamAppend: Bool = false,
-        deliversPCM: Bool = false
+        deliversPCM: Bool = false,
+        deliversEncodedAudio: Bool = false
     ) {
         self.transcript = transcript
         self.transcriptionDelayNanoseconds = transcriptionDelayNanoseconds
         self.startsPlaybackOnOpen = startsPlaybackOnOpen
         self.blocksFirstStreamAppend = blocksFirstStreamAppend
         self.deliversPCM = deliversPCM
+        self.deliversEncodedAudio = deliversEncodedAudio
     }
     func transcribe(_ audio: VoiceCapturedAudio) async throws -> String {
         transcriptionCount += 1
@@ -1993,8 +2017,9 @@ private final class MockGateway: VoiceGatewayService {
     }
     func openSpeechStream(onStart: @escaping @MainActor (Double) throws -> Void, onPCM16: @escaping @MainActor (Data, Double) throws -> Void, onEncodedAudio: @escaping @MainActor (Data) throws -> Void) async throws -> VoiceSpeechStream {
         openCount += 1
-        if startsPlaybackOnOpen || deliversPCM { try onStart(24_000) }
+        if startsPlaybackOnOpen || deliversPCM || deliversEncodedAudio { try onStart(24_000) }
         if deliversPCM { try onPCM16(Data([0x01, 0x00, 0x02, 0x00]), 24_000) }
+        if deliversEncodedAudio { try onEncodedAudio(Data([0xFF, 0xF3, 0x40, 0xC4])) }
         let stream = MockSpeechStream(blocksAppend: blocksFirstStreamAppend && openCount == 1)
         self.stream = stream
         streams.append(stream)

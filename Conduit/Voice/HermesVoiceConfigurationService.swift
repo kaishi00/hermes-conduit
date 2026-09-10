@@ -256,17 +256,18 @@ final class HermesVoiceConfigurationService: ObservableObject {
             errorMessage = message
             return false
         }
+        let stored = VoiceConfigurationParser.storedValue(for: value, key: key)
         guard var config = try? await requester.requestJSON(path: profilePath("/api/config"), method: "GET", body: nil) else {
             errorMessage = "Could not load voice settings to save this change."
             return false
         }
-        Self.setNested(value, in: &config, dottedKey: key)
+        Self.setNested(stored, in: &config, dottedKey: key)
         do {
             _ = try await requester.requestJSON(
                 path: profilePath("/api/config"), method: "PUT",
                 body: ["config": config]
             )
-            snapshot.values[key] = value
+            snapshot.values[key] = stored
             if key == "stt.provider" { snapshot.selectedSTTProvider = value }
             if key == "tts.provider" { snapshot.selectedTTSProvider = value }
             return true
@@ -481,9 +482,9 @@ enum VoiceConfigurationParser {
         // not offered: upstream derives it from base_url when unset.
         if kind == .tts, id == "elevenlabs" {
             return [
-                VoiceTypedField(key: "tts.elevenlabs.voice_id", label: "Voice ID", help: "Voice from your ElevenLabs-compatible endpoint; built-in voices are suggestions.", kind: .text, defaultValue: ""),
+                VoiceTypedField(key: "tts.elevenlabs.voice_id", label: "Voice ID", help: "Voice ID from your ElevenLabs-compatible endpoint. Leave blank for the provider default.", kind: .text, defaultValue: ""),
                 VoiceTypedField(key: "tts.elevenlabs.model_id", label: "Model", help: "You can enter any installed model identifier.", kind: .text, defaultValue: ""),
-                VoiceTypedField(key: "tts.elevenlabs.base_url", label: "Base URL", help: Self.customEndpointHelp, kind: .text, defaultValue: "")
+                VoiceTypedField(key: "tts.elevenlabs.base_url", label: "Base URL", help: Self.customEndpointHelp("ElevenLabs"), kind: .text, defaultValue: "")
             ]
         }
 
@@ -507,7 +508,7 @@ enum VoiceConfigurationParser {
             }
             if id == "openai" || id == "nous" {
                 shared += [
-                    .init(key: "\(root).base_url", label: "Base URL", help: Self.customEndpointHelp, kind: .text, defaultValue: ""),
+                    .init(key: "\(root).base_url", label: "Base URL", help: Self.customEndpointHelp("OpenAI"), kind: .text, defaultValue: ""),
                     .init(key: "\(root).speed", label: "Speed", help: "Speech rate multiplier. Hermes accepts 0.25–4.0.", kind: .decimal, defaultValue: "1", numericRange: 0.25...4.0)
                 ]
             }
@@ -530,33 +531,54 @@ enum VoiceConfigurationParser {
 
     /// Shared help copy for provider endpoint overrides: this redirects the
     /// provider Hermes calls, never Conduit's own dashboard connection.
-    private static let customEndpointHelp = "Optional OpenAI-compatible speech endpoint Hermes should call (for example https://your-host/v1). Leave blank for the provider default. This does not change the server Conduit connects to."
+    private static func customEndpointHelp(_ provider: String) -> String {
+        "Optional \(provider)-compatible speech endpoint Hermes should call (for example https://your-host/v1). Leave blank for the provider default. This does not change the server Conduit connects to."
+    }
 
-    /// Save-time validation from the typed field metadata: a `.decimal`
-    /// field with a `numericRange` must parse and stay inside the range.
-    /// Empty values clear the override and always validate; valid values are
-    /// never rewritten into a default.
-    static func validationMessage(for value: String, key: String) -> String? {
+    private static func decimalField(for key: String) -> VoiceTypedField? {
         let parts = key.split(separator: ".").map(String.init)
         guard parts.count >= 2 else { return nil }
         let kind: VoiceProviderDescriptor.Kind = parts[0] == "stt" ? .stt : .tts
-        let provider = parts[1]
-        var candidateIDs = [provider]
-        if provider == "openai" { candidateIDs.append("nous") }
-        guard let field = candidateIDs.lazy.compactMap({ candidateID in
-            typedFields(id: candidateID, kind: kind).first(where: { $0.key == key })
-        }).first,
+        return typedFields(id: String(parts[1]), kind: kind).first(where: { $0.key == key })
+    }
+
+    /// Save-time validation from the typed field metadata: a `.decimal`
+    /// field with a `numericRange` must parse and stay inside the range.
+    /// A ranged decimal rejects empty values because Conduit's config
+    /// transport can only write strings — it cannot remove a key — and
+    /// Hermes parses the stored value with `float()`, where `""` is an
+    /// error rather than "unset" (text fields keep the clear-by-empty
+    /// contract: upstream treats empty endpoint overrides as unset).
+    /// Valid values are never rewritten into a default.
+    static func validationMessage(for value: String, key: String) -> String? {
+        guard let field = decimalField(for: key),
             case .decimal = field.kind,
             let range = field.numericRange else { return nil }
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        guard let parsed = Double(trimmed) else {
+        let normalized = normalizedNumber(value)
+        guard !normalized.isEmpty else {
+            return "\(field.label) needs a number between \(range.lowerBound) and \(range.upperBound) (use 1 for the default rate)."
+        }
+        guard let parsed = Double(normalized) else {
             return "\(field.label) must be a number between \(range.lowerBound) and \(range.upperBound)."
         }
         guard range.contains(parsed) else {
             return "\(field.label) must be between \(range.lowerBound) and \(range.upperBound); Hermes rejects values outside that range."
         }
         return nil
+    }
+
+    /// The canonical form to persist for a value: decimal fields are stored
+    /// with "." separators because Hermes parses them with `float()`, and
+    /// iOS decimal pads submit the device locale's separator. Everything
+    /// else passes through unchanged.
+    static func storedValue(for value: String, key: String) -> String {
+        guard let field = decimalField(for: key),
+            case .decimal = field.kind else { return value }
+        return normalizedNumber(value)
+    }
+
+    private static func normalizedNumber(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: ",", with: ".")
     }
 
     private static func providerIDs(_ schema: [String: Any]?) -> (stt: [String], tts: [String]) {

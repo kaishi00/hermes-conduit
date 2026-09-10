@@ -631,17 +631,73 @@ final class HermesVoiceConfigurationServiceTests: XCTestCase {
         XCTAssertFalse(fields.contains { $0.key == "tts.openai.instruction" })
     }
 
-    /// Upstream clamps speed to [0.25, 4.0]. Conduit rejects out-of-range
-    /// values instead of silently rewriting them, and clearing (empty
-    /// string) always validates.
+    /// Upstream clamps speed to [0.25, 4.0] and parses it with float(), so
+    /// Conduit rejects out-of-range values instead of silently rewriting
+    /// them, accepts the comma decimal separator iOS decimal pads submit in
+    /// comma locales, and rejects clearing: Conduit's config transport can
+    /// only write strings, and an empty speed is an upstream parse error,
+    /// not "unset" (unlike base_url, which upstream treats as unset when
+    /// empty).
     func testOpenAISpeedValidationRejectsValuesOutsideUpstreamRange() {
         XCTAssertNil(VoiceConfigurationParser.validationMessage(for: "1", key: "tts.openai.speed"))
         XCTAssertNil(VoiceConfigurationParser.validationMessage(for: "0.25", key: "tts.openai.speed"))
         XCTAssertNil(VoiceConfigurationParser.validationMessage(for: "4.0", key: "tts.openai.speed"))
-        XCTAssertNil(VoiceConfigurationParser.validationMessage(for: "", key: "tts.openai.speed"))
+        XCTAssertNil(VoiceConfigurationParser.validationMessage(for: "0,25", key: "tts.openai.speed"))
+        XCTAssertNil(VoiceConfigurationParser.validationMessage(for: "", key: "tts.openai.base_url"))
+        XCTAssertNotNil(VoiceConfigurationParser.validationMessage(for: "", key: "tts.openai.speed"))
         XCTAssertNotNil(VoiceConfigurationParser.validationMessage(for: "0.1", key: "tts.openai.speed"))
         XCTAssertNotNil(VoiceConfigurationParser.validationMessage(for: "4.5", key: "tts.openai.speed"))
+        XCTAssertNotNil(VoiceConfigurationParser.validationMessage(for: "0,1", key: "tts.openai.speed"))
         XCTAssertNotNil(VoiceConfigurationParser.validationMessage(for: "fast", key: "tts.openai.speed"))
+    }
+
+    /// Clearing speed must be refused before any config write: the write
+    /// path cannot delete the key, and Hermes cannot parse an empty speed.
+    func testClearingOpenAISpeedIsRejectedBeforeConfigWrite() async {
+        let requester = MockVoiceConfigurationRequester()
+        requester.routes = [
+            "/api/config": [
+                "stt": ["enabled": true, "provider": "openai"],
+                "tts": ["provider": "openai", "openai": ["speed": 1.5]]
+            ],
+            "/api/tools/toolsets/stt/config": ["providers": []],
+            "/api/tools/toolsets/tts/config": ["providers": []]
+        ]
+        let service = HermesVoiceConfigurationService(requester: requester, profile: "default")
+        await service.reload()
+
+        let saved = await service.save(value: "", for: "tts.openai.speed")
+
+        XCTAssertFalse(saved)
+        XCTAssertNotNil(service.errorMessage)
+        XCTAssertFalse(requester.recorded.contains { $0.method == "PUT" && $0.path == "/api/config" })
+        XCTAssertEqual(service.snapshot.values["tts.openai.speed"], "1.5")
+    }
+
+    /// Comma-decimal input from locale decimal pads is canonicalized to the
+    /// "." form Hermes parses with float().
+    func testSavingCommaDecimalSpeedIsCanonicalizedForHermes() async throws {
+        let requester = MockVoiceConfigurationRequester()
+        requester.routes = [
+            "/api/config": [
+                "stt": ["enabled": true, "provider": "openai"],
+                "tts": ["provider": "openai"]
+            ],
+            "/api/tools/toolsets/stt/config": ["providers": []],
+            "/api/tools/toolsets/tts/config": ["providers": []]
+        ]
+        let service = HermesVoiceConfigurationService(requester: requester, profile: "default")
+        await service.reload()
+
+        let saved = await service.save(value: "1,5", for: "tts.openai.speed")
+
+        XCTAssertTrue(saved)
+        let configPUT = requester.recorded.first { $0.method == "PUT" && $0.path == "/api/config" }
+        let openai = try XCTUnwrap(
+            ((configPUT?.body?["config"] as? [String: Any])?["tts"] as? [String: Any])?["openai"] as? [String: Any]
+        )
+        XCTAssertEqual(openai["speed"] as? String, "1.5")
+        XCTAssertEqual(service.snapshot.values["tts.openai.speed"], "1.5")
     }
 
     /// The save path must refuse an out-of-range speed before any config
@@ -800,6 +856,34 @@ final class HermesVoiceConfigurationServiceTests: XCTestCase {
             XCTAssertEqual(VoiceConfigurationParser.catalogDescriptor(id: id, kind: .tts)?.supportsStreaming, true, id)
         }
         XCTAssertEqual(VoiceConfigurationParser.catalogDescriptor(id: "elevenlabs", kind: .stt)?.supportsStreaming, false)
+    }
+
+    /// Profiles configured before the ElevenLabs key fix may still carry the
+    /// legacy `voice`/`model`/`language` values. They stay visible in the
+    /// parsed values (so nothing is silently dropped), but no editor is
+    /// offered because upstream never reads them.
+    func testLegacyElevenLabsKeysRemainParsedWithoutEditors() {
+        let snapshot = VoiceConfigurationParser.parse(
+            profile: "default", schema: nil,
+            config: [
+                "stt": ["enabled": true, "provider": "local"],
+                "tts": [
+                    "provider": "elevenlabs",
+                    "elevenlabs": ["voice": "legacy-voice", "model": "legacy-model", "voice_id": "current-voice"]
+                ]
+            ],
+            sttReadiness: ["providers": []],
+            ttsReadiness: ["providers": [["name": "ElevenLabs", "tts_provider": "elevenlabs", "status": "ready", "is_active": true]]],
+            environment: [:],
+            ttsToolsetConfigAvailable: true
+        )
+
+        XCTAssertEqual(snapshot.values["tts.elevenlabs.voice"], "legacy-voice")
+        XCTAssertEqual(snapshot.values["tts.elevenlabs.model"], "legacy-model")
+        let elevenlabs = snapshot.ttsProviders.first { $0.descriptor.id == "elevenlabs" }
+        XCTAssertFalse(elevenlabs?.fields.contains { $0.key == "tts.elevenlabs.voice" } ?? true)
+        XCTAssertFalse(elevenlabs?.fields.contains { $0.key == "tts.elevenlabs.model" } ?? true)
+        XCTAssertTrue(elevenlabs?.fields.contains { $0.key == "tts.elevenlabs.voice_id" } ?? false)
     }
 }
 

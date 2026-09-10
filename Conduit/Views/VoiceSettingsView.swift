@@ -553,13 +553,13 @@ private struct VoiceProviderFieldEditor: View {
                 TextField(field.label, text: $value)
                     .keyboardType(.decimalPad)
                     .textFieldStyle(.roundedBorder)
-                    .onSubmit { Task { await save(value) } }
+                    .onSubmit(submitIfValid)
             case .text:
                 TextField(field.label, text: $value)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .textFieldStyle(.roundedBorder)
-                    .onSubmit { Task { await save(value) } }
+                    .onSubmit(submitIfValid)
             }
             if let validationMessage {
                 Text(validationMessage)
@@ -579,5 +579,11 @@ private struct VoiceProviderFieldEditor: View {
             }
         }
         .padding(.vertical, 3)
+    }
+
+    /// Keyboard submit must respect the same guard as the Save button.
+    private func submitIfValid() {
+        guard validationMessage == nil else { return }
+        Task { await save(value) }
     }
 }
