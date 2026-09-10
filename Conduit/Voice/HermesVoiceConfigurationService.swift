@@ -261,13 +261,14 @@ final class HermesVoiceConfigurationService: ObservableObject {
             errorMessage = "Could not load voice settings to save this change."
             return false
         }
-        // Clearing a text field removes the override key instead of writing
-        // an empty string: Hermes reads many provider keys with
-        // `config.get(key, default)`, which uses the default only when the
-        // key is ABSENT, so a stored "" would be used verbatim and break
-        // synthesis. Removal is behavior-identical for keys upstream treats
-        // as unset when empty (the endpoint overrides).
-        if stored.isEmpty {
+        // One clear decision, derived from trimmed input, drives both the
+        // config mutation and the snapshot: whitespace-only input means the
+        // user is clearing the override, never persisting blank text.
+        // Clearing REMOVES the override key: Hermes reads provider keys
+        // like `config.get(key, default)`, which applies the default only
+        // when the key is ABSENT, so a stored "" would be used verbatim.
+        let clears = stored.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        if clears {
             Self.removeNested(in: &config, dottedKey: key)
         } else {
             Self.setNested(stored, in: &config, dottedKey: key)
@@ -279,7 +280,7 @@ final class HermesVoiceConfigurationService: ObservableObject {
             )
             // The snapshot only reflects a confirmed write; a failed PUT
             // must leave it matching the server.
-            if stored.isEmpty {
+            if clears {
                 snapshot.values.removeValue(forKey: key)
             } else {
                 snapshot.values[key] = stored
@@ -541,7 +542,7 @@ enum VoiceConfigurationParser {
             if id == "openai" || id == "nous" {
                 shared += [
                     .init(key: "\(root).base_url", label: "Base URL", help: Self.customEndpointHelp("OpenAI"), kind: .text, defaultValue: ""),
-                    .init(key: "\(root).speed", label: "Speed", help: "Speech rate multiplier. Hermes accepts 0.25–4.0.", kind: .decimal, defaultValue: "1", numericRange: 0.25...4.0)
+                    .init(key: "\(root).speed", label: "Speed", help: "Speech rate multiplier (0.25–4.0); Hermes clamps this range. Leave blank to remove the override. Note: applies to Hermes' whole-file synthesis — upstream's current PCM streaming path does not use this setting.", kind: .decimal, defaultValue: "1", numericRange: 0.25...4.0)
                 ]
             }
         }
@@ -576,36 +577,38 @@ enum VoiceConfigurationParser {
 
     /// Save-time validation from the typed field metadata: a `.decimal`
     /// field with a `numericRange` must parse and stay inside the range.
-    /// A ranged decimal rejects empty because Hermes parses the stored
-    /// value with `float()`, where `""` is an error; Conduit refuses
-    /// rather than silently removing a numeric override — save `1` for
-    /// the default rate. Text fields keep the clear-by-empty contract:
-    /// saving empty removes the override key, which upstream treats as
-    /// "use the default". Valid values are never rewritten into a default.
+    /// Empty/whitespace input clears the override — upstream reads the
+    /// stored speed with `float(config.get("speed", default))`, so a
+    /// REMOVED key restores the default while an empty string would be a
+    /// parse error. For non-empty values, note upstream CLAMPS OpenAI
+    /// speech speed into the range; Conduit chooses to reject values it
+    /// would otherwise silently let upstream rewrite. Text fields always
+    /// validate; saving empty removes the override key.
     static func validationMessage(for value: String, key: String) -> String? {
         guard let field = decimalField(for: key),
             case .decimal = field.kind,
             let range = field.numericRange else { return nil }
         let normalized = normalizedNumber(value)
-        guard !normalized.isEmpty else {
-            return "\(field.label) needs a number between \(range.lowerBound) and \(range.upperBound) (use 1 for the default rate)."
-        }
+        guard !normalized.isEmpty else { return nil }
         guard let parsed = Double(normalized) else {
-            return "\(field.label) must be a number between \(range.lowerBound) and \(range.upperBound)."
+            return "\(field.label) must be a number between \(range.lowerBound) and \(range.upperBound), or leave blank to remove the override."
         }
         guard range.contains(parsed) else {
-            return "\(field.label) must be between \(range.lowerBound) and \(range.upperBound); Hermes rejects values outside that range."
+            return "\(field.label) must be between \(range.lowerBound) and \(range.upperBound). Hermes clamps values into this range; Conduit refuses them instead of saving something upstream would silently rewrite."
         }
         return nil
     }
 
-    /// The canonical form to persist for a value: decimal fields are stored
-    /// with "." separators because Hermes parses them with `float()`, and
-    /// iOS decimal pads submit the device locale's separator. Everything
-    /// else passes through unchanged.
+    /// The canonical form to persist for a value: RANGED decimal fields
+    /// (the OpenAI speed override) are stored with "." separators because
+    /// Hermes parses them with `float()`, and iOS decimal pads submit the
+    /// device locale's separator. Unranged decimals and text fields pass
+    /// through unchanged — this deliberately does not rewrite unrelated
+    /// values such as a StepFun sample rate of "24,000".
     static func storedValue(for value: String, key: String) -> String {
         guard let field = decimalField(for: key),
-            case .decimal = field.kind else { return value }
+            case .decimal = field.kind,
+            field.numericRange != nil else { return value }
         return normalizedNumber(value)
     }
 

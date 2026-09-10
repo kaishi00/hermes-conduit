@@ -501,8 +501,13 @@ struct VoiceSettingsView: View {
 
     private func save(value: String, field: VoiceTypedField) async {
         savingField = field.key
-        let saved = await service.save(value: value, for: field.key)
-        if !saved { values[field.key] = service.snapshot.values[field.key] ?? field.defaultValue }
+        _ = await service.save(value: value, for: field.key)
+        // Re-sync the draft with the confirmed server state either way: a
+        // canonicalized value ("1,5" → "1.5") or a removed override
+        // (blank → the field default) is what the editor should show, and
+        // a failed save restores the server value so the field never
+        // claims an unpersisted edit.
+        values[field.key] = service.snapshot.values[field.key] ?? field.defaultValue
         savingField = nil
     }
 
@@ -554,17 +559,20 @@ private struct VoiceProviderFieldEditor: View {
                     .keyboardType(.decimalPad)
                     .textFieldStyle(.roundedBorder)
                     .onSubmit(submitIfValid)
+                    .accessibilityHint(Text(validationMessage ?? field.help))
             case .text:
                 TextField(field.label, text: $value)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .textFieldStyle(.roundedBorder)
                     .onSubmit(submitIfValid)
+                    .accessibilityHint(Text(validationMessage ?? field.help))
             }
             if let validationMessage {
                 Text(validationMessage)
                     .font(.caption)
                     .foregroundStyle(.orange)
+                    .accessibilityLabel(Text("Cannot save \(field.label): \(validationMessage)"))
             }
             HStack {
                 Text(field.help).font(.caption).foregroundStyle(.secondary)
@@ -575,6 +583,7 @@ private struct VoiceProviderFieldEditor: View {
                     Button(isSaving ? "Saving…" : "Save") { Task { await save(value) } }
                         .font(.caption.weight(.semibold))
                         .disabled(isSaving || validationMessage != nil)
+                        .accessibilityHint(validationMessage != nil ? Text("Cannot save. \(validationMessage!)") : Text(""))
                 }
             }
         }

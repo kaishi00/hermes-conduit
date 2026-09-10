@@ -21,10 +21,13 @@ The OpenAI TTS provider accepts two endpoint overrides:
   **Hermes** calls; it does not change the server Conduit connects to, and it
   is not the Hermes dashboard URL. Clearing the field removes the override
   key from the profile config, returning the provider to its default.
-- `tts.openai.speed` — speech rate multiplier; Hermes accepts 0.25–4.0 and
-  Conduit rejects values outside that range rather than rewriting them.
-  Clearing the field is refused (Hermes cannot parse an empty speed);
-  save `1` to restore the default rate.
+- `tts.openai.speed` — speech rate multiplier. Upstream clamps values into
+  0.25–4.0; Conduit validates and refuses out-of-range or malformed input
+  rather than saving something upstream would silently rewrite, and accepts
+  comma decimals (`1,5` is stored as `1.5`). Clearing the field removes the
+  override key, restoring the upstream/global default. Note: this setting
+  applies to Hermes' whole-file OpenAI synthesis — upstream's current PCM
+  streaming implementation does not consume it.
 
 The ElevenLabs provider exposes the analogous `tts.elevenlabs.base_url`
 (applied by Hermes to both whole-file and streaming synthesis); its

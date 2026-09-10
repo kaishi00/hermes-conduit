@@ -816,6 +816,24 @@ final class VoiceConversationControllerTests: XCTestCase {
         XCTAssertEqual(playback.intentAtLastStart, .standalonePlayback)
     }
 
+    /// A PCM callback whose payload the playback service cannot accept
+    /// (an unaligned single byte schedules zero bytes) is NOT delivered
+    /// speech: the test must fail instead of passing on a fired callback.
+    func testSpeechTestFailsWhenOnlyUnalignedPCMIsDelivered() async {
+        let playback = MockPlayback()
+        let controller = VoiceConversationController(
+            capture: MockCapture(permissionGranted: true),
+            playback: playback,
+            gateway: MockGateway(deliversPartialPCM: true),
+            submit: { _ in true },
+            interrupt: {}
+        )
+
+        let result = await controller.runSpeechTest(text: "test")
+
+        XCTAssertFalse(result.passed)
+    }
+
     func testConversationSpeechClaimsConversationPlaybackOwnership() async {
         let playback = MockPlayback()
         let controller = VoiceConversationController(
@@ -1991,6 +2009,10 @@ private final class MockGateway: VoiceGatewayService {
     /// When true, opening a stream immediately delivers whole-file encoded
     /// audio, mirroring the whole-file fallback route.
     let deliversEncodedAudio: Bool
+    /// When true, opening a stream delivers a single unaligned PCM byte:
+    /// the playback service accepts zero bytes, so nothing was actually
+    /// scheduled for playback.
+    let deliversPartialPCM: Bool
     private(set) var transcriptionCount = 0
     private(set) var stream: MockSpeechStream?
     private(set) var streams: [MockSpeechStream] = []
@@ -2001,7 +2023,8 @@ private final class MockGateway: VoiceGatewayService {
         startsPlaybackOnOpen: Bool = false,
         blocksFirstStreamAppend: Bool = false,
         deliversPCM: Bool = false,
-        deliversEncodedAudio: Bool = false
+        deliversEncodedAudio: Bool = false,
+        deliversPartialPCM: Bool = false
     ) {
         self.transcript = transcript
         self.transcriptionDelayNanoseconds = transcriptionDelayNanoseconds
@@ -2009,6 +2032,7 @@ private final class MockGateway: VoiceGatewayService {
         self.blocksFirstStreamAppend = blocksFirstStreamAppend
         self.deliversPCM = deliversPCM
         self.deliversEncodedAudio = deliversEncodedAudio
+        self.deliversPartialPCM = deliversPartialPCM
     }
     func transcribe(_ audio: VoiceCapturedAudio) async throws -> String {
         transcriptionCount += 1
@@ -2017,9 +2041,10 @@ private final class MockGateway: VoiceGatewayService {
     }
     func openSpeechStream(onStart: @escaping @MainActor (Double) throws -> Void, onPCM16: @escaping @MainActor (Data, Double) throws -> Void, onEncodedAudio: @escaping @MainActor (Data) throws -> Void) async throws -> VoiceSpeechStream {
         openCount += 1
-        if startsPlaybackOnOpen || deliversPCM || deliversEncodedAudio { try onStart(24_000) }
+        if startsPlaybackOnOpen || deliversPCM || deliversEncodedAudio || deliversPartialPCM { try onStart(24_000) }
         if deliversPCM { try onPCM16(Data([0x01, 0x00, 0x02, 0x00]), 24_000) }
         if deliversEncodedAudio { try onEncodedAudio(Data([0xFF, 0xF3, 0x40, 0xC4])) }
+        if deliversPartialPCM { try onPCM16(Data([0x01]), 24_000) }
         let stream = MockSpeechStream(blocksAppend: blocksFirstStreamAppend && openCount == 1)
         self.stream = stream
         streams.append(stream)

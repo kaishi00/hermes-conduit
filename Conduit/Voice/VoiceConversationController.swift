@@ -471,8 +471,12 @@ final class VoiceConversationController: ObservableObject {
                 },
                 onPCM16: { [weak self] data, rate in
                     guard let self else { return }
-                    deliveredAudio = true
-                    _ = try self.playback.enqueuePCM16(data, sampleRate: rate)
+                    // Only PCM the playback service actually accepted and
+                    // scheduled counts as delivered speech — an unaligned
+                    // or empty chunk schedules zero bytes and must not
+                    // turn the provider test into a false pass.
+                    let acceptedBytes = try self.playback.enqueuePCM16(data, sampleRate: rate)
+                    if acceptedBytes > 0 { deliveredAudio = true }
                 },
                 onEncodedAudio: { [weak self] data in
                     guard let self else { return }

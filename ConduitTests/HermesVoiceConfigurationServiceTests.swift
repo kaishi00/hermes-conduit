@@ -631,34 +631,36 @@ final class HermesVoiceConfigurationServiceTests: XCTestCase {
         XCTAssertFalse(fields.contains { $0.key == "tts.openai.instruction" })
     }
 
-    /// Upstream clamps speed to [0.25, 4.0] and parses it with float(), so
-    /// Conduit rejects out-of-range values instead of silently rewriting
-    /// them, accepts the comma decimal separator iOS decimal pads submit in
-    /// comma locales, and rejects clearing: Conduit's config transport can
-    /// only write strings, and an empty speed is an upstream parse error,
-    /// not "unset" (unlike base_url, which upstream treats as unset when
-    /// empty).
-    func testOpenAISpeedValidationRejectsValuesOutsideUpstreamRange() {
+    /// Upstream clamps OpenAI speech speed into [0.25, 4.0]
+    /// (`max(0.25, min(4.0, speed))`) and reads the stored value with
+    /// `float(config.get("speed", default))`, so an absent key restores
+    /// the default while a stored empty string would be a parse error.
+    /// Conduit therefore accepts empty/whitespace as a clear (removal),
+    /// accepts comma-decimal input, and rejects malformed or out-of-range
+    /// non-empty values instead of silently letting upstream clamp them.
+    func testOpenAISpeedValidationAcceptsClearAndRejectsInvalidValues() {
         XCTAssertNil(VoiceConfigurationParser.validationMessage(for: "1", key: "tts.openai.speed"))
         XCTAssertNil(VoiceConfigurationParser.validationMessage(for: "0.25", key: "tts.openai.speed"))
         XCTAssertNil(VoiceConfigurationParser.validationMessage(for: "4.0", key: "tts.openai.speed"))
         XCTAssertNil(VoiceConfigurationParser.validationMessage(for: "0,25", key: "tts.openai.speed"))
+        XCTAssertNil(VoiceConfigurationParser.validationMessage(for: "", key: "tts.openai.speed"))
+        XCTAssertNil(VoiceConfigurationParser.validationMessage(for: "   ", key: "tts.openai.speed"))
         XCTAssertNil(VoiceConfigurationParser.validationMessage(for: "", key: "tts.openai.base_url"))
-        XCTAssertNotNil(VoiceConfigurationParser.validationMessage(for: "", key: "tts.openai.speed"))
         XCTAssertNotNil(VoiceConfigurationParser.validationMessage(for: "0.1", key: "tts.openai.speed"))
         XCTAssertNotNil(VoiceConfigurationParser.validationMessage(for: "4.5", key: "tts.openai.speed"))
         XCTAssertNotNil(VoiceConfigurationParser.validationMessage(for: "0,1", key: "tts.openai.speed"))
         XCTAssertNotNil(VoiceConfigurationParser.validationMessage(for: "fast", key: "tts.openai.speed"))
     }
 
-    /// Clearing speed must be refused before any config write: the write
-    /// path cannot delete the key, and Hermes cannot parse an empty speed.
-    func testClearingOpenAISpeedIsRejectedBeforeConfigWrite() async {
+    /// Clearing speed (empty or whitespace-only) removes the override key
+    /// from the profile config — upstream's `.get("speed", default)`
+    /// fallback then applies — and the snapshot no longer carries the key.
+    func testClearingOpenAISpeedRemovesTheOverride() async throws {
         let requester = MockVoiceConfigurationRequester()
         requester.routes = [
             "/api/config": [
                 "stt": ["enabled": true, "provider": "openai"],
-                "tts": ["provider": "openai", "openai": ["speed": 1.5]]
+                "tts": ["provider": "openai", "openai": ["speed": 1.5, "voice": "alloy"]]
             ],
             "/api/tools/toolsets/stt/config": ["providers": []],
             "/api/tools/toolsets/tts/config": ["providers": []]
@@ -666,12 +668,31 @@ final class HermesVoiceConfigurationServiceTests: XCTestCase {
         let service = HermesVoiceConfigurationService(requester: requester, profile: "default")
         await service.reload()
 
-        let saved = await service.save(value: "", for: "tts.openai.speed")
+        let saved = await service.save(value: "  ", for: "tts.openai.speed")
 
-        XCTAssertFalse(saved)
-        XCTAssertNotNil(service.errorMessage)
-        XCTAssertFalse(requester.recorded.contains { $0.method == "PUT" && $0.path == "/api/config" })
-        XCTAssertEqual(service.snapshot.values["tts.openai.speed"], "1.5")
+        XCTAssertTrue(saved)
+        let configPUT = requester.recorded.first { $0.method == "PUT" && $0.path == "/api/config" }
+        let openai = try XCTUnwrap(
+            ((configPUT?.body?["config"] as? [String: Any])?["tts"] as? [String: Any])?["openai"] as? [String: Any]
+        )
+        XCTAssertNil(openai["speed"])
+        XCTAssertEqual(openai["voice"] as? String, "alloy")
+        XCTAssertNil(service.snapshot.values["tts.openai.speed"])
+    }
+
+    /// Locale canonicalization is scoped to the validated ranged decimal:
+    /// an unrelated non-ranged decimal value such as a StepFun sample rate
+    /// of "24,000" must pass through untouched.
+    func testCommaCanonicalizationDoesNotRewriteUnrangedDecimalFields() {
+        XCTAssertEqual(
+            VoiceConfigurationParser.storedValue(for: "1,5", key: "tts.openai.speed"),
+            "1.5"
+        )
+        XCTAssertEqual(
+            VoiceConfigurationParser.storedValue(for: "24,000", key: "tts.stepfun.sample_rate"),
+            "24,000"
+        )
+        XCTAssertNil(VoiceConfigurationParser.validationMessage(for: "24,000", key: "tts.stepfun.sample_rate"))
     }
 
     /// Comma-decimal input from locale decimal pads is canonicalized to the
@@ -788,7 +809,8 @@ final class HermesVoiceConfigurationServiceTests: XCTestCase {
         await service.reload()
         XCTAssertEqual(service.snapshot.values["tts.openai.base_url"], "https://tts.example.com/v1")
 
-        let saved = await service.save(value: "", for: "tts.openai.base_url")
+        // Whitespace-only input is a clear, never a persisted override.
+        let saved = await service.save(value: "   ", for: "tts.openai.base_url")
 
         XCTAssertTrue(saved)
         let configPUT = requester.recorded.first { $0.method == "PUT" && $0.path == "/api/config" }
