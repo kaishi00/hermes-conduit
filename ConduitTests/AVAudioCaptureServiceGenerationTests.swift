@@ -81,7 +81,7 @@ final class AVAudioCaptureServiceGenerationTests: XCTestCase {
         // A full second of loud, unmistakable audio arrives late — captured
         // by tap A while it was still installed, surfacing only after B is
         // live.
-        let stale = constantBuffer(sampleRate: 48_000, frameCount: 48_000, amplitude: 0.9)
+        let stale = try constantBuffer(sampleRate: 48_000, frameCount: 48_000, amplitude: 0.9)
         service.consume(stale, generation: generationA)
 
         XCTAssertTrue(
@@ -94,7 +94,7 @@ final class AVAudioCaptureServiceGenerationTests: XCTestCase {
         )
 
         // The live generation's frame is admitted normally: 20 ms at 48 kHz.
-        let current = constantBuffer(sampleRate: 48_000, frameCount: 960, amplitude: 0.25)
+        let current = try constantBuffer(sampleRate: 48_000, frameCount: 960, amplitude: 0.25)
         service.consume(current, generation: generationB)
 
         let audio = try service.finishUtterance()
@@ -159,12 +159,17 @@ final class AVAudioCaptureServiceGenerationTests: XCTestCase {
         sampleRate: Double,
         frameCount: AVAudioFrameCount,
         amplitude: Float
-    ) -> AVAudioPCMBuffer {
-        let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1)!
-        let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount)!
+    ) throws -> AVAudioPCMBuffer {
+        let format = try XCTUnwrap(
+            AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1)
+        )
+        let buffer = try XCTUnwrap(
+            AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount)
+        )
         buffer.frameLength = frameCount
+        let channel = try XCTUnwrap(buffer.floatChannelData?[0])
         for index in 0..<Int(frameCount) {
-            buffer.floatChannelData![0][index] = amplitude
+            channel[index] = amplitude
         }
         return buffer
     }

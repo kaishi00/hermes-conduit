@@ -967,6 +967,103 @@ final class VoiceConversationControllerTests: XCTestCase {
         XCTAssertTrue(submitted.isEmpty, "conversational VAD must not run during a provider test")
     }
 
+    func testLevelEventsDoNotRepublishMeterWhileTranscribing() async {
+        let capture = MockCapture(permissionGranted: true)
+        // Holding the gateway transcription open keeps .transcribing active
+        // for a deterministic margin: the gate is observed while it is the
+        // live state, not after the flow has moved on.
+        let gateway = MockGateway(transcript: "held", transcriptionDelayNanoseconds: 600_000_000)
+        let controller = VoiceConversationController(
+            capture: capture,
+            playback: MockPlayback(),
+            gateway: gateway,
+            submit: { _ in true },
+            interrupt: {}
+        )
+        await controller.startListening()
+        let generation = capture.captureGeneration
+
+        // Live listening publishes the meter.
+        capture.emit(level: 0.4)
+        try? await Task.sleep(nanoseconds: 80_000_000)
+        XCTAssertEqual(controller.microphoneLevel, 0.4, accuracy: 0.0001)
+
+        // Speech onset then a future-dated trailing-silence gap finishes the
+        // utterance and moves the controller into .transcribing.
+        let start = Date()
+        let samples: [(Float, TimeInterval)] = [
+            (0.003, 0.00), (0.003, 0.03), (0.004, 0.06), (0.004, 0.09),
+            (0.018, 0.12), (0.026, 0.17), (0.034, 0.22),
+            (0.004, 1.60), (0.003, 1.65)
+        ]
+        for (level, offset) in samples {
+            controller.ingestAudioLevel(level, at: start.addingTimeInterval(offset))
+        }
+        let reachedTranscribing = await waitForState(.transcribing, of: controller)
+        XCTAssertTrue(
+            reachedTranscribing,
+            "the utterance must reach transcription while the gateway holds it open"
+        )
+        XCTAssertEqual(controller.microphoneLevel, 0, accuracy: 0.0001, "the completed utterance resets the meter")
+
+        // A same-generation level surfacing mid-transcription must be
+        // ignored: the meter stays reset.
+        capture.emit(.level(0.7, date: Date(), generation: generation))
+        try? await Task.sleep(nanoseconds: 80_000_000)
+        XCTAssertEqual(controller.microphoneLevel, 0, accuracy: 0.0001, "transcribing must not republish the mic meter")
+
+        // Let the held transcription finish so the flow ends cleanly.
+        try? await Task.sleep(nanoseconds: 700_000_000)
+        XCTAssertEqual(controller.state, .thinking)
+    }
+
+    func testProviderTestLevelEventsDoNotRepublishMeterWhileTranscribing() async {
+        let capture = MockCapture(permissionGranted: true)
+        let gateway = MockGateway(transcript: "held", transcriptionDelayNanoseconds: 600_000_000)
+        let controller = VoiceConversationController(
+            capture: capture,
+            playback: MockPlayback(),
+            gateway: gateway,
+            submit: { _ in true },
+            interrupt: {}
+        )
+
+        let testTask = Task { await controller.runTranscriptionTest(duration: 0.5) }
+        let reachedRecording = await waitForState(.listening, of: controller)
+        XCTAssertTrue(reachedRecording, "the ASR test must be recording")
+        capture.emit(level: 0.4)
+        try? await Task.sleep(nanoseconds: 80_000_000)
+        XCTAssertEqual(controller.microphoneLevel, 0.4, accuracy: 0.0001, "Record ASR recording still publishes the meter")
+
+        // The recording window elapses into the held transcription.
+        let reachedProviderTranscribing = await waitForState(.transcribing, of: controller)
+        XCTAssertTrue(reachedProviderTranscribing)
+        XCTAssertEqual(controller.microphoneLevel, 0, accuracy: 0.0001, "entering transcription resets the meter")
+        capture.emit(.level(0.8, date: Date(), generation: capture.captureGeneration))
+        try? await Task.sleep(nanoseconds: 80_000_000)
+        XCTAssertEqual(controller.microphoneLevel, 0, accuracy: 0.0001, "provider transcription must not republish the mic meter")
+
+        let result = await testTask.value
+        XCTAssertTrue(result.passed)
+        XCTAssertEqual(controller.microphoneLevel, 0, accuracy: 0.0001)
+    }
+
+    /// Bounded deterministic wait for the controller to reach a state: the
+    /// transitions themselves are driven by held test seams (future-dated
+    /// VAD events, a gateway that holds transcription open), never by
+    /// wall-clock hope.
+    private func waitForState(
+        _ target: VoiceConversationState,
+        of controller: VoiceConversationController,
+        timeoutSeconds: Double = 3
+    ) async -> Bool {
+        let deadline = Date().addingTimeInterval(timeoutSeconds)
+        while controller.state != target, Date() < deadline {
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
+        return controller.state == target
+    }
+
     func testStaleCaptureLevelEventsDoNotCrossCaptureGenerations() async {
         let capture = MockCapture(permissionGranted: true)
         let gateway = MockGateway(transcript: "fresh")
