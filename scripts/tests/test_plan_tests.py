@@ -390,16 +390,18 @@ class UiShardingTests(unittest.TestCase):
             self.assertEqual(matrix["include"][0]["classes"], "LoneUITests")
 
     def test_ui_job_ceiling_covers_worst_in_script_path(self):
-        # The reachable worst path, derived from the runner's invocation
-        # graph (not from the formula): batched attempt (1x the budget sum,
-        # the lane watchdog) + per-class diagnosis after a batch timeout or
-        # wedge (one attempt + one targeted retry per class = 2x). Each
-        # failing class then pays one bounded erase/reboot recovery, and
-        # every attempt's timing extraction can wedge to the xcresulttool
-        # bound - plus setup slack. The GitHub ceiling must never preempt
-        # that path - otherwise the hung class is never named. (A batch that
-        # completes with identified failures retries a subset of classes and
-        # therefore costs strictly less than 3x.)
+        # The reachable worst paths, derived from the runner's invocation
+        # graph (not from the formula):
+        #   (a) batch timeout -> per-class diagnosis = batch (1x budget sum)
+        #       + diagnosis attempt + retry (2x) = 3x;
+        #   (b) batch completes with failures in EVERY class -> the targeted
+        #       retry covers the full budget sum and can time out ->
+        #       diagnosis of the retried classes (2x) = up to 4x. (b) wins.
+        # Each failing class then pays one bounded erase/reboot recovery,
+        # every diagnosis attempt's timing extraction can wedge to the
+        # xcresulttool bound, and the batch's own classification extraction
+        # adds one more bound - plus setup slack. The GitHub ceiling must
+        # never preempt that path - otherwise the hung class is never named.
         cfg = default_cfg()
         for n_classes in (1, 2, 3, 5):
             budgets = [planner.ui_class_timeout_for(est, cfg["ui_class_timeout_min_s"],
@@ -407,12 +409,13 @@ class UiShardingTests(unittest.TestCase):
                        for est in (333.0, 296.8, 232.5, 215.9, 129.6)[:n_classes]]
             lane_timeout = sum(budgets)
             batched_attempt = lane_timeout
+            failed_retry = lane_timeout          # retry covers every class
             diagnosis = 2 * lane_timeout
             ceiling_s = planner.ui_job_timeout_min(
                 lane_timeout, n_classes, cfg) * 60
-            worst_path = (batched_attempt + diagnosis
+            worst_path = (batched_attempt + failed_retry + diagnosis
                           + (n_classes + 1) * cfg["ui_reset_overhead_s"]
-                          + 2 * n_classes * cfg["ui_extract_bound_s"]
+                          + (2 * n_classes + 1) * cfg["ui_extract_bound_s"]
                           + cfg["job_timeout_margin_s"])
             self.assertGreaterEqual(
                 ceiling_s, worst_path,

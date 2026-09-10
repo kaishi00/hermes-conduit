@@ -107,14 +107,16 @@ history still comes from the shared extraction.
 
 Recovery never lets ordinary-failure retries re-execute healthy work:
 
-* **Ordinary test failures** retry ONLY the failed tests in one follow-up
-  invocation - exact `Target/Class/testMethod` filters when the xcresult
-  identifies them, the failing class otherwise - and only when every
-  assigned class actually ran (a batch that aborted before a class started
-  falls through to diagnosis below, so unexecuted classes can never be
-  retried into a green lane). Successful classes are never re-executed, and
-  a retry pass is reported as a runner-level FLAKE (with both attempt result
-  bundles kept), never hidden as a clean pass.
+* **Ordinary test failures** retry ONLY the non-passing tests (any final
+  result other than Passed) in one follow-up invocation - exact
+  `Target/Class/testMethod` filters when the xcresult identifies them, the
+  failing class otherwise - and only when every assigned class actually ran
+  (a batch that aborted before a class started - or an exit-0 batch whose
+  xcresult lacks a class's record - falls through to diagnosis below, so
+  unexecuted classes can never be retried into a green lane). Successful
+  classes are never re-executed, and a retry pass is reported as a
+  runner-level FLAKE (with both attempt result bundles kept), never hidden
+  as a clean pass.
 * **Watchdog timeout / infrastructure wedge** of the batch cannot be
   attributed to a class: the simulator is erased and the affected classes
   re-run through **per-class diagnosis** - each class its own invocation
@@ -270,12 +272,14 @@ ui_class_timeout = max(420s, ceil(estimate x 3.0))   # computed in plan-tests.py
   anomalous run cannot inflate a class's watchdog;
 - UI lane ceilings are `sum(per-class budgets)` - the batched shard
   invocation watchdog - and the outer GitHub job ceiling is
-  `ceil((3 x sum + (n_classes + 1) x 600s + 2 x n_classes x 300s
-  + 1200s) / 60)` minutes: the reachable worst in-script path is the batched
-  attempt followed by per-class diagnosis after a batch timeout or wedge
-  (one attempt + one targeted retry per class = 2x more), each failing class
-  paying one bounded erase/reboot recovery, and each attempt's timing
-  extraction wedging to the xcresulttool bound, plus setup slack.
+  `ceil((4 x sum + (n_classes + 1) x 600s + (2 x n_classes + 1) x 300s
+  + 1200s) / 60)` minutes. Two reachable worst paths: the batch times out
+  and per-class diagnosis follows (batch 1x + diagnosis 2x = 3x), or the
+  batch completes with failures in every class, its targeted retry (a full
+  budget sum) times out, and diagnosis of the retried classes follows
+  (1x + 1x + 2x = 4x) - the latter prices the ceiling. Each failing class
+  additionally pays one bounded erase/reboot recovery, and each attempt's
+  timing extraction can wedge to the xcresulttool bound, plus setup slack.
 
 **Finalize grace.** When a watchdog expires but the log already carries
 xcodebuild's terminal result marker (`** TEST EXECUTE SUCCEEDED/FAILED **`),

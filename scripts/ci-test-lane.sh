@@ -723,8 +723,9 @@ finish_lane "error" '[{"n": 1, "mode": "lane", "status": "infra-error"}, {"n": 2
 # test-session startup and result finalization once instead of once per
 # class. Recovery never re-executes healthy work:
 #   * ordinary test failures  -> one targeted retry invocation of ONLY the
-#     failed tests (exact methods when the xcresult identifies them, else
-#     their classes); a passing retry stays a reported flake;
+#     non-passing tests (final results other than Passed - exact methods
+#     when the xcresult identifies them, else their classes); a passing
+#     retry stays a reported flake;
 #   * watchdog timeout or infrastructure wedge -> erase the simulator and
 #     re-run the affected classes through run_class_diagnosis, which keeps
 #     the original per-class failure-domain properties (per-class watchdogs,
@@ -762,14 +763,34 @@ run_ui_lane() {
       "$RESULT_DIR/parts/observations-batch-a1.json" \
       "$RESULT_DIR/parts/detail-batch-a1.json" \
       "$LOG_DIR/extract-batch-a1.log"
-    record_attempt "batch" 1 "all" "passed"
-    echo "UI shard $LANE: batch of "${#CLASSES_ARR[@]}" classes passed in one invocation"
-    finish_lane "pass" "$(serialize_attempts)" "" 0
+    # Defense in depth: exit 0 should imply every -only-testing filter
+    # executed; if a parseable detail proves an assigned class left no
+    # record, do not trust the exit code - diagnose like any other batch
+    # that cannot account for its classes. An unreadable detail degrades to
+    # the pass (the gate reports nothing).
+    MISSING_CLASSES=$(unexecuted_classes "$RESULT_DIR/parts/detail-batch-a1.json")
+    if [ -z "$MISSING_CLASSES" ]; then
+      record_attempt "batch" 1 "all" "passed"
+      echo "UI shard $LANE: batch of "${#CLASSES_ARR[@]}" classes passed in one invocation"
+      finish_lane "pass" "$(serialize_attempts)" "" 0
+    fi
+    record_attempt "batch" 1 "all" "incomplete"
+    DIAGNOSIS_REASON="batch exit 0 without any record of $(printf '%s ' $MISSING_CLASSES)"
+    echo "::warning::UI shard $LANE batch exited 0 but the xcresult has no record of $(printf '%s ' $MISSING_CLASSES)- erasing simulator and entering per-class diagnosis"
+    RESET_USED=1
+    ERASE_USED=1
+    if ! reset_and_boot_simulator 1; then
+      echo "::error::simulator recovery after the incomplete batch failed - the environment cannot be trusted; stopping the lane"
+      mark_all_not_diagnosed "${CLASSES_ARR[@]}"
+      finish_lane "error" "$(serialize_attempts)" "" 1
+    fi
+    run_class_diagnosis "${CLASSES_ARR[@]}"
   fi
 
   # --- batch timed out: no per-class attribution, diagnose class-by-class ----
   if [ "$status1" -eq 124 ]; then
     record_attempt "batch" 1 "all" "timeout"
+    DIAGNOSIS_REASON="batch watchdog timeout"
     echo "::warning::UI shard $LANE batch exceeded its "${batch_budget}"s watchdog - erasing simulator and entering per-class diagnosis"
     bounded_run 45 xcrun simctl list devices >"$LOG_DIR/simctl-devices-after-timeout-batch-a1.txt" 2>&1 || true
     RESET_USED=1
@@ -788,6 +809,7 @@ run_ui_lane() {
   # per-class watchdog, retry, and hang-attribution properties.
   if [ "$status1" -ne 0 ] && [ "$FAIL_COUNT1" -eq 0 ]; then
     record_attempt "batch" 1 "all" "infra-error"
+    DIAGNOSIS_REASON="batch infrastructure failure (exit $status1, zero failing tests)"
     echo "::warning::UI shard $LANE batch failed with zero failing tests (exit $status1) - infrastructure failure; erasing simulator and entering per-class diagnosis"
     RESET_USED=1
     ERASE_USED=1
@@ -817,7 +839,8 @@ run_ui_lane() {
   MISSING_CLASSES=$(unexecuted_classes "$RESULT_DIR/parts/detail-batch-a1.json")
   if [ -n "$MISSING_CLASSES" ]; then
     record_attempt "batch" 1 "all" "incomplete"
-    echo "::warning::UI shard $LANE batch aborted before executing $(printf '%s, ' $MISSING_CLASSES)- erasing simulator and entering per-class diagnosis"
+    DIAGNOSIS_REASON="batch aborted before executing $(printf '%s ' $MISSING_CLASSES)"
+    echo "::warning::UI shard $LANE batch aborted before executing $(printf '%s ' $MISSING_CLASSES)- erasing simulator and entering per-class diagnosis"
     RESET_USED=1
     ERASE_USED=1
     if ! reset_and_boot_simulator 1; then
@@ -874,6 +897,7 @@ EOF
 
   if [ "$status2" -eq 124 ]; then
     record_attempt "batch-retry" 2 "all" "timeout"
+    DIAGNOSIS_REASON="targeted retry watchdog timeout"
     echo "::warning::UI shard $LANE targeted retry exceeded its "${retry_budget}"s watchdog - erasing simulator and entering per-class diagnosis of the retried classes"
     RESET_USED=1
     ERASE_USED=1
@@ -906,6 +930,7 @@ EOF
   # retry itself wedged on the environment. A batch cannot attribute a wedge
   # to a class, so erase and diagnose the retried classes one by one.
   record_attempt "batch-retry" 2 "all" "infra-error"
+  DIAGNOSIS_REASON="targeted retry infrastructure failure (exit $status2, zero failing tests)"
   echo "::warning::UI shard $LANE targeted retry hit an infrastructure failure (exit $status2, zero failing tests) - erasing simulator and entering per-class diagnosis of the retried classes"
   RESET_USED=1
   ERASE_USED=1
@@ -1089,6 +1114,13 @@ EOF
 
   if [ "$LANE_FAILED" -eq 1 ]; then
     finish_lane "fail" "$(serialize_attempts)" "" 1
+  fi
+  if [ -n "${DIAGNOSIS_REASON:-}" ]; then
+    # A green lane reached through per-class diagnosis re-ran classes after
+    # a batch-level event; keep that visible instead of blending into a
+    # clean pass (the attempt chain in lane-result.json carries the record).
+    echo "::warning::UI shard $LANE passed after per-class diagnosis ($DIAGNOSIS_REASON) - the affected classes re-ran individually and passed"
+    DIAGNOSIS_REASON=""
   fi
   finish_lane "pass" "$(serialize_attempts)" "" 0
 }

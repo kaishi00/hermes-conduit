@@ -344,22 +344,23 @@ def ui_class_timeout_for(estimate: float, floor_s: float, multiplier: float) -> 
 
 
 def ui_job_timeout_min(lane_timeout_s: int, n_classes: int, cfg: dict) -> int:
-    """Outer emergency ceiling for a UI lane. The reachable worst in-script
-    path is the batched shard attempt (the lane budget = sum of per-class
-    budgets) followed by per-class diagnosis after a batch timeout or wedge
-    (one attempt + one targeted retry per class, i.e. 2x the budget sum) -
-    3x in total. A batch that completes with identified failures costs
-    strictly less (its retry covers a subset of classes), and each failing
-    class pays one bounded erase/reboot recovery; per-attempt timing
-    extraction can wedge to the xcresulttool subprocess bound (up to twice
-    per class, outside the budgets) - plus setup/download slack. Per-class
-    watchdogs inside the runner are the real enforcement; the ceiling only
-    guarantees GitHub can never preempt legitimate in-script recovery (which
-    is what would erase the hung-class attribution this lane exists to
-    provide)."""
-    total = (3 * lane_timeout_s
+    """Outer emergency ceiling for a UI lane. Two reachable worst paths:
+    (a) the batched shard attempt (the lane budget = sum of per-class
+    budgets) times out and per-class diagnosis follows (one attempt + one
+    targeted retry per class = 2x more) = 3x; (b) the batch completes with
+    failures in every class, the targeted retry (a budget covering all of
+    them) times out, and diagnosis of the retried classes follows = up to
+    4x. (b) dominates and prices the ceiling. Each failing class then pays
+    one bounded erase/reboot recovery; per-attempt timing extraction can
+    wedge to the xcresulttool subprocess bound (up to twice per diagnosis
+    class plus the batch's own classification extraction, outside the
+    budgets) - plus setup/download slack. Per-class watchdogs inside the
+    runner are the real enforcement; the ceiling only guarantees GitHub can
+    never preempt legitimate in-script recovery (which is what would erase
+    the hung-class attribution this lane exists to provide)."""
+    total = (4 * lane_timeout_s
              + (n_classes + 1) * cfg.get("ui_reset_overhead_s", UI_RESET_OVERHEAD_S)
-             + 2 * n_classes * cfg.get("ui_extract_bound_s", UI_EXTRACT_BOUND_S)
+             + (2 * n_classes + 1) * cfg.get("ui_extract_bound_s", UI_EXTRACT_BOUND_S)
              + cfg["job_timeout_margin_s"])
     return int(math.ceil(total / 60.0))
 

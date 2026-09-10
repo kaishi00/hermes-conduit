@@ -291,13 +291,13 @@ def _attempt_index(name: str) -> int:
 
 
 def _part_sort_key(name: str) -> tuple:
-    """Chronological fold order. The batched shard attempt happens FIRST in
-    wall time and per-class diagnosis supersedes it, so batch-named parts
-    fold before every class-named part regardless of ASCII order (the
-    lowercase stem would otherwise sort after the class names and win
-    last-wins with stale killed-batch data). Within a group, (stem, attempt)
-    orders numeric attempts correctly (a2 after a10 - plain filename sort
-    would put a10 first)."""
+    """Chronological fold order, returned as (is_batch, stem, attempt):
+    batch-named parts fold before every class-named part regardless of
+    ASCII order (the lowercase stem would otherwise sort after the class
+    names and win last-wins with stale killed-batch data). Within a group
+    the constant is_batch field collapses and (stem, attempt) orders
+    numeric attempts correctly (a2 after a10 - plain filename sort would
+    put a10 first)."""
     stem = re.sub(r"-a\d+\.json$", "", name)
     is_batch = 0 if _part_class(name) == "batch" else 1
     return (is_batch, stem, _attempt_index(name))
@@ -321,7 +321,9 @@ def _list_field(doc: dict, key: str) -> list:
 
 
 def merge_observation_parts(parts: list) -> dict:
-    """parts: (filename, parsed doc) tuples in (class, attempt) order.
+    """parts: (filename, parsed doc) tuples in chronological fold order (see
+    _part_sort_key: batch attempt first, per-class diagnosis after, numeric
+    attempts within a group).
     Returns the lane-level observations document. A class seen in several
     attempts keeps its LAST attempt's duration: the runner extracts every
     attempt, and on a green lane the last attempt of a retried class is the
@@ -375,7 +377,8 @@ def merge_observation_parts(parts: list) -> dict:
 
 
 def merge_detail_parts(parts: list) -> dict:
-    """parts: (filename, parsed doc) tuples in (class, attempt) order.
+    """parts: (filename, parsed doc) tuples in chronological fold order (see
+    _part_sort_key).
     Attempts and retried tests are concatenated across classes and attempts
     (each entry carries its class). FAILURES are per-class STATE, not an
     append log: the class's highest attempt PART decides, so a class that

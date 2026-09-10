@@ -750,6 +750,31 @@ assert_eq "failed and skipped tests both retried" \
   "$(batch_invocations 'batch-a2 (filters: BetaUITests/testC() BetaUITests/testD())')" "1"
 assert_eq "attempts" "$(attempts_statuses)" "['test-failures', 'passed']"
 
+# --- UI case 14: exit-0 batch missing a class -> diagnosis, never green ------
+# Defense in depth: an exit-0 batch whose parseable xcresult has no record of
+# an assigned class (an -only-testing filter silently matching nothing) must
+# not finish as a clean pass.
+begin_case "ui pass with unrecorded class diagnoses" "$WORK/u14"
+export INVOCATION_LOG="$WORK/u14-invocations.log"; : > "$INVOCATION_LOG"
+export FAKE_UI_NO_DOC="" FAKE_UI_HANG=""
+export FAKE_BATCH_A1="pass" FAKE_BATCH_RETRY="pass" FAKE_BATCH_FAIL_CLASSES=""
+export FAKE_BATCH_SKIP_CLASSES="" FAKE_BATCH_OMIT_CLASSES="BetaUITests"
+export FAKE_UI_FAIL_ONCE="" FAKE_UI_FAIL_ALWAYS="" FAKE_UI_INFRA_ONCE="" FAKE_UI_INFRA_ALWAYS="" FAKE_UI_RECOVERY_FAILS=""
+run_ui_lane "AlphaUITests,BetaUITests" 300 "AlphaUITests=200,BetaUITests=200"
+assert_eq "exit code" "$(cat "$WORKCASE/exit-code")" "0"
+assert_eq "verdict" "$(lane_field "['status']")" "pass"
+assert_eq "attempts" "$(attempts_statuses)" \
+  "['incomplete', 'passed', 'passed']"
+assert_eq "no targeted retry for an unrecorded class" \
+  "$(batch_invocations 'batch-a1')$(batch_invocations 'batch-a2 (filters: testC())')" "10"
+assert_eq "missing class diagnosed" "$(class_invocations BetaUITests)" "1"
+if grep -q "exited 0 but the xcresult has no record" "$WORKCASE/stdout.log"; then
+  ok "exit-0 pass with a missing class announced the diagnosis"
+else
+  bad "an exit-0 batch with an unrecorded class must not pass silently"
+fi
+export FAKE_BATCH_OMIT_CLASSES=""
+
 # --- UI case 10: a class without a planned watchdog refuses to start ----------
 begin_case "ui missing watchdog entry rejected" "$WORK/u10"
 export INVOCATION_LOG="$WORK/u10-invocations.log"; : > "$INVOCATION_LOG"

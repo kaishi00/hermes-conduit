@@ -279,9 +279,9 @@ jobs:
         # shard's classes in ONE batched xcodebuild invocation (watchdog =
         # sum of the planner's per-class budgets; --class-timeouts is the
         # single source of watchdog policy and must cover every assigned
-        # class). A failing batch retries exactly the failed tests - once -
-        # and falls back to per-class diagnosis for timeouts/infrastructure
-        # wedges.
+        # class). A failing batch retries exactly the non-passing tests -
+        # once - and falls back to per-class diagnosis for
+        # timeouts/infrastructure wedges.
         env:
           CONDUIT_PERF_TRACE: "1"
           LANE_NAME: "${{ matrix.lane }}"
