@@ -27,17 +27,20 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
         channels: AVAudioCaptureService.outputChannelCount
     )!
     private var converter: AVAudioConverter?
-    private var capturedPCM = Data()
-    private var preRollPCM = Data()
+    // Capture state below is internal rather than private so ConduitTests
+    // can drive the frame-admission seam directly with synthetic PCM
+    // buffers instead of audio hardware.
+    var capturedPCM = Data()
+    var preRollPCM = Data()
     private let maximumPreRollBytes = Int(AVAudioCaptureService.outputSampleRate * AVAudioCaptureService.preRollDuration) * AVAudioCaptureService.outputBytesPerFrame
-    private var activelyRecording = false
-    private var paused = false
+    var activelyRecording = false
+    var paused = false
     /// Monotonic identity of the installed input-tap/rendering lifetime.
     /// Bumped at every teardown (pause/stop) and every tap reinstall, so
     /// frames queued from a previous generation can be recognized and
     /// dropped after the boundary.
     private(set) var captureGeneration: UInt64 = 0
-    private var shouldKeepEngineRunning = false
+    var shouldKeepEngineRunning = false
     private var lastCaptureFailure: String?
     private var continuation: AsyncStream<VoiceCaptureEvent>.Continuation?
     /// Capture holds one lease for the whole capture window (listening,
@@ -230,7 +233,7 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
                 // into the new one. (A stop immediately followed by a
                 // restart re-arms these flags; the frame's own generation
                 // and the controller's generation check cover that case.)
-                guard let self, !self.paused, self.shouldKeepEngineRunning else { return }
+                guard let self, self.acceptsFrame(generation: frameGeneration) else { return }
                 self.consume(copy, generation: frameGeneration)
             }
         }
@@ -251,8 +254,16 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
         coordinator.release(lease)
     }
 
-    private func consume(_ buffer: AVAudioPCMBuffer, generation: UInt64) {
-        guard !paused else { return }
+    /// Single admission gate for tap frames on their way into PCM state.
+    /// Extracted so tests can pin the exact guard both the MainActor hop
+    /// and consume() evaluate before conversion, pre-roll, captured audio,
+    /// or level emission can observe a frame.
+    func acceptsFrame(generation: UInt64) -> Bool {
+        !paused && shouldKeepEngineRunning
+    }
+
+    func consume(_ buffer: AVAudioPCMBuffer, generation: UInt64) {
+        guard acceptsFrame(generation: generation) else { return }
         if converter == nil || !Self.converter(converter, accepts: buffer.format) {
             converter = AVAudioConverter(from: buffer.format, to: outputFormat)
         }
