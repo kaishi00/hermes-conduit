@@ -114,6 +114,14 @@ begin_case() { # $1=name $2=workdir
   current="$1"
   WORKCASE="$2"
   mkdir -p "$2"
+  CASE_START=$(date +%s)
+  echo "START $current"
+}
+
+end_case() { # closes the current case's timing line (suite-progress telemetry)
+  [ -n "${current:-}" ] || return 0
+  echo "END $current $(( $(date +%s) - CASE_START ))s"
+  current=""
 }
 
 run_lane() { # $1=classes $2=timeout $3=mode $4=iterations
@@ -334,6 +342,7 @@ class_invocations() { # $1=class -> how many diagnosis invocations it got
 
 
 # --- case 1: pass -------------------------------------------------------------
+end_case
 begin_case "pass path" "$WORK/c1"
 write_canned "$WORK/canned-pass.json" "AlphaTests" "Passed"
 run_lane "AlphaTests" 300 pass 3
@@ -342,6 +351,7 @@ assert_eq "verdict" "$(lane_field "['status']")" "pass"
 assert_eq "attempts" "$(attempts_statuses)" "['passed']"
 
 # --- case 2: ordinary failure -> fail, no lane retry --------------------------
+end_case
 begin_case "ordinary failure" "$WORK/c2"
 write_canned "$WORK/canned-fail.json" "AlphaTests" "Failed"
 run_lane "AlphaTests" 300 fail65 3
@@ -355,6 +365,7 @@ else
 fi
 
 # --- case 3: unclassified failure -> fail, never retried ----------------------
+end_case
 begin_case "unclassified failure" "$WORK/c3"
 # Extraction must fail: xcrun returns an invalid document (no canned file).
 export FAKE_CANNED="$WORK/does-not-exist.json"
@@ -368,6 +379,7 @@ else
 fi
 
 # --- case 4: infra failure -> exactly one full-lane retry, then error ---------
+end_case
 begin_case "infra failure retry" "$WORK/c4"
 write_canned "$WORK/canned-pass2.json" "AlphaTests" "Passed"
 run_lane "AlphaTests" 300 infra70 1
@@ -377,6 +389,7 @@ assert_eq "attempts" "$(attempts_statuses)" "['infra-error', 'infra-error']"
 
 
 # --- case 5: timeout -> isolation directly, hang identified -------------------
+end_case
 begin_case "timeout isolation" "$WORK/c5"
 export ISOLATION_BUDGET_S=200 CLASS_TIMEOUT_MIN_S=1 CLASS_TIMEOUT_MULTIPLIER=0.1
 run_lane "AlphaTests,BetaTests" 3 hang 1
@@ -392,6 +405,7 @@ fi
 assert_eq "isolation ran" "$(isolation_statuses)" "['timeout', 'not_diagnosed']"
 
 # --- case 6: incomplete isolation fails the lane ------------------------------
+end_case
 begin_case "incomplete isolation" "$WORK/c6"
 export ISOLATION_BUDGET_S=2 CLASS_TIMEOUT_MIN_S=1 CLASS_TIMEOUT_MULTIPLIER=0.1
 run_lane "AlphaTests,BetaTests" 3 hang 1
@@ -409,6 +423,7 @@ fi
 # Spec scenario: AlphaTests PASSES, BetaTests TIMES OUT, GammaTests
 # would pass if called - but must NEVER run on the contaminated
 # simulator. Tracks exact xcodebuild invocation counts via the stub.
+end_case
 begin_case "stop after hang" "$WORK/c7"
 cat > "$STUBS/xcodebuild" <<'EOF'
 #!/bin/bash
@@ -445,6 +460,7 @@ assert_eq "GammaTests never invoked" "$(grep -c '^iso:GammaTests$' "$INVOCATION_
 # finalizing the xcresult when the watchdog expired. The deadline must be
 # extended ONCE (bounded grace) so the finished session can exit with its
 # real status; success still comes from the exit status, never the marker.
+end_case
 begin_case "finalize grace lets a finished invocation pass" "$WORK/c8"
 cat > "$STUBS/xcodebuild" <<'EOF'
 #!/bin/bash
@@ -469,6 +485,7 @@ else
 fi
 
 # --- case 9: grace is bounded - a wedged finalize is still a timeout ----------
+end_case
 begin_case "finalize grace expiry kills and isolates" "$WORK/c9"
 cat > "$STUBS/xcodebuild" <<'EOF'
 #!/bin/bash
@@ -491,6 +508,7 @@ else
 fi
 
 # --- case 10: infra failure recovers on the single post-reset retry -----------
+end_case
 begin_case "infra retry recovers to green" "$WORK/c10"
 cat > "$STUBS/xcodebuild" <<'EOF'
 #!/bin/bash
@@ -513,6 +531,7 @@ assert_eq "verdict" "$(lane_field "['status']")" "pass"
 assert_eq "attempts" "$(attempts_statuses)" "['infra-recovered', 'passed']"
 
 # --- case 11: class failure during isolation fails the lane --------------------
+end_case
 begin_case "class failure during isolation" "$WORK/c11"
 cat > "$STUBS/xcodebuild" <<'EOF'
 #!/bin/bash
@@ -531,6 +550,7 @@ assert_eq "verdict" "$(lane_field "['status']")" "fail"
 assert_eq "isolation statuses" "$(isolation_statuses)" "['fail', 'fail']"
 
 echo ""
+end_case
 echo "unit+isolation state machine: $pass_count passed, $fail_count failed so far"
 
 # ===========================================================================
@@ -547,6 +567,7 @@ export FAKE_CANNED="$WORK/canned-ui.json"
 UI_DEFAULTS='FAKE_BATCH_A1=pass FAKE_BATCH_RETRY=pass FAKE_BATCH_FAIL_CLASSES= FAKE_UI_NO_DOC='
 
 # --- UI case 1: every class passes once - ONE batched invocation --------------
+end_case
 begin_case "ui batch all pass" "$WORK/u1"
 export INVOCATION_LOG="$WORK/u1-invocations.log"; : > "$INVOCATION_LOG"
 export FAKE_BATCH_A1="pass" FAKE_BATCH_RETRY="pass" FAKE_BATCH_FAIL_CLASSES="" FAKE_UI_NO_DOC=""
@@ -576,6 +597,7 @@ else
 fi
 
 # --- UI case 2: flaky test recovered by a METHOD-precise retry ----------------
+end_case
 begin_case "ui flaky test recovered via method retry" "$WORK/u2"
 export INVOCATION_LOG="$WORK/u2-invocations.log"; : > "$INVOCATION_LOG"
 export FAKE_BATCH_A1="fail-test" FAKE_BATCH_FAIL_CLASSES="BetaUITests" FAKE_BATCH_RETRY="pass"
@@ -588,8 +610,9 @@ assert_eq "one batch attempt + one retry invocation" \
   "$(batch_invocations 'batch-a1')$(batch_invocations 'batch-a2 (filters: BetaUITests/testC())')" "11"
 assert_eq "healthy classes never re-invoked" \
   "$(class_invocations AlphaUITests)$(class_invocations GammaUITests)" "00"
-if grep -q "PASSED on its targeted retry" "$WORKCASE/stdout.log"; then
-  ok "recovered flake reported loudly"
+if grep -q "passed on its targeted retry" "$WORKCASE/stdout.log" \
+   && grep -q "Retried tests:" "$WORKCASE/stdout.log"; then
+  ok "recovered flake reported loudly with the retried tests"
 else
   bad "a retry pass must be reported as a flake, not hidden"
 fi
@@ -600,6 +623,7 @@ else
 fi
 
 # --- UI case 3: failure survives the retry -> lane fails, no false flake ------
+end_case
 begin_case "ui failure survives retry" "$WORK/u3"
 export INVOCATION_LOG="$WORK/u3-invocations.log"; : > "$INVOCATION_LOG"
 export FAKE_BATCH_A1="fail-test" FAKE_BATCH_FAIL_CLASSES="BetaUITests" FAKE_BATCH_RETRY="fail"
@@ -611,6 +635,7 @@ assert_eq "no false flake" "$(retried_classes)" "[]"
 assert_eq "retry ran exactly once" "$(batch_invocations 'batch-a1')$(batch_invocations 'batch-a2 (filters: BetaUITests/testC())')" "11"
 
 # --- UI case 4: batch timeout -> per-class diagnosis, hang attributed ---------
+end_case
 begin_case "ui batch timeout enters per-class diagnosis" "$WORK/u4"
 export INVOCATION_LOG="$WORK/u4-invocations.log"; : > "$INVOCATION_LOG"
 export FAKE_BATCH_A1="hang" FAKE_BATCH_RETRY="pass" FAKE_BATCH_FAIL_CLASSES=""
@@ -633,6 +658,7 @@ else
 fi
 
 # --- UI case 5: batch infra wedge -> diagnosis; class infra recovers ----------
+end_case
 begin_case "ui batch infra enters diagnosis and recovers" "$WORK/u5"
 export INVOCATION_LOG="$WORK/u5-invocations.log"; : > "$INVOCATION_LOG"
 export FAKE_BATCH_A1="infra" FAKE_UI_HANG=""
@@ -648,6 +674,7 @@ assert_eq "infra recovery reported separately" \
 assert_eq "Alpha diagnosed with its one retry" "$(class_invocations AlphaUITests)" "2"
 
 # --- UI case 6: unclassified batch failure fails the lane without retry -------
+end_case
 begin_case "ui unclassified batch failure" "$WORK/u6"
 export INVOCATION_LOG="$WORK/u6-invocations.log"; : > "$INVOCATION_LOG"
 # Extraction must fail: the canned doc path never exists (and the stub never
@@ -665,6 +692,7 @@ export FAKE_CANNED="$WORK/canned-ui.json"
 export FAKE_UI_NO_DOC=""
 
 # --- UI case 7: persistent infra failure in diagnosis fails the lane ----------
+end_case
 begin_case "ui persistent infra in diagnosis continues lane" "$WORK/u7"
 export INVOCATION_LOG="$WORK/u7-invocations.log"; : > "$INVOCATION_LOG"
 export FAKE_UI_NO_DOC=""
@@ -688,6 +716,7 @@ else
 fi
 
 # --- UI case 8: untrusted simulator recovery stops the lane -------------------
+end_case
 begin_case "ui recovery failure stops lane" "$WORK/u8"
 export INVOCATION_LOG="$WORK/u8-invocations.log"; : > "$INVOCATION_LOG"
 export FAKE_UI_NO_DOC=""
@@ -700,6 +729,7 @@ assert_eq "attempts" "$(attempts_statuses)" "['infra-error', 'not_diagnosed', 'n
 assert_eq "Beta never ran on an untrusted simulator" "$(class_invocations BetaUITests)" "0"
 
 # --- UI case 9: retry-timeout falls back to diagnosis of the retried class ----
+end_case
 begin_case "ui retry timeout diagnoses the retried class" "$WORK/u9"
 export INVOCATION_LOG="$WORK/u9-invocations.log"; : > "$INVOCATION_LOG"
 export FAKE_UI_NO_DOC=""
@@ -716,6 +746,7 @@ assert_eq "Alpha never re-ran after its batch pass" "$(class_invocations AlphaUI
 # --- UI case 12: batch aborted before a class ran -> diagnosis, no retry -----
 # A batch whose xcresult has no record of an assigned class can never be
 # retried into a green lane: the unexecuted class forces per-class diagnosis.
+end_case
 begin_case "ui incomplete batch diagnoses instead of retrying" "$WORK/u12"
 export INVOCATION_LOG="$WORK/u12-invocations.log"; : > "$INVOCATION_LOG"
 export FAKE_UI_NO_DOC="" FAKE_UI_HANG=""
@@ -738,6 +769,7 @@ fi
 export FAKE_BATCH_OMIT_CLASSES=""
 
 # --- UI case 13: a Skipped final is non-passing and joins the retry ----------
+end_case
 begin_case "ui skipped final joins the retry filters" "$WORK/u13"
 export INVOCATION_LOG="$WORK/u13-invocations.log"; : > "$INVOCATION_LOG"
 export FAKE_UI_NO_DOC="" FAKE_UI_HANG="" FAKE_BATCH_OMIT_CLASSES=""
@@ -754,6 +786,7 @@ assert_eq "attempts" "$(attempts_statuses)" "['test-failures', 'passed']"
 # Defense in depth: an exit-0 batch whose parseable xcresult has no record of
 # an assigned class (an -only-testing filter silently matching nothing) must
 # not finish as a clean pass.
+end_case
 begin_case "ui pass with unrecorded class diagnoses" "$WORK/u14"
 export INVOCATION_LOG="$WORK/u14-invocations.log"; : > "$INVOCATION_LOG"
 export FAKE_UI_NO_DOC="" FAKE_UI_HANG=""
@@ -775,7 +808,50 @@ else
 fi
 export FAKE_BATCH_OMIT_CLASSES=""
 
+# --- UI case 15: diagnosis METHOD-only retry never becomes class timing ------
+# A diagnosis retry filtered down to the failed methods must not leave an
+# observations part behind: only the attempt-1 full-class invocation owns the
+# class's timing-history sample (the batch path obeys the same rule).
+begin_case "ui diagnosis method retry keeps class timing" "$WORK/u15"
+export INVOCATION_LOG="$WORK/u15-invocations.log"; : > "$INVOCATION_LOG"
+export FAKE_UI_NO_DOC="" FAKE_BATCH_OMIT_CLASSES="" FAKE_BATCH_SKIP_CLASSES=""
+export FAKE_BATCH_A1="hang" FAKE_BATCH_RETRY="pass" FAKE_BATCH_FAIL_CLASSES=""
+export FAKE_UI_FAIL_ONCE="AlphaUITests" FAKE_UI_FAIL_ALWAYS="" FAKE_UI_INFRA_ONCE="" FAKE_UI_INFRA_ALWAYS="" FAKE_UI_HANG="" FAKE_UI_RECOVERY_FAILS=""
+run_ui_lane "AlphaUITests,BetaUITests,GammaUITests" 3 "AlphaUITests=2,BetaUITests=2,GammaUITests=2"
+assert_eq "exit code" "$(cat "$WORKCASE/exit-code")" "0"
+assert_eq "verdict" "$(lane_field "['status']")" "pass"
+assert_eq "attempts" "$(attempts_statuses)" \
+  "['timeout', 'test-failures', 'passed', 'passed', 'passed']"
+assert_eq "retried classes" "$(retried_classes)" "['AlphaUITests']"
+if [ -f "$WORKCASE/parts/observations-AlphaUITests-a2.json" ]; then
+  bad "method-only retry observations must not fold into timing history"
+else
+  ok "method-only retry observations removed"
+fi
+if [ -f "$WORKCASE/parts/detail-AlphaUITests-a2.json" ]; then
+  ok "method-only retry detail kept as flake evidence"
+else
+  bad "method-only retry detail (flake evidence) must be kept"
+fi
+
+# --- UI case 16: same rule when the diagnosis method retry FAILS -------------
+begin_case "ui failing diagnosis method retry keeps rule" "$WORK/u16"
+export INVOCATION_LOG="$WORK/u16-invocations.log"; : > "$INVOCATION_LOG"
+export FAKE_UI_NO_DOC="" FAKE_UI_HANG=""
+export FAKE_BATCH_A1="hang" FAKE_BATCH_RETRY="pass" FAKE_BATCH_FAIL_CLASSES=""
+export FAKE_UI_FAIL_ONCE="" FAKE_UI_FAIL_ALWAYS="AlphaUITests" FAKE_UI_RECOVERY_FAILS=""
+run_ui_lane "AlphaUITests,BetaUITests,GammaUITests" 3 "AlphaUITests=2,BetaUITests=2,GammaUITests=2"
+assert_eq "exit code" "$(cat "$WORKCASE/exit-code")" "1"
+assert_eq "verdict" "$(lane_field "['status']")" "fail"
+assert_eq "no false flake" "$(retried_classes)" "[]"
+if [ -f "$WORKCASE/parts/observations-AlphaUITests-a2.json" ]; then
+  bad "failing method-only retry observations must not fold either"
+else
+  ok "failing method-only retry observations removed"
+fi
+
 # --- UI case 10: a class without a planned watchdog refuses to start ----------
+end_case
 begin_case "ui missing watchdog entry rejected" "$WORK/u10"
 export INVOCATION_LOG="$WORK/u10-invocations.log"; : > "$INVOCATION_LOG"
 run_ui_lane "AlphaUITests,BetaUITests" 300 "AlphaUITests=200"
@@ -792,6 +868,7 @@ else
 fi
 
 # --- UI case 11: malformed watchdog entries are rejected ----------------------
+end_case
 begin_case "ui malformed watchdog entry rejected" "$WORK/u11"
 run_ui_lane "AlphaUITests" 300 "AlphaUITests=abc"
 assert_eq "exit code" "$(cat "$WORKCASE/exit-code")" "2"
@@ -802,6 +879,7 @@ else
 fi
 
 echo ""
+end_case
 echo "lane-runner state machine: $pass_count passed, $fail_count failed"
 [ "$fail_count" -eq 0 ] || exit 1
 echo "ALL CASES PASSED"

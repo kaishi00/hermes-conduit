@@ -3,15 +3,21 @@ name: CI
 # CI v2 - timing-aware dynamic test lanes for Hermes Conduit.
 #
 # Architecture (docs/CI.md):
-#   plan     (ubuntu, cheap)  validate inventory, run planner regression
-#                             tests, balance test classes into a dynamic
-#                             number of timing-weighted lanes (unit AND UI),
-#                             emit both matrices.
-#   build    (macos, once)    build-for-testing exactly once into a
-#                             workspace-anchored DerivedData path; audit the
-#                             generated .xctestrun for absolute-path
-#                             portability; upload products as an artifact.
-#   unit/ui  (macos, matrix) test-without-building from the downloaded
+#   plan      (ubuntu, cheap)  validate inventory, balance test classes into
+#                              a dynamic number of timing-weighted lanes
+#                              (unit AND UI), emit both matrices. The
+#                              minutes-long CI-tooling meta-suites are NOT
+#                              run here - they must never delay the macOS
+#                              build or risk the job timeout.
+#   self-test (ubuntu)         CI-tooling regression suites (planner,
+#                              lane-runner state machine, destination
+#                              lookup, gate/timing contracts) as their own
+#                              job, concurrent with build.
+#   build     (macos, once)    build-for-testing exactly once into a
+#                              workspace-anchored DerivedData path; audit the
+#                              generated .xctestrun for absolute-path
+#                              portability; upload products as an artifact.
+#   unit/ui   (macos, matrix) test-without-building from the downloaded
 #                             products; measured watchdogs; native flake
 #                             retry (units); one batched invocation per UI
 #                             shard with method-precise retry of only the
@@ -70,6 +76,13 @@ jobs:
             timing-history-v1-
 
       - name: Validate inventory + planner regression tests
+        env:
+          # The minutes-long bash meta-suites (lane-runner state machine,
+          # destination lookup) run in the dedicated self-test job - they
+          # must never delay planning, the macOS build, or risk this job's
+          # timeout (run 34420978966: the suite outlived the 10-minute job
+          # ceiling and GitHub cancelled it mid-run).
+          CONDUIT_CI_SKIP_BASH_WRAPPER_TESTS: "1"
         run: |
           set -euo pipefail
           HISTORY_ARG=""
@@ -111,6 +124,26 @@ jobs:
           name: plan
           path: ci-artifacts/
           retention-days: 7
+
+  self-test:
+    name: CI tooling self-test
+    # No `needs`: the meta-suites test the CI tooling itself, not this run's
+    # plan, so they start immediately and run CONCURRENTLY with the macOS
+    # build instead of serially delaying it.
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Run CI tooling regression suites
+        # Full discovery INCLUDING the bash state-machine suites. The
+        # timeout layering must hold: per-case synthetic-hang watchdogs
+        # (<= 6s) < the wrapper's subprocess cap (480s, test_lane_runner.py)
+        # < this job ceiling (12m) - GitHub must never be the first layer to
+        # kill a regression suite.
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s scripts/tests -p 'test_*.py' -v
 
   build:
     name: Build test products
@@ -371,7 +404,7 @@ jobs:
   # directly - require "CI Gate" instead (see docs/CI.md).
   ci-gate:
     name: CI Gate
-    needs: [plan, build, unit, ui]
+    needs: [plan, build, unit, ui, self-test]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -384,7 +417,8 @@ jobs:
             --plan "${{ needs.plan.result }}" \
             --build "${{ needs.build.result }}" \
             --unit "${{ needs.unit.result }}" \
-            --ui "${{ needs.ui.result }}"
+            --ui "${{ needs.ui.result }}" \
+            --self-test "${{ needs.self-test.result }}"
 
   timing-history-update:
     name: Update timing history

@@ -22,6 +22,8 @@ SCRIPT = os.path.join(SCRIPTS_DIR, "tests", "test_simulator_destination.sh")
 
 
 @unittest.skipUnless(os.name == "posix" and shutil.which("bash"), "bash is required to exercise the destination lookup")
+@unittest.skipIf(os.environ.get("CONDUIT_CI_SKIP_BASH_WRAPPER_TESTS") == "1",
+                 "bash meta-suites run in the dedicated self-test job")
 class SimulatorDestinationScriptTests(unittest.TestCase):
     def test_destination_lookup(self):
         proc = subprocess.run(["bash", SCRIPT], capture_output=True,

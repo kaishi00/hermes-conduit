@@ -144,6 +144,12 @@ run_with_deadline() {
 # captured into BOUNDED_OUTPUT (caller's shell); the return value is the
 # command's status, or 124 when the deadline killed it. BOUNDED_OUTPUT is NOT
 # visible across a subshell boundary.
+#
+# The poll interval is 0.2s: bash's kill -0 keeps succeeding on a freshly
+# finished background child until it is reaped, so every coarse poll adds a
+# fixed floor to EVERY bounded call - and the state-machine suite (and real
+# simulator recovery paths) make many of them. 0.2s keeps the floor at
+# noise level while the deadline math stays identical.
 BOUNDED_OUTPUT=""
 bounded_run() {
   local budget="$1"
@@ -172,7 +178,7 @@ bounded_run() {
       rm -f "$outfile"
       return 124
     fi
-    sleep 2
+    sleep 0.2
   done
   status=0
   wait "$runner" || status=$?

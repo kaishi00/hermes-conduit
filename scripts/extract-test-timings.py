@@ -399,11 +399,20 @@ def merge_detail_parts(parts: list) -> dict:
         cls = _part_class(fname)
         failures_by_class[cls] = _list_field(doc, "failures")
     # The synthetic "batch" key carries the batched shard attempt's failures.
-    # Once any per-class part exists, diagnosis results have superseded that
-    # attempt: keeping the batch entries would double-count failures from a
-    # superseded (possibly killed mid-run) invocation.
-    if "batch" in failures_by_class and any(k != "batch" for k in failures_by_class):
-        del failures_by_class["batch"]
+    # Per-class parts supersede that attempt FOR THE CLASSES THEY RE-EXECUTED
+    # (a per-class part exists exactly for a class diagnosis actually ran),
+    # so their batch entries are dropped; batch evidence for classes
+    # diagnosis never reached - a lane stopped at a hang, with later classes
+    # recorded as not_diagnosed - must SURVIVE so the red lane's report stays
+    # complete. Supersession is therefore per class, keyed on which classes
+    # produced per-class parts, never on mere part presence.
+    if "batch" in failures_by_class:
+        covered = {k for k in failures_by_class if k != "batch"}
+        if covered:
+            survivors = [f for f in failures_by_class.pop("batch")
+                         if f.get("class") not in covered]
+            if survivors:
+                failures_by_class["batch"] = survivors
     failures: list = []
     for cls in failures_by_class:
         failures.extend(failures_by_class[cls])

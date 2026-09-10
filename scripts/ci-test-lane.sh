@@ -891,7 +891,7 @@ EOF
     # A test failure that a retry rescued is a runner-level flake: it stays
     # visible instead of blending into a clean pass, and both attempt
     # bundles are kept for diagnosis.
-    echo "::warning::UI shard $LANE PASSED on its targeted retry - runner-level flake ("$(printf '%s, ' $RETRY_CLASSES)"only the failed tests re-ran), reported, not hidden"
+    echo "::warning::UI shard $LANE passed on its targeted retry - runner-level flake. Retried tests: $(printf '%s' "$RETRY_LINES" | tr '\n' ' ')- only the non-passing tests were re-run; reported, not hidden"
     finish_lane "pass" "$(serialize_attempts)" "" 0
   fi
 
@@ -1028,12 +1028,14 @@ run_class_diagnosis() {
     fi
 
     DIAG_RETRY_FILTERS=()
+    DIAG_RETRY_METHOD_FILTERED=0
     if [ -n "${DIAG_RETRY_LINES:-}" ]; then
       while IFS= read -r filter; do
         [ -n "$filter" ] && DIAG_RETRY_FILTERS+=("-only-testing:$filter")
       done <<EOF
 $DIAG_RETRY_LINES
 EOF
+      DIAG_RETRY_METHOD_FILTERED=1
     else
       DIAG_RETRY_FILTERS+=("-only-testing:$TARGET/$cls")
     fi
@@ -1050,6 +1052,14 @@ EOF
         "$RESULT_DIR/parts/observations-$cls-a2.json" \
         "$RESULT_DIR/parts/detail-$cls-a2.json" \
         "$LOG_DIR/extract-$cls-a2.log"
+      # A method-filtered retry reran only the failed METHODS, so its
+      # observations carry method-only durations per class - the attempt-1
+      # full-class invocation owns class timing, so the retry's observations
+      # must not fold into the timing history (same rule as the batch path).
+      # The detail part stays: it carries the retry/flake evidence.
+      if [ "$DIAG_RETRY_METHOD_FILTERED" -eq 1 ]; then
+        rm -f "$RESULT_DIR/parts/observations-$cls-a2.json"
+      fi
       record_attempt "class-retry" 2 "$cls" "passed"
       if [ "$a1_status" = "infra-error" ]; then
         echo "$cls" >> "$INFRA_RECOVERED_LINES"
@@ -1076,6 +1086,11 @@ EOF
       "$RESULT_DIR/parts/observations-$cls-a2.json" \
       "$RESULT_DIR/parts/detail-$cls-a2.json" \
       "$LOG_DIR/extract-$cls-a2.log"
+    # Same timing-history rule on the failing path: a method-filtered retry
+    # never becomes the class's duration sample.
+    if [ "$DIAG_RETRY_METHOD_FILTERED" -eq 1 ]; then
+      rm -f "$RESULT_DIR/parts/observations-$cls-a2.json"
+    fi
     FAIL_COUNT2=$(count_failures "$RESULT_DIR/parts/detail-$cls-a2.json")
     if [ "$FAIL_COUNT2" -gt 0 ]; then
       echo "::error::UI class $cls FAILED again ("${FAIL_COUNT2}" test(s)) - failing the lane; remaining classes still run"

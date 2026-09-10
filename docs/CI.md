@@ -10,14 +10,13 @@ quarantined, or moved to a nightly gate.
 ```
                  test inventory (source scan)
                           |
-                   plan-tests.py
+  timing history (Actions cache) -> plan-tests.py
              (LPT timing balance, watchdog math)
-                          |
-             +------------+------------+
-             v                         v
-   plan.json / matrices        timing history (Actions cache)
-   (unit + UI)
-             |
+             |                         |
+   plan.json / matrices       CI tooling self-test (ubuntu;
+   (unit + UI)                planner tests, lane-runner state
+             |                machine, destination lookup - runs
+             |                concurrently, never delays the build)
       build-for-testing (once, workspace-anchored DerivedData)
              |
       .xctestrun + products artifact
@@ -42,12 +41,19 @@ quarantined, or moved to a nightly gate.
 
 | Job | Runner | Purpose |
 |---|---|---|
-| `plan` | ubuntu | Discovery validation + planner unit tests + lane generation (unit AND UI matrices). Cheap guard before any macOS minutes are spent. |
+| `plan` | ubuntu | Discovery validation + lane generation (unit AND UI matrices). Cheap guard before any macOS minutes are spent. |
+| `self-test` | ubuntu | CI-tooling regression suites (planner tests, lane-runner state machine, destination lookup, gate/timing contracts) - concurrent with `build`, so the minutes-long bash state-machine suite never delays macOS work nor risks the plan job's timeout. |
 | `build` | macos-26 | `build-for-testing` exactly once; `.xctestrun` portability audit; uploads products. |
 | `unit` (matrix) | macos-26 | One dynamically planned lane per matrix entry. |
-| `ui` (matrix) | macos-26 | Dynamically planned UI lane; runs each class independently (see below). |
+| `ui` (matrix) | macos-26 | Dynamically planned UI lane; runs each shard as ONE batched invocation (see below). |
 | `report` | ubuntu | Aggregates lane results into the CI Test Report step summary. |
 | `timing-history-update` | ubuntu | Main-only: merges fresh timings into the history cache (EWMA). |
+
+The self-test job's timeout hierarchy is load-bearing: each synthetic hang
+in the state-machine suite is watchdog-killed within a 1-6 s test budget <
+the suite's Python wrapper subprocess cap (480 s; the suite measures
+~3.5-4 min on macOS) < the job's own 12-minute ceiling - GitHub must never
+be the first layer to kill a regression suite.
 
 ## Test discovery
 
@@ -168,7 +174,7 @@ the rest of CI v2.
    with Xcode-native flake retry (`-retry-tests-on-failure
    -test-iterations N`), which re-executes only the failing tests; survivors
    fail the lane with the failing tests identified. A failing UI batch gets
-   one **targeted retry of exactly the failed tests** (methods when the
+   one **targeted retry of exactly the non-passing tests** (methods when the
    xcresult identifies them, the class otherwise); if the retry passes, the
    classes involved are reported as runner-level flakes and the lane
    continues.
@@ -313,7 +319,7 @@ real runtimes.
 The `CI Gate` job is the single stable required status check for branch
 protection. It passes only when:
 
-* `plan`, `build` and every dynamic `unit` lane succeed, and
+* `plan`, `build`, `self-test` and every dynamic `unit` lane succeed, and
 * every dynamic `ui` lane succeeds (or is skipped entirely because the repo
   contains no UI tests).
 

@@ -91,22 +91,23 @@ class WorkflowContractTests(unittest.TestCase):
 
     def test_ci_gate_script_verdict_matches_spec_examples(self):
         spec = {
-            ("success", "success", "success", "success"): True,
-            ("success", "success", "success", "skipped"): True,
-            ("success", "success", "failure", "success"): False,
-            ("success", "failure", "skipped", "skipped"): False,
-            ("cancelled", "success", "success", "success"): False,
-            ("success", "success", "cancelled", "success"): False,
+            ("success", "success", "success", "success", "success"): True,
+            ("success", "success", "success", "skipped", "success"): True,
+            ("success", "success", "success", "success", "failure"): False,
+            ("success", "success", "failure", "success", "success"): False,
+            ("success", "failure", "skipped", "skipped", "skipped"): False,
+            ("cancelled", "success", "success", "success", "success"): False,
+            ("success", "success", "cancelled", "success", "success"): False,
         }
-        for (plan, build, unit, ui), expected in spec.items():
+        for (plan, build, unit, ui, self_test), expected in spec.items():
             proc = subprocess.run(
                 [sys.executable, os.path.join(SCRIPTS_DIR, "ci-gate.py"),
                  "--plan", plan, "--build", build,
-                 "--unit", unit, "--ui", ui],
+                 "--unit", unit, "--ui", ui, "--self-test", self_test],
                 capture_output=True, text=True)
             self.assertEqual(
                 proc.returncode == 0, expected,
-                f"gate({plan},{build},{unit},{ui}) -> {proc.stdout}")
+                f"gate({plan},{build},{unit},{ui},{self_test}) -> {proc.stdout}")
 
 
 class TimingUpdateCliShapeTests(unittest.TestCase):
