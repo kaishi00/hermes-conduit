@@ -9,8 +9,8 @@
         "apiKey": "{env:OPENCODE_GO_API_KEY}"
       },
       "models": {
-        "deepseek-v4-flash": {
-          "name": "DeepSeek V4 Flash"
+        "deepseek-flash": {
+          "name": "DeepSeek V4.1 Flash"
         }
       }
     }
