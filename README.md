@@ -3,7 +3,7 @@
 A native iOS client for [Hermes Agent](https://github.com/NousResearch/hermes-agent). Free, no ads, no tracking.
 
 [![App Store](https://img.shields.io/badge/App_Store-Hermes_Conduit-blue)](https://apps.apple.com/us/app/hermes-conduit/id6790977764)
-[![Website](https://img.shields.io/badge/Website-hermesconduit.app-blue)](https://www.hermesconduit.app)
+[![Website](https://img.shields.io/badge/Website-hermesconduit.app-blue)](https://hermesconduit.app)
 
 ## What it does
 
@@ -103,7 +103,7 @@ No analytics. No telemetry. No ad frameworks.
 
 ## Support
 
-- Website: [hermesconduit.app](https://www.hermesconduit.app)
+- Website: [hermesconduit.app](https://hermesconduit.app)
 - Bug reports: [GitHub issues](https://github.com/kaishi00/hermes-conduit/issues)
 - Email: [developer@hermesconduit.app](mailto:developer@hermesconduit.app)
 
