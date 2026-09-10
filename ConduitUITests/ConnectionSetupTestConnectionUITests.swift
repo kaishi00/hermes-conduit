@@ -9,6 +9,7 @@ final class ConnectionSetupTestConnectionUITests: XCTestCase {
         static let answerYes = "setup.answer-yes"
         static let methodLan = "setup.method-lan"
         static let detailsReady = "setup.details-ready"
+        static let stepLabel = "setup.step-label"
         static let next = "setup.next"
         static let back = "setup.back"
         static let testRun = "setup.test.run"
@@ -175,6 +176,13 @@ final class ConnectionSetupTestConnectionUITests: XCTestCase {
         if !setup.isHittable { app.swipeDown() }
         setup.tap()
 
+        // The entry tap starts a NavigationStack push: right after the tap,
+        // a snapshot can still describe the login card, so interacting with
+        // the first answer races the transition (a hosted failure waited out
+        // exactly this race). The wizard's own step label is the semantic
+        // "Step 1 is active" marker — wait for it before the first answer.
+        waitForStep(app, "Step 1 of 3")
+
         tapVisible(app.buttons[Identity.answerYes], in: app)
         tapVisible(app.buttons[Identity.answerYes], in: app)
         tapVisible(app.buttons[Identity.methodLan], in: app)
@@ -211,6 +219,32 @@ final class ConnectionSetupTestConnectionUITests: XCTestCase {
     /// lookup paid for on every check.
     private func stageRow(_ app: XCUIApplication, _ identifier: String) -> XCUIElement {
         app.otherElements[identifier]
+    }
+
+    /// Polls until the wizard's step label names `expected`, failing with
+    /// the tree if it never does. Polling (not a single assert) matters
+    /// because during the wizard's push/pop transitions both steps can be
+    /// mounted, so the first snapshot may still describe the outgoing step —
+    /// the same contract as ConnectionSetupUITests.stepLabel.
+    private func waitForStep(
+        _ app: XCUIApplication,
+        _ expected: String,
+        timeout: TimeInterval = 5
+    ) {
+        let label = app.staticTexts[Identity.stepLabel]
+        let deadline = Date().addingTimeInterval(timeout)
+
+        while Date() < deadline {
+            if label.exists, label.label == expected {
+                return
+            }
+
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+
+        XCTFail(
+            "Expected wizard step \(expected). Tree:\n\(app.debugDescription)"
+        )
     }
 
     private func tapVisible(_ element: XCUIElement, in app: XCUIApplication) {

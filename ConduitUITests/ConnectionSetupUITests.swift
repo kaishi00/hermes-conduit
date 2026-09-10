@@ -172,8 +172,19 @@ final class ConnectionSetupUITests: XCTestCase {
         XCTAssertTrue(copyPrompt.waitForExistence(timeout: 5), "Copy Prompt must appear on the No path")
         if !copyPrompt.isHittable { app.swipeUp() }
         copyPrompt.tap()
-        XCTAssertTrue(
-            app.staticTexts["setup.copied-confirmation"].waitForExistence(timeout: 3),
+        // The visible "Copied" label intentionally disappears after ~2s,
+        // which a hosted runner can outrun between the tap and the first
+        // hierarchy snapshot. The button therefore carries a DURABLE
+        // accessibility value for the current prompt ("Copied"), and the
+        // assertion waits on that semantic state instead of racing the
+        // transient label.
+        let copiedValue = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == %@", "Copied"),
+            object: copyPrompt
+        )
+        XCTAssertEqual(
+            XCTWaiter.wait(for: [copiedValue], timeout: 3),
+            .completed,
             "Copying must confirm to the user"
         )
 
