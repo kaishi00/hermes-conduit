@@ -2002,7 +2002,7 @@ final class ContinuousConversationPreferenceTests: XCTestCase {
         controller.setProfilePreferences(Self.preferences(continuous: false))
 
         await Self.driveToSpeaking(controller, gateway: gateway)
-        XCTAssertEqual(controller.isPlaybackCaptureSuspended)
+        XCTAssertTrue(controller.isPlaybackCaptureSuspended)
 
         await controller.interruptAssistantPlayback()
 
