@@ -911,12 +911,21 @@ final class VoiceConversationController: ObservableObject {
     /// session closes through the same effective teardown as the sheet's
     /// Close action — AppState installs that path here (persist mute →
     /// `endVoiceSession` → sheet dismissal); the fallback covers callers
-    /// without the seam. Closing FIRST fences every stale continuation (the
-    /// teardown bumps the operation generation and cancels the in-flight
-    /// tasks) before the interrupt await, so a completion racing the Hermes
-    /// cancellation cannot reopen capture or playback. This runs regardless
-    /// of `continuousConversation` and is never followed by a relisten.
+    /// without the seam. This runs regardless of `continuousConversation`
+    /// and is never followed by a relisten.
+    ///
+    /// Closing FIRST fences every stale continuation (the teardown bumps
+    /// the operation generation and cancels the in-flight tasks) before the
+    /// interrupt await, so a completion racing the Hermes cancellation
+    /// cannot reopen capture or playback. One self-interaction needs care:
+    /// this method runs INSIDE `utteranceTask`, and the teardown's
+    /// `utteranceTask?.cancel()` would mark the current task cancelled —
+    /// `HermesClient.rpc` throws `CancellationError` for cancelled tasks,
+    /// which would abort the turn-cancel below exactly when there is a live
+    /// Hermes turn to cancel. Clearing the handle first makes that cancel a
+    /// no-op; the task ends on its own right after.
     private func endConversationForSpokenCommand() async {
+        utteranceTask = nil
         if let endConversationRequest {
             endConversationRequest()
         } else {

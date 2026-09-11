@@ -55,6 +55,15 @@ final class VoiceSpokenCommandMatchingTests: XCTestCase {
         XCTAssertTrue(VoiceSpokenCommands.matches("bye", phrases: phrases))
     }
 
+    func testApostropheVariantsMatchAcrossUtteranceAndPhrase() {
+        // The default phrase uses U+0027; ASR often emits U+2019.
+        XCTAssertTrue(VoiceSpokenCommands.matches("that's all", phrases: ["that's all"]))
+        XCTAssertTrue(VoiceSpokenCommands.matches("that’s all", phrases: ["that's all"]))
+        XCTAssertTrue(VoiceSpokenCommands.matches("that's all.", phrases: ["that’s all"]))
+        XCTAssertTrue(VoiceSpokenCommands.matches("That’s All!", phrases: ["  that's all  "]))
+        XCTAssertFalse(VoiceSpokenCommands.matches("that's all folks", phrases: ["that's all"]))
+    }
+
     func testSubstringUtterancesNeverMatch() {
         XCTAssertTrue(VoiceSpokenCommands.matches("goodbye", phrases: ["goodbye"]))
         XCTAssertFalse(VoiceSpokenCommands.matches("I said goodbye to them", phrases: ["goodbye"]))
@@ -325,6 +334,11 @@ final class VoiceConversationSpokenEndCommandTests: XCTestCase {
             return true
         }
         let interruptAction: @MainActor () async -> Void = {
+            // The End Conversation teardown cancels the utterance task that
+            // called it; the Hermes interrupt must still run in an
+            // uncancelled task (HermesClient.rpc throws CancellationError
+            // for cancelled work, which would leave the turn alive).
+            XCTAssertFalse(Task.isCancelled)
             flags.interrupts += 1
         }
         let endAction: (@MainActor () -> Void)?

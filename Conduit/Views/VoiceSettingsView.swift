@@ -477,12 +477,14 @@ struct VoiceSettingsView: View {
                 initialPhrases: spokenStopPhrases,
                 onChange: setStopPhrases
             )
+            .id(spokenStopPhrases)
             SpokenPhraseListEditor(
                 title: "End Conversation Phrases",
                 purposeText: "Close the Voice conversation completely.",
                 initialPhrases: spokenEndConversationPhrases,
                 onChange: setEndConversationPhrases
             )
+            .id(spokenEndConversationPhrases)
         }
     }
 
@@ -645,8 +647,10 @@ private struct SpokenPhraseListEditor: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            ForEach(phrases.indices, id: \.self) { index in
-                phraseRow(index)
+            // Entries are pairwise distinct after canonicalization, so the
+            // value itself is a stable identity across deletes and dedupes.
+            ForEach(phrases, id: \.self) { phrase in
+                phraseRow(phrase)
             }
             HStack(spacing: 8) {
                 TextField(editingIndex == nil ? "Add a phrase" : "Edit phrase", text: $draft)
@@ -654,51 +658,66 @@ private struct SpokenPhraseListEditor: View {
                     .onSubmit(commitDraft)
                     .accessibilityLabel(Text(editingIndex == nil ? "Add \(title)" : "Edit \(title)"))
                 Button(editingIndex == nil ? "Add" : "Save", action: commitDraft)
-                    .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(draftCanonicalized.isEmpty)
             }
         }
         .accessibilityElement(children: .contain)
     }
 
-    private func phraseRow(_ index: Int) -> some View {
+    private var draftCanonicalized: String {
+        VoiceSpokenCommands.canonicalized(draft)
+    }
+
+    private func phraseRow(_ phrase: String) -> some View {
         HStack(spacing: 10) {
-            Text(phrases[index])
+            Text(phrase)
                 .font(.subheadline)
             Spacer()
             Button {
-                draft = phrases[index]
-                editingIndex = index
+                draft = phrase
+                editingIndex = phrases.firstIndex(of: phrase)
             } label: {
                 Image(systemName: "pencil")
             }
             .buttonStyle(.borderless)
-            .accessibilityLabel(Text("Edit phrase \(phrases[index])"))
+            .accessibilityLabel(Text("Edit phrase \(phrase)"))
             Button {
-                deletePhrase(at: index)
+                deletePhrase(phrase)
             } label: {
                 Image(systemName: "minus.circle.fill")
                     .foregroundStyle(.red)
             }
             .buttonStyle(.borderless)
-            .accessibilityLabel(Text("Delete phrase \(phrases[index])"))
+            .accessibilityLabel(Text("Delete phrase \(phrase)"))
         }
         .padding(.vertical, 2)
     }
 
     private func commitDraft() {
-        let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+        // A draft that canonicalizes to empty ("   ", "!!!") would be
+        // dropped by the save-time canonicalization anyway — refuse it here
+        // so committing never silently no-ops.
+        guard !draftCanonicalized.isEmpty else { return }
         var updated = phrases
         if let editingIndex, phrases.indices.contains(editingIndex) {
-            updated[editingIndex] = trimmed
+            updated[editingIndex] = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         } else {
-            updated.append(trimmed)
+            updated.append(draft.trimmingCharacters(in: .whitespacesAndNewlines))
         }
         save(updated)
     }
 
-    private func deletePhrase(at index: Int) {
-        guard phrases.indices.contains(index) else { return }
+    private func deletePhrase(_ phrase: String) {
+        guard let index = phrases.firstIndex(of: phrase) else { return }
+        // Deleting the row being edited (or one before it) shifts the
+        // positional edit target — resolve or drop the pending edit instead
+        // of letting it land on the wrong row.
+        if editingIndex == index {
+            editingIndex = nil
+            draft = ""
+        } else if let editIndex = editingIndex, index < editIndex {
+            editingIndex = editIndex - 1
+        }
         var updated = phrases
         updated.remove(at: index)
         save(updated)
@@ -713,7 +732,8 @@ private struct SpokenPhraseListEditor: View {
     }
 }
 
-private struct VoiceProviderFieldEditor: View {    let field: VoiceTypedField
+private struct VoiceProviderFieldEditor: View {
+    let field: VoiceTypedField
     @Binding var value: String
     let isSaving: Bool
     let save: (String) async -> Void

@@ -64,11 +64,13 @@ enum VoiceSpokenCommands {
     static let defaultEndConversationPhrases = ["goodbye", "bye", "end conversation", "that's all"]
 
     /// The single normalization used on both utterances and configured
-    /// phrases: case folding plus leading/trailing whitespace and punctuation
-    /// stripping (internal punctuation such as the apostrophe in
-    /// "that's all" survives).
+    /// phrases: case folding, typographic apostrophe folding (ASR emits
+    /// U+2019 for the U+0027 in defaults like "that's all"), and
+    /// leading/trailing whitespace and punctuation stripping (internal
+    /// punctuation such as the folded apostrophe survives).
     static func canonicalized(_ text: String) -> String {
         text.lowercased()
+            .replacingOccurrences(of: "\u{2019}", with: "'")
             .trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
     }
 
