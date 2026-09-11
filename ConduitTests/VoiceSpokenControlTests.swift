@@ -324,10 +324,15 @@ final class VoiceConversationSpokenEndCommandTests: XCTestCase {
         let interruptAction: @MainActor () async -> Void = {
             flags.interrupts += 1
         }
-        let endAction: (@MainActor () -> Void)? = wiresCloseSeam ? {
-            flags.endConversationCount += 1
-            box.controller?.endVoiceSession()
-        } : nil
+        let endAction: (@MainActor () -> Void)?
+        if wiresCloseSeam {
+            endAction = {
+                flags.endConversationCount += 1
+                box.controller?.endVoiceSession()
+            }
+        } else {
+            endAction = nil
+        }
         let controller = VoiceConversationController(
             capture: capture,
             playback: MockPlayback(),
