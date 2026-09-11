@@ -67,6 +67,11 @@ struct VoiceProfilePreferences: Codable, Equatable {
         transcriptionMode ?? .hermes
     }
 
+    /// Explicit zero-arg initializer: a custom `init(from:)` removes the
+    /// synthesized memberwise/default initializer, and callers use
+    /// `VoiceProfilePreferences()` then mutate fields.
+    init() {}
+
     /// Missing keys decode to the field defaults so a stored blob that never
     /// wrote `continuousConversation` still yields ON (backward compatible).
     /// Synthesized Codable would throw `keyNotFound` for absent non-optional
