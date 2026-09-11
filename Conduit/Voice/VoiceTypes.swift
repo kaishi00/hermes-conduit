@@ -234,7 +234,11 @@ enum VoiceCaptureEvent: Equatable {
     /// controller can drop events queued before a pause/stop/restart: a
     /// frame is valid only for the generation that produced it.
     case level(Float, date: Date, generation: UInt64)
-    case interrupted
+    /// `generation` identifies the capture runtime the interruption belongs
+    /// to, so a queued interruption observed for a torn-down generation can
+    /// never fail a later capture (the controller rejects foreign
+    /// generations before applying the interrupted-failure semantics).
+    case interrupted(generation: UInt64)
     case routeChanged
 }
 

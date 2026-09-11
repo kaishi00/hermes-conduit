@@ -151,6 +151,79 @@ final class AVAudioCaptureServiceGenerationTests: XCTestCase {
         XCTAssertEqual(generation, generationB)
     }
 
+    // MARK: - Interruption generation fence
+
+    static let interruptionBeganNotification = Notification(
+        name: AVAudioSession.interruptionNotification,
+        object: nil,
+        userInfo: [AVAudioSessionInterruptionTypeKey: UInt(AVAudioSession.InterruptionType.began.rawValue)]
+    )
+
+    func testStaleInterruptionFromTornDownGenerationCannotStopLiveCapture() async throws {
+        let service = AVAudioCaptureService()
+        startEventCollector(service)
+
+        // Generation A is live and recording.
+        service.shouldKeepEngineRunning = true
+        service.activelyRecording = true
+        let generationA = service.captureGeneration
+
+        // The interruption notification for A arrives: its identity is
+        // captured synchronously on the notifying thread and the MainActor
+        // teardown is queued.
+        service.handleInterruption(Self.interruptionBeganNotification)
+
+        // Voice suspension tears A down; a later Listen re-arms generation B.
+        service.stop()
+        service.shouldKeepEngineRunning = true
+        service.activelyRecording = true
+        let generationB = service.captureGeneration
+        XCTAssertNotEqual(generationA, generationB)
+
+        // The DELAYED interruption from A finally executes: it is discarded
+        // completely. B stays live — not stopped, lease intact, no failure.
+        for _ in 0..<20 { await Task.yield() }
+        try? await Task.sleep(nanoseconds: 20_000_000)
+        XCTAssertEqual(service.captureGeneration, generationB, "the stale interruption must not tear down B")
+        XCTAssertTrue(service.shouldKeepEngineRunning, "B's runtime stays up")
+        XCTAssertTrue(service.activelyRecording, "B's capture stays live")
+        XCTAssertFalse(
+            collectedEvents.contains { if case .interrupted = $0 { return true }; return false },
+            "no interrupted failure may apply to the live generation"
+        )
+
+        // B remains fully usable: a frame from B is admitted and surfaces as
+        // a level event tagged with B's generation.
+        let current = try constantBuffer(sampleRate: 48_000, frameCount: 960, amplitude: 0.25)
+        service.consume(current, generation: generationB)
+        for _ in 0..<200 where collectedEvents.isEmpty {
+            await Task.yield()
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+        guard case let .level(peak, _, levelGeneration) = collectedEvents.first else {
+            return XCTFail("expected a level event from the live generation B")
+        }
+        XCTAssertGreaterThan(peak, 0)
+        XCTAssertEqual(levelGeneration, generationB)
+
+        // Positive case: an interruption belonging to the CURRENT generation
+        // reproduces the normal interrupted teardown semantics — the service
+        // validates the pre-stop generation, stops capture (installing the
+        // next generation), and emits the POST-STOP generation so the
+        // controller recognizes the failure as applying to the state it
+        // actually left behind.
+        service.handleInterruption(Self.interruptionBeganNotification)
+        for _ in 0..<20 { await Task.yield() }
+        try? await Task.sleep(nanoseconds: 20_000_000)
+        XCTAssertEqual(service.captureGeneration, generationB + 1, "the current generation's interruption tears B down")
+        XCTAssertFalse(service.shouldKeepEngineRunning)
+        XCTAssertFalse(service.activelyRecording)
+        guard case let .interrupted(postStopGeneration) = collectedEvents.last else {
+            return XCTFail("expected an interrupted event for the current generation")
+        }
+        XCTAssertEqual(postStopGeneration, generationB + 1, "the emitted generation must be the authoritative post-stop state")
+    }
+
     // MARK: - Helpers
 
     /// A mono Float32 buffer at a realistic hardware rate filled with a

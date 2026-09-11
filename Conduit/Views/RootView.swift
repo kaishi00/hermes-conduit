@@ -85,7 +85,8 @@ struct MainView: View {
             VoiceConversationSheet(
                 controller: appState.voiceConversationController,
                 profile: appState.activeProfile,
-                onClose: appState.closeVoiceConversation
+                onClose: appState.closeVoiceConversation,
+                shouldAutoListen: { appState.consumeVoiceSheetAutoListen() }
             )
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)

@@ -6,6 +6,7 @@
 import AVFAudio
 import Foundation
 import OSLog
+import os
 
 private let voiceAudioLogger = Logger(subsystem: "com.milim.relay", category: "VoiceAudio")
 
@@ -43,6 +44,22 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
     /// frames queued from a previous generation can be recognized and
     /// dropped after the boundary.
     private(set) var captureGeneration: UInt64 = 0
+    /// Thread-safe mirror of `captureGeneration` for observers that run
+    /// outside the MainActor. Session interruption notifications arrive on
+    /// an arbitrary thread and must record which capture generation they
+    /// belong to SYNCHRONOUSLY, before the MainActor hop — reading the value
+    /// later would observe whatever generation is installed by then, which
+    /// is exactly the stale-teardown race this exists to prevent.
+    private let observedCaptureGeneration = OSAllocatedUnfairLock<UInt64>(initialState: 0)
+
+    nonisolated private var generationForInterruptionObservers: UInt64 {
+        observedCaptureGeneration.withLock { $0 }
+    }
+
+    private func publishGenerationForInterruptionObservers() {
+        let current = captureGeneration
+        observedCaptureGeneration.withLock { $0 = current }
+    }
     var shouldKeepEngineRunning = false
     private var lastCaptureFailure: String?
     private var continuation: AsyncStream<VoiceCaptureEvent>.Continuation?
@@ -130,6 +147,7 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
         paused = true
         shouldKeepEngineRunning = false
         captureGeneration &+= 1
+        publishGenerationForInterruptionObservers()
         teardownRendering()
         releaseLease()
     }
@@ -170,6 +188,7 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
         // Deliberately unguarded (unlike pause): a redundant stop bumps the
         // generation again, which is always fail-closed.
         captureGeneration &+= 1
+        publishGenerationForInterruptionObservers()
         teardownRendering()
         releaseLease()
     }
@@ -218,6 +237,7 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
         // invalidates it so queued frames from the old tap are recognized
         // as stale.
         captureGeneration &+= 1
+        publishGenerationForInterruptionObservers()
         let frameGeneration = captureGeneration
         input.installTap(onBus: 0, bufferSize: 1_024, format: nil) { [weak self] buffer, _ in
             // AVAudioEngine owns and reuses tap buffers as soon as this block
@@ -338,15 +358,43 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
         }
     }
 
+    /// Internal for tests: the deterministic stale-interruption regression
+    /// drives this entry point directly.
+    ///
     /// Hopped through `Task { @MainActor }`: session notifications are not
     /// guaranteed to arrive on the main thread, and stop() now releases the
-    /// capture lease through the MainActor coordinator.
-    @objc private func handleInterruption(_ notification: Notification) {
+    /// capture lease through the MainActor coordinator. The interruption's
+    /// capture generation is captured SYNCHRONOUSLY on the notifying thread
+    /// — reading it later on the MainActor would observe whatever generation
+    /// is installed by then. The fence runs BEFORE any mutation: an
+    /// interruption that observed a torn-down generation must never stop the
+    /// live one, release its lease, or emit a failure that applies to it.
+    @objc func handleInterruption(_ notification: Notification) {
         guard let typeValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
               let type = AVAudioSession.InterruptionType(rawValue: typeValue), type == .began else { return }
+        // PRE-STOP generation: identifies the capture runtime the
+        // notification belonged to, captured synchronously on the notifying
+        // thread before any MainActor work.
+        let observedGeneration = generationForInterruptionObservers
         Task { @MainActor [weak self] in
-            self?.stop()
-            self?.continuation?.yield(.interrupted)
+            guard let self else { return }
+            // Stale-callback fence BEFORE mutation: a queued interruption
+            // that observed a torn-down generation must never stop the
+            // live one, release its lease, or emit a failure that applies
+            // to it.
+            guard observedGeneration == captureGeneration else {
+                voiceAudioLogger.notice(
+                    "Discarding interruption for torn-down capture generation \(observedGeneration, privacy: .public); current \(self.captureGeneration, privacy: .public)"
+                )
+                return
+            }
+            stop()
+            // POST-STOP generation: the authoritative service state after
+            // the accepted runtime was torn down. Emitting this (not the
+            // pre-stop value) lets the controller recognize the event as
+            // belonging to the state it actually left behind.
+            let postStopGeneration = captureGeneration
+            continuation?.yield(.interrupted(generation: postStopGeneration))
         }
     }
 
@@ -369,7 +417,7 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
                 try startEngine()
             } catch {
                 handleStartupFailure(error, stage: "routeChange")
-                continuation?.yield(.interrupted)
+                continuation?.yield(.interrupted(generation: captureGeneration))
                 return
             }
         }
