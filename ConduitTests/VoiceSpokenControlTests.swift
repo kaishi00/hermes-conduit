@@ -172,13 +172,14 @@ final class VoiceConversationSpokenEndCommandTests: XCTestCase {
     }
 
     func testHeadsetBargeInThenGoodbyeEndsSessionWithoutStaleRelisten() async {
-        let (controller, capture, _, flags) = makeController(
-            transcript: "goodbye",
+        let (controller, capture, gateway, flags) = makeController(
+            transcript: "Question",
             routePolicy: .fullDuplex
         )
         controller.setProfilePreferences(preferences(endConversation: ["goodbye"]))
 
         await driveToSpeaking(controller)
+        gateway.transcript = "goodbye"
         let bargeInStart = Date()
         controller.ingestAudioLevel(0.5, at: bargeInStart)
         controller.ingestAudioLevel(0.5, at: bargeInStart.addingTimeInterval(0.31))
@@ -196,13 +197,14 @@ final class VoiceConversationSpokenEndCommandTests: XCTestCase {
     }
 
     func testSpeakerSafeRouteStaysHalfDuplexDuringTTSWithCommandPhrasesConfigured() async {
-        let (controller, capture, _, flags) = makeController(
-            transcript: "goodbye",
+        let (controller, capture, gateway, flags) = makeController(
+            transcript: "Question",
             routePolicy: .speakerSafeHalfDuplex
         )
         controller.setProfilePreferences(preferences(endConversation: ["goodbye"]))
 
         await driveToSpeaking(controller)
+        gateway.transcript = "goodbye"
         XCTAssertTrue(controller.isPlaybackCaptureSuspended)
 
         let leakStart = Date()
@@ -218,13 +220,14 @@ final class VoiceConversationSpokenEndCommandTests: XCTestCase {
     }
 
     func testSpeakerSafeManualInterruptThenGoodbyeEndsSession() async {
-        let (controller, capture, _, flags) = makeController(
-            transcript: "goodbye",
+        let (controller, capture, gateway, flags) = makeController(
+            transcript: "Question",
             routePolicy: .speakerSafeHalfDuplex
         )
         controller.setProfilePreferences(preferences(endConversation: ["goodbye"]))
 
         await driveToSpeaking(controller)
+        gateway.transcript = "goodbye"
         await controller.interruptAssistantPlayback()
         XCTAssertEqual(controller.state, .listening)
 
@@ -430,7 +433,9 @@ private final class MockPlayback: SpeechPlaybackService {
 @MainActor
 private final class MockGateway: VoiceGatewayService {
     let profile = "default"
-    let transcript: String
+    /// Mutable so multi-phase tests can use a normal utterance to drive the
+    /// assistant turn and a command utterance for the phase under test.
+    var transcript: String
     private(set) var transcriptionCount = 0
     init(transcript: String) { self.transcript = transcript }
     func transcribe(_ audio: VoiceCapturedAudio) async throws -> String {
