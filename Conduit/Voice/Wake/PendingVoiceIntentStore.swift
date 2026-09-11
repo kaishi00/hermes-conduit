@@ -76,16 +76,6 @@ final class PendingVoiceIntentStore: ObservableObject {
         return true
     }
 
-    /// Authoritative consume for a still-current claim that was already taken
-    /// (slot empty) or still pending. Used for terminal outcomes after an
-    /// await — never restores the request.
-    @discardableResult
-    func consumeClaimIfCurrent(_ claim: PendingVoiceIntentClaim) -> PendingVoiceIntent? {
-        guard isClaimCurrent(claim) else { return nil }
-        pending = nil
-        return claim.intent
-    }
-
     /// Hard-backstop expiry. Consumes the request only when the claim still
     /// owns the store and the pending intent is still that exact claim.
     /// Never leaves the same external request pending after firing.
