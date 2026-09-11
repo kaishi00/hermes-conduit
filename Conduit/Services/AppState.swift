@@ -13096,8 +13096,14 @@ final class AppState: ObservableObject {
 
     @discardableResult
     func setContinuousConversation(_ enabled: Bool) -> Bool {
+        guard isConnected else { return false }
         var preferences = loadVoiceProfilePreferences(profile: activeProfile)
         preferences.continuousConversation = enabled
+        // Live mute is authoritative while the controller holds a session.
+        // Persist it into the blob we reapply so this write cannot silently
+        // unmute an active Voice conversation (mute is otherwise only saved
+        // on sheet close).
+        preferences.outputMuted = voiceConversationController.isOutputMuted
         saveVoiceProfilePreferences(preferences, profile: activeProfile)
         continuousConversationEnabled = enabled
         voiceConversationController.setProfilePreferences(preferences)

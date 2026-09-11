@@ -21,6 +21,9 @@ final class AppStateContinuousConversationPreferenceTests: XCTestCase {
         seed.spokenStopPhrases = ["halt", "quiet"]
         seed.transcriptionMode = .appleOnDevice
         savePreferences(seed, defaults: defaults, profile: "default", gateway: "https://example.com")
+        // Live mute must match the seeded value so this write does not
+        // intentionally overwrite outputMuted from the controller.
+        appState.voiceConversationController.setOutputMuted(true)
 
         appState.setContinuousConversation(false)
 
@@ -80,6 +83,39 @@ final class AppStateContinuousConversationPreferenceTests: XCTestCase {
 
         XCTAssertFalse(appState.continuousConversationEnabled)
         XCTAssertFalse(appState.voiceConversationController.isContinuousConversationEnabled)
+    }
+
+    func testSetContinuousConversationPreservesLiveMuteOverStalePersistedUnmuted() throws {
+        let (appState, defaults, suite) = makeAppState(profile: "default")
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        // Persisted blob still says unmuted (mute is written on sheet close).
+        var seed = VoiceProfilePreferences()
+        seed.outputMuted = false
+        seed.continuousConversation = true
+        savePreferences(seed, defaults: defaults, profile: "default", gateway: "https://example.com")
+
+        // Active Voice session is muted in memory only.
+        appState.voiceConversationController.setOutputMuted(true)
+        XCTAssertTrue(appState.voiceConversationController.isOutputMuted)
+
+        XCTAssertTrue(appState.setContinuousConversation(false))
+
+        XCTAssertTrue(appState.voiceConversationController.isOutputMuted, "toggling continuous conversation must not unmute a live session")
+        XCTAssertFalse(appState.continuousConversationEnabled)
+        let loaded = try loadPreferences(defaults: defaults, profile: "default", gateway: "https://example.com")
+        XCTAssertTrue(loaded.outputMuted, "live mute is persisted so the reapplied blob cannot regress")
+        XCTAssertFalse(loaded.continuousConversation)
+    }
+
+    func testSetContinuousConversationFailsWhenDisconnected() {
+        let (appState, defaults, suite) = makeAppState(profile: "default")
+        defer { defaults.removePersistentDomain(forName: suite) }
+        appState.isConnected = false
+
+        XCTAssertFalse(appState.setContinuousConversation(false))
+        XCTAssertTrue(appState.continuousConversationEnabled, "failed write must not flip the published flag")
+        XCTAssertTrue(appState.voiceConversationController.isContinuousConversationEnabled, "controller keeps the previous preference")
     }
 
     private func makeAppState(profile: String) -> (AppState, UserDefaults, String) {

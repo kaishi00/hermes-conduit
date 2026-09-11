@@ -181,6 +181,7 @@ struct VoiceSettingsView: View {
                     }
                 }
             ))
+            .accessibilityHint("Automatically listens again after each response. Turn off to start each listening turn manually.")
             Text("When enabled, Conduit automatically listens again after each response. When disabled, the session stays open and you start the next listening turn manually. This does not change Pause Mic, Interrupt, Close, or wake-word settings.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
