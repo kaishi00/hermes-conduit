@@ -159,21 +159,21 @@ enum KanbanBulkResultPolicy {
         let failedCount = outcome.failures.count
         switch (updated, failedCount) {
         case (0, 0):
-            return "No tasks updated"
+            return String(localized: "No tasks updated")
         case (1, 0):
-            return "1 task updated"
+            return String(localized: "1 task updated")
         case (0, 1):
-            return "1 task failed"
+            return String(localized: "1 task failed")
         case (0, _):
-            return "\(failedCount) tasks failed"
+            return String(localized: "\(String(failedCount)) tasks failed")
         case (1, 1):
-            return "1 updated, 1 failed"
+            return String(localized: "1 updated, 1 failed")
         case (1, _):
-            return "1 updated, \(failedCount) failed"
+            return String(localized: "1 updated, \(String(failedCount)) failed")
         case (_, 0):
-            return "\(updated) tasks updated"
+            return String(localized: "\(String(updated)) tasks updated")
         default:
-            return "\(updated) updated, \(failedCount) failed"
+            return String(localized: "\(String(updated)) updated, \(String(failedCount)) failed")
         }
     }
 

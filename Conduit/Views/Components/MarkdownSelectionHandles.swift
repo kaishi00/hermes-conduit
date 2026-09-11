@@ -191,7 +191,7 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
         }, for: .touchUpInside)
 
         let feedback = UILabel()
-        feedback.text = "Copied"
+        feedback.text = String(localized: "Copied")
         feedback.textColor = .label
         feedback.font = .systemFont(ofSize: 12, weight: .semibold)
         feedback.isHidden = true
@@ -235,7 +235,7 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
     }
 
     private static func endpointAccessibilityValue(_ segmentID: String, offset: Int) -> String {
-        String(format: NSLocalizedString("character %d", comment: "VoiceOver position of a selection endpoint"), offset)
+        String(format: NSLocalizedString(String(localized: "character %d"), comment: "VoiceOver position of a selection endpoint"), offset)
     }
 
     /// The container sits outside the transcript scroll view, so nothing
@@ -444,7 +444,7 @@ final class MarkdownSelectionHandleView: UIView {
         // both VoiceOver and the UI tests' identifier queries.
         isAccessibilityElement = true
         accessibilityTraits = .adjustable
-        accessibilityLabel = role == .anchor ? "Selection start handle" : "Selection end handle"
+        accessibilityLabel = role == .anchor ? String(localized: "Selection start handle") : String(localized: "Selection end handle")
     }
 
     override func accessibilityIncrement() {

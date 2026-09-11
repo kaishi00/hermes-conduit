@@ -72,11 +72,11 @@ struct KanbanTaskComposerView: View {
                     }
                 }
             }
-            .navigationTitle(didCreate ? "Task created" : "New task")
+            .navigationTitle(didCreate ? String(localized: "Task created") : String(localized: "New task"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button(didCreate ? "Close" : "Cancel") { dismiss() }
+                    Button(didCreate ? String(localized: "Close") : String(localized: "Cancel")) { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     creationButton
@@ -145,13 +145,13 @@ struct KanbanTaskComposerView: View {
         Section {
             Picker("Workspace", selection: $draft.workspaceKind) {
                 ForEach(KanbanWorkspaceKind.allCases) { kind in
-                    Text(kind.displayName + (kind == boardDefaultKind ? " · board default" : ""))
+                    Text(kind.displayName + (kind == boardDefaultKind ? String(localized: " · board default") : ""))
                         .tag(kind)
                 }
             }
             if draft.workspaceKind.allowsPathOverride {
                 TextField(
-                    boardDefaultDir != nil ? "Leave empty to inherit \(boardDefaultDir!)" : "Optional path override",
+                    boardDefaultDir != nil ? String(localized: "Leave empty to inherit \(boardDefaultDir!)") : String(localized: "Optional path override"),
                     text: $draft.workspacePath
                 )
                 .textInputAutocapitalization(.never)
@@ -198,7 +198,7 @@ struct KanbanTaskComposerView: View {
                 Text("Model")
                     .foregroundStyle(.primary)
                 Spacer()
-                Text(draft.modelOverride.label(inheritCopy: "Inherit from profile"))
+                Text(draft.modelOverride.label(inheritCopy: String(localized: "Inherit from profile")))
                     .font(.callout)
                     .foregroundStyle(draft.modelOverride.isInherited ? .secondary : .primary)
                     .lineLimit(1)
@@ -218,7 +218,7 @@ struct KanbanTaskComposerView: View {
                 Text("Skills")
                     .foregroundStyle(.primary)
                 Spacer()
-                Text(draft.skills.isEmpty ? "None" : "\(draft.skills.count) selected")
+                Text(draft.skills.isEmpty ? String(localized: "None") : String(localized: "\(draft.skills.count) selected"))
                     .font(.callout)
                     .foregroundStyle(draft.skills.isEmpty ? .secondary : .primary)
                 Image(systemName: "chevron.right")
@@ -236,7 +236,7 @@ struct KanbanTaskComposerView: View {
             // Symmetric ladder: Unlimited -> 5 -> 10 -> 15 … and back down to
             // Unlimited; both directions walk the same rungs.
             Stepper(
-                "Max turns: \(draft.goalMaxTurns.map(String.init) ?? "Unlimited")",
+                "Max turns: \(draft.goalMaxTurns.map(String.init) ?? String(localized: "Unlimited"))",
                 onIncrement: {
                     let base = draft.goalMaxTurns ?? 0
                     draft.goalMaxTurns = min(10_000, base + 5)
@@ -372,7 +372,7 @@ struct KanbanTaskComposerView: View {
             if isSaving {
                 ProgressView()
             } else {
-                Text(didCreate ? "Done" : "Create")
+                Text(didCreate ? "Done" : String(localized: "Create"))
             }
         }
         // Double-submission guard: the saving flag disables re-entry while the
@@ -442,7 +442,7 @@ struct KanbanModelOverrideSheet: View {
     @State private var customProvider = ""
     @State private var customModel = ""
 
-    private var inheritCopy: String { "Inherit from profile" }
+    private var inheritCopy: String { String(localized: "Inherit from profile") }
 
     var body: some View {
         NavigationStack {
@@ -590,7 +590,7 @@ struct KanbanModelOverrideSheet: View {
     }
 
     private func displayEffort(_ effort: String) -> String {
-        effort == "none" ? "None (thinking off)" : effort.capitalized.replacingOccurrences(of: "Xhigh", with: "Extra High")
+        effort == "none" ? String(localized: "None (thinking off)") : effort.capitalized.replacingOccurrences(of: "Xhigh", with: String(localized: "Extra High"))
     }
 
     private func seedCustomFields() {
@@ -688,7 +688,7 @@ struct KanbanSkillsPickerSheet: View {
                             }
                         }
                         .accessibilityLabel("Skill \(skill.name)")
-                        .accessibilityHint(isSelected(skill.name) ? "Selected" : "Not selected")
+                        .accessibilityHint(isSelected(skill.name) ? String(localized: "Selected") : String(localized: "Not selected"))
                     }
                     if filteredSkills.isEmpty {
                         Text("No skills match.")
@@ -708,7 +708,7 @@ struct KanbanSkillsPickerSheet: View {
                     }
                 }
             }
-            .searchable(text: $query, prompt: "Search skills")
+            .searchable(text: $query, prompt: String(localized: "Search skills"))
             .navigationTitle("Skills")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -809,7 +809,7 @@ struct KanbanParentPickerSheet: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            .searchable(text: $query, prompt: "Search tasks")
+            .searchable(text: $query, prompt: String(localized: "Search tasks"))
             .navigationTitle("Parent task")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

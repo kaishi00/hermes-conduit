@@ -686,13 +686,13 @@ final class AppState: ObservableObject {
     var composerPlaceholder: String {
         switch turnState {
         case .running:
-            return "\(busyInputMode.title) \(profileDisplayName(activeProfile))…"
+            return String(localized: "\(busyInputMode.title) \(profileDisplayName(activeProfile))…")
         case .synchronizing, .reconnecting:
-            return "Checking agent activity…"
+            return String(localized: "Checking agent activity…")
         case .unsupportedGateway:
-            return "Update Hermes to use chat controls"
+            return String(localized: "Update Hermes to use chat controls")
         case .idle:
-            return "Message \(profileDisplayName(activeProfile))…"
+            return String(localized: "Message \(profileDisplayName(activeProfile))…")
         }
     }
 
@@ -1385,7 +1385,7 @@ final class AppState: ObservableObject {
     func restoreActiveSessionState(for profile: String) {
         clearPendingDecisionRestorationGuard()
         activeSessionId = chatResumeCoordinator.lastSessionID(for: profile)
-        activeSessionTitle = activeSessionTitlesByProfile[profile] ?? "New conversation"
+        activeSessionTitle = activeSessionTitlesByProfile[profile] ?? String(localized: "New conversation")
     }
 
     private func restorePinnedSessions(for profile: String) {
@@ -2033,7 +2033,7 @@ final class AppState: ObservableObject {
         profiles = []
         clearPendingDecisionRestorationGuard()
         activeSessionId = nil
-        activeSessionTitle = "New conversation"
+        activeSessionTitle = String(localized: "New conversation")
         messages = []
         persistedTranscriptWindow = nil
         resetTranscriptLifecycleEvidence()
@@ -2801,7 +2801,7 @@ final class AppState: ObservableObject {
         pinnedSessionIDs = []
         messages = []
         persistedTranscriptWindow = nil
-        setActiveSessionState(id: nil, title: "New conversation")
+        setActiveSessionState(id: nil, title: String(localized: "New conversation"))
         clearStreamingText()
         resetReasoningTurn()
         turnState = .idle
@@ -2865,7 +2865,7 @@ final class AppState: ObservableObject {
 
         if credentials.requiresFaceID {
             guard BiometricAuth.isFaceIDAvailable,
-                  await BiometricAuth.authenticate(reason: "Unlock Conduit") else {
+                  await BiometricAuth.authenticate(reason: String(localized: "Unlock Conduit")) else {
                 showLogin = true
                 return
             }
@@ -2929,7 +2929,7 @@ final class AppState: ObservableObject {
     /// through requireSignIn(failure:) so it is classified, never rendered
     /// raw.
     func requireSignIn(message: String) {
-        performSignInRequired(pendingFailure: .notice(title: "Sign-in didn’t complete", message: message))
+        performSignInRequired(pendingFailure: .notice(title: String(localized: "Sign-in didn’t complete"), message: message))
     }
 
     private func performSignInRequired(pendingFailure: ConnectionFailurePresentation) {
@@ -4058,7 +4058,7 @@ final class AppState: ObservableObject {
             // available immediately, so resuming here races the persistence
             // layer and leaves the composer stuck synchronizing.
             markChatViewportReplacement()
-            setActiveSessionState(id: runtimeSessionID, title: "New conversation")
+            setActiveSessionState(id: runtimeSessionID, title: String(localized: "New conversation"))
             messages = []
             persistedTranscriptWindow = nil
             resetTranscriptLifecycleEvidence()
@@ -4107,7 +4107,7 @@ final class AppState: ObservableObject {
                     .filter { $0 != storedID },
                 title: activeSessionTitle,
                 model: runtime.model.isEmpty ? "Hermes" : runtime.model,
-                updatedLabel: "now",
+                updatedLabel: String(localized: "now"),
                 profile: activeProfile,
                 source: .chat,
                 isActive: true,
@@ -4176,7 +4176,7 @@ final class AppState: ObservableObject {
         ) else { return false }
         let retainedRestoredMessages = pendingDecisionRestorationMessages(for: result.sessionId)
         markChatViewportReplacement()
-        setActiveSessionState(id: result.sessionId, title: "New conversation")
+        setActiveSessionState(id: result.sessionId, title: String(localized: "New conversation"))
         updateActiveSessionTitle(
             for: result.sessionId,
             fallbackSessionId: reconciliation?.requestedSessionId
@@ -6547,7 +6547,8 @@ final class AppState: ObservableObject {
             return true
         } catch {
             guard profile == activeProfile else { return false }
-            errorMessage = "Could not \(archived ? "archive" : "restore") this conversation: \(error.localizedDescription)"
+            let archivedAction = String(localized: archived ? "archive" : "restore")
+            errorMessage = String(localized: "Could not \(archivedAction) this conversation: \(error.localizedDescription)")
             return false
         }
     }
@@ -6772,7 +6773,7 @@ final class AppState: ObservableObject {
         guard sessionMatchesActiveSession(session) else { return }
         let transitionGeneration = acceptChatResumeConversationReplacement(replacement)
         markChatViewportReplacement()
-        setActiveSessionState(id: nil, title: "New conversation")
+        setActiveSessionState(id: nil, title: String(localized: "New conversation"))
         messages = []
         persistedTranscriptWindow = nil
         resetTranscriptLifecycleEvidence()
@@ -7163,7 +7164,7 @@ final class AppState: ObservableObject {
         }
         let profile = activeProfile
         cacheMessagePresentation()
-        activeSessionTitle = "New conversation"
+        activeSessionTitle = String(localized: "New conversation")
         let token = beginReconciliation()
         turnState = .synchronizing
         await createAndReconcileSession(using: client, profile: profile, token: token, cwd: cwd)
@@ -7222,7 +7223,7 @@ final class AppState: ObservableObject {
         let previousTurnState = turnState
         let profile = activeProfile
         turnState = .synchronizing
-        let title = "Branch of \(activeSessionTitle)"
+        let title = String(localized: "Branch of \(activeSessionTitle)")
         let transitionGeneration = acceptChatResumeConversationReplacement(.branch)
         defer {
             cancelChatViewportTransitionIfNoReplacement(generation: transitionGeneration)
@@ -7277,7 +7278,7 @@ final class AppState: ObservableObject {
                     .filter { $0 != branched.storedSessionId ?? branched.sessionId },
                 title: title,
                 model: runtime.model.isEmpty ? "Hermes" : runtime.model,
-                updatedLabel: "now",
+                updatedLabel: String(localized: "now"),
                 profile: activeProfile,
                 source: .chat,
                 isActive: true,
@@ -8827,29 +8828,29 @@ final class AppState: ObservableObject {
     /// returns only skill entries from `commands.catalog`. Commands Conduit
     /// does not own locally still run through slash.exec / command.dispatch.
     private static let builtInSlashCommands: [SlashCommand] = [
-        SlashCommand(name: "new", aliases: ["reset"], description: "Start a new conversation", category: "Session"),
-        SlashCommand(name: "branch", aliases: ["fork"], description: "Branch this conversation into a new chat", category: "Session"),
-        SlashCommand(name: "model", description: "Open the model and run settings", category: "Session"),
-        SlashCommand(name: "yolo", description: "Toggle automatic tool approval", category: "Session"),
-        SlashCommand(name: "help", aliases: ["commands"], description: "Show available slash commands", category: "Session"),
-        SlashCommand(name: "approvals", description: "Show or set approval mode", category: "Hermes"),
-        SlashCommand(name: "agents", aliases: ["tasks"], description: "Show active sessions and tasks", category: "Hermes"),
-        SlashCommand(name: "background", aliases: ["bg", "btw"], description: "Run a prompt in the background", category: "Hermes"),
-        SlashCommand(name: "compress", aliases: ["compact"], description: "Compress this conversation context", category: "Hermes"),
-        SlashCommand(name: "debug", description: "Create a debug report", category: "Hermes"),
-        SlashCommand(name: "goal", description: "Manage this session's standing goal", category: "Hermes"),
-        SlashCommand(name: "personality", description: "Switch the session personality", category: "Hermes"),
-        SlashCommand(name: "queue", aliases: ["q"], description: "Queue a prompt for the next turn", category: "Hermes"),
-        SlashCommand(name: "retry", description: "Retry the last user message", category: "Hermes"),
-        SlashCommand(name: "rollback", description: "List or restore filesystem checkpoints", category: "Hermes"),
-        SlashCommand(name: "save", description: "Save the current transcript", category: "Hermes"),
-        SlashCommand(name: "status", description: "Show current session status", category: "Hermes"),
-        SlashCommand(name: "steer", description: "Steer the current run", category: "Hermes"),
-        SlashCommand(name: "stop", description: "Stop running background processes", category: "Hermes"),
-        SlashCommand(name: "tools", description: "List or toggle agent tools", category: "Hermes"),
-        SlashCommand(name: "undo", description: "Remove the last user and assistant exchange", category: "Hermes"),
-        SlashCommand(name: "usage", description: "Show this session's token usage", category: "Hermes"),
-        SlashCommand(name: "version", description: "Show the Hermes Agent version", category: "Hermes")
+        SlashCommand(name: "new", aliases: ["reset"], description: String(localized: "Start a new conversation"), category: "Session"),
+        SlashCommand(name: "branch", aliases: ["fork"], description: String(localized: "Branch this conversation into a new chat"), category: "Session"),
+        SlashCommand(name: "model", description: String(localized: "Open the model and run settings"), category: "Session"),
+        SlashCommand(name: "yolo", description: String(localized: "Toggle automatic tool approval"), category: "Session"),
+        SlashCommand(name: "help", aliases: ["commands"], description: String(localized: "Show available slash commands"), category: "Session"),
+        SlashCommand(name: "approvals", description: String(localized: "Show or set approval mode"), category: "Hermes"),
+        SlashCommand(name: "agents", aliases: ["tasks"], description: String(localized: "Show active sessions and tasks"), category: "Hermes"),
+        SlashCommand(name: "background", aliases: ["bg", "btw"], description: String(localized: "Run a prompt in the background"), category: "Hermes"),
+        SlashCommand(name: "compress", aliases: ["compact"], description: String(localized: "Compress this conversation context"), category: "Hermes"),
+        SlashCommand(name: "debug", description: String(localized: "Create a debug report"), category: "Hermes"),
+        SlashCommand(name: "goal", description: String(localized: "Manage this session's standing goal"), category: "Hermes"),
+        SlashCommand(name: "personality", description: String(localized: "Switch the session personality"), category: "Hermes"),
+        SlashCommand(name: "queue", aliases: ["q"], description: String(localized: "Queue a prompt for the next turn"), category: "Hermes"),
+        SlashCommand(name: "retry", description: String(localized: "Retry the last user message"), category: "Hermes"),
+        SlashCommand(name: "rollback", description: String(localized: "List or restore filesystem checkpoints"), category: "Hermes"),
+        SlashCommand(name: "save", description: String(localized: "Save the current transcript"), category: "Hermes"),
+        SlashCommand(name: "status", description: String(localized: "Show current session status"), category: "Hermes"),
+        SlashCommand(name: "steer", description: String(localized: "Steer the current run"), category: "Hermes"),
+        SlashCommand(name: "stop", description: String(localized: "Stop running background processes"), category: "Hermes"),
+        SlashCommand(name: "tools", description: String(localized: "List or toggle agent tools"), category: "Hermes"),
+        SlashCommand(name: "undo", description: String(localized: "Remove the last user and assistant exchange"), category: "Hermes"),
+        SlashCommand(name: "usage", description: String(localized: "Show this session's token usage"), category: "Hermes"),
+        SlashCommand(name: "version", description: String(localized: "Show the Hermes Agent version"), category: "Hermes")
     ]
 
     private static func normalizedSlashCatalog(_ payload: AnyCodable) -> [SlashCommand] {
@@ -8874,7 +8875,7 @@ final class AppState: ObservableObject {
         }
 
         for pair in object["pairs"]?.arrayValue ?? [] {
-            if let command = slashCommand(from: pair, category: "Skills & extensions") {
+            if let command = slashCommand(from: pair, category: String(localized: "Skills & extensions")) {
                 add(command)
             }
         }
@@ -8906,7 +8907,7 @@ final class AppState: ObservableObject {
             let name = normalizedSlashName(rawName)
             guard !name.isEmpty else { return nil }
             let description = pair.dropFirst().first?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
-            return SlashCommand(name: name, description: description?.isEmpty == false ? description! : "Hermes command", category: category)
+            return SlashCommand(name: name, description: description?.isEmpty == false ? description! : String(localized: "Hermes command"), category: category)
         }
         guard let object = value.objectValue else { return nil }
         let name = normalizedSlashName(object["name"]?.stringValue ?? object["command"]?.stringValue ?? "")
@@ -8917,7 +8918,7 @@ final class AppState: ObservableObject {
                 .compactMap { $0.stringValue }
                 .map { normalizedSlashName($0) }
                 .filter { !$0.isEmpty },
-            description: object["description"]?.stringValue ?? object["desc"]?.stringValue ?? "Hermes command",
+            description: object["description"]?.stringValue ?? object["desc"]?.stringValue ?? String(localized: "Hermes command"),
             category: category,
             argsHint: object["args_hint"]?.stringValue ?? object["argsHint"]?.stringValue
         )
@@ -9681,7 +9682,7 @@ final class AppState: ObservableObject {
             case .noLongerActive:
                 activity.questions[0].status = .error
                 activity.questions[0].answer = nil
-                activity.questions[0].error = "This question is no longer active — it was timed out or already resolved."
+                activity.questions[0].error = String(localized: "This question is no longer active — it was timed out or already resolved.")
             }
             messages[updatedIndex].clarify = activity
             cacheMessagePresentation()
@@ -10938,7 +10939,7 @@ final class AppState: ObservableObject {
             messages[updatedIndex].approval?.status = .error
             messages[updatedIndex].approval?.choice = nil
             if Self.isExpiredPromptError(error) {
-                messages[updatedIndex].approval?.error = "This approval is no longer active — Hermes timed it out and continued."
+                messages[updatedIndex].approval?.error = String(localized: "This approval is no longer active — Hermes timed it out and continued.")
             } else {
                 messages[updatedIndex].approval?.error = "Hermes did not accept that decision."
                 errorMessage = error.localizedDescription
@@ -12311,8 +12312,8 @@ final class AppState: ObservableObject {
 
     private static func clarifyExpiredNotice(for questionCount: Int) -> String {
         questionCount > 1
-            ? "These questions are no longer active — Hermes timed them out and continued."
-            : "This question is no longer active — Hermes timed it out and continued."
+            ? String(localized: "These questions are no longer active — Hermes timed them out and continued.")
+            : String(localized: "This question is no longer active — Hermes timed it out and continued.")
     }
 
     /// Whether a still-pending push-delivered card describes the same logical
@@ -12582,7 +12583,7 @@ final class AppState: ObservableObject {
             ids.contains(session.id) || ids.contains(where: session.alternateIds.contains)
         }) else { return }
         let title = session.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        setActiveSessionTitle(title.isEmpty ? "New conversation" : title)
+        setActiveSessionTitle(title.isEmpty ? String(localized: "New conversation") : title)
     }
 
     // MARK: - Chat support surfaces
@@ -13070,7 +13071,7 @@ final class AppState: ObservableObject {
         if mode == .appleOnDevice, !appleSpeechAvailability.canAttemptRecognition {
             switch appleSpeechAvailability {
             case .permissionDenied:
-                errorMessage = "Speech Recognition permission was denied. Please enable it in Settings > Conduit > Speech Recognition."
+                errorMessage = String(localized: "Speech Recognition permission was denied. Please enable it in Settings > Conduit > Speech Recognition.")
             case .unsupported(let localeIdentifier):
                 let localeName = Locale.current.localizedString(forIdentifier: localeIdentifier) ?? localeIdentifier
                 errorMessage = "On-device speech recognition is not available for \(localeName)."

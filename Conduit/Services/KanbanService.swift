@@ -35,10 +35,10 @@ enum KanbanServiceError: LocalizedError, Equatable {
             if status == "running" {
                 return "Hermes controls Running; use the dispatcher/claim path instead of setting it manually."
             }
-            return "Hermes does not allow " + status + " as a manual Kanban destination."
+            return String(localized: "Hermes does not allow \(status) as a manual Kanban destination.")
         case .taskCreatedButMoveFailed(let taskID, let targetStatus, let reason):
             let identifier = taskID.map { " (task " + $0 + ")" } ?? ""
-            return "The task was created" + identifier + ", but Hermes could not move it to " + targetStatus + ". It was not duplicated; close this form and refresh the board. " + reason
+            return String(localized: "The task was created") + identifier + String(localized: ", but Hermes could not move it to ") + targetStatus + ". It was not duplicated; close this form and refresh the board. " + reason
         case .mutationInProgress:
             return "Another Kanban change is still being saved."
         case .boardNavigationInProgress:
@@ -46,7 +46,7 @@ enum KanbanServiceError: LocalizedError, Equatable {
         case .invalidQueryParameter(let name):
             // Fail closed: a dropped board/id parameter would silently
             // retarget the request at the backend's current board.
-            return "Could not build a safe Hermes Kanban request (invalid " + name + "). The operation was cancelled before any data changed."
+            return String(localized: "Could not build a safe Hermes Kanban request (invalid \(name)). The operation was cancelled before any data changed.")
         case .actionDeclined(let reason):
             // The backend's own reason (e.g. "task is not in triage") is the
             // product semantics; never translate it into a generic failure.

@@ -63,8 +63,8 @@ struct VoiceInputLevelMeter: View {
 
     private var accessibilityValue: String {
         guard isActive, targetFraction > 0 else { return "Silent" }
-        if targetFraction < 0.3 { return "Low" }
-        if targetFraction < 0.65 { return "Medium" }
-        return "High"
+        if targetFraction < 0.3 { return String(localized: "Low") }
+        if targetFraction < 0.65 { return String(localized: "Medium") }
+        return String(localized: "High")
     }
 }

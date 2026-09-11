@@ -356,7 +356,7 @@ struct ConnectionSetupView: View {
     private var dashboardStep: some View {
         readinessQuestion(
             progress: flow.progressLabel,
-            question: "Is your Hermes dashboard running?",
+            question: String(localized: "Is your Hermes dashboard running?"),
             explanation: "Hermes Conduit connects to a Hermes dashboard you (or your assistant) run yourself. "
                 + "The dashboard has to be up before Conduit can reach it.",
             selectedAnswer: flow.dashboardAnswer,
@@ -386,8 +386,8 @@ struct ConnectionSetupView: View {
     private var credentialsStep: some View {
         readinessQuestion(
             progress: flow.progressLabel,
-            question: "Do you have your Hermes dashboard login credentials?",
-            explanation: "This means the Hermes dashboard username and password you sign in with — not Tailscale, "
+            question: String(localized: "Do you have your Hermes dashboard login credentials?"),
+            explanation: String(localized: "This means the Hermes dashboard username and password you sign in with — not Tailscale, ")
                 + "Cloudflare, or Apple credentials.",
             selectedAnswer: flow.credentialsAnswer,
             onAnswer: { flow.answerCredentials($0) },
@@ -441,7 +441,7 @@ struct ConnectionSetupView: View {
             methodCard(
                 title: ConnectionAccessMethod.tailscale.displayTitle,
                 supporting: "Use Tailscale when you want to reach Hermes securely while away from home.",
-                badge: "Recommended for remote access",
+                badge: String(localized: "Recommended for remote access"),
                 identifier: "setup.method-tailscale"
             ) {
                 flow.selectAccessMethod(.tailscale)
@@ -493,7 +493,7 @@ struct ConnectionSetupView: View {
 
     private var lanBranch: some View {
         branchShell(
-            title: "Same network as Hermes",
+            title: String(localized: "Same network as Hermes"),
             intro: "Here is what you will need to connect Conduit over your local network:",
             needs: [
                 "The Hermes dashboard is running.",
@@ -642,10 +642,10 @@ struct ConnectionSetupView: View {
             answerRow("Yes", selected: selectedAnswer == .yes, identifier: "setup.answer-yes") {
                 onAnswer(.yes)
             }
-            answerRow("No", selected: selectedAnswer == .no, identifier: "setup.answer-no") {
+            answerRow(String(localized: "No"), selected: selectedAnswer == .no, identifier: "setup.answer-no") {
                 onAnswer(.no)
             }
-            answerRow("I don’t know", selected: selectedAnswer == .unknown, identifier: "setup.answer-unknown") {
+            answerRow(String(localized: "I don’t know"), selected: selectedAnswer == .unknown, identifier: "setup.answer-unknown") {
                 onAnswer(.unknown)
             }
 
@@ -793,14 +793,14 @@ struct ConnectionSetupView: View {
 extension ConnectionHelpDestination {
     var displayName: String {
         switch self {
-        case .start: return "Getting started"
-        case .dashboard: return "Dashboard address"
+        case .start: return String(localized: "Getting started")
+        case .dashboard: return String(localized: "Dashboard address")
         case .credentials: return "Credentials"
-        case .network: return "Network & reachability"
-        case .tls: return "HTTPS & certificates"
+        case .network: return String(localized: "Network & reachability")
+        case .tls: return String(localized: "HTTPS & certificates")
         case .cloudflare: return "Cloudflare Access"
-        case .currentConnection: return "Current connection"
-        case .repairConnection: return "Repair connection"
+        case .currentConnection: return String(localized: "Current connection")
+        case .repairConnection: return String(localized: "Repair connection")
         }
     }
 
@@ -814,15 +814,15 @@ extension ConnectionHelpDestination {
         switch self {
         case .tls:
             return [
-                "If you use your own certificate authority, install and trust its root certificate on this device (Settings → General → VPN & Device Management → Certificate Trust Settings).",
-                "Check the server certificate’s expiration and validity dates.",
-                "Confirm this device’s date and time are correct."
+                String(localized: "If you use your own certificate authority, install and trust its root certificate on this device (Settings → General → VPN & Device Management → Certificate Trust Settings)."),
+                String(localized: "Check the server certificate’s expiration and validity dates."),
+                String(localized: "Confirm this device’s date and time are correct.")
             ]
         case .cloudflare:
             return [
-                "Verify the Client ID and Secret belong to a Cloudflare Access service token for this application.",
-                "Make sure a Service Auth policy allows that token to reach this Access application.",
-                "Or turn off \"Use Cloudflare Access service token\" to sign in interactively through the in-app browser."
+                String(localized: "Verify the Client ID and Secret belong to a Cloudflare Access service token for this application."),
+                String(localized: "Make sure a Service Auth policy allows that token to reach this Access application."),
+                String(localized: "Or turn off \"Use Cloudflare Access service token\" to sign in interactively through the in-app browser.")
             ]
         case .start, .dashboard, .credentials, .network, .currentConnection, .repairConnection:
             return []

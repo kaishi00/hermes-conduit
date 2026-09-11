@@ -48,8 +48,8 @@ struct GatewayDiagnosticsSheet: View {
         let diagnostics = appState.gatewayDiagnostics
         let running = diagnostics?.gatewayRunning ?? appState.isConnected
         return ConduitSettingsSection(title: running ? "Connected" : "Disconnected", symbol: "radio", tint: running ? .green : .red) {
-            SettingsMetricRow(label: "Gateway", value: diagnostics?.gatewayState ?? (running ? "Online" : "Unavailable"))
-            if let version = diagnostics?.version { SettingsMetricRow(label: "Version", value: version) }
+            SettingsMetricRow(label: String(localized: "Gateway"), value: diagnostics?.gatewayState ?? (running ? "Online" : "Unavailable"))
+            if let version = diagnostics?.version { SettingsMetricRow(label: String(localized: "Version"), value: version) }
             if let pid = diagnostics?.pid { SettingsMetricRow(label: "Process", value: "PID \(pid)") }
             if let error = diagnostics?.error {
                 Text(error).font(.footnote).foregroundStyle(.red)
@@ -88,7 +88,7 @@ struct GatewayDiagnosticsSheet: View {
     }
 
     private var logs: some View {
-        ConduitSettingsSection(title: "Recent gateway logs", symbol: "text.alignleft", tint: .conduitAccent) {
+        ConduitSettingsSection(title: String(localized: "Recent gateway logs"), symbol: "text.alignleft", tint: .conduitAccent) {
             let lines = appState.gatewayDiagnostics?.logs ?? []
             if lines.isEmpty {
                 Text("No gateway log lines were returned.").font(.footnote).foregroundStyle(.secondary)
@@ -176,7 +176,7 @@ struct WorkspaceBrowserSheet: View {
 
     private var workspaceTitle: String {
         let name = URL(fileURLWithPath: appState.workspaceRoot).lastPathComponent
-        return name.isEmpty ? "Workspace" : name
+        return name.isEmpty ? String(localized: "Workspace") : name
     }
 
     private func flatten(_ entries: [WorkspaceEntry], depth: Int) -> [(entry: WorkspaceEntry, depth: Int)] {
@@ -228,7 +228,7 @@ private struct WorkspaceFilePreviewSheet: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     if let downloadURL {
-                        ShareLink(item: downloadURL, preview: SharePreview(appState.workspaceSelectedFile?.name ?? "Workspace file")) {
+                        ShareLink(item: downloadURL, preview: SharePreview(appState.workspaceSelectedFile?.name ?? String(localized: "Workspace file"))) {
                             Label("Save to Files", systemImage: "square.and.arrow.up")
                         }
                     } else {
@@ -241,9 +241,9 @@ private struct WorkspaceFilePreviewSheet: View {
     }
 
     private func fileMetadata(_ preview: WorkspaceFilePreview) -> some View {
-        ConduitSettingsSection(title: "File", symbol: "doc", tint: .conduitAccent) {
-            SettingsMetricRow(label: "Type", value: preview.language)
-            SettingsMetricRow(label: "Size", value: ByteCountFormatter.string(fromByteCount: Int64(preview.byteSize), countStyle: .file))
+        ConduitSettingsSection(title: String(localized: "File"), symbol: "doc", tint: .conduitAccent) {
+            SettingsMetricRow(label: String(localized: "Type"), value: preview.language)
+            SettingsMetricRow(label: String(localized: "Size"), value: ByteCountFormatter.string(fromByteCount: Int64(preview.byteSize), countStyle: .file))
             if preview.truncated { Text("Preview is truncated; save the file for its full contents.").font(.footnote).foregroundStyle(.secondary) }
         }
     }
@@ -263,7 +263,7 @@ struct DelegateAgentsSheet: View {
                 ConduitBackdrop()
                 ScrollView {
                     VStack(spacing: 12) {
-                        ConduitSettingsSection(title: "Delegate agents", symbol: "person.2", tint: .conduitAccent) {
+                        ConduitSettingsSection(title: String(localized: "Delegate agents"), symbol: "person.2", tint: .conduitAccent) {
                             Text(activeSummary).font(.footnote).foregroundStyle(.secondary)
                         }
                         if appState.delegateAgents.isEmpty {
@@ -286,7 +286,7 @@ struct DelegateAgentsSheet: View {
 
     private var activeSummary: String {
         let active = appState.delegateAgents.filter(\.status.isActive).count
-        return active == 0 ? "Latest delegation activity" : "\(active) working now"
+        return active == 0 ? String(localized: "Latest delegation activity") : String(localized: "\(String(active)) working now")
     }
 }
 
@@ -311,7 +311,7 @@ private struct DelegateAgentCard: View {
             .tint(.primary)
             if expanded {
                 if agent.stream.isEmpty {
-                    Text(agent.summary ?? (agent.status.isActive ? "Waiting for activity…" : "No stream output returned."))
+                    Text(agent.summary ?? (agent.status.isActive ? String(localized: "Waiting for activity…") : "No stream output returned."))
                         .font(.footnote).foregroundStyle(.secondary)
                 } else {
                     ForEach(agent.stream.suffix(10)) { line in

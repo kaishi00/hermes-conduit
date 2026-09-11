@@ -64,7 +64,7 @@ struct ProfilePickerSheet: View {
             }
             .toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) {
-                ConduitSheetHeader(title: "Profiles", close: { dismiss() })
+                ConduitSheetHeader(title: String(localized: "Profiles"), close: { dismiss() })
             }
         }
     }
@@ -109,7 +109,7 @@ private struct ProfilePickerRow: View {
             Button(action: select) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(appState.profileDisplayName(profile)).font(.headline).foregroundStyle(.primary)
-                    Text(profile == "default" ? "Primary Hermes profile" : "Hermes profile").font(.caption).foregroundStyle(.secondary)
+                    Text(profile == "default" ? String(localized: "Primary Hermes profile") : String(localized: "Hermes profile")).font(.caption).foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
             }

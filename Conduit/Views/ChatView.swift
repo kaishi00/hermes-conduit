@@ -1176,7 +1176,7 @@ private struct UserImageAttachmentPreview: View {
                 loadingPlaceholder
             } else {
                 Label(
-                    (gatewayLoadFailed || localPreviewFailed) ? "Image unavailable" : "Image attached",
+                    (gatewayLoadFailed || localPreviewFailed) ? String(localized: "Image unavailable") : String(localized: "Image attached"),
                     systemImage: (gatewayLoadFailed || localPreviewFailed) ? "photo.badge.exclamationmark" : "photo"
                 )
                 .font(.caption.weight(.medium))
@@ -1364,7 +1364,7 @@ struct AssistantMessageActions: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(copied ? Color.conduitAccent : Color.secondary)
-        .accessibilityLabel(copied ? "Response copied" : "Copy response")
+        .accessibilityLabel(copied ? String(localized: "Response copied") : String(localized: "Copy response"))
 
         Button {
             Haptics.medium()
@@ -1434,7 +1434,7 @@ struct ReadAloudButton: View {
         .foregroundStyle(isActive ? Color.conduitAccent : Color.secondary)
         .disabled(unavailable && !isActive)
         .opacity(unavailable && !isActive ? 0.45 : 1)
-        .accessibilityLabel(isActive ? "Stop reading response" : "Read response aloud")
+        .accessibilityLabel(isActive ? String(localized: "Stop reading response") : String(localized: "Read response aloud"))
     }
 }
 
@@ -1497,7 +1497,7 @@ struct SystemBubble: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
-                    Text(isRuntimeNotice ? "System" : "Command")
+                    Text(isRuntimeNotice ? String(localized: "System") : "Command")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.conduitAccent)
                         .textCase(.uppercase)
@@ -1574,7 +1574,7 @@ private struct ReviewSummaryCard: View {
             }
             .buttonStyle(.plain)
             .disabled(details.isEmpty)
-            .accessibilityLabel(details.isEmpty ? activity.summary : (expanded ? "Collapse review details" : "Expand review details"))
+            .accessibilityLabel(details.isEmpty ? activity.summary : (expanded ? String(localized: "Collapse review details") : String(localized: "Expand review details")))
 
             if expanded, !details.isEmpty {
                 VStack(alignment: .leading, spacing: 12) {
@@ -1923,7 +1923,7 @@ struct ToolCard: View {
     static func truncateForDisplay(_ text: String, maxLines: Int) -> String {
         let lines = text.components(separatedBy: "\n")
         guard lines.count > maxLines else { return text }
-        return lines.prefix(maxLines).joined(separator: "\n") + "\n… (\(lines.count - maxLines) more lines)"
+        return lines.prefix(maxLines).joined(separator: "\n") + String(localized: "\n… (\(lines.count - maxLines) more lines)")
     }
 }
 
@@ -1951,7 +1951,7 @@ enum ClarifyCardLayout {
         case .singleQuestion:
             return activity.questions.first?.question ?? ""
         case .batch:
-            return "Hermes asked \(activity.questions.count) questions before it can continue"
+            return String(localized: "Hermes asked \(activity.questions.count) questions before it can continue")
         }
     }
 
@@ -2063,10 +2063,10 @@ struct ClarifyCard: View {
 
     private func statusTitle(for status: ClarifyActivity.Status) -> String {
         switch status {
-        case .pending: return "NEEDS YOUR INPUT"
-        case .submitting: return "SENDING ANSWER"
+        case .pending: return String(localized: "NEEDS YOUR INPUT")
+        case .submitting: return String(localized: "SENDING ANSWER")
         case .answered: return "ANSWERED"
-        case .error: return "TRY AGAIN"
+        case .error: return String(localized: "TRY AGAIN")
         case .expired: return "EXPIRED"
         }
     }
@@ -2221,7 +2221,7 @@ struct ClarifyQuestionRow: View {
 
         HStack(spacing: 8) {
             TextField(
-                question.choices.isEmpty ? "Type your answer…" : "Something else…",
+                question.choices.isEmpty ? String(localized: "Type your answer…") : String(localized: "Something else…"),
                 text: $customAnswer,
                 axis: .vertical
             )
@@ -2322,7 +2322,7 @@ struct ClarifyQuestionRow: View {
     }
 
     private var confirmTitle: String {
-        selection.isEmpty ? "Select to confirm" : "Confirm \(selection.count) selected"
+        selection.isEmpty ? String(localized: "Select to confirm") : String(localized: "Confirm \(selection.count) selected")
     }
 
     private var isAnswerable: Bool {
@@ -2479,9 +2479,9 @@ struct ApprovalCard: View {
 
     private func decisionTitle(_ choice: String) -> String {
         switch choice {
-        case "once": return "Approved once"
-        case "session": return "Approved for this session"
-        case "always": return "Always allowed"
+        case "once": return String(localized: "Approved once")
+        case "session": return String(localized: "Approved for this session")
+        case "always": return String(localized: "Always allowed")
         case "deny": return "Rejected"
         default: return choice
         }
@@ -2489,11 +2489,11 @@ struct ApprovalCard: View {
 
     private func statusTitle(for status: ApprovalActivity.Status) -> String {
         switch status {
-        case .pending: return "APPROVAL NEEDED"
-        case .submitting: return "SENDING DECISION"
+        case .pending: return String(localized: "APPROVAL NEEDED")
+        case .submitting: return String(localized: "SENDING DECISION")
         case .approved: return "APPROVED"
         case .rejected: return "REJECTED"
-        case .error: return "TRY AGAIN"
+        case .error: return String(localized: "TRY AGAIN")
         }
     }
 
@@ -2580,7 +2580,7 @@ struct TypingIndicator: View {
 private struct WorkingStatusLabel: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private let text = "Working…"
+    private let text = String(localized: "Working…")
     private let cycleDuration = 1.9
     private let sweepFraction = 0.72
 

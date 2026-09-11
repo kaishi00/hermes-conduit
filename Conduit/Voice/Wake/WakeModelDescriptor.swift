@@ -45,7 +45,7 @@ struct WakeModelDescriptor: Codable, Equatable, Identifiable {
     /// describe it without pretending that model bytes are bundled.
     static let bundledBilingualPack = WakeModelDescriptor(
         id: "sherpa-onnx-kws-zipformer-zh-en-3m-chunk8",
-        displayName: "English + Chinese wake phrases",
+        displayName: String(localized: "English + Chinese wake phrases"),
         sherpaONNXVersion: "1.13.2",
         modelRelease: "2025-12-20",
         sourceURL: URL(string: "https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/sherpa-onnx-kws-zipformer-zh-en-3M-2025-12-20.tar.bz2")!,
@@ -54,11 +54,11 @@ struct WakeModelDescriptor: Codable, Equatable, Identifiable {
         packagingStatus: .blockedPendingLicenseReview,
         licenseReviewNote: "Model redistribution terms and upstream SHA-256 values must be verified before assets are downloaded or committed.",
         assets: [
-            .init(relativePath: "encoder-epoch-13-avg-2-chunk-8-left-64.int8.onnx", purpose: "quantized encoder", sha256: nil, checksumStatus: .notRecorded),
+            .init(relativePath: "encoder-epoch-13-avg-2-chunk-8-left-64.int8.onnx", purpose: String(localized: "quantized encoder"), sha256: nil, checksumStatus: .notRecorded),
             .init(relativePath: "decoder-epoch-13-avg-2-chunk-8-left-64.onnx", purpose: "decoder", sha256: nil, checksumStatus: .notRecorded),
-            .init(relativePath: "joiner-epoch-13-avg-2-chunk-8-left-64.int8.onnx", purpose: "quantized joiner", sha256: nil, checksumStatus: .notRecorded),
-            .init(relativePath: "tokens.txt", purpose: "keyword tokens", sha256: nil, checksumStatus: .notRecorded),
-            .init(relativePath: "en.phone", purpose: "English pronunciation lexicon", sha256: nil, checksumStatus: .notRecorded)
+            .init(relativePath: "joiner-epoch-13-avg-2-chunk-8-left-64.int8.onnx", purpose: String(localized: "quantized joiner"), sha256: nil, checksumStatus: .notRecorded),
+            .init(relativePath: "tokens.txt", purpose: String(localized: "keyword tokens"), sha256: nil, checksumStatus: .notRecorded),
+            .init(relativePath: "en.phone", purpose: String(localized: "English pronunciation lexicon"), sha256: nil, checksumStatus: .notRecorded)
         ]
     )
 }

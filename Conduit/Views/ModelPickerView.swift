@@ -106,7 +106,7 @@ struct ModelPickerView: View {
     }
 
     private var modelSection: some View {
-        ModelPickerSection(title: "Model", symbol: "cpu", tint: .conduitAccent) {
+        ModelPickerSection(title: String(localized: "Model"), symbol: "cpu", tint: .conduitAccent) {
             if providers.isEmpty {
                 Text("No models are available from this gateway.")
                     .font(.footnote)
@@ -216,7 +216,7 @@ struct ModelPickerView: View {
     }
 
     private var reasoningSection: some View {
-        ModelPickerSection(title: "Reasoning", symbol: "brain.head.profile", tint: .conduitAura) {
+        ModelPickerSection(title: String(localized: "Reasoning"), symbol: "brain.head.profile", tint: .conduitAura) {
             Toggle("Enabled", isOn: $reasoningEnabled)
 
             if reasoningEnabled {
@@ -235,7 +235,7 @@ struct ModelPickerView: View {
     }
 
     private var runSettingsSection: some View {
-        ModelPickerSection(title: "Run settings", symbol: "slider.horizontal.3", tint: .conduitAccent) {
+        ModelPickerSection(title: String(localized: "Run settings"), symbol: "slider.horizontal.3", tint: .conduitAccent) {
             Toggle("Fast mode", isOn: $fastEnabled)
             if globalYoloFloor {
                 VStack(alignment: .leading, spacing: 4) {
@@ -283,7 +283,7 @@ struct ModelPickerView: View {
 
     private var visibilityEditor: some View {
         VStack(alignment: .leading, spacing: 14) {
-            ModelPickerSection(title: "Model visibility", symbol: "line.3.horizontal.decrease.circle", tint: .conduitAccent) {
+            ModelPickerSection(title: String(localized: "Model visibility"), symbol: "line.3.horizontal.decrease.circle", tint: .conduitAccent) {
                 TextField("Search providers or models", text: $visibilityQuery)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()

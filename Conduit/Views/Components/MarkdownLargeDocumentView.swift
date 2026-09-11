@@ -955,7 +955,7 @@ struct LargeCodeBlockView: View {
                     copied = false
                 }
             } label: {
-                Label(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc")
+                Label(copied ? String(localized: "Copied") : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc")
                     .font(.caption2.weight(.semibold))
             }
             .tint(usesAccentSurface ? .white : .conduitAccent)

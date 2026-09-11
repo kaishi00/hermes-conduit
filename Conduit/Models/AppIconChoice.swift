@@ -8,8 +8,8 @@ enum AppIconChoice: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .dark: return "Dark"
-        case .light: return "Light"
+        case .dark: return String(localized: "Dark")
+        case .light: return String(localized: "Light")
         }
     }
 

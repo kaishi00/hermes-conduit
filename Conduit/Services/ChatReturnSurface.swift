@@ -13,8 +13,8 @@ enum ChatReturnSurface: String, CaseIterable, Hashable {
 
     var title: String {
         switch self {
-        case .conversation: "Conversation"
-        case .sessions: "Sessions"
+        case .conversation: String(localized: "Conversation")
+        case .sessions: String(localized: "Session list")
         }
     }
 }

@@ -60,7 +60,7 @@ enum AuthClientError: LocalizedError {
         case .cloudflareServiceTokenRejected:
             return "Cloudflare Access did not accept the configured service token. "
                 + "Verify the Client ID / Secret and that the token is allowed by a "
-                + "Service Auth policy for this Access application, or turn off "
+                + String(localized: "Service Auth policy for this Access application, or turn off ")
                 + "\"Use Cloudflare Access service token\" to sign in interactively."
         }
     }
@@ -180,7 +180,7 @@ struct NativeAuthClient {
         let request = try request(path: "/api/auth/providers")
         let result = try await perform(request)
         guard let http = result.response as? HTTPURLResponse else {
-            throw AuthClientError.providerDiscoveryFailed(status: nil, detail: "No response")
+            throw AuthClientError.providerDiscoveryFailed(status: nil, detail: String(localized: "No response"))
         }
         switch http.statusCode {
         case 301, 302, 303, 307, 308:
@@ -191,7 +191,7 @@ struct NativeAuthClient {
             guard http.value(forHTTPHeaderField: "Location") != nil else {
                 throw AuthClientError.providerDiscoveryFailed(
                     status: http.statusCode,
-                    detail: "Redirect without Location"
+                    detail: String(localized: "Redirect without Location")
                 )
             }
             // The SecureRedirectDelegate cancels cross-origin redirects, so
@@ -244,7 +244,7 @@ struct NativeAuthClient {
 
         let result = try await perform(request)
         guard let http = result.response as? HTTPURLResponse else {
-            throw AuthClientError.loginFailed(status: nil, detail: "No response")
+            throw AuthClientError.loginFailed(status: nil, detail: String(localized: "No response"))
         }
         guard (200...299).contains(http.statusCode) else {
             throw AuthClientError.loginFailed(
@@ -253,7 +253,7 @@ struct NativeAuthClient {
             )
         }
         guard http.url != nil else {
-            throw AuthClientError.loginFailed(status: http.statusCode, detail: "Response URL missing")
+            throw AuthClientError.loginFailed(status: http.statusCode, detail: String(localized: "Response URL missing"))
         }
 
         // Redirect responses may set the session before the final JSON landing.
@@ -280,7 +280,7 @@ struct NativeAuthClient {
 
         let result = try await perform(request)
         guard let http = result.response as? HTTPURLResponse else {
-            throw AuthClientError.ticketFailed(status: nil, detail: "No response")
+            throw AuthClientError.ticketFailed(status: nil, detail: String(localized: "No response"))
         }
         guard (200...299).contains(http.statusCode) else {
             throw AuthClientError.ticketFailed(
@@ -291,7 +291,7 @@ struct NativeAuthClient {
         guard let json = try? JSONSerialization.jsonObject(with: result.data) as? [String: Any],
               let ticket = json["ticket"] as? String,
               !ticket.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw AuthClientError.ticketFailed(status: http.statusCode, detail: "No ticket in response")
+            throw AuthClientError.ticketFailed(status: http.statusCode, detail: String(localized: "No ticket in response"))
         }
 
         // A deployment may rotate its session while minting the ticket. Keep
@@ -313,7 +313,7 @@ struct NativeAuthClient {
             // indistinguishable ticket 401 downstream.
             throw AuthClientError.ticketFailed(
                 status: nil,
-                detail: "Login succeeded but no host-scoped session cookie was accepted"
+                detail: String(localized: "Login succeeded but no host-scoped session cookie was accepted")
             )
         }
         return try await mintWsTicket(authenticatedCookies: authenticatedCookies)

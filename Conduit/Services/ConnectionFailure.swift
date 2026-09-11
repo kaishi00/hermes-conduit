@@ -256,23 +256,23 @@ struct ConnectionFailurePresentation: Equatable {
 extension ConnectionFailure {
     var userTitle: String {
         switch self {
-        case .invalidAddress: return "Check the dashboard address"
-        case .insecureTransport: return "Insecure dashboard address"
-        case .hostNotFound: return "Dashboard not found"
-        case .unreachable, .connectionRefused: return "Couldn’t reach Hermes"
-        case .timedOut: return "Connection timed out"
-        case .offline: return "No network connection"
-        case .tlsUntrusted: return "Secure connection failed"
-        case .tlsBadDate: return "Certificate date problem"
-        case .tlsFailure: return "Secure connection failed"
-        case .authenticationRejected: return "Login failed"
-        case .rateLimited: return "Too many login attempts"
-        case .loginRequired: return "Sign-in required"
-        case .cloudflareTokenRejected: return "Cloudflare rejected the service token"
-        case .sessionTicketFailure: return "Could not start the session"
-        case .dashboardUnavailable: return "Dashboard unavailable"
-        case .unexpectedServerResponse: return "Unexpected response"
-        case .unknown: return "Couldn’t connect"
+        case .invalidAddress: return String(localized: "Check the dashboard address")
+        case .insecureTransport: return String(localized: "Insecure dashboard address")
+        case .hostNotFound: return String(localized: "Dashboard not found")
+        case .unreachable, .connectionRefused: return String(localized: "Couldn’t reach Hermes")
+        case .timedOut: return String(localized: "Connection timed out")
+        case .offline: return String(localized: "No network connection")
+        case .tlsUntrusted: return String(localized: "Secure connection failed")
+        case .tlsBadDate: return String(localized: "Certificate date problem")
+        case .tlsFailure: return String(localized: "Secure connection failed")
+        case .authenticationRejected: return String(localized: "Login failed")
+        case .rateLimited: return String(localized: "Too many login attempts")
+        case .loginRequired: return String(localized: "Sign-in required")
+        case .cloudflareTokenRejected: return String(localized: "Cloudflare rejected the service token")
+        case .sessionTicketFailure: return String(localized: "Could not start the session")
+        case .dashboardUnavailable: return String(localized: "Dashboard unavailable")
+        case .unexpectedServerResponse: return String(localized: "Unexpected response")
+        case .unknown: return String(localized: "Couldn’t connect")
         }
     }
 
@@ -305,7 +305,7 @@ extension ConnectionFailure {
         case .cloudflareTokenRejected:
             return "Cloudflare Access did not accept the configured service token. "
                 + "Verify the Client ID / Secret and that the token is allowed by a "
-                + "Service Auth policy for this Access application, or turn off "
+                + String(localized: "Service Auth policy for this Access application, or turn off ")
                 + "\"Use Cloudflare Access service token\" to sign in interactively."
         case .sessionTicketFailure:
             return "Signing in succeeded, but Conduit could not start a Hermes session. The dashboard may be busy, restarting, or it did not accept the new session — try again."

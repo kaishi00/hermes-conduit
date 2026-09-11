@@ -1,0 +1,5619 @@
+{
+ "APPROVAL NEEDED": {
+  "zh": "需要批准",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Add": {
+  "zh": "添加",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Add comment": {
+  "zh": "添加评论",
+  "confidence": "exact",
+  "source": "hermes-webui"
+ },
+ "Add folder": {
+  "zh": "添加文件夹",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "All Profiles": {
+  "zh": "全部配置档案",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "All Tenants": {
+  "zh": "所有租户",
+  "confidence": "exact",
+  "source": "hermes-webui"
+ },
+ "Allow session": {
+  "zh": "本次允许",
+  "confidence": "exact",
+  "source": "hermes-webui"
+ },
+ "Always allow": {
+  "zh": "始终允许…",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Always allow this command?": {
+  "zh": "始终允许此命令？",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Always show": {
+  "zh": "始终显示",
+  "confidence": "exact",
+  "source": "hermes-webui"
+ },
+ "Appearance": {
+  "zh": "外观",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Approval mode": {
+  "zh": "审批模式",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Approval needed": {
+  "zh": "需要批准",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Approval required": {
+  "zh": "需要审批",
+  "confidence": "exact",
+  "source": "hermes-webui"
+ },
+ "Archive": {
+  "zh": "归档",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Archive…": {
+  "zh": "归档",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Assignee": {
+  "zh": "负责人",
+  "confidence": "exact",
+  "source": "hermes-webui"
+ },
+ "Back": {
+  "zh": "返回",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Background task finished": {
+  "zh": "后台任务已完成",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Base URL": {
+  "zh": "基础 URL",
+  "confidence": "exact",
+  "source": "hermes-desktop"
+ },
+ "Board Settings": {
+  "zh": "看板设置…",
+  "confidence": "exact",
+  "source": "hermes-webui"
+ },
+ "Board Settings…": {
+  "zh": "看板设置…",
+  "confidence": "exact",
+  "source": "hermes-webui"
+ },
+ "Cancel": {
+  "zh": "取消",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Capabilities": {
+  "zh": "技能与工具",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Catalog": {
+  "zh": "目录",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Change…": {
+  "zh": "更改",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Chat": {
+  "zh": "对话",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Choose": {
+  "zh": "选择",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Choose Folder": {
+  "zh": "选择文件夹…",
+  "confidence": "exact",
+  "source": "hermes-desktop"
+ },
+ "Close": {
+  "zh": "关闭",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Completion sound": {
+  "zh": "完成提示音",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Connection": {
+  "zh": "连接",
+  "confidence": "exact",
+  "source": "hermes-desktop"
+ },
+ "Context": {
+  "zh": "上下文",
+  "confidence": "exact",
+  "source": "hermes-webui"
+ },
+ "Continue": {
+  "zh": "继续",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Conversation": {
+  "zh": "对话",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Copied": {
+  "zh": "已复制",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Copy command": {
+  "zh": "复制命令",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Create": {
+  "zh": "创建",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Current": {
+  "zh": "当前",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Dark": {
+  "zh": "暗色",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Default model": {
+  "zh": "默认模型",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Delete": {
+  "zh": "删除",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Delete conversation?": {
+  "zh": "删除会话",
+  "confidence": "exact",
+  "source": "hermes-webui"
+ },
+ "Delete…": {
+  "zh": "删除",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Display name": {
+  "zh": "显示名称",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Done": {
+  "zh": "完成",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Effort": {
+  "zh": "推理强度",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Enable notifications": {
+  "zh": "启用通知",
+  "confidence": "exact",
+  "source": "hermes-webui"
+ },
+ "Enabled": {
+  "zh": "已启用",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Extra High": {
+  "zh": "极高",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Folders": {
+  "zh": "文件夹",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Gateway": {
+  "zh": "网关",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "High": {
+  "zh": "高",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Input": {
+  "zh": "输入",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Input needed": {
+  "zh": "需要输入",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Jobs": {
+  "zh": "任务",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Kanban": {
+  "zh": "看板",
+  "confidence": "exact",
+  "source": "hermes-desktop"
+ },
+ "Kanban Unavailable": {
+  "zh": "看板不可用",
+  "confidence": "exact",
+  "source": "hermes-webui"
+ },
+ "Latest": {
+  "zh": "最新",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Light": {
+  "zh": "明亮",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Loading preview…": {
+  "zh": "正在加载预览",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Low": {
+  "zh": "低",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Max": {
+  "zh": "最高",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Medium": {
+  "zh": "中",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Minimal": {
+  "zh": "最小",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Model": {
+  "zh": "模型",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Model override": {
+  "zh": "模型覆盖",
+  "confidence": "exact",
+  "source": "hermes-webui"
+ },
+ "NEEDS YOUR INPUT": {
+  "zh": "需要你输入",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Name": {
+  "zh": "名称",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Name a workspace and add one or more folders.": {
+  "zh": "为工作区命名并添加一个或多个文件夹。",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Never show": {
+  "zh": "从不显示",
+  "confidence": "exact",
+  "source": "hermes-webui"
+ },
+ "New Board": {
+  "zh": "新建看板",
+  "confidence": "exact",
+  "source": "hermes-desktop"
+ },
+ "New Board…": {
+  "zh": "新建看板",
+  "confidence": "exact",
+  "source": "hermes-desktop"
+ },
+ "New Chat": {
+  "zh": "新聊天",
+  "confidence": "exact",
+  "source": "hermes-desktop"
+ },
+ "New Kanban task": {
+  "zh": "新建看板任务",
+  "confidence": "exact",
+  "source": "hermes-desktop"
+ },
+ "New Project": {
+  "zh": "新建项目",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "New conversation": {
+  "zh": "新建对话",
+  "confidence": "exact",
+  "source": "hermes-webui"
+ },
+ "New project": {
+  "zh": "新建项目",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "New task": {
+  "zh": "新建任务",
+  "confidence": "exact",
+  "source": "hermes-desktop"
+ },
+ "No": {
+  "zh": "否",
+  "confidence": "exact",
+  "source": "hermes-agent-core"
+ },
+ "No Project": {
+  "zh": "没有项目",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "No folders added yet.": {
+  "zh": "尚未添加文件夹。",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "No matching conversations": {
+  "zh": "没有匹配的对话",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "No response": {
+  "zh": "未响应",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "No skills match.": {
+  "zh": "没有匹配的技能。",
+  "confidence": "exact",
+  "source": "hermes-webui"
+ },
+ "None": {
+  "zh": "无",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Not configured": {
+  "zh": "未配置",
+  "confidence": "exact",
+  "source": "hermes-webui"
+ },
+ "Nothing archived": {
+  "zh": "暂无归档",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Notifications": {
+  "zh": "通知",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Open": {
+  "zh": "打开",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Open full review": {
+  "zh": "打开完整审核",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Open image": {
+  "zh": "打开图片",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Output": {
+  "zh": "输出",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Password": {
+  "zh": "密码",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Pinned": {
+  "zh": "已置顶",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Priority": {
+  "zh": "优先",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Profile": {
+  "zh": "档案",
+  "confidence": "exact",
+  "source": "hermes-desktop"
+ },
+ "Profiles": {
+  "zh": "配置",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Profiles…": {
+  "zh": "配置",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Project": {
+  "zh": "项目",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Projects": {
+  "zh": "项目",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Provider": {
+  "zh": "提供方",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Reject": {
+  "zh": "拒绝",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Rename": {
+  "zh": "重命名…",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Rename conversation": {
+  "zh": "\\u91cd\\u547d\\u540d\\u5bf9\\u8bdd",
+  "confidence": "exact",
+  "source": "hermes-webui"
+ },
+ "Rename…": {
+  "zh": "重命名…",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Response ready": {
+  "zh": "回复就绪",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Review": {
+  "zh": "评审",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Run": {
+  "zh": "运行",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Run history": {
+  "zh": "运行记录",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Run now": {
+  "zh": "立即运行",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Save": {
+  "zh": "保存",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Save changes": {
+  "zh": "保存更改",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Saving…": {
+  "zh": "保存中…",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Scheduled jobs": {
+  "zh": "定时任务",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Search projects": {
+  "zh": "搜索项目…",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Search sessions": {
+  "zh": "搜索会话",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Search skills": {
+  "zh": "搜索技能…",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Search tasks": {
+  "zh": "搜索任务",
+  "confidence": "exact",
+  "source": "hermes-webui"
+ },
+ "Selected": {
+  "zh": "已选择",
+  "confidence": "exact",
+  "source": "hermes-webui"
+ },
+ "Send message": {
+  "zh": "发送消息",
+  "confidence": "exact",
+  "source": "hermes-webui"
+ },
+ "Settings": {
+  "zh": "设置",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Show available slash commands": {
+  "zh": "查看可用命令",
+  "confidence": "exact",
+  "source": "hermes-webui"
+ },
+ "Show sessions": {
+  "zh": "显示会话",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Skills": {
+  "zh": "技能",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Slug": {
+  "zh": "标识",
+  "confidence": "exact",
+  "source": "hermes-desktop"
+ },
+ "Start voice conversation": {
+  "zh": "开始语音对话",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Status": {
+  "zh": "状态",
+  "confidence": "exact",
+  "source": "hermes-desktop"
+ },
+ "Steer": {
+  "zh": "引导",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Steer the current run": {
+  "zh": "引导当前运行",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Stop response": {
+  "zh": "停止回复",
+  "confidence": "exact",
+  "source": "hermes-webui"
+ },
+ "System": {
+  "zh": "跟随系统",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "TRY AGAIN": {
+  "zh": "重试",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Task": {
+  "zh": "任务",
+  "confidence": "exact",
+  "source": "hermes-desktop"
+ },
+ "Tenant": {
+  "zh": "租户",
+  "confidence": "exact",
+  "source": "hermes-webui"
+ },
+ "Test Connection": {
+  "zh": "测试连接",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Test connection": {
+  "zh": "测试连接",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Theme": {
+  "zh": "主题",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Thinking": {
+  "zh": "思考中",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Title": {
+  "zh": "标题",
+  "confidence": "exact",
+  "source": "hermes-desktop"
+ },
+ "Toolsets": {
+  "zh": "工具集",
+  "confidence": "exact",
+  "source": "hermes-webui"
+ },
+ "Try Again": {
+  "zh": "重试",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Turn failed": {
+  "zh": "本轮失败",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Type your answer…": {
+  "zh": "输入你的答案…",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Ultra": {
+  "zh": "超高",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Unassigned": {
+  "zh": "未分配",
+  "confidence": "exact",
+  "source": "hermes-webui"
+ },
+ "User profile": {
+  "zh": "用户画像",
+  "confidence": "exact",
+  "source": "hermes-desktop"
+ },
+ "Voice": {
+  "zh": "语音",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Waiting for activity…": {
+  "zh": "等待活动",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "Worker Log": {
+  "zh": "工作日志",
+  "confidence": "exact",
+  "source": "hermes-webui"
+ },
+ "Workspace": {
+  "zh": "工作区",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "X selected": {
+  "zh": "已选 {0} 个",
+  "confidence": "exact",
+  "source": "hermes-webui"
+ },
+ "auto": {
+  "zh": "自动",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "context compaction": {
+  "zh": "上下文压缩",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "default": {
+  "zh": "默认",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "e.g. Skunkworks": {
+  "zh": "例如 Skunkworks",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "now": {
+  "zh": "刚刚",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "signed out": {
+  "zh": "已退出登录",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "unsaved changes": {
+  "zh": "有未保存的更改",
+  "confidence": "exact",
+  "source": "hermes-agent-desktop"
+ },
+ "user profile": {
+  "zh": "用户画像",
+  "confidence": "exact",
+  "source": "hermes-desktop"
+ },
+ "1 task failed": {
+  "zh": "1 个任务失败",
+  "confidence": "exact",
+  "notes": "修订初稿误匹配的「{0} 个失败」，本串无占位符"
+ },
+ "1 task selected": {
+  "zh": "已选 1 个任务",
+  "confidence": "review",
+  "notes": "修订初稿：源串为字面量无占位符，初稿误加 {0}"
+ },
+ "1 updated, 1 failed": {
+  "zh": "已更新 1 个，失败 1 个",
+  "confidence": "exact",
+  "notes": "修订初稿误匹配项，本串无占位符"
+ },
+ "1 updated, X failed": {
+  "zh": "已更新 1 个，失败 {0} 个",
+  "confidence": "exact",
+  "notes": "修订初稿误匹配项，1 为字面量"
+ },
+ "2 updated, 1 failed": {
+  "zh": "2 个已更新，1 个失败",
+  "confidence": "review",
+  "notes": "修订初稿：字面数字无占位符；初稿漏译“已更新”；字面数字横幅，补量词后略超长度阈值，保留"
+ },
+ "Browser sign-in required": {
+  "zh": "需要浏览器登录",
+  "confidence": "exact",
+  "notes": "修订初稿误匹配的「需要 {0}」，本串无占位符"
+ },
+ "Confirm X selected": {
+  "zh": "确认已选 {0} 项",
+  "confidence": "review",
+  "notes": "上下文为多选确认按钮（配「Select to confirm」）；原稿「已选 {0} 个」缺确认语义"
+ },
+ "Credentials required": {
+  "zh": "需要凭据",
+  "confidence": "exact",
+  "notes": "修订初稿误匹配的「需要 {0}」，本串无占位符"
+ },
+ "List or toggle agent tools": {
+  "zh": "列出或切换智能体工具",
+  "confidence": "review",
+  "notes": "修订初稿：草稿「{0} 个工具」系异源误配；此为 /tools 命令描述"
+ },
+ "Login failed": {
+  "zh": "登录失败",
+  "confidence": "exact",
+  "notes": "修订初稿模板噪声「{0} 个失败」"
+ },
+ "N tasks selected": {
+  "zh": "已选 N 个任务",
+  "confidence": "review",
+  "notes": "修订初稿：N 为扫描记号非 X，按字面保留；补全“任务”"
+ },
+ "N updated, M failed": {
+  "zh": "N 个已更新，M 个失败",
+  "confidence": "review",
+  "notes": "修订初稿：N/M 非占位标记按字面保留；补译“已更新”"
+ },
+ "Not selected": {
+  "zh": "未选择",
+  "confidence": "review",
+  "notes": "修订初稿：草稿「已选 {0} 个」系异源误配；此处为技能未选中的 a11y 提示"
+ },
+ "Permission required": {
+  "zh": "需要权限",
+  "confidence": "exact",
+  "notes": "语音识别权限状态；初稿该键为错位条目「需要 {0}」，源串无插值"
+ },
+ "Secure connection failed": {
+  "zh": "安全连接失败",
+  "confidence": "exact",
+  "notes": "修订初稿模板噪声「{0} 个失败」"
+ },
+ "Shows assignee, tenant, archived, and running grouping options": {
+  "zh": "显示负责人、租户、已归档与运行中分组选项",
+  "confidence": "review",
+  "notes": "修订初稿：初稿“{task} 选项”漏译枚举项"
+ },
+ "Sign-in required": {
+  "zh": "需要登录",
+  "confidence": "exact",
+  "notes": "修订初稿模板噪声「需要 {0}」"
+ },
+ "Task X , not selected": {
+  "zh": "任务 {0}，未选中",
+  "confidence": "review",
+  "notes": "修订初稿：卡片无障碍标签，含任务 ID 与选中态"
+ },
+ "Task X , selected": {
+  "zh": "任务 {0}，已选中",
+  "confidence": "review",
+  "notes": "修订初稿：同上，选中态"
+ },
+ "X tasks failed": {
+  "zh": "{0} 个任务失败",
+  "confidence": "exact",
+  "notes": "修订初稿误匹配项"
+ },
+ "X tasks selected": {
+  "zh": "已选 {0} 个任务",
+  "confidence": "review",
+  "notes": "沿用初稿译式并补全“任务”"
+ },
+ "X updated, X failed": {
+  "zh": "已更新 {0} 个，失败 {1} 个",
+  "confidence": "exact",
+  "notes": "两个 X 按出现顺序编号"
+ },
+ "browser sign-in required": {
+  "zh": "需要浏览器登录",
+  "confidence": "exact",
+  "notes": "修订草稿误译「需要 {0}」：源串无占位符，实为登录状态描述"
+ },
+ "credentials required": {
+  "zh": "需要凭据",
+  "confidence": "exact",
+  "notes": "VoiceOver 状态词，修订初稿误匹配项"
+ },
+ "dashboard sign-in request construction failed": {
+  "zh": "仪表盘登录请求构造失败",
+  "confidence": "exact",
+  "notes": "修订初稿模板噪声「{0} 个失败」"
+ },
+ "no STT required": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "源码注释片段，扫描噪声"
+ },
+ "request failed": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "源码注释片段，扫描噪声"
+ },
+ "!canRunBulk || bulkBusy": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "Swift 布尔表达式，扫描噪声，不可译"
+ },
+ "(log is empty)": {
+  "zh": "（日志为空）",
+  "confidence": "exact",
+  "notes": "日志区占位说明"
+ },
+ ", agent working": {
+  "zh": "，智能体工作中",
+  "confidence": "exact",
+  "notes": "状态拼接片段，保留前导逗号"
+ },
+ ", auto-approve enabled": {
+  "zh": "，已启用自动批准",
+  "confidence": "exact",
+  "notes": "状态拼接片段，保留前导逗号"
+ },
+ ", but Hermes could not move it to": {
+  "zh": "，但 Hermes 无法将其移动到",
+  "confidence": "exact",
+  "notes": "与「任务已创建」片段拼接，后接英文状态值"
+ },
+ "/": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "扫描噪声/不可译"
+ },
+ "/ X": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "扫描噪声/不可译"
+ },
+ "1 background agent finished": {
+  "zh": "1 个后台智能体已完成",
+  "confidence": "exact",
+  "notes": "源串字面 1，按规则保留不改占位符"
+ },
+ "1 task updated": {
+  "zh": "已更新 1 个任务",
+  "confidence": "exact",
+  "notes": "批量操作结果状态"
+ },
+ "68447f4fbc67e70eee3a93961f36e81e98f47aef73ce7e7ca00885c6cd3616a6": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "SHA-256 校验值，非界面文案"
+ },
+ "A": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "字号滑杆两端的示例字母，无可译语义，建议保留 A"
+ },
+ "A delegated agent completes": {
+  "zh": "被委派的代理完成",
+  "confidence": "exact",
+  "notes": "通知触发条件说明"
+ },
+ "A focused home for your Hermes work": {
+  "zh": "专注于 Hermes 工作的空间",
+  "confidence": "exact"
+ },
+ "A tool is waiting for approval": {
+  "zh": "有工具等待审批",
+  "confidence": "exact"
+ },
+ "A touch-first native client for your Hermes gateway.": {
+  "zh": "为你的 Hermes 网关打造的触控优先原生客户端。",
+  "confidence": "exact"
+ },
+ "A turn stops with an error": {
+  "zh": "回合因错误停止",
+  "confidence": "exact",
+  "notes": "「回合」从 termbase；初稿 Turn failed 译「本轮」，建议全局统一"
+ },
+ "About & privacy": {
+  "zh": "关于与隐私",
+  "confidence": "exact"
+ },
+ "Absolute directory path": {
+  "zh": "绝对目录路径",
+  "confidence": "exact"
+ },
+ "Active profile": {
+  "zh": "当前档案",
+  "confidence": "exact"
+ },
+ "Activity ( X )": {
+  "zh": "活动（{0}）",
+  "confidence": "exact"
+ },
+ "Add manually": {
+  "zh": "手动添加",
+  "confidence": "exact"
+ },
+ "After pairing, run these on the same Hermes profile. First confirm the local relay credential, then send a test. You should receive the test notification on this iPhone within a few seconds.": {
+  "zh": "配对完成后，请在同一个 Hermes 档案上执行这些步骤。先确认本地中继凭据，然后发送测试。几秒内应能在这台 iPhone 上收到测试通知。",
+  "confidence": "exact"
+ },
+ "All providers are hidden. Tap Edit to restore one.": {
+  "zh": "所有提供方均已隐藏。轻点“编辑”可恢复。",
+  "confidence": "exact"
+ },
+ "Allow private URLs": {
+  "zh": "允许私有 URL",
+  "confidence": "exact"
+ },
+ "Always allowed": {
+  "zh": "始终允许",
+  "confidence": "exact"
+ },
+ "An active turn finishes": {
+  "zh": "当前回合完成",
+  "confidence": "exact"
+ },
+ "An unset override runs the task on the assigned profile's own model, provider, and reasoning effort.": {
+  "zh": "未设置覆盖时，任务将以所分配档案自身的模型、提供方与思考强度运行。",
+  "confidence": "exact"
+ },
+ "Answered on another device": {
+  "zh": "已在其他设备回答",
+  "confidence": "exact"
+ },
+ "Any integer is valid; Hermes stores it verbatim (no bounds upstream).": {
+  "zh": "任意整数均有效；Hermes 会原样存储（上游不限制范围）。",
+  "confidence": "exact"
+ },
+ "App icon": {
+  "zh": "App 图标",
+  "confidence": "exact"
+ },
+ "App information and data handling": {
+  "zh": "应用信息与数据处理",
+  "confidence": "exact"
+ },
+ "Applies to hardware keyboards only. The on-screen keyboard's Return key is unchanged.": {
+  "zh": "仅适用于硬件键盘。屏幕键盘的 Return 键保持不变。",
+  "confidence": "exact"
+ },
+ "Apply configuration": {
+  "zh": "应用配置",
+  "confidence": "exact"
+ },
+ "Apply to X": {
+  "zh": "应用于 {0}",
+  "confidence": "exact",
+  "notes": "{0} 为批量任务数"
+ },
+ "Approval cards in pushes": {
+  "zh": "推送中的审批卡片",
+  "confidence": "exact"
+ },
+ "Approved for this session": {
+  "zh": "本次会话内批准",
+  "confidence": "exact"
+ },
+ "Approved once": {
+  "zh": "批准一次",
+  "confidence": "exact"
+ },
+ "Archive 1 Task?": {
+  "zh": "归档 1 个任务？",
+  "confidence": "exact"
+ },
+ "Archive Board?": {
+  "zh": "归档看板？",
+  "confidence": "exact"
+ },
+ "Archive Board…": {
+  "zh": "归档看板…",
+  "confidence": "exact"
+ },
+ "Archive X": {
+  "zh": "归档 {0}",
+  "confidence": "exact"
+ },
+ "Archive X Tasks?": {
+  "zh": "归档 {0} 个任务？",
+  "confidence": "exact"
+ },
+ "Archive “ X ”? The board will be removed from the active board list. Its tasks are not being permanently deleted.": {
+  "zh": "归档“{0}”？该看板将从活跃看板列表中移除。其任务不会被永久删除。",
+  "confidence": "exact"
+ },
+ "Archived conversations": {
+  "zh": "已归档对话",
+  "confidence": "exact"
+ },
+ "Archived conversations stay here until you restore or permanently delete them.": {
+  "zh": "已归档的对话会保留在这里，直到你还原或永久删除。",
+  "confidence": "exact"
+ },
+ "Ask Hermes": {
+  "zh": "询问 Hermes",
+  "confidence": "exact",
+  "notes": "连接设置中的可复制提示卡标题"
+ },
+ "Ask Hermes for your connection details": {
+  "zh": "向 Hermes 询问连接详情",
+  "confidence": "exact"
+ },
+ "Ask Hermes to check the dashboard": {
+  "zh": "让 Hermes 检查仪表盘",
+  "confidence": "exact"
+ },
+ "Ask Hermes to check your dashboard sign-in": {
+  "zh": "让 Hermes 检查仪表盘登录",
+  "confidence": "exact"
+ },
+ "Ask Hermes to configure Tailscale Serve": {
+  "zh": "让 Hermes 配置 Tailscale Serve",
+  "confidence": "exact"
+ },
+ "Ask Hermes to confirm your HTTPS address": {
+  "zh": "让 Hermes 确认你的 HTTPS 地址",
+  "confidence": "exact"
+ },
+ "Ask Hermes to set up dashboard credentials": {
+  "zh": "让 Hermes 设置仪表盘凭据",
+  "confidence": "exact"
+ },
+ "Ask Hermes to set up the dashboard": {
+  "zh": "让 Hermes 设置仪表盘",
+  "confidence": "exact"
+ },
+ "Assign 1 Task": {
+  "zh": "指派 1 个任务",
+  "confidence": "exact"
+ },
+ "Assign X Tasks": {
+  "zh": "指派 {0} 个任务",
+  "confidence": "exact"
+ },
+ "Assign X selected X": {
+  "zh": "指派所选 {0} 个 {1}",
+  "confidence": "exact",
+  "notes": "{0} 数量，{1} 任务名词"
+ },
+ "Assigned to": {
+  "zh": "指派给",
+  "confidence": "exact"
+ },
+ "Assigned to X": {
+  "zh": "已指派给 {0}",
+  "confidence": "exact"
+ },
+ "Assignment": {
+  "zh": "指派",
+  "confidence": "exact"
+ },
+ "Assignment & Execution": {
+  "zh": "指派与执行",
+  "confidence": "exact"
+ },
+ "Assistant audio muted": {
+  "zh": "助手音频已静音",
+  "confidence": "exact"
+ },
+ "Assistant speech": {
+  "zh": "助手语音",
+  "confidence": "exact"
+ },
+ "Attached image": {
+  "zh": "附件图片",
+  "confidence": "exact"
+ },
+ "Attached image: X": {
+  "zh": "附加图片：{0}",
+  "confidence": "exact"
+ },
+ "Auto Decompose": {
+  "zh": "自动分解",
+  "confidence": "exact",
+  "notes": "编排设置开关"
+ },
+ "Auto Decompose lets the dispatcher decompose eligible triage tasks. Auto Promote Children moves parent-free children to Ready instead of leaving them in To Do.": {
+  "zh": "「自动分解」允许派发器分解符合条件的分类任务；「自动晋升子任务」会把无父级的子任务移到 Ready 列，而不是留在 To Do 列。",
+  "confidence": "exact",
+  "notes": "Ready/To Do 为看板列名保留原文"
+ },
+ "Auto Promote Children": {
+  "zh": "自动晋升子任务",
+  "confidence": "exact",
+  "notes": "编排设置开关"
+ },
+ "Automatically generated — review recommended": {
+  "zh": "自动生成，建议复核",
+  "confidence": "exact",
+  "notes": "路由描述来源标注"
+ },
+ "Automatically listens again after each response. Turn off to start each listening turn manually.": {
+  "zh": "每次回复后自动重新聆听。关闭后，每轮聆听需手动开始。",
+  "confidence": "exact"
+ },
+ "Available skills": {
+  "zh": "可用技能",
+  "confidence": "exact"
+ },
+ "Background agent work finished": {
+  "zh": "后台智能体工作已完成",
+  "confidence": "exact"
+ },
+ "Basics": {
+  "zh": "基本",
+  "confidence": "exact"
+ },
+ "Bearer X": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "HTTP Authorization 头取值，非界面文案"
+ },
+ "Binary file": {
+  "zh": "二进制文件",
+  "confidence": "exact"
+ },
+ "Blocked by": {
+  "zh": "阻塞来源",
+  "confidence": "exact"
+ },
+ "Board description": {
+  "zh": "看板描述",
+  "confidence": "exact"
+ },
+ "Board name": {
+  "zh": "看板名称",
+  "confidence": "exact"
+ },
+ "Board slug": {
+  "zh": "看板标识",
+  "confidence": "exact"
+ },
+ "Bounds how long the Goal Mode worker may loop": {
+  "zh": "限制目标模式下工作代理的循环时长",
+  "confidence": "review",
+  "notes": "a11y 提示；含「Goal Mode」译名，随该条仲裁"
+ },
+ "Branch from this response": {
+  "zh": "从此回复创建分支",
+  "confidence": "exact"
+ },
+ "Branch of X": {
+  "zh": "{0} 的分支",
+  "confidence": "exact",
+  "notes": "分支会话标题，branch 依术语表作分支"
+ },
+ "Branch this conversation into a new chat": {
+  "zh": "将此对话分支为新聊天",
+  "confidence": "exact"
+ },
+ "Browse projects": {
+  "zh": "浏览项目",
+  "confidence": "exact"
+ },
+ "Cannot save X : X": {
+  "zh": "无法保存 {0}：{1}",
+  "confidence": "exact"
+ },
+ "Cannot save. X": {
+  "zh": "无法保存：{0}",
+  "confidence": "exact"
+ },
+ "Certificate date problem": {
+  "zh": "证书日期异常",
+  "confidence": "exact",
+  "notes": "连接失败诊断标题"
+ },
+ "Chat display": {
+  "zh": "对话显示",
+  "confidence": "exact"
+ },
+ "Chat text size": {
+  "zh": "对话字号",
+  "confidence": "exact"
+ },
+ "Check pairing status": {
+  "zh": "检查配对状态",
+  "confidence": "exact"
+ },
+ "Check the dashboard address": {
+  "zh": "检查仪表盘地址",
+  "confidence": "exact",
+  "notes": "诊断标题"
+ },
+ "Check voice support": {
+  "zh": "检查语音支持",
+  "confidence": "exact"
+ },
+ "Checking agent activity…": {
+  "zh": "正在检查智能体活动…",
+  "confidence": "exact"
+ },
+ "Checking compatibility…": {
+  "zh": "正在检查兼容性…",
+  "confidence": "exact"
+ },
+ "Checking dashboard…": {
+  "zh": "正在检查仪表盘…",
+  "confidence": "exact",
+  "notes": "连接自检进行中标签"
+ },
+ "Checking server…": {
+  "zh": "正在检查服务器…",
+  "confidence": "exact",
+  "notes": "连接自检进行中标签"
+ },
+ "Choose Kanban board": {
+  "zh": "选择看板",
+  "confidence": "exact"
+ },
+ "Choose a connection method": {
+  "zh": "选择连接方式",
+  "confidence": "exact",
+  "notes": "未选方式时的占位项"
+ },
+ "Choose a different profile from the session drawer. Chat, model, workspace, and memory preferences on the other settings pages follow that profile.": {
+  "zh": "请从会话抽屉中选择其他档案。其他设置页中的对话、模型、工作区与记忆偏好将跟随该档案。",
+  "confidence": "exact"
+ },
+ "Choose how Conduit appears across the app.": {
+  "zh": "选择 Conduit 在整个应用中的外观。",
+  "confidence": "exact"
+ },
+ "Choose how Conduit appears across this device.": {
+  "zh": "选择 Conduit 在此设备上的外观。",
+  "confidence": "exact"
+ },
+ "Choose on-device Apple speech or a provider reported by Hermes": {
+  "zh": "选择 Apple 设备端语音或 Hermes 上报的提供方。",
+  "confidence": "exact"
+ },
+ "Choose photo for X": {
+  "zh": "为 {0} 选取照片",
+  "confidence": "exact",
+  "notes": "无障碍标签，X 为档案名"
+ },
+ "Choose scheme": {
+  "zh": "选择协议",
+  "confidence": "exact",
+  "notes": "scheme 指 HTTP/HTTPS 协议类型"
+ },
+ "Choose the icon shown on your Home Screen.": {
+  "zh": "选择主屏幕上显示的图标。",
+  "confidence": "exact"
+ },
+ "Choose what a typed message does while Hermes is still working.": {
+  "zh": "选择 Hermes 仍在工作时如何处理输入的消息。",
+  "confidence": "exact"
+ },
+ "Choose whether Conduit preserves your exact reading position or follows the newest conversation.": {
+  "zh": "选择 Conduit 是精确保留阅读位置，还是跟随最新对话。",
+  "confidence": "exact"
+ },
+ "Claimed by worker": {
+  "zh": "被工作代理认领",
+  "confidence": "exact"
+ },
+ "Claimed from review": {
+  "zh": "从评审列认领",
+  "confidence": "exact",
+  "notes": "review 指看板「评审」列"
+ },
+ "Client ID": {
+  "zh": "客户端 ID",
+  "confidence": "exact"
+ },
+ "Client Secret": {
+  "zh": "客户端密钥",
+  "confidence": "exact"
+ },
+ "Close X": {
+  "zh": "关闭 {0}",
+  "confidence": "exact",
+  "notes": "表单头部关闭按钮 a11y 标签，{0} 为标题插值"
+ },
+ "Close sessions": {
+  "zh": "关闭会话",
+  "confidence": "exact"
+ },
+ "Cloudflare Access": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "Cloudflare 服务名，保留原文不译"
+ },
+ "Cloudflare Client ID": {
+  "zh": "Cloudflare 客户端 ID",
+  "confidence": "exact",
+  "notes": "Cloudflare 官方中文文档译法"
+ },
+ "Cloudflare Client Secret": {
+  "zh": "Cloudflare 客户端密钥",
+  "confidence": "exact",
+  "notes": "Secret 依生态惯例译「密钥」"
+ },
+ "Cloudflare rejected the service token": {
+  "zh": "Cloudflare 拒绝了服务令牌",
+  "confidence": "exact",
+  "notes": "诊断标题"
+ },
+ "Code execution mode": {
+  "zh": "代码执行模式",
+  "confidence": "exact"
+ },
+ "Collapse review details": {
+  "zh": "收起审核详情",
+  "confidence": "exact"
+ },
+ "Comment from \\(string(": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "扫描截断的插值片段，不可译"
+ },
+ "Comments reach the live worker between turns as an out-of-band note.": {
+  "zh": "评论会在轮次之间以带外备注的形式传达给正在运行的工作代理。",
+  "confidence": "exact"
+ },
+ "Compatibility unknown. Your relay predates version reporting; decision cards may not be available until it updates.": {
+  "zh": "兼容性未知。你的中继版本早于版本上报功能；在中继更新前，决策卡片可能不可用。",
+  "confidence": "exact"
+ },
+ "Composer unavailable": {
+  "zh": "输入框不可用",
+  "confidence": "exact",
+  "notes": "composer 依术语表译「输入框」"
+ },
+ "Compress this conversation context": {
+  "zh": "压缩此对话的上下文",
+  "confidence": "exact"
+ },
+ "Compression target": {
+  "zh": "压缩目标",
+  "confidence": "exact"
+ },
+ "Compression threshold": {
+  "zh": "压缩阈值",
+  "confidence": "exact"
+ },
+ "Concurrent delegate agents": {
+  "zh": "并发委派代理数",
+  "confidence": "exact",
+  "notes": "委派设置组统一「委派」系；termbase「子代理」可备选"
+ },
+ "Conduit": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "应用名，不译"
+ },
+ "Conduit connects to the dashboard and gateway you configure. Conversations and attachments are handled by that Hermes installation.": {
+  "zh": "Conduit 连接到你配置的仪表盘和网关。对话与附件由该 Hermes 实例处理。",
+  "confidence": "exact"
+ },
+ "Conduit is ready when you are.": {
+  "zh": "Conduit 随时待命。",
+  "confidence": "exact"
+ },
+ "Conduit never installs or configures Tailscale, and it doesn’t assume an address or port — Hermes tells you what to use.": {
+  "zh": "Conduit 不会安装或配置 Tailscale，也不会预设地址或端口——Hermes 会告诉你该用什么。",
+  "confidence": "exact"
+ },
+ "Conduit profile": {
+  "zh": "Conduit 档案",
+  "confidence": "exact",
+  "notes": "Siri 实体类型显示名；profile 依术语表作档案"
+ },
+ "Conduit will check the dashboard address and try your credentials now. Nothing is saved, and Conduit won’t connect yet — you’ll confirm everything on the Review screen.": {
+  "zh": "Conduit 现在会检查仪表盘地址并尝试你的凭据。不会保存任何内容，Conduit 也尚未连接——你将在「审核」页确认所有信息。",
+  "confidence": "exact",
+  "notes": "Review 为设置流程的确认页，暂译「审核」，供仲裁"
+ },
+ "Conduit will not ask you to expose a raw public port, create firewall rules, or bypass certificate checks.": {
+  "zh": "Conduit 不会要求你暴露原始公网端口、创建防火墙规则或绕过证书检查。",
+  "confidence": "exact"
+ },
+ "Conduit-generated vibration feedback for actions and response progress. iOS system controls can still provide their own feedback.": {
+  "zh": "由 Conduit 为操作与回复进度生成的振动反馈。iOS 系统控件仍可能提供自己的反馈。",
+  "confidence": "exact"
+ },
+ "Configured on Hermes": {
+  "zh": "已在 Hermes 上配置",
+  "confidence": "exact"
+ },
+ "Connect a Hermes dashboard": {
+  "zh": "连接 Hermes 仪表盘",
+  "confidence": "exact"
+ },
+ "Connect a Hermes profile": {
+  "zh": "连接 Hermes 档案",
+  "confidence": "exact"
+ },
+ "Connect to Hermes to configure voice for this profile.": {
+  "zh": "连接 Hermes 后才能为该档案配置语音。",
+  "confidence": "exact"
+ },
+ "Connection Setup": {
+  "zh": "连接设置",
+  "confidence": "exact"
+ },
+ "Connection method": {
+  "zh": "连接方式",
+  "confidence": "exact"
+ },
+ "Connection scheme": {
+  "zh": "连接协议",
+  "confidence": "exact"
+ },
+ "Connection timed out": {
+  "zh": "连接超时",
+  "confidence": "exact"
+ },
+ "ConnectionRepairCandidate(redacted)": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "类型调试描述，非界面文案"
+ },
+ "ConnectionRepairHandoff(redacted)": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "类型调试描述，非界面文案"
+ },
+ "ConnectionSetupApplication(redacted)": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "类型调试描述，非界面文案"
+ },
+ "ConnectionSetupDraft(redacted)": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "调试 CustomStringConvertible 串，非界面文案"
+ },
+ "ConnectionSetupResult(redacted)": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "调试 CustomStringConvertible 串，非界面文案"
+ },
+ "ConnectionSetupTestAcquisition(redacted)": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "调试 CustomStringConvertible 串，非界面文案"
+ },
+ "Consecutive failures": {
+  "zh": "连续失败",
+  "confidence": "exact"
+ },
+ "Context compression": {
+  "zh": "上下文压缩",
+  "confidence": "exact"
+ },
+ "Context engine": {
+  "zh": "上下文引擎",
+  "confidence": "exact"
+ },
+ "Context usage, \\(Int(appState.runtime.contextPercent.rounded())) percent": {
+  "zh": "上下文用量，百分之 \\(Int(appState.runtime.contextPercent.rounded()))",
+  "confidence": "exact",
+  "notes": "a11y 标签；Swift 插值原样保留"
+ },
+ "Continue reading ( X sections left)": {
+  "zh": "继续阅读（剩余 {0} 节）",
+  "confidence": "exact",
+  "notes": "长文折叠续读按钮；{0} 为剩余节数插值"
+ },
+ "Continue where I left off": {
+  "zh": "继续上次会话",
+  "confidence": "exact",
+  "notes": "启动定位选项标题，决定恢复哪个会话"
+ },
+ "Continuous Conversation": {
+  "zh": "连续对话",
+  "confidence": "exact"
+ },
+ "Conversation title": {
+  "zh": "对话标题",
+  "confidence": "exact"
+ },
+ "Copy Prompt": {
+  "zh": "复制提示词",
+  "confidence": "exact",
+  "notes": "termbase prompt→提示词"
+ },
+ "Copy Task ID": {
+  "zh": "复制任务 ID",
+  "confidence": "exact"
+ },
+ "Copy Task Title": {
+  "zh": "复制任务标题",
+  "confidence": "exact"
+ },
+ "Copy X command": {
+  "zh": "复制 {0} 命令",
+  "confidence": "exact"
+ },
+ "Copy full source": {
+  "zh": "复制完整源码",
+  "confidence": "exact",
+  "notes": "指 Markdown 原始内容"
+ },
+ "Copy response": {
+  "zh": "复制回复",
+  "confidence": "exact"
+ },
+ "Copy selection": {
+  "zh": "复制所选",
+  "confidence": "exact",
+  "notes": "仅 DEBUG 选区测试界面，发布构建不含"
+ },
+ "Copy source": {
+  "zh": "复制源码",
+  "confidence": "exact"
+ },
+ "Copy task ID": {
+  "zh": "复制任务 ID",
+  "confidence": "exact"
+ },
+ "Copy task title": {
+  "zh": "复制任务标题",
+  "confidence": "exact"
+ },
+ "Copy the cross-block selection": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "NSLocalizedString 注释，非界面文案"
+ },
+ "Could not \\(archived ?": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "已合并/非界面文案(review 清理)"
+ },
+ "Could not build a safe Hermes Kanban request (invalid": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "已合并/非界面文案(review 清理)"
+ },
+ "Could not start the session": {
+  "zh": "无法启动会话",
+  "confidence": "exact"
+ },
+ "Couldn't Load": {
+  "zh": "无法加载",
+  "confidence": "exact",
+  "notes": "能力页加载失败标题，正文为具体错误"
+ },
+ "Couldn't load this task": {
+  "zh": "无法加载此任务",
+  "confidence": "exact"
+ },
+ "Couldn’t connect": {
+  "zh": "无法连接",
+  "confidence": "exact"
+ },
+ "Couldn’t preview file": {
+  "zh": "无法预览文件",
+  "confidence": "exact"
+ },
+ "Couldn’t reach Hermes": {
+  "zh": "无法连接到 Hermes",
+  "confidence": "exact"
+ },
+ "Create a debug report": {
+  "zh": "创建调试报告",
+  "confidence": "exact"
+ },
+ "Create pairing code": {
+  "zh": "创建配对码",
+  "confidence": "exact"
+ },
+ "Created by": {
+  "zh": "创建者",
+  "confidence": "exact"
+ },
+ "Creating code…": {
+  "zh": "正在创建…",
+  "confidence": "exact"
+ },
+ "Credentials are ready": {
+  "zh": "凭据已就绪",
+  "confidence": "exact"
+ },
+ "Credentials on Hermes": {
+  "zh": "Hermes 上的凭据",
+  "confidence": "exact"
+ },
+ "Critical": {
+  "zh": "严重",
+  "confidence": "exact"
+ },
+ "Curated by Hermes so a worker can always spawn what you pick.": {
+  "zh": "由 Hermes 精选，工作代理始终能启动你所选的模型。",
+  "confidence": "exact"
+ },
+ "Current connection": {
+  "zh": "当前连接",
+  "confidence": "exact"
+ },
+ "Current dashboard address": {
+  "zh": "当前仪表盘地址",
+  "confidence": "exact",
+  "notes": "连接方式选项"
+ },
+ "Current lane": {
+  "zh": "当前列",
+  "confidence": "exact",
+  "notes": "lane 即看板列，无障碍提示"
+ },
+ "Custom (free text)": {
+  "zh": "自定义（自由文本）",
+  "confidence": "exact"
+ },
+ "Custom Directory…": {
+  "zh": "自定义目录…",
+  "confidence": "exact"
+ },
+ "Custom endpoint": {
+  "zh": "自定义端点",
+  "confidence": "exact"
+ },
+ "Custom workspace directory": {
+  "zh": "自定义工作区目录",
+  "confidence": "exact"
+ },
+ "Dashboard address": {
+  "zh": "仪表盘地址",
+  "confidence": "exact"
+ },
+ "Dashboard credentials": {
+  "zh": "仪表盘凭据",
+  "confidence": "exact"
+ },
+ "Dashboard is ready": {
+  "zh": "仪表盘已就绪",
+  "confidence": "exact"
+ },
+ "Dashboard not found": {
+  "zh": "未找到仪表盘",
+  "confidence": "exact"
+ },
+ "Dashboard password": {
+  "zh": "仪表盘密码",
+  "confidence": "exact"
+ },
+ "Dashboard port": {
+  "zh": "仪表盘端口",
+  "confidence": "exact"
+ },
+ "Dashboard port (optional)": {
+  "zh": "仪表盘端口（可选）",
+  "confidence": "exact"
+ },
+ "Dashboard reachable": {
+  "zh": "服务器可达",
+  "confidence": "exact",
+  "notes": "连接自检阶段完成标签"
+ },
+ "Dashboard unavailable": {
+  "zh": "仪表盘不可用",
+  "confidence": "exact"
+ },
+ "Dashboard username": {
+  "zh": "仪表盘用户名",
+  "confidence": "exact",
+  "notes": "再压缩会丢「仪表盘」限定，保留"
+ },
+ "Data handling": {
+  "zh": "数据处理",
+  "confidence": "exact"
+ },
+ "Decision cards need a relay update": {
+  "zh": "决策卡片需要中继更新",
+  "confidence": "exact"
+ },
+ "Decompose": {
+  "zh": "分解",
+  "confidence": "exact"
+ },
+ "Decompose Into Tasks": {
+  "zh": "分解为任务",
+  "confidence": "exact"
+ },
+ "Decompose succeeded": {
+  "zh": "分解成功",
+  "confidence": "exact"
+ },
+ "Decompose this task?": {
+  "zh": "要分解此任务吗？",
+  "confidence": "exact",
+  "notes": "确认弹窗标题用问句"
+ },
+ "Decomposed (single task, no fan-out)": {
+  "zh": "已分解（单任务，未展开子任务）",
+  "confidence": "exact",
+  "notes": "no fan-out 指未拆出子任务"
+ },
+ "Decomposed into X task": {
+  "zh": "已分解为 {0} 个任务",
+  "confidence": "exact",
+  "notes": "X 为子任务数"
+ },
+ "Decrease priority": {
+  "zh": "降低优先级",
+  "confidence": "exact"
+ },
+ "Default ( X )": {
+  "zh": "默认（{0}）",
+  "confidence": "exact",
+  "notes": "X 为默认负责人/档案名"
+ },
+ "Default (coder)": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "注释示例；实际文案由 Default (X) 插值生成"
+ },
+ "Default Assignee": {
+  "zh": "默认负责人",
+  "confidence": "exact",
+  "notes": "assignee 依 termbase 译「负责人」"
+ },
+ "Default Workspace": {
+  "zh": "默认工作区",
+  "confidence": "exact"
+ },
+ "Default model and reasoning": {
+  "zh": "默认模型与思考",
+  "confidence": "exact"
+ },
+ "Default profile": {
+  "zh": "默认档案",
+  "confidence": "exact"
+ },
+ "Default reasoning": {
+  "zh": "默认强度",
+  "confidence": "exact",
+  "notes": "用户指定: reasoning=思考强度, default reasoning=默认强度"
+ },
+ "Default uses Hermes' resolved default assignee ( X ). Parked leaves the task unassigned so no worker claims it.": {
+  "zh": "默认使用 Hermes 解析出的默认负责人（{0}）。「搁置」会让任务保持未分配，因此不会有工作代理认领。",
+  "confidence": "exact",
+  "notes": "Parked 译「搁置」，指不指派负责人的选项"
+ },
+ "Default working directory": {
+  "zh": "默认工作目录",
+  "confidence": "exact"
+ },
+ "Default workspace": {
+  "zh": "默认工作区",
+  "confidence": "exact"
+ },
+ "Delegate activity for this conversation will appear here.": {
+  "zh": "此对话的委派动态将显示在这里。",
+  "confidence": "exact"
+ },
+ "Delegate agent": {
+  "zh": "委派智能体",
+  "confidence": "exact",
+  "notes": "委派代理活动的默认目标标题"
+ },
+ "Delegate agents": {
+  "zh": "委派智能体",
+  "confidence": "exact"
+ },
+ "Delegate agents, X active": {
+  "zh": "委派智能体，{0} 个活跃",
+  "confidence": "exact",
+  "notes": "a11y 标签"
+ },
+ "Delegate model": {
+  "zh": "委派模型",
+  "confidence": "exact"
+ },
+ "Delegate provider": {
+  "zh": "委派提供方",
+  "confidence": "exact"
+ },
+ "Delegate reasoning": {
+  "zh": "委派思考",
+  "confidence": "exact"
+ },
+ "Delete 1 Task?": {
+  "zh": "删除 1 个任务？",
+  "confidence": "exact"
+ },
+ "Delete X": {
+  "zh": "删除 {0}",
+  "confidence": "exact"
+ },
+ "Delete X Tasks?": {
+  "zh": "删除 {0} 个任务？",
+  "confidence": "exact"
+ },
+ "Delete this task?": {
+  "zh": "删除此任务？",
+  "confidence": "exact"
+ },
+ "Delivery instruction": {
+  "zh": "表达指令",
+  "confidence": "exact",
+  "notes": "TTS 说话风格指引（源码 help 为证）"
+ },
+ "Delivery status and setup": {
+  "zh": "送达状态与设置",
+  "confidence": "exact"
+ },
+ "Dependencies": {
+  "zh": "依赖项",
+  "confidence": "exact"
+ },
+ "Depends on": {
+  "zh": "依赖于",
+  "confidence": "exact"
+ },
+ "Details edited": {
+  "zh": "已编辑详情",
+  "confidence": "exact"
+ },
+ "Diagnostics ( X )": {
+  "zh": "诊断（{0}）",
+  "confidence": "exact"
+ },
+ "Discard & Generate": {
+  "zh": "放弃并生成",
+  "confidence": "exact",
+  "notes": "破坏性按钮"
+ },
+ "Discard unsaved changes?": {
+  "zh": "放弃未保存的更改？",
+  "confidence": "exact",
+  "notes": "确认弹窗标题用问句"
+ },
+ "Disconnect from Hermes": {
+  "zh": "断开 Hermes 连接",
+  "confidence": "exact"
+ },
+ "Dismiss Kanban error": {
+  "zh": "关闭看板错误",
+  "confidence": "exact"
+ },
+ "Dispatcher nudged": {
+  "zh": "已催促调度器",
+  "confidence": "exact",
+  "notes": "催促调度器后的瞬时反馈；压缩为“已催促调度”损义，保留"
+ },
+ "Do you have your Hermes dashboard login credentials?": {
+  "zh": "你有 Hermes 仪表盘的登录凭据吗？",
+  "confidence": "exact"
+ },
+ "Document": {
+  "zh": "文档",
+  "confidence": "exact"
+ },
+ "Does my Hermes dashboard require authentication? If so, tell me what username and password I should": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "已合并/非界面文案(review 清理)"
+ },
+ "Drag categories into the order you prefer. All remains first in the session drawer.": {
+  "zh": "拖动分类可按你喜欢的顺序排列。「全部」始终位于会话抽屉首位。",
+  "confidence": "exact"
+ },
+ "During a response": {
+  "zh": "回复期间",
+  "confidence": "exact"
+ },
+ "Edit Connection Details": {
+  "zh": "编辑连接详情",
+  "confidence": "exact",
+  "notes": "失败补救按钮"
+ },
+ "Edit Credentials": {
+  "zh": "编辑凭据",
+  "confidence": "exact",
+  "notes": "失败补救按钮"
+ },
+ "Edit slug manually": {
+  "zh": "手动编辑标识",
+  "confidence": "exact"
+ },
+ "Edit slug manually (advanced)": {
+  "zh": "手动编辑标识（高级）",
+  "confidence": "exact"
+ },
+ "Edits the per-task model, provider, and reasoning override": {
+  "zh": "编辑每个任务的模型、提供方与思考覆盖",
+  "confidence": "exact"
+ },
+ "Effective Directory": {
+  "zh": "实际目录",
+  "confidence": "exact"
+ },
+ "ElevenLabs Scribe": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "产品名，不译"
+ },
+ "Enable Speech Recognition in Settings > Conduit > Speech Recognition, then retry selecting \"On this iPhone\".": {
+  "zh": "在「设置」>「Conduit」>「语音识别」中启用语音识别，然后重新选择「在这台 iPhone 上」。",
+  "confidence": "exact"
+ },
+ "Enable voice on this device": {
+  "zh": "在此设备上启用语音",
+  "confidence": "exact"
+ },
+ "English + Chinese wake phrases": {
+  "zh": "英语 + 中文唤醒词",
+  "confidence": "exact",
+  "notes": "唤醒模型显示名"
+ },
+ "English pronunciation lexicon": {
+  "zh": "英语发音词典",
+  "confidence": "exact",
+  "notes": "模型资产用途说明"
+ },
+ "Enter Credentials": {
+  "zh": "输入凭据",
+  "confidence": "exact"
+ },
+ "Enter a replacement only if needed.": {
+  "zh": "仅在需要时输入替换值。",
+  "confidence": "exact"
+ },
+ "Enter selection mode to run bulk operations": {
+  "zh": "进入选择模式以执行批量操作",
+  "confidence": "exact"
+ },
+ "Execution": {
+  "zh": "执行",
+  "confidence": "exact"
+ },
+ "Existing HTTPS domain": {
+  "zh": "现有 HTTPS 域名",
+  "confidence": "exact",
+  "notes": "连接方式选项"
+ },
+ "Exit selection mode": {
+  "zh": "退出选择模式",
+  "confidence": "exact"
+ },
+ "Expand review details": {
+  "zh": "展开审核详情",
+  "confidence": "exact"
+ },
+ "Face ID is not available on this device. You can still save credentials.": {
+  "zh": "此设备不支持 Face ID，仍可保存凭据。",
+  "confidence": "exact"
+ },
+ "Failed Tasks": {
+  "zh": "失败任务",
+  "confidence": "exact"
+ },
+ "Fans eligible triage tasks into child task graphs": {
+  "zh": "将符合条件的分类任务展开为子任务图",
+  "confidence": "exact",
+  "notes": "无障碍提示"
+ },
+ "Fast mode": {
+  "zh": "快速模式",
+  "confidence": "exact"
+ },
+ "Fetches the next older page of this conversation": {
+  "zh": "获取此对话更早的一页消息。",
+  "confidence": "exact"
+ },
+ "Filters": {
+  "zh": "筛选",
+  "confidence": "exact",
+  "notes": "筛选面板标题"
+ },
+ "Filters active — open filters": {
+  "zh": "筛选已启用 — 打开筛选",
+  "confidence": "exact"
+ },
+ "Five steps from smallest to largest. Applies to conversation text immediately.": {
+  "zh": "共五档，由小到大。更改立即应用于对话文本。",
+  "confidence": "exact"
+ },
+ "Fleshed out by triage specifier": {
+  "zh": "由分类指定器细化",
+  "confidence": "exact",
+  "notes": "triage specifier 依 termbase 译「分类指定器」"
+ },
+ "Folder unavailable": {
+  "zh": "文件夹不可用",
+  "confidence": "exact"
+ },
+ "For a direct address, choose the scheme Hermes supplied.": {
+  "zh": "直接地址请选择 Hermes 提供的协议。",
+  "confidence": "exact"
+ },
+ "Gateway connected": {
+  "zh": "网关已连接",
+  "confidence": "exact",
+  "notes": "连接状态指示器 a11y 标签"
+ },
+ "Gateway disconnected": {
+  "zh": "网关已断开",
+  "confidence": "exact",
+  "notes": "连接状态指示器 a11y 标签"
+ },
+ "Generate Automatically": {
+  "zh": "自动生成",
+  "confidence": "exact",
+  "notes": "按钮"
+ },
+ "Generated slug X": {
+  "zh": "生成的标识 {0}",
+  "confidence": "exact"
+ },
+ "Generated title for X in X": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "Logger 日志串，不本地化"
+ },
+ "Generating replaces the current text. Your unsaved edits will be lost.": {
+  "zh": "生成会替换当前文本，未保存的编辑将丢失。",
+  "confidence": "exact",
+  "notes": "确认弹窗说明"
+ },
+ "Getting started": {
+  "zh": "开始使用",
+  "confidence": "exact"
+ },
+ "GitHub": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "平台名，保留原文不译"
+ },
+ "Goal Mode": {
+  "zh": "目标模式",
+  "confidence": "review",
+  "notes": "goal_mode 功能名，termbase 未覆盖；如生态惯用英文可回退"
+ },
+ "Group Running by Profile": {
+  "zh": "Running 按档案分组",
+  "confidence": "exact",
+  "notes": "Running 为看板列名保留原文"
+ },
+ "Group Running by Profile is a saved preference. Show Archived applies to the board fetch. Assignee and tenant filters are temporary until changed.": {
+  "zh": "「Running 按档案分组」是保存的偏好；「显示已归档」作用于看板拉取；负责人与租户筛选为临时设置，修改前保持有效。",
+  "confidence": "exact",
+  "notes": "assignee 依 termbase 译「负责人」"
+ },
+ "Group the Running lane by assignee": {
+  "zh": "按负责人分组 Running 列",
+  "confidence": "exact",
+  "notes": "无障碍标签"
+ },
+ "Guide safely": {
+  "zh": "安全引导",
+  "confidence": "exact",
+  "notes": "Steer 模式说明，Steer 依初稿译「引导」"
+ },
+ "HTTP": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "协议名，保留原文不译"
+ },
+ "HTTPS": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "协议名，保留原文不译"
+ },
+ "HTTPS & certificates": {
+  "zh": "HTTPS 与证书",
+  "confidence": "exact"
+ },
+ "Haptic feedback": {
+  "zh": "触感反馈",
+  "confidence": "exact"
+ },
+ "Hardware keyboards only. The on-screen keyboard's Return key keeps inserting a new line.": {
+  "zh": "仅适用于硬件键盘。屏幕键盘的 Return 键仍会插入换行。",
+  "confidence": "exact"
+ },
+ "Hermes": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "专名，保留原文不译"
+ },
+ "Hermes Conduit": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "应用名，保留原文不译"
+ },
+ "Hermes Conduit is an independent client and is not affiliated with or endorsed by Nous Research. © 2026 Milim.": {
+  "zh": "Hermes Conduit 为独立客户端，与 Nous Research 无关联，亦未获其认可。© 2026 Milim。",
+  "confidence": "exact"
+ },
+ "Hermes asked X questions before it can continue": {
+  "zh": "Hermes 提出 {0} 个问题后才能继续。",
+  "confidence": "exact"
+ },
+ "Hermes command": {
+  "zh": "Hermes 命令",
+  "confidence": "exact",
+  "notes": "无描述命令的兜底说明"
+ },
+ "Hermes dashboard found": {
+  "zh": "已找到 Hermes 仪表盘",
+  "confidence": "exact",
+  "notes": "连接自检阶段完成标签"
+ },
+ "Hermes does not allow": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "已合并/非界面文案(review 清理)"
+ },
+ "Hermes has not reported a working directory for this session yet.": {
+  "zh": "Hermes 尚未上报此会话的工作目录。",
+  "confidence": "exact"
+ },
+ "Hermes is speaking": {
+  "zh": "Hermes 正在讲话",
+  "confidence": "exact"
+ },
+ "Hermes is thinking": {
+  "zh": "Hermes 正在思考",
+  "confidence": "exact"
+ },
+ "Hermes needs your answer": {
+  "zh": "Hermes 需要你的答复",
+  "confidence": "exact"
+ },
+ "Hermes profile": {
+  "zh": "Hermes 档案",
+  "confidence": "exact",
+  "notes": ""
+ },
+ "Hermes providers": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "仅代码注释出现，非界面文案"
+ },
+ "Hermes routes triage decomposition across these profiles by their routing description. A clear description helps the decomposer pick the right specialist.": {
+  "zh": "Hermes 依据路由描述，将分类任务的分解路由到这些档案。清晰的描述有助于分解器选出合适的专长档案。",
+  "confidence": "exact",
+  "notes": "triage 依 termbase 译「分类」"
+ },
+ "Hermes settings follow the active profile. Appearance, notifications, and privacy controls stay on this device.": {
+  "zh": "Hermes 设置跟随当前档案。外观、通知与隐私控制保留在此设备上。",
+  "confidence": "exact"
+ },
+ "Hermes will save this approval pattern for future commands.": {
+  "zh": "Hermes 将保存此审批模式，用于后续命令。",
+  "confidence": "exact"
+ },
+ "Hidden system event": {
+  "zh": "隐藏的系统事件",
+  "confidence": "exact"
+ },
+ "Hide all": {
+  "zh": "全部隐藏",
+  "confidence": "exact"
+ },
+ "Hiding a provider preserves its individual model choices. These filters stay on this device.": {
+  "zh": "隐藏提供方会保留其各自的模型选择。这些筛选条件仅保存在此设备上。",
+  "confidence": "exact"
+ },
+ "How it works": {
+  "zh": "工作原理",
+  "confidence": "exact"
+ },
+ "How will this iPhone or iPad reach Hermes?": {
+  "zh": "这台 iPhone 或 iPad 将如何访问 Hermes？",
+  "confidence": "exact"
+ },
+ "I already have a domain or reverse proxy": {
+  "zh": "我已有域名或反向代理",
+  "confidence": "exact"
+ },
+ "I don’t know": {
+  "zh": "我不知道",
+  "confidence": "exact"
+ },
+ "I have the connection details": {
+  "zh": "我已有连接信息",
+  "confidence": "exact"
+ },
+ "Idea (optional)": {
+  "zh": "想法（可选）",
+  "confidence": "exact"
+ },
+ "If dashboard login credentials have not been configured yet, set them up securely and tell me what": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "已合并/非界面文案(review 清理)"
+ },
+ "Ignoring unsupported session YOLO override schema version X": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "Logger 日志串，不本地化"
+ },
+ "Image attached": {
+  "zh": "图片已附加",
+  "confidence": "exact"
+ },
+ "Image attachments": {
+  "zh": "图片附件",
+  "confidence": "exact"
+ },
+ "Image unavailable": {
+  "zh": "图片不可用",
+  "confidence": "exact"
+ },
+ "Include response text in notifications": {
+  "zh": "通知中包含回复内容",
+  "confidence": "exact"
+ },
+ "Increase priority": {
+  "zh": "提高优先级",
+  "confidence": "exact"
+ },
+ "Inherit": {
+  "zh": "继承",
+  "confidence": "exact"
+ },
+ "Inherit chat model": {
+  "zh": "继承对话模型",
+  "confidence": "exact"
+ },
+ "Inherit chat provider": {
+  "zh": "继承对话提供方",
+  "confidence": "exact"
+ },
+ "Inherit chat reasoning": {
+  "zh": "继承对话思考",
+  "confidence": "exact"
+ },
+ "Inherit from profile": {
+  "zh": "沿用档案",
+  "confidence": "exact",
+  "notes": "模型覆盖选择器中的「不覆盖，用档案设置」项"
+ },
+ "Insecure dashboard address": {
+  "zh": "仪表盘地址不安全",
+  "confidence": "exact"
+ },
+ "Install the notifier": {
+  "zh": "安装通知插件",
+  "confidence": "exact",
+  "notes": "notifier 统一译「通知插件」（网关上的推送插件）"
+ },
+ "Install the notifier once on the gateway, then create a short-lived pairing code here for each Hermes profile you want to reach.": {
+  "zh": "在网关上安装一次通知插件，然后在此为每个要接收推送的 Hermes 档案创建短时效配对码。",
+  "confidence": "exact"
+ },
+ "Interrupt": {
+  "zh": "中断",
+  "confidence": "exact"
+ },
+ "Interrupt and correct response": {
+  "zh": "中断并修正回复",
+  "confidence": "exact"
+ },
+ "Invalid slug": {
+  "zh": "标识无效",
+  "confidence": "exact"
+ },
+ "Is your Hermes dashboard running?": {
+  "zh": "你的 Hermes 仪表盘正在运行吗？",
+  "confidence": "exact"
+ },
+ "I’m not sure": {
+  "zh": "我不确定",
+  "confidence": "exact"
+ },
+ "I’m on the same network as Hermes": {
+  "zh": "我与 Hermes 在同一网络",
+  "confidence": "exact"
+ },
+ "Jump to latest activity": {
+  "zh": "跳到最新动态",
+  "confidence": "exact",
+  "notes": "启动定位选项；activity 指会话最新动态"
+ },
+ "Kanban board actions": {
+  "zh": "看板操作",
+  "confidence": "exact"
+ },
+ "Keep Sessions, Cron, and Kanban visible beside the current conversation when the window is wide enough.": {
+  "zh": "窗口足够宽时，在当前对话旁保持显示会话、排程与看板。",
+  "confidence": "exact"
+ },
+ "Keep tool cards expanded": {
+  "zh": "工具卡片保持展开",
+  "confidence": "exact"
+ },
+ "Keys stay on your Hermes host. Conduit only receives whether each key is set; it never reads a key back.": {
+  "zh": "密钥始终保留在你的 Hermes 主机上。Conduit 只接收各密钥是否已设置，绝不会读回密钥内容。",
+  "confidence": "exact"
+ },
+ "Lands in": {
+  "zh": "目标列",
+  "confidence": "exact",
+  "notes": "指任务将落入的看板列；直译「落入列」生硬"
+ },
+ "Language: X": {
+  "zh": "语言：{0}",
+  "confidence": "exact"
+ },
+ "Last failure": {
+  "zh": "上次失败",
+  "confidence": "exact"
+ },
+ "Last run": {
+  "zh": "上次运行",
+  "confidence": "exact"
+ },
+ "Latest delegation activity": {
+  "zh": "最新委派动态",
+  "confidence": "exact"
+ },
+ "Leave blank to use the default relay. Change this if you run your own push relay server.": {
+  "zh": "留空则使用默认中继。若你自建推送中继服务器，请修改此项。",
+  "confidence": "exact"
+ },
+ "Leave both selections empty to inherit the chat model. Set a provider and model to route delegate agents separately.": {
+  "zh": "两项均留空则继承对话模型。设置提供方和模型，即可单独路由委派代理。",
+  "confidence": "exact"
+ },
+ "Leave empty to inherit X": {
+  "zh": "留空则继承 {0}",
+  "confidence": "exact"
+ },
+ "Leave empty to inherit the board's project directory.": {
+  "zh": "留空则继承看板的项目目录。",
+  "confidence": "exact"
+ },
+ "Leave empty to inherit the board's project directory: X": {
+  "zh": "留空则继承看板的项目目录：{0}",
+  "confidence": "exact"
+ },
+ "List or restore filesystem checkpoints": {
+  "zh": "列出或恢复文件系统检查点",
+  "confidence": "exact"
+ },
+ "Listening for a short test…": {
+  "zh": "正在聆听测试语音…",
+  "confidence": "exact"
+ },
+ "Live tests become available when the active voice session is connected.": {
+  "zh": "语音会话连接后即可进行实时测试。",
+  "confidence": "exact"
+ },
+ "Load a Kanban board to read the server's orchestration settings.": {
+  "zh": "加载看板后方可读取服务器的编排设置。",
+  "confidence": "exact",
+  "notes": "空态说明"
+ },
+ "Load earlier messages": {
+  "zh": "加载更早的消息",
+  "confidence": "exact"
+ },
+ "Loading X …": {
+  "zh": "正在加载 {0}…",
+  "confidence": "exact"
+ },
+ "Loading archived conversations…": {
+  "zh": "正在加载已归档对话…",
+  "confidence": "exact"
+ },
+ "Loading available models…": {
+  "zh": "正在加载可用模型…",
+  "confidence": "exact"
+ },
+ "Loading board…": {
+  "zh": "正在加载看板…",
+  "confidence": "exact",
+  "notes": "进度文案惯例，保留"
+ },
+ "Loading capabilities…": {
+  "zh": "正在加载技能与工具…",
+  "confidence": "exact",
+  "notes": "termbase capabilities→技能与工具；略超字数约束，语义优先"
+ },
+ "Loading conversations…": {
+  "zh": "正在加载对话…",
+  "confidence": "exact"
+ },
+ "Loading earlier messages": {
+  "zh": "正在加载更早的消息",
+  "confidence": "exact"
+ },
+ "Loading folders…": {
+  "zh": "正在加载文件夹…",
+  "confidence": "exact"
+ },
+ "Loading image...": {
+  "zh": "正在加载图片…",
+  "confidence": "exact"
+ },
+ "Loading image…": {
+  "zh": "图片加载中…",
+  "confidence": "exact"
+ },
+ "Loading models…": {
+  "zh": "正在加载模型…",
+  "confidence": "exact"
+ },
+ "Loading profile settings…": {
+  "zh": "正在加载档案设置…",
+  "confidence": "exact"
+ },
+ "Loading profile voice settings…": {
+  "zh": "正在加载档案语音设置…",
+  "confidence": "exact"
+ },
+ "Loading projects…": {
+  "zh": "正在加载项目…",
+  "confidence": "exact"
+ },
+ "Loading task…": {
+  "zh": "正在加载任务…",
+  "confidence": "exact",
+  "notes": "与草稿「正在加载预览」体例一致，未再压缩"
+ },
+ "Loading worker log…": {
+  "zh": "正在加载工作代理日志…",
+  "confidence": "exact",
+  "notes": "worker 依前批定「工作代理」"
+ },
+ "Local IP address": {
+  "zh": "本地 IP 地址",
+  "confidence": "exact"
+ },
+ "Locking your answer…": {
+  "zh": "正在锁定回答…",
+  "confidence": "exact"
+ },
+ "Log unavailable": {
+  "zh": "日志不可用",
+  "confidence": "exact",
+  "notes": "空态标题"
+ },
+ "Login succeeded but no host-scoped session cookie was accepted": {
+  "zh": "登录成功，但服务器未接受任何主机范围的会话 Cookie",
+  "confidence": "exact",
+  "notes": "嵌入上层错误说明的 detail，不加句号"
+ },
+ "Login successful": {
+  "zh": "登录成功",
+  "confidence": "exact"
+ },
+ "Long-term memory": {
+  "zh": "长期记忆",
+  "confidence": "exact"
+ },
+ "MODEL UPDATED": {
+  "zh": "模型已更新",
+  "confidence": "exact"
+ },
+ "Manage sessions": {
+  "zh": "管理会话",
+  "confidence": "exact"
+ },
+ "Manage this session's standing goal": {
+  "zh": "管理此会话的长期目标",
+  "confidence": "exact",
+  "notes": "standing 依 termbase「长期生效」取「长期目标」"
+ },
+ "Max turns: \\(draft.goalMaxTurns.map(String.init) ??": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "已合并/非界面文案(review 清理)"
+ },
+ "Memory & delegation": {
+  "zh": "记忆与委派",
+  "confidence": "exact"
+ },
+ "Memory and skills updated": {
+  "zh": "记忆和技能已更新",
+  "confidence": "exact"
+ },
+ "Memory provider": {
+  "zh": "记忆提供方",
+  "confidence": "exact"
+ },
+ "Memory, compression, and child agents": {
+  "zh": "记忆、压缩与子代理",
+  "confidence": "exact"
+ },
+ "Message X …": {
+  "zh": "给 {0} 发消息…",
+  "confidence": "exact"
+ },
+ "Messages during a response": {
+  "zh": "回复期间的消息",
+  "confidence": "exact"
+ },
+ "Mic input": {
+  "zh": "麦克风输入",
+  "confidence": "exact"
+ },
+ "Microphone and audio": {
+  "zh": "麦克风与音频",
+  "confidence": "exact"
+ },
+ "Microphone input": {
+  "zh": "麦克风输入",
+  "confidence": "exact"
+ },
+ "Microphone input level": {
+  "zh": "麦克风输入电平",
+  "confidence": "exact"
+ },
+ "Microphone paused": {
+  "zh": "麦克风已暂停",
+  "confidence": "exact"
+ },
+ "Model changed": {
+  "zh": "模型已更改",
+  "confidence": "exact"
+ },
+ "Model visibility": {
+  "zh": "模型可见性",
+  "confidence": "exact"
+ },
+ "More actions for X selected X": {
+  "zh": "针对所选 {0} 个 {1} 的更多操作",
+  "confidence": "exact",
+  "notes": "{0} 数量，{1} 任务名词"
+ },
+ "Move 1 Task": {
+  "zh": "移动 1 个任务",
+  "confidence": "exact"
+ },
+ "Move X Tasks": {
+  "zh": "移动 {0} 个任务",
+  "confidence": "exact"
+ },
+ "Move X earlier": {
+  "zh": "将 {0} 前移",
+  "confidence": "exact",
+  "notes": "排序无障碍标签"
+ },
+ "Move X later": {
+  "zh": "将 {0} 后移",
+  "confidence": "exact",
+  "notes": "排序无障碍标签"
+ },
+ "Move X selected X": {
+  "zh": "移动所选 {0} 个 {1}",
+  "confidence": "exact",
+  "notes": "{0} 数量，{1} 任务名词"
+ },
+ "Move to": {
+  "zh": "移至",
+  "confidence": "exact"
+ },
+ "Move to X": {
+  "zh": "移至 {0}",
+  "confidence": "exact"
+ },
+ "Moved to \\(status(": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "扫描截断的插值片段，不可译"
+ },
+ "Mutes assistant audio without changing chat messages": {
+  "zh": "静音助手音频，不影响聊天消息",
+  "confidence": "exact"
+ },
+ "Need help connecting?": {
+  "zh": "连接遇到问题？",
+  "confidence": "exact"
+ },
+ "Network & reachability": {
+  "zh": "网络与可达性",
+  "confidence": "exact",
+  "notes": "reachability 指「能否访问到」，压缩会损义"
+ },
+ "New comment": {
+  "zh": "新评论",
+  "confidence": "exact"
+ },
+ "New conversation in X": {
+  "zh": "在 {0} 中新建对话",
+  "confidence": "exact"
+ },
+ "New tasks mirror the project's primary repository.": {
+  "zh": "新任务将镜像项目的主仓库。",
+  "confidence": "exact"
+ },
+ "New tasks use scratch workspaces.": {
+  "zh": "新任务使用暂存工作区。",
+  "confidence": "exact"
+ },
+ "Next run": {
+  "zh": "下次运行",
+  "confidence": "exact"
+ },
+ "No Board": {
+  "zh": "暂无看板",
+  "confidence": "exact"
+ },
+ "No Columns": {
+  "zh": "暂无列",
+  "confidence": "exact"
+ },
+ "No Conversations": {
+  "zh": "没有对话",
+  "confidence": "exact"
+ },
+ "No Matching Jobs": {
+  "zh": "没有匹配的任务",
+  "confidence": "exact"
+ },
+ "No Matching Projects": {
+  "zh": "没有匹配的项目",
+  "confidence": "exact"
+ },
+ "No Projects": {
+  "zh": "没有项目",
+  "confidence": "exact"
+ },
+ "No Scheduled Jobs": {
+  "zh": "没有定时任务",
+  "confidence": "exact"
+ },
+ "No Sessions": {
+  "zh": "没有会话",
+  "confidence": "exact"
+ },
+ "No StepFun or Xiaomi credential metadata was reported by this gateway.": {
+  "zh": "此网关未上报 StepFun 或 Xiaomi 凭据元数据。",
+  "confidence": "exact"
+ },
+ "No X Sessions": {
+  "zh": "没有 {0} 会话",
+  "confidence": "exact"
+ },
+ "No capabilities found": {
+  "zh": "未找到技能与工具",
+  "confidence": "exact",
+  "notes": "termbase capabilities→技能与工具"
+ },
+ "No comments yet.": {
+  "zh": "暂无评论。",
+  "confidence": "exact"
+ },
+ "No configured choices are available.": {
+  "zh": "没有可用的配置选项。",
+  "confidence": "exact"
+ },
+ "No configured connectors were reported.": {
+  "zh": "未上报任何已配置的连接器。",
+  "confidence": "exact"
+ },
+ "No curated model catalog available from Hermes — enter a provider and model below.": {
+  "zh": "Hermes 未提供精选模型目录——请在下方填写提供方与模型。",
+  "confidence": "exact"
+ },
+ "No delegate agents": {
+  "zh": "没有委派智能体",
+  "confidence": "exact"
+ },
+ "No gateway log lines were returned.": {
+  "zh": "网关未返回任何日志。",
+  "confidence": "exact"
+ },
+ "No longer active": {
+  "zh": "已失效",
+  "confidence": "exact"
+ },
+ "No models are available from this gateway.": {
+  "zh": "此网关没有可用模型。",
+  "confidence": "exact"
+ },
+ "No network connection": {
+  "zh": "无网络连接",
+  "confidence": "exact"
+ },
+ "No other tasks on this board.": {
+  "zh": "此看板上没有其他任务。",
+  "confidence": "exact"
+ },
+ "No profile is attached and Hermes has no default assignee configured, so this task will not run until someone assigns it.": {
+  "zh": "未附加档案，且 Hermes 未配置默认负责人，因此在有人指派之前，此任务不会运行。",
+  "confidence": "exact"
+ },
+ "No profiles on this Hermes server yet.": {
+  "zh": "此 Hermes 服务器还没有档案。",
+  "confidence": "exact",
+  "notes": ""
+ },
+ "No profiles on this server yet.": {
+  "zh": "此服务器尚无配置档案。",
+  "confidence": "exact"
+ },
+ "No projects on this server yet — the board stays unscoped (scratch workspaces).": {
+  "zh": "此服务器尚无项目 — 看板保持不限定作用域（暂存工作区）。",
+  "confidence": "exact"
+ },
+ "No schedule": {
+  "zh": "未排程",
+  "confidence": "exact",
+  "notes": "作定时任务行的空值回退文案；与生态译法「已排程」对应"
+ },
+ "No tasks updated": {
+  "zh": "未更新任何任务",
+  "confidence": "exact",
+  "notes": "批量操作结果状态"
+ },
+ "No ticket in response": {
+  "zh": "响应中没有票据",
+  "confidence": "exact",
+  "notes": "认证 detail 串"
+ },
+ "No voice conversation messages yet": {
+  "zh": "暂无语音对话消息",
+  "confidence": "exact"
+ },
+ "No worker output yet": {
+  "zh": "暂无工作代理输出",
+  "confidence": "exact",
+  "notes": ""
+ },
+ "None (thinking off)": {
+  "zh": "无（关闭思考）",
+  "confidence": "exact"
+ },
+ "None / Scratch": {
+  "zh": "无 / 暂存",
+  "confidence": "exact"
+ },
+ "None — browser sign-in": {
+  "zh": "无（浏览器登录）",
+  "confidence": "exact",
+  "notes": "密码栏取值：无密码，经浏览器登录"
+ },
+ "Normal": {
+  "zh": "普通",
+  "confidence": "exact"
+ },
+ "Not connected": {
+  "zh": "未连接",
+  "confidence": "exact"
+ },
+ "Note & requeue": {
+  "zh": "备注并重新排队",
+  "confidence": "exact",
+  "notes": "先留言再将任务放回队列，压缩会损义"
+ },
+ "Notifications denied": {
+  "zh": "通知被拒",
+  "confidence": "exact",
+  "notes": "推送状态短标签，与「正在更新/已启用/关闭」并列，故压缩"
+ },
+ "Notifier supports approval and clarify cards": {
+  "zh": "通知插件支持审批与澄清卡片",
+  "confidence": "exact"
+ },
+ "Notifier update available — approval and clarify cards need a newer plugin": {
+  "zh": "通知插件有新版本——审批与澄清卡片需要更新的插件",
+  "confidence": "exact"
+ },
+ "Notify me when": {
+  "zh": "通知时机",
+  "confidence": "exact"
+ },
+ "Nous Subscription": {
+  "zh": "Nous 订阅",
+  "confidence": "exact",
+  "notes": "Nous 为产品名保留"
+ },
+ "Nudge Dispatcher": {
+  "zh": "催促调度器",
+  "confidence": "exact",
+  "notes": "dispatcher→调度器（termbase run dispatcher）"
+ },
+ "OK": {
+  "zh": "好",
+  "confidence": "exact",
+  "notes": "Apple 中文 OK 按钮惯例"
+ },
+ "Older-page backfill for X lost the tail contract; retiring the affordance": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "Logger 日志串，不本地化"
+ },
+ "Older-page backfill for X returned a malformed payload; retiring the affordance": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "Logger 日志串，不本地化"
+ },
+ "Older-page backfill for X returned foreign session X ; discarding and retiring the affordance": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "Logger 日志串，不本地化"
+ },
+ "Older-page backfill for X returned rows without durable IDs; retiring the affordance": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "Logger 日志串，不本地化"
+ },
+ "On this device": {
+  "zh": "本机",
+  "confidence": "exact",
+  "notes": "设备本地设置分组标题"
+ },
+ "On this iPhone": {
+  "zh": "在这台 iPhone 上",
+  "confidence": "exact"
+ },
+ "On-device speech recognition is not available for your current language locale.": {
+  "zh": "当前语言区域不支持设备端语音识别。",
+  "confidence": "exact"
+ },
+ "Open filters": {
+  "zh": "打开筛选",
+  "confidence": "exact"
+ },
+ "Open linked task X": {
+  "zh": "打开关联任务 {0}",
+  "confidence": "exact"
+ },
+ "Open sessions": {
+  "zh": "打开会话",
+  "confidence": "exact",
+  "notes": "汉堡按钮 a11y 标签，打开会话侧边栏"
+ },
+ "Open task": {
+  "zh": "打开任务",
+  "confidence": "exact"
+ },
+ "Open the model and run settings": {
+  "zh": "打开模型与运行设置",
+  "confidence": "exact"
+ },
+ "Open to": {
+  "zh": "打开位置",
+  "confidence": "exact"
+ },
+ "Opening conversation…": {
+  "zh": "正在打开对话…",
+  "confidence": "exact"
+ },
+ "Opens task details": {
+  "zh": "打开任务详情",
+  "confidence": "exact"
+ },
+ "Opens the conversations in this project.": {
+  "zh": "打开此项目中的对话。",
+  "confidence": "exact"
+ },
+ "Opens the per-task model, provider, and reasoning override picker": {
+  "zh": "打开单个任务的模型、提供方与思考覆盖选择器",
+  "confidence": "exact"
+ },
+ "Opens the task skill picker": {
+  "zh": "打开任务技能选择器",
+  "confidence": "exact"
+ },
+ "Opens voice controls over this conversation": {
+  "zh": "在此对话上方打开语音控制。",
+  "confidence": "exact",
+  "notes": "a11y 提示"
+ },
+ "Optional path override": {
+  "zh": "可选路径覆盖",
+  "confidence": "exact"
+ },
+ "Or type a custom answer…": {
+  "zh": "或输入自定义答案…",
+  "confidence": "exact"
+ },
+ "Orchestration Settings": {
+  "zh": "编排设置",
+  "confidence": "exact",
+  "notes": ""
+ },
+ "Orchestration Settings Unavailable": {
+  "zh": "编排设置不可用",
+  "confidence": "exact",
+  "notes": "空态标题"
+ },
+ "Orchestration Settings…": {
+  "zh": "编排设置…",
+  "confidence": "exact"
+ },
+ "Orchestrator Profile": {
+  "zh": "编排器档案",
+  "confidence": "exact",
+  "notes": "profile 依术语表译「档案」"
+ },
+ "Pair the active profile": {
+  "zh": "配对当前档案",
+  "confidence": "exact"
+ },
+ "Parent task": {
+  "zh": "父任务",
+  "confidence": "exact"
+ },
+ "Parked (won't run)": {
+  "zh": "搁置（不会运行）",
+  "confidence": "exact",
+  "notes": "Parked 译「搁置」，指不指派负责人的选项"
+ },
+ "Paste from Other App": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "iOS 系统剪贴板提示，仅注释引用；系统译法「从其他 App 粘贴」"
+ },
+ "Pause mic": {
+  "zh": "暂停麦克风",
+  "confidence": "exact"
+ },
+ "Pause only affects the microphone. Close ends the voice session.": {
+  "zh": "暂停仅作用于麦克风。关闭会结束语音会话。",
+  "confidence": "exact"
+ },
+ "Pauses microphone capture while keeping the voice session open": {
+  "zh": "暂停麦克风采集，同时保持语音会话开启",
+  "confidence": "exact"
+ },
+ "Permission denied": {
+  "zh": "权限被拒绝",
+  "confidence": "exact",
+  "notes": "语音识别权限状态标题"
+ },
+ "Persistent session sidebar": {
+  "zh": "常驻会话侧边栏",
+  "confidence": "exact"
+ },
+ "Personality changed": {
+  "zh": "性格已更改",
+  "confidence": "exact"
+ },
+ "Photo Library": {
+  "zh": "照片图库",
+  "confidence": "exact"
+ },
+ "Pick how Conduit should reach your self-hosted Hermes dashboard. You can change this later.": {
+  "zh": "选择 Conduit 访问自托管 Hermes 仪表盘的方式。你可以稍后更改。",
+  "confidence": "exact"
+ },
+ "Play TTS": {
+  "zh": "播放 TTS",
+  "confidence": "exact"
+ },
+ "Play a sound with notifications": {
+  "zh": "通知时播放提示音",
+  "confidence": "exact"
+ },
+ "Plays a short sample using this profile's speech provider": {
+  "zh": "用此档案的语音提供方播放一段简短示例。",
+  "confidence": "exact"
+ },
+ "Please confirm the HTTPS URL I should use to access the Hermes dashboard through my existing reverse proxy,": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "已合并/非界面文案(review 清理)"
+ },
+ "Please make sure the Hermes dashboard is reachable from other devices on my local network, then tell me": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "已合并/非界面文案(review 清理)"
+ },
+ "Port (optional)": {
+  "zh": "端口（可选）",
+  "confidence": "exact"
+ },
+ "Port supplied by Hermes": {
+  "zh": "由 Hermes 提供的端口",
+  "confidence": "exact"
+ },
+ "Prepare file for download": {
+  "zh": "准备下载文件",
+  "confidence": "exact"
+ },
+ "Preparing large message…": {
+  "zh": "正在准备大消息…",
+  "confidence": "exact",
+  "notes": ""
+ },
+ "Press Return to send. Use Shift-Return for a new line.": {
+  "zh": "按 Return 发送。按 Shift-Return 换行。",
+  "confidence": "exact",
+  "notes": "Return/Shift 为硬件键盘键名，保留英文"
+ },
+ "Preview is truncated; save the file for its full contents.": {
+  "zh": "预览已截断；保存文件以查看完整内容。",
+  "confidence": "exact"
+ },
+ "Primary Hermes profile": {
+  "zh": "主 Hermes 档案",
+  "confidence": "exact",
+  "notes": ""
+ },
+ "Priority value": {
+  "zh": "优先级值",
+  "confidence": "exact"
+ },
+ "Privacy policy": {
+  "zh": "隐私政策",
+  "confidence": "exact"
+ },
+ "Private LAN IP address": {
+  "zh": "内网 IP 地址",
+  "confidence": "exact",
+  "notes": "私有局域网地址，中文惯称内网"
+ },
+ "Probe superseded by connection change": {
+  "zh": "探测已被连接变更取代",
+  "confidence": "exact",
+  "notes": "会话恢复探测的内部原因值"
+ },
+ "Profile-specific preferences": {
+  "zh": "档案专属偏好",
+  "confidence": "exact"
+ },
+ "Project Default": {
+  "zh": "项目默认",
+  "confidence": "exact"
+ },
+ "Project scope": {
+  "zh": "项目作用域",
+  "confidence": "exact"
+ },
+ "Promotes parent-free decomposed children to Ready": {
+  "zh": "将无父级的已分解子任务晋升到 Ready",
+  "confidence": "exact",
+  "notes": "Ready 为看板列名保留原文"
+ },
+ "Protected recent messages": {
+  "zh": "近期消息保护数",
+  "confidence": "exact",
+  "notes": "压缩时保留不动的近期消息条数"
+ },
+ "Provider options are reported by Hermes for this profile": {
+  "zh": "提供方选项由 Hermes 针对此档案上报。",
+  "confidence": "exact"
+ },
+ "Push relay": {
+  "zh": "推送中继",
+  "confidence": "exact"
+ },
+ "Queue a prompt for the next turn": {
+  "zh": "将提示词加入下一轮的队列",
+  "confidence": "exact",
+  "notes": "句式依 termbase「queue a message for the next turn」"
+ },
+ "Reach Hermes with Tailscale": {
+  "zh": "通过 Tailscale 访问 Hermes",
+  "confidence": "exact"
+ },
+ "Read response aloud": {
+  "zh": "朗读回复",
+  "confidence": "exact"
+ },
+ "Readable conversation content only — messages, lists, tables, and code. Buttons, timestamps, and the rest of the interface keep their size, and iOS Dynamic Type still applies on top.": {
+  "zh": "仅调整对话内容——消息、列表、表格与代码。按钮、时间戳等其余界面保持大小不变，iOS 动态字体仍在此基础上生效。",
+  "confidence": "exact"
+ },
+ "Ready but unassigned": {
+  "zh": "已就绪但未指派",
+  "confidence": "exact",
+  "notes": "指派系列与草稿「Unassigned=未分配」并存，供统一"
+ },
+ "Ready to listen": {
+  "zh": "准备聆听",
+  "confidence": "exact"
+ },
+ "Reasoning effort": {
+  "zh": "思考强度",
+  "confidence": "exact",
+  "notes": "依 termbase reasoning effort 作推理强度"
+ },
+ "Reassign": {
+  "zh": "改派",
+  "confidence": "exact",
+  "notes": "改派＝重新指派，工单系统惯用，按长度规则压缩"
+ },
+ "Reassign now": {
+  "zh": "立即改派",
+  "confidence": "exact"
+ },
+ "Reassign task": {
+  "zh": "改派任务",
+  "confidence": "exact"
+ },
+ "Reassign…": {
+  "zh": "改派…",
+  "confidence": "exact"
+ },
+ "Recent gateway logs": {
+  "zh": "最近网关日志",
+  "confidence": "exact"
+ },
+ "Recent runs": {
+  "zh": "最近运行",
+  "confidence": "exact"
+ },
+ "Recommended for remote access": {
+  "zh": "推荐用于远程访问",
+  "confidence": "exact"
+ },
+ "Reconnect Now": {
+  "zh": "立即重新连接",
+  "confidence": "exact",
+  "notes": "与「正在重新连接…」保持同族，未用「重连」"
+ },
+ "Reconnecting…": {
+  "zh": "正在重新连接…",
+  "confidence": "exact",
+  "notes": "英文单词数少致告警，中文无法更短"
+ },
+ "Record ASR": {
+  "zh": "录制 ASR",
+  "confidence": "exact"
+ },
+ "Records a short sample using this profile's speech-to-text provider": {
+  "zh": "用此档案的语音转文字提供方录制一段简短示例。",
+  "confidence": "exact"
+ },
+ "Recovery command copied": {
+  "zh": "恢复命令已复制",
+  "confidence": "exact"
+ },
+ "Redact secrets": {
+  "zh": "隐藏密钥",
+  "confidence": "exact"
+ },
+ "Redirect without Location": {
+  "zh": "重定向缺少 Location",
+  "confidence": "exact",
+  "notes": "Location 为 HTTP 头名保留"
+ },
+ "Refresh Kanban board": {
+  "zh": "刷新看板",
+  "confidence": "exact"
+ },
+ "Refresh conversation": {
+  "zh": "刷新对话",
+  "confidence": "exact",
+  "notes": "工具栏刷新按钮 a11y 标签"
+ },
+ "Refresh failed: X": {
+  "zh": "刷新失败：{0}",
+  "confidence": "exact"
+ },
+ "Refresh gateway diagnostics": {
+  "zh": "刷新网关诊断",
+  "confidence": "exact"
+ },
+ "Refresh worker log": {
+  "zh": "刷新工作代理日志",
+  "confidence": "exact",
+  "notes": "无障碍标签"
+ },
+ "Refresh workspace": {
+  "zh": "刷新工作区",
+  "confidence": "exact"
+ },
+ "Remove dependency X": {
+  "zh": "移除依赖项 {0}",
+  "confidence": "exact"
+ },
+ "Remove photo for X": {
+  "zh": "移除 {0} 的照片",
+  "confidence": "exact",
+  "notes": "无障碍标签"
+ },
+ "Remove skill X": {
+  "zh": "移除技能 {0}",
+  "confidence": "exact"
+ },
+ "Remove the last user and assistant exchange": {
+  "zh": "移除最后一轮用户与助手的对话",
+  "confidence": "exact"
+ },
+ "Render diagram": {
+  "zh": "渲染图表",
+  "confidence": "exact"
+ },
+ "Render formula": {
+  "zh": "渲染公式",
+  "confidence": "exact"
+ },
+ "Reorder filters": {
+  "zh": "调整筛选顺序",
+  "confidence": "exact"
+ },
+ "Repair Connection": {
+  "zh": "修复连接",
+  "confidence": "exact"
+ },
+ "Repair connection": {
+  "zh": "修复连接",
+  "confidence": "exact"
+ },
+ "Replace credential": {
+  "zh": "替换凭据",
+  "confidence": "exact"
+ },
+ "Reset Filters": {
+  "zh": "重置筛选",
+  "confidence": "exact",
+  "notes": ""
+ },
+ "Response URL missing": {
+  "zh": "响应缺少 URL",
+  "confidence": "exact",
+  "notes": ""
+ },
+ "Response behavior, visibility, and timezone": {
+  "zh": "回复行为、可见性与时区",
+  "confidence": "exact"
+ },
+ "Response copied": {
+  "zh": "回复已复制",
+  "confidence": "exact"
+ },
+ "Restart the gateway": {
+  "zh": "重启网关",
+  "confidence": "exact"
+ },
+ "Restore X": {
+  "zh": "还原 {0}",
+  "confidence": "exact"
+ },
+ "Resumed interrupted turn": {
+  "zh": "已恢复中断的回合",
+  "confidence": "exact"
+ },
+ "Retry connection": {
+  "zh": "重试连接",
+  "confidence": "exact"
+ },
+ "Retry the last user message": {
+  "zh": "重试最后一条用户消息",
+  "confidence": "exact"
+ },
+ "Return key sends": {
+  "zh": "Return 键发送",
+  "confidence": "exact",
+  "notes": "Return 为键名保留英文"
+ },
+ "Routing Description": {
+  "zh": "路由描述",
+  "confidence": "exact",
+  "notes": ""
+ },
+ "Routing description for X": {
+  "zh": "{0} 的路由描述",
+  "confidence": "exact",
+  "notes": "无障碍标签，X 为档案名"
+ },
+ "Run a prompt in the background": {
+  "zh": "在后台运行提示词",
+  "confidence": "exact"
+ },
+ "Run settings": {
+  "zh": "运行设置",
+  "confidence": "exact"
+ },
+ "Runs on the Hermes host using its local Whisper installation—not on this iPhone.": {
+  "zh": "在 Hermes 主机上以其本地 Whisper 安装运行，而非这台 iPhone。",
+  "confidence": "exact"
+ },
+ "SELF-IMPROVEMENT REVIEW": {
+  "zh": "自我改进审核",
+  "confidence": "exact"
+ },
+ "SENDING ANSWER": {
+  "zh": "正在发送答案",
+  "confidence": "exact"
+ },
+ "SENDING DECISION": {
+  "zh": "正在提交决定",
+  "confidence": "exact",
+  "notes": "状态标签，与「需要批准」同族；再压缩损义故保留"
+ },
+ "Same network": {
+  "zh": "同一网络",
+  "confidence": "exact",
+  "notes": "连接方式选项"
+ },
+ "Same network as Hermes": {
+  "zh": "与 Hermes 处于同一网络",
+  "confidence": "exact"
+ },
+ "Sample rate": {
+  "zh": "采样率",
+  "confidence": "exact"
+ },
+ "Save credentials": {
+  "zh": "保存凭据",
+  "confidence": "exact"
+ },
+ "Save delegate defaults": {
+  "zh": "保存委派默认值",
+  "confidence": "exact"
+ },
+ "Save display name": {
+  "zh": "保存显示名称",
+  "confidence": "exact"
+ },
+ "Save model defaults": {
+  "zh": "保存模型默认值",
+  "confidence": "exact"
+ },
+ "Save the current transcript": {
+  "zh": "保存当前对话记录",
+  "confidence": "exact"
+ },
+ "Save to Files": {
+  "zh": "存储到文件",
+  "confidence": "exact"
+ },
+ "Save token": {
+  "zh": "保存令牌",
+  "confidence": "exact",
+  "notes": "Cloudflare Access 服务令牌场景，token 从 termbase「令牌」"
+ },
+ "Saved as IDEA.md in the first folder, just like Hermes Desktop.": {
+  "zh": "像 Hermes 桌面版一样，以 IDEA.md 保存到第一个文件夹。",
+  "confidence": "exact"
+ },
+ "Saved for your next reconnect. Your current session stays connected.": {
+  "zh": "已保存，供下次重连使用。当前会话保持连接。",
+  "confidence": "exact"
+ },
+ "Saves X to this Hermes profile.": {
+  "zh": "将 {0} 保存到此 Hermes 档案。",
+  "confidence": "exact"
+ },
+ "Saving preference…": {
+  "zh": "正在保存偏好…",
+  "confidence": "exact"
+ },
+ "Scheduled job": {
+  "zh": "定时任务",
+  "confidence": "exact"
+ },
+ "Scheduled jobs from Hermes appear here.": {
+  "zh": "来自 Hermes 的定时任务会显示在这里。",
+  "confidence": "exact"
+ },
+ "Scroll to latest message": {
+  "zh": "滚动到最新消息",
+  "confidence": "exact"
+ },
+ "Scroll to top of conversation": {
+  "zh": "滚动到对话顶部",
+  "confidence": "exact",
+  "notes": "会话标题按钮 a11y 提示"
+ },
+ "Search archived conversations": {
+  "zh": "搜索已归档对话",
+  "confidence": "exact"
+ },
+ "Search providers or models": {
+  "zh": "搜索提供方或模型",
+  "confidence": "exact"
+ },
+ "Search scheduled jobs": {
+  "zh": "搜索定时任务",
+  "confidence": "exact"
+ },
+ "Select a file": {
+  "zh": "选择文件",
+  "confidence": "exact"
+ },
+ "Select a provider first, then one of its available models. These defaults apply to new sessions in this profile.": {
+  "zh": "先选择提供方，再从其可用模型中选择。这些默认值适用于该档案中的新会话。",
+  "confidence": "exact"
+ },
+ "Select tasks": {
+  "zh": "选择任务",
+  "confidence": "exact"
+ },
+ "Select to confirm": {
+  "zh": "选择以确认",
+  "confidence": "exact"
+ },
+ "Selection end handle": {
+  "zh": "选择终点手柄",
+  "confidence": "exact",
+  "notes": "无障碍标签"
+ },
+ "Selection start handle": {
+  "zh": "选择起点手柄",
+  "confidence": "exact",
+  "notes": "无障碍标签"
+ },
+ "Self-improvement updates": {
+  "zh": "自我改进更新",
+  "confidence": "exact"
+ },
+ "Self-improvement updates saved": {
+  "zh": "自我改进更新已保存",
+  "confidence": "exact"
+ },
+ "Send a test notification": {
+  "zh": "发送测试通知",
+  "confidence": "exact"
+ },
+ "Sent X": {
+  "zh": "已发送 {0}",
+  "confidence": "exact"
+ },
+ "Server current (": {
+  "zh": "服务器当前看板 (",
+  "confidence": "exact",
+  "notes": "代码续接 slug 与半角右括号，故保留半角左括号；压缩将损义，保留"
+ },
+ "Service Auth policy for this Access application, or turn off": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "已合并/非界面文案(review 清理)"
+ },
+ "Session filters": {
+  "zh": "会话筛选",
+  "confidence": "exact"
+ },
+ "Set Priority": {
+  "zh": "设置优先级",
+  "confidence": "exact"
+ },
+ "Set Priority ( X tasks)": {
+  "zh": "设置优先级（{0} 个任务）",
+  "confidence": "exact"
+ },
+ "Set Priority…": {
+  "zh": "设置优先级…",
+  "confidence": "exact"
+ },
+ "Set up your Hermes connection": {
+  "zh": "设置你的 Hermes 连接",
+  "confidence": "exact"
+ },
+ "Settings applied": {
+  "zh": "设置已应用",
+  "confidence": "exact"
+ },
+ "Show Archived": {
+  "zh": "显示已归档",
+  "confidence": "exact",
+  "notes": "开关标签"
+ },
+ "Show X more": {
+  "zh": "显示更多 {0}",
+  "confidence": "exact"
+ },
+ "Show X more rows ( X of X left)": {
+  "zh": "显示更多 {0} 行（剩 {1}/{2}）",
+  "confidence": "exact"
+ },
+ "Show active sessions and tasks": {
+  "zh": "显示活跃会话与任务",
+  "confidence": "exact"
+ },
+ "Show all": {
+  "zh": "显示全部",
+  "confidence": "exact"
+ },
+ "Show all X lines": {
+  "zh": "显示全部 {0} 行",
+  "confidence": "exact",
+  "notes": "展开长消息按钮"
+ },
+ "Show archived tasks": {
+  "zh": "显示已归档任务",
+  "confidence": "exact",
+  "notes": "无障碍标签"
+ },
+ "Show current session status": {
+  "zh": "显示当前会话状态",
+  "confidence": "exact"
+ },
+ "Show full message": {
+  "zh": "显示完整消息",
+  "confidence": "exact",
+  "notes": ""
+ },
+ "Show or set approval mode": {
+  "zh": "显示或设置审批模式",
+  "confidence": "exact"
+ },
+ "Show previews": {
+  "zh": "显示预览",
+  "confidence": "exact"
+ },
+ "Show reasoning": {
+  "zh": "显示思考",
+  "confidence": "exact"
+ },
+ "Show the Hermes Agent version": {
+  "zh": "显示 Hermes Agent 版本",
+  "confidence": "exact"
+ },
+ "Show thinking": {
+  "zh": "显示思考",
+  "confidence": "exact"
+ },
+ "Show this session's token usage": {
+  "zh": "显示此会话的 Token 用量",
+  "confidence": "exact"
+ },
+ "Show tool activity": {
+  "zh": "显示工具动态",
+  "confidence": "exact"
+ },
+ "Sign In to Reconnect": {
+  "zh": "登录以重新连接",
+  "confidence": "exact"
+ },
+ "Sign-in didn’t complete": {
+  "zh": "登录未完成",
+  "confidence": "exact"
+ },
+ "Siri remains the supported way to begin a voice conversation from the Lock Screen.": {
+  "zh": "Siri 仍是从锁定屏幕发起语音对话的受支持方式。",
+  "confidence": "exact"
+ },
+ "Skill X": {
+  "zh": "技能 {0}",
+  "confidence": "exact",
+  "notes": "技能行 a11y 标签"
+ },
+ "Skills & extensions": {
+  "zh": "技能与扩展",
+  "confidence": "exact",
+  "notes": "斜杠命令分类名"
+ },
+ "Skills, toolsets, and categories": {
+  "zh": "技能、工具集与分类",
+  "confidence": "exact"
+ },
+ "Slug is immutable: X": {
+  "zh": "标识不可更改：{0}",
+  "confidence": "exact"
+ },
+ "Slug: X": {
+  "zh": "标识：{0}",
+  "confidence": "exact"
+ },
+ "Something else…": {
+  "zh": "其他…",
+  "confidence": "exact"
+ },
+ "Specify Task": {
+  "zh": "细化任务",
+  "confidence": "exact",
+  "notes": "沿用术语库 specify=细化"
+ },
+ "Speech Recognition permission was denied. Please enable it in Settings > Conduit > Speech Recognition.": {
+  "zh": "语音识别权限已被拒绝。请在「设置」>「Conduit」>「语音识别」中启用。",
+  "confidence": "exact"
+ },
+ "Speech providers, credentials, and device opt-in": {
+  "zh": "语音提供方、凭据与设备端启用",
+  "confidence": "exact"
+ },
+ "Speech to text": {
+  "zh": "语音转文字",
+  "confidence": "exact"
+ },
+ "Start a conversation": {
+  "zh": "开始对话",
+  "confidence": "exact"
+ },
+ "Start a new conversation": {
+  "zh": "开始新对话",
+  "confidence": "exact"
+ },
+ "Start a voice conversation in X": {
+  "zh": "在 {0} 中开始语音对话",
+  "confidence": "exact",
+  "notes": "Siri App 短语，{0} 为 \\(.applicationName) 插值"
+ },
+ "Starting speech playback…": {
+  "zh": "正在播放语音…",
+  "confidence": "exact"
+ },
+ "Starts or resumes microphone capture": {
+  "zh": "开始或恢复麦克风采集",
+  "confidence": "exact"
+ },
+ "Steer adds guidance to the active turn. Interrupt stops it before handling the new message.": {
+  "zh": "引导会为当前回合追加指引。中断则会在处理新消息前停止当前回合。",
+  "confidence": "exact",
+  "notes": "设置页忙碌输入模式说明；steer→引导（termbase）"
+ },
+ "Steer with message": {
+  "zh": "用消息引导",
+  "confidence": "exact",
+  "notes": "steer 依术语表译「引导」"
+ },
+ "Step 1 of 3": {
+  "zh": "第 1 步，共 3 步",
+  "confidence": "exact"
+ },
+ "Step 2 of 3": {
+  "zh": "第 2 步，共 3 步",
+  "confidence": "exact"
+ },
+ "Step 3 of 3": {
+  "zh": "第 3 步，共 3 步",
+  "confidence": "exact"
+ },
+ "Step N of 3": {
+  "zh": "第 N 步，共 3 步",
+  "confidence": "exact",
+  "notes": "N 为字面记号，按规则保留"
+ },
+ "Stop and correct": {
+  "zh": "停止并纠正",
+  "confidence": "exact",
+  "notes": "「中断」选项说明文案"
+ },
+ "Stop reading response": {
+  "zh": "停止朗读回复",
+  "confidence": "exact"
+ },
+ "Stop running background processes": {
+  "zh": "停止运行中的后台进程",
+  "confidence": "exact"
+ },
+ "Stops Hermes' speech and starts listening right away": {
+  "zh": "停止 Hermes 讲话并立即开始聆听",
+  "confidence": "exact"
+ },
+ "Stored only on this device, not in your Hermes profile. Choose which surface Conduit opens to and whether it preserves your exact reading position or follows the newest conversation.": {
+  "zh": "仅存储在此设备上，不存入你的 Hermes 配置档案。可选择 Conduit 打开时进入的界面，以及是精确保留阅读位置，还是跟随最新对话。",
+  "confidence": "exact",
+  "notes": "surface→界面"
+ },
+ "Streams speech as it is generated": {
+  "zh": "语音边生成边流式传输。",
+  "confidence": "exact"
+ },
+ "Suggested models:": {
+  "zh": "推荐模型：",
+  "confidence": "exact"
+ },
+ "Suggested voices:": {
+  "zh": "推荐音色：",
+  "confidence": "review",
+  "notes": "TTS 音色名列表标题；术语表 voice=语音，按 TTS 惯例译「音色」"
+ },
+ "Support": {
+  "zh": "支持",
+  "confidence": "exact",
+  "notes": "支持页链接行"
+ },
+ "Supports decision cards": {
+  "zh": "支持决策卡片",
+  "confidence": "exact"
+ },
+ "Swipe or touch and hold for conversation actions.": {
+  "zh": "轻扫或长按可使用对话操作。",
+  "confidence": "exact"
+ },
+ "Switch the session personality": {
+  "zh": "切换会话人设",
+  "confidence": "exact",
+  "notes": "personality 依 termbase 作人设"
+ },
+ "Synchronizing with Hermes before enabling chat controls": {
+  "zh": "正在与 Hermes 同步以启用聊天控件",
+  "confidence": "exact"
+ },
+ "System notification": {
+  "zh": "系统通知",
+  "confidence": "exact"
+ },
+ "Tailscale gives you secure access from anywhere, including the recommended Tailscale Serve path:": {
+  "zh": "Tailscale 让你从任何地点安全访问，包括推荐的 Tailscale Serve 路径：",
+  "confidence": "exact"
+ },
+ "Tailscale host or address": {
+  "zh": "Tailscale 主机或地址",
+  "confidence": "exact"
+ },
+ "Tailscale hostname or address": {
+  "zh": "Tailscale 主机名或地址",
+  "confidence": "exact"
+ },
+ "Talk to Conduit": {
+  "zh": "与 Conduit 对话",
+  "confidence": "exact",
+  "notes": "Siri 意图标题与快捷指令短标题"
+ },
+ "Talk to X": {
+  "zh": "与 {0} 对话",
+  "confidence": "exact",
+  "notes": "Siri App 短语，{0} 为 \\(.applicationName) 插值"
+ },
+ "Task ID copied": {
+  "zh": "已复制任务 ID",
+  "confidence": "exact"
+ },
+ "Task X": {
+  "zh": "任务 {0}",
+  "confidence": "exact",
+  "notes": "失败任务行标签"
+ },
+ "Task actions": {
+  "zh": "任务操作",
+  "confidence": "exact"
+ },
+ "Task created": {
+  "zh": "任务已创建",
+  "confidence": "exact"
+ },
+ "Task description": {
+  "zh": "任务描述",
+  "confidence": "exact"
+ },
+ "Task specified": {
+  "zh": "任务已细化",
+  "confidence": "exact"
+ },
+ "Task title": {
+  "zh": "任务标题",
+  "confidence": "exact"
+ },
+ "Test Connection Again": {
+  "zh": "再次测试连接",
+  "confidence": "exact"
+ },
+ "Test and fix the failed connection, then reconnect": {
+  "zh": "测试并修复失败的连接，然后重新连接。",
+  "confidence": "exact"
+ },
+ "Test this profile": {
+  "zh": "测试此档案",
+  "confidence": "exact"
+ },
+ "Test, troubleshoot, or change your connection": {
+  "zh": "测试、排查或更改你的连接",
+  "confidence": "exact"
+ },
+ "The board selection is local to this device; creating this task will not switch Hermes' global board.": {
+  "zh": "看板选择仅对本设备生效；创建此任务不会切换 Hermes 的全局看板。",
+  "confidence": "exact"
+ },
+ "The board's project directory ( X ) applies to this task.": {
+  "zh": "看板的项目目录（{0}）将应用于此任务。",
+  "confidence": "exact"
+ },
+ "The bundled bilingual wake model is not active yet. Its redistribution terms and checksums must be reviewed before it can be included in Conduit.": {
+  "zh": "内置的双语唤醒模型尚未启用。其再分发条款与校验和须经审核，方可纳入 Conduit。",
+  "confidence": "exact"
+ },
+ "The decomposer reads these descriptions to route child tasks to the best specialist profile. Saving an empty description clears it (Hermes then falls back to name matching).": {
+  "zh": "分解器会读取这些描述，将子任务路由到最合适的专长档案。保存空描述即会清空（Hermes 随后回退为按名称匹配）。",
+  "confidence": "exact",
+  "notes": ""
+ },
+ "The new task stays blocked until its parent completes.": {
+  "zh": "新任务在其父任务完成前保持阻塞。",
+  "confidence": "exact"
+ },
+ "The notifier receives a revocable credential for this phone. Your gateway never needs the phone’s push token, and you can turn notifications off here at any time.": {
+  "zh": "通知器会收到一个仅限这台手机使用的可撤销凭据。你的网关从不需要手机的推送令牌，你也可以随时在此关闭通知。",
+  "confidence": "exact"
+ },
+ "The secret is stored only in Keychain. Reconnect after changing it.": {
+  "zh": "密钥仅存储在 Keychain 中。更改后请重新连接。",
+  "confidence": "exact",
+  "notes": "Keychain 为苹果专名不译，残留告警可忽略"
+ },
+ "The slug is generated from the name (like Desktop) and cannot be changed after creation.": {
+  "zh": "标识由名称生成（例如 Desktop），创建后无法更改。",
+  "confidence": "exact"
+ },
+ "The slug is immutable after creation.": {
+  "zh": "标识在创建后不可更改。",
+  "confidence": "exact"
+ },
+ "The slug must be 1-64 lowercase letters or numbers, with hyphens or underscores after the first character.": {
+  "zh": "标识必须为 1-64 个小写字母或数字，首字符之后可使用连字符或下划线。",
+  "confidence": "exact"
+ },
+ "The task was created": {
+  "zh": "任务已创建",
+  "confidence": "exact",
+  "notes": "拼接错误消息首段"
+ },
+ "The worker loops until a judge agrees the goal is met. Leave unlimited only with caution.": {
+  "zh": "工作代理会持续循环，直到评判者认可目标已达成。请谨慎使用不限轮数。",
+  "confidence": "exact",
+  "notes": "judge 译「评判者」（判定目标达成的模型）"
+ },
+ "Theme and interface preferences": {
+  "zh": "主题与界面偏好",
+  "confidence": "exact"
+ },
+ "These checks use the selected speech route and active profile. Provider credentials remain on Hermes.": {
+  "zh": "这些测试使用所选语音通道和当前档案。提供方凭据仍保留在 Hermes 上。",
+  "confidence": "exact"
+ },
+ "These choices follow the active workspace.": {
+  "zh": "这些选项会跟随当前活跃的工作区。",
+  "confidence": "exact"
+ },
+ "These settings can’t be used yet. Go Back to edit them, then return here.": {
+  "zh": "这些设置尚不可用。请点按「返回」修改，然后再回到这里。",
+  "confidence": "exact",
+  "notes": "Go Back 指导航返回按钮"
+ },
+ "They will be moved out of the active board view. Tasks are not being permanently deleted.": {
+  "zh": "它们将被移出活跃看板视图。任务不会被永久删除。",
+  "confidence": "exact"
+ },
+ "This branch is only for HTTPS infrastructure you already operate — Conduit does not guide you through creating one.": {
+  "zh": "此选项仅适用于你已在使用的 HTTPS 基础设施——Conduit 不会指导你创建。",
+  "confidence": "exact",
+  "notes": "branch 指设置流程中的选项分支"
+ },
+ "This code expires X .": {
+  "zh": "此配对码将于 {0} 过期。",
+  "confidence": "exact",
+  "notes": "配对码过期提示，X 为过期时间"
+ },
+ "This iPhone": {
+  "zh": "此 iPhone",
+  "confidence": "exact",
+  "notes": "iPhone 为专名不译，残留告警可忽略"
+ },
+ "This job has not run yet.": {
+  "zh": "此任务尚未运行。",
+  "confidence": "exact"
+ },
+ "This means the Hermes dashboard username and password you sign in with — not Tailscale,": {
+  "zh": "即你登录 Hermes 仪表盘所用的用户名和密码——而非 Tailscale、",
+  "confidence": "exact",
+  "notes": "源码为拼接串，与后段「Cloudflare, or Apple credentials.」相连"
+ },
+ "This message is very large ( X )": {
+  "zh": "此消息非常大（{0}）",
+  "confidence": "exact",
+  "notes": "X 为文件大小文案"
+ },
+ "This only changes how the default profile is named in Conduit. Hermes itself still uses the default profile.": {
+  "zh": "这只更改 Conduit 中默认配置档案的命名方式。Hermes 本身仍使用默认配置档案。",
+  "confidence": "exact"
+ },
+ "This permanently deletes the conversation and cannot be undone.": {
+  "zh": "此操作将永久删除该对话，且无法撤销。",
+  "confidence": "exact"
+ },
+ "This permanently removes the task from the selected Hermes board.": {
+  "zh": "这将从所选 Hermes 看板中永久移除该任务。",
+  "confidence": "exact"
+ },
+ "This preference is stored locally for this gateway and profile. Voice starts disabled until you opt in.": {
+  "zh": "此偏好设置会针对此网关和档案存储在本地。在你主动开启前，语音保持关闭。",
+  "confidence": "exact"
+ },
+ "This profile has no enabled skills or toolsets.": {
+  "zh": "此档案没有已启用的技能或工具集。",
+  "confidence": "exact",
+  "notes": "空态说明；profile 依术语表作档案"
+ },
+ "This profile's notifier predates decision cards — update it to receive them": {
+  "zh": "此配置档案的通知器版本较早，不支持决策卡片——请更新通知器。",
+  "confidence": "exact",
+  "notes": "predates 译为版本较早，补出更新指引"
+ },
+ "This project does not have any conversations yet.": {
+  "zh": "此项目还没有任何对话。",
+  "confidence": "exact"
+ },
+ "This task has not spawned a worker, so there is no log.": {
+  "zh": "此任务尚未派生工作代理，因此没有日志。",
+  "confidence": "exact",
+  "notes": "空态说明"
+ },
+ "This will permanently delete the selected tasks. This action cannot be undone.": {
+  "zh": "这将永久删除所选任务。此操作无法撤销。",
+  "confidence": "exact"
+ },
+ "Title copied": {
+  "zh": "已复制标题",
+  "confidence": "exact"
+ },
+ "Toggle automatic tool approval": {
+  "zh": "切换自动工具审批",
+  "confidence": "exact"
+ },
+ "Too large to render": {
+  "zh": "过大，无法渲染",
+  "confidence": "exact"
+ },
+ "Too many login attempts": {
+  "zh": "登录尝试次数过多",
+  "confidence": "exact"
+ },
+ "Tool cards": {
+  "zh": "工具卡片",
+  "confidence": "exact",
+  "notes": "display.tool_progress 设置项"
+ },
+ "Topic": {
+  "zh": "主题",
+  "confidence": "exact",
+  "notes": "故障排查页选择 TLS/Cloudflare 主题的 Picker 标签"
+ },
+ "Triage Actions": {
+  "zh": "分类操作",
+  "confidence": "exact",
+  "notes": "沿用术语库 triage=分类（desktop）"
+ },
+ "Troubleshoot Connection": {
+  "zh": "排查连接",
+  "confidence": "exact"
+ },
+ "Turn off notifications": {
+  "zh": "关闭通知",
+  "confidence": "exact"
+ },
+ "Unable to decode persisted session YOLO overrides; starting empty": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "Logger 日志串，不本地化"
+ },
+ "Unable to persist session YOLO overrides": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "Logger 日志串，不本地化"
+ },
+ "Unassign": {
+  "zh": "取消指派",
+  "confidence": "exact",
+  "notes": "“取消指派”为最短通义，保留"
+ },
+ "Unassign (parked — won't run)": {
+  "zh": "取消指派（搁置，不会运行）",
+  "confidence": "exact"
+ },
+ "Unblocked → \\(status(": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "扫描截断的插值片段，不可译"
+ },
+ "Unexpected response": {
+  "zh": "响应异常",
+  "confidence": "exact"
+ },
+ "Unlock Conduit": {
+  "zh": "解锁 Conduit",
+  "confidence": "exact"
+ },
+ "Unsaved edits": {
+  "zh": "编辑未保存",
+  "confidence": "exact"
+ },
+ "Untitled conversation": {
+  "zh": "无标题对话",
+  "confidence": "exact"
+ },
+ "Untitled project": {
+  "zh": "无标题项目",
+  "confidence": "exact"
+ },
+ "Untitled task": {
+  "zh": "未命名任务",
+  "confidence": "exact",
+  "notes": "看板任务标题缺失时的兜底显示；termbase untitled→未命名"
+ },
+ "Update Hermes to use chat controls": {
+  "zh": "更新 Hermes 以使用聊天控制",
+  "confidence": "exact"
+ },
+ "Update needed": {
+  "zh": "需要更新",
+  "confidence": "exact"
+ },
+ "Update the notifier": {
+  "zh": "更新通知器",
+  "confidence": "exact"
+ },
+ "Urgent": {
+  "zh": "紧急",
+  "confidence": "exact"
+ },
+ "Use Cloudflare Access service token": {
+  "zh": "使用 Cloudflare Access 服务令牌",
+  "confidence": "exact",
+  "notes": "Access 为 Cloudflare 产品名，保留"
+ },
+ "Use Face ID": {
+  "zh": "使用 Face ID",
+  "confidence": "exact"
+ },
+ "Use Hermes default": {
+  "zh": "使用 Hermes 默认值",
+  "confidence": "exact"
+ },
+ "Use Save to Files to download this file.": {
+  "zh": "使用“存储到文件”下载此文件。",
+  "confidence": "exact"
+ },
+ "Use These Settings": {
+  "zh": "使用这些设置",
+  "confidence": "exact"
+ },
+ "Use X app icon": {
+  "zh": "使用 {0} 应用图标",
+  "confidence": "exact",
+  "notes": "{0} 为应用名"
+ },
+ "Use or edit current dashboard address": {
+  "zh": "使用或编辑当前仪表盘地址",
+  "confidence": "exact"
+ },
+ "Use service token": {
+  "zh": "使用服务令牌",
+  "confidence": "exact"
+ },
+ "Use these settings": {
+  "zh": "使用这些设置",
+  "confidence": "exact"
+ },
+ "Use this override": {
+  "zh": "使用此覆盖",
+  "confidence": "exact"
+ },
+ "Use your Hermes dashboard username and password. These are not your Tailscale, Cloudflare, or Apple credentials.": {
+  "zh": "使用你的 Hermes 仪表盘用户名和密码。这些不是你的 Tailscale、Cloudflare 或 Apple 凭据。",
+  "confidence": "exact"
+ },
+ "Use your existing HTTPS domain": {
+  "zh": "使用你现有的 HTTPS 域名",
+  "confidence": "exact"
+ },
+ "Used Hermes title for X in X": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "Logger 日志串，不本地化"
+ },
+ "Used if you dismiss the session list without choosing another conversation.": {
+  "zh": "在未选择其他对话的情况下关闭会话列表时使用。",
+  "confidence": "exact"
+ },
+ "Used only to reach this Cloudflare-protected dashboard; the secret stays in Keychain.": {
+  "zh": "仅用于访问此受 Cloudflare 保护的仪表盘；密钥保存在钥匙串中。",
+  "confidence": "exact",
+  "notes": "Keychain 采用 Apple 官方译名「钥匙串」"
+ },
+ "User profile memory": {
+  "zh": "用户画像记忆",
+  "confidence": "exact",
+  "notes": "termbase user profile→用户画像"
+ },
+ "Username": {
+  "zh": "用户名",
+  "confidence": "exact"
+ },
+ "Uses Apple's system-managed speech model. Captured audio stays on this iPhone.": {
+  "zh": "使用 Apple 系统管理的语音模型。录制的音频保留在这台 iPhone 上。",
+  "confidence": "exact"
+ },
+ "Uses the assigned profile's own model and reasoning settings": {
+  "zh": "使用所分配档案自身的模型与思考设置",
+  "confidence": "exact"
+ },
+ "Verify pairing": {
+  "zh": "验证配对",
+  "confidence": "exact"
+ },
+ "Voice ID": {
+  "zh": "语音 ID",
+  "confidence": "exact",
+  "notes": "ElevenLabs 参数名，ID 不译"
+ },
+ "Voice conversation": {
+  "zh": "语音对话",
+  "confidence": "exact"
+ },
+ "Voice is unavailable": {
+  "zh": "语音不可用",
+  "confidence": "exact"
+ },
+ "Voice needs attention": {
+  "zh": "语音需要关注",
+  "confidence": "exact"
+ },
+ "Voice on": {
+  "zh": "语音 · ",
+  "confidence": "review",
+  "notes": "源码为「Voice on 」+ 档案名拼接，译作前缀「语音 · 」"
+ },
+ "Voice settings are available": {
+  "zh": "语音设置可用",
+  "confidence": "exact"
+ },
+ "Voice status: X . X": {
+  "zh": "语音状态：{0}。{1}",
+  "confidence": "exact"
+ },
+ "VoiceOver position of a selection endpoint": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "注释文本，非界面文案"
+ },
+ "Waiting for the first notification from this profile": {
+  "zh": "正在等待来自此配置档案的第一条通知",
+  "confidence": "exact"
+ },
+ "Wake phrase": {
+  "zh": "唤醒词",
+  "confidence": "review",
+  "notes": "wake phrase 直译「唤醒短语」，按中文语音助手惯例作「唤醒词」"
+ },
+ "WebSocket connection": {
+  "zh": "WebSocket 连接",
+  "confidence": "exact"
+ },
+ "When enabled, Conduit automatically listens again after each response. When disabled, the session stays open and you start the next listening turn manually. This does not change Pause Mic, Interrupt, Close, or wake-word settings.": {
+  "zh": "开启后，Conduit 会在每次回复后自动重新聆听。关闭后会话保持打开，由你手动开始下一轮聆听。此设置不影响暂停麦克风、中断、关闭或唤醒词设置。",
+  "confidence": "exact"
+ },
+ "When returning to Conduit": {
+  "zh": "返回 Conduit 时",
+  "confidence": "exact",
+  "notes": "设置分区标题"
+ },
+ "Window usage": {
+  "zh": "窗口占用",
+  "confidence": "exact",
+  "notes": "上下文窗口占用进度条标签"
+ },
+ "Worker PID": {
+  "zh": "工作代理 PID",
+  "confidence": "exact",
+  "notes": "沿用术语库 worker=工作代理（desktop）"
+ },
+ "Worker started": {
+  "zh": "工作代理已开始",
+  "confidence": "exact",
+  "notes": "worker 依 termbase 译「工作代理」，超长保语义"
+ },
+ "Working directory, approvals, and privacy": {
+  "zh": "工作目录、审批与隐私",
+  "confidence": "exact",
+  "notes": "approvals→审批（名词，术语表）"
+ },
+ "Workspace & safety": {
+  "zh": "工作区与安全",
+  "confidence": "exact",
+  "notes": "再压缩将损义，保留"
+ },
+ "Workspace file": {
+  "zh": "工作区文件",
+  "confidence": "exact"
+ },
+ "Workspace path override": {
+  "zh": "工作区路径覆盖",
+  "confidence": "exact"
+ },
+ "Workspace unavailable": {
+  "zh": "工作区不可用",
+  "confidence": "exact"
+ },
+ "X": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "扫描噪声：独立插值碎片（纯计数占位），无可译内容"
+ },
+ "X , X tasks": {
+  "zh": "{0}，{1} 个任务",
+  "confidence": "exact",
+  "notes": "无障碍标签：名称 + 任务数"
+ },
+ "X --provider X --session": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "RPC config.set 的值（CLI 参数串），非界面文案"
+ },
+ "X -gateway-image- X": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "内部消息 ID 模板，非界面文案"
+ },
+ "X -reasoning": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "内部消息 ID 模板，非界面文案"
+ },
+ "X -recent": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "内部会话泳道 ID 模板，非界面文案"
+ },
+ "X -tool- X": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "内部消息 ID 模板，非界面文案"
+ },
+ "X .": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "扫描噪声（孤立占位符加句点，源码未见对应文案）"
+ },
+ "X / X": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "纯数字占位组合，无可译内容"
+ },
+ "X X": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "扫描噪声：标题+计数双插值碎片（SidebarView \\(title) \\(count)），不可译"
+ },
+ "X \\(project.sessionCount == 1 ?": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "扫描噪声：Swift 插值代码碎片（N 个对话条件复数），不可译"
+ },
+ "X background agents finished": {
+  "zh": "{0} 个后台智能体已完成",
+  "confidence": "exact"
+ },
+ "X configured": {
+  "zh": "已配置 {0} 个",
+  "confidence": "exact"
+ },
+ "X earlier events hidden": {
+  "zh": "已隐藏 {0} 条更早的事件",
+  "confidence": "exact"
+ },
+ "X is working": {
+  "zh": "{0} 正在工作",
+  "confidence": "exact"
+ },
+ "X of X models shown": {
+  "zh": "已显示 {0}/{1} 个模型",
+  "confidence": "exact"
+ },
+ "X tasks updated": {
+  "zh": "已更新 {0} 个任务",
+  "confidence": "exact",
+  "notes": "批量操作结果状态"
+ },
+ "X tokens": {
+  "zh": "{0} 个令牌",
+  "confidence": "exact",
+  "notes": "termbase tokens→令牌"
+ },
+ "X unavailable": {
+  "zh": "{0} 不可用",
+  "confidence": "exact",
+  "notes": "X 为图片 alt 文本"
+ },
+ "X updated": {
+  "zh": "{0} 已更新",
+  "confidence": "exact",
+  "notes": "X 为内部标签（Memory/Skill 等），拼接后可能出现中英混排"
+ },
+ "X voice": {
+  "zh": "{0} 语音",
+  "confidence": "exact"
+ },
+ "X working now": {
+  "zh": "{0} 个正在工作",
+  "confidence": "exact"
+ },
+ "X — image unavailable; open source": {
+  "zh": "{0} — 图片不可用；打开源链接",
+  "confidence": "exact",
+  "notes": "点按可经 WebKit 打开源图"
+ },
+ "Xiaomi MiMo": {
+  "zh": "小米 MiMo",
+  "confidence": "exact",
+  "notes": "小米官方中文名，MiMo 保留"
+ },
+ "YOLO mode": {
+  "zh": "YOLO 模式",
+  "confidence": "exact"
+ },
+ "YOUR ANSWER": {
+  "zh": "你的答案",
+  "confidence": "exact",
+  "notes": "大写样式标签，与「输入你的答案…」保持一致"
+ },
+ "You will need:": {
+  "zh": "你需要：",
+  "confidence": "exact"
+ },
+ "Your conversation also continues in chat. Close ends this voice session.": {
+  "zh": "对话也会在聊天中继续。关闭将结束此语音会话。",
+  "confidence": "exact"
+ },
+ "Your credentials stay on this device when you choose to save them.": {
+  "zh": "选择保存时，凭据仅保留在此设备上。",
+  "confidence": "exact"
+ },
+ "Your spoken words and Hermes' replies will appear here.": {
+  "zh": "你说的内容和 Hermes 的回复将显示在这里。",
+  "confidence": "exact"
+ },
+ "[END OF PRIOR CONTEXT — COMPACTION SUMMARY BELOW]": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "协议定界符常量，用于匹配服务端内容，不可译"
+ },
+ "[PRIOR CONTEXT — for reference only; not a new message]": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "协议包装头常量，用于识别历史上下文，不可译"
+ },
+ "[context compaction": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "内容分类前缀常量，翻译会破坏匹配"
+ },
+ "[older output omitted]": {
+  "zh": "[已省略较早输出]",
+  "confidence": "exact",
+  "notes": "日志截断标记，保留方括号"
+ },
+ "[recent summary (": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "内容分类前缀常量，翻译会破坏匹配"
+ },
+ "\\(Int(appState.runtime.contextPercent.rounded()))%": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "Swift 插值表达式，扫描噪声，不可译"
+ },
+ "\\(Int(percent.rounded()))%": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "纯数值与百分号（如 42%），无需翻译"
+ },
+ "\\(isUser ?": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "扫描噪声：Swift 插值表达式碎片（无障碍标签拼接处）"
+ },
+ "^\\[!([A-Za-z]+)\\]\\s*": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "正则表达式，不可译"
+ },
+ "approval- X": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "内部行 ID 前缀（如 approval-\\(id)），非界面文案"
+ },
+ "approval- X - X": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "内部行 ID 前缀（approval-\\(a)-\\(b)），非界面文案"
+ },
+ "assistant- X": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "内部行 ID 前缀（assistant-\\(ts)），非界面文案"
+ },
+ "at bottom": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "扫描噪声（仅出现在源码注释中，非 UI 文案）"
+ },
+ "be quiet": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "语音停止短语默认值，需与识别文本匹配，非界面文案"
+ },
+ "block- X": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "无障碍选择标识符（block-\\(id)），非显示文案"
+ },
+ "block- X -code": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "无障碍选择标识符，非显示文案"
+ },
+ "block- X -column- X": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "内部选区段标识符（表格列），非界面文案"
+ },
+ "block- X -list-i X": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "内部选区段标识符（列表项），非界面文案"
+ },
+ "block- X -quote-l X": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "内部选区段标识符（引用块），非界面文案"
+ },
+ "block- X -table-r X -c X": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "无障碍选择标识符，非显示文案"
+ },
+ "change your connection": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "已合并/非界面文案(review 清理)"
+ },
+ "character %d": {
+  "zh": "第 %d 个字符",
+  "confidence": "exact",
+  "notes": "VoiceOver 位置播报，%d 原样保留"
+ },
+ "chat-latest- X - X": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "代码标识符（会话滚动位置缓存键），非 UI 文案"
+ },
+ "chat-message- X - X": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "内部滚动语义 ID，非界面文案"
+ },
+ "chat-top- X - X": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "代码标识符（会话滚动位置缓存键），非 UI 文案"
+ },
+ "clarify- X": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "内部行 ID 前缀（clarify-\\(requestId)），非界面文案"
+ },
+ "conduit- X": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "唤醒词内部 ID，非界面文案"
+ },
+ "conduit-speech- X": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "语音临时文件名前缀，非界面文案"
+ },
+ "connection ready": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "仅代码注释出现，非界面文案"
+ },
+ "connector- X": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "内部连接器兜底 ID 前缀，非界面文案"
+ },
+ "dashboard URL failed normalization in AuthWebView": {
+  "zh": "仪表盘 URL 在 AuthWebView 中规范化失败",
+  "confidence": "exact",
+  "notes": "AuthWebView 为类名，保留英文"
+ },
+ "did the user edit?": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "扫描噪声（仅出现在源码注释中，非 UI 文案）"
+ },
+ "distil-whisper-large-v3-en": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "模型 ID，不译"
+ },
+ "does not support active-turn redirect": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "错误文本匹配模式（contains 比对），翻译会破坏判断逻辑"
+ },
+ "elevenlabs scribe": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "配置标识符，非显示文案"
+ },
+ "empty list": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "已合并/非界面文案(review 清理)"
+ },
+ "field absent": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "仅见于源码注释，非界面文案"
+ },
+ "first group": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "源码注释片段，扫描噪声"
+ },
+ "full- X": {
+  "zh": null,
+  "confidence": "none",
+  "notes": ".task(id:) 视图标识串，非界面文案"
+ },
+ "gpt-4o-mini-transcribe": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "模型 ID，不译"
+ },
+ "gpt-4o-transcribe": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "模型 ID，不译"
+ },
+ "hermes conduit-push pair X": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "终端命令，需原样输入，不译"
+ },
+ "hermes conduit-push status": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "终端命令，需原样输入，不译"
+ },
+ "hermes conduit-push test": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "终端命令，需原样输入，不译"
+ },
+ "hermes gateway restart": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "终端命令，需原样输入，不译"
+ },
+ "https://hermes.example": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "示例占位 URL，不译"
+ },
+ "https://push.milim.dev": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "URL，输入框占位符，原样显示，不译"
+ },
+ "invalid response": {
+  "zh": "响应无效",
+  "confidence": "exact",
+  "notes": "中继传输错误原因片段，外层为「无法连接推送中继：…」"
+ },
+ "keep dragging the selection": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "源码注释片段，扫描噪声"
+ },
+ "keep the fast path": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "源码注释片段，扫描噪声"
+ },
+ "keyword tokens": {
+  "zh": "关键词词元",
+  "confidence": "exact",
+  "notes": "模型资产用途说明"
+ },
+ "lmd-callout- X -p X": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "视图 identity 标识串，非界面文案"
+ },
+ "lmd-columns- X -c X -p X": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "视图 identity 标识串，非界面文案"
+ },
+ "lmd-flow- X": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "视图 identity 标识串，非界面文案"
+ },
+ "load the entire transcript over the WebSocket": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "已合并/非界面文案(review 清理)"
+ },
+ "local whisper": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "配置标识符，非显示文案"
+ },
+ "local- X": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "内部行 ID 前缀（local-\\(ts)），非界面文案"
+ },
+ "local-correction- X": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "内部行 ID 前缀（local-correction-\\(ts)），非界面文案"
+ },
+ "method not found": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "JSON-RPC 错误匹配模式（contains 比对），不译"
+ },
+ "microsoft edge tts": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "配置标识符，非显示文案"
+ },
+ "must bound the work": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "源码注释片段，扫描噪声"
+ },
+ "newer typing": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "仅代码注释出现，非界面文案"
+ },
+ "no auxiliary client configured": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "服务端返回原因示例（注释引用），客户端原样显示不翻译"
+ },
+ "no heartbeat": {
+  "zh": "无心跳",
+  "confidence": "exact",
+  "notes": "心跳状态标签（termbase heartbeat→心跳）"
+ },
+ "no pending": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "过期提示错误匹配模式（contains 比对），不译"
+ },
+ "no pending … request": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "已合并/非界面文案(review 清理)"
+ },
+ "no providers configured": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "仅代码注释出现，非界面文案"
+ },
+ "not found": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "projects.tree 错误匹配模式（contains 比对），不译"
+ },
+ "not sent": {
+  "zh": "未发送",
+  "confidence": "exact"
+ },
+ "nous subscription": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "配置标识符，非显示文案"
+ },
+ "openai tts": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "配置标识符，非显示文案"
+ },
+ "parent \\(string(": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "扫描截断的插值片段，不可译"
+ },
+ "partial- X": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "内部行 ID 前缀（partial-\\(ts)），非界面文案"
+ },
+ "pid X": {
+  "zh": "进程 ID {0}",
+  "confidence": "exact",
+  "notes": "pid 即进程 ID，活动行中的技术元数据"
+ },
+ "plenty for the drawer": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "仅文档注释出现，非界面文案"
+ },
+ "quantized encoder": {
+  "zh": "量化编码器",
+  "confidence": "exact",
+  "notes": "模型资产用途说明"
+ },
+ "quantized joiner": {
+  "zh": "量化连接器",
+  "confidence": "review",
+  "notes": "Joiner 为转写器组件名，译名存疑或可保留原文"
+ },
+ "ready to use": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "扫描噪声（正式条目为 This connection is ready to use.）"
+ },
+ "reasoning X": {
+  "zh": "思考 {0}",
+  "confidence": "exact",
+  "notes": "模型 a11y 标签内联片段"
+ },
+ "reasoning not set": {
+  "zh": "思考未设置",
+  "confidence": "exact"
+ },
+ "reasoning- X": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "内部行 ID 前缀（reasoning-\\(ts)），非界面文案"
+ },
+ "reassign value": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "已合并/非界面文案(review 清理)"
+ },
+ "review-summary- X - X": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "内部行 ID 前缀（review-summary-\\(sid)-\\(uuid)），非界面文案"
+ },
+ "same request, collapsed": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "已合并/非界面文案(review 清理)"
+ },
+ "session not found": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "会话丢失错误匹配模式（contains 比对），不译"
+ },
+ "set to NULL": {
+  "zh": "已设为 NULL",
+  "confidence": "exact"
+ },
+ "sherpa-onnx-kws-zipformer-zh-en-3m-chunk8": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "模型 ID/文件名，原样保留不译"
+ },
+ "skill-name": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "「手动添加」输入框的格式示例（小写 slug），保留原样"
+ },
+ "slash- X": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "内部行 ID 前缀（slash-\\(ts)），非界面文案"
+ },
+ "start the next turn": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "源码注释片段，扫描噪声"
+ },
+ "stats- X": {
+  "zh": null,
+  "confidence": "none",
+  "notes": ".task(id:) 视图标识串，非界面文案"
+ },
+ "stop talking": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "语音停止短语默认值，需与识别文本匹配，非界面文案"
+ },
+ "synchronous is fine": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "源码注释片段，扫描噪声"
+ },
+ "task is not in triage": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "后端契约串，仅注释出现，界面按后端原文展示"
+ },
+ "the decision is no longer active": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "已合并/非界面文案(review 清理)"
+ },
+ "the microphone hears me": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "源码注释片段，扫描噪声"
+ },
+ "this dashboard offers password login": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "仅代码注释出现，非界面文案"
+ },
+ "tool-complete- X": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "内部行 ID 前缀（tool-complete-\\(ts)），非界面文案"
+ },
+ "tool-start- X": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "内部行 ID 前缀（tool-start-\\(ts)），非界面文案"
+ },
+ "unassigned (parked — won't run)": {
+  "zh": "未分配（已搁置 — 不会运行）",
+  "confidence": "exact"
+ },
+ "undescribed": {
+  "zh": "无描述",
+  "confidence": "exact",
+  "notes": "档案无路由描述时的辅助说明"
+ },
+ "unknown method": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "JSON-RPC 错误匹配模式（contains 比对），不译"
+ },
+ "unknown yet": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "已合并/非界面文案(review 清理)"
+ },
+ "use without testing": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "仅见于源码注释，非界面文案"
+ },
+ "v X": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "版本前缀符号，无独立语义"
+ },
+ "visible selection owner": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "仅代码注释出现，非界面文案"
+ },
+ "which lane does the UI consider active?": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "已合并/非界面文案(review 清理)"
+ },
+ "whisper-large-v3-turbo": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "模型 ID，不译"
+ },
+ "won't run": {
+  "zh": "不会运行",
+  "confidence": "exact",
+  "notes": "调度状态标签"
+ },
+ "wrong password": {
+  "zh": "密码错误",
+  "confidence": "exact"
+ },
+ "· board default": {
+  "zh": "· 看板默认",
+  "confidence": "exact",
+  "notes": "与工作区选项名拼接，标示看板默认项"
+ },
+ "· showing last X KiB": {
+  "zh": "· 显示最后 {0} KiB",
+  "confidence": "exact",
+  "notes": "保留中点前缀与 KiB 单位"
+ },
+ "× X": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "扫描噪声（乘号碎片，出自源码注释）"
+ },
+ "— no parent —": {
+  "zh": "— 无父任务 —",
+  "confidence": "exact"
+ },
+ "•": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "扫描噪声：纯符号分隔点（模型与时间之间的圆点），不可译"
+ },
+ "… ( X more lines)": {
+  "zh": "…（还有 {0} 行）",
+  "confidence": "exact"
+ },
+ "Version": {
+  "zh": "版本",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Server": {
+  "zh": "服务器",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Reasoning": {
+  "zh": "思考强度",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Used": {
+  "zh": "已用",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Capacity": {
+  "zh": "容量",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Breakdown": {
+  "zh": "用量分布",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "About": {
+  "zh": "关于",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Personality": {
+  "zh": "性格",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Timezone": {
+  "zh": "时区",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Speed": {
+  "zh": "语速",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Language": {
+  "zh": "语言",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Endpoint": {
+  "zh": "端点",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Volume": {
+  "zh": "音量",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "File": {
+  "zh": "文件",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Type": {
+  "zh": "类型",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Size": {
+  "zh": "大小",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Schedule": {
+  "zh": "排程",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Delivery": {
+  "zh": "送达",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Prompt": {
+  "zh": "提示词",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "All": {
+  "zh": "全部",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Local": {
+  "zh": "本地",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Sessions": {
+  "zh": "会话",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Cron": {
+  "zh": "定时任务",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Reorder": {
+  "zh": "排序",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Move": {
+  "zh": "移动",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Assign": {
+  "zh": "指派",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "More": {
+  "zh": "更多",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Working…": {
+  "zh": "处理中…",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Pause": {
+  "zh": "暂停",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Resume": {
+  "zh": "继续",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Server-side path for new workspaces.": {
+  "zh": "新工作区的服务器端路径。",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Default execution boundary.": {
+  "zh": "默认执行边界。",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Profile-wide default: manual asks every time; smart asks when risk warrants it; off is YOLO mode. When set to off, Hermes auto-approves everything and per-session YOLO toggles have no effect — that's a Hermes limitation, not a Conduit bug. To use per-session YOLO, set this to manual or smart.": {
+  "zh": "档案级默认：手动模式每次询问；智能模式按风险询问；关闭即 YOLO 模式。设为关闭时 Hermes 会自动批准一切，且各会话的 YOLO 开关不再生效——这是 Hermes 的限制，并非 Conduit 的问题。要使用会话级 YOLO，请将此项设为手动或智能。",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Hide detected credentials from tool output where possible.": {
+  "zh": "尽可能在工具输出中隐藏检测到的凭据。",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Permit tool access to private-network URLs.": {
+  "zh": "允许工具访问内网 URL。",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Provider used for long-term memory.": {
+  "zh": "用于长期记忆的提供方。",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Allow Hermes to retain relevant working memory.": {
+  "zh": "允许 Hermes 保留相关的工作记忆。",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Allow Hermes to maintain user preferences.": {
+  "zh": "允许 Hermes 维护用户偏好。",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Installed context-management engine.": {
+  "zh": "已安装的上下文管理引擎。",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Compress older context when the window becomes crowded.": {
+  "zh": "上下文窗口拥挤时压缩较早的内容。",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Fraction of the context window that starts compression.": {
+  "zh": "触发压缩的上下文窗口占比。",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Fraction retained after compression.": {
+  "zh": "压缩后保留的比例。",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Recent messages left intact by compression.": {
+  "zh": "压缩时保持原样的近期消息。",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Maximum child agents that can work at once.": {
+  "zh": "可同时工作的子智能体数量上限。",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Default response style for new conversations.": {
+  "zh": "新对话的默认回复风格。",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Used for dates, reminders, and scheduled work.": {
+  "zh": "用于日期、提醒和定时任务。",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Show collapsible thinking blocks when provided.": {
+  "zh": "有思考内容时显示可折叠的思考块。",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Show tool calls and expandable details in conversations.": {
+  "zh": "在对话中显示工具调用及可展开的详情。",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Keep completed tool details open by default.": {
+  "zh": "默认保持已完成的工具详情展开。",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Open completed tool details by default.": {
+  "zh": "默认展开已完成的工具详情。",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Choose whether Conduit follows Hermes, always shows, or never shows maintenance updates.": {
+  "zh": "选择 Conduit 跟随 Hermes、始终显示还是从不显示维护动态。",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "How Hermes supplies images to a model.": {
+  "zh": "Hermes 向模型提供图片的方式。",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "You can enter any installed model identifier.": {
+  "zh": "可输入任何已安装模型的标识符。",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Leave blank for automatic language detection.": {
+  "zh": "留空则自动检测语言。",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Built-in voices are suggestions; custom voice IDs remain supported.": {
+  "zh": "内置音色仅作建议；仍支持自定义音色 ID。",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Optional speaking style guidance sent to the provider.": {
+  "zh": "可选的说话风格指引，将发送给提供方。",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Speech rate multiplier (0.25–4.0); Hermes clamps this range. Leave blank to remove.": {
+  "zh": "语速倍率（0.25–4.0），Hermes 会约束该范围。留空则移除。",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Open Platform, Step Plan, International, or a custom endpoint.": {
+  "zh": "开放平台、Step 计划、国际版或自定义端点。",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Used only when Endpoint is Custom.": {
+  "zh": "仅当端点为\"自定义\"时使用。",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Provider speech-rate multiplier.": {
+  "zh": "提供方语速倍率。",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Provider output volume multiplier.": {
+  "zh": "提供方输出音量倍率。",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "PCM sample rate requested from Hermes.": {
+  "zh": "向 Hermes 请求的 PCM 采样率。",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Voice ID from your ElevenLabs-compatible endpoint. Leave blank for the provider default.": {
+  "zh": "与 ElevenLabs 兼容端点的音色 ID。留空则使用提供方默认值。",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Enter a valid dashboard URL.": {
+  "zh": "请输入有效的仪表盘地址。",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Enter your dashboard username and password.": {
+  "zh": "请输入仪表盘的用户名和密码。",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Sessions and settings follow the active profile. Photos stay only on this device.": {
+  "zh": "会话与设置跟随当前档案。照片仅保留在此设备上。",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Use the arrows to choose the order profiles appear throughout Conduit.": {
+  "zh": "使用箭头调整各档案在 Conduit 中的显示顺序。",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Completed": {
+  "zh": "已完成",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Blocked": {
+  "zh": "已阻塞",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Reclaimed": {
+  "zh": "已收回",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Promoted": {
+  "zh": "已提级",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Scheduled": {
+  "zh": "已排期",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Archived": {
+  "zh": "已归档",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Unblocked → \\(status(\"status\") ?? \"\")": {
+  "zh": "已解除阻塞 → {0}",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Priority set to \\(priority.map(String.init) ?? \"?\")": {
+  "zh": "优先级已设为 {0}",
+  "confidence": "exact",
+  "source": "device-feedback-r1"
+ },
+ "Session list": {
+  "zh": "会话列表",
+  "confidence": "exact",
+  "source": "device-feedback-r2"
+ },
+ "Conduit opens to the session list. Used if you dismiss it without choosing another conversation.": {
+  "zh": "Conduit 将打开会话列表。在未选择其他对话的情况下关闭列表时使用。",
+  "confidence": "exact",
+  "source": "device-feedback-r2"
+ },
+ "Conduit opens to your conversation.": {
+  "zh": "Conduit 将打开你的对话。",
+  "confidence": "exact",
+  "source": "device-feedback-r2"
+ },
+ "Manual": {
+  "zh": "手动",
+  "confidence": "exact",
+  "source": "option-mapping"
+ },
+ "Smart": {
+  "zh": "智能",
+  "confidence": "exact",
+  "source": "option-mapping"
+ },
+ "Strict": {
+  "zh": "严格",
+  "confidence": "exact",
+  "source": "option-mapping"
+ },
+ "Automatic": {
+  "zh": "自动",
+  "confidence": "exact",
+  "source": "option-mapping"
+ },
+ "Native images": {
+  "zh": "原生图片",
+  "confidence": "exact",
+  "source": "option-mapping"
+ },
+ "Text only": {
+  "zh": "仅文字",
+  "confidence": "exact",
+  "source": "option-mapping"
+ },
+ "Default": {
+  "zh": "默认",
+  "confidence": "exact",
+  "source": "option-mapping"
+ },
+ "Helpful": {
+  "zh": "乐于助人",
+  "confidence": "exact",
+  "source": "option-mapping"
+ },
+ "Concise": {
+  "zh": "简洁",
+  "confidence": "exact",
+  "source": "option-mapping"
+ },
+ "Technical": {
+  "zh": "技术流",
+  "confidence": "exact",
+  "source": "option-mapping"
+ },
+ "Creative": {
+  "zh": "创意",
+  "confidence": "exact",
+  "source": "option-mapping"
+ },
+ "Teacher": {
+  "zh": "教师",
+  "confidence": "exact",
+  "source": "option-mapping"
+ },
+ "Kawaii": {
+  "zh": "卡哇伊",
+  "confidence": "exact",
+  "source": "option-mapping"
+ },
+ "Catgirl": {
+  "zh": "猫娘",
+  "confidence": "exact",
+  "source": "option-mapping"
+ },
+ "Pirate": {
+  "zh": "海盗",
+  "confidence": "exact",
+  "source": "option-mapping"
+ },
+ "Shakespeare": {
+  "zh": "莎士比亚",
+  "confidence": "exact",
+  "source": "option-mapping"
+ },
+ "Surfer": {
+  "zh": "冲浪手",
+  "confidence": "exact",
+  "source": "option-mapping"
+ },
+ "Noir": {
+  "zh": "黑色电影",
+  "confidence": "exact",
+  "source": "option-mapping"
+ },
+ "Philosopher": {
+  "zh": "哲学家",
+  "confidence": "exact",
+  "source": "option-mapping"
+ },
+ "Hype": {
+  "zh": "热血",
+  "confidence": "exact",
+  "source": "option-mapping"
+ },
+ "Please set up or start the Hermes dashboard for me. Make sure it requires authentication, and tell me which port it is using when it is ready. Do not disable authentication.": {
+  "zh": "请为我设置或启动 Hermes 仪表盘。确保它启用了身份验证，就绪后告诉我它使用的端口。不要禁用身份验证。",
+  "confidence": "exact",
+  "source": "review-merge"
+ },
+ "Please check whether the Hermes dashboard is currently running. If it is, tell me which port it uses. If it is not running, set it up or start it. Make sure dashboard authentication remains enabled.": {
+  "zh": "请检查 Hermes 仪表盘当前是否在运行。如果在运行，告诉我它使用的端口；如果没在运行，请设置或启动它。确保仪表盘身份验证保持启用。",
+  "confidence": "exact",
+  "source": "review-merge"
+ },
+ "Please check the authentication configuration for my Hermes dashboard. If dashboard login credentials have not been configured yet, set them up securely and tell me what username and password I should use with Hermes Conduit. Do not disable authentication.": {
+  "zh": "请检查我的 Hermes 仪表盘的身份验证配置。如果尚未配置登录凭据，请安全地完成设置，并告诉我应与 Hermes Conduit 搭配使用的用户名和密码。不要禁用身份验证。",
+  "confidence": "exact",
+  "source": "review-merge"
+ },
+ "Does my Hermes dashboard require authentication? If so, tell me what username and password I should use with Hermes Conduit. If authentication is not configured, set it up securely. Do not disable authentication.": {
+  "zh": "我的 Hermes 仪表盘是否需要身份验证？如果需要，告诉我应与 Hermes Conduit 搭配使用的用户名和密码。如果尚未配置身份验证，请安全地完成设置。不要禁用身份验证。",
+  "confidence": "exact",
+  "source": "review-merge"
+ },
+ "Please make sure the Hermes dashboard is reachable from other devices on my local network, then tell me the machine's local IP address and the dashboard port I should use with Hermes Conduit. Keep dashboard authentication enabled.": {
+  "zh": "请确保 Hermes 仪表盘可从本地网络中的其他设备访问，然后告诉我这台机器的局域网 IP 地址以及应与 Hermes Conduit 搭配使用的仪表盘端口。保持仪表盘身份验证启用。",
+  "confidence": "exact",
+  "source": "review-merge"
+ },
+ "Please check whether the Hermes dashboard is running. Make sure Tailscale is available on this machine, then configure Tailscale Serve so I can securely access the dashboard from my iPhone or iPad. Keep dashboard authentication enabled. When it is ready, tell me the hostname/address and port I should use with Hermes Conduit.": {
+  "zh": "请检查 Hermes 仪表盘是否在运行。确保这台机器上可用 Tailscale，然后配置 Tailscale Serve，使我能从 iPhone 或 iPad 安全访问仪表盘。保持仪表盘身份验证启用。就绪后告诉我应与 Hermes Conduit 搭配使用的主机名/地址和端口。",
+  "confidence": "exact",
+  "source": "review-merge"
+ },
+ "Please confirm the HTTPS URL I should use to access the Hermes dashboard through my existing reverse proxy, including any custom port or path prefix. Also confirm that dashboard authentication remains enabled.": {
+  "zh": "请确认我通过现有反向代理访问 Hermes 仪表盘应使用的 HTTPS URL（包括自定义端口或路径前缀），并确认仪表盘身份验证保持启用。",
+  "confidence": "exact",
+  "source": "review-merge"
+ },
+ "Hermes does not allow X as a manual Kanban destination.": {
+  "zh": "Hermes 不允许将 {0} 用作手动看板目标。",
+  "confidence": "exact",
+  "source": "review-merge"
+ },
+ "Could not build a safe Hermes Kanban request (invalid X). The operation was cancelled before any data changed.": {
+  "zh": "无法构造安全的 Hermes 看板请求（{0} 无效）。操作已取消，未更改任何数据。",
+  "confidence": "exact",
+  "source": "review-merge"
+ },
+ "Could not X this conversation: X": {
+  "zh": "无法{0}此对话：{1}",
+  "confidence": "exact",
+  "source": "review-merge"
+ },
+ "archive": {
+  "zh": "归档",
+  "confidence": "exact",
+  "source": "review-merge"
+ },
+ "restore": {
+  "zh": "恢复",
+  "confidence": "exact",
+  "source": "review-merge"
+ },
+ "Unlimited": {
+  "zh": "不限",
+  "confidence": "exact",
+  "source": "review-merge"
+ },
+ "Max turns: X": {
+  "zh": "最大轮数：{0}",
+  "confidence": "exact",
+  "source": "review-merge"
+ },
+ "If you use your own certificate authority, install and trust its root certificate on this device (Settings → General → VPN & Device Management → Certificate Trust Settings).": {
+  "zh": "如果你使用自签证书颁发机构，请在本设备上安装并信任其根证书（设置 → 通用 → VPN 与设备管理 → 证书信任设置）。",
+  "confidence": "exact",
+  "source": "review-merge"
+ },
+ "Check the server certificate’s expiration and validity dates.": {
+  "zh": "检查服务器证书的有效期和有效性。",
+  "confidence": "exact",
+  "source": "review-merge"
+ },
+ "Confirm this device’s date and time are correct.": {
+  "zh": "确认本设备的日期和时间正确无误。",
+  "confidence": "exact",
+  "source": "review-merge"
+ },
+ "Verify the Client ID and Secret belong to a Cloudflare Access service token for this application.": {
+  "zh": "确认 Client ID 和 Secret 属于此应用的 Cloudflare Access 服务令牌。",
+  "confidence": "exact",
+  "source": "review-merge"
+ },
+ "Make sure a Service Auth policy allows that token to reach this Access application.": {
+  "zh": "确保某条 Service Auth 策略允许该令牌访问此 Access 应用。",
+  "confidence": "exact",
+  "source": "review-merge"
+ },
+ "Or turn off \"Use Cloudflare Access service token\" to sign in interactively through the in-app browser.": {
+  "zh": "或关闭「使用 Cloudflare Access 服务令牌」，改用应用内浏览器交互式登录。",
+  "confidence": "exact",
+  "source": "review-merge"
+ },
+ "This question is no longer active — it was timed out or already resolved.": {
+  "zh": "该问题已失效——已超时或已被处理。",
+  "confidence": "exact",
+  "source": "device-feedback-r2"
+ },
+ "This approval is no longer active — Hermes timed it out and continued.": {
+  "zh": "该审批已失效——Hermes 已超时并继续执行。",
+  "confidence": "exact",
+  "source": "device-feedback-r2"
+ },
+ "These questions are no longer active — Hermes timed them out and continued.": {
+  "zh": "这些问题已失效——Hermes 已超时并继续执行。",
+  "confidence": "exact",
+  "source": "device-feedback-r2"
+ },
+ "This question is no longer active — Hermes timed it out and continued.": {
+  "zh": "该问题已失效——Hermes 已超时并继续执行。",
+  "confidence": "exact",
+  "source": "device-feedback-r2"
+ },
+ "X X…": {
+  "zh": "{0} {1}…",
+  "confidence": "exact",
+  "source": "device-feedback-r2"
+ }
+}

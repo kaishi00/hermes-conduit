@@ -1,0 +1,497 @@
+{
+ "Steer adds guidance to the active turn. Interrupt stops it before handling the new message.": {
+  "zh": "引导会为当前回合追加指引。中断则会在处理新消息前停止当前回合。",
+  "confidence": "exact",
+  "notes": "设置页忙碌输入模式说明；steer→引导（termbase）"
+ },
+ "Stop and correct": {
+  "zh": "停止并纠正",
+  "confidence": "exact",
+  "notes": "「中断」选项说明文案"
+ },
+ "Stored only on this device, not in your Hermes profile. Choose which surface Conduit opens to and whether it preserves your exact reading position or follows the newest conversation.": {
+  "zh": "仅存储在此设备上，不存入你的 Hermes 配置档案。可选择 Conduit 打开时进入的界面，以及是精确保留阅读位置，还是跟随最新对话。",
+  "confidence": "exact",
+  "notes": "surface→界面"
+ },
+ "Support": {
+  "zh": "支持",
+  "confidence": "exact",
+  "notes": "支持页链接行"
+ },
+ "Supports decision cards": {
+  "zh": "支持决策卡片",
+  "confidence": "exact"
+ },
+ "Test, troubleshoot, or change your connection": {
+  "zh": "测试、排查或更改你的连接",
+  "confidence": "exact"
+ },
+ "The notifier receives a revocable credential for this phone. Your gateway never needs the phone’s push token, and you can turn notifications off here at any time.": {
+  "zh": "通知器会收到一个仅限这台手机使用的可撤销凭据。你的网关从不需要手机的推送令牌，你也可以随时在此关闭通知。",
+  "confidence": "exact"
+ },
+ "The secret is stored only in Keychain. Reconnect after changing it.": {
+  "zh": "密钥仅存储在 Keychain 中。更改后请重新连接。",
+  "confidence": "exact",
+  "notes": "Keychain 为苹果专名不译，残留告警可忽略"
+ },
+ "Theme and interface preferences": {
+  "zh": "主题与界面偏好",
+  "confidence": "exact"
+ },
+ "These choices follow the active workspace.": {
+  "zh": "这些选项会跟随当前活跃的工作区。",
+  "confidence": "exact"
+ },
+ "This code expires X .": {
+  "zh": "此配对码将于 {0} 过期。",
+  "confidence": "exact",
+  "notes": "配对码过期提示，X 为过期时间"
+ },
+ "This iPhone": {
+  "zh": "此 iPhone",
+  "confidence": "exact",
+  "notes": "iPhone 为专名不译，残留告警可忽略"
+ },
+ "This only changes how the default profile is named in Conduit. Hermes itself still uses the default profile.": {
+  "zh": "这只更改 Conduit 中默认配置档案的命名方式。Hermes 本身仍使用默认配置档案。",
+  "confidence": "exact"
+ },
+ "This profile's notifier predates decision cards — update it to receive them": {
+  "zh": "此配置档案的通知器版本较早，不支持决策卡片——请更新通知器。",
+  "confidence": "exact",
+  "notes": "predates 译为版本较早，补出更新指引"
+ },
+ "Tool cards": {
+  "zh": "工具卡片",
+  "confidence": "exact",
+  "notes": "display.tool_progress 设置项"
+ },
+ "Turn off notifications": {
+  "zh": "关闭通知",
+  "confidence": "exact"
+ },
+ "Update needed": {
+  "zh": "需要更新",
+  "confidence": "exact"
+ },
+ "Update the notifier": {
+  "zh": "更新通知器",
+  "confidence": "exact"
+ },
+ "Use Hermes default": {
+  "zh": "使用 Hermes 默认值",
+  "confidence": "exact"
+ },
+ "Use X app icon": {
+  "zh": "使用 {0} 应用图标",
+  "confidence": "exact",
+  "notes": "{0} 为应用名"
+ },
+ "Use service token": {
+  "zh": "使用服务令牌",
+  "confidence": "exact"
+ },
+ "Used if you dismiss the session list without choosing another conversation.": {
+  "zh": "在未选择其他对话的情况下关闭会话列表时使用。",
+  "confidence": "exact"
+ },
+ "User profile memory": {
+  "zh": "用户画像记忆",
+  "confidence": "exact",
+  "notes": "termbase user profile→用户画像"
+ },
+ "Verify pairing": {
+  "zh": "验证配对",
+  "confidence": "exact"
+ },
+ "Waiting for the first notification from this profile": {
+  "zh": "正在等待来自此配置档案的第一条通知",
+  "confidence": "exact"
+ },
+ "When returning to Conduit": {
+  "zh": "返回 Conduit 时",
+  "confidence": "exact",
+  "notes": "设置分区标题"
+ },
+ "Window usage": {
+  "zh": "窗口占用",
+  "confidence": "exact",
+  "notes": "上下文窗口占用进度条标签"
+ },
+ "Working directory, approvals, and privacy": {
+  "zh": "工作目录、审批与隐私",
+  "confidence": "exact",
+  "notes": "approvals→审批（名词，术语表）"
+ },
+ "Workspace & safety": {
+  "zh": "工作区与安全",
+  "confidence": "exact",
+  "notes": "再压缩将损义，保留"
+ },
+ "X tokens": {
+  "zh": "{0} 个令牌",
+  "confidence": "exact",
+  "notes": "termbase tokens→令牌"
+ },
+ "\\(Int(appState.runtime.contextPercent.rounded()))%": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "Swift 插值表达式，扫描噪声，不可译"
+ },
+ "hermes conduit-push pair X": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "终端命令，需原样输入，不译"
+ },
+ "hermes conduit-push status": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "终端命令，需原样输入，不译"
+ },
+ "hermes conduit-push test": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "终端命令，需原样输入，不译"
+ },
+ "hermes gateway restart": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "终端命令，需原样输入，不译"
+ },
+ "https://push.milim.dev": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "URL，输入框占位符，原样显示，不译"
+ },
+ "v X": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "版本前缀符号，无独立语义"
+ },
+ "1 task selected": {
+  "zh": "已选 1 个任务",
+  "confidence": "review",
+  "notes": "修订初稿：源串为字面量无占位符，初稿误加 {0}"
+ },
+ "2 updated, 1 failed": {
+  "zh": "2 个已更新，1 个失败",
+  "confidence": "review",
+  "notes": "修订初稿：字面数字无占位符；初稿漏译“已更新”；字面数字横幅，补量词后略超长度阈值，保留"
+ },
+ "N tasks selected": {
+  "zh": "已选 N 个任务",
+  "confidence": "review",
+  "notes": "修订初稿：N 为扫描记号非 X，按字面保留；补全“任务”"
+ },
+ "N updated, M failed": {
+  "zh": "N 个已更新，M 个失败",
+  "confidence": "review",
+  "notes": "修订初稿：N/M 非占位标记按字面保留；补译“已更新”"
+ },
+ "Shows assignee, tenant, archived, and running grouping options": {
+  "zh": "显示负责人、租户、已归档与运行中分组选项",
+  "confidence": "review",
+  "notes": "修订初稿：初稿“{task} 选项”漏译枚举项"
+ },
+ "Task X , not selected": {
+  "zh": "任务 {0}，未选中",
+  "confidence": "review",
+  "notes": "修订初稿：卡片无障碍标签，含任务 ID 与选中态"
+ },
+ "Task X , selected": {
+  "zh": "任务 {0}，已选中",
+  "confidence": "review",
+  "notes": "修订初稿：同上，选中态"
+ },
+ "X tasks selected": {
+  "zh": "已选 {0} 个任务",
+  "confidence": "review",
+  "notes": "沿用初稿译式并补全“任务”"
+ },
+ "!canRunBulk || bulkBusy": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "Swift 布尔表达式，扫描噪声，不可译"
+ },
+ "Any integer is valid; Hermes stores it verbatim (no bounds upstream).": {
+  "zh": "任意整数均有效；Hermes 会原样存储（上游不限制范围）。",
+  "confidence": "exact"
+ },
+ "Apply to X": {
+  "zh": "应用于 {0}",
+  "confidence": "exact",
+  "notes": "{0} 为批量任务数"
+ },
+ "Archive 1 Task?": {
+  "zh": "归档 1 个任务？",
+  "confidence": "exact"
+ },
+ "Archive Board?": {
+  "zh": "归档看板？",
+  "confidence": "exact"
+ },
+ "Archive Board…": {
+  "zh": "归档看板…",
+  "confidence": "exact"
+ },
+ "Archive X": {
+  "zh": "归档 {0}",
+  "confidence": "exact"
+ },
+ "Archive X Tasks?": {
+  "zh": "归档 {0} 个任务？",
+  "confidence": "exact"
+ },
+ "Archive “ X ”? The board will be removed from the active board list. Its tasks are not being permanently deleted.": {
+  "zh": "归档“{0}”？该看板将从活跃看板列表中移除。其任务不会被永久删除。",
+  "confidence": "exact"
+ },
+ "Assign 1 Task": {
+  "zh": "指派 1 个任务",
+  "confidence": "exact"
+ },
+ "Assign X Tasks": {
+  "zh": "指派 {0} 个任务",
+  "confidence": "exact"
+ },
+ "Assign X selected X": {
+  "zh": "指派所选 {0} 个 {1}",
+  "confidence": "exact",
+  "notes": "{0} 数量，{1} 任务名词"
+ },
+ "Choose Kanban board": {
+  "zh": "选择看板",
+  "confidence": "exact"
+ },
+ "Copy Task ID": {
+  "zh": "复制任务 ID",
+  "confidence": "exact"
+ },
+ "Copy Task Title": {
+  "zh": "复制任务标题",
+  "confidence": "exact"
+ },
+ "Copy task ID": {
+  "zh": "复制任务 ID",
+  "confidence": "exact"
+ },
+ "Copy task title": {
+  "zh": "复制任务标题",
+  "confidence": "exact"
+ },
+ "Current lane": {
+  "zh": "当前列",
+  "confidence": "exact",
+  "notes": "lane 即看板列，无障碍提示"
+ },
+ "Decrease priority": {
+  "zh": "降低优先级",
+  "confidence": "exact"
+ },
+ "Delete 1 Task?": {
+  "zh": "删除 1 个任务？",
+  "confidence": "exact"
+ },
+ "Delete X": {
+  "zh": "删除 {0}",
+  "confidence": "exact"
+ },
+ "Delete X Tasks?": {
+  "zh": "删除 {0} 个任务？",
+  "confidence": "exact"
+ },
+ "Delete this task?": {
+  "zh": "删除此任务？",
+  "confidence": "exact"
+ },
+ "Dismiss Kanban error": {
+  "zh": "关闭看板错误",
+  "confidence": "exact"
+ },
+ "Dispatcher nudged": {
+  "zh": "已催促调度器",
+  "confidence": "exact",
+  "notes": "催促调度器后的瞬时反馈；压缩为“已催促调度”损义，保留"
+ },
+ "Enter selection mode to run bulk operations": {
+  "zh": "进入选择模式以执行批量操作",
+  "confidence": "exact"
+ },
+ "Exit selection mode": {
+  "zh": "退出选择模式",
+  "confidence": "exact"
+ },
+ "Failed Tasks": {
+  "zh": "失败任务",
+  "confidence": "exact"
+ },
+ "Filters active — open filters": {
+  "zh": "筛选已启用 — 打开筛选",
+  "confidence": "exact"
+ },
+ "Increase priority": {
+  "zh": "提高优先级",
+  "confidence": "exact"
+ },
+ "Kanban board actions": {
+  "zh": "看板操作",
+  "confidence": "exact"
+ },
+ "Loading X …": {
+  "zh": "正在加载 {0}…",
+  "confidence": "exact"
+ },
+ "Loading board…": {
+  "zh": "正在加载看板…",
+  "confidence": "exact",
+  "notes": "进度文案惯例，保留"
+ },
+ "More actions for X selected X": {
+  "zh": "针对所选 {0} 个 {1} 的更多操作",
+  "confidence": "exact",
+  "notes": "{0} 数量，{1} 任务名词"
+ },
+ "Move 1 Task": {
+  "zh": "移动 1 个任务",
+  "confidence": "exact"
+ },
+ "Move X Tasks": {
+  "zh": "移动 {0} 个任务",
+  "confidence": "exact"
+ },
+ "Move X selected X": {
+  "zh": "移动所选 {0} 个 {1}",
+  "confidence": "exact",
+  "notes": "{0} 数量，{1} 任务名词"
+ },
+ "Move to": {
+  "zh": "移至",
+  "confidence": "exact"
+ },
+ "Move to X": {
+  "zh": "移至 {0}",
+  "confidence": "exact"
+ },
+ "No Board": {
+  "zh": "暂无看板",
+  "confidence": "exact"
+ },
+ "No Columns": {
+  "zh": "暂无列",
+  "confidence": "exact"
+ },
+ "No profiles on this server yet.": {
+  "zh": "此服务器尚无配置档案。",
+  "confidence": "exact"
+ },
+ "Nudge Dispatcher": {
+  "zh": "催促调度器",
+  "confidence": "exact",
+  "notes": "dispatcher→调度器（termbase run dispatcher）"
+ },
+ "Open filters": {
+  "zh": "打开筛选",
+  "confidence": "exact"
+ },
+ "Open task": {
+  "zh": "打开任务",
+  "confidence": "exact"
+ },
+ "Opens task details": {
+  "zh": "打开任务详情",
+  "confidence": "exact"
+ },
+ "Orchestration Settings…": {
+  "zh": "编排设置…",
+  "confidence": "exact"
+ },
+ "Priority value": {
+  "zh": "优先级值",
+  "confidence": "exact"
+ },
+ "Refresh Kanban board": {
+  "zh": "刷新看板",
+  "confidence": "exact"
+ },
+ "Refresh failed: X": {
+  "zh": "刷新失败：{0}",
+  "confidence": "exact"
+ },
+ "Select tasks": {
+  "zh": "选择任务",
+  "confidence": "exact"
+ },
+ "Server current (": {
+  "zh": "服务器当前看板 (",
+  "confidence": "exact",
+  "notes": "代码续接 slug 与半角右括号，故保留半角左括号；压缩将损义，保留"
+ },
+ "Set Priority": {
+  "zh": "设置优先级",
+  "confidence": "exact"
+ },
+ "Set Priority ( X tasks)": {
+  "zh": "设置优先级（{0} 个任务）",
+  "confidence": "exact"
+ },
+ "Set Priority…": {
+  "zh": "设置优先级…",
+  "confidence": "exact"
+ },
+ "Task ID copied": {
+  "zh": "已复制任务 ID",
+  "confidence": "exact"
+ },
+ "Task X": {
+  "zh": "任务 {0}",
+  "confidence": "exact",
+  "notes": "失败任务行标签"
+ },
+ "Task actions": {
+  "zh": "任务操作",
+  "confidence": "exact"
+ },
+ "They will be moved out of the active board view. Tasks are not being permanently deleted.": {
+  "zh": "它们将被移出活跃看板视图。任务不会被永久删除。",
+  "confidence": "exact"
+ },
+ "This permanently removes the task from the selected Hermes board.": {
+  "zh": "这将从所选 Hermes 看板中永久移除该任务。",
+  "confidence": "exact"
+ },
+ "This will permanently delete the selected tasks. This action cannot be undone.": {
+  "zh": "这将永久删除所选任务。此操作无法撤销。",
+  "confidence": "exact"
+ },
+ "Title copied": {
+  "zh": "已复制标题",
+  "confidence": "exact"
+ },
+ "Unassign": {
+  "zh": "取消指派",
+  "confidence": "exact",
+  "notes": "“取消指派”为最短通义，保留"
+ },
+ "X , X tasks": {
+  "zh": "{0}，{1} 个任务",
+  "confidence": "exact",
+  "notes": "无障碍标签：名称 + 任务数"
+ },
+ "X / X": {
+  "zh": null,
+  "confidence": "none",
+  "notes": "纯数字占位组合，无可译内容"
+ },
+ "no heartbeat": {
+  "zh": "无心跳",
+  "confidence": "exact",
+  "notes": "心跳状态标签（termbase heartbeat→心跳）"
+ },
+ "won't run": {
+  "zh": "不会运行",
+  "confidence": "exact",
+  "notes": "调度状态标签"
+ }
+}

@@ -1,0 +1,1083 @@
+{
+ "session": {
+  "primary": {
+   "en_key": "session",
+   "zh": "会话",
+   "source": "hermes-agent-desktop"
+  },
+  "alternates": [
+   {
+    "en_key": "session titles",
+    "zh": "会话标题",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "session actions",
+    "zh": "会话操作",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "session timer",
+    "zh": "会话计时",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "session running",
+    "zh": "会话运行中",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "session deleted",
+    "zh": "会话已删除",
+    "source": "hermes-agent-desktop"
+   }
+  ]
+ },
+ "conversation": {
+  "primary": {
+   "en_key": "conversation",
+   "zh": "对话",
+   "source": "hermes-agent-desktop"
+  },
+  "alternates": [
+   {
+    "en_key": "conversation cleared",
+    "zh": "对话已清空",
+    "source": "hermes-webui"
+   },
+   {
+    "en_key": "conversation deleted",
+    "zh": "会话已删除",
+    "source": "hermes-webui"
+   }
+  ]
+ },
+ "agent": {
+  "primary": {
+   "en_key": "agent",
+   "zh": "智能体",
+   "source": "hermes-desktop"
+  },
+  "alternates": [
+   {
+    "en_key": "agent plugins",
+    "zh": "Agent 插件",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "agent + desktop",
+    "zh": "Agent + 桌面",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "agent memory (memory.md)",
+    "zh": "智能体记忆（MEMORY.md）",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "agent name",
+    "zh": "代理名称",
+    "source": "hermes-desktop"
+   },
+   {
+    "en_key": "agent memory",
+    "zh": "代理记忆",
+    "source": "hermes-desktop"
+   }
+  ]
+ },
+ "tool": {
+  "primary": {
+   "en_key": "tool definitions",
+   "zh": "工具定义",
+   "source": "hermes-agent-desktop"
+  },
+  "alternates": [
+   {
+    "en_key": "tool output",
+    "zh": "工具输出",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "tool call display",
+    "zh": "工具调用显示",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "tool api keys",
+    "zh": "工具 API Key",
+    "source": "hermes-desktop"
+   },
+   {
+    "en_key": "tool invocation frequency",
+    "zh": "工具调用频次",
+    "source": "hermes-webui"
+   }
+  ]
+ },
+ "tool call": {
+  "primary": {
+   "en_key": "tool call display",
+   "zh": "工具调用显示",
+   "source": "hermes-agent-desktop"
+  },
+  "alternates": []
+ },
+ "approval": {
+  "primary": {
+   "en_key": "approval",
+   "zh": "审批",
+   "source": "hermes-agent-desktop"
+  },
+  "alternates": [
+   {
+    "en_key": "approval needed",
+    "zh": "需要批准",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "approval mode",
+    "zh": "审批模式",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "approval required",
+    "zh": "需要审批",
+    "source": "hermes-webui"
+   }
+  ]
+ },
+ "approve": {
+  "primary": {
+   "en_key": "approve",
+   "zh": "批准",
+   "source": "hermes-agent-desktop"
+  },
+  "alternates": [
+   {
+    "en_key": "approve & publish",
+    "zh": "批准并发布",
+    "source": "hermes-agent-desktop"
+   }
+  ]
+ },
+ "reject": {
+  "primary": {
+   "en_key": "reject",
+   "zh": "拒绝",
+   "source": "hermes-agent-desktop"
+  },
+  "alternates": []
+ },
+ "kanban": {
+  "primary": {
+   "en_key": "kanban",
+   "zh": "看板",
+   "source": "hermes-desktop"
+  },
+  "alternates": [
+   {
+    "en_key": "kanban decomposer",
+    "zh": "看板分解器",
+    "source": "hermes-webui"
+   },
+   {
+    "en_key": "kanban unavailable",
+    "zh": "看板不可用",
+    "source": "hermes-webui"
+   },
+   {
+    "en_key": "kanban view: consolidated",
+    "zh": "看板视图：已合并",
+    "source": "hermes-webui"
+   }
+  ]
+ },
+ "board": {
+  "primary": {
+   "en_key": "board",
+   "zh": "看板",
+   "source": "hermes-webui"
+  },
+  "alternates": [
+   {
+    "en_key": "board settings",
+    "zh": "看板设置…",
+    "source": "hermes-webui"
+   },
+   {
+    "en_key": "board archived",
+    "zh": "看板已归档",
+    "source": "hermes-webui"
+   }
+  ]
+ },
+ "task": {
+  "primary": {
+   "en_key": "task",
+   "zh": "任务",
+   "source": "hermes-desktop"
+  },
+  "alternates": [
+   {
+    "en_key": "task planning",
+    "zh": "任务规划",
+    "source": "hermes-desktop"
+   },
+   {
+    "en_key": "task decomposition",
+    "zh": "任务分解",
+    "source": "hermes-webui"
+   }
+  ]
+ },
+ "worker": {
+  "primary": {
+   "en_key": "worker log",
+   "zh": "工作日志",
+   "source": "hermes-webui"
+  },
+  "alternates": []
+ },
+ "dispatch": {
+  "primary": {
+   "en_key": "dispatch",
+   "zh": "派发",
+   "source": "hermes-desktop"
+  },
+  "alternates": [
+   {
+    "en_key": "dispatch failed",
+    "zh": "派发失败",
+    "source": "hermes-desktop"
+   }
+  ]
+ },
+ "voice": {
+  "primary": {
+   "en_key": "voice",
+   "zh": "语音",
+   "source": "hermes-agent-desktop"
+  },
+  "alternates": [
+   {
+    "en_key": "voice dictation",
+    "zh": "语音听写",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "voice unavailable",
+    "zh": "语音不可用",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "voice playback failed",
+    "zh": "语音播放失败",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "voice recording failed",
+    "zh": "语音录制失败",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "voice transcription failed",
+    "zh": "语音转写失败",
+    "source": "hermes-agent-desktop"
+   }
+  ]
+ },
+ "speech": {
+  "primary": {
+   "en_key": "speech rate",
+   "zh": "语速",
+   "source": "hermes-webui"
+  },
+  "alternates": [
+   {
+    "en_key": "speech pitch",
+    "zh": "音调",
+    "source": "hermes-webui"
+   },
+   {
+    "en_key": "speech recognition unavailable",
+    "zh": "语音识别当前不可用。",
+    "source": "hermes-webui"
+   }
+  ]
+ },
+ "model": {
+  "primary": {
+   "en_key": "model",
+   "zh": "模型",
+   "source": "hermes-agent-desktop"
+  },
+  "alternates": [
+   {
+    "en_key": "model selected",
+    "zh": "模型已选择",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "model selection warning",
+    "zh": "模型选择警告",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "model switch failed",
+    "zh": "模型切换失败",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "model name",
+    "zh": "模型名称",
+    "source": "hermes-desktop"
+   },
+   {
+    "en_key": "model id",
+    "zh": "模型 ID",
+    "source": "hermes-desktop"
+   }
+  ]
+ },
+ "provider": {
+  "primary": {
+   "en_key": "provider",
+   "zh": "提供方",
+   "source": "hermes-agent-desktop"
+  },
+  "alternates": [
+   {
+    "en_key": "provider selected",
+    "zh": "已选择提供方",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "provider error",
+    "zh": "模型服务商错误",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "provider setup",
+    "zh": "提供商设置",
+    "source": "hermes-webui"
+   },
+   {
+    "en_key": "provider config",
+    "zh": "提供商配置",
+    "source": "hermes-webui"
+   },
+   {
+    "en_key": "provider mismatch",
+    "zh": "提供商不匹配",
+    "source": "hermes-webui"
+   }
+  ]
+ },
+ "profile": {
+  "primary": {
+   "en_key": "profile",
+   "zh": "档案",
+   "source": "hermes-desktop"
+  },
+  "alternates": [
+   {
+    "en_key": "profile imported",
+    "zh": "配置档案已导入",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "profile exported",
+    "zh": "配置档案已导出",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "profile connected",
+    "zh": "配置档案已连接",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "profile created",
+    "zh": "配置档案已创建",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "profile deleted",
+    "zh": "配置档案已删除",
+    "source": "hermes-agent-desktop"
+   }
+  ]
+ },
+ "gateway": {
+  "primary": {
+   "en_key": "gateway",
+   "zh": "网关",
+   "source": "hermes-agent-desktop"
+  },
+  "alternates": [
+   {
+    "en_key": "gateway settings",
+    "zh": "网关设置",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "gateway connection",
+    "zh": "网关连接…",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "gateway error",
+    "zh": "网关错误",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "gateway unavailable",
+    "zh": "网关不可用",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "gateway & profile",
+    "zh": "网关与配置",
+    "source": "hermes-agent-desktop"
+   }
+  ]
+ },
+ "connect": {
+  "primary": {
+   "en_key": "connect",
+   "zh": "连接",
+   "source": "hermes-agent-desktop"
+  },
+  "alternates": [
+   {
+    "en_key": "connect an account",
+    "zh": "连接账号",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "connect your apps",
+    "zh": "连接你的应用",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "connect existing",
+    "zh": "连接现有环境",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "connect another provider",
+    "zh": "连接其他提供方",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "connect via ssh",
+    "zh": "通过 SSH 连接",
+    "source": "hermes-agent-desktop"
+   }
+  ]
+ },
+ "connection": {
+  "primary": {
+   "en_key": "connection",
+   "zh": "连接",
+   "source": "hermes-desktop"
+  },
+  "alternates": [
+   {
+    "en_key": "connection mode",
+    "zh": "连接模式",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "connection failed",
+    "zh": "连接失败",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "connection test failed",
+    "zh": "连接测试失败",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "connection lost",
+    "zh": "连接已断开",
+    "source": "hermes-webui"
+   }
+  ]
+ },
+ "notification": {
+  "primary": {
+   "en_key": "notification settings",
+   "zh": "通知设置",
+   "source": "hermes-agent-desktop"
+  },
+  "alternates": [
+   {
+    "en_key": "notification sound",
+    "zh": "通知声音",
+    "source": "hermes-webui"
+   }
+  ]
+ },
+ "branch": {
+  "primary": {
+   "en_key": "branch",
+   "zh": "分支",
+   "source": "hermes-agent-desktop"
+  },
+  "alternates": [
+   {
+    "en_key": "branch off",
+    "zh": "从 ",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "branch failed",
+    "zh": "分支失败",
+    "source": "hermes-agent-desktop"
+   }
+  ]
+ },
+ "context": {
+  "primary": {
+   "en_key": "context",
+   "zh": "上下文",
+   "source": "hermes-webui"
+  },
+  "alternates": [
+   {
+    "en_key": "context compaction",
+    "zh": "上下文压缩",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "context meter",
+    "zh": "上下文用量",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "context usage",
+    "zh": "上下文用量",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "context summarization",
+    "zh": "上下文摘要",
+    "source": "hermes-webui"
+   }
+  ]
+ },
+ "memory": {
+  "primary": {
+   "en_key": "memory",
+   "zh": "记忆",
+   "source": "hermes-agent-desktop"
+  },
+  "alternates": [
+   {
+    "en_key": "memory graph",
+    "zh": "记忆图谱",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "memory data",
+    "zh": "记忆数据",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "memory & context",
+    "zh": "记忆与上下文",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "memory reset failed",
+    "zh": "记忆重置失败",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "memory write noted",
+    "zh": "已记下记忆写入",
+    "source": "hermes-agent-desktop"
+   }
+  ]
+ },
+ "skill": {
+  "primary": {
+   "en_key": "skill",
+   "zh": "技能",
+   "source": "hermes-webui"
+  },
+  "alternates": [
+   {
+    "en_key": "skill search",
+    "zh": "技能搜索",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "skill name",
+    "zh": "技能名称",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "skill enabled",
+    "zh": "技能已启用",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "skill disabled",
+    "zh": "技能已禁用",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "skill updated",
+    "zh": "技能已更新",
+    "source": "hermes-agent-desktop"
+   }
+  ]
+ },
+ "yolo": {
+  "primary": {
+   "en_key": "yolo off",
+   "zh": "YOLO 已关闭",
+   "source": "hermes-agent-desktop"
+  },
+  "alternates": [
+   {
+    "en_key": "yolo mode off",
+    "zh": "YOLO 模式已关闭",
+    "source": "hermes-webui"
+   }
+  ]
+ },
+ "composer": {
+  "primary": {
+   "en_key": "composer",
+   "zh": "输入框",
+   "source": "hermes-agent-desktop"
+  },
+  "alternates": []
+ },
+ "sidebar": {
+  "primary": {
+   "en_key": "sidebar",
+   "zh": "侧边栏",
+   "source": "hermes-agent-desktop"
+  },
+  "alternates": [
+   {
+    "en_key": "sidebar only",
+    "zh": "仅侧边栏",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "sidebar density",
+    "zh": "侧边栏密度",
+    "source": "hermes-webui"
+   },
+   {
+    "en_key": "sidebar tabs",
+    "zh": "侧边栏标签",
+    "source": "hermes-webui"
+   }
+  ]
+ },
+ "streaming": {
+  "primary": {
+   "en_key": "streaming",
+   "zh": "流式传输",
+   "source": "hermes-agent-desktop"
+  },
+  "alternates": [
+   {
+    "en_key": "streaming connection error",
+    "zh": "流式连接错误",
+    "source": "hermes-agent-desktop"
+   }
+  ]
+ },
+ "microphone": {
+  "primary": {
+   "en_key": "microphone failed",
+   "zh": "麦克风出错",
+   "source": "hermes-agent-desktop"
+  },
+  "alternates": [
+   {
+    "en_key": "microphone access denied",
+    "zh": "麦克风访问被拒绝。",
+    "source": "hermes-agent-desktop"
+   }
+  ]
+ },
+ "remote": {
+  "primary": {
+   "en_key": "remote gateway",
+   "zh": "远程网关",
+   "source": "hermes-agent-desktop"
+  },
+  "alternates": [
+   {
+    "en_key": "remote address",
+    "zh": "远程地址",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "remote url",
+    "zh": "远程 URL",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "remote gateway reachable",
+    "zh": "远程网关可访问",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "remote connection removed",
+    "zh": "已移除远程连接",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "remote gateway incomplete",
+    "zh": "远程网关配置不完整",
+    "source": "hermes-agent-desktop"
+   }
+  ]
+ },
+ "local": {
+  "primary": {
+   "en_key": "local",
+   "zh": "本地",
+   "source": "hermes-agent-desktop"
+  },
+  "alternates": [
+   {
+    "en_key": "local models",
+    "zh": "本地模型",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "local gateway",
+    "zh": "本地网关",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "local draft",
+    "zh": "本地草稿",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "local preview",
+    "zh": "本地预览",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "local runtime",
+    "zh": "本地运行时",
+    "source": "hermes-agent-desktop"
+   }
+  ]
+ },
+ "settings": {
+  "primary": {
+   "en_key": "settings",
+   "zh": "设置",
+   "source": "hermes-agent-desktop"
+  },
+  "alternates": [
+   {
+    "en_key": "settings fields",
+    "zh": "设置字段",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "settings saved",
+    "zh": "设置已保存",
+    "source": "hermes-webui"
+   }
+  ]
+ },
+ "appearance": {
+  "primary": {
+   "en_key": "appearance",
+   "zh": "外观",
+   "source": "hermes-agent-desktop"
+  },
+  "alternates": []
+ },
+ "archive": {
+  "primary": {
+   "en_key": "archive",
+   "zh": "归档",
+   "source": "hermes-agent-desktop"
+  },
+  "alternates": [
+   {
+    "en_key": "archive after",
+    "zh": "归档前",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "archive failed",
+    "zh": "归档失败",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "archive \"{{}}\"",
+    "zh": "归档「{{title}}」？",
+    "source": "hermes-desktop"
+   },
+   {
+    "en_key": "archive conversation",
+    "zh": "归档会话",
+    "source": "hermes-webui"
+   },
+   {
+    "en_key": "archive current board",
+    "zh": "归档当前看板…",
+    "source": "hermes-webui"
+   }
+  ]
+ },
+ "delete": {
+  "primary": {
+   "en_key": "delete",
+   "zh": "删除",
+   "source": "hermes-agent-desktop"
+  },
+  "alternates": [
+   {
+    "en_key": "delete model",
+    "zh": "删除模型",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "delete failed",
+    "zh": "删除失败",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "delete permanently",
+    "zh": "永久删除",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "delete session",
+    "zh": "删除会话",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "delete profile",
+    "zh": "删除配置档案？",
+    "source": "hermes-agent-desktop"
+   }
+  ]
+ },
+ "rename": {
+  "primary": {
+   "en_key": "rename",
+   "zh": "重命名…",
+   "source": "hermes-agent-desktop"
+  },
+  "alternates": [
+   {
+    "en_key": "rename pet",
+    "zh": "重命名宠物",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "rename group",
+    "zh": "重命名分组",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "rename project",
+    "zh": "重命名项目",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "rename failed",
+    "zh": "重命名失败",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "rename session",
+    "zh": "重命名会话",
+    "source": "hermes-agent-desktop"
+   }
+  ]
+ },
+ "duplicate": {
+  "primary": {
+   "en_key": "duplicate",
+   "zh": "复制",
+   "source": "hermes-webui"
+  },
+  "alternates": [
+   {
+    "en_key": "duplicate conversation",
+    "zh": "复制会话",
+    "source": "hermes-webui"
+   },
+   {
+    "en_key": "duplicate failed",
+    "zh": "复制失败：",
+    "source": "hermes-webui"
+   }
+  ]
+ },
+ "refresh": {
+  "primary": {
+   "en_key": "refresh",
+   "zh": "刷新",
+   "source": "hermes-agent-desktop"
+  },
+  "alternates": [
+   {
+    "en_key": "refresh status",
+    "zh": "刷新状态",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "refresh skills",
+    "zh": "刷新技能",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "refresh artifacts",
+    "zh": "刷新产物",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "refresh models",
+    "zh": "刷新模型",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "refresh tree",
+    "zh": "刷新文件树",
+    "source": "hermes-agent-desktop"
+   }
+  ]
+ },
+ "sign in": {
+  "primary": {
+   "en_key": "sign in",
+   "zh": "登录",
+   "source": "hermes-agent-desktop"
+  },
+  "alternates": []
+ },
+ "sign out": {
+  "primary": {
+   "en_key": "sign out",
+   "zh": "退出登录",
+   "source": "hermes-agent-desktop"
+  },
+  "alternates": [
+   {
+    "en_key": "sign out failed",
+    "zh": "退出登录失败：",
+    "source": "hermes-webui"
+   }
+  ]
+ },
+ "api key": {
+  "primary": {
+   "en_key": "api key",
+   "zh": "API 密钥",
+   "source": "hermes-webui"
+  },
+  "alternates": [
+   {
+    "en_key": "api key (optional)",
+    "zh": "API 密钥（可选）",
+    "source": "hermes-desktop"
+   },
+   {
+    "en_key": "api key override",
+    "zh": "API密钥覆盖",
+    "source": "hermes-webui"
+   },
+   {
+    "en_key": "api key configured",
+    "zh": "API 密钥已配置",
+    "source": "hermes-webui"
+   },
+   {
+    "en_key": "api key saved",
+    "zh": "API 密钥已保存",
+    "source": "hermes-webui"
+   },
+   {
+    "en_key": "api key removed",
+    "zh": "API 密钥已移除",
+    "source": "hermes-webui"
+   }
+  ]
+ },
+ "token": {
+  "primary": {
+   "en_key": "token breakdown",
+   "zh": "令牌分解",
+   "source": "hermes-webui"
+  },
+  "alternates": [
+   {
+    "en_key": "token usage on",
+    "zh": "Token 用量显示已开启",
+    "source": "hermes-webui"
+   },
+   {
+    "en_key": "token usage off",
+    "zh": "Token 用量显示已关闭",
+    "source": "hermes-webui"
+   }
+  ]
+ },
+ "webhook": {
+  "primary": {
+   "en_key": "webhook deleted",
+   "zh": "Webhook 已删除",
+   "source": "hermes-agent-desktop"
+  },
+  "alternates": [
+   {
+    "en_key": "webhook receiver disabled",
+    "zh": "Webhook 接收器已禁用",
+    "source": "hermes-agent-desktop"
+   }
+  ]
+ },
+ "schedule": {
+  "primary": {
+   "en_key": "schedule",
+   "zh": "调度表达式",
+   "source": "hermes-webui"
+  },
+  "alternates": [
+   {
+    "en_key": "schedule it",
+    "zh": "安排任务",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "schedule this",
+    "zh": "定时执行",
+    "source": "hermes-agent-desktop"
+   },
+   {
+    "en_key": "schedule is required",
+    "zh": "排程为必填项。",
+    "source": "hermes-agent-desktop"
+   }
+  ]
+ },
+ "schedules": {
+  "primary": {
+   "en_key": "schedules",
+   "zh": "计划任务",
+   "source": "hermes-desktop"
+  },
+  "alternates": []
+ }
+}

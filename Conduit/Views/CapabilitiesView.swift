@@ -55,7 +55,7 @@ struct CapabilitiesView: View {
                 skillsSection
                 toolsetsSection
             }
-            .searchable(text: $searchText, prompt: "Search skills")
+            .searchable(text: $searchText, prompt: String(localized: "Search skills"))
             .scrollContentBackground(.hidden)
             .listStyle(.plain)
             .refreshable { await loadCapabilities() }
