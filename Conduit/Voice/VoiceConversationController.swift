@@ -55,6 +55,11 @@ final class VoiceConversationController: ObservableObject {
     private let routePolicyProvider: @MainActor () -> VoiceBargeInRoutePolicy
     private let submit: @MainActor (String) async -> Bool
     private let interrupt: @MainActor () async -> Void
+    /// Installed by AppState: the authoritative Voice Close teardown
+    /// (persist mute → `endVoiceSession` → sheet dismissal). A spoken End
+    /// Conversation phrase converges on it instead of a second teardown;
+    /// nil falls back to the controller-owned `stop()`.
+    private let endConversationRequest: (@MainActor () -> Void)?
     private var captureEventsTask: Task<Void, Never>?
     private var speechDeltas: [String] = []
     private var isDrainingSpeech = false
@@ -94,7 +99,8 @@ final class VoiceConversationController: ObservableObject {
         configuration: Configuration = Configuration(),
         routePolicyProvider: (@MainActor () -> VoiceBargeInRoutePolicy)? = nil,
         submit: @escaping @MainActor (String) async -> Bool,
-        interrupt: @escaping @MainActor () async -> Void
+        interrupt: @escaping @MainActor () async -> Void,
+        onEndConversation: (@MainActor () -> Void)? = nil
     ) {
         let capture = capture ?? AVAudioCaptureService()
         self.capture = capture
@@ -112,6 +118,7 @@ final class VoiceConversationController: ObservableObject {
         }
         self.submit = submit
         self.interrupt = interrupt
+        self.endConversationRequest = onEndConversation
         captureEventsTask = Task { [weak self, capture] in
             for await event in capture.events {
                 guard !Task.isCancelled else { return }
@@ -174,6 +181,13 @@ final class VoiceConversationController: ObservableObject {
     /// control session lifetime, user pause, barge-in, or route policy.
     var isContinuousConversationEnabled: Bool {
         preferences.continuousConversation
+    }
+
+    /// Observability seam: the preference blob currently applied to the
+    /// controller (mirrors the last `setProfilePreferences`), so hosts and
+    /// tests can read back what a preference mutation path actually reapplied.
+    var activePreferences: VoiceProfilePreferences {
+        preferences
     }
 
     /// True while a voice session or provider test is armed or live — i.e.
@@ -720,6 +734,14 @@ final class VoiceConversationController: ObservableObject {
                 await startListening()
                 return
             }
+            // Command boundary: spoken commands are recognized only on the
+            // existing transcription completion path, never during raw
+            // capture. End Conversation is checked first so a phrase present
+            // in both lists deterministically takes the stronger action.
+            if isWholeUtteranceEndConversationCommand(transcript) {
+                await endConversationForSpokenCommand()
+                return
+            }
             conversationTranscript.append(
                 VoiceConversationTranscriptEntry(speaker: .user, text: transcript)
             )
@@ -885,12 +907,30 @@ final class VoiceConversationController: ObservableObject {
         await startListening(includePreRoll: true)
     }
 
-    private func isWholeUtteranceStopCommand(_ transcript: String) -> Bool {
-        let normalized = transcript.lowercased()
-            .trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
-        return preferences.spokenStopPhrases.contains { phrase in
-            normalized == phrase.lowercased()
+    /// A spoken End Conversation phrase consumed the utterance locally: the
+    /// session closes through the same effective teardown as the sheet's
+    /// Close action — AppState installs that path here (persist mute →
+    /// `endVoiceSession` → sheet dismissal); the fallback covers callers
+    /// without the seam. Closing FIRST fences every stale continuation (the
+    /// teardown bumps the operation generation and cancels the in-flight
+    /// tasks) before the interrupt await, so a completion racing the Hermes
+    /// cancellation cannot reopen capture or playback. This runs regardless
+    /// of `continuousConversation` and is never followed by a relisten.
+    private func endConversationForSpokenCommand() async {
+        if let endConversationRequest {
+            endConversationRequest()
+        } else {
+            stop()
         }
+        await interrupt()
+    }
+
+    private func isWholeUtteranceEndConversationCommand(_ transcript: String) -> Bool {
+        VoiceSpokenCommands.matches(transcript, phrases: preferences.spokenEndConversationPhrases)
+    }
+
+    private func isWholeUtteranceStopCommand(_ transcript: String) -> Bool {
+        VoiceSpokenCommands.matches(transcript, phrases: preferences.spokenStopPhrases)
     }
 
     private func appendAssistantTranscriptDelta(_ text: String) {

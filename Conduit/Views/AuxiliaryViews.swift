@@ -521,6 +521,8 @@ struct SettingsView: View {
                     transcriptionMode: appState.voiceTranscriptionMode,
                     appleSpeechAvailability: appState.appleSpeechAvailability,
                     continuousConversation: appState.continuousConversationEnabled,
+                    spokenStopPhrases: appState.activeProfileVoicePreferences.spokenStopPhrases,
+                    spokenEndConversationPhrases: appState.activeProfileVoicePreferences.spokenEndConversationPhrases,
                     setVoiceEnabled: { enabled in
                         await appState.setVoiceEnabled(enabled)
                     },
@@ -529,6 +531,12 @@ struct SettingsView: View {
                     },
                     setContinuousConversation: { enabled in
                         appState.setContinuousConversation(enabled)
+                    },
+                    setStopPhrases: { phrases in
+                        appState.setSpokenStopPhrases(phrases)
+                    },
+                    setEndConversationPhrases: { phrases in
+                        appState.setSpokenEndConversationPhrases(phrases)
                     }
                 )
             } else {

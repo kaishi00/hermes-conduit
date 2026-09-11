@@ -16,9 +16,13 @@ struct VoiceSettingsRoute: View {
     let transcriptionMode: VoiceTranscriptionMode
     let appleSpeechAvailability: AppleSpeechRecognitionAvailability
     let continuousConversation: Bool
+    let spokenStopPhrases: [String]
+    let spokenEndConversationPhrases: [String]
     let setVoiceEnabled: (Bool) async -> Bool
     let setTranscriptionMode: (VoiceTranscriptionMode) async -> Bool
     let setContinuousConversation: (Bool) async -> Bool
+    let setStopPhrases: ([String]) -> Void
+    let setEndConversationPhrases: ([String]) -> Void
 
     init(
         bridge: DashboardTicketBridge,
@@ -29,9 +33,13 @@ struct VoiceSettingsRoute: View {
         transcriptionMode: VoiceTranscriptionMode,
         appleSpeechAvailability: AppleSpeechRecognitionAvailability,
         continuousConversation: Bool = true,
+        spokenStopPhrases: [String] = VoiceSpokenCommands.defaultStopPhrases,
+        spokenEndConversationPhrases: [String] = VoiceSpokenCommands.defaultEndConversationPhrases,
         setVoiceEnabled: @escaping (Bool) async -> Bool,
         setTranscriptionMode: @escaping (VoiceTranscriptionMode) async -> Bool,
-        setContinuousConversation: @escaping (Bool) async -> Bool = { _ in true }
+        setContinuousConversation: @escaping (Bool) async -> Bool = { _ in true },
+        setStopPhrases: @escaping ([String]) -> Void = { _ in },
+        setEndConversationPhrases: @escaping ([String]) -> Void = { _ in }
     ) {
         _service = StateObject(wrappedValue: HermesVoiceConfigurationService(bridge: bridge, profile: profile))
         _conversationController = ObservedObject(wrappedValue: conversationController)
@@ -40,9 +48,13 @@ struct VoiceSettingsRoute: View {
         self.transcriptionMode = transcriptionMode
         self.appleSpeechAvailability = appleSpeechAvailability
         self.continuousConversation = continuousConversation
+        self.spokenStopPhrases = spokenStopPhrases
+        self.spokenEndConversationPhrases = spokenEndConversationPhrases
         self.setVoiceEnabled = setVoiceEnabled
         self.setTranscriptionMode = setTranscriptionMode
         self.setContinuousConversation = setContinuousConversation
+        self.setStopPhrases = setStopPhrases
+        self.setEndConversationPhrases = setEndConversationPhrases
     }
 
     var body: some View {
@@ -54,9 +66,13 @@ struct VoiceSettingsRoute: View {
             transcriptionMode: transcriptionMode,
             appleSpeechAvailability: appleSpeechAvailability,
             continuousConversation: continuousConversation,
+            spokenStopPhrases: spokenStopPhrases,
+            spokenEndConversationPhrases: spokenEndConversationPhrases,
             setVoiceEnabled: setVoiceEnabled,
             setTranscriptionMode: setTranscriptionMode,
-            setContinuousConversation: setContinuousConversation
+            setContinuousConversation: setContinuousConversation,
+            setStopPhrases: setStopPhrases,
+            setEndConversationPhrases: setEndConversationPhrases
         )
     }
 }
@@ -98,6 +114,10 @@ struct VoiceSettingsView: View {
     @State private var transcriptionMode: VoiceTranscriptionMode
     @State private var appleSpeechAvailability: AppleSpeechRecognitionAvailability
     @State private var continuousConversation: Bool
+    let spokenStopPhrases: [String]
+    let spokenEndConversationPhrases: [String]
+    let setStopPhrases: ([String]) -> Void
+    let setEndConversationPhrases: ([String]) -> Void
 
     init(
         service: HermesVoiceConfigurationService,
@@ -107,9 +127,13 @@ struct VoiceSettingsView: View {
         transcriptionMode: VoiceTranscriptionMode = .hermes,
         appleSpeechAvailability: AppleSpeechRecognitionAvailability = .permissionRequired(localeIdentifier: Locale.current.identifier),
         continuousConversation: Bool = true,
+        spokenStopPhrases: [String] = VoiceSpokenCommands.defaultStopPhrases,
+        spokenEndConversationPhrases: [String] = VoiceSpokenCommands.defaultEndConversationPhrases,
         setVoiceEnabled: @escaping (Bool) async -> Bool = { _ in false },
         setTranscriptionMode: @escaping (VoiceTranscriptionMode) async -> Bool = { _ in false },
-        setContinuousConversation: @escaping (Bool) async -> Bool = { _ in true }
+        setContinuousConversation: @escaping (Bool) async -> Bool = { _ in true },
+        setStopPhrases: @escaping ([String]) -> Void = { _ in },
+        setEndConversationPhrases: @escaping ([String]) -> Void = { _ in }
     ) {
         self.service = service
         _conversationController = ObservedObject(wrappedValue: conversationController)
@@ -117,6 +141,10 @@ struct VoiceSettingsView: View {
         self.setVoiceEnabled = setVoiceEnabled
         self.setTranscriptionMode = setTranscriptionMode
         self.setContinuousConversation = setContinuousConversation
+        self.spokenStopPhrases = spokenStopPhrases
+        self.spokenEndConversationPhrases = spokenEndConversationPhrases
+        self.setStopPhrases = setStopPhrases
+        self.setEndConversationPhrases = setEndConversationPhrases
         _voiceEnabled = State(initialValue: voiceEnabled)
         _transcriptionMode = State(initialValue: transcriptionMode)
         _appleSpeechAvailability = State(initialValue: appleSpeechAvailability)
@@ -138,6 +166,7 @@ struct VoiceSettingsView: View {
                         providerSection(title: "Assistant speech", symbol: "speaker.wave.3", kind: .tts, providers: service.snapshot.ttsProviders)
                         credentialsSection
                         testingSection
+                        spokenControlsSection
                         wakeSection
                     }
                 }
@@ -437,6 +466,26 @@ struct VoiceSettingsView: View {
         }
     }
 
+    private var spokenControlsSection: some View {
+        ConduitSettingsSection(title: "Spoken Controls", symbol: "text.bubble", tint: .conduitAura) {
+            Text("Phrases you can say during a Voice conversation. A phrase matches only when it is the entire spoken utterance — the same words inside a longer sentence do nothing.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            SpokenPhraseListEditor(
+                title: "Stop Phrases",
+                purposeText: "Cancel the current response and keep Voice open.",
+                initialPhrases: spokenStopPhrases,
+                onChange: setStopPhrases
+            )
+            SpokenPhraseListEditor(
+                title: "End Conversation Phrases",
+                purposeText: "Close the Voice conversation completely.",
+                initialPhrases: spokenEndConversationPhrases,
+                onChange: setEndConversationPhrases
+            )
+        }
+    }
+
     private var wakeSection: some View {
         ConduitSettingsSection(title: "Wake phrase", symbol: "ear.and.waveform", tint: .conduitAura) {
             Text("The bundled bilingual wake model is not active yet. Its redistribution terms and checksums must be reviewed before it can be included in Conduit.")
@@ -561,8 +610,110 @@ struct VoiceSettingsView: View {
     private static let appleProviderID = "apple_on_device"
 }
 
-private struct VoiceProviderFieldEditor: View {
-    let field: VoiceTypedField
+/// Compact phrase-list editor for one spoken-command category: view, add,
+/// edit, and delete entries, including down to an empty list (which disables
+/// that command category — defaults are not forced back). Every save
+/// canonicalizes through `VoiceSpokenCommands` so duplicates and blanks never
+/// reach persistence.
+private struct SpokenPhraseListEditor: View {
+    let title: String
+    let purposeText: String
+    let initialPhrases: [String]
+    let onChange: ([String]) -> Void
+
+    @State private var phrases: [String]
+    @State private var draft = ""
+    @State private var editingIndex: Int?
+
+    init(title: String, purposeText: String, initialPhrases: [String], onChange: @escaping ([String]) -> Void) {
+        self.title = title
+        self.purposeText = purposeText
+        self.initialPhrases = initialPhrases
+        self.onChange = onChange
+        _phrases = State(initialValue: initialPhrases)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+            Text(purposeText)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if phrases.isEmpty {
+                Label("No phrases. This spoken command is disabled.", systemImage: "minus.circle")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            ForEach(phrases.indices, id: \.self) { index in
+                phraseRow(index)
+            }
+            HStack(spacing: 8) {
+                TextField(editingIndex == nil ? "Add a phrase" : "Edit phrase", text: $draft)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit(commitDraft)
+                    .accessibilityLabel(Text(editingIndex == nil ? "Add \(title)" : "Edit \(title)"))
+                Button(editingIndex == nil ? "Add" : "Save", action: commitDraft)
+                    .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private func phraseRow(_ index: Int) -> some View {
+        HStack(spacing: 10) {
+            Text(phrases[index])
+                .font(.subheadline)
+            Spacer()
+            Button {
+                draft = phrases[index]
+                editingIndex = index
+            } label: {
+                Image(systemName: "pencil")
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel(Text("Edit phrase \(phrases[index])"))
+            Button {
+                deletePhrase(at: index)
+            } label: {
+                Image(systemName: "minus.circle.fill")
+                    .foregroundStyle(.red)
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel(Text("Delete phrase \(phrases[index])"))
+        }
+        .padding(.vertical, 2)
+    }
+
+    private func commitDraft() {
+        let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        var updated = phrases
+        if let editingIndex, phrases.indices.contains(editingIndex) {
+            updated[editingIndex] = trimmed
+        } else {
+            updated.append(trimmed)
+        }
+        save(updated)
+    }
+
+    private func deletePhrase(at index: Int) {
+        guard phrases.indices.contains(index) else { return }
+        var updated = phrases
+        updated.remove(at: index)
+        save(updated)
+    }
+
+    private func save(_ updated: [String]) {
+        let canonical = VoiceSpokenCommands.canonicalizedPhraseList(updated)
+        phrases = canonical
+        onChange(canonical)
+        draft = ""
+        editingIndex = nil
+    }
+}
+
+private struct VoiceProviderFieldEditor: View {    let field: VoiceTypedField
     @Binding var value: String
     let isSaving: Bool
     let save: (String) async -> Void
