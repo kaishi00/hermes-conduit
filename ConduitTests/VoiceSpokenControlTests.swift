@@ -309,20 +309,33 @@ final class VoiceConversationSpokenEndCommandTests: XCTestCase {
         let gateway = MockGateway(transcript: transcript)
         let flags = Flags()
         let box = ControllerBox()
+        // Explicitly typed locals: the combined init expression otherwise
+        // blows up the Swift type checker (multiline + ternary closures).
+        let routeProvider: (@MainActor () -> VoiceBargeInRoutePolicy)?
+        if let routePolicy {
+            routeProvider = { routePolicy }
+        } else {
+            routeProvider = nil
+        }
+        let submitAction: @MainActor (String) async -> Bool = { text in
+            flags.submitTexts.append(text)
+            return true
+        }
+        let interruptAction: @MainActor () async -> Void = {
+            flags.interrupts += 1
+        }
+        let endAction: (@MainActor () -> Void)? = wiresCloseSeam ? {
+            flags.endConversationCount += 1
+            box.controller?.endVoiceSession()
+        } : nil
         let controller = VoiceConversationController(
             capture: capture,
             playback: MockPlayback(),
             gateway: gateway,
-            routePolicyProvider: routePolicy.map { policy in { policy } },
-            submit: { text in
-                flags.submitTexts.append(text)
-                return true
-            },
-            interrupt: { flags.interrupts += 1 },
-            onEndConversation: wiresCloseSeam ? {
-                flags.endConversationCount += 1
-                box.controller?.endVoiceSession()
-            } : nil
+            routePolicyProvider: routeProvider,
+            submit: submitAction,
+            interrupt: interruptAction,
+            onEndConversation: endAction
         )
         box.controller = controller
         return (controller, capture, gateway, flags)
