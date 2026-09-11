@@ -21,9 +21,6 @@ final class AppStateContinuousConversationPreferenceTests: XCTestCase {
         seed.spokenStopPhrases = ["halt", "quiet"]
         seed.transcriptionMode = .appleOnDevice
         savePreferences(seed, defaults: defaults, profile: "default", gateway: "https://example.com")
-        // Live mute must match the seeded value so this write does not
-        // intentionally overwrite outputMuted from the controller.
-        appState.voiceConversationController.setOutputMuted(true)
 
         appState.setContinuousConversation(false)
 
@@ -95,8 +92,10 @@ final class AppStateContinuousConversationPreferenceTests: XCTestCase {
         seed.continuousConversation = true
         savePreferences(seed, defaults: defaults, profile: "default", gateway: "https://example.com")
 
-        // Active Voice session is muted in memory only.
+        // Live Voice session muted in memory only.
+        appState.voiceConversationController.beginVoiceTurn(sessionID: "live-session")
         appState.voiceConversationController.setOutputMuted(true)
+        XCTAssertTrue(appState.voiceConversationController.hasLiveVoiceSession)
         XCTAssertTrue(appState.voiceConversationController.isOutputMuted)
 
         XCTAssertTrue(appState.setContinuousConversation(false))
@@ -106,6 +105,38 @@ final class AppStateContinuousConversationPreferenceTests: XCTestCase {
         let loaded = try loadPreferences(defaults: defaults, profile: "default", gateway: "https://example.com")
         XCTAssertTrue(loaded.outputMuted, "live mute is persisted so the reapplied blob cannot regress")
         XCTAssertFalse(loaded.continuousConversation)
+    }
+
+    func testSetContinuousConversationDoesNotCopyStaleControllerMuteWithoutLiveSession() throws {
+        let (appState, defaults, suite) = makeAppState(profile: "beta")
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        var alpha = VoiceProfilePreferences()
+        alpha.outputMuted = true
+        alpha.continuousConversation = true
+        savePreferences(alpha, defaults: defaults, profile: "alpha", gateway: "https://example.com")
+
+        var beta = VoiceProfilePreferences()
+        beta.outputMuted = false
+        beta.continuousConversation = true
+        savePreferences(beta, defaults: defaults, profile: "beta", gateway: "https://example.com")
+
+        // Controller still holds profile A's mute after a profile switch
+        // before refreshVoiceCapabilities has resynced it. No live session.
+        appState.voiceConversationController.setProfilePreferences(alpha)
+        appState.voiceConversationController.setOutputMuted(true)
+        XCTAssertFalse(appState.voiceConversationController.hasLiveVoiceSession)
+        XCTAssertEqual(appState.activeProfile, "beta")
+
+        XCTAssertTrue(appState.setContinuousConversation(false))
+
+        let loadedAlpha = try loadPreferences(defaults: defaults, profile: "alpha", gateway: "https://example.com")
+        let loadedBeta = try loadPreferences(defaults: defaults, profile: "beta", gateway: "https://example.com")
+        XCTAssertTrue(loadedAlpha.continuousConversation)
+        XCTAssertTrue(loadedAlpha.outputMuted)
+        XCTAssertFalse(loadedBeta.outputMuted, "stale controller mute from profile A must not overwrite B's persisted unmuted value")
+        XCTAssertFalse(loadedBeta.continuousConversation)
+        XCTAssertFalse(appState.voiceConversationController.isContinuousConversationEnabled)
     }
 
     func testSetContinuousConversationFailsWhenDisconnected() {

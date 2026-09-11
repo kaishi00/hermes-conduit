@@ -13084,11 +13084,8 @@ final class AppState: ObservableObject {
                 return false
             }
         }
-        var preferences = loadVoiceProfilePreferences(profile: activeProfile)
-        preferences.transcriptionMode = mode
-        saveVoiceProfilePreferences(preferences, profile: activeProfile)
+        updateActiveProfileVoicePreferences { $0.transcriptionMode = mode }
         voiceTranscriptionMode = mode
-        voiceConversationController.setProfilePreferences(preferences)
         refreshVoiceControllerGateway()
         refreshReadAloudGateway()
         return true
@@ -13097,17 +13094,29 @@ final class AppState: ObservableObject {
     @discardableResult
     func setContinuousConversation(_ enabled: Bool) -> Bool {
         guard isConnected else { return false }
-        var preferences = loadVoiceProfilePreferences(profile: activeProfile)
-        preferences.continuousConversation = enabled
-        // Live mute is authoritative while the controller holds a session.
-        // Persist it into the blob we reapply so this write cannot silently
-        // unmute an active Voice conversation (mute is otherwise only saved
-        // on sheet close).
-        preferences.outputMuted = voiceConversationController.isOutputMuted
-        saveVoiceProfilePreferences(preferences, profile: activeProfile)
+        updateActiveProfileVoicePreferences { $0.continuousConversation = enabled }
         continuousConversationEnabled = enabled
-        voiceConversationController.setProfilePreferences(preferences)
         return true
+    }
+
+    /// Loads the active profile's preference blob, applies `mutate`, and
+    /// reapplies it to the live controller.
+    ///
+    /// Live `isOutputMuted` is authoritative only while a Voice session is
+    /// actually armed (`hasLiveVoiceSession`). Otherwise the controller may
+    /// still hold the previous profile's mute until
+    /// `refreshVoiceCapabilities()` resyncs, so the loaded profile's
+    /// persisted `outputMuted` is left unchanged.
+    private func updateActiveProfileVoicePreferences(
+        _ mutate: (inout VoiceProfilePreferences) -> Void
+    ) {
+        var preferences = loadVoiceProfilePreferences(profile: activeProfile)
+        mutate(&preferences)
+        if voiceConversationController.hasLiveVoiceSession {
+            preferences.outputMuted = voiceConversationController.isOutputMuted
+        }
+        saveVoiceProfilePreferences(preferences, profile: activeProfile)
+        voiceConversationController.setProfilePreferences(preferences)
     }
 
     @discardableResult
