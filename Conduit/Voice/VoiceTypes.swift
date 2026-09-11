@@ -52,6 +52,53 @@ struct VoiceProviderDescriptor: Codable, Equatable, Identifiable {
     }
 }
 
+/// Shared canonicalization and whole-utterance matching for the spoken Voice
+/// command phrase lists (Stop, End Conversation). Matching is deliberately
+/// conservative: a command fires only when the ENTIRE transcribed utterance
+/// equals an ENTIRE configured phrase after normalization — no substring,
+/// fuzzy, or semantic matching. Both the transcript and the configured
+/// phrases are normalized the same way, so stored phrases need not be
+/// pre-trimmed or lowercased.
+enum VoiceSpokenCommands {
+    static let defaultStopPhrases = ["stop", "stop talking", "be quiet"]
+    static let defaultEndConversationPhrases = ["goodbye", "bye", "end conversation", "that's all"]
+
+    /// The single normalization used on both utterances and configured
+    /// phrases: case folding, typographic apostrophe folding (ASR emits
+    /// U+2019 for the U+0027 in defaults like "that's all"), and
+    /// leading/trailing whitespace and punctuation stripping (internal
+    /// punctuation such as the folded apostrophe survives).
+    static func canonicalized(_ text: String) -> String {
+        text.lowercased()
+            .replacingOccurrences(of: "\u{2019}", with: "'")
+            .trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+    }
+
+    /// True only when the whole utterance matches a whole configured phrase.
+    /// An utterance that canonicalizes to empty never matches.
+    static func matches(_ utterance: String, phrases: [String]) -> Bool {
+        let normalized = canonicalized(utterance)
+        guard !normalized.isEmpty else { return false }
+        return phrases.contains { canonicalized($0) == normalized }
+    }
+
+    /// Save-time canonicalization for a phrase list: trim each entry, drop
+    /// entries that canonicalize to empty, and de-duplicate by the same
+    /// canonical form used at runtime — keeping the first occurrence's
+    /// trimmed display form so user capitalization survives.
+    static func canonicalizedPhraseList(_ phrases: [String]) -> [String] {
+        var seen: Set<String> = []
+        var result: [String] = []
+        for phrase in phrases {
+            let trimmed = phrase.trimmingCharacters(in: .whitespacesAndNewlines)
+            let canonical = canonicalized(trimmed)
+            guard !canonical.isEmpty, seen.insert(canonical).inserted else { continue }
+            result.append(trimmed)
+        }
+        return result
+    }
+}
+
 struct VoiceProfilePreferences: Codable, Equatable {
     var outputMuted: Bool = false
     /// Whether a completed assistant response automatically opens the next
@@ -59,7 +106,10 @@ struct VoiceProfilePreferences: Codable, Equatable {
     /// barge-in, or route policy.
     var continuousConversation: Bool = true
     var continueWakeConversation: Bool = false
-    var spokenStopPhrases: [String] = ["stop", "stop talking", "be quiet"]
+    var spokenStopPhrases: [String] = VoiceSpokenCommands.defaultStopPhrases
+    /// Spoken phrases that close the whole Voice session through the
+    /// existing Close teardown path. An empty list disables the category.
+    var spokenEndConversationPhrases: [String] = VoiceSpokenCommands.defaultEndConversationPhrases
     /// Nil decodes older preferences as the Hermes-hosted route.
     var transcriptionMode: VoiceTranscriptionMode? = nil
 
@@ -82,7 +132,10 @@ struct VoiceProfilePreferences: Codable, Equatable {
         continuousConversation = try container.decodeIfPresent(Bool.self, forKey: .continuousConversation) ?? true
         continueWakeConversation = try container.decodeIfPresent(Bool.self, forKey: .continueWakeConversation) ?? false
         spokenStopPhrases = try container.decodeIfPresent([String].self, forKey: .spokenStopPhrases)
-            ?? ["stop", "stop talking", "be quiet"]
+            ?? VoiceSpokenCommands.defaultStopPhrases
+        spokenEndConversationPhrases = try container.decodeIfPresent(
+            [String].self, forKey: .spokenEndConversationPhrases
+        ) ?? VoiceSpokenCommands.defaultEndConversationPhrases
         transcriptionMode = try container.decodeIfPresent(VoiceTranscriptionMode.self, forKey: .transcriptionMode)
     }
 }

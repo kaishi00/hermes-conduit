@@ -509,6 +509,8 @@ struct SettingsView: View {
             )
         case .voice:
             if let bridge = appState.dashboardTicketBridge {
+                // One decode per render, not one per seeded field.
+                let voicePreferences = appState.activeProfileVoicePreferences
                 VoiceSettingsRoute(
                     bridge: bridge,
                     profile: snapshot.profile,
@@ -521,6 +523,8 @@ struct SettingsView: View {
                     transcriptionMode: appState.voiceTranscriptionMode,
                     appleSpeechAvailability: appState.appleSpeechAvailability,
                     continuousConversation: appState.continuousConversationEnabled,
+                    spokenStopPhrases: voicePreferences.spokenStopPhrases,
+                    spokenEndConversationPhrases: voicePreferences.spokenEndConversationPhrases,
                     setVoiceEnabled: { enabled in
                         await appState.setVoiceEnabled(enabled)
                     },
@@ -529,6 +533,12 @@ struct SettingsView: View {
                     },
                     setContinuousConversation: { enabled in
                         appState.setContinuousConversation(enabled)
+                    },
+                    setStopPhrases: { phrases in
+                        appState.setSpokenStopPhrases(phrases)
+                    },
+                    setEndConversationPhrases: { phrases in
+                        appState.setSpokenEndConversationPhrases(phrases)
                     }
                 )
             } else {

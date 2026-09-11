@@ -811,6 +811,9 @@ final class AppState: ObservableObject {
         },
         interrupt: { [weak self] in
             await self?.interruptForVoice()
+        },
+        onEndConversation: { [weak self] in
+            self?.closeVoiceConversation()
         }
     )
     /// Manual per-message read aloud for completed assistant responses.
@@ -13099,6 +13102,32 @@ final class AppState: ObservableObject {
         return true
     }
 
+    /// Saves an edited spoken Stop phrase list for the active profile and
+    /// reapplies it to the live controller. Goes through the shared Voice
+    /// preference mutation path so live mute is preserved exactly per
+    /// `hasLiveVoiceSession` authority (PR #159 semantics). Entries are
+    /// canonicalized (trimmed, de-duplicated, blanks dropped) at this
+    /// boundary — the single write authority for phrase lists.
+    func setSpokenStopPhrases(_ phrases: [String]) {
+        // Same connected-state policy as `setContinuousConversation`: the
+        // preference key is gateway-qualified, and a write while
+        // disconnected would land in the orphaned "disconnected" namespace.
+        guard isConnected else { return }
+        updateActiveProfileVoicePreferences {
+            $0.spokenStopPhrases = VoiceSpokenCommands.canonicalizedPhraseList(phrases)
+        }
+    }
+
+    /// Saves an edited spoken End Conversation phrase list. Same contract as
+    /// `setSpokenStopPhrases`; an intentionally emptied list persists as
+    /// empty and disables that spoken-command category.
+    func setSpokenEndConversationPhrases(_ phrases: [String]) {
+        guard isConnected else { return }
+        updateActiveProfileVoicePreferences {
+            $0.spokenEndConversationPhrases = VoiceSpokenCommands.canonicalizedPhraseList(phrases)
+        }
+    }
+
     /// Loads the active profile's preference blob, applies `mutate`, and
     /// reapplies it to the live controller.
     ///
@@ -13307,6 +13336,13 @@ final class AppState: ObservableObject {
             return VoiceProfilePreferences()
         }
         return preferences
+    }
+
+    /// The active profile's persisted Voice preferences, for display surfaces
+    /// (settings editors seed from this). Mutations go through the dedicated
+    /// setters, never by writing this value back.
+    var activeProfileVoicePreferences: VoiceProfilePreferences {
+        loadVoiceProfilePreferences(profile: activeProfile)
     }
 
     private func saveVoiceProfilePreferences(_ preferences: VoiceProfilePreferences, profile: String) {
