@@ -447,7 +447,11 @@ private final class MockGateway: VoiceGatewayService {
         onPCM16: @escaping @MainActor (Data, Double) throws -> Void,
         onEncodedAudio: @escaping @MainActor (Data) throws -> Void
     ) async throws -> VoiceSpeechStream {
-        MockSpeechStream()
+        // Mirror the production streaming provider: opening a stream for a
+        // drain that has deltas delivers the start control immediately, so
+        // playback state and playback-capture policy engage deterministically.
+        try onStart(24_000)
+        return MockSpeechStream()
     }
 }
 
