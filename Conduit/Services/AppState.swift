@@ -13109,6 +13109,10 @@ final class AppState: ObservableObject {
     /// canonicalized (trimmed, de-duplicated, blanks dropped) at this
     /// boundary — the single write authority for phrase lists.
     func setSpokenStopPhrases(_ phrases: [String]) {
+        // Same connected-state policy as `setContinuousConversation`: the
+        // preference key is gateway-qualified, and a write while
+        // disconnected would land in the orphaned "disconnected" namespace.
+        guard isConnected else { return }
         updateActiveProfileVoicePreferences {
             $0.spokenStopPhrases = VoiceSpokenCommands.canonicalizedPhraseList(phrases)
         }
@@ -13118,6 +13122,7 @@ final class AppState: ObservableObject {
     /// `setSpokenStopPhrases`; an intentionally emptied list persists as
     /// empty and disables that spoken-command category.
     func setSpokenEndConversationPhrases(_ phrases: [String]) {
+        guard isConnected else { return }
         updateActiveProfileVoicePreferences {
             $0.spokenEndConversationPhrases = VoiceSpokenCommands.canonicalizedPhraseList(phrases)
         }

@@ -84,6 +84,20 @@ final class VoiceSpokenCommandMatchingTests: XCTestCase {
         XCTAssertEqual(canonical, ["Stop", "be quiet"])
     }
 
+    func testCanonicalizedPhraseListProducesPairwiseDistinctEntries() {
+        // The phrase-list editor renders rows with value identity, so the
+        // seeded representation must never contain duplicate raw strings —
+        // including when it seeds from a legacy blob written before
+        // canonicalization existed.
+        let canonical = VoiceSpokenCommands.canonicalizedPhraseList(
+            ["Stop", "stop", "STOP ", "be quiet", "be quiet.", "", "  ", "halt!"]
+        )
+        // Display form is the first occurrence, whitespace-trimmed only;
+        // "halt!" still matches "halt" at runtime via canonicalization.
+        XCTAssertEqual(canonical, ["Stop", "be quiet", "halt!"])
+        XCTAssertEqual(Set(canonical).count, canonical.count)
+    }
+
     func testEmptyListDisablesMatchingEntirely() {
         XCTAssertFalse(VoiceSpokenCommands.matches("stop", phrases: []))
         XCTAssertFalse(VoiceSpokenCommands.matches("goodbye", phrases: []))
@@ -602,6 +616,21 @@ final class AppStateVoiceSpokenPhraseTests: XCTestCase {
         let loadedBeta = try loadPreferences(defaults: defaults, profile: "beta", gateway: "https://example.com")
         XCTAssertEqual(loadedBeta.spokenStopPhrases, ["beta-quiet"])
         XCTAssertFalse(loadedBeta.outputMuted, "stale controller mute must not overwrite B's persisted value")
+    }
+
+    func testSpokenPhraseEditsDoNotPersistWhileDisconnected() {
+        let (appState, defaults, suite) = makeAppState(profile: "default")
+        defer { defaults.removePersistentDomain(forName: suite) }
+        appState.connection = nil
+        appState.isConnected = false
+
+        appState.setSpokenStopPhrases(["quiet"])
+        appState.setSpokenEndConversationPhrases(["bye"])
+
+        XCTAssertNil(
+            defaults.data(forKey: "conduit.voice.preferences.v1.disconnected.default"),
+            "disconnected phrase edits must not write the orphaned gateway namespace"
+        )
     }
 
     func testEmptyEndConversationListRoundTripsAsEmpty() throws {

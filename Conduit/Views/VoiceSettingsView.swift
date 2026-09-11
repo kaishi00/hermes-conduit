@@ -632,7 +632,10 @@ private struct SpokenPhraseListEditor: View {
         self.purposeText = purposeText
         self.initialPhrases = initialPhrases
         self.onChange = onChange
-        _phrases = State(initialValue: initialPhrases)
+        // Seed through the same canonicalization the write path uses: a
+        // legacy or externally written blob can carry duplicate/non-canonical
+        // entries, and the value-identity ForEach requires distinct values.
+        _phrases = State(initialValue: VoiceSpokenCommands.canonicalizedPhraseList(initialPhrases))
     }
 
     var body: some View {
@@ -709,15 +712,8 @@ private struct SpokenPhraseListEditor: View {
 
     private func deletePhrase(_ phrase: String) {
         guard let index = phrases.firstIndex(of: phrase) else { return }
-        // Deleting the row being edited (or one before it) shifts the
-        // positional edit target — resolve or drop the pending edit instead
-        // of letting it land on the wrong row.
-        if editingIndex == index {
-            editingIndex = nil
-            draft = ""
-        } else if let editIndex = editingIndex, index < editIndex {
-            editingIndex = editIndex - 1
-        }
+        // Deleting any row discards the current in-progress edit: save()
+        // clears the draft and the edit target unconditionally.
         var updated = phrases
         updated.remove(at: index)
         save(updated)
