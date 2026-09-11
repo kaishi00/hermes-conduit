@@ -520,11 +520,15 @@ struct SettingsView: View {
                     voiceEnabled: appState.isVoiceEnabled,
                     transcriptionMode: appState.voiceTranscriptionMode,
                     appleSpeechAvailability: appState.appleSpeechAvailability,
+                    continuousConversation: appState.continuousConversationEnabled,
                     setVoiceEnabled: { enabled in
                         await appState.setVoiceEnabled(enabled)
                     },
                     setTranscriptionMode: { mode in
                         await appState.setVoiceTranscriptionMode(mode)
+                    },
+                    setContinuousConversation: { enabled in
+                        appState.setContinuousConversation(enabled)
                     }
                 )
             } else {

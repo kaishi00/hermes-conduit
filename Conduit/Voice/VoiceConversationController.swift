@@ -169,6 +169,13 @@ final class VoiceConversationController: ObservableObject {
         isOutputMuted = preferences.outputMuted
     }
 
+    /// Whether a completed assistant response automatically opens the next
+    /// listening turn. This is conversation continuation only — it does not
+    /// control session lifetime, user pause, barge-in, or route policy.
+    var isContinuousConversationEnabled: Bool {
+        preferences.continuousConversation
+    }
+
     /// True while a voice session or provider test is armed or live — i.e.
     /// while voice audio ownership may exist or is being acquired — so
     /// audio-adjacent side features (response haptics) stand down.
@@ -284,6 +291,9 @@ final class VoiceConversationController: ObservableObject {
             utteranceStartedAt = Date()
             lastSpeechAt = nil
             bargeInStartedAt = nil
+            // Listen from a settled continuous-OFF session: capture is live
+            // again, so the state must not remain .idle.
+            if state == .idle { state = .listening }
         } catch {
             state = .failed(error.localizedDescription)
         }
@@ -1000,10 +1010,34 @@ final class VoiceConversationController: ObservableObject {
         if assistantFinished && speechDeltas.isEmpty && speechStream == nil {
             assistantFinished = false
             guard isSpeechDrainCurrent(operation: operation, revision: revision) else { return }
-            cachedRoutePolicy = nil
-            isPlaybackCaptureSuspended = false
-            await startListening()
+            // Conversation continuation only. Safety/recovery restarts
+            // (barge-in, manual Interrupt, empty transcript, spoken stop,
+            // stream cancellation after the assistant finished) always
+            // re-listen and are intentionally not gated here.
+            if preferences.continuousConversation {
+                cachedRoutePolicy = nil
+                isPlaybackCaptureSuspended = false
+                await startListening()
+            } else {
+                settleOpenSessionAfterAssistantTurn()
+            }
         }
+    }
+
+    /// Continuous conversation OFF: leave the voice session/sheet open after
+    /// a completed assistant turn without opening the next listening window.
+    /// Capture is paused without the user-pause flag so the sheet's Listen
+    /// control remains "start the next turn", not "unpause".
+    private func settleOpenSessionAfterAssistantTurn() {
+        cachedRoutePolicy = nil
+        isPlaybackCaptureSuspended = false
+        // Full-duplex routes keep capture live through TTS for barge-in.
+        if !isMicrophonePaused {
+            capture.pause()
+        }
+        speechDetector.reset()
+        resetMicrophoneMeter()
+        state = .idle
     }
 
     private func cancelSpeechDrainAndStream() {

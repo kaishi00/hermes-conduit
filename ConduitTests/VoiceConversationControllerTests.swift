@@ -1842,6 +1842,367 @@ final class VoiceSpeakerSafeBargeInTests: XCTestCase {
     }
 }
 
+/// `continuousConversation` gates ONLY conversation continuation after a
+/// completed assistant turn. Safety/recovery restarts (empty transcript,
+/// spoken stop, barge-in, manual Interrupt, speech-stream cancellation after
+/// the assistant finished) always re-listen; this suite pins both sides.
+@MainActor
+final class ContinuousConversationPreferenceTests: XCTestCase {
+    func testContinuousConversationDefaultsToTrue() {
+        XCTAssertTrue(VoiceProfilePreferences().continuousConversation)
+    }
+
+    func testOlderPreferenceBlobWithoutFieldDecodesAsContinuousOn() throws {
+        let data = try XCTUnwrap(
+            #"{"outputMuted":false,"continueWakeConversation":false,"spokenStopPhrases":["stop"]}"#
+                .data(using: .utf8)
+        )
+        let preferences = try JSONDecoder().decode(VoiceProfilePreferences.self, from: data)
+        XCTAssertTrue(preferences.continuousConversation)
+    }
+
+    func testContinuousOnPreservesPostAssistantAutomaticRelisten() async {
+        let capture = MockCapture(permissionGranted: true)
+        let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
+        let controller = makeController(capture: capture, gateway: gateway, continuous: true)
+
+        await Self.driveToAssistantCompletion(controller, gateway: gateway)
+
+        XCTAssertEqual(controller.state, .listening)
+        XCTAssertEqual(capture.startCount, 2, "continuous ON restarts capture after TTS")
+        XCTAssertTrue(controller.hasLiveVoiceSession)
+        XCTAssertFalse(controller.isMicrophonePaused)
+        XCTAssertFalse(controller.isPlaybackCaptureSuspended)
+    }
+
+    func testContinuousOffDoesNotAutomaticRelistenAfterAssistantCompletion() async {
+        let capture = MockCapture(permissionGranted: true)
+        let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
+        let policy = RoutePolicyBox(.fullDuplex)
+        let controller = VoiceConversationController(
+            capture: capture,
+            playback: MockPlayback(),
+            gateway: gateway,
+            routePolicyProvider: { policy.policy },
+            submit: { _ in true },
+            interrupt: {}
+        )
+        controller.setProfilePreferences(Self.preferences(continuous: false))
+
+        await Self.driveToAssistantCompletion(controller, gateway: gateway)
+
+        XCTAssertEqual(controller.state, .idle, "settled open session must not claim Listening")
+        XCTAssertEqual(capture.startCount, 1, "continuous OFF must not reopen capture after TTS")
+        XCTAssertTrue(capture.didPause, "settle must pause full-duplex capture so the mic tap is not left live")
+        XCTAssertTrue(controller.hasLiveVoiceSession, "the voice session stays open")
+        XCTAssertFalse(controller.isMicrophonePaused, "settling is not a user pause")
+        XCTAssertFalse(controller.isPlaybackCaptureSuspended)
+    }
+
+    func testContinuousOffMuteDuringAssistantStillSettlesWithoutRelisten() async {
+        let capture = MockCapture(permissionGranted: true)
+        let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
+        let policy = RoutePolicyBox(.fullDuplex)
+        let controller = VoiceConversationController(
+            capture: capture,
+            playback: MockPlayback(),
+            gateway: gateway,
+            routePolicyProvider: { policy.policy },
+            submit: { _ in true },
+            interrupt: {}
+        )
+        controller.setProfilePreferences(Self.preferences(continuous: false))
+
+        await Self.driveToSpeaking(controller, gateway: gateway)
+        controller.setOutputMuted(true)
+        controller.receiveAssistantEvent(.completed(sessionID: "session", content: "Answer."))
+        try? await Task.sleep(nanoseconds: 120_000_000)
+
+        XCTAssertEqual(controller.state, .idle)
+        XCTAssertEqual(capture.startCount, 1)
+        XCTAssertTrue(capture.didPause)
+        XCTAssertTrue(controller.hasLiveVoiceSession)
+
+        // Unmute from the settled idle session must not claim a listening turn.
+        controller.setOutputMuted(false)
+        XCTAssertEqual(controller.state, .idle)
+        XCTAssertEqual(capture.startCount, 1)
+    }
+
+    func testContinuousOffUserCanExplicitlyStartAnotherListeningTurn() async {
+        let capture = MockCapture(permissionGranted: true)
+        let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
+        let controller = makeController(capture: capture, gateway: gateway, continuous: false)
+
+        await Self.driveToAssistantCompletion(controller, gateway: gateway)
+        XCTAssertEqual(capture.startCount, 1)
+
+        await controller.resumeMicrophone()
+
+        XCTAssertEqual(controller.state, .listening)
+        XCTAssertEqual(capture.startCount, 2)
+        XCTAssertTrue(controller.hasLiveVoiceSession)
+    }
+
+    func testContinuousOffKeepsEmptyTranscriptListening() async {
+        let capture = MockCapture(permissionGranted: true)
+        let gateway = MockGateway(transcript: "")
+        let controller = makeController(capture: capture, gateway: gateway, continuous: false)
+        controller.beginVoiceTurn(sessionID: "session")
+        await controller.startListening()
+
+        let start = Date()
+        controller.ingestAudioLevel(0.1, at: start)
+        controller.ingestAudioLevel(0, at: start.addingTimeInterval(1.3))
+        try? await Task.sleep(nanoseconds: 80_000_000)
+
+        XCTAssertEqual(controller.state, .listening, "empty transcript stays in the current listening engagement")
+        XCTAssertEqual(capture.startCount, 2)
+    }
+
+    func testContinuousOffKeepsSpokenStopPhraseRelisten() async {
+        let capture = MockCapture(permissionGranted: true)
+        let gateway = MockGateway(transcript: "Stop")
+        var interrupts = 0
+        let controller = VoiceConversationController(
+            capture: capture,
+            playback: MockPlayback(),
+            gateway: gateway,
+            submit: { _ in true },
+            interrupt: { interrupts += 1 }
+        )
+        controller.setProfilePreferences(Self.preferences(continuous: false))
+        controller.beginVoiceTurn(sessionID: "session")
+        await controller.startListening()
+
+        let start = Date()
+        controller.ingestAudioLevel(0.1, at: start)
+        controller.ingestAudioLevel(0, at: start.addingTimeInterval(1.3))
+        try? await Task.sleep(nanoseconds: 80_000_000)
+
+        XCTAssertEqual(interrupts, 1)
+        XCTAssertEqual(controller.state, .listening)
+        XCTAssertEqual(capture.startCount, 2)
+        XCTAssertTrue(controller.hasLiveVoiceSession)
+    }
+
+    func testContinuousOffKeepsSpeakerSafeInterruptRecovery() async {
+        let capture = MockCapture(permissionGranted: true)
+        let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
+        var interrupts = 0
+        let policy = RoutePolicyBox(.speakerSafeHalfDuplex)
+        let controller = VoiceConversationController(
+            capture: capture,
+            playback: MockPlayback(),
+            gateway: gateway,
+            routePolicyProvider: { policy.policy },
+            submit: { _ in true },
+            interrupt: { interrupts += 1 }
+        )
+        controller.setProfilePreferences(Self.preferences(continuous: false))
+
+        await Self.driveToSpeaking(controller, gateway: gateway)
+        XCTAssertTrue(controller.isPlaybackCaptureSuspended)
+
+        await controller.interruptAssistantPlayback()
+
+        XCTAssertEqual(interrupts, 1)
+        XCTAssertEqual(controller.state, .listening)
+        XCTAssertEqual(capture.startCount, 2)
+        XCTAssertFalse(controller.isPlaybackCaptureSuspended)
+    }
+
+    func testContinuousOffKeepsHeadsetBargeInRecovery() async {
+        let capture = MockCapture(permissionGranted: true)
+        let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
+        var interrupts = 0
+        let policy = RoutePolicyBox(.fullDuplex)
+        let controller = VoiceConversationController(
+            capture: capture,
+            playback: MockPlayback(),
+            gateway: gateway,
+            routePolicyProvider: { policy.policy },
+            submit: { _ in true },
+            interrupt: { interrupts += 1 }
+        )
+        controller.setProfilePreferences(Self.preferences(continuous: false))
+
+        await Self.driveToSpeaking(controller, gateway: gateway)
+        XCTAssertEqual(controller.state, .speaking)
+
+        let bargeInStart = Date()
+        controller.ingestAudioLevel(0.5, at: bargeInStart)
+        controller.ingestAudioLevel(0.5, at: bargeInStart.addingTimeInterval(0.31))
+        try? await Task.sleep(nanoseconds: 80_000_000)
+
+        XCTAssertEqual(interrupts, 1)
+        XCTAssertEqual(controller.state, .listening)
+        XCTAssertEqual(capture.lastStartIncludePreRoll, true)
+    }
+
+    func testContinuousOffSpeakerRouteStillSuspendsCaptureDuringTTS() async {
+        let capture = MockCapture(permissionGranted: true)
+        let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
+        var interrupts = 0
+        let policy = RoutePolicyBox(.speakerSafeHalfDuplex)
+        let controller = VoiceConversationController(
+            capture: capture,
+            playback: MockPlayback(),
+            gateway: gateway,
+            routePolicyProvider: { policy.policy },
+            submit: { _ in true },
+            interrupt: { interrupts += 1 }
+        )
+        controller.setProfilePreferences(Self.preferences(continuous: false))
+
+        await Self.driveToSpeaking(controller, gateway: gateway)
+
+        XCTAssertTrue(controller.isPlaybackCaptureSuspended)
+        let leakStart = Date()
+        controller.ingestAudioLevel(0.5, at: leakStart)
+        controller.ingestAudioLevel(0.5, at: leakStart.addingTimeInterval(0.31))
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(interrupts, 0, "route safety is independent of continuousConversation")
+        XCTAssertEqual(controller.state, .speaking)
+    }
+
+    func testProfilePreferenceChangeSwitchesContinuationBehavior() async {
+        let capture = MockCapture(permissionGranted: true)
+        let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
+        let controller = makeController(capture: capture, gateway: gateway, continuous: true)
+
+        await Self.driveToAssistantCompletion(controller, gateway: gateway)
+        XCTAssertEqual(controller.state, .listening)
+        let startsAfterON = capture.startCount
+        XCTAssertEqual(startsAfterON, 2)
+
+        controller.stop()
+        controller.setProfilePreferences(Self.preferences(continuous: false))
+        await Self.driveToAssistantCompletion(controller, gateway: gateway)
+        XCTAssertEqual(controller.state, .idle)
+        XCTAssertEqual(capture.startCount, startsAfterON + 1, "OFF only performs the first listen of the turn")
+
+        controller.stop()
+        controller.setProfilePreferences(Self.preferences(continuous: true))
+        await Self.driveToAssistantCompletion(controller, gateway: gateway)
+        XCTAssertEqual(controller.state, .listening)
+    }
+
+    func testUserPauseRemainsAuthoritativeWithContinuousOn() async {
+        let capture = MockCapture(permissionGranted: true)
+        let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
+        let controller = makeController(capture: capture, gateway: gateway, continuous: true)
+
+        await Self.driveToSpeaking(controller, gateway: gateway)
+        controller.pauseMicrophone()
+        controller.receiveAssistantEvent(.completed(sessionID: "session", content: "Done."))
+        try? await Task.sleep(nanoseconds: 120_000_000)
+
+        XCTAssertEqual(controller.state, .listening)
+        XCTAssertTrue(controller.isMicrophonePaused)
+        XCTAssertEqual(capture.resumeCount, 0)
+    }
+
+    func testUserPauseThenListenAfterContinuousOffResumeTurn() async {
+        let capture = MockCapture(permissionGranted: true)
+        let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
+        let controller = makeController(capture: capture, gateway: gateway, continuous: false)
+
+        await Self.driveToSpeaking(controller, gateway: gateway)
+        controller.pauseMicrophone()
+        controller.receiveAssistantEvent(.completed(sessionID: "session", content: "Done."))
+        try? await Task.sleep(nanoseconds: 120_000_000)
+
+        XCTAssertEqual(controller.state, .idle)
+        XCTAssertTrue(controller.isMicrophonePaused)
+        XCTAssertEqual(capture.startCount, 1)
+
+        await controller.resumeMicrophone()
+
+        XCTAssertFalse(controller.isMicrophonePaused)
+        XCTAssertEqual(controller.state, .listening)
+    }
+
+    func testGenerationFenceBlocksLateCompletionAfterStopWithContinuousOff() async {
+        let capture = MockCapture(permissionGranted: true)
+        let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
+        let playback = MockPlayback()
+        let gate = InterruptGate()
+        playback.drainGate = gate
+        let controller = VoiceConversationController(
+            capture: capture,
+            playback: playback,
+            gateway: gateway,
+            submit: { _ in true },
+            interrupt: {}
+        )
+        controller.setProfilePreferences(Self.preferences(continuous: false))
+
+        await Self.driveToSpeaking(controller, gateway: gateway)
+        controller.receiveAssistantEvent(.completed(sessionID: "session", content: "Answer."))
+        await gate.waitUntilEntered()
+
+        let startsBeforeStop = capture.startCount
+        controller.stop()
+        gate.release()
+        try? await Task.sleep(nanoseconds: 80_000_000)
+
+        XCTAssertEqual(controller.state, .idle)
+        XCTAssertEqual(capture.startCount, startsBeforeStop, "stale drain completion must not reopen capture")
+        XCTAssertFalse(controller.hasLiveVoiceSession)
+    }
+
+    private func makeController(
+        capture: MockCapture,
+        gateway: MockGateway,
+        continuous: Bool
+    ) -> VoiceConversationController {
+        let controller = VoiceConversationController(
+            capture: capture,
+            playback: MockPlayback(),
+            gateway: gateway,
+            submit: { _ in true },
+            interrupt: {}
+        )
+        controller.setProfilePreferences(Self.preferences(continuous: continuous))
+        return controller
+    }
+
+    private static func preferences(continuous: Bool) -> VoiceProfilePreferences {
+        var preferences = VoiceProfilePreferences()
+        preferences.continuousConversation = continuous
+        return preferences
+    }
+
+    private static func driveToSpeaking(
+        _ controller: VoiceConversationController,
+        gateway: MockGateway,
+        sessionID: String = "session"
+    ) async {
+        controller.beginVoiceTurn(sessionID: sessionID)
+        await controller.startListening()
+        let utteranceStart = Date()
+        controller.ingestAudioLevel(0.1, at: utteranceStart)
+        controller.ingestAudioLevel(0, at: utteranceStart.addingTimeInterval(1.3))
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(controller.state, .thinking)
+        controller.receiveAssistantEvent(.started(sessionID: sessionID))
+        controller.receiveAssistantEvent(.delta(sessionID: sessionID, text: "Answer."))
+        try? await Task.sleep(nanoseconds: 80_000_000)
+        XCTAssertEqual(controller.state, .speaking)
+    }
+
+    private static func driveToAssistantCompletion(
+        _ controller: VoiceConversationController,
+        gateway: MockGateway,
+        sessionID: String = "session"
+    ) async {
+        await driveToSpeaking(controller, gateway: gateway, sessionID: sessionID)
+        controller.receiveAssistantEvent(.completed(sessionID: sessionID, content: "Answer."))
+        try? await Task.sleep(nanoseconds: 120_000_000)
+    }
+}
+
 /// Mutable route policy so tests can replay route transitions
 /// deterministically; production reads the live AVAudioSession route.
 @MainActor

@@ -54,6 +54,9 @@ struct VoiceProviderDescriptor: Codable, Equatable, Identifiable {
 
 struct VoiceProfilePreferences: Codable, Equatable {
     var outputMuted: Bool = false
+    /// Whether a completed assistant response automatically opens the next
+    /// listening turn. Does not control session lifetime, user pause,
+    /// barge-in, or route policy.
     var continuousConversation: Bool = true
     var continueWakeConversation: Bool = false
     var spokenStopPhrases: [String] = ["stop", "stop talking", "be quiet"]
@@ -62,6 +65,25 @@ struct VoiceProfilePreferences: Codable, Equatable {
 
     var resolvedTranscriptionMode: VoiceTranscriptionMode {
         transcriptionMode ?? .hermes
+    }
+
+    /// Explicit zero-arg initializer: a custom `init(from:)` removes the
+    /// synthesized memberwise/default initializer, and callers use
+    /// `VoiceProfilePreferences()` then mutate fields.
+    init() {}
+
+    /// Missing keys decode to the field defaults so a stored blob that never
+    /// wrote `continuousConversation` still yields ON (backward compatible).
+    /// Synthesized Codable would throw `keyNotFound` for absent non-optional
+    /// keys even when the property has a default value.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        outputMuted = try container.decodeIfPresent(Bool.self, forKey: .outputMuted) ?? false
+        continuousConversation = try container.decodeIfPresent(Bool.self, forKey: .continuousConversation) ?? true
+        continueWakeConversation = try container.decodeIfPresent(Bool.self, forKey: .continueWakeConversation) ?? false
+        spokenStopPhrases = try container.decodeIfPresent([String].self, forKey: .spokenStopPhrases)
+            ?? ["stop", "stop talking", "be quiet"]
+        transcriptionMode = try container.decodeIfPresent(VoiceTranscriptionMode.self, forKey: .transcriptionMode)
     }
 }
 

@@ -800,6 +800,7 @@ final class AppState: ObservableObject {
     @Published private(set) var voiceCapabilitySnapshot = VoiceCapabilitySnapshot.unavailable
     @Published private(set) var isVoiceEnabled = false
     @Published private(set) var voiceTranscriptionMode: VoiceTranscriptionMode = .hermes
+    @Published private(set) var continuousConversationEnabled = true
     @Published private(set) var appleSpeechAvailability = AppleOnDeviceSpeechTranscriber.currentAvailability()
 
     private var voiceAssistantObserverID: UUID?
@@ -1227,6 +1228,10 @@ final class AppState: ObservableObject {
     /// of release builds.
     var presentationCacheFlushOperationForTesting: Task<Void, Never>? {
         presentationCacheFlushTask
+    }
+
+    func setActiveProfileForTesting(_ profile: String) {
+        setActiveProfile(profile)
     }
 #endif
 
@@ -2778,6 +2783,7 @@ final class AppState: ObservableObject {
         voiceCapabilitySnapshot = .unavailable
         isVoiceEnabled = false
         voiceTranscriptionMode = .hermes
+        continuousConversationEnabled = true
         appleSpeechAvailability = AppleOnDeviceSpeechTranscriber.currentAvailability()
         retireOutstandingPreferredReturnSurfaceRequests()
         showLogin = true
@@ -13035,6 +13041,7 @@ final class AppState: ObservableObject {
         voiceCapabilitySnapshot = service.snapshot.capability
         let preferences = loadVoiceProfilePreferences(profile: profile)
         voiceTranscriptionMode = preferences.resolvedTranscriptionMode
+        continuousConversationEnabled = preferences.continuousConversation
         voiceConversationController.setProfilePreferences(preferences)
         refreshVoiceControllerGateway()
         refreshReadAloudGateway()
@@ -13077,14 +13084,39 @@ final class AppState: ObservableObject {
                 return false
             }
         }
-        var preferences = loadVoiceProfilePreferences(profile: activeProfile)
-        preferences.transcriptionMode = mode
-        saveVoiceProfilePreferences(preferences, profile: activeProfile)
+        updateActiveProfileVoicePreferences { $0.transcriptionMode = mode }
         voiceTranscriptionMode = mode
-        voiceConversationController.setProfilePreferences(preferences)
         refreshVoiceControllerGateway()
         refreshReadAloudGateway()
         return true
+    }
+
+    @discardableResult
+    func setContinuousConversation(_ enabled: Bool) -> Bool {
+        guard isConnected else { return false }
+        updateActiveProfileVoicePreferences { $0.continuousConversation = enabled }
+        continuousConversationEnabled = enabled
+        return true
+    }
+
+    /// Loads the active profile's preference blob, applies `mutate`, and
+    /// reapplies it to the live controller.
+    ///
+    /// Live `isOutputMuted` is authoritative only while a Voice session is
+    /// actually armed (`hasLiveVoiceSession`). Otherwise the controller may
+    /// still hold the previous profile's mute until
+    /// `refreshVoiceCapabilities()` resyncs, so the loaded profile's
+    /// persisted `outputMuted` is left unchanged.
+    private func updateActiveProfileVoicePreferences(
+        _ mutate: (inout VoiceProfilePreferences) -> Void
+    ) {
+        var preferences = loadVoiceProfilePreferences(profile: activeProfile)
+        mutate(&preferences)
+        if voiceConversationController.hasLiveVoiceSession {
+            preferences.outputMuted = voiceConversationController.isOutputMuted
+        }
+        saveVoiceProfilePreferences(preferences, profile: activeProfile)
+        voiceConversationController.setProfilePreferences(preferences)
     }
 
     @discardableResult
