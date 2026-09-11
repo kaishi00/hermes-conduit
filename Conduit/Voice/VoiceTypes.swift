@@ -104,6 +104,13 @@ struct PendingVoiceIntent: Equatable {
     var profile: String?
     var startsFreshConversation: Bool
     var source: Source
+    /// Wall-clock deadline metadata (tests / identity). The actual timeout
+    /// wait uses `externalLaunchElapsedDeadline` so a backward clock step
+    /// cannot extend the Siri budget.
+    var externalLaunchDeadline: Date? = nil
+    /// Monotonic elapsed deadline armed at enqueue. Authoritative for the
+    /// deadline waiter; nil for requests with no external budget.
+    var externalLaunchElapsedDeadline: ContinuousClock.Instant? = nil
 
     enum Source: String, Equatable { case composer, wakePhrase, siri }
 }

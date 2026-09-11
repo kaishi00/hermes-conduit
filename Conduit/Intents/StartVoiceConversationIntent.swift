@@ -40,12 +40,35 @@ struct ConduitProfileEntityQuery: EntityQuery {
 }
 
 /// Siri deliberately launches Conduit before a microphone is opened. The root
-/// scene consumes this pending request once its existing connection is ready.
+/// scene consumes this pending request once Hermes is ready — or fails it so
+/// a stale Siri launch cannot open Voice much later.
+///
+/// Foreground-first: `perform()` only records the request. It never opens the
+/// microphone or a full voice conversation inside the App Intent context.
 @available(iOS 16.0, *)
 struct StartVoiceConversationIntent: AppIntent {
     static var title: LocalizedStringResource = "Talk to Conduit"
     static var description = IntentDescription("Open Conduit and start a voice conversation.")
+
+    /// iOS 26+ deprecates `openAppWhenRun` in favor of `supportedModes`. This
+    /// redeclaration stays only for iOS 17–25 (the project's deployment
+    /// floor) and is marked deprecated at the same OS boundary so current-SDK
+    /// builds do not emit a normal deprecation warning. On iOS 26+,
+    /// `supportedModes` is the modern declaration; both express the same
+    /// foreground-first contract.
+    ///
+    /// The value must be a boolean literal: the App Intents metadata
+    /// processor rejects computed/unknown values for this property.
+    @available(iOS, deprecated: 26.0, message: "Use supportedModes on iOS 26+; retained for iOS 17–25.")
     static var openAppWhenRun: Bool = true
+
+    /// Bring Conduit to the foreground before the pending voice launch is
+    /// consumed. Never background-only: microphone capture and the voice
+    /// conversation belong to the foreground app scene.
+    @available(iOS 26.0, *)
+    static var supportedModes: IntentModes {
+        .foreground(.immediate)
+    }
 
     @Parameter(title: "Profile") var profile: ConduitProfileEntity?
 
@@ -54,11 +77,9 @@ struct StartVoiceConversationIntent: AppIntent {
     init(profile: ConduitProfileEntity?) { self.profile = profile }
 
     func perform() async throws -> some IntentResult {
-        let selectedProfile = profile?.id
+        let pending = PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: profile?.id)
         await MainActor.run {
-            PendingVoiceIntentStore.shared.enqueue(
-                PendingVoiceIntent(profile: selectedProfile, startsFreshConversation: true, source: .siri)
-            )
+            PendingVoiceIntentStore.shared.enqueue(pending)
         }
         return .result()
     }

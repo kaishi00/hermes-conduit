@@ -94,11 +94,10 @@ struct ConduitApp: App {
                 }
             }
             .task(id: voiceIntentRouteKey) {
-                guard appState.isConnected else { return }
-                let router = PendingVoiceIntentRouter(store: pendingVoiceIntents)
-                await router.routePending { intent in
-                    await appState.openVoiceConversation(intent)
-                }
+                await resolvePendingVoiceIntent()
+            }
+            .task(id: voiceIntentDeadlineKey) {
+                await waitOutPendingVoiceDeadline()
             }
     }
 
@@ -107,6 +106,61 @@ struct ConduitApp: App {
     }
 
     private var voiceIntentRouteKey: String {
-        "\(pendingVoiceIntents.revision):\(appState.isConnected)"
+        let connection = appState.voiceLaunchConnectionSnapshot()
+        // Phase (not a bare isConnected flag) so connecting → stableFailure
+        // re-evaluates the pending request while remaining disconnected.
+        // Do not embed pendingSource: take() clears it without a revision
+        // bump, and openVoiceConversation’s @Published mutations would flip
+        // the key mid-handler and cancel the in-flight route task.
+        return "\(pendingVoiceIntents.revision):\(connection.phase.rawValue)"
+    }
+
+    /// Deadline changes (new Siri enqueue / supersede) re-arm the wait; the
+    /// revision already covers every other store mutation.
+    private var voiceIntentDeadlineKey: String {
+        guard let deadline = pendingVoiceIntents.pendingExternalLaunchDeadline else { return "none" }
+        return "\(pendingVoiceIntents.revision):\(Int(deadline.timeIntervalSinceReferenceDate))"
+    }
+
+    /// Resolves the pending voice launch once. Ownership token: only the
+    /// claimed request may be routed or failed; a superseded completion is
+    /// discarded without publishing.
+    private func resolvePendingVoiceIntent() async {
+        let router = PendingVoiceIntentRouter(store: pendingVoiceIntents)
+        let connection = appState.voiceLaunchConnectionSnapshot()
+        let outcome = await router.routePending(connection: connection) { intent in
+            await appState.openVoiceConversation(intent)
+        }
+        switch outcome {
+        case .failed(let message):
+            appState.errorMessage = message
+        case .idle, .routed, .deferred, .superseded:
+            break
+        }
+    }
+
+    /// Authoritative 30s backstop. Sleeps on the monotonic clock, then
+    /// expires the exact claim that armed the wait — never routes through
+    /// generic readiness (which could return `.waiting` again).
+    private func waitOutPendingVoiceDeadline() async {
+        guard let claim = pendingVoiceIntents.peekClaim(),
+              let elapsedDeadline = claim.intent.externalLaunchElapsedDeadline else {
+            return
+        }
+        let now = ContinuousClock.now
+        if now < elapsedDeadline {
+            do {
+                try await Task.sleep(for: now.duration(to: elapsedDeadline))
+            } catch {
+                // Superseded/cancelled waiter must not resolve a different intent.
+                return
+            }
+        }
+        guard let expired = pendingVoiceIntents.expireClaimIfCurrent(claim) else {
+            return
+        }
+        if expired.source == .siri {
+            appState.errorMessage = PendingVoiceLaunchPolicy.expiredFailureMessage
+        }
     }
 }
