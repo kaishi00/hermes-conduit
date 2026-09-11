@@ -15,8 +15,10 @@ struct VoiceSettingsRoute: View {
     let voiceEnabled: Bool
     let transcriptionMode: VoiceTranscriptionMode
     let appleSpeechAvailability: AppleSpeechRecognitionAvailability
+    let continuousConversation: Bool
     let setVoiceEnabled: (Bool) async -> Bool
     let setTranscriptionMode: (VoiceTranscriptionMode) async -> Bool
+    let setContinuousConversation: (Bool) async -> Bool
 
     init(
         bridge: DashboardTicketBridge,
@@ -26,8 +28,10 @@ struct VoiceSettingsRoute: View {
         voiceEnabled: Bool,
         transcriptionMode: VoiceTranscriptionMode,
         appleSpeechAvailability: AppleSpeechRecognitionAvailability,
+        continuousConversation: Bool = true,
         setVoiceEnabled: @escaping (Bool) async -> Bool,
-        setTranscriptionMode: @escaping (VoiceTranscriptionMode) async -> Bool
+        setTranscriptionMode: @escaping (VoiceTranscriptionMode) async -> Bool,
+        setContinuousConversation: @escaping (Bool) async -> Bool = { _ in true }
     ) {
         _service = StateObject(wrappedValue: HermesVoiceConfigurationService(bridge: bridge, profile: profile))
         _conversationController = ObservedObject(wrappedValue: conversationController)
@@ -35,8 +39,10 @@ struct VoiceSettingsRoute: View {
         self.voiceEnabled = voiceEnabled
         self.transcriptionMode = transcriptionMode
         self.appleSpeechAvailability = appleSpeechAvailability
+        self.continuousConversation = continuousConversation
         self.setVoiceEnabled = setVoiceEnabled
         self.setTranscriptionMode = setTranscriptionMode
+        self.setContinuousConversation = setContinuousConversation
     }
 
     var body: some View {
@@ -47,8 +53,10 @@ struct VoiceSettingsRoute: View {
             voiceEnabled: voiceEnabled,
             transcriptionMode: transcriptionMode,
             appleSpeechAvailability: appleSpeechAvailability,
+            continuousConversation: continuousConversation,
             setVoiceEnabled: setVoiceEnabled,
-            setTranscriptionMode: setTranscriptionMode
+            setTranscriptionMode: setTranscriptionMode,
+            setContinuousConversation: setContinuousConversation
         )
     }
 }
@@ -78,6 +86,7 @@ struct VoiceSettingsView: View {
     var actions = VoiceSettingsActions()
     let setVoiceEnabled: (Bool) async -> Bool
     let setTranscriptionMode: (VoiceTranscriptionMode) async -> Bool
+    let setContinuousConversation: (Bool) async -> Bool
 
     @State private var values: [String: String] = [:]
     @State private var credentialDrafts: [String: String] = [:]
@@ -88,6 +97,7 @@ struct VoiceSettingsView: View {
     @State private var voiceEnabled: Bool
     @State private var transcriptionMode: VoiceTranscriptionMode
     @State private var appleSpeechAvailability: AppleSpeechRecognitionAvailability
+    @State private var continuousConversation: Bool
 
     init(
         service: HermesVoiceConfigurationService,
@@ -96,17 +106,21 @@ struct VoiceSettingsView: View {
         voiceEnabled: Bool = false,
         transcriptionMode: VoiceTranscriptionMode = .hermes,
         appleSpeechAvailability: AppleSpeechRecognitionAvailability = .permissionRequired(localeIdentifier: Locale.current.identifier),
+        continuousConversation: Bool = true,
         setVoiceEnabled: @escaping (Bool) async -> Bool = { _ in false },
-        setTranscriptionMode: @escaping (VoiceTranscriptionMode) async -> Bool = { _ in false }
+        setTranscriptionMode: @escaping (VoiceTranscriptionMode) async -> Bool = { _ in false },
+        setContinuousConversation: @escaping (Bool) async -> Bool = { _ in true }
     ) {
         self.service = service
         _conversationController = ObservedObject(wrappedValue: conversationController)
         self.actions = actions
         self.setVoiceEnabled = setVoiceEnabled
         self.setTranscriptionMode = setTranscriptionMode
+        self.setContinuousConversation = setContinuousConversation
         _voiceEnabled = State(initialValue: voiceEnabled)
         _transcriptionMode = State(initialValue: transcriptionMode)
         _appleSpeechAvailability = State(initialValue: appleSpeechAvailability)
+        _continuousConversation = State(initialValue: continuousConversation)
     }
 
     var body: some View {
@@ -153,6 +167,21 @@ struct VoiceSettingsView: View {
                 }
             ))
             Text("This preference is stored locally for this gateway and profile. Voice starts disabled until you opt in.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Toggle("Continuous Conversation", isOn: Binding(
+                get: { continuousConversation },
+                set: { requested in
+                    let previous = continuousConversation
+                    continuousConversation = requested
+                    Task {
+                        if !(await setContinuousConversation(requested)) {
+                            continuousConversation = previous
+                        }
+                    }
+                }
+            ))
+            Text("When enabled, Conduit automatically listens again after each response. When disabled, the session stays open and you start the next listening turn manually. This does not change Pause Mic, Interrupt, Close, or wake-word settings.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             HStack(spacing: 10) {

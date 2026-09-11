@@ -800,6 +800,7 @@ final class AppState: ObservableObject {
     @Published private(set) var voiceCapabilitySnapshot = VoiceCapabilitySnapshot.unavailable
     @Published private(set) var isVoiceEnabled = false
     @Published private(set) var voiceTranscriptionMode: VoiceTranscriptionMode = .hermes
+    @Published private(set) var continuousConversationEnabled = true
     @Published private(set) var appleSpeechAvailability = AppleOnDeviceSpeechTranscriber.currentAvailability()
 
     private var voiceAssistantObserverID: UUID?
@@ -1227,6 +1228,10 @@ final class AppState: ObservableObject {
     /// of release builds.
     var presentationCacheFlushOperationForTesting: Task<Void, Never>? {
         presentationCacheFlushTask
+    }
+
+    func setActiveProfileForTesting(_ profile: String) {
+        setActiveProfile(profile)
     }
 #endif
 
@@ -2778,6 +2783,7 @@ final class AppState: ObservableObject {
         voiceCapabilitySnapshot = .unavailable
         isVoiceEnabled = false
         voiceTranscriptionMode = .hermes
+        continuousConversationEnabled = true
         appleSpeechAvailability = AppleOnDeviceSpeechTranscriber.currentAvailability()
         retireOutstandingPreferredReturnSurfaceRequests()
         showLogin = true
@@ -13035,6 +13041,7 @@ final class AppState: ObservableObject {
         voiceCapabilitySnapshot = service.snapshot.capability
         let preferences = loadVoiceProfilePreferences(profile: profile)
         voiceTranscriptionMode = preferences.resolvedTranscriptionMode
+        continuousConversationEnabled = preferences.continuousConversation
         voiceConversationController.setProfilePreferences(preferences)
         refreshVoiceControllerGateway()
         refreshReadAloudGateway()
@@ -13084,6 +13091,16 @@ final class AppState: ObservableObject {
         voiceConversationController.setProfilePreferences(preferences)
         refreshVoiceControllerGateway()
         refreshReadAloudGateway()
+        return true
+    }
+
+    @discardableResult
+    func setContinuousConversation(_ enabled: Bool) -> Bool {
+        var preferences = loadVoiceProfilePreferences(profile: activeProfile)
+        preferences.continuousConversation = enabled
+        saveVoiceProfilePreferences(preferences, profile: activeProfile)
+        continuousConversationEnabled = enabled
+        voiceConversationController.setProfilePreferences(preferences)
         return true
     }
 
