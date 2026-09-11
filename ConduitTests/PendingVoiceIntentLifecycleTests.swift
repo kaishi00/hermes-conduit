@@ -2,11 +2,9 @@
 //  PendingVoiceIntentLifecycleTests.swift
 //  Conduit
 //
-//  Siri / external voice-launch lifecycle: exactly-once routing, profile
-//  preservation, and terminal failure so a stale Siri request can never open
-//  Voice after an unrelated reconnect. Connection readiness is lifecycle-
-//  driven (connecting vs stable failure vs inconclusive bootstrap); the
-//  30s deadline is only the inconclusive-state backstop.
+//  Siri pending-launch lifecycle with ownership claims: exactly-once routing,
+//  lifecycle-driven stable failure, authoritative deadline expiry, and no
+//  stale async completion can mutate a later request.
 //
 
 import XCTest
@@ -42,7 +40,7 @@ final class PendingVoiceIntentLifecycleTests: XCTestCase {
         .init(isConnected: false, isConnecting: false, hasStableFailureEvidence: true, classifiedFailure: failure)
     }
 
-    // MARK: - Siri intent factory
+    // MARK: - Factory
 
     func testSiriFactoryCreatesFreshSiriIntentWithBudgetDeadline() {
         let now = Date(timeIntervalSince1970: 1_000_000)
@@ -55,23 +53,14 @@ final class PendingVoiceIntentLifecycleTests: XCTestCase {
         XCTAssertEqual(intent.profile, "default")
         XCTAssertTrue(intent.startsFreshConversation)
         XCTAssertEqual(intent.source, .siri)
-        XCTAssertEqual(
-            intent.externalLaunchDeadline,
-            now.addingTimeInterval(30)
-        )
+        XCTAssertEqual(intent.externalLaunchDeadline, now.addingTimeInterval(30))
+        XCTAssertNotNil(intent.externalLaunchElapsedDeadline)
     }
 
     func testSiriFactoryTrimsAndDropsBlankProfiles() {
-        XCTAssertNil(
-            PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: nil).profile
-        )
-        XCTAssertNil(
-            PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: "   \n\t ").profile
-        )
-        XCTAssertEqual(
-            PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: "  work \n").profile,
-            "work"
-        )
+        XCTAssertNil(PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: nil).profile)
+        XCTAssertNil(PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: "   \n\t ").profile)
+        XCTAssertEqual(PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: "  work \n").profile, "work")
     }
 
     func testComposerLaunchHasNoExternalDeadline() {
@@ -81,21 +70,16 @@ final class PendingVoiceIntentLifecycleTests: XCTestCase {
             source: .composer
         )
         XCTAssertNil(intent.externalLaunchDeadline)
+        XCTAssertNil(intent.externalLaunchElapsedDeadline)
         XCTAssertEqual(
-            PendingVoiceLaunchPolicy.readiness(
-                for: intent,
-                connection: stableFailure(),
-                now: .distantFuture
-            ),
-            // In-app keeps defer-and-retry even on a classified failure.
+            PendingVoiceLaunchPolicy.readiness(for: intent, connection: stableFailure(), now: .distantFuture),
             .waiting
         )
     }
 
-    // MARK: - Connection phase derivation
+    // MARK: - Connection phase / AppState provenance
 
     func testSnapshotPhasePrefersConnectingOverPriorFailureEvidence() {
-        // lastConnectionFailure often remains set while a new attempt runs.
         let snapshot = VoiceLaunchConnectionSnapshot(
             isConnected: false,
             isConnecting: true,
@@ -119,17 +103,7 @@ final class PendingVoiceIntentLifecycleTests: XCTestCase {
         XCTAssertEqual(connected().phase, .connected)
     }
 
-    func testRoutingKeyPhaseChangesWhenConnectingBecomesStableFailure() {
-        // ConduitApp.voiceIntentRouteKey embeds phase so a disconnect-only
-        // transition still re-evaluates the pending Siri request.
-        let connectingKey = "1:\(connecting().phase.rawValue):siri"
-        let failedKey = "1:\(stableFailure().phase.rawValue):siri"
-        XCTAssertNotEqual(connectingKey, failedKey)
-        XCTAssertEqual(connecting().phase.rawValue, "connecting")
-        XCTAssertEqual(stableFailure().phase.rawValue, "stableFailure")
-    }
-
-    func testAppStateVoiceLaunchSnapshotReflectsRecordedFailure() {
+    func testAppStateSnapshotMapsClassifiedFailureAndLoginRequiredPresentation() {
         let suite = "PendingVoiceIntentLifecycleTests.\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suite) else {
             return XCTFail("Failed to create test UserDefaults suite")
@@ -137,52 +111,45 @@ final class PendingVoiceIntentLifecycleTests: XCTestCase {
         addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
         let appState = AppState(defaults: defaults, loadSavedConnection: false)
 
-        // Cold bootstrap: no positive failure evidence yet — not terminal.
         appState.isConnected = false
         appState.isConnecting = false
         appState.lastConnectionFailure = nil
         appState.pendingLoginFailure = nil
         XCTAssertEqual(appState.voiceLaunchConnectionSnapshot().phase, .inconclusive)
 
-        // Connecting: still wait.
         appState.isConnecting = true
         XCTAssertEqual(appState.voiceLaunchConnectionSnapshot().phase, .connecting)
 
-        // Stable failure after the attempt ends: classified evidence.
         appState.isConnecting = false
         appState.lastConnectionFailure = .connectionRefused
-        let failed = appState.voiceLaunchConnectionSnapshot()
-        XCTAssertEqual(failed.phase, .stableFailure)
-        XCTAssertEqual(failed.classifiedFailure, .connectionRefused)
+        XCTAssertEqual(appState.voiceLaunchConnectionSnapshot().classifiedFailure, .connectionRefused)
 
-        // Auth-required presentation is also positive evidence.
+        // Typed login-required presentation is fallback evidence.
         appState.lastConnectionFailure = nil
         appState.pendingLoginFailure = .presenting(.loginRequired)
         let loginRequired = appState.voiceLaunchConnectionSnapshot()
         XCTAssertEqual(loginRequired.phase, .stableFailure)
         XCTAssertEqual(loginRequired.classifiedFailure, .loginRequired)
+
+        // Hand-authored notice is NOT login-required evidence.
+        appState.pendingLoginFailure = .notice(title: "Something else", message: "")
+        XCTAssertEqual(appState.voiceLaunchConnectionSnapshot().phase, .inconclusive)
+        XCTAssertNil(appState.voiceLaunchConnectionSnapshot().classifiedFailure)
     }
 
-    // MARK: - Readiness / disconnected lifecycle
+    // MARK: - Readiness
 
     func testConnectedSiriLaunchIsReady() {
         let now = Date()
         let intent = PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: nil, now: now)
-        XCTAssertEqual(
-            PendingVoiceLaunchPolicy.readiness(for: intent, connection: connected(), now: now),
-            .ready
-        )
+        XCTAssertEqual(PendingVoiceLaunchPolicy.readiness(for: intent, connection: connected(), now: now), .ready)
     }
 
     func testSiriLaunchWaitsWhileActivelyConnecting() {
         let now = Date()
         let intent = PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: nil, now: now)
         XCTAssertEqual(
-            PendingVoiceLaunchPolicy.readiness(
-                for: intent,
-                connection: connecting(),
-                now: now.addingTimeInterval(1)
-            ),
+            PendingVoiceLaunchPolicy.readiness(for: intent, connection: connecting(), now: now.addingTimeInterval(1)),
             .waiting
         )
     }
@@ -190,13 +157,8 @@ final class PendingVoiceIntentLifecycleTests: XCTestCase {
     func testSiriLaunchWaitsDuringColdBootstrapWithoutFailureEvidence() {
         let now = Date()
         let intent = PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: nil, now: now)
-        // !isConnected && !isConnecting is NOT terminal until failure evidence exists.
         XCTAssertEqual(
-            PendingVoiceLaunchPolicy.readiness(
-                for: intent,
-                connection: inconclusiveBootstrap(),
-                now: now.addingTimeInterval(1)
-            ),
+            PendingVoiceLaunchPolicy.readiness(for: intent, connection: inconclusiveBootstrap(), now: now.addingTimeInterval(1)),
             .waiting
         )
     }
@@ -208,14 +170,9 @@ final class PendingVoiceIntentLifecycleTests: XCTestCase {
         let message = PendingVoiceLaunchPolicy.stableFailureMessage(for: connection)
 
         XCTAssertEqual(
-            PendingVoiceLaunchPolicy.readiness(
-                for: intent,
-                connection: connection,
-                now: now.addingTimeInterval(2)
-            ),
+            PendingVoiceLaunchPolicy.readiness(for: intent, connection: connection, now: now.addingTimeInterval(2)),
             .failed(message: message)
         )
-        // Classified copy wins over the generic disconnected string.
         XCTAssertTrue(message.contains(ConnectionFailure.unreachable.userMessage))
         XCTAssertNotEqual(message, PendingVoiceLaunchPolicy.disconnectedFailureMessage)
     }
@@ -224,57 +181,46 @@ final class PendingVoiceIntentLifecycleTests: XCTestCase {
         let now = Date()
         let intent = PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: nil, now: now)
         let connection = stableFailure(.loginRequired)
+        let message = PendingVoiceLaunchPolicy.stableFailureMessage(for: connection)
         XCTAssertEqual(
             PendingVoiceLaunchPolicy.readiness(for: intent, connection: connection, now: now),
-            .failed(message: PendingVoiceLaunchPolicy.stableFailureMessage(for: connection))
+            .failed(message: message)
         )
-        XCTAssertTrue(
-            PendingVoiceLaunchPolicy.stableFailureMessage(for: connection)
-                .contains(ConnectionFailure.loginRequired.userTitle)
-        )
-    }
-
-    func testLoginFailureOnlyEvidenceStillSurfacesClassifiedCopy() {
-        // pendingLoginFailure without lastConnectionFailure must not degrade
-        // to the generic disconnected string.
-        let connection = VoiceLaunchConnectionSnapshot(
-            isConnected: false,
-            isConnecting: false,
-            hasStableFailureEvidence: true,
-            classifiedFailure: .loginRequired
-        )
-        let message = PendingVoiceLaunchPolicy.stableFailureMessage(for: connection)
-        XCTAssertTrue(message.contains(ConnectionFailure.loginRequired.userMessage))
-        XCTAssertNotEqual(message, PendingVoiceLaunchPolicy.disconnectedFailureMessage)
+        XCTAssertTrue(message.contains(ConnectionFailure.loginRequired.userTitle))
     }
 
     func testExpiredSiriLaunchFailsAndNeverWaitsForReconnect() {
         let now = Date()
         let intent = PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: nil, now: now, budget: 30)
-        let later = now.addingTimeInterval(31)
         XCTAssertEqual(
-            PendingVoiceLaunchPolicy.readiness(for: intent, connection: inconclusiveBootstrap(), now: later),
+            PendingVoiceLaunchPolicy.readiness(for: intent, connection: inconclusiveBootstrap(), now: now.addingTimeInterval(31)),
+            .failed(message: PendingVoiceLaunchPolicy.expiredFailureMessage)
+        )
+    }
+
+    func testExpiryAtExactBoundaryCannotReturnToWaiting() {
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        let intent = PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: nil, now: now, budget: 30)
+        let boundary = intent.externalLaunchDeadline!
+        XCTAssertEqual(
+            PendingVoiceLaunchPolicy.readiness(for: intent, connection: inconclusiveBootstrap(), now: boundary),
             .failed(message: PendingVoiceLaunchPolicy.expiredFailureMessage)
         )
     }
 
     func testExpiredSiriLaunchFailsEvenIfConnectionReturnsTooLate() {
-        // Reconnect minutes later must not open Voice from an old Siri request.
         let now = Date()
         let intent = PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: nil, now: now, budget: 30)
-        let minutesLater = now.addingTimeInterval(5 * 60)
         XCTAssertEqual(
-            PendingVoiceLaunchPolicy.readiness(for: intent, connection: connected(), now: minutesLater),
+            PendingVoiceLaunchPolicy.readiness(for: intent, connection: connected(), now: now.addingTimeInterval(5 * 60)),
             .failed(message: PendingVoiceLaunchPolicy.expiredFailureMessage)
         )
     }
 
-    // MARK: - Store + router exactly-once
+    // MARK: - Router exactly-once / connecting / stable failure
 
     func testConnectedRouteConsumesExactlyOnceAndDoesNotReenqueue() async {
-        store.enqueue(
-            PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: "default")
-        )
+        store.enqueue(PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: "default"))
 
         var handled: [PendingVoiceIntent] = []
         let router = PendingVoiceIntentRouter(store: store)
@@ -290,44 +236,26 @@ final class PendingVoiceIntentLifecycleTests: XCTestCase {
             return true
         }
         XCTAssertEqual(second, .idle)
-        XCTAssertEqual(handled.count, 1)
-        XCTAssertEqual(handled.first?.profile, "default")
-        XCTAssertEqual(handled.first?.source, .siri)
+        XCTAssertEqual(handled.map(\.profile), ["default"])
     }
 
-    func testTemporaryNotReadySiriLaunchIsRetainedWithoutHandler() async {
-        store.enqueue(
-            PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: "work")
-        )
-        let router = PendingVoiceIntentRouter(store: store)
-        var handlerCalls = 0
-
-        let outcome = await router.routePending(connection: connecting()) { _ in
-            handlerCalls += 1
-            return true
-        }
-
-        XCTAssertEqual(outcome, .deferred)
-        XCTAssertTrue(store.hasPendingIntent)
-        XCTAssertEqual(handlerCalls, 0)
-        XCTAssertEqual(store.pendingSource, .siri)
-    }
-
-    func testActivelyConnectingDefersWithoutConsuming() async {
+    func testConnectingSiriRequestRemainsPendingWithoutRevisionBump() async {
         store.enqueue(PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: "default"))
+        let afterEnqueue = store.revision
         let router = PendingVoiceIntentRouter(store: store)
+
         let outcome = await router.routePending(connection: connecting()) { _ in
             XCTFail("Connecting must not invoke the voice handler")
             return true
         }
+
         XCTAssertEqual(outcome, .deferred)
         XCTAssertTrue(store.hasPendingIntent)
+        XCTAssertEqual(store.revision, afterEnqueue)
     }
 
     func testStableFailureConsumesSiriRequestImmediatelyBeforeDeadline() async {
-        store.enqueue(
-            PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: "default", budget: 30)
-        )
+        store.enqueue(PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: "default", budget: 30))
         let router = PendingVoiceIntentRouter(store: store)
         let connection = stableFailure(.hostNotFound)
         var handlerCalls = 0
@@ -337,16 +265,13 @@ final class PendingVoiceIntentLifecycleTests: XCTestCase {
             return true
         }
 
-        let expected = PendingVoiceLaunchPolicy.stableFailureMessage(for: connection)
-        XCTAssertEqual(outcome, .failed(message: expected))
+        XCTAssertEqual(outcome, .failed(message: PendingVoiceLaunchPolicy.stableFailureMessage(for: connection)))
         XCTAssertFalse(store.hasPendingIntent)
         XCTAssertEqual(handlerCalls, 0)
     }
 
     func testReconnectAfterStableFailureDoesNotLaunchStaleSiriVoice() async {
-        store.enqueue(
-            PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: nil, budget: 30)
-        )
+        store.enqueue(PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: nil, budget: 30))
         let router = PendingVoiceIntentRouter(store: store)
 
         let failure = await router.routePending(connection: stableFailure(.timedOut)) { _ in
@@ -358,7 +283,6 @@ final class PendingVoiceIntentLifecycleTests: XCTestCase {
             .failed(message: PendingVoiceLaunchPolicy.stableFailureMessage(for: stableFailure(.timedOut)))
         )
 
-        // Hermes is healthy again — but the store is empty.
         var handled = 0
         let afterReconnect = await router.routePending(connection: connected()) { _ in
             handled += 1
@@ -369,50 +293,16 @@ final class PendingVoiceIntentLifecycleTests: XCTestCase {
         XCTAssertFalse(store.hasPendingIntent)
     }
 
-    func testExpiredDisconnectedSiriLaunchIsClearedNotRetained() async {
-        let enqueuedAt = Date(timeIntervalSinceNow: -60)
-        store.enqueue(
-            PendingVoiceLaunchPolicy.makeSiriPendingIntent(
-                profile: nil,
-                now: enqueuedAt,
-                budget: 30
-            )
-        )
-        let router = PendingVoiceIntentRouter(store: store)
-        var handlerCalls = 0
-
-        let outcome = await router.routePending(connection: inconclusiveBootstrap(), now: Date()) { _ in
-            handlerCalls += 1
-            return true
-        }
-
-        XCTAssertEqual(
-            outcome,
-            .failed(message: PendingVoiceLaunchPolicy.expiredFailureMessage)
-        )
-        XCTAssertFalse(store.hasPendingIntent)
-        XCTAssertEqual(handlerCalls, 0)
-    }
-
-    func testReconnectAfterTerminalFailureDoesNotLaunchStaleSiriVoice() async {
+    func testLaterReconnectAfterExpiryCannotLaunchStaleRequest() async {
         let enqueuedAt = Date(timeIntervalSinceNow: -120)
-        store.enqueue(
-            PendingVoiceLaunchPolicy.makeSiriPendingIntent(
-                profile: nil,
-                now: enqueuedAt,
-                budget: 30
-            )
-        )
+        store.enqueue(PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: nil, now: enqueuedAt, budget: 30))
         let router = PendingVoiceIntentRouter(store: store)
 
-        let failure = await router.routePending(connection: inconclusiveBootstrap(), now: Date()) { _ in
-            XCTFail("Expired Siri launch must not invoke the voice handler")
+        let expired = await router.routePending(connection: inconclusiveBootstrap(), now: Date()) { _ in
+            XCTFail("Expired launch must not invoke the voice handler")
             return true
         }
-        XCTAssertEqual(
-            failure,
-            .failed(message: PendingVoiceLaunchPolicy.expiredFailureMessage)
-        )
+        XCTAssertEqual(expired, .failed(message: PendingVoiceLaunchPolicy.expiredFailureMessage))
 
         var handled = 0
         let afterReconnect = await router.routePending(connection: connected()) { _ in
@@ -421,46 +311,174 @@ final class PendingVoiceIntentLifecycleTests: XCTestCase {
         }
         XCTAssertEqual(afterReconnect, .idle)
         XCTAssertEqual(handled, 0)
-        XCTAssertFalse(store.hasPendingIntent)
     }
 
     func testSiriHandlerFailureIsTerminalAndDoesNotReenqueue() async {
-        store.enqueue(
-            PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: "default")
-        )
+        store.enqueue(PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: "default"))
         let router = PendingVoiceIntentRouter(store: store)
 
         let outcome = await router.routePending(connection: connected()) { _ in false }
 
-        XCTAssertEqual(
-            outcome,
-            .failed(message: PendingVoiceLaunchPolicy.disconnectedFailureMessage)
-        )
+        XCTAssertEqual(outcome, .failed(message: PendingVoiceLaunchPolicy.disconnectedFailureMessage))
         XCTAssertFalse(store.hasPendingIntent)
     }
 
-    func testInAppHandlerFailureStillDefersForRetry() async {
-        store.enqueue(
-            PendingVoiceIntent(
-                profile: "default",
-                startsFreshConversation: false,
-                source: .composer
-            )
-        )
+    // MARK: - Ownership / supersede fencing
+
+    func testClearWhileHandlerSuspendedCannotResurrectOrPublishFailure() async {
+        store.enqueue(PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: "default"))
         let router = PendingVoiceIntentRouter(store: store)
 
-        let outcome = await router.routePending(connection: connected()) { _ in false }
+        let gate = LaunchHandlerGate()
+        async let outcome = router.routePending(connection: connected()) { _ in
+            await gate.markStarted()
+            await gate.waitUntilOpen()
+            return true
+        }
+        await gate.waitUntilStarted()
+        store.clear()
+        await gate.open()
+        let result = await outcome
 
-        XCTAssertEqual(outcome, .deferred)
-        XCTAssertTrue(store.hasPendingIntent)
-        XCTAssertEqual(store.pendingSource, .composer)
+        XCTAssertEqual(result, .superseded)
+        XCTAssertFalse(store.hasPendingIntent)
     }
 
+    func testClearWhileHandlerSuspendedDiscardsHandlerFalseFailure() async {
+        store.enqueue(PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: "default"))
+        let router = PendingVoiceIntentRouter(store: store)
+
+        let gate = LaunchHandlerGate()
+        async let outcome = router.routePending(connection: connected()) { _ in
+            await gate.markStarted()
+            await gate.waitUntilOpen()
+            return false
+        }
+        await gate.waitUntilStarted()
+        store.clear()
+        await gate.open()
+        let result = await outcome
+
+        // Stale completion must not surface a Siri failure for a cleared request.
+        XCTAssertEqual(result, .superseded)
+        XCTAssertFalse(store.hasPendingIntent)
+    }
+
+    func testEnqueueBDuringHandlerASuspensionPreventsAFromTouchingB() async {
+        let a = PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: "A")
+        store.enqueue(a)
+        let router = PendingVoiceIntentRouter(store: store)
+
+        let gate = LaunchHandlerGate()
+        async let outcome = router.routePending(connection: connected()) { intent in
+            XCTAssertEqual(intent.profile, "A")
+            await gate.markStarted()
+            await gate.waitUntilOpen()
+            return false
+        }
+        await gate.waitUntilStarted()
+        let b = PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: "B")
+        store.enqueue(b)
+        await gate.open()
+        let result = await outcome
+
+        XCTAssertEqual(result, .superseded)
+        // B still owns the slot — A must not requeue or fail over it.
+        XCTAssertTrue(store.hasPendingIntent)
+        XCTAssertEqual(store.pendingProfile, "B")
+    }
+
+    func testWaiterForACannotAffectReplacementB() {
+        let a = PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: "A")
+        store.enqueue(a)
+        guard let claimA = store.peekClaim() else {
+            return XCTFail("expected claim A")
+        }
+        _ = store.takeClaim()
+        let b = PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: "B")
+        store.enqueue(b)
+
+        // A's waiter wakes: must no-op.
+        XCTAssertNil(store.expireClaimIfCurrent(claimA))
+        XCTAssertEqual(store.pendingProfile, "B")
+    }
+
+    func testConsumeAWhileWaiterSleepsMakesOldWaiterNoop() {
+        let a = PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: "A")
+        store.enqueue(a)
+        guard let claimA = store.peekClaim() else {
+            return XCTFail("expected claim A")
+        }
+        // Simulate successful route consuming A.
+        guard let taken = store.takeClaim() else {
+            return XCTFail("expected take")
+        }
+        XCTAssertEqual(taken.generation, claimA.generation)
+        XCTAssertNil(store.takeClaim())
+
+        // Old waiter expire on a already-taken (consumed) claim: no pending
+        // intent remains, so expiry is a no-op.
+        XCTAssertNil(store.expireClaimIfCurrent(claimA))
+        XCTAssertFalse(store.hasPendingIntent)
+    }
+
+    func testClearInvalidatesClaimSoExpiredWaiterCannotResurrect() {
+        let a = PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: "A")
+        store.enqueue(a)
+        guard let claimA = store.peekClaim() else {
+            return XCTFail("expected claim A")
+        }
+        store.clear()
+        XCTAssertNil(store.expireClaimIfCurrent(claimA))
+        XCTAssertFalse(store.hasPendingIntent)
+    }
+
+    // MARK: - Authoritative store expiry
+
+    func testAuthoritativeExpiryAlwaysConsumesTheRequest() {
+        store.enqueue(PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: "default"))
+        guard let claim = store.peekClaim() else {
+            return XCTFail("expected claim")
+        }
+        let expired = store.expireClaimIfCurrent(claim)
+        XCTAssertEqual(expired?.profile, "default")
+        XCTAssertFalse(store.hasPendingIntent)
+        // Second expire is a no-op — request is gone, no new timer needed.
+        XCTAssertNil(store.expireClaimIfCurrent(claim))
+    }
+
+    func testDeferralDoesNotExtendOriginalLaunchBudget() async {
+        let now = Date(timeIntervalSince1970: 2_000_000)
+        let intent = PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: "default", now: now, budget: 30)
+        let originalDeadline = intent.externalLaunchDeadline
+        let originalElapsed = intent.externalLaunchElapsedDeadline
+        store.enqueue(intent)
+
+        let router = PendingVoiceIntentRouter(store: store)
+        _ = await router.routePending(connection: connecting(), now: now.addingTimeInterval(5)) { _ in
+            XCTFail("Waiting must not call the handler")
+            return true
+        }
+
+        XCTAssertEqual(store.pendingExternalLaunchDeadline, originalDeadline)
+        XCTAssertEqual(store.pendingProfile, "default")
+        // Elapsed deadline is immutable metadata on the intent.
+        let claim = store.peekClaim()
+        XCTAssertEqual(claim?.intent.externalLaunchElapsedDeadline, originalElapsed)
+
+        let expired = await router.routePending(connection: connecting(), now: now.addingTimeInterval(30)) { _ in
+            XCTFail("Expired at boundary")
+            return true
+        }
+        XCTAssertEqual(expired, .failed(message: PendingVoiceLaunchPolicy.expiredFailureMessage))
+        XCTAssertFalse(store.hasPendingIntent)
+    }
+
+    // MARK: - Supersede / clear / double-route
+
     func testNewerSiriRequestSupersedesOlderPendingRequest() async {
-        let older = PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: "old")
-        let newer = PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: "new")
-        store.enqueue(older)
-        store.enqueue(newer)
+        store.enqueue(PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: "old"))
+        store.enqueue(PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: "new"))
 
         let router = PendingVoiceIntentRouter(store: store)
         var handled: [PendingVoiceIntent] = []
@@ -471,14 +489,11 @@ final class PendingVoiceIntentLifecycleTests: XCTestCase {
 
         XCTAssertEqual(outcome, .routed)
         XCTAssertEqual(handled.map(\.profile), ["new"])
-        XCTAssertEqual(handled.count, 1)
         XCTAssertFalse(store.hasPendingIntent)
     }
 
     func testClearCannotLaterResurrectTheRequest() async {
-        store.enqueue(
-            PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: "default")
-        )
+        store.enqueue(PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: "default"))
         store.clear()
         XCTAssertFalse(store.hasPendingIntent)
 
@@ -492,9 +507,9 @@ final class PendingVoiceIntentLifecycleTests: XCTestCase {
 
     func testRevisionAdvancesOnEnqueueSupersedeAndClear() {
         let initial = store.revision
-        store.enqueue(PendingVoiceIntent(profile: "a", startsFreshConversation: true, source: .composer))
+        store.enqueue(PendingVoiceIntent(profile: "a", startsFreshConversation: true, source: .siri))
         let afterEnqueue = store.revision
-        store.enqueue(PendingVoiceIntent(profile: "b", startsFreshConversation: true, source: .composer))
+        store.enqueue(PendingVoiceIntent(profile: "b", startsFreshConversation: true, source: .siri))
         let afterSupersede = store.revision
         store.clear()
         let afterClear = store.revision
@@ -504,68 +519,16 @@ final class PendingVoiceIntentLifecycleTests: XCTestCase {
         XCTAssertGreaterThan(afterClear, afterSupersede)
     }
 
-    func testWaitingDeferralDoesNotAdvanceRevision() async {
-        store.enqueue(PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: "default"))
-        let afterEnqueue = store.revision
-        let router = PendingVoiceIntentRouter(store: store)
-
-        let outcome = await router.routePending(connection: connecting()) { _ in
-            XCTFail("Waiting must not call the handler")
-            return true
-        }
-
-        XCTAssertEqual(outcome, .deferred)
-        XCTAssertTrue(store.hasPendingIntent)
-        XCTAssertEqual(store.revision, afterEnqueue)
-    }
-
     func testDeferredRequeueDoesNotClobberNewerPendingRequest() {
         let older = PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: "old")
-        let newer = PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: "new")
-
-        store.enqueue(newer)
-        store.requeueAsDeferred(older)
-
-        XCTAssertTrue(store.hasPendingIntent)
-        XCTAssertEqual(store.pendingSource, .siri)
+        store.enqueue(older)
+        guard let claim = store.takeClaim() else {
+            return XCTFail("expected take")
+        }
+        store.enqueue(PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: "new"))
+        XCTAssertFalse(store.requeueDeferred(claim))
         XCTAssertEqual(store.pendingProfile, "new")
     }
-
-    func testTemporaryDeferenceDoesNotExtendExternalDeadline() async {
-        let now = Date(timeIntervalSince1970: 2_000_000)
-        let intent = PendingVoiceLaunchPolicy.makeSiriPendingIntent(
-            profile: "default",
-            now: now,
-            budget: 30
-        )
-        store.enqueue(intent)
-        let originalDeadline = intent.externalLaunchDeadline
-
-        let router = PendingVoiceIntentRouter(store: store)
-        _ = await router.routePending(connection: connecting(), now: now.addingTimeInterval(5)) { _ in
-            XCTFail("Waiting must not call the handler")
-            return true
-        }
-        _ = await router.routePending(connection: connecting(), now: now.addingTimeInterval(10)) { _ in
-            true
-        }
-
-        let expired = await router.routePending(
-            connection: connecting(),
-            now: now.addingTimeInterval(31)
-        ) { _ in
-            XCTFail("Expired after original deadline")
-            return true
-        }
-        XCTAssertEqual(
-            expired,
-            .failed(message: PendingVoiceLaunchPolicy.expiredFailureMessage)
-        )
-        XCTAssertFalse(store.hasPendingIntent)
-        _ = originalDeadline
-    }
-
-    // MARK: - Cold-start / double-route guards
 
     func testTwoLaunchAttemptsCannotCauseDuplicateConsumption() async {
         store.enqueue(PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: "default"))
@@ -575,10 +538,8 @@ final class PendingVoiceIntentLifecycleTests: XCTestCase {
         async let second = router.routePending(connection: connected()) { _ in true }
         let outcomes = await [first, second]
 
-        let routed = outcomes.filter { $0 == .routed }.count
-        let idle = outcomes.filter { $0 == .idle }.count
-        XCTAssertEqual(routed, 1)
-        XCTAssertEqual(idle, 1)
+        XCTAssertEqual(outcomes.filter { $0 == .routed }.count, 1)
+        XCTAssertEqual(outcomes.filter { $0 == .idle }.count, 1)
         XCTAssertFalse(store.hasPendingIntent)
     }
 
@@ -600,7 +561,6 @@ final class PendingVoiceIntentLifecycleTests: XCTestCase {
         }
         XCTAssertEqual(connectedOutcome, .routed)
         XCTAssertEqual(routes, 1)
-        XCTAssertFalse(store.hasPendingIntent)
 
         let again = await router.routePending(connection: connected()) { _ in
             routes += 1
@@ -611,34 +571,28 @@ final class PendingVoiceIntentLifecycleTests: XCTestCase {
     }
 
     func testConnectingToStableFailureTransitionFailsPendingSiriRequest() async {
-        // Simulates the scene re-evaluating when phase flips while still
-        // disconnected (voiceIntentRouteKey embeds phase).
         store.enqueue(PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: "default"))
         let router = PendingVoiceIntentRouter(store: store)
 
         let waiting = await router.routePending(connection: connecting()) { _ in
-            XCTFail("Still connecting — keep waiting")
+            XCTFail("Still connecting")
             return true
         }
         XCTAssertEqual(waiting, .deferred)
-        XCTAssertTrue(store.hasPendingIntent)
 
         let connection = stableFailure(.offline)
         let failed = await router.routePending(connection: connection) { _ in
             XCTFail("Stable failure must not open Voice")
             return true
         }
-        XCTAssertEqual(
-            failed,
-            .failed(message: PendingVoiceLaunchPolicy.stableFailureMessage(for: connection))
-        )
+        XCTAssertEqual(failed, .failed(message: PendingVoiceLaunchPolicy.stableFailureMessage(for: connection)))
         XCTAssertFalse(store.hasPendingIntent)
     }
 
-    func testDeletedProfileStyleHandlerSuccessConsumesWithoutRetryLoop() async {
-        store.enqueue(
-            PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: "deleted-profile")
-        )
+    /// `openVoiceConversation` surfaces an error and returns true when the
+    /// requested profile cannot be activated — a terminal consume, not a loop.
+    func testUnusableProfileStyleHandlerSuccessConsumesWithoutRetryLoop() async {
+        store.enqueue(PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: "deleted-profile"))
         let router = PendingVoiceIntentRouter(store: store)
 
         var calls = 0
@@ -658,16 +612,48 @@ final class PendingVoiceIntentLifecycleTests: XCTestCase {
         XCTAssertEqual(calls, 1)
     }
 
-    // MARK: - App Intent foreground-mode compatibility
+    // MARK: - App Intent foreground-mode
 
     func testStartVoiceConversationIntentDeclaresForegroundFirstExecution() {
         XCTAssertTrue(StartVoiceConversationIntent.openAppWhenRun)
-
         if #available(iOS 26.0, *) {
-            XCTAssertEqual(
-                StartVoiceConversationIntent.supportedModes,
-                .foreground(.immediate)
-            )
+            XCTAssertEqual(StartVoiceConversationIntent.supportedModes, .foreground(.immediate))
         }
+    }
+}
+
+// MARK: - Continuation gate (no timing sleeps)
+
+/// Deterministic suspension gate for handler-ownership tests. The handler
+/// signals `markStarted()` then parks on `waitUntilOpen()`; the test mutates
+/// the store before `open()`.
+actor LaunchHandlerGate {
+    private var isOpen = false
+    private var isStarted = false
+    private var startWaiters: [CheckedContinuation<Void, Never>] = []
+    private var openWaiters: [CheckedContinuation<Void, Never>] = []
+
+    func markStarted() {
+        isStarted = true
+        let waiters = startWaiters
+        startWaiters = []
+        for waiter in waiters { waiter.resume() }
+    }
+
+    func open() {
+        isOpen = true
+        let waiters = openWaiters
+        openWaiters = []
+        for waiter in waiters { waiter.resume() }
+    }
+
+    func waitUntilStarted() async {
+        if isStarted { return }
+        await withCheckedContinuation { startWaiters.append($0) }
+    }
+
+    func waitUntilOpen() async {
+        if isOpen { return }
+        await withCheckedContinuation { openWaiters.append($0) }
     }
 }

@@ -6,62 +6,124 @@
 import Foundation
 import Combine
 
+/// Ownership token for one pending Siri launch. A claim is only valid while
+/// `generation` still matches the store: any enqueue/clear invalidates it.
+struct PendingVoiceIntentClaim: Equatable {
+    let generation: UInt64
+    let intent: PendingVoiceIntent
+}
+
+/// In-memory mailbox for the single pending external voice launch.
+///
+/// Production enqueue path is the Siri App Intent. Composer calls
+/// `openVoiceConversation` directly and does not use this store.
+///
+/// Invariant: async work started for claim N may only mutate the store when
+/// the claim is still current. Superseded/cleared/expired claims are no-ops.
 @MainActor
 final class PendingVoiceIntentStore: ObservableObject {
     static let shared = PendingVoiceIntentStore()
 
+    /// SwiftUI routing revision. Bumped only on real launches (enqueue) and
+    /// terminal consumption that should re-evaluate the scene (clear / expire).
+    /// Deliberately not bumped on deferred requeues — that would hot-loop
+    /// `.task(id: revision…)` while Hermes is still connecting.
     @Published private(set) var revision: UInt64 = 0
+    /// Monotonic ownership generation. Bumped on every enqueue and clear.
+    private(set) var ownershipGeneration: UInt64 = 0
     private var pending: PendingVoiceIntent?
 
-    /// True while an enqueued intent has not been routed. The store owns this
-    /// fact; presentation decisions (e.g. the preferred return surface) read
-    /// it rather than duplicating routing logic.
     var hasPendingIntent: Bool { pending != nil }
 
-    /// Absolute deadline of the pending external launch, if any.
     var pendingExternalLaunchDeadline: Date? { pending?.externalLaunchDeadline }
 
     var pendingSource: PendingVoiceIntent.Source? { pending?.source }
 
-    /// Test seam: the profile of the still-pending request, if any.
     var pendingProfile: String? { pending?.profile }
 
+    /// Claim without consuming — used by the deadline waiter before sleep.
+    func peekClaim() -> PendingVoiceIntentClaim? {
+        guard let intent = pending else { return nil }
+        return PendingVoiceIntentClaim(generation: ownershipGeneration, intent: intent)
+    }
+
     func enqueue(_ intent: PendingVoiceIntent) {
-        // One voice sheet can only honor one launch request. The newest source
-        // is intentional: it reflects the user's latest explicit action.
+        // Newest explicit launch wins. Bumping ownershipGeneration invalidates
+        // any in-flight claim for a previous request.
         pending = intent
+        ownershipGeneration &+= 1
         revision &+= 1
     }
 
-    /// Puts a temporarily-unroutable request back without treating it as a
-    /// new launch. A newer explicit enqueue (revision already advanced) wins;
-    /// this never resurrects an older request over a newer one. Skipping the
-    /// revision bump keeps the scene's revision-keyed task from hot-looping
-    /// while Hermes is still connecting.
-    func requeueAsDeferred(_ intent: PendingVoiceIntent) {
-        guard pending == nil else { return }
-        pending = intent
+    /// Claim the pending request for routing. Clears the slot; the claim's
+    /// generation stays valid until enqueue/clear/expiry.
+    func takeClaim() -> PendingVoiceIntentClaim? {
+        guard let intent = pending else { return nil }
+        pending = nil
+        return PendingVoiceIntentClaim(generation: ownershipGeneration, intent: intent)
     }
 
-    func take() -> PendingVoiceIntent? {
-        let value = pending
+    func isClaimCurrent(_ claim: PendingVoiceIntentClaim) -> Bool {
+        claim.generation == ownershipGeneration
+    }
+
+    /// Restore a still-current claim without a revision bump (temporary
+    /// not-ready). No-op if a newer launch already claimed the slot.
+    @discardableResult
+    func requeueDeferred(_ claim: PendingVoiceIntentClaim) -> Bool {
+        guard isClaimCurrent(claim), pending == nil else { return false }
+        pending = claim.intent
+        return true
+    }
+
+    /// Authoritative consume for a still-current claim that was already taken
+    /// (slot empty) or still pending. Used for terminal outcomes after an
+    /// await — never restores the request.
+    @discardableResult
+    func consumeClaimIfCurrent(_ claim: PendingVoiceIntentClaim) -> PendingVoiceIntent? {
+        guard isClaimCurrent(claim) else { return nil }
         pending = nil
-        return value
+        return claim.intent
+    }
+
+    /// Hard-backstop expiry. Consumes the request only when the claim still
+    /// owns the store and the pending intent is still that exact claim.
+    /// Never leaves the same external request pending after firing.
+    @discardableResult
+    func expireClaimIfCurrent(_ claim: PendingVoiceIntentClaim) -> PendingVoiceIntent? {
+        guard isClaimCurrent(claim),
+              pending != nil,
+              pending == claim.intent else {
+            return nil
+        }
+        pending = nil
+        ownershipGeneration &+= 1
+        revision &+= 1
+        return claim.intent
     }
 
     func clear() {
         pending = nil
+        ownershipGeneration &+= 1
         revision &+= 1
     }
 }
 
-/// Result of one routing attempt. Terminal outcomes consume the request;
-/// only `.deferred` retains it for a later lifecycle pass.
+/// Result of one routing attempt.
 enum PendingVoiceIntentRouteOutcome: Equatable {
     case idle
     case routed
     case deferred
     case failed(message: String)
+    /// The claim was invalidated (clear / supersede) before completion.
+    /// Callers must not publish errors or touch a newer request.
+    case superseded
+}
+
+/// Terminal outcome when the launch handler could not open Voice.
+enum PendingVoiceHandlerFailure: Equatable {
+    case terminal(message: String)
+    case retryLater
 }
 
 @MainActor
@@ -74,22 +136,16 @@ final class PendingVoiceIntentRouter {
 
     /// Resolves the pending request against the current connection lifecycle.
     ///
-    /// - Expired external (Siri) requests are consumed and reported failed —
-    ///   they never wait for a later reconnect.
-    /// - Connected requests are consumed exactly once via `handler`.
-    /// - Stable connection/auth failures (positive evidence, not connecting)
-    ///   terminal-fail Siri launches immediately — the deadline is only a
-    ///   backstop for inconclusive states.
-    /// - A false handler result requeues only in-app launches; Siri launches
-    ///   fail terminally so Voice cannot open minutes later.
-    /// - Connecting / inconclusive requests are retained without calling the
-    ///   handler.
+    /// Ownership: only the claim taken here may requeue or report a terminal
+    /// result. After `await`, a stale claim returns `.superseded` and mutates
+    /// nothing.
     func routePending(
         connection: VoiceLaunchConnectionSnapshot,
         now: Date = Date(),
         using handler: Handler
     ) async -> PendingVoiceIntentRouteOutcome {
-        guard let intent = store.take() else { return .idle }
+        guard let claim = store.takeClaim() else { return .idle }
+        let intent = claim.intent
 
         switch PendingVoiceLaunchPolicy.readiness(
             for: intent,
@@ -97,23 +153,32 @@ final class PendingVoiceIntentRouter {
             now: now
         ) {
         case .failed(let message):
+            // Consumed by takeClaim; still current (no suspension yet).
             return .failed(message: message)
         case .waiting:
-            store.requeueAsDeferred(intent)
+            store.requeueDeferred(claim)
             return .deferred
         case .ready:
             break
         }
 
-        if await handler(intent) {
+        let didOpen = await handler(intent)
+
+        // Handler may suspend across profile switch / session create. If the
+        // store moved on, this completion is stale — no requeue, no error.
+        guard store.isClaimCurrent(claim) else {
+            return .superseded
+        }
+
+        if didOpen {
             return .routed
         }
 
-        switch PendingVoiceLaunchPolicy.handlerFailureOutcome(for: intent) {
-        case .failed(let message):
+        switch PendingVoiceLaunchPolicy.handlerFailure(for: intent) {
+        case .terminal(let message):
             return .failed(message: message)
-        case .ready, .waiting:
-            store.requeueAsDeferred(intent)
+        case .retryLater:
+            store.requeueDeferred(claim)
             return .deferred
         }
     }

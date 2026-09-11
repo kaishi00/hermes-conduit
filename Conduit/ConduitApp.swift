@@ -122,35 +122,45 @@ struct ConduitApp: App {
         return "\(pendingVoiceIntents.revision):\(Int(deadline.timeIntervalSinceReferenceDate))"
     }
 
-    /// Resolves the pending voice launch once. Connected Siri/in-app routes
-    /// consume the request; expired or stable-failed external requests fail
-    /// with a visible error and are discarded so a later reconnect cannot
-    /// resurrect them.
+    /// Resolves the pending voice launch once. Ownership token: only the
+    /// claimed request may be routed or failed; a superseded completion is
+    /// discarded without publishing.
     private func resolvePendingVoiceIntent() async {
         let router = PendingVoiceIntentRouter(store: pendingVoiceIntents)
         let connection = appState.voiceLaunchConnectionSnapshot()
         let outcome = await router.routePending(connection: connection) { intent in
             await appState.openVoiceConversation(intent)
         }
-        if case .failed(let message) = outcome {
+        switch outcome {
+        case .failed(let message):
             appState.errorMessage = message
+        case .idle, .routed, .deferred, .superseded:
+            break
         }
     }
 
-    /// Siri external launches are bounded: when the launch window ends
-    /// without Hermes becoming ready, fail the request immediately instead of
-    /// leaving it pending across an arbitrary later reconnect.
+    /// Authoritative 30s backstop. Sleeps on the monotonic clock, then
+    /// expires the exact claim that armed the wait — never routes through
+    /// generic readiness (which could return `.waiting` again).
     private func waitOutPendingVoiceDeadline() async {
-        guard let deadline = pendingVoiceIntents.pendingExternalLaunchDeadline else { return }
-        let remaining = deadline.timeIntervalSinceNow
-        if remaining > 0 {
+        guard let claim = pendingVoiceIntents.peekClaim(),
+              let elapsedDeadline = claim.intent.externalLaunchElapsedDeadline else {
+            return
+        }
+        let now = ContinuousClock.now
+        if now < elapsedDeadline {
             do {
-                try await Task.sleep(for: .seconds(remaining))
+                try await Task.sleep(for: now.duration(to: elapsedDeadline))
             } catch {
                 // Superseded/cancelled waiter must not resolve a different intent.
                 return
             }
         }
-        await resolvePendingVoiceIntent()
+        guard let expired = pendingVoiceIntents.expireClaimIfCurrent(claim) else {
+            return
+        }
+        if expired.source == .siri {
+            appState.errorMessage = PendingVoiceLaunchPolicy.expiredFailureMessage
+        }
     }
 }

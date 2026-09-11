@@ -45,21 +45,20 @@ struct VoiceLaunchConnectionSnapshot: Equatable {
 }
 
 extension AppState {
-    /// Deterministic snapshot for external voice-launch routing. Stable
-    /// failure means recorded lifecycle evidence (`lastConnectionFailure` or
-    /// a presented login failure) — not merely “not connecting right now.”
+    /// Deterministic snapshot for external voice-launch routing.
+    ///
+    /// Primary evidence is `lastConnectionFailure`. A presented login-required
+    /// failure is fallback evidence when the classifier is empty. Arbitrary
+    /// `.notice(...)` presentations are not proof of login-required and must
+    /// not synthesize stable failure.
     func voiceLaunchConnectionSnapshot() -> VoiceLaunchConnectionSnapshot {
-        let loginRequiredOnlyEvidence = lastConnectionFailure == nil
-            && pendingLoginFailure != nil
+        let fallbackFailure = pendingLoginFailure?.classifiedFailure
         return VoiceLaunchConnectionSnapshot(
             isConnected: isConnected,
             isConnecting: isConnecting,
             hasStableFailureEvidence: lastConnectionFailure != nil
-                || pendingLoginFailure != nil,
-            // Auth-required presentation is the positive evidence when the
-            // classifier has not recorded a typed failure yet.
-            classifiedFailure: lastConnectionFailure
-                ?? (loginRequiredOnlyEvidence ? .loginRequired : nil)
+                || fallbackFailure != nil,
+            classifiedFailure: lastConnectionFailure ?? fallbackFailure
         )
     }
 }
@@ -91,18 +90,21 @@ enum PendingVoiceLaunchPolicy {
     }
 
     /// Builds the in-memory pending request for one Siri invocation.
-    /// The absolute deadline is stamped once at enqueue time so later
-    /// re-enqueues (temporary not-ready deferrals) cannot extend the window.
+    /// Deadlines are stamped once at enqueue so later deferrals cannot extend
+    /// the window. `Date` is identity/test metadata; the waiter uses the
+    /// monotonic `ContinuousClock.Instant`.
     static func makeSiriPendingIntent(
         profile: String?,
         now: Date = Date(),
-        budget: TimeInterval = externalLaunchBudget
+        budget: TimeInterval = externalLaunchBudget,
+        clock: ContinuousClock = ContinuousClock()
     ) -> PendingVoiceIntent {
         PendingVoiceIntent(
             profile: normalizedProfile(profile),
             startsFreshConversation: true,
             source: .siri,
-            externalLaunchDeadline: now.addingTimeInterval(budget)
+            externalLaunchDeadline: now.addingTimeInterval(budget),
+            externalLaunchElapsedDeadline: clock.now.advanced(by: .seconds(budget))
         )
     }
 
@@ -132,22 +134,21 @@ enum PendingVoiceLaunchPolicy {
     /// - Connecting / inconclusive → wait (Siri window still open).
     /// - Stable failure (positive evidence, not connecting) → terminal fail
     ///   for Siri; do not wait out the deadline.
-    /// - Deadline expiry → terminal fail even if still inconclusive.
+    /// - Deadline metadata (`now >= deadline`) → terminal fail even if still
+    ///   inconclusive. The runtime waiter is authoritative in production;
+    ///   this Date check covers deterministic tests and the boundary case.
     static func readiness(
         for intent: PendingVoiceIntent,
         connection: VoiceLaunchConnectionSnapshot,
         now: Date
     ) -> Readiness {
-        if let deadline = intent.externalLaunchDeadline, now > deadline {
+        if let deadline = intent.externalLaunchDeadline, now >= deadline {
             return .failed(message: expiredFailureMessage)
         }
         switch connection.phase {
         case .connected:
             return .ready
         case .connecting, .inconclusive:
-            // In-app launches (composer / wake) have no deadline and keep
-            // “wait until connected.” Siri requests inside their window also
-            // wait for the normal connection attempt / bootstrap.
             return .waiting
         case .stableFailure:
             if intent.source == .siri {
@@ -158,15 +159,15 @@ enum PendingVoiceLaunchPolicy {
     }
 
     /// Outcome when the launch handler reports it could not open Voice.
-    /// Siri launches are terminal: a failed or partial open must not sit
-    /// pending and surprise the user on a later reconnect. In-app launches
-    /// keep the existing defer-and-retry behavior.
-    static func handlerFailureOutcome(
+    /// Production store traffic is Siri-only (Composer calls
+    /// `openVoiceConversation` directly). Siri launches are terminal so Voice
+    /// cannot open minutes later.
+    static func handlerFailure(
         for intent: PendingVoiceIntent
-    ) -> Readiness {
+    ) -> PendingVoiceHandlerFailure {
         if intent.source == .siri {
-            return .failed(message: disconnectedFailureMessage)
+            return .terminal(message: disconnectedFailureMessage)
         }
-        return .waiting
+        return .retryLater
     }
 }

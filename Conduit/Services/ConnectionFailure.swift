@@ -219,6 +219,10 @@ struct ConnectionFailurePresentation: Equatable {
     /// Whether Try Again / Troubleshoot Connection actions accompany this
     /// failure.
     let offersRecoveryActions: Bool
+    /// Typed failure when this presentation wraps a classified connection
+    /// error. Nil for hand-authored notices — a notice is not proof of a
+    /// specific ConnectionFailure (e.g. login required).
+    let classifiedFailure: ConnectionFailure?
 
     /// Presentation for a classified connection failure, with recovery
     /// actions and the classified help destination. Rate limiting is the one
@@ -229,7 +233,8 @@ struct ConnectionFailurePresentation: Equatable {
             title: failure.userTitle,
             message: failure.userMessage,
             helpDestination: failure.helpDestination,
-            offersRecoveryActions: failure != .rateLimited
+            offersRecoveryActions: failure != .rateLimited,
+            classifiedFailure: failure
         )
     }
 
@@ -240,7 +245,8 @@ struct ConnectionFailurePresentation: Equatable {
             title: title,
             message: message,
             helpDestination: nil,
-            offersRecoveryActions: false
+            offersRecoveryActions: false,
+            classifiedFailure: nil
         )
     }
 }
