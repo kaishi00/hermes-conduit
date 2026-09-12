@@ -347,13 +347,14 @@ final class VoiceConversationSpokenEndCommandTests: XCTestCase {
             flags.submitTexts.append(text)
             return true
         }
-        let interruptAction: @MainActor () async -> Void = {
+        let interruptAction: @MainActor () async -> Bool = {
             // The End Conversation teardown cancels the utterance task that
             // called it; the Hermes interrupt must still run in an
             // uncancelled task (HermesClient.rpc throws CancellationError
             // for cancelled work, which would leave the turn alive).
             XCTAssertFalse(Task.isCancelled)
             flags.interrupts += 1
+            return true
         }
         let endAction: (@MainActor () -> Void)?
         if wiresCloseSeam {

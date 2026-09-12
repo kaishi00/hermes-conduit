@@ -810,12 +810,49 @@ final class AppState: ObservableObject {
             return await self.submitVoiceTranscript(transcript)
         },
         interrupt: { [weak self] in
-            await self?.interruptForVoice()
+            guard let self else { return false }
+            return await self.interruptForVoice()
         },
         onEndConversation: { [weak self] in
             self?.closeVoiceConversation()
         }
     )
+    /// Logical identity of a Voice conversation suspended by an app lifecycle
+    /// transition (scene backgrounded / device locked). Identity only: it
+    /// never holds audio resources, gateway or transport references, session
+    /// leases, or task handles. Recorded when the scene deactivates with the
+    /// Voice sheet open, consumed by foreground restoration, and cleared by
+    /// every destructive Voice boundary (explicit Close, spoken End
+    /// Conversation, profile switch, server replacement, disconnect, forced
+    /// sign-out, voice disabled). In memory only — process death
+    /// intentionally loses it.
+    struct SuspendedVoiceConversation: Equatable {
+        let profile: String
+        let sessionID: String
+        let serverIdentity: String?
+    }
+    @Published private(set) var suspendedVoiceConversation: SuspendedVoiceConversation?
+    /// One-shot intent for the Voice sheet's auto-listen on fresh
+    /// presentation. Armed only by `openVoiceConversation` and consumed
+    /// exactly once by the sheet, so a restored suspended conversation can
+    /// never hot-start the microphone when SwiftUI recreates the sheet's
+    /// view identity. Lifecycle suspension and every destructive Voice
+    /// boundary disarm it.
+    internal(set) var voiceSheetShouldAutoListen = false
+
+    func consumeVoiceSheetAutoListen() -> Bool {
+        guard voiceSheetShouldAutoListen else { return false }
+        voiceSheetShouldAutoListen = false
+        return true
+    }
+    /// The profile the voice conversation controller's current session was
+    /// opened for. Close-time mute persistence is keyed on this rather than
+    /// on session liveness alone: an audio interruption or any boundary that
+    /// stops the controller must still let a same-profile Close persist the
+    /// user's mute, while a Close arriving after a profile flip (the sheet's
+    /// deferred `onDismiss`) must not write the outgoing profile's mute into
+    /// the now-active profile's blob.
+    internal(set) var voiceControllerSessionProfile: String?
     /// Manual per-message read aloud for completed assistant responses.
     /// TTS-only: independent of the voice conversation and of STT.
     lazy var messageReadAloudController = MessageReadAloudController(
@@ -2101,6 +2138,11 @@ final class AppState: ObservableObject {
         // from its own bridge (capability refresh, read-aloud assignment).
         voiceConversationController.setGateway(nil)
         readAloudGatewayBridge = nil
+        // Server replacement is a destructive Voice boundary: a suspended
+        // conversation from the outgoing server must never be restored.
+        suspendedVoiceConversation = nil
+        voiceSheetShouldAutoListen = false
+        voiceControllerSessionProfile = nil
         showVoiceSheet = false
     }
 
@@ -2782,6 +2824,9 @@ final class AppState: ObservableObject {
         // never open a stream again, so it must not survive the re-login.
         messageReadAloudController.setGateway(nil)
         readAloudGatewayBridge = nil
+        suspendedVoiceConversation = nil
+        voiceSheetShouldAutoListen = false
+        voiceControllerSessionProfile = nil
         showVoiceSheet = false
         voiceCapabilitySnapshot = .unavailable
         isVoiceEnabled = false
@@ -2949,6 +2994,15 @@ final class AppState: ObservableObject {
         messageReadAloudController.stop()
         messageReadAloudController.setGateway(nil)
         readAloudGatewayBridge = nil
+        // Forced sign-out supersedes any suspended Voice conversation (the
+        // restore-time connection identity check would fail closed anyway);
+        // stop the controller and drop the sheet immediately like
+        // Disconnect does instead of waiting for the next scene cycle.
+        suspendedVoiceConversation = nil
+        voiceSheetShouldAutoListen = false
+        voiceControllerSessionProfile = nil
+        voiceConversationController.stop()
+        showVoiceSheet = false
         projects = []
         supportsProjects = false
         projectsLoading = false
@@ -5206,6 +5260,11 @@ final class AppState: ObservableObject {
             isSceneActive = true
             voiceConversationController.setForegroundActive(true)
             messageReadAloudController.setForegroundActive(true)
+            // Voice restoration deliberately does NOT run here: the socket,
+            // bridge, and runtime session identity may all be stale after a
+            // background suspension. The suspended descriptor is consumed
+            // inside the reconciliation task below, after the authoritative
+            // transport/session state is established (or definitively fails).
             // Consume the background arming even while signed out, so a
             // background → active cycle on the login screen doesn't surface
             // a stale request after the user signs back in.
@@ -5276,13 +5335,13 @@ final class AppState: ObservableObject {
                             // session.
                             self.settleReconciliation(token)
                             await self.reconnectForRetry(purpose: .preserveCurrent)
-                            return
+                        } else {
+                            lifecycleLog.notice(
+                                "Foreground refresh: health check failed (\(error.localizedDescription, privacy: .private)); reconnecting"
+                            )
+                            await self.reconnectForRetry(purpose: .automaticReturn)
+                            self.settleReconciliation(token)
                         }
-                        lifecycleLog.notice(
-                            "Foreground refresh: health check failed (\(error.localizedDescription, privacy: .private)); reconnecting"
-                        )
-                        await self.reconnectForRetry(purpose: .automaticReturn)
-                        self.settleReconciliation(token)
                     }
                 } else {
                     guard self.scenePhaseAttemptIsCurrent(sceneAttemptID) else {
@@ -5292,13 +5351,25 @@ final class AppState: ObservableObject {
                     if !self.automaticChatResumeWorkIsCurrent(automaticWorkToken) {
                         self.settleReconciliation(token)
                         await self.reconnectForRetry(purpose: .preserveCurrent)
-                        return
+                    } else {
+                        lifecycleLog.notice(
+                            "Foreground refresh start: transport=missing-or-unhealthy; reconnecting"
+                        )
+                        await self.reconnectForRetry(purpose: .automaticReturn)
+                        self.settleReconciliation(token)
                     }
-                    lifecycleLog.notice(
-                        "Foreground refresh start: transport=missing-or-unhealthy; reconnecting"
+                }
+                // Voice restoration runs here — after the authoritative
+                // reconciliation above established transport and session
+                // state — and only while this attempt is still current. A
+                // pending suspended conversation forces a capability refresh
+                // first: the pre-background snapshot cannot be trusted across
+                // suspension, and restoration must fail closed when the
+                // refreshed state says a fresh open would be rejected.
+                if self.scenePhaseAttemptIsCurrent(sceneAttemptID) {
+                    await self.refreshCapabilitiesAndRestoreSuspendedVoice(
+                        isCurrent: { self.scenePhaseAttemptIsCurrent(sceneAttemptID) }
                     )
-                    await self.reconnectForRetry(purpose: .automaticReturn)
-                    self.settleReconciliation(token)
                 }
             }
             scenePhaseTask = task
@@ -5333,9 +5404,12 @@ final class AppState: ObservableObject {
                 locallyOwnedInFlightTurn = nil
             }
             foregroundFreshnessCheckArmed = true
-            voiceConversationController.setForegroundActive(false)
             messageReadAloudController.setForegroundActive(false)
-            showVoiceSheet = false
+            // Suspension is not Close: an open Voice conversation releases its
+            // runtime ownership and is recorded for foreground restoration,
+            // and the sheet presentation intentionally survives the
+            // background transition.
+            suspendVoiceConversationForBackground()
             // Drop any armed reconnect timer as well: in-flight cycles abort
             // at their next transportContinuation checkpoint, and foreground
             // activation re-establishes the transport.
@@ -5372,8 +5446,14 @@ final class AppState: ObservableObject {
             // transition too, rather than at its next checkpoint.
             cancelScenePhaseAttempt()
             chatResumeCoordinator.freezeViewport()
-            voiceConversationController.setForegroundActive(false)
             messageReadAloudController.setForegroundActive(false)
+            // A transient .inactive dip (Control Center, an incoming-call
+            // banner, the microphone permission prompt) is NOT a lifecycle
+            // suspension: the socket and audio session survive, in-flight
+            // turns keep flowing, and a pending first-listen must survive the
+            // dip. Voice suspension happens only on the actual .background
+            // transition — a descriptor-less suspension here would tear the
+            // runtime down with no restoration path.
             return nil
 
         @unknown default:
@@ -5383,6 +5463,110 @@ final class AppState: ObservableObject {
 
     private func scenePhaseAttemptIsCurrent(_ id: UUID) -> Bool {
         !Task.isCancelled && scenePhaseAttemptID == id
+    }
+
+    /// Background transition for the Voice conversation. An open Voice sheet
+    /// routes through the controller's lifecycle suspension — runtime
+    /// ownership released, logical conversation preserved — and records the
+    /// suspended descriptor for foreground restoration. A closed Voice sheet
+    /// keeps the existing full-stop semantics. Transient .inactive dips never
+    /// reach this: they leave Voice untouched.
+    private func suspendVoiceConversationForBackground() {
+        // Suspension disarms the fresh-open auto-listen intent: the restored
+        // sheet must never hot-start the microphone, even if SwiftUI
+        // recreates the sheet's view identity while the binding stays true.
+        voiceSheetShouldAutoListen = false
+        voiceConversationController.setForegroundActive(false)
+        guard showVoiceSheet else {
+            voiceConversationController.stop()
+            return
+        }
+        voiceConversationController.suspendRuntimeForLifecycle()
+        suspendedVoiceConversation = SuspendedVoiceConversation(
+            profile: activeProfile,
+            sessionID: activeSessionId ?? "",
+            serverIdentity: Self.voiceSuspensionServerIdentity(connection)
+        )
+    }
+
+    /// Consumes the suspended Voice descriptor on foreground return. Called
+    /// ONLY after the foreground reconciliation task has established the
+    /// authoritative transport/session state (or definitively failed) — never
+    /// synchronously at the scene transition, when the socket, bridge, and
+    /// runtime session identity may all still be stale.
+    ///
+    /// Validation is synchronous against that post-reconciliation state: the
+    /// same authoritative predicate as a fresh `openVoiceConversation`
+    /// (`canStartVoiceConversation`: live connection, voice enabled, usable
+    /// transcription AND speech) plus the suspended conversation's identity —
+    /// same active profile, and the active runtime session is still the
+    /// suspended conversation (unchanged, or a legitimate rebind per the
+    /// session catalog/alias machinery). Anything stale fails CLOSED. A valid
+    /// descriptor reinstalls the gateway and settles open-but-NON-listening;
+    /// capture is NEVER started by restoration (Continuous Conversation
+    /// governs turn-to-turn continuation only, not lifecycle transitions).
+    func restoreSuspendedVoiceConversationIfNeeded() {
+        guard let suspended = suspendedVoiceConversation else { return }
+        suspendedVoiceConversation = nil
+        let conversationStillMatches = suspended.sessionID == activeSessionId
+            || knownSessionIDs(for: suspended.sessionID).contains(activeSessionId ?? "")
+        let identityStillValid = suspended.profile == activeProfile
+            && !suspended.sessionID.isEmpty
+            && conversationStillMatches
+            && connection != nil
+            && suspended.serverIdentity == Self.voiceSuspensionServerIdentity(connection)
+            && canStartVoiceConversation
+            && showVoiceSheet
+            && voiceConversationController.hasLiveVoiceSession
+        guard identityStillValid else {
+            if showVoiceSheet {
+                if suspended.profile == activeProfile {
+                    closeVoiceConversation()
+                } else {
+                    // Cross-profile staleness: the suspended controller's
+                    // live mute belongs to the descriptor's profile. Tear
+                    // down directly — closeVoiceConversation would persist
+                    // that mute into the now-active profile's preferences.
+                    voiceConversationController.stop()
+                    voiceSheetShouldAutoListen = false
+                    voiceControllerSessionProfile = nil
+                    showVoiceSheet = false
+                }
+            }
+            return
+        }
+        // Rebuild the gateway from the current bridge/connection; the
+        // controller keeps its preserved conversation identity and
+        // preferences, settled in .idle.
+        refreshVoiceControllerGateway()
+        // The capability checks above passed, so a gateway that still could
+        // not be built (e.g. the bridge rotated under us) is staleness too:
+        // fail closed instead of restoring an open-but-dead sheet.
+        if !voiceConversationController.isGatewayAttached {
+            closeVoiceConversation()
+        }
+    }
+
+    /// Refreshes Voice capability state when a suspended Voice conversation
+    /// is pending, then validates/restores. The pre-background capability
+    /// snapshot cannot be trusted across suspension, so restoration must run
+    /// against a freshly negotiated answer; `isCurrent` is re-checked after
+    /// that await so a superseded attempt never consumes the descriptor.
+    /// Without a pending descriptor this is a no-op — a plain foreground
+    /// return never pays a redundant capability network refresh here.
+    func refreshCapabilitiesAndRestoreSuspendedVoice(isCurrent: @MainActor () -> Bool) async {
+        guard suspendedVoiceConversation != nil else { return }
+        // The central refreshVoiceCapabilities authority preserves the live
+        // in-session mute for the owning profile during this refresh, so the
+        // restored session keeps the user's Mute state.
+        await refreshVoiceCapabilities()
+        guard isCurrent() else { return }
+        restoreSuspendedVoiceConversationIfNeeded()
+    }
+
+    private static func voiceSuspensionServerIdentity(_ connection: HermesConnection?) -> String? {
+        guard let baseURL = connection?.baseUrl else { return nil }
+        return normalizedChatResumeServerIdentity(baseURL)
     }
 
     private func cancelScenePhaseAttempt() {
@@ -9448,12 +9632,17 @@ final class AppState: ObservableObject {
         }
     }
 
-    func cancelCurrent() async {
-        guard isBusy else { return }
+    /// Cancels the authoritative Hermes turn, reporting whether the
+    /// cancellation succeeded. "Success" also covers nothing being left to
+    /// cancel (the turn already settled server-side).
+    @discardableResult
+    func cancelCurrent() async -> Bool {
+        guard isBusy else { return true }
         let submissionContext = composerSubmissionContext()
-        guard await interruptForReplacement(context: submissionContext) else { return }
-        guard let currentContext = currentComposerSubmissionContextIfOwnedAndAliased(submissionContext) else { return }
+        guard await interruptForReplacement(context: submissionContext) else { return false }
+        guard let currentContext = currentComposerSubmissionContextIfOwnedAndAliased(submissionContext) else { return true }
         await recoverComposerSubmission(using: currentContext)
+        return true
     }
 
     /// Answers one question of a clarification request. Batch questions route
@@ -10669,6 +10858,22 @@ final class AppState: ObservableObject {
             connection = freshConnection
             client = nextClient
             clearPendingDecisionRestorationGuard()
+            // A profile switch ends any live or suspended Voice conversation
+            // from the outgoing profile. Persist the outgoing mute and tear
+            // down BEFORE the identity flip: the sheet's deferred onDismiss
+            // re-enters closeVoiceConversation after the switch, and its
+            // hasLiveVoiceSession guard makes that a no-op so the outgoing
+            // mute can never be persisted under the target profile.
+            if showVoiceSheet {
+                var preferences = loadVoiceProfilePreferences(profile: activeProfile)
+                preferences.outputMuted = voiceConversationController.isOutputMuted
+                saveVoiceProfilePreferences(preferences, profile: activeProfile)
+            }
+            voiceConversationController.stop()
+            showVoiceSheet = false
+            suspendedVoiceConversation = nil
+            voiceSheetShouldAutoListen = false
+            voiceControllerSessionProfile = nil
             // Fence any residual deferred cache write scheduled under the
             // outgoing profile before identities and namespaces change over.
             setActiveProfile(target)
@@ -10846,11 +11051,29 @@ final class AppState: ObservableObject {
     /// filtered and path-prefixed by the explicit profile, so no
     /// cross-profile transcript or cache state leaks in the window before
     /// that reconnect lands.
-    private func adoptAuthoritativeFallbackProfile(_ fallback: String) {
+    ///
+    /// Internal for tests: the fallback adoption is a real destructive Voice
+    /// boundary and the cross-profile fail-closed restore contract is pinned
+    /// through it.
+    func adoptAuthoritativeFallbackProfile(_ fallback: String) {
         guard fallback != activeProfile else { return }
         // A profile change replaces the voice gateway; any in-flight read
         // aloud belongs to the outgoing profile (same as switchProfile).
         messageReadAloudController.stop()
+        // A profile re-home ends any live or suspended Voice conversation
+        // from the outgoing profile. Persist the outgoing mute and tear down
+        // BEFORE the identity flip so it lands in the outgoing profile's
+        // blob, never the fallback's (same contract as switchProfile).
+        if showVoiceSheet {
+            var preferences = loadVoiceProfilePreferences(profile: activeProfile)
+            preferences.outputMuted = voiceConversationController.isOutputMuted
+            saveVoiceProfilePreferences(preferences, profile: activeProfile)
+        }
+        voiceConversationController.stop()
+        showVoiceSheet = false
+        suspendedVoiceConversation = nil
+        voiceSheetShouldAutoListen = false
+        voiceControllerSessionProfile = nil
         flushPendingPresentationCache()
         sessions = []
         cronSessions = []
@@ -12939,9 +13162,10 @@ final class AppState: ObservableObject {
         await submitComposer(text: transcript, attachments: [])
     }
 
-    /// Stops the authoritative Hermes turn when a spoken stop command or
-    /// barge-in wins the race with model generation.
-    func interruptForVoice() async {
+    /// Stops the authoritative Hermes turn when a spoken stop command,
+    /// barge-in, or Voice orphan cancellation wins the race with model
+    /// generation. Reports whether the cancellation succeeded.
+    func interruptForVoice() async -> Bool {
         await cancelCurrent()
     }
 
@@ -13042,7 +13266,16 @@ final class AppState: ObservableObject {
         await service.reload()
         guard profile == activeProfile, bridge === dashboardTicketBridge else { return }
         voiceCapabilitySnapshot = service.snapshot.capability
-        let preferences = loadVoiceProfilePreferences(profile: profile)
+        var preferences = loadVoiceProfilePreferences(profile: profile)
+        // PR #159 authority, enforced centrally: while the controller owns a
+        // live Voice session for THIS profile, its live mute is
+        // authoritative over the persisted blob. Ownership is keyed on the
+        // profile the session was opened for, so a refresh for another
+        // profile never carries a live mute across ownership.
+        if voiceConversationController.hasLiveVoiceSession,
+           voiceControllerSessionProfile == profile {
+            preferences.outputMuted = voiceConversationController.isOutputMuted
+        }
         voiceTranscriptionMode = preferences.resolvedTranscriptionMode
         continuousConversationEnabled = preferences.continuousConversation
         voiceConversationController.setProfilePreferences(preferences)
@@ -13059,6 +13292,9 @@ final class AppState: ObservableObject {
         refreshReadAloudGateway()
         if !enabled {
             voiceConversationController.stop()
+            suspendedVoiceConversation = nil
+            voiceSheetShouldAutoListen = false
+            voiceControllerSessionProfile = nil
             showVoiceSheet = false
         }
         return true
@@ -13190,18 +13426,39 @@ final class AppState: ObservableObject {
             errorMessage = "Hermes could not prepare a voice conversation."
             return true
         }
+        // A fresh user-initiated open supersedes any stale suspension (e.g.
+        // a descriptor retained across sign-out, or one whose reconciliation
+        // task is still in flight): it must never fail-close this new
+        // session on a later scene cycle.
+        suspendedVoiceConversation = nil
         voiceConversationController.setGateway(gateway)
         voiceConversationController.beginVoiceTurn(sessionID: sessionID)
+        voiceControllerSessionProfile = activeProfile
         showSidebar = false
+        voiceSheetShouldAutoListen = true
         showVoiceSheet = true
         return true
     }
 
     func closeVoiceConversation() {
-        var preferences = loadVoiceProfilePreferences(profile: activeProfile)
-        preferences.outputMuted = voiceConversationController.isOutputMuted
-        saveVoiceProfilePreferences(preferences, profile: activeProfile)
+        // Explicit Close (button, swipe, spoken End Conversation) beats any
+        // lifecycle suspension: the conversation is not restorable.
+        suspendedVoiceConversation = nil
+        voiceSheetShouldAutoListen = false
+        // Live-mute persistence obeys the PR #159 authority rule: the
+        // controller's mute wins only for the profile that owns the session.
+        // A same-profile close that arrives after the controller was
+        // already torn down (e.g. audio interruption) still persists; a
+        // close arriving after a profile flip (the sheet's deferred
+        // onDismiss) persists nothing.
+        if voiceConversationController.hasLiveVoiceSession
+            || voiceControllerSessionProfile == activeProfile {
+            var preferences = loadVoiceProfilePreferences(profile: activeProfile)
+            preferences.outputMuted = voiceConversationController.isOutputMuted
+            saveVoiceProfilePreferences(preferences, profile: activeProfile)
+        }
         voiceConversationController.endVoiceSession()
+        voiceControllerSessionProfile = nil
         showVoiceSheet = false
     }
 

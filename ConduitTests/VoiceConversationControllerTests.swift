@@ -30,7 +30,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             playback: MockPlayback(),
             gateway: MockGateway(),
             submit: { _ in true },
-            interrupt: {}
+            interrupt: { true }
         )
 
         await controller.startListening()
@@ -46,7 +46,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             playback: MockPlayback(),
             gateway: MockGateway(),
             submit: { _ in true },
-            interrupt: {}
+            interrupt: { true }
         )
 
         await controller.resumeMicrophone()
@@ -62,7 +62,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             playback: MockPlayback(),
             gateway: MockGateway(),
             submit: { _ in true },
-            interrupt: {}
+            interrupt: { true }
         )
 
         await controller.startListening()
@@ -77,7 +77,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             playback: MockPlayback(),
             gateway: MockGateway(),
             submit: { _ in true },
-            interrupt: {}
+            interrupt: { true }
         )
 
         let result = await controller.runTranscriptionTest(duration: 0)
@@ -97,7 +97,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             playback: MockPlayback(),
             gateway: gateway,
             submit: { _ in true },
-            interrupt: {}
+            interrupt: { true }
         )
 
         let result = await controller.runTranscriptionTest(duration: 0)
@@ -113,7 +113,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             playback: MockPlayback(),
             gateway: MockGateway(transcript: "Captured locally"),
             submit: { _ in true },
-            interrupt: {}
+            interrupt: { true }
         )
 
         let result = await controller.runTranscriptionTest(duration: 0)
@@ -129,7 +129,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             deviceTranscriber: MockDeviceTranscriber(transcript: "", permissionGranted: false),
             gateway: MockGateway(),
             submit: { _ in true },
-            interrupt: {}
+            interrupt: { true }
         )
 
         let result = await controller.requestOnDeviceTranscriptionPermissions()
@@ -146,7 +146,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             deviceTranscriber: deviceTranscriber,
             gateway: MockGateway(),
             submit: { _ in true },
-            interrupt: {}
+            interrupt: { true }
         )
 
         let result = await controller.requestOnDeviceTranscriptionPermissions()
@@ -164,7 +164,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             deviceTranscriber: deviceTranscriber,
             gateway: MockGateway(),
             submit: { _ in true },
-            interrupt: {}
+            interrupt: { true }
         )
 
         let result = await controller.requestOnDeviceTranscriptionPermissions()
@@ -197,7 +197,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             playback: MockPlayback(),
             gateway: gateway,
             submit: { text in submitted.append(text); return true },
-            interrupt: {}
+            interrupt: { true }
         )
         controller.beginVoiceTurn(sessionID: "session")
         await controller.startListening()
@@ -224,7 +224,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             deviceTranscriber: deviceTranscriber,
             gateway: gateway,
             submit: { submitted.append($0); return true },
-            interrupt: {}
+            interrupt: { true }
         )
         var preferences = VoiceProfilePreferences()
         preferences.transcriptionMode = .appleOnDevice
@@ -249,7 +249,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             playback: MockPlayback(),
             gateway: MockGateway(),
             submit: { _ in true },
-            interrupt: { interrupts += 1 }
+            interrupt: { interrupts += 1; return true }
         )
         await controller.startListening()
         let start = Date()
@@ -291,7 +291,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             playback: MockPlayback(),
             gateway: gateway,
             submit: { _ in true },
-            interrupt: {}
+            interrupt: { true }
         )
         controller.beginVoiceTurn(sessionID: "session")
         await controller.startListening()
@@ -318,7 +318,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             playback: MockPlayback(),
             gateway: gateway,
             submit: { submitted.append($0); return true },
-            interrupt: {}
+            interrupt: { true }
         )
         controller.beginVoiceTurn(sessionID: "voice-session")
         await controller.startListening()
@@ -341,7 +341,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             playback: MockPlayback(),
             gateway: gateway,
             submit: { _ in true },
-            interrupt: {}
+            interrupt: { true }
         )
         controller.beginVoiceTurn(sessionID: "voice-session")
         await controller.startListening()
@@ -365,7 +365,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             playback: MockPlayback(),
             gateway: gateway,
             submit: { _ in true },
-            interrupt: {}
+            interrupt: { true }
         )
         controller.beginVoiceTurn(sessionID: "session")
         await controller.startListening()
@@ -400,7 +400,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             playback: MockPlayback(),
             gateway: gateway,
             submit: { _ in true },
-            interrupt: {}
+            interrupt: { true }
         )
         controller.beginVoiceTurn(sessionID: "voice-session")
         await controller.startListening()
@@ -434,7 +434,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             playback: MockPlayback(),
             gateway: gateway,
             submit: { _ in true },
-            interrupt: {}
+            interrupt: { true }
         )
         controller.beginVoiceTurn(sessionID: "voice-session")
         await controller.startListening()
@@ -465,7 +465,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             playback: MockPlayback(),
             gateway: gateway,
             submit: { _ in true },
-            interrupt: {}
+            interrupt: { true }
         )
         // No beginVoiceTurn: the extension is a no-op and a later turn
         // captures only its own id.
@@ -497,14 +497,14 @@ final class VoiceConversationControllerTests: XCTestCase {
             playback: MockPlayback(),
             gateway: gateway,
             submit: { submitted.append($0); return true },
-            interrupt: {}
+            interrupt: { true }
         )
         await controller.startListening()
         let start = Date()
         controller.ingestAudioLevel(0.1, at: start)
         controller.ingestAudioLevel(0, at: start.addingTimeInterval(1.3))
         try? await Task.sleep(nanoseconds: 20_000_000)
-        capture.emit(.interrupted)
+        capture.emit(.interrupted(generation: capture.captureGeneration))
         try? await Task.sleep(nanoseconds: 200_000_000)
 
         XCTAssertTrue(submitted.isEmpty)
@@ -518,7 +518,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             playback: MockPlayback(),
             gateway: MockGateway(),
             submit: { _ in true },
-            interrupt: {}
+            interrupt: { true }
         )
         await controller.startListening()
         controller.ingestAudioLevel(0, at: Date().addingTimeInterval(12.1))
@@ -535,7 +535,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             playback: MockPlayback(),
             gateway: gateway,
             submit: { _ in true },
-            interrupt: {}
+            interrupt: { true }
         )
         controller.beginVoiceTurn(sessionID: "session")
         await controller.startListening()
@@ -560,7 +560,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             playback: MockPlayback(),
             gateway: MockGateway(transcript: "Question"),
             submit: { _ in true },
-            interrupt: {}
+            interrupt: { true }
         )
         controller.beginVoiceTurn(sessionID: "session")
         await controller.startListening()
@@ -583,7 +583,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             playback: MockPlayback(),
             gateway: MockGateway(transcript: "Keep me"),
             submit: { _ in true },
-            interrupt: {}
+            interrupt: { true }
         )
         controller.beginVoiceTurn(sessionID: "first")
         await controller.startListening()
@@ -611,7 +611,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             gateway: gateway,
             routePolicyProvider: { policy.policy },
             submit: { _ in true },
-            interrupt: {}
+            interrupt: { true }
         )
         controller.beginVoiceTurn(sessionID: "session")
         await controller.startListening()
@@ -655,7 +655,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             playback: MockPlayback(),
             gateway: gateway,
             submit: { _ in true },
-            interrupt: {}
+            interrupt: { true }
         )
         controller.beginVoiceTurn(sessionID: "session")
         await controller.startListening()
@@ -688,7 +688,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             playback: MockPlayback(),
             gateway: MockGateway(transcript: "Next turn"),
             submit: { _ in true },
-            interrupt: {}
+            interrupt: { true }
         )
         controller.beginVoiceTurn(sessionID: "session")
         await controller.startListening()
@@ -723,7 +723,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             playback: MockPlayback(),
             gateway: MockGateway(),
             submit: { _ in true },
-            interrupt: {}
+            interrupt: { true }
         )
 
         await controller.startListening()
@@ -756,7 +756,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             playback: playback,
             gateway: MockGateway(deliversPCM: true),
             submit: { _ in true },
-            interrupt: {}
+            interrupt: { true }
         )
 
         let result = await controller.runSpeechTest(text: "test")
@@ -774,7 +774,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             playback: MockPlayback(),
             gateway: MockGateway(startsPlaybackOnOpen: true),
             submit: { _ in true },
-            interrupt: {}
+            interrupt: { true }
         )
 
         let result = await controller.runSpeechTest(text: "test")
@@ -789,7 +789,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             playback: MockPlayback(),
             gateway: MockGateway(deliversPCM: true),
             submit: { _ in true },
-            interrupt: {}
+            interrupt: { true }
         )
 
         let result = await controller.runSpeechTest(text: "test")
@@ -807,7 +807,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             playback: playback,
             gateway: MockGateway(deliversEncodedAudio: true),
             submit: { _ in true },
-            interrupt: {}
+            interrupt: { true }
         )
 
         let result = await controller.runSpeechTest(text: "test")
@@ -826,7 +826,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             playback: playback,
             gateway: MockGateway(deliversPartialPCM: true),
             submit: { _ in true },
-            interrupt: {}
+            interrupt: { true }
         )
 
         let result = await controller.runSpeechTest(text: "test")
@@ -841,7 +841,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             playback: playback,
             gateway: MockGateway(startsPlaybackOnOpen: true),
             submit: { _ in true },
-            interrupt: {}
+            interrupt: { true }
         )
         controller.beginVoiceTurn(sessionID: "session")
         await controller.startListening()
@@ -868,7 +868,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             playback: MockPlayback(),
             gateway: gateway,
             submit: { submitted.append($0); return true },
-            interrupt: {}
+            interrupt: { true }
         )
         controller.beginVoiceTurn(sessionID: "session")
         await controller.startListening()
@@ -902,7 +902,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             playback: MockPlayback(),
             gateway: gateway,
             submit: { submitted.append($0); return true },
-            interrupt: {}
+            interrupt: { true }
         )
         await controller.startListening()
 
@@ -928,7 +928,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             playback: MockPlayback(),
             gateway: gateway,
             submit: { submitted.append($0); return true },
-            interrupt: {}
+            interrupt: { true }
         )
         await controller.startListening()
 
@@ -957,7 +957,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             playback: MockPlayback(),
             gateway: gateway,
             submit: { submitted.append($0); return true },
-            interrupt: {}
+            interrupt: { true }
         )
         await controller.startListening()
 
@@ -996,7 +996,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             playback: MockPlayback(),
             gateway: MockGateway(),
             submit: { _ in true },
-            interrupt: {}
+            interrupt: { true }
         )
         await controller.startListening()
 
@@ -1015,7 +1015,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             playback: MockPlayback(),
             gateway: gateway,
             submit: { submitted.append($0); return true },
-            interrupt: {}
+            interrupt: { true }
         )
 
         // A long recording window gives the injected samples a wide
@@ -1047,7 +1047,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             playback: MockPlayback(),
             gateway: gateway,
             submit: { _ in true },
-            interrupt: {}
+            interrupt: { true }
         )
         await controller.startListening()
         let generation = capture.captureGeneration
@@ -1104,7 +1104,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             playback: MockPlayback(),
             gateway: gateway,
             submit: { _ in true },
-            interrupt: {}
+            interrupt: { true }
         )
 
         let testTask = Task { await controller.runTranscriptionTest(duration: 0.5) }
@@ -1151,7 +1151,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             playback: MockPlayback(),
             gateway: gateway,
             submit: { _ in true },
-            interrupt: {}
+            interrupt: { true }
         )
         await controller.startListening()
         let generationA = capture.captureGeneration
@@ -1195,7 +1195,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             gateway: gateway,
             routePolicyProvider: { policy.policy },
             submit: { _ in true },
-            interrupt: {}
+            interrupt: { true }
         )
 
         let testTask = Task { await controller.runSpeechTest(text: "hello") }
@@ -1225,7 +1225,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             playback: MockPlayback(),
             gateway: MockGateway(),
             submit: { _ in true },
-            interrupt: {}
+            interrupt: { true }
         )
         await controller.startListening()
         capture.emit(level: 0.4)
@@ -1240,7 +1240,7 @@ final class VoiceConversationControllerTests: XCTestCase {
         await controller.startListening()
         capture.emit(level: 0.4)
         try? await Task.sleep(nanoseconds: 80_000_000)
-        capture.emit(.interrupted)
+        capture.emit(.interrupted(generation: capture.captureGeneration))
         try? await Task.sleep(nanoseconds: 80_000_000)
         XCTAssertEqual(controller.state, .failed("Audio was interrupted."))
         XCTAssertEqual(controller.microphoneLevel, 0, accuracy: 0.0001)
@@ -1273,7 +1273,7 @@ final class VoiceSpeakerSafeBargeInTests: XCTestCase {
             gateway: gateway,
             routePolicyProvider: { policy.policy },
             submit: { submitted.append($0); return true },
-            interrupt: { interrupts += 1 }
+            interrupt: { interrupts += 1; return true }
         )
 
         await Self.driveToSpeaking(controller, gateway: gateway)
@@ -1309,7 +1309,7 @@ final class VoiceSpeakerSafeBargeInTests: XCTestCase {
             gateway: gateway,
             routePolicyProvider: { policy.policy },
             submit: { _ in true },
-            interrupt: { interrupts += 1 }
+            interrupt: { interrupts += 1; return true }
         )
 
         await Self.driveToSpeaking(controller, gateway: gateway)
@@ -1336,7 +1336,7 @@ final class VoiceSpeakerSafeBargeInTests: XCTestCase {
             gateway: gateway,
             routePolicyProvider: { policy.policy },
             submit: { _ in true },
-            interrupt: { interrupts += 1 }
+            interrupt: { interrupts += 1; return true }
         )
 
         await Self.driveToSpeaking(controller, gateway: gateway)
@@ -1372,7 +1372,7 @@ final class VoiceSpeakerSafeBargeInTests: XCTestCase {
             gateway: gateway,
             routePolicyProvider: { policy.policy },
             submit: { _ in true },
-            interrupt: { interrupts += 1 }
+            interrupt: { interrupts += 1; return true }
         )
 
         await Self.driveToSpeaking(controller, gateway: gateway)
@@ -1402,7 +1402,7 @@ final class VoiceSpeakerSafeBargeInTests: XCTestCase {
             gateway: gateway,
             routePolicyProvider: { policy.policy },
             submit: { _ in true },
-            interrupt: {}
+            interrupt: { true }
         )
         controller.beginVoiceTurn(sessionID: "session")
         await controller.startListening()
@@ -1435,7 +1435,7 @@ final class VoiceSpeakerSafeBargeInTests: XCTestCase {
             gateway: gateway,
             routePolicyProvider: { policy.policy },
             submit: { _ in true },
-            interrupt: { interrupts += 1 }
+            interrupt: { interrupts += 1; return true }
         )
 
         await Self.driveToSpeaking(controller, gateway: gateway)
@@ -1473,7 +1473,7 @@ final class VoiceSpeakerSafeBargeInTests: XCTestCase {
             gateway: gateway,
             routePolicyProvider: { policy.policy },
             submit: { _ in true },
-            interrupt: { interrupts += 1 }
+            interrupt: { interrupts += 1; return true }
         )
         controller.beginVoiceTurn(sessionID: "session")
         await controller.startListening()
@@ -1513,7 +1513,7 @@ final class VoiceSpeakerSafeBargeInTests: XCTestCase {
             gateway: gateway,
             routePolicyProvider: { policy.policy },
             submit: { _ in true },
-            interrupt: { interrupts += 1 }
+            interrupt: { interrupts += 1; return true }
         )
         controller.beginVoiceTurn(sessionID: "session")
         await controller.startListening()
@@ -1553,7 +1553,7 @@ final class VoiceSpeakerSafeBargeInTests: XCTestCase {
             gateway: gateway,
             routePolicyProvider: { policy.policy },
             submit: { _ in true },
-            interrupt: { interrupts += 1 }
+            interrupt: { interrupts += 1; return true }
         )
 
         await Self.driveToSpeaking(controller, gateway: gateway)
@@ -1583,7 +1583,7 @@ final class VoiceSpeakerSafeBargeInTests: XCTestCase {
             gateway: gateway,
             routePolicyProvider: { policy.policy },
             submit: { _ in true },
-            interrupt: { interrupts += 1 }
+            interrupt: { interrupts += 1; return true }
         )
 
         await Self.driveToSpeaking(controller, gateway: gateway)
@@ -1618,7 +1618,7 @@ final class VoiceSpeakerSafeBargeInTests: XCTestCase {
             gateway: gateway,
             routePolicyProvider: { policy.policy },
             submit: { _ in true },
-            interrupt: { interrupts += 1 }
+            interrupt: { interrupts += 1; return true }
         )
 
         await Self.driveToSpeaking(controller, gateway: gateway)
@@ -1647,7 +1647,7 @@ final class VoiceSpeakerSafeBargeInTests: XCTestCase {
             gateway: gateway,
             routePolicyProvider: { policy.policy },
             submit: { _ in true },
-            interrupt: { interrupts += 1 }
+            interrupt: { interrupts += 1; return true }
         )
 
         await Self.driveToSpeaking(controller, gateway: gateway)
@@ -1674,7 +1674,7 @@ final class VoiceSpeakerSafeBargeInTests: XCTestCase {
             gateway: gateway,
             routePolicyProvider: { policy.policy },
             submit: { _ in true },
-            interrupt: { interrupts += 1 }
+            interrupt: { interrupts += 1; return true }
         )
 
         await Self.driveToSpeaking(controller, gateway: gateway)
@@ -1713,7 +1713,7 @@ final class VoiceSpeakerSafeBargeInTests: XCTestCase {
             gateway: gateway,
             routePolicyProvider: { policy.policy },
             submit: { _ in true },
-            interrupt: { await gate.waitInInterrupt() }
+            interrupt: { await gate.waitInInterrupt(); return true }
         )
 
         await Self.driveToSpeaking(controller, gateway: gateway)
@@ -1756,7 +1756,7 @@ final class VoiceSpeakerSafeBargeInTests: XCTestCase {
             gateway: gateway,
             routePolicyProvider: { policy.policy },
             submit: { _ in true },
-            interrupt: { await gate.waitInInterrupt() }
+            interrupt: { await gate.waitInInterrupt(); return true }
         )
 
         await Self.driveToSpeaking(controller, gateway: gateway)
@@ -1791,7 +1791,7 @@ final class VoiceSpeakerSafeBargeInTests: XCTestCase {
             gateway: gateway,
             routePolicyProvider: { policy.policy },
             submit: { _ in true },
-            interrupt: { await gate.waitInInterrupt() }
+            interrupt: { await gate.waitInInterrupt(); return true }
         )
 
         await Self.driveToSpeaking(controller, gateway: gateway)
@@ -1885,7 +1885,7 @@ final class ContinuousConversationPreferenceTests: XCTestCase {
             gateway: gateway,
             routePolicyProvider: { policy.policy },
             submit: { _ in true },
-            interrupt: {}
+            interrupt: { true }
         )
         controller.setProfilePreferences(Self.preferences(continuous: false))
 
@@ -1909,7 +1909,7 @@ final class ContinuousConversationPreferenceTests: XCTestCase {
             gateway: gateway,
             routePolicyProvider: { policy.policy },
             submit: { _ in true },
-            interrupt: {}
+            interrupt: { true }
         )
         controller.setProfilePreferences(Self.preferences(continuous: false))
 
@@ -1969,7 +1969,7 @@ final class ContinuousConversationPreferenceTests: XCTestCase {
             playback: MockPlayback(),
             gateway: gateway,
             submit: { _ in true },
-            interrupt: { interrupts += 1 }
+            interrupt: { interrupts += 1; return true }
         )
         controller.setProfilePreferences(Self.preferences(continuous: false))
         controller.beginVoiceTurn(sessionID: "session")
@@ -1997,7 +1997,7 @@ final class ContinuousConversationPreferenceTests: XCTestCase {
             gateway: gateway,
             routePolicyProvider: { policy.policy },
             submit: { _ in true },
-            interrupt: { interrupts += 1 }
+            interrupt: { interrupts += 1; return true }
         )
         controller.setProfilePreferences(Self.preferences(continuous: false))
 
@@ -2023,7 +2023,7 @@ final class ContinuousConversationPreferenceTests: XCTestCase {
             gateway: gateway,
             routePolicyProvider: { policy.policy },
             submit: { _ in true },
-            interrupt: { interrupts += 1 }
+            interrupt: { interrupts += 1; return true }
         )
         controller.setProfilePreferences(Self.preferences(continuous: false))
 
@@ -2051,7 +2051,7 @@ final class ContinuousConversationPreferenceTests: XCTestCase {
             gateway: gateway,
             routePolicyProvider: { policy.policy },
             submit: { _ in true },
-            interrupt: { interrupts += 1 }
+            interrupt: { interrupts += 1; return true }
         )
         controller.setProfilePreferences(Self.preferences(continuous: false))
 
@@ -2134,7 +2134,7 @@ final class ContinuousConversationPreferenceTests: XCTestCase {
             playback: playback,
             gateway: gateway,
             submit: { _ in true },
-            interrupt: {}
+            interrupt: { true }
         )
         controller.setProfilePreferences(Self.preferences(continuous: false))
 
@@ -2162,7 +2162,7 @@ final class ContinuousConversationPreferenceTests: XCTestCase {
             playback: MockPlayback(),
             gateway: gateway,
             submit: { _ in true },
-            interrupt: {}
+            interrupt: { true }
         )
         controller.setProfilePreferences(Self.preferences(continuous: continuous))
         return controller

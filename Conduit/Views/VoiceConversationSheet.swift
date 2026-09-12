@@ -11,6 +11,11 @@ struct VoiceConversationSheet: View {
     @ObservedObject var controller: VoiceConversationController
     let profile: String
     let onClose: () -> Void
+    /// One-shot gate armed by a fresh `openVoiceConversation` and consumed
+    /// exactly once. A restored suspended conversation deliberately does NOT
+    /// auto-listen: the gate stays disarmed even if SwiftUI recreates this
+    /// view's identity while the presentation binding survives.
+    let shouldAutoListen: () -> Bool
     var startsListening: Bool = true
 
     @State private var didRequestStart = false
@@ -41,6 +46,7 @@ struct VoiceConversationSheet: View {
         .task {
             guard startsListening, !didRequestStart else { return }
             didRequestStart = true
+            guard shouldAutoListen() else { return }
             await controller.startListening()
         }
         .accessibilityElement(children: .contain)

@@ -221,7 +221,7 @@ final class AppStateReadAloudTests: XCTestCase {
             deviceTranscriber: MockVoiceTranscriber(),
             gateway: voiceGateway,
             submit: { _ in false },
-            interrupt: {}
+            interrupt: { true }
         )
         appState.voiceConversationController = voiceController
 

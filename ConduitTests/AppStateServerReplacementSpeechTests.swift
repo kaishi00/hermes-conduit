@@ -441,7 +441,7 @@ final class AppStateServerReplacementSpeechTests: XCTestCase {
             // real AVAudioSession route.
             routePolicyProvider: { .fullDuplex },
             submit: { _ in true },
-            interrupt: { await interruptGate.wait() }
+            interrupt: { await interruptGate.wait(); return true }
         )
         appState.voiceConversationController = voiceController
 

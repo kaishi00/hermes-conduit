@@ -95,7 +95,7 @@ final class HapticsVoiceIsolationTests: XCTestCase {
             playback: StubPlayback(),
             gateway: StubVoiceGateway(),
             submit: { _ in true },
-            interrupt: {}
+            interrupt: { true }
         )
         appState.voiceConversationController = controller
 
@@ -136,7 +136,7 @@ final class HapticsVoiceIsolationTests: XCTestCase {
             playback: StubPlayback(),
             gateway: StubVoiceGateway(),
             submit: { _ in true },
-            interrupt: {}
+            interrupt: { true }
         )
         appState.voiceConversationController = controller
 
@@ -173,14 +173,14 @@ final class HapticsVoiceIsolationTests: XCTestCase {
             playback: StubPlayback(),
             gateway: StubVoiceGateway(),
             submit: { _ in true },
-            interrupt: {}
+            interrupt: { true }
         )
         appState.voiceConversationController = controller
 
         await controller.startListening()
         XCTAssertFalse(appState.responseHapticsMayUseCoreHaptics, "a live voice session suppresses Core Haptics")
 
-        capture.emit(.interrupted)
+        capture.emit(.interrupted(generation: capture.captureGeneration))
         await waitUntil { controller.state == .failed("Audio was interrupted.") }
 
         XCTAssertFalse(controller.hasLiveVoiceSession, "an interrupted session is terminal: no voice operation is live")
@@ -200,13 +200,13 @@ final class HapticsVoiceIsolationTests: XCTestCase {
             playback: StubPlayback(),
             gateway: StubVoiceGateway(),
             submit: { _ in true },
-            interrupt: {}
+            interrupt: { true }
         )
 
         let testTask = Task { await controller.runTranscriptionTest(duration: 1) }
         await waitUntil { controller.state == .listening }
 
-        capture.emit(.interrupted)
+        capture.emit(.interrupted(generation: capture.captureGeneration))
         let result = await testTask.value
 
         XCTAssertFalse(result.passed, "an interrupted provider test must not report success")
