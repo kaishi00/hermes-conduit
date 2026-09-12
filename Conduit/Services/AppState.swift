@@ -853,6 +853,26 @@ final class AppState: ObservableObject {
     /// deferred `onDismiss`) must not write the outgoing profile's mute into
     /// the now-active profile's blob.
     internal(set) var voiceControllerSessionProfile: String?
+
+    /// Whether the CarPlay scene currently presents the shared Voice
+    /// conversation. Pure surface bookkeeping: CarPlay is another Voice
+    /// presentation surface over the same runtime, never a second owner.
+    @Published private(set) var isCarPlayVoiceSurfaceActive = false
+
+    func setCarPlayVoiceSurfaceActive(_ active: Bool) {
+        isCarPlayVoiceSurfaceActive = active
+    }
+
+    /// Whether at least one legitimate Voice presentation surface (the phone
+    /// scene, CarPlay) is active. This — not the raw phone scene phase — is
+    /// the Voice runtime's foreground gate: live Voice audio is allowed
+    /// exactly while this is true. It deliberately does NOT fake phone
+    /// `.active`: transport/chat reconciliation continues to read
+    /// `isSceneActive` for phone-specific behavior.
+    var hasActiveVoiceSurface: Bool {
+        isSceneActive || isCarPlayVoiceSurfaceActive
+    }
+
     /// Manual per-message read aloud for completed assistant responses.
     /// TTS-only: independent of the voice conversation and of STT.
     lazy var messageReadAloudController = MessageReadAloudController(
@@ -5258,7 +5278,11 @@ final class AppState: ObservableObject {
         switch phase {
         case .active:
             isSceneActive = true
-            voiceConversationController.setForegroundActive(true)
+            // Voice gate = "a legitimate Voice presentation surface exists".
+            // With the phone scene active this is trivially true; the same
+            // gate also stays true while the phone is backgrounded but the
+            // CarPlay surface is presenting the shared conversation.
+            voiceConversationController.setForegroundActive(hasActiveVoiceSurface)
             messageReadAloudController.setForegroundActive(true)
             // Voice restoration deliberately does NOT run here: the socket,
             // bridge, and runtime session identity may all be stale after a
@@ -5408,8 +5432,17 @@ final class AppState: ObservableObject {
             // Suspension is not Close: an open Voice conversation releases its
             // runtime ownership and is recorded for foreground restoration,
             // and the sheet presentation intentionally survives the
-            // background transition.
-            suspendVoiceConversationForBackground()
+            // background transition. The exception is another active Voice
+            // presentation surface: with CarPlay presenting the shared
+            // conversation, the phone backgrounding is NOT a Voice lifecycle
+            // boundary — Voice must stay live for the driver — so the
+            // suspension (and its restoration descriptor) is skipped
+            // entirely. Read-aloud remains phone-bound and deactivates above.
+            if hasActiveVoiceSurface {
+                voiceConversationController.setForegroundActive(true)
+            } else {
+                suspendVoiceConversationForBackground()
+            }
             // Drop any armed reconnect timer as well: in-flight cycles abort
             // at their next transportContinuation checkpoint, and foreground
             // activation re-establishes the transport.
@@ -5471,6 +5504,12 @@ final class AppState: ObservableObject {
     /// suspended descriptor for foreground restoration. A closed Voice sheet
     /// keeps the existing full-stop semantics. Transient .inactive dips never
     /// reach this: they leave Voice untouched.
+    ///
+    /// Callers guarantee no other legitimate Voice presentation surface is
+    /// active (`hasActiveVoiceSurface == false`): a CarPlay-presented
+    /// conversation skips this path on phone backgrounding, and the CarPlay
+    /// disconnect handler routes through it when the phone scene is inactive
+    /// so both boundaries share exactly one release/restore contract.
     private func suspendVoiceConversationForBackground() {
         // Suspension disarms the fresh-open auto-listen intent: the restored
         // sheet must never hot-start the microphone, even if SwiftUI
@@ -13391,40 +13430,103 @@ final class AppState: ObservableObject {
         // sheet is open, so a read aloud started before must not continue.
         messageReadAloudController.stop()
         if showVoiceSheet { closeVoiceConversation() }
-        if let rawProfile = intent.profile {
+        let outcome = await prepareVoiceConversation(
+            profile: intent.profile,
+            startsFreshConversation: intent.startsFreshConversation
+        )
+        switch outcome {
+        case .deferred:
+            return false
+        case .failed(let message):
+            // A rejected attach never presents the Voice sheet: surface the
+            // failure through the app-level error path instead.
+            errorMessage = message
+            return true
+        case .handled:
+            break
+        }
+        // Phone presentation: the prepared conversation is shown in the
+        // Voice sheet. CarPlay attaches through prepareVoiceConversation /
+        // attachToLiveVoiceConversation instead and never mutates
+        // these presentation flags.
+        showSidebar = false
+        voiceSheetShouldAutoListen = true
+        showVoiceSheet = true
+        return true
+    }
+
+    /// Outcome of the logical Voice conversation preparation. `.deferred`
+    /// means "not connected yet": the phone router keeps the request pending,
+    /// and CarPlay settles into its error state. `.handled` means the request
+    /// was consumed — the conversation is prepared, or a user-visible failure
+    /// was raised. `.failed(String)` means the preparation was rejected
+    /// WITHOUT arming a conversation: the message must be surfaced and no
+    /// presentation attached.
+    enum VoiceConversationPrepareOutcome: Equatable {
+        case deferred
+        case handled
+        case failed(String)
+    }
+
+    /// Prepare/acquire the LOGICAL Voice conversation — capability refresh,
+    /// profile selection, session continuation/creation, Voice gateway
+    /// installation — with no phone presentation attached. Split out of
+    /// `openVoiceConversation` so the CarPlay surface can open Voice through
+    /// the exact same checks; the phone flow additionally presents the sheet.
+    ///
+    /// If a Voice conversation is already live, this re-arms it in place
+    /// (fresh gateway on the same session) without clearing the transcript.
+    func prepareVoiceConversation(
+        profile: String?,
+        startsFreshConversation: Bool
+    ) async -> VoiceConversationPrepareOutcome {
+        if let rawProfile = profile {
             let requestedProfile = rawProfile.trimmingCharacters(in: .whitespacesAndNewlines)
             if !requestedProfile.isEmpty, requestedProfile != activeProfile {
                 await switchProfile(to: requestedProfile)
             }
             guard requestedProfile.isEmpty || requestedProfile == activeProfile else {
                 errorMessage = "Conduit could not open the requested voice profile."
-                return true
+                return .handled
             }
         }
-        guard isConnected else { return false }
+        guard isConnected else { return .deferred }
+        if voiceConversationController.hasLiveVoiceSession, !startsFreshConversation {
+            // Another Voice presentation is attaching to the existing logical
+            // conversation (the sheet presentation is the caller's job): no
+            // beginVoiceTurn, no transcript reset, no session churn, no
+            // in-flight-turn cancellation. This intentionally precedes the
+            // generic turn-running rejection — a running turn owned by the
+            // shared Voice session is the attachment, not a conflict.
+            guard attachToLiveVoiceConversation() else {
+                return .failed(voiceUnavailableReason
+                    ?? "Hermes could not reattach the live voice conversation.")
+            }
+            return .handled
+        }
         if turnState.isRunning {
-            guard intent.startsFreshConversation else {
+            guard startsFreshConversation else {
                 errorMessage = "Stop the current response before starting voice in this conversation."
-                return true
+                return .handled
             }
             await cancelCurrent()
         }
         await refreshVoiceCapabilities()
         guard canStartVoiceConversation else {
             errorMessage = voiceUnavailableReason
-            return true
+            return .handled
         }
         let previousSessionID = activeSessionId
-        if intent.startsFreshConversation || activeSessionId == nil {
+        if startsFreshConversation || activeSessionId == nil {
             await createNewSession()
-            if intent.startsFreshConversation, activeSessionId == previousSessionID {
+            if startsFreshConversation, activeSessionId == previousSessionID {
                 errorMessage = "Hermes could not create the requested voice conversation."
-                return true
+                return .handled
             }
         }
         guard let sessionID = activeSessionId, let gateway = makeVoiceGateway() else {
             errorMessage = "Hermes could not prepare a voice conversation."
-            return true
+            return .handled
         }
         // A fresh user-initiated open supersedes any stale suspension (e.g.
         // a descriptor retained across sign-out, or one whose reconciliation
@@ -13434,10 +13536,48 @@ final class AppState: ObservableObject {
         voiceConversationController.setGateway(gateway)
         voiceConversationController.beginVoiceTurn(sessionID: sessionID)
         voiceControllerSessionProfile = activeProfile
-        showSidebar = false
-        voiceSheetShouldAutoListen = true
-        showVoiceSheet = true
+        return .handled
+    }
+
+    /// Attach the CALLING presentation (phone Voice sheet, CarPlay surface)
+    /// to an ALREADY-LIVE logical Voice conversation. Never restarts a turn,
+    /// never clears the transcript, never creates a session, never cancels an
+    /// in-flight turn: it re-asserts the presentation-surface gate (the phone
+    /// may be locked with a gate left false by an earlier CarPlay-only
+    /// disconnect) and re-arms the gateway reference when needed. The
+    /// restoration descriptor is retired only AFTER the attach is known to
+    /// succeed, so a failed re-arm leaves the phone-restoration path intact.
+    @discardableResult
+    func attachToLiveVoiceConversation() -> Bool {
+        guard voiceConversationController.hasLiveVoiceSession else { return false }
+        voiceConversationController.setForegroundActive(hasActiveVoiceSurface)
+        if !voiceConversationController.isGatewayAttached {
+            refreshVoiceControllerGateway()
+        }
+        guard voiceConversationController.isGatewayAttached else { return false }
+        suspendedVoiceConversation = nil
         return true
+    }
+
+    /// CarPlay surface presented. Re-asserts the Voice gate: the phone scene
+    /// may be inactive with a gate left false by an earlier CarPlay-only
+    /// disconnect (no scene-phase event fires while the phone is locked, so
+    /// nothing else heals it), and the driver's next Listen must be able to
+    /// re-arm capture. No-op while the phone scene is active.
+    func handleCarPlayVoiceSurfaceActivated() {
+        voiceConversationController.setForegroundActive(hasActiveVoiceSurface)
+    }
+
+    /// Called by the CarPlay coordinator when the CarPlay Voice surface goes
+    /// away. While the phone scene is active, the phone still presents Voice
+    /// and nothing is touched. With no active Voice surface left, this is
+    /// exactly the PR #161 background boundary: the sheet's presentation
+    /// intent (if any) survives through the suspended descriptor, and a
+    /// CarPlay-only conversation is released — never treated as spoken
+    /// Goodbye, which is Close.
+    func handleCarPlayVoiceSurfaceRemoved() {
+        guard !hasActiveVoiceSurface else { return }
+        suspendVoiceConversationForBackground()
     }
 
     func closeVoiceConversation() {

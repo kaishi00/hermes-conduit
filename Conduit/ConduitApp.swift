@@ -59,12 +59,24 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
 @main
 struct ConduitApp: App {
     @UIApplicationDelegateAdaptor(ConduitAppDelegate.self) private var appDelegate
-    @StateObject private var appState = AppState()
+    /// Resolved through the process-wide registry (NOT created directly) so a
+    /// CarPlay-first launch — where the CarPlay scene connects before any
+    /// phone scene renders — binds the exact same AppState instance this
+    /// SwiftUI surface adopts, whichever surface needs it first.
+    @StateObject private var appState = AppStateRuntimeRegistry.shared.appState
     @ObservedObject private var notifications = PushNotificationService.shared
     @ObservedObject private var pendingVoiceIntents = PendingVoiceIntentStore.shared
 
     var body: some Scene {
-        WindowGroup {
+        // Multi-scene support is enabled in the manifest so the CarPlay
+        // CPTemplateApplicationScene can coexist with the phone scene
+        // (Apple: the flag governs ALL scene creation). SwiftUI's singleton
+        // `Window` scene — the ideal foreground counterpart — is
+        // iOS-unavailable (macOS 13+/visionOS only), so the phone surface
+        // stays a `WindowGroup` and duplicate iPad windows are closed by the
+        // RootView first-window guard instead: never an iPad multi-window
+        // product.
+        WindowGroup(id: "conduit-primary") {
 #if DEBUG
             // The fixture is compiled out of release builds, so the launch
             // argument branch must be too.

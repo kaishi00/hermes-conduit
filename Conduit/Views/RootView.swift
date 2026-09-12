@@ -10,6 +10,8 @@ import SwiftUI
 struct RootView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dismissWindow) private var dismissWindow
+    @State private var isPrimaryWindow = false
 
     var body: some View {
         ZStack {
@@ -31,7 +33,28 @@ struct RootView: View {
         }
         .animation(.easeInOut(duration: 0.2), value: appState.showLogin)
         .onChange(of: scenePhase) { _, newPhase in
-            appState.handleScenePhase(newPhase)
+            // Only the primary window drives the process-wide lifecycle: a
+            // transient duplicate window's .background must never suspend a
+            // conversation the primary window still presents.
+            if isPrimaryWindow {
+                appState.handleScenePhase(newPhase)
+            }
+        }
+        .onAppear {
+            guard !isPrimaryWindow else { return }
+            // Multi-scene support exists for the CarPlay scene; a SECOND
+            // foreground Conduit window is not a supported surface and
+            // closes itself (the primary window releases its claim on close).
+            if ConduitWindowClaimKeeper.claimPrimaryWindow() {
+                isPrimaryWindow = true
+            } else {
+                dismissWindow(id: "conduit-primary")
+            }
+        }
+        .onDisappear {
+            if isPrimaryWindow {
+                ConduitWindowClaimKeeper.releaseClaim()
+            }
         }
     }
 }
