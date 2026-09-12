@@ -230,10 +230,13 @@ final class VoiceConversationController: ObservableObject {
     /// the outgoing server's bridge) is behavioral and hard to observe.
     var isGatewayAttached: Bool { gateway != nil }
 
-    /// Foreground liveness flag only. Deactivation-side teardown is owned by
-    /// the caller: AppState routes an open Voice conversation through
-    /// `suspendRuntimeForLifecycle()` (logical preservation) and a closed one
-    /// through `stop()` (full teardown).
+    /// Voice presentation-surface gate (AppState feeds it): true while at
+    /// least one legitimate Voice presentation surface is active — the phone
+    /// foreground scene, or CarPlay presenting the shared conversation.
+    /// Listening and microphone work only under this gate. Deactivation-side
+    /// teardown is owned by the caller: AppState routes an open Voice
+    /// conversation through `suspendRuntimeForLifecycle()` (logical
+    /// preservation) and a closed one through `stop()` (full teardown).
     func setForegroundActive(_ active: Bool) {
         isForegroundActive = active
     }

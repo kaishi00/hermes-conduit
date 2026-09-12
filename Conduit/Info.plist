@@ -100,7 +100,21 @@
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
-		<false/>
+		<true/>
+		<key>UISceneConfigurations</key>
+		<dict>
+			<key>CPTemplateApplicationSceneSessionRoleApplication</key>
+			<array>
+				<dict>
+					<key>UISceneConfigurationName</key>
+					<string>CarPlayVoice</string>
+					<key>UISceneDelegateClassName</key>
+					<string>$(PRODUCT_MODULE_NAME).CarPlayVoiceSceneDelegate</string>
+					<key>UISceneClassName</key>
+					<string>CPTemplateApplicationScene</string>
+				</dict>
+			</array>
+		</dict>
 	</dict>
 </dict>
 </plist>
