@@ -340,7 +340,7 @@ enum KanbanRunningGroupPolicy {
         return orderedKeys.map { key in
             Group(
                 key: key,
-                displayName: key == unassignedKey ? "Unassigned" : key,
+                displayName: key == unassignedKey ? String(localized: "Unassigned") : key,
                 tasks: buckets[key] ?? []
             )
         }

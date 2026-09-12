@@ -30,27 +30,27 @@ enum KanbanServiceError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .invalidResponse(let message): return message
-        case .emptyTaskID: return "Hermes returned a Kanban task without an ID."
+        case .emptyTaskID: return String(localized: "Hermes returned a Kanban task without an ID.")
         case .invalidManualStatus(let status):
             if status == "running" {
-                return "Hermes controls Running; use the dispatcher/claim path instead of setting it manually."
+                return String(localized: "Hermes controls Running; use the dispatcher/claim path instead of setting it manually.")
             }
-            return "Hermes does not allow " + status + " as a manual Kanban destination."
+            return String(localized: "Hermes does not allow \(status) as a manual Kanban destination.")
         case .taskCreatedButMoveFailed(let taskID, let targetStatus, let reason):
-            let identifier = taskID.map { " (task " + $0 + ")" } ?? ""
-            return "The task was created" + identifier + ", but Hermes could not move it to " + targetStatus + ". It was not duplicated; close this form and refresh the board. " + reason
+            let identifier = taskID.map { String(localized: " (task \($0))") } ?? ""
+            return String(localized: "The task was created\(identifier), but Hermes could not move it to \(targetStatus). It was not duplicated; close this form and refresh the board. \(reason)")
         case .mutationInProgress:
-            return "Another Kanban change is still being saved."
+            return String(localized: "Another Kanban change is still being saved.")
         case .boardNavigationInProgress:
-            return "Still switching boards. Try again once the new board finishes loading."
+            return String(localized: "Still switching boards. Try again once the new board finishes loading.")
         case .invalidQueryParameter(let name):
             // Fail closed: a dropped board/id parameter would silently
             // retarget the request at the backend's current board.
-            return "Could not build a safe Hermes Kanban request (invalid " + name + "). The operation was cancelled before any data changed."
+            return String(localized: "Could not build a safe Hermes Kanban request (invalid \(name)). The operation was cancelled before any data changed.")
         case .actionDeclined(let reason):
             // The backend's own reason (e.g. "task is not in triage") is the
             // product semantics; never translate it into a generic failure.
-            return reason.isEmpty ? "Hermes declined the action." : reason
+            return reason.isEmpty ? String(localized: "Hermes declined the action.") : reason
         }
     }
 }

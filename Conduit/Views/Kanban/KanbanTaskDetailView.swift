@@ -381,7 +381,7 @@ struct KanbanTaskDetailView: View {
         Menu {
             Button {
                 if let task = displayedTask {
-                    KanbanClipboard.copy(task.id, announcement: "Task ID copied")
+                    KanbanClipboard.copy(task.id, announcement: String(localized: "Task ID copied"))
                 }
             } label: {
                 Label("Copy Task ID", systemImage: "doc.on.doc")
@@ -389,7 +389,7 @@ struct KanbanTaskDetailView: View {
             .disabled(!isDisplayedTaskLoaded)
             Button {
                 if let task = displayedTask {
-                    KanbanClipboard.copy(task.title.isEmpty ? task.id : task.title, announcement: "Title copied")
+                    KanbanClipboard.copy(task.title.isEmpty ? task.id : task.title, announcement: String(localized: "Title copied"))
                 }
             } label: {
                 Label("Copy Task Title", systemImage: "doc.on.doc.fill")
@@ -461,7 +461,7 @@ struct KanbanTaskDetailView: View {
     // MARK: - Assignment & execution
 
     private var assignmentExecutionSection: some View {
-        ConduitSettingsSection(title: "Assignment & Execution", symbol: "person.crop.rectangle.stack", tint: .conduitAura) {
+        ConduitSettingsSection(title: String(localized: "Assignment & Execution"), symbol: "person.crop.rectangle.stack", tint: .conduitAura) {
             HStack(spacing: 8) {
                 Text("Assignee")
                     .font(.caption.weight(.semibold))
@@ -471,7 +471,7 @@ struct KanbanTaskDetailView: View {
                     Text(assignee)
                         .lineLimit(1)
                 } else {
-                    Text("Unassigned" + (displayedTask?.status == "ready" && hasDispatcherFallback ? " → default" : ""))
+                    Text(String(localized: "Unassigned") + (displayedTask?.status == "ready" && hasDispatcherFallback ? " → default" : ""))
                         .foregroundStyle(.secondary)
                 }
                 Button {
@@ -482,13 +482,13 @@ struct KanbanTaskDetailView: View {
                 .accessibilityLabel("Reassign task")
             }
             if let priority = displayedTask?.priority {
-                SettingsMetricRow(label: "Priority", value: String(priority))
+                SettingsMetricRow(label: String(localized: "Priority"), value: String(priority))
             }
             if let workspaceKind = displayedTask?.workspaceKind, !workspaceKind.isEmpty,
                let path = displayedTask?.workspacePath, !path.isEmpty {
-                SettingsMetricRow(label: "Workspace", value: workspaceKind + ": " + path, lineLimit: 2)
+                SettingsMetricRow(label: String(localized: "Workspace"), value: workspaceKind + ": " + path, lineLimit: 2)
             } else if let path = displayedTask?.workspacePath, !path.isEmpty {
-                SettingsMetricRow(label: "Workspace", value: path, lineLimit: 2)
+                SettingsMetricRow(label: String(localized: "Workspace"), value: path, lineLimit: 2)
             }
             Button {
                 // Begin a NEW sheet session: freeze the server value AT OPEN
@@ -512,7 +512,7 @@ struct KanbanTaskDetailView: View {
                     Spacer(minLength: 8)
                     // Display-only: derived from the loaded server task,
                     // never from the editor draft.
-                    Text(KanbanModelOverrideDisplayPolicy.label(for: displayedTask, inheritCopy: "Inherit from profile"))
+                    Text(KanbanModelOverrideDisplayPolicy.label(for: displayedTask, inheritCopy: String(localized: "Inherit from profile")))
                         .foregroundStyle(hasAnyServerOverride ? Color.primary : Color.secondary)
                         .lineLimit(2)
                         .multilineTextAlignment(.trailing)
@@ -523,13 +523,13 @@ struct KanbanTaskDetailView: View {
             }
             .accessibilityHint("Edits the per-task model, provider, and reasoning override")
             if isRunning, let pid = displayedTask?.workerPid {
-                SettingsMetricRow(label: "Worker PID", value: String(pid))
+                SettingsMetricRow(label: String(localized: "Worker PID"), value: String(pid))
             }
             if let createdBy = displayedTask?.createdBy, !createdBy.isEmpty {
-                SettingsMetricRow(label: "Created by", value: createdBy, lineLimit: 1)
+                SettingsMetricRow(label: String(localized: "Created by"), value: createdBy, lineLimit: 1)
             }
             if let failures = displayedTask?.consecutiveFailures, failures > 0 {
-                SettingsMetricRow(label: "Consecutive failures", value: String(failures))
+                SettingsMetricRow(label: String(localized: "Consecutive failures"), value: String(failures))
             }
             if let failure = displayedTask?.lastFailureError, !failure.isEmpty {
                 VStack(alignment: .leading, spacing: 5) {
@@ -557,7 +557,7 @@ struct KanbanTaskDetailView: View {
         // Decompose already committed must not be offered the actions again
         // merely because the authoritative refresh failed (merge pass).
         if KanbanTriagePolicy.isEligible(task: displayedTask), !triageActionsSuppressed {
-            ConduitSettingsSection(title: "Triage Actions", symbol: "tray.and.arrow.down", tint: .conduitAccent) {
+            ConduitSettingsSection(title: String(localized: "Triage Actions"), symbol: "tray.and.arrow.down", tint: .conduitAccent) {
                 Button {
                     // V3A final pass: capture the task identity + board/server
                     // stamp SYNCHRONOUSLY at the tap, then schedule. The store
@@ -649,7 +649,7 @@ struct KanbanTaskDetailView: View {
     @ViewBuilder
     private var diagnosticsSection: some View {
         if let diagnostics = displayedTask?.diagnostics, !diagnostics.isEmpty {
-            ConduitSettingsSection(title: "Diagnostics (\(diagnostics.count))", symbol: "stethoscope", tint: .red) {
+            ConduitSettingsSection(title: String(localized: "Diagnostics (\(diagnostics.count))"), symbol: "stethoscope", tint: .red) {
                 ForEach(Array(diagnostics.enumerated()), id: \.offset) { _, diagnostic in
                     diagnosticCard(diagnostic)
                 }
@@ -709,9 +709,9 @@ struct KanbanTaskDetailView: View {
         case "cli_hint":
             Button {
                 let command = action.payload?["command"]?.stringValue ?? action.label
-                KanbanClipboard.copy(command, announcement: "Recovery command copied")
+                KanbanClipboard.copy(command, announcement: String(localized: "Recovery command copied"))
             } label: {
-                Label(action.label.isEmpty ? "Copy command" : action.label, systemImage: "doc.on.doc")
+                Label(action.label.isEmpty ? String(localized: "Copy command") : action.label, systemImage: "doc.on.doc")
             }
             .buttonStyle(.bordered)
         default:
@@ -741,9 +741,9 @@ struct KanbanTaskDetailView: View {
     @ViewBuilder
     private var dependenciesSection: some View {
         if let links = detail?.links, !links.parents.isEmpty || !links.children.isEmpty {
-            ConduitSettingsSection(title: "Dependencies", symbol: "arrow.triangle.branch", tint: .conduitAura) {
+            ConduitSettingsSection(title: String(localized: "Dependencies"), symbol: "arrow.triangle.branch", tint: .conduitAura) {
                 if !links.parents.isEmpty {
-                    dependencyGroup(title: "Blocked by", ids: links.parents)
+                    dependencyGroup(title: String(localized: "Blocked by"), ids: links.parents)
                 }
                 if !links.children.isEmpty {
                     dependencyGroup(title: "Blocks", ids: links.children)
@@ -840,7 +840,7 @@ struct KanbanTaskDetailView: View {
                 } label: {
                     HStack {
                         Spacer()
-                        if isAddingComment { ProgressView() } else { Label(isRunning ? "Send" : "Add comment", systemImage: "paperplane") }
+                        if isAddingComment { ProgressView() } else { Label(isRunning ? "Send" : String(localized: "Add comment"), systemImage: "paperplane") }
                         Spacer()
                     }
                 }
@@ -871,7 +871,7 @@ struct KanbanTaskDetailView: View {
     @ViewBuilder
     private var activitySection: some View {
         if let events = detail?.events, !events.isEmpty {
-            ConduitSettingsSection(title: "Activity (\(events.count))", symbol: "clock.arrow.circlepath", tint: .conduitAccent) {
+            ConduitSettingsSection(title: String(localized: "Activity (\(events.count))"), symbol: "clock.arrow.circlepath", tint: .conduitAccent) {
                 ForEach(events.prefix(60)) { event in
                     let row = KanbanActivityFormatter.row(for: event)
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -944,7 +944,7 @@ struct KanbanTaskDetailView: View {
                         .lineLimit(1)
                 }
                 if let pid = run.workerPID {
-                    Text("pid \(pid)")
+                    Text("pid \(String(pid))")
                         .monospacedDigit()
                 }
                 Spacer(minLength: 0)
@@ -1259,7 +1259,7 @@ struct KanbanTaskDetailView: View {
             // triage, the actions must stay suppressed (merge pass).
             completedTriageMutation = CompletedTriageMutation(taskID: expectedID, context: expectedContext)
             actionNotice = KanbanTriageActionsPolicy.successNoticeWithRefreshFailure(
-                base: "Task specified",
+                base: String(localized: "Task specified"),
                 storeRefreshError: store.errorMessage
             )
             await loadDetail(force: true)

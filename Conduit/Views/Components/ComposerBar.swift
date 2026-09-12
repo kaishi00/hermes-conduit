@@ -410,7 +410,7 @@ struct ComposerBar: View {
             }
             Text(appState.turnState == .unsupportedGateway
                  ? "Update this Hermes gateway to recover active turns safely."
-                 : "Synchronizing with Hermes before enabling chat controls")
+                 : String(localized: "Synchronizing with Hermes before enabling chat controls"))
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 Spacer(minLength: 0)
@@ -588,7 +588,7 @@ struct ComposerBar: View {
                             options: .repeating,
                             isActive: appState.turnState == .running && !reduceMotion
                         )
-                    Text(appState.runtime.model.isEmpty ? "Model" : appState.runtime.model)
+                    Text(appState.runtime.model.isEmpty ? String(localized: "Model") : appState.runtime.model)
                         .lineLimit(1)
                     if !appState.runtime.reasoningEffort.isEmpty {
                         Text("/")
@@ -730,7 +730,7 @@ struct ComposerBar: View {
             interactive: appState.canStartVoiceConversation
         )
         .accessibilityLabel("Start voice conversation")
-        .accessibilityHint(appState.voiceUnavailableReason ?? "Opens voice controls over this conversation")
+        .accessibilityHint(appState.voiceUnavailableReason ?? String(localized: "Opens voice controls over this conversation"))
     }
 
     /// Collapse the draft in the same transaction that dismisses the keyboard.
@@ -971,7 +971,7 @@ struct ComposerBar: View {
     private func formatEffort(_ value: String) -> String {
         let lower = value.lowercased()
         if lower == "none" || lower == "off" { return "Off" }
-        if lower == "xhigh" { return "Extra High" }
+        if lower == "xhigh" { return String(localized: "Extra High") }
         return lower.capitalized
             .replacingOccurrences(of: "-", with: " ")
             .replacingOccurrences(of: "_", with: " ")
@@ -979,21 +979,21 @@ struct ComposerBar: View {
 
     private var accessibilityLabel: String {
         switch action {
-        case .stop: return "Stop response"
-        case .steer: return "Steer with message"
-        case .interrupt: return "Interrupt and correct response"
-        case .send: return "Send message"
-        case .unavailable: return "Composer unavailable"
+        case .stop: return String(localized: "Stop response")
+        case .steer: return String(localized: "Steer with message")
+        case .interrupt: return String(localized: "Interrupt and correct response")
+        case .send: return String(localized: "Send message")
+        case .unavailable: return String(localized: "Composer unavailable")
         }
     }
 
     private var modelAccessibilityLabel: String {
-        let model = appState.runtime.model.isEmpty ? "Model" : appState.runtime.model
+        let model = appState.runtime.model.isEmpty ? String(localized: "Model") : appState.runtime.model
         let reasoning = appState.runtime.reasoningEffort.isEmpty
-            ? "reasoning not set"
-            : "reasoning \(formatEffort(appState.runtime.reasoningEffort))"
-        let approvals = appState.runtime.yolo ? ", auto-approve enabled" : ""
-        let activity = appState.turnState == .running ? ", agent working" : ""
+            ? String(localized: "reasoning not set")
+            : String(localized: "reasoning \(formatEffort(appState.runtime.reasoningEffort))")
+        let approvals = appState.runtime.yolo ? String(localized: ", auto-approve enabled") : ""
+        let activity = appState.turnState == .running ? String(localized: ", agent working") : ""
         return "\(model), \(reasoning)\(approvals)\(activity)"
     }
 }
@@ -1011,7 +1011,7 @@ struct ContextRingView: View {
                 .trim(from: 0, to: min(percent / 100, 1))
                 .stroke(Color.conduitAccent, style: StrokeStyle(lineWidth: 3, lineCap: .round))
                 .rotationEffect(.degrees(-90))
-            Text("\(Int(percent.rounded()))%")
+            Text("\(String(Int(percent.rounded())))%")
                 .font(.system(size: 9, weight: .semibold).monospacedDigit())
         }
     }

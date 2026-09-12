@@ -621,7 +621,7 @@ final class HermesClient: ObservableObject {
             openTimeoutTask = Task { [weak self] in
                 try? await Task.sleep(for: .seconds(15))
                 guard !Task.isCancelled else { return }
-                await self?.failSocketOpen(socket, error: HermesError.timeout("WebSocket connection"))
+                await self?.failSocketOpen(socket, error: HermesError.timeout(String(localized: "WebSocket connection")))
             }
         }
     }
@@ -1474,7 +1474,7 @@ enum MessageNormalizer {
         guard !id.isEmpty else { return nil }
         let title = firstNonEmptyString([
             object["label"], object["name"], object["title"]
-        ]) ?? "Untitled project"
+        ]) ?? String(localized: "Untitled project")
         let previews = object["preview_sessions"]?.arrayValue
             ?? object["previewSessions"]?.arrayValue
             ?? []
@@ -1501,18 +1501,18 @@ enum MessageNormalizer {
         guard let project = payload.objectValue?["project"]?.objectValue else { return nil }
         let id = project["id"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !id.isEmpty else { return nil }
-        let title = firstNonEmptyString([project["label"], project["name"], project["title"]]) ?? "Project"
+        let title = firstNonEmptyString([project["label"], project["name"], project["title"]]) ?? String(localized: "Project")
         let repos = project["repos"]?.arrayValue ?? []
         let multipleRepos = repos.count > 1
         var lanes: [ProjectSessionLane] = []
 
         for repo in repos {
             let repoObject = repo.objectValue ?? [:]
-            let repoLabel = firstNonEmptyString([repoObject["label"], repoObject["path"]]) ?? "Workspace"
+            let repoLabel = firstNonEmptyString([repoObject["label"], repoObject["path"]]) ?? String(localized: "Workspace")
             for group in repoObject["groups"]?.arrayValue ?? [] {
                 let groupObject = group.objectValue ?? [:]
                 let groupID = groupObject["id"]?.stringValue ?? UUID().uuidString
-                let groupLabel = firstNonEmptyString([groupObject["label"], groupObject["path"]]) ?? "Sessions"
+                let groupLabel = firstNonEmptyString([groupObject["label"], groupObject["path"]]) ?? String(localized: "Sessions")
                 let sessions = normalizeSessions(.array(groupObject["sessions"]?.arrayValue ?? []), profile: profile)
                 guard !sessions.isEmpty else { continue }
                 lanes.append(ProjectSessionLane(
@@ -1581,7 +1581,7 @@ enum MessageNormalizer {
                 id: id,
                 storedSessionId: storedSessionId,
                 alternateIds: Array(altIds),
-                title: obj["title"]?.stringValue ?? obj["preview"]?.stringValue ?? "Untitled conversation",
+                title: obj["title"]?.stringValue ?? obj["preview"]?.stringValue ?? String(localized: "Untitled conversation"),
                 model: obj["model"]?.stringValue ?? "Hermes",
                 updatedLabel: sessionUpdatedLabel(in: obj),
                 profile: explicitProfile ?? profile,
@@ -1931,9 +1931,9 @@ enum MessageNormalizer {
         guard let count = displayMetadataObject(metadata)?["task_count"]?.doubleValue,
               let taskCount = Int(exactly: count),
               taskCount > 0 else {
-            return "Background agent work finished"
+            return String(localized: "Background agent work finished")
         }
-        return taskCount == 1 ? "1 background agent finished" : "\(taskCount) background agents finished"
+        return taskCount == 1 ? String(localized: "1 background agent finished") : String(localized: "\(String(taskCount)) background agents finished")
     }
 
     /// Final visible text for a row Hermes tags with a known synthetic
@@ -1957,7 +1957,7 @@ enum MessageNormalizer {
         case .hidden:
             // Defense in depth: hidden rows are dropped before content work.
             // Never echo the physical carrier if that invariant ever breaks.
-            return "Hidden system event"
+            return String(localized: "Hidden system event")
         case .modelSwitch:
             // An explicit projection outranks the marker-derived card text;
             // without one, the persisted marker matches Conduit's existing
@@ -1970,13 +1970,13 @@ enum MessageNormalizer {
             if let modelChange {
                 return "[Model has been changed to \(modelChange.provider)/\(modelChange.model)]"
             }
-            return "Model changed"
+            return String(localized: "Model changed")
         case .personalitySwitch:
             // The physical marker embeds the full persona prompt; surface a
             // canned label instead, like Hermes Desktop does.
-            return projected ?? "Personality changed"
+            return projected ?? String(localized: "Personality changed")
         case .autoContinue:
-            return projected ?? "Resumed interrupted turn"
+            return projected ?? String(localized: "Resumed interrupted turn")
         case .asyncDelegationComplete:
             return projected ?? delegationCompleteNotice(metadata: metadata)
         case .internalNotification:
@@ -1990,7 +1990,7 @@ enum MessageNormalizer {
                 return projected
             }
             let visible = systemNotice ?? rawVisible
-            return visible.isEmpty ? "System notification" : visible
+            return visible.isEmpty ? String(localized: "System notification") : visible
         }
     }
 
@@ -2269,7 +2269,7 @@ enum MessageNormalizer {
         let description = ["description", "message", "prompt"]
             .compactMap { payload[$0]?.stringValue }
             .first { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? "Approval required"
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? String(localized: "Approval required")
         let choices = payload["choices"]?.arrayValue?
             .compactMap { $0.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
@@ -2364,7 +2364,7 @@ enum MessageNormalizer {
             let name = URL(fileURLWithPath: path).lastPathComponent
             return Attachment(
                 id: "\(messageId)-gateway-image-\(index)",
-                name: name.isEmpty ? "Attached image" : name,
+                name: name.isEmpty ? String(localized: "Attached image") : name,
                 uri: path,
                 mimeType: imageMimeType(for: path),
                 kind: .image
@@ -2426,15 +2426,15 @@ enum MessageNormalizer {
         guard !details.isEmpty else { return ReviewActivity(summary: body, details: nil, fullSessionId: nil) }
         let labels = Set(details.compactMap { detail -> String? in
             let lower = detail.lowercased()
-            if lower.hasPrefix("user profile") { return "User profile" }
+            if lower.hasPrefix("user profile") { return String(localized: "User profile") }
             if lower.hasPrefix("memory") { return "Memory" }
             if lower.hasPrefix("skill") { return "Skill" }
             return nil
         })
         let summary: String
-        if labels.count == 1, let label = labels.first { summary = "\(label) updated" }
-        else if labels.count > 1 { summary = "Memory and skills updated" }
-        else { summary = "Self-improvement updates saved" }
+        if labels.count == 1, let label = labels.first { summary = String(localized: "\(label) updated") }
+        else if labels.count > 1 { summary = String(localized: "Memory and skills updated") }
+        else { summary = String(localized: "Self-improvement updates saved") }
         return ReviewActivity(summary: summary, details: details, fullSessionId: nil)
     }
 

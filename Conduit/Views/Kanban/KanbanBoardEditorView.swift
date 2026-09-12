@@ -148,18 +148,18 @@ struct KanbanBoardEditorView: View {
                     }
                 }
             }
-            .navigationTitle(isCreate ? "New Board" : "Board Settings")
+            .navigationTitle(isCreate ? String(localized: "New Board") : String(localized: "Board Settings"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button(isCreate ? "Cancel" : "Close") { dismiss() }
+                    Button(isCreate ? String(localized: "Cancel") : String(localized: "Close")) { dismiss() }
                         .disabled(isSaving)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
                         submitTapped()
                     } label: {
-                        if isSaving { ProgressView() } else { Text(isCreate ? "Create" : "Save") }
+                        if isSaving { ProgressView() } else { Text(isCreate ? String(localized: "Create") : String(localized: "Save")) }
                     }
                     .disabled(!canSubmit || isSaving)
                 }

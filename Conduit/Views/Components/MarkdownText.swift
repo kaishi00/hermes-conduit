@@ -1631,7 +1631,7 @@ struct GuardedSourceCard: View {
                     copied = false
                 }
             } label: {
-                Label(copied ? "Copied" : "Copy full source", systemImage: copied ? "checkmark" : "doc.on.doc")
+                Label(copied ? String(localized: "Copied") : String(localized: "Copy full source"), systemImage: copied ? "checkmark" : "doc.on.doc")
                     .font(.caption.weight(.semibold))
             }
             .tint(.conduitAccent)
@@ -1668,7 +1668,7 @@ private struct RemoteMarkdownImage: View {
             case .failure:
                 WebFallbackImage(url: url, alt: alt)
             default:
-                HStack(spacing: 8) { ProgressView(); Text(alt.isEmpty ? "Loading image…" : alt).font(.footnote).foregroundStyle(.secondary) }
+                HStack(spacing: 8) { ProgressView(); Text(alt.isEmpty ? String(localized: "Loading image…") : alt).font(.footnote).foregroundStyle(.secondary) }
                     .padding(12)
             }
                 }
@@ -1700,7 +1700,7 @@ private struct RemoteMarkdownImage: View {
                 .frame(maxHeight: 360)
                 .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
         } else if gatewayLoadFailed {
-            Label(alt.isEmpty ? "Image unavailable" : "\(alt) unavailable", systemImage: "photo.badge.exclamationmark")
+            Label(alt.isEmpty ? String(localized: "Image unavailable") : String(localized: "\(alt) unavailable"), systemImage: "photo.badge.exclamationmark")
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .padding(12)
@@ -1713,7 +1713,7 @@ private struct RemoteMarkdownImage: View {
     private var loadingLabel: some View {
         HStack(spacing: 8) {
             ProgressView()
-            Text(alt.isEmpty ? "Loading image..." : alt)
+            Text(alt.isEmpty ? String(localized: "Loading image...") : alt)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
@@ -1879,9 +1879,9 @@ enum WebFallbackImageDestination {
 enum WebFallbackImageLabel {
     static func title(alt: String, destinationAvailable: Bool) -> String {
         if destinationAvailable {
-            return alt.isEmpty ? "Open image" : "\(alt) — image unavailable; open source"
+            return alt.isEmpty ? String(localized: "Open image") : String(localized: "\(alt) — image unavailable; open source")
         }
-        return alt.isEmpty ? "Image unavailable" : "\(alt) unavailable"
+        return alt.isEmpty ? String(localized: "Image unavailable") : String(localized: "\(alt) unavailable")
     }
 }
 
@@ -2027,7 +2027,7 @@ struct ChatCodeBlock: View {
                     copied = true
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) { copied = false }
                 } label: {
-                    Label(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc").font(.caption2.weight(.semibold))
+                    Label(copied ? String(localized: "Copied") : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc").font(.caption2.weight(.semibold))
                 }
                 .tint(usesAccentSurface ? .white : .conduitAccent)
             }
@@ -2078,7 +2078,7 @@ private struct MermaidBlock: View {
     @State private var preview: MarkupPreview?
 
     var body: some View {
-        RenderCard(title: "Mermaid", icon: "point.3.connected.trianglepath.dotted", source: source, actionTitle: "Render diagram", actionIcon: "play.fill") {
+        RenderCard(title: "Mermaid", icon: "point.3.connected.trianglepath.dotted", source: source, actionTitle: String(localized: "Render diagram"), actionIcon: "play.fill") {
             preview = MarkupPreview(kind: .mermaid, source: source, light: colorScheme == .light)
         }
         .sheet(item: $preview) { MarkupPreviewSheet(preview: $0) }
@@ -2091,7 +2091,7 @@ private struct MathBlock: View {
     @State private var preview: MarkupPreview?
 
     var body: some View {
-        RenderCard(title: "LaTeX", icon: "function", source: source, actionTitle: "Render formula", actionIcon: "function") {
+        RenderCard(title: "LaTeX", icon: "function", source: source, actionTitle: String(localized: "Render formula"), actionIcon: "function") {
             preview = MarkupPreview(kind: .math, source: source, light: colorScheme == .light)
         }
         .sheet(item: $preview) { MarkupPreviewSheet(preview: $0) }

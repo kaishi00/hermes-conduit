@@ -9,6 +9,15 @@ enum SidebarTab: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    /// 本地化显示名; rawValue 仅用于持久化
+    var displayName: String {
+        switch self {
+        case .sessions: return String(localized: "Sessions")
+        case .cron: return String(localized: "Cron")
+        case .kanban: return String(localized: "Kanban")
+        }
+    }
+
     var icon: String {
         switch self {
         case .sessions: return "bubble.left.and.bubble.right"

@@ -161,8 +161,8 @@ enum AppleSpeechRecognitionAvailability: Equatable {
     var title: String {
         switch self {
         case .ready: return "Ready"
-        case .permissionRequired: return "Permission required"
-        case .permissionDenied: return "Permission denied"
+        case .permissionRequired: return String(localized: "Permission required")
+        case .permissionDenied: return String(localized: "Permission denied")
         case .unsupported: return "Unavailable"
         }
     }

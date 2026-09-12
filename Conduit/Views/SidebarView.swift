@@ -95,7 +95,7 @@ struct SidebarView: View {
                                         selectedTabRaw = tab.rawValue
                                     }
                                 } label: {
-                                    Label(tab.rawValue, systemImage: tab.icon)
+                                    Label(tab.displayName, systemImage: tab.icon)
                                         .font(.caption.weight(.semibold))
                                         .frame(maxWidth: .infinity)
                                         .frame(height: 40)
@@ -257,7 +257,7 @@ struct SessionList: View {
                 }
                 .buttonStyle(.plain)
                 .conduitGlassControl(cornerRadius: 14, tint: showingProjects ? .conduitAccent.opacity(0.14) : .clear)
-                .accessibilityLabel(showingProjects ? "Show sessions" : "Browse projects")
+                .accessibilityLabel(showingProjects ? String(localized: "Show sessions") : String(localized: "Browse projects"))
             }
             .padding(.horizontal, 14)
             .padding(.top, 8)
@@ -270,7 +270,7 @@ struct SessionList: View {
                     projectContent
                 } else if displayedSessions.isEmpty {
                     ContentUnavailableView(
-                        selectedSource == nil ? "No Sessions" : "No \(selectedSource!.label) Sessions",
+                        selectedSource == nil ? String(localized: "No Sessions") : String(localized: "No \(selectedSource!.label) Sessions"),
                         systemImage: "tray",
                         description: Text(searchText.isEmpty ? "Sessions will appear here once created." : "Try a different search.")
                     )
@@ -292,7 +292,7 @@ struct SessionList: View {
                     }
                 }
             }
-            .searchable(text: $searchText, prompt: showingProjects ? "Search projects" : "Search sessions")
+            .searchable(text: $searchText, prompt: showingProjects ? String(localized: "Search projects") : String(localized: "Search sessions"))
             .scrollContentBackground(.hidden)
             .listStyle(.plain)
             .refreshable {
@@ -378,7 +378,7 @@ struct SessionList: View {
                 .listRowSeparator(.hidden)
         } else if displayedProjects.isEmpty {
             ContentUnavailableView(
-                searchText.isEmpty ? "No Projects" : "No Matching Projects",
+                searchText.isEmpty ? String(localized: "No Projects") : String(localized: "No Matching Projects"),
                 systemImage: "folder",
                 description: Text(searchText.isEmpty
                     ? "Projects created in Hermes Desktop will appear here."
@@ -430,7 +430,7 @@ struct SessionList: View {
     private var sourceFilters: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                sourceFilter(title: "All", count: appState.activeProfileSessions.filter { !$0.isArchived }.count, source: nil)
+                sourceFilter(title: String(localized: "All"), count: appState.activeProfileSessions.filter { !$0.isArchived }.count, source: nil)
                 ForEach(availableSources, id: \.self) { source in
                     sourceFilter(title: source.label, count: appState.activeProfileSessions.filter { !$0.isArchived && $0.source == source }.count, source: source)
                 }
@@ -586,7 +586,7 @@ private struct ArchivedSessionsSheet: View {
                             .listRowSeparator(.hidden)
                     } else if displayedSessions.isEmpty {
                         ContentUnavailableView(
-                            searchText.isEmpty ? "Nothing archived" : "No matching conversations",
+                            searchText.isEmpty ? String(localized: "Nothing archived") : String(localized: "No matching conversations"),
                             systemImage: "archivebox",
                             description: Text("Archived conversations stay here until you restore or permanently delete them.")
                         )
@@ -631,14 +631,14 @@ private struct ArchivedSessionsSheet: View {
                         }
                     }
                 }
-                .searchable(text: $searchText, prompt: "Search archived conversations")
+                .searchable(text: $searchText, prompt: String(localized: "Search archived conversations"))
                 .scrollContentBackground(.hidden)
                 .listStyle(.plain)
                 .refreshable { await refresh() }
             }
             .toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) {
-                ConduitSheetHeader(title: "Archived conversations", close: { dismiss() })
+                ConduitSheetHeader(title: String(localized: "Archived conversations"), close: { dismiss() })
             }
         }
         .task { await refresh() }
@@ -741,7 +741,7 @@ private struct ProjectRow: View {
                 Text(project.title)
                     .font(.subheadline.weight(.medium))
                     .lineLimit(1)
-                Text("\(project.sessionCount) \(project.sessionCount == 1 ? "conversation" : "conversations")")
+                Text("\(project.sessionCount) conversations")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -1046,7 +1046,7 @@ struct CronList: View {
 
             if filteredJobs.isEmpty && !appState.cronJobsLoading {
                 ContentUnavailableView(
-                    searchText.isEmpty ? "No Scheduled Jobs" : "No Matching Jobs",
+                    searchText.isEmpty ? String(localized: "No Scheduled Jobs") : String(localized: "No Matching Jobs"),
                     systemImage: "clock",
                     description: Text("Scheduled jobs from Hermes appear here.")
                 )
@@ -1087,7 +1087,7 @@ struct CronList: View {
                 }
             }
         }
-        .searchable(text: $searchText, prompt: "Search scheduled jobs")
+        .searchable(text: $searchText, prompt: String(localized: "Search scheduled jobs"))
         .scrollContentBackground(.hidden)
         .listStyle(.plain)
         .task(id: appState.activeProfile) { await appState.refreshCronContent() }
@@ -1114,7 +1114,7 @@ private struct CronJobRow: View {
                 .frame(width: 30, height: 30).background((job.enabled ? Color.green : .secondary).opacity(0.13), in: Circle())
             VStack(alignment: .leading, spacing: 3) {
                 Text(job.displayName).font(.subheadline.weight(.medium)).lineLimit(1)
-                Text(job.scheduleDisplay ?? job.schedule?.display ?? job.schedule?.expr ?? "No schedule")
+                Text(job.scheduleDisplay ?? job.schedule?.display ?? job.schedule?.expr ?? String(localized: "No schedule"))
                     .font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer()
@@ -1138,10 +1138,10 @@ private struct CronJobDetailSheet: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         ConduitSettingsSection(title: job.displayName, symbol: "clock.fill", tint: .conduitAccent) {
-                            SettingsMetricRow(label: "Schedule", value: job.scheduleDisplay ?? job.schedule?.display ?? job.schedule?.expr ?? "—")
-                            SettingsMetricRow(label: "Next run", value: job.nextRunAt ?? "—")
-                            SettingsMetricRow(label: "Last run", value: job.lastRunAt ?? "—")
-                            SettingsMetricRow(label: "Delivery", value: job.deliver ?? "Local")
+                            SettingsMetricRow(label: String(localized: "Schedule"), value: job.scheduleDisplay ?? job.schedule?.display ?? job.schedule?.expr ?? "—")
+                            SettingsMetricRow(label: String(localized: "Next run"), value: job.nextRunAt ?? "—")
+                            SettingsMetricRow(label: String(localized: "Last run"), value: job.lastRunAt ?? "—")
+                            SettingsMetricRow(label: String(localized: "Delivery"), value: job.deliver ?? "Local")
                         }
                         HStack(spacing: 10) {
                             Button { Task { _ = await appState.performCronAction(job.enabled ? "pause" : "resume", for: job) } } label: {
@@ -1151,7 +1151,7 @@ private struct CronJobDetailSheet: View {
                             .frame(minHeight: 48)
                             .conduitGlassControl(cornerRadius: 16, tint: .orange.opacity(0.18))
                             Button { Task { _ = await appState.performCronAction("trigger", for: job); await appState.loadCronRuns(for: job) } } label: {
-                                Label(appState.cronJobActionID == job.id ? "Working…" : "Run now", systemImage: "play.fill")
+                                Label(appState.cronJobActionID == job.id ? "Working…" : String(localized: "Run now"), systemImage: "play.fill")
                                     .frame(maxWidth: .infinity)
                                     .foregroundStyle(Color.white)
                             }
@@ -1161,9 +1161,9 @@ private struct CronJobDetailSheet: View {
                         }
                         .font(.subheadline.weight(.semibold))
                         if let prompt = job.prompt, !prompt.isEmpty {
-                            ConduitSettingsSection(title: "Prompt", symbol: "text.quote", tint: .conduitAura) { Text(prompt).textSelection(.enabled).font(.callout) }
+                            ConduitSettingsSection(title: String(localized: "Prompt"), symbol: "text.quote", tint: .conduitAura) { Text(prompt).textSelection(.enabled).font(.callout) }
                         }
-                        ConduitSettingsSection(title: "Run history", symbol: "clock.arrow.circlepath", tint: .conduitAura) {
+                        ConduitSettingsSection(title: String(localized: "Run history"), symbol: "clock.arrow.circlepath", tint: .conduitAura) {
                             if appState.cronRuns.isEmpty { Text("This job has not run yet.").font(.footnote).foregroundStyle(.secondary) }
                             ForEach(appState.cronRuns) { run in
                                 Button { appState.dismissSidebarDrawer(); dismiss(); appState.requestOpenSession(run.id) } label: {
@@ -1178,7 +1178,7 @@ private struct CronJobDetailSheet: View {
             }
             .toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) {
-                ConduitSheetHeader(title: "Scheduled job", close: { dismiss() })
+                ConduitSheetHeader(title: String(localized: "Scheduled job"), close: { dismiss() })
             }
         }
         .task { await appState.loadCronRuns(for: job) }

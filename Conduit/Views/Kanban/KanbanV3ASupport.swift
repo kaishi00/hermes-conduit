@@ -260,7 +260,7 @@ enum KanbanOrchestrationDisplay {
         if resolved.trimmingCharacters(in: .whitespaces).isEmpty {
             return "Default"
         }
-        return "Default (\(resolved.trimmingCharacters(in: .whitespaces)))"
+        return String(localized: "Default (\(resolved.trimmingCharacters(in: .whitespaces)))")
     }
 
     /// Footer copy for a profile selector: describes what Default resolves to,
@@ -297,7 +297,7 @@ enum KanbanTriageActionsPolicy {
     }
 
     /// The confirmation dialog copy (title + message).
-    static let decomposeConfirmationTitle = "Decompose this task?"
+    static let decomposeConfirmationTitle = String(localized: "Decompose this task?")
     static let decomposeConfirmationMessage = "Hermes may create and assign multiple dependent tasks."
 
     /// Success notice after a completed decompose, built from the backend's
@@ -305,11 +305,11 @@ enum KanbanTriageActionsPolicy {
     /// fabricated diagnostics.
     static func successNotice(fanout: Bool, childCount: Int) -> String? {
         if fanout {
-            return "Decomposed into \(childCount) task" + (childCount == 1 ? "" : "s")
+            return String(localized: "Decomposed into \(String(childCount)) task") + (childCount == 1 ? "" : "s")
         }
         // Decompose's single-task fallback (backend fanout=false == a
         // spec-style promotion; distinct from a plain Specify).
-        return "Decomposed (single task, no fan-out)"
+        return String(localized: "Decomposed (single task, no fan-out)")
     }
 
     /// Partial-success notice when the mutation reached the server but the

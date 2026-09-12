@@ -46,7 +46,7 @@ struct AskHermesPromptView: View {
                         .font(.footnote.weight(.semibold))
                 }
                 .accessibilityIdentifier("setup.copy-prompt")
-                .accessibilityValue(lastCopiedPrompt == prompt ? "Copied" : "")
+                .accessibilityValue(lastCopiedPrompt == prompt ? String(localized: "Copied") : "")
 
                 if copied {
                     Text("Copied")
