@@ -1569,7 +1569,7 @@ struct KanbanView: View {
                 Button {
                     Task { await store.selectBoard(slug: "", includeArchived: includeArchived) }
                 } label: {
-                    Label(String(localized: "Server current (") + store.currentServerBoardSlug + ")", systemImage: "server.rack")
+                    Label(String(localized: "Server current (\(store.currentServerBoardSlug))"), systemImage: "server.rack")
                 }
                 ForEach(store.boards) { metadata in
                     Button {

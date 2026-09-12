@@ -42,26 +42,23 @@ enum AuthClientError: LocalizedError {
             // presentation layer owns user-facing copy). 429 must not read
             // as a credentials problem wherever this string surfaces.
             if status == 429 {
-                return "Too many login attempts. Try again shortly."
+                return String(localized: "Too many login attempts. Try again shortly.")
             }
             guard let status else {
                 // No HTTP response arrived; the credentials were never
                 // evaluated and must not be blamed.
-                return "Login failed: no response from the dashboard."
+                return String(localized: "Login failed: no response from the dashboard.")
             }
             if !(401...403).contains(status) {
-                return "Login failed: HTTP \(status)"
+                return String(localized: "Login failed: HTTP \(status)")
             }
-            return "Login failed. Check your dashboard credentials and try again."
+            return String(localized: "Login failed. Check your dashboard credentials and try again.")
         case .ticketFailed(_, let detail):
-            return "Could not start the Hermes session: \(detail)"
+            return String(localized: "Could not start the Hermes session: \(detail)")
         case .providerDiscoveryFailed(_, let detail):
-            return "Could not check dashboard sign-in options: \(detail)"
+            return String(localized: "Could not check dashboard sign-in options: \(detail)")
         case .cloudflareServiceTokenRejected:
-            return "Cloudflare Access did not accept the configured service token. "
-                + "Verify the Client ID / Secret and that the token is allowed by a "
-                + String(localized: "Service Auth policy for this Access application, or turn off ")
-                + "\"Use Cloudflare Access service token\" to sign in interactively."
+            return String(localized: "Cloudflare Access did not accept the configured service token. Verify the Client ID / Secret and that the token is allowed by a Service Auth policy for this Access application, or turn off \"Use Cloudflare Access service token\" to sign in interactively.")
         }
     }
 }

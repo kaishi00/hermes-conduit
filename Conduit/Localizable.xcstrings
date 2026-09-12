@@ -17,12 +17,32 @@
         }
       }
     },
+    " (task %@)" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : " (任务 %@)"
+          }
+        }
+      }
+    },
     " · board default" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "· 看板默认"
+          }
+        }
+      }
+    },
+    "%@ %@…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ %@…"
           }
         }
       }
@@ -219,6 +239,22 @@
         }
       }
     },
+    "%@%" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@%%"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@%%"
+          }
+        }
+      }
+    },
     "%@, %lld tasks" : {
       "localizations" : {
         "en" : {
@@ -251,6 +287,40 @@
         }
       }
     },
+    "%lld conversations" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld conversation"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld conversations"
+                }
+              }
+            }
+          }
+        },
+        "zh-Hans" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld 个会话"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "%lld earlier events hidden" : {
       "localizations" : {
         "en" : {
@@ -263,6 +333,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已隐藏 %lld 条更早的事件"
+          }
+        }
+      }
+    },
+    "%lld of %lld models shown" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示 %lld 个模型（共 %lld 个）"
           }
         }
       }
@@ -325,16 +405,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "，已启用自动批准"
-          }
-        }
-      }
-    },
-    ", but Hermes could not move it to " : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "，但 Hermes 无法将其移动到"
           }
         }
       }
@@ -465,12 +535,32 @@
         }
       }
     },
+    "ANSWERED" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已回答"
+          }
+        }
+      }
+    },
     "APPROVAL NEEDED" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "需要批准"
+          }
+        }
+      }
+    },
+    "APPROVED" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已批准"
           }
         }
       }
@@ -721,6 +811,16 @@
         }
       }
     },
+    "Another Kanban change is still being saved." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "另一项看板更改仍在保存中。"
+          }
+        }
+      }
+    },
     "Answered on another device" : {
       "localizations" : {
         "zh-Hans" : {
@@ -803,6 +903,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "应用于 %lld"
+          }
+        }
+      }
+    },
+    "Applying saves these settings for your next reconnect. Your current session stays connected." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "应用后将保存这些设置，供下次重连使用。当前会话保持连接。"
           }
         }
       }
@@ -1199,6 +1309,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "助手语音"
+          }
+        }
+      }
+    },
+    "Assistant text is still continuing in chat." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "助手的文字回复仍在聊天中继续。"
           }
         }
       }
@@ -1949,6 +2069,16 @@
         }
       }
     },
+    "Cloudflare Access did not accept the configured service token. Verify the Client ID / Secret and that the token is allowed by a Service Auth policy for this Access application, or turn off \"Use Cloudflare Access service token\" to sign in interactively." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cloudflare Access 未接受所配置的服务令牌。请核对 Client ID / Secret，并确认此 Access 应用的 Service Auth 策略允许该令牌，或关闭「使用 Cloudflare Access 服务令牌」以改为交互式登录。"
+          }
+        }
+      }
+    },
     "Cloudflare Client ID" : {
       "localizations" : {
         "zh-Hans" : {
@@ -1995,6 +2125,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "收起审核详情"
+          }
+        }
+      }
+    },
+    "Command" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "命令"
           }
         }
       }
@@ -2119,12 +2259,52 @@
         }
       }
     },
+    "Conduit could not connect to the dashboard at this address. Make sure the dashboard is running and that this device can reach it." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 无法连接到该地址上的仪表盘。请确认仪表盘正在运行，且本设备可以访问它。"
+          }
+        }
+      }
+    },
+    "Conduit could not establish a secure connection to the dashboard. The server’s TLS certificate may be misconfigured." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 无法与仪表盘建立安全连接。服务器的 TLS 证书可能配置有误。"
+          }
+        }
+      }
+    },
+    "Conduit could not find that host. Check the dashboard address and try again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 找不到该主机。请检查仪表盘地址后重试。"
+          }
+        }
+      }
+    },
     "Conduit is ready when you are." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Conduit 随时待命。"
+          }
+        }
+      }
+    },
+    "Conduit needs you to sign in to the dashboard to reconnect." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 需要你先登录仪表盘才能重新连接。"
           }
         }
       }
@@ -2165,6 +2345,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Conduit 档案"
+          }
+        }
+      }
+    },
+    "Conduit reached the server, but iOS does not trust its TLS certificate. If you use your own certificate authority, make sure its root certificate is installed and trusted on this device." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 已连上服务器，但 iOS 不信任其 TLS 证书。如果你使用自己的证书颁发机构，请确保其根证书已安装并受此设备信任。"
           }
         }
       }
@@ -2559,6 +2749,36 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "无法%1$@此对话：%2$@"
+          }
+        }
+      }
+    },
+    "Could not build a safe Hermes Kanban request (invalid %@). The operation was cancelled before any data changed." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法构建安全的 Hermes 看板请求（%@ 无效）。操作已在数据更改前取消。"
+          }
+        }
+      }
+    },
+    "Could not check dashboard sign-in options: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法检查仪表盘登录选项：%@"
+          }
+        }
+      }
+    },
+    "Could not start the Hermes session: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法启动 Hermes 会话：%@"
           }
         }
       }
@@ -3309,6 +3529,16 @@
         }
       }
     },
+    "Delete phrase %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "删除短语 %@"
+          }
+        }
+      }
+    },
     "Delete this task?" : {
       "localizations" : {
         "zh-Hans" : {
@@ -3525,6 +3755,16 @@
         }
       }
     },
+    "EXPIRED" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已过期"
+          }
+        }
+      }
+    },
     "Edit Connection Details" : {
       "localizations" : {
         "zh-Hans" : {
@@ -3541,6 +3781,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "编辑凭据"
+          }
+        }
+      }
+    },
+    "Edit phrase %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "编辑短语 %@"
           }
         }
       }
@@ -3711,6 +3961,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "请输入仪表盘的用户名和密码。"
+          }
+        }
+      }
+    },
+    "Entered" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已输入"
           }
         }
       }
@@ -4081,6 +4341,16 @@
         }
       }
     },
+    "Hermes Conduit connects to a Hermes dashboard you (or your assistant) run yourself. The dashboard has to be up before Conduit can reach it." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Conduit 连接的是你自己（或你的智能体）运行的 Hermes 仪表盘。仪表盘必须先启动，Conduit 才能访问它。"
+          }
+        }
+      }
+    },
     "Hermes Conduit is an independent client and is not affiliated with or endorsed by Nous Research. © 2026 Milim." : {
       "localizations" : {
         "zh-Hans" : {
@@ -4117,6 +4387,16 @@
         }
       }
     },
+    "Hermes controls Running; use the dispatcher/claim path instead of setting it manually." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Running 状态由 Hermes 控制；请改用调度/认领路径，而不是手动设置。"
+          }
+        }
+      }
+    },
     "Hermes dashboard found" : {
       "localizations" : {
         "zh-Hans" : {
@@ -4127,18 +4407,28 @@
         }
       }
     },
-    "Hermes does not allow %lld as a manual Kanban destination." : {
+    "Hermes declined the action." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 拒绝了该操作。"
+          }
+        }
+      }
+    },
+    "Hermes does not allow %@ as a manual Kanban destination." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Hermes does not allow %lld as a manual Kanban destination."
+            "value" : "Hermes does not allow %@ as a manual Kanban destination."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Hermes 不允许将 %lld 用作手动看板目标。"
+            "value" : "Hermes 不允许将 %@ 用作手动看板目标。"
           }
         }
       }
@@ -4193,6 +4483,26 @@
         }
       }
     },
+    "Hermes rejected that username or password. Check your dashboard credentials and try again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 拒绝了该用户名或密码。请检查仪表盘凭据后重试。"
+          }
+        }
+      }
+    },
+    "Hermes returned a Kanban task without an ID." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 返回的看板任务缺少 ID。"
+          }
+        }
+      }
+    },
     "Hermes routes triage decomposition across these profiles by their routing description. A clear description helps the decomposer pick the right specialist." : {
       "localizations" : {
         "zh-Hans" : {
@@ -4209,6 +4519,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hermes 设置跟随当前档案。外观、通知与隐私控制保留在此设备上。"
+          }
+        }
+      }
+    },
+    "Hermes temporarily blocked additional login attempts. Wait about a minute before trying again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 暂时阻止了更多登录尝试。请等待约一分钟后再试。"
           }
         }
       }
@@ -4861,6 +5181,26 @@
         }
       }
     },
+    "Listen" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "聆听"
+          }
+        }
+      }
+    },
+    "Listening" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在聆听"
+          }
+        }
+      }
+    },
     "Listening for a short test…" : {
       "localizations" : {
         "zh-Hans" : {
@@ -5123,6 +5463,36 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "登录失败"
+          }
+        }
+      }
+    },
+    "Login failed. Check your dashboard credentials and try again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "登录失败。请检查仪表盘凭据后重试。"
+          }
+        }
+      }
+    },
+    "Login failed: HTTP %lld" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "登录失败：HTTP %lld"
+          }
+        }
+      }
+    },
+    "Login failed: no response from the dashboard." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "登录失败：仪表盘没有响应。"
           }
         }
       }
@@ -6041,6 +6411,16 @@
         }
       }
     },
+    "No phrases. This spoken command is disabled." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有短语。此语音命令已停用。"
+          }
+        }
+      }
+    },
     "No profile is attached and Hermes has no default assignee configured, so this task will not run until someone assigns it." : {
       "localizations" : {
         "zh-Hans" : {
@@ -6111,6 +6491,16 @@
         }
       }
     },
+    "No speech providers were discovered for this Hermes profile." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未在此 Hermes 配置中发现任何语音提供方。"
+          }
+        }
+      }
+    },
     "No tasks updated" : {
       "localizations" : {
         "zh-Hans" : {
@@ -6127,6 +6517,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "响应中没有票据"
+          }
+        }
+      }
+    },
+    "No transcription providers were discovered for this Hermes profile." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未在此 Hermes 配置中发现任何转录提供方。"
           }
         }
       }
@@ -6717,6 +7117,16 @@
         }
       }
     },
+    "Pause the microphone whenever you need a break." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要休息时，随时暂停麦克风。"
+          }
+        }
+      }
+    },
     "Pauses microphone capture while keeping the voice session open" : {
       "localizations" : {
         "zh-Hans" : {
@@ -6803,6 +7213,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "照片图库"
+          }
+        }
+      }
+    },
+    "Phrases you can say during a Voice conversation. A phrase matches only when it is the entire spoken utterance — the same words inside a longer sentence do nothing." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在语音对话中可以说出的短语。只有当整句话恰好是该短语时才会匹配——较长句子中出现相同字词不会触发。"
           }
         }
       }
@@ -6927,6 +7347,16 @@
         }
       }
     },
+    "Port" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "端口"
+          }
+        }
+      }
+    },
     "Port (optional)" : {
       "localizations" : {
         "zh-Hans" : {
@@ -7003,6 +7433,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "优先"
+          }
+        }
+      }
+    },
+    "Priority set to %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "优先级已设为 %@"
           }
         }
       }
@@ -7243,6 +7683,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "将提示词加入下一轮的队列"
+          }
+        }
+      }
+    },
+    "REJECTED" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已拒绝"
           }
         }
       }
@@ -7549,6 +7999,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "拒绝"
+          }
+        }
+      }
+    },
+    "Rejected" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已拒绝"
+          }
+        }
+      }
+    },
+    "Remote dashboards must use HTTPS. Plain HTTP is only accepted for local addresses like localhost, private LAN IPs, and Tailscale." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "远程仪表盘必须使用 HTTPS。纯 HTTP 仅接受 localhost、私有局域网 IP 和 Tailscale 等本地地址。"
           }
         }
       }
@@ -8399,6 +8869,16 @@
         }
       }
     },
+    "Sending your speech to Hermes." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在将你的语音发送给 Hermes。"
+          }
+        }
+      }
+    },
     "Sent %@" : {
       "localizations" : {
         "en" : {
@@ -8425,12 +8905,12 @@
         }
       }
     },
-    "Server current (" : {
+    "Server current (%@)" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "服务器当前看板 ("
+            "value" : "服务器当前看板（%@）"
           }
         }
       }
@@ -8451,16 +8931,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "会话筛选"
-          }
-        }
-      }
-    },
-    "Session list" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "会话列表"
           }
         }
       }
@@ -8819,6 +9289,16 @@
         }
       }
     },
+    "Signing in succeeded, but Conduit could not start a Hermes session. The dashboard may be busy, restarting, or it did not accept the new session — try again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "登录成功，但 Conduit 无法启动 Hermes 会话。仪表盘可能正忙、正在重启，或未接受新会话——请重试。"
+          }
+        }
+      }
+    },
     "Siri remains the supported way to begin a voice conversation from the Lock Screen." : {
       "localizations" : {
         "zh-Hans" : {
@@ -8943,6 +9423,36 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "其他…"
+          }
+        }
+      }
+    },
+    "Something went wrong while connecting to the dashboard. Try again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接仪表盘时出了问题。请重试。"
+          }
+        }
+      }
+    },
+    "Speak over Hermes to interrupt it." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "直接说话即可打断 Hermes。"
+          }
+        }
+      }
+    },
+    "Speak to interrupt and start a new turn." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "开口说话即可打断并开始新一轮对话。"
           }
         }
       }
@@ -9149,6 +9659,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "第 N 步，共 3 步"
+          }
+        }
+      }
+    },
+    "Still switching boards. Try again once the new board finishes loading." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仍在切换看板。请等新看板加载完成后重试。"
           }
         }
       }
@@ -9399,6 +9919,36 @@
         }
       }
     },
+    "Tap Interrupt to speak." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "轻点「中断」即可发言。"
+          }
+        }
+      }
+    },
+    "Tap Listen when you are ready to resume." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "准备就绪后，轻点「聆听」即可继续。"
+          }
+        }
+      }
+    },
+    "Tap Listen when you are ready." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "准备就绪后轻点「聆听」。"
+          }
+        }
+      }
+    },
     "Task" : {
       "localizations" : {
         "zh-Hans" : {
@@ -9617,6 +10167,16 @@
         }
       }
     },
+    "That doesn’t look like a dashboard URL Conduit can use. Check it for typos — it should look like https://hermes.example." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这看起来不像 Conduit 能使用的仪表盘 URL。请检查是否有笔误——正确格式形如 https://hermes.example。"
+          }
+        }
+      }
+    },
     "The board selection is local to this device; creating this task will not switch Hermes' global board." : {
       "localizations" : {
         "zh-Hans" : {
@@ -9649,6 +10209,46 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "内置的双语唤醒模型尚未启用。其再分发条款与校验和须经审核，方可纳入 Conduit。"
+          }
+        }
+      }
+    },
+    "The dashboard certificate is expired or not yet valid. Check the certificate dates and this device’s date and time." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仪表盘证书已过期或尚未生效。请检查证书日期以及本设备的日期和时间。"
+          }
+        }
+      }
+    },
+    "The dashboard did not respond in time. Check the address, the network connection, and whether the Hermes dashboard is running." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仪表盘未及时响应。请检查地址、网络连接，以及 Hermes 仪表盘是否正在运行。"
+          }
+        }
+      }
+    },
+    "The dashboard is reachable but reported a server error. It may be restarting or unhealthy — try again in a moment." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仪表盘可以访问，但报告了服务器错误。它可能正在重启或状态异常——请稍后重试。"
+          }
+        }
+      }
+    },
+    "The dashboard responded in a way Conduit didn’t expect. Make sure the address points at a Hermes dashboard." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仪表盘的响应出乎 Conduit 的预料。请确认该地址指向的是 Hermes 仪表盘。"
           }
         }
       }
@@ -9723,12 +10323,12 @@
         }
       }
     },
-    "The task was created" : {
+    "The task was created%@, but Hermes could not move it to %@. It was not duplicated; close this form and refresh the board. %@" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "任务已创建"
+            "value" : "任务已创建%@，但 Hermes 无法将其移动到 %@。未创建重复任务；请关闭此表单并刷新看板。%@"
           }
         }
       }
@@ -9803,6 +10403,16 @@
         }
       }
     },
+    "These settings will fill the login form. You’ll tap Connect there when you’re ready." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这些设置会填入登录表单。准备就绪后，请在那里轻点「连接」。"
+          }
+        }
+      }
+    },
     "They will be moved out of the active board view. Tasks are not being permanently deleted." : {
       "localizations" : {
         "zh-Hans" : {
@@ -9855,6 +10465,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此配对码将于 %@ 过期。"
+          }
+        }
+      }
+    },
+    "This device doesn’t appear to have a network connection. Reconnect to Wi-Fi or cellular and try again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "本设备似乎没有网络连接。请重新连接 Wi-Fi 或蜂窝网络后重试。"
           }
         }
       }
@@ -10075,6 +10695,16 @@
         }
       }
     },
+    "Too many login attempts. Try again shortly." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "登录尝试过于频繁。请稍后再试。"
+          }
+        }
+      }
+    },
     "Tool cards" : {
       "localizations" : {
         "zh-Hans" : {
@@ -10101,6 +10731,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "主题"
+          }
+        }
+      }
+    },
+    "Transcribing" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在转录"
           }
         }
       }
@@ -10215,12 +10855,32 @@
         }
       }
     },
+    "Unblocked → %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已解除阻塞 → %@"
+          }
+        }
+      }
+    },
     "Unexpected response" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "响应异常"
+          }
+        }
+      }
+    },
+    "Unlimited" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不限"
           }
         }
       }
@@ -10371,6 +11031,16 @@
         }
       }
     },
+    "Use Tailscale when you want to reach Hermes securely while away from home." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当你在外也想安全访问 Hermes 时，请使用 Tailscale。"
+          }
+        }
+      }
+    },
     "Use These Settings" : {
       "localizations" : {
         "zh-Hans" : {
@@ -10421,12 +11091,32 @@
         }
       }
     },
+    "Use this if you already access Hermes through an HTTPS hostname you manage." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "如果你已通过自己管理的 HTTPS 主机名访问 Hermes，请使用此选项。"
+          }
+        }
+      }
+    },
     "Use this override" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "使用此覆盖"
+          }
+        }
+      }
+    },
+    "Use this when Conduit and the Hermes machine are on the same home or local network." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当 Conduit 与 Hermes 所在机器处于同一家庭或本地网络时使用。"
           }
         }
       }
@@ -10641,12 +11331,12 @@
         }
       }
     },
-    "Voice on " : {
+    "Voice on %@" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "语音 · "
+            "value" : "语音 · %@"
           }
         }
       }
@@ -10887,6 +11577,16 @@
         }
       }
     },
+    "Yes" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "是"
+          }
+        }
+      }
+    },
     "You can enter any installed model identifier." : {
       "localizations" : {
         "zh-Hans" : {
@@ -10959,6 +11659,12 @@
     },
     "auto" : {
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "auto"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",

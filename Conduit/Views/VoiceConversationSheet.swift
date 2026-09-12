@@ -155,9 +155,9 @@ struct VoiceConversationSheet: View {
     }
 
     private var microphoneLabel: String {
-        if controller.state == .transcribing { return "Transcribing" }
+        if controller.state == .transcribing { return String(localized: "Transcribing") }
         if isInterruptAvailable { return String(localized: "Interrupt") }
-        return microphoneIsActive ? String(localized: "Pause mic") : "Listen"
+        return microphoneIsActive ? String(localized: "Pause mic") : String(localized: "Listen")
     }
 
     private var microphoneSymbol: String {
@@ -184,8 +184,8 @@ struct VoiceConversationSheet: View {
         if controller.isMicrophonePaused { return String(localized: "Microphone paused") }
         switch controller.state {
         case .idle: return String(localized: "Ready to listen")
-        case .listening: return "Listening"
-        case .transcribing: return "Transcribing"
+        case .listening: return String(localized: "Listening")
+        case .transcribing: return String(localized: "Transcribing")
         case .thinking: return String(localized: "Hermes is thinking")
         case .speaking: return String(localized: "Hermes is speaking")
         case .muted: return String(localized: "Assistant audio muted")
@@ -194,15 +194,15 @@ struct VoiceConversationSheet: View {
     }
 
     private var statusDetail: String {
-        if isInterruptAvailable { return "Tap Interrupt to speak." }
-        if controller.isMicrophonePaused { return "Tap Listen when you are ready to resume." }
+        if isInterruptAvailable { return String(localized: "Tap Interrupt to speak.") }
+        if controller.isMicrophonePaused { return String(localized: "Tap Listen when you are ready to resume.") }
         switch controller.state {
-        case .idle: return "Tap Listen when you are ready."
-        case .listening: return "Pause the microphone whenever you need a break."
-        case .transcribing: return "Sending your speech to Hermes."
-        case .thinking: return "Speak to interrupt and start a new turn."
-        case .speaking: return "Speak over Hermes to interrupt it."
-        case .muted: return "Assistant text is still continuing in chat."
+        case .idle: return String(localized: "Tap Listen when you are ready.")
+        case .listening: return String(localized: "Pause the microphone whenever you need a break.")
+        case .transcribing: return String(localized: "Sending your speech to Hermes.")
+        case .thinking: return String(localized: "Speak to interrupt and start a new turn.")
+        case .speaking: return String(localized: "Speak over Hermes to interrupt it.")
+        case .muted: return String(localized: "Assistant text is still continuing in chat.")
         case .failed(let detail): return detail
         }
     }

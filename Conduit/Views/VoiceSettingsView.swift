@@ -184,7 +184,7 @@ struct VoiceSettingsView: View {
     }
 
     private var capabilitySection: some View {
-        ConduitSettingsSection(title: String(localized: "Voice on ") + profileDisplayName, symbol: "mic.badge.plus", tint: .conduitAccent) {
+        ConduitSettingsSection(title: String(localized: "Voice on \(profileDisplayName)"), symbol: "mic.badge.plus", tint: .conduitAccent) {
             Toggle("Enable voice on this device", isOn: Binding(
                 get: { voiceEnabled },
                 set: { requested in
@@ -252,7 +252,9 @@ struct VoiceSettingsView: View {
         let choices = providerChoices(kind: kind, providers: providers)
         ConduitSettingsSection(title: title, symbol: symbol, tint: kind == .stt ? .conduitAura : .conduitAccent) {
             if choices.isEmpty {
-                Text(String(localized: "No ") + (kind == .stt ? "transcription" : "speech") + " providers were discovered for this Hermes profile.")
+                Text(kind == .stt
+                     ? String(localized: "No transcription providers were discovered for this Hermes profile.")
+                     : String(localized: "No speech providers were discovered for this Hermes profile."))
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             } else {

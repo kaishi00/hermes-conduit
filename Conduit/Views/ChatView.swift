@@ -1497,7 +1497,7 @@ struct SystemBubble: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
-                    Text(isRuntimeNotice ? String(localized: "System") : "Command")
+                    Text(isRuntimeNotice ? String(localized: "System") : String(localized: "Command"))
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.conduitAccent)
                         .textCase(.uppercase)
@@ -2065,9 +2065,9 @@ struct ClarifyCard: View {
         switch status {
         case .pending: return String(localized: "NEEDS YOUR INPUT")
         case .submitting: return String(localized: "SENDING ANSWER")
-        case .answered: return "ANSWERED"
+        case .answered: return String(localized: "ANSWERED")
         case .error: return String(localized: "TRY AGAIN")
-        case .expired: return "EXPIRED"
+        case .expired: return String(localized: "EXPIRED")
         }
     }
 
@@ -2482,7 +2482,7 @@ struct ApprovalCard: View {
         case "once": return String(localized: "Approved once")
         case "session": return String(localized: "Approved for this session")
         case "always": return String(localized: "Always allowed")
-        case "deny": return "Rejected"
+        case "deny": return String(localized: "Rejected")
         default: return choice
         }
     }
@@ -2491,8 +2491,8 @@ struct ApprovalCard: View {
         switch status {
         case .pending: return String(localized: "APPROVAL NEEDED")
         case .submitting: return String(localized: "SENDING DECISION")
-        case .approved: return "APPROVED"
-        case .rejected: return "REJECTED"
+        case .approved: return String(localized: "APPROVED")
+        case .rejected: return String(localized: "REJECTED")
         case .error: return String(localized: "TRY AGAIN")
         }
     }

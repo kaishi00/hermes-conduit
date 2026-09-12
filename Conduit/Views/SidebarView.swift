@@ -741,7 +741,7 @@ private struct ProjectRow: View {
                 Text(project.title)
                     .font(.subheadline.weight(.medium))
                     .lineLimit(1)
-                Text("\(project.sessionCount) \(project.sessionCount == 1 ? "conversation" : "conversations")")
+                Text("\(project.sessionCount) conversations")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

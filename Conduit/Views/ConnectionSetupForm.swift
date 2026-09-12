@@ -81,7 +81,7 @@ struct ConnectionSetupForm: View {
                         .accessibilityIdentifier("setup.host")
                         .accessibilityLabel(flow.accessMethod == .lan ? String(localized: "Private LAN IP address") : String(localized: "Tailscale hostname or address"))
                 }.id(Field.host)
-                labeled(flow.accessMethod == .lan ? "Port" : String(localized: "Port (optional)")) {
+                labeled(flow.accessMethod == .lan ? String(localized: "Port") : String(localized: "Port (optional)")) {
                     TextField("Port supplied by Hermes", text: portBinding)
                         .keyboardType(.numberPad)
                         .focused($focusedField, equals: .port)
@@ -275,13 +275,13 @@ struct ConnectionSetupForm: View {
                 repairReviewFooter(repair)
             } else {
                 Text(flow.enteredFromCurrentConnection
-                     ? "Applying saves these settings for your next reconnect. Your current session stays connected."
-                     : "These settings will fill the login form. You’ll tap Connect there when you’re ready.")
+                     ? String(localized: "Applying saves these settings for your next reconnect. Your current session stays connected.")
+                     : String(localized: "These settings will fill the login form. You’ll tap Connect there when you’re ready."))
                     .foregroundStyle(.secondary)
                 validationNotice
                 // From Settings with unchanged, successfully tested settings
                 // there is nothing to apply — Done simply closes the wizard.
-                Button(flow.testedSettingsUnchanged ? "Done" : String(localized: "Use these settings")) {
+                Button(flow.testedSettingsUnchanged ? String(localized: "Done") : String(localized: "Use these settings")) {
                     if let result = flow.complete() { onComplete(result) }
                 }
                 .buttonStyle(.borderedProminent)
@@ -347,7 +347,7 @@ struct ConnectionSetupForm: View {
                 // so the absent password is expected, not an omission.
                 reviewValue(String(localized: "Password"), String(localized: "None — browser sign-in"))
             } else {
-                reviewValue(String(localized: "Password"), "Entered")
+                reviewValue(String(localized: "Password"), String(localized: "Entered"))
             }
         case .failure(let error):
             VStack(alignment: .leading, spacing: 8) {

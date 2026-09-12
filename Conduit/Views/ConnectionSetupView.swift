@@ -357,8 +357,7 @@ struct ConnectionSetupView: View {
         readinessQuestion(
             progress: flow.progressLabel,
             question: String(localized: "Is your Hermes dashboard running?"),
-            explanation: "Hermes Conduit connects to a Hermes dashboard you (or your assistant) run yourself. "
-                + "The dashboard has to be up before Conduit can reach it.",
+            explanation: String(localized: "Hermes Conduit connects to a Hermes dashboard you (or your assistant) run yourself. The dashboard has to be up before Conduit can reach it."),
             selectedAnswer: flow.dashboardAnswer,
             onAnswer: { flow.answerDashboard($0) },
             guidance: { dashboardGuidance }
@@ -370,11 +369,11 @@ struct ConnectionSetupView: View {
         switch flow.dashboardAnswer {
         case .no:
             AskHermesPromptView(title: ConnectionSetupPrompt.dashboardNotRunning.title, prompt: ConnectionSetupPrompt.dashboardNotRunning.text)
-            continueButton("Dashboard is ready") { flow.confirmDashboardReady() }
+            continueButton(String(localized: "Dashboard is ready")) { flow.confirmDashboardReady() }
                 .accessibilityIdentifier("setup.continue")
         case .unknown:
             AskHermesPromptView(title: ConnectionSetupPrompt.dashboardUnknown.title, prompt: ConnectionSetupPrompt.dashboardUnknown.text)
-            continueButton("Dashboard is ready") { flow.confirmDashboardReady() }
+            continueButton(String(localized: "Dashboard is ready")) { flow.confirmDashboardReady() }
                 .accessibilityIdentifier("setup.continue")
         default:
             EmptyView()
@@ -426,13 +425,13 @@ struct ConnectionSetupView: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             if !flow.draft.existingServerURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                continueButton("Use or edit current dashboard address") { flow.useExistingAddress() }
+                continueButton(String(localized: "Use or edit current dashboard address")) { flow.useExistingAddress() }
                     .accessibilityIdentifier("setup.use-existing")
             }
 
             methodCard(
                 title: ConnectionAccessMethod.lan.displayTitle,
-                supporting: "Use this when Conduit and the Hermes machine are on the same home or local network.",
+                supporting: String(localized: "Use this when Conduit and the Hermes machine are on the same home or local network."),
                 identifier: "setup.method-lan"
             ) {
                 flow.selectAccessMethod(.lan)
@@ -440,7 +439,7 @@ struct ConnectionSetupView: View {
 
             methodCard(
                 title: ConnectionAccessMethod.tailscale.displayTitle,
-                supporting: "Use Tailscale when you want to reach Hermes securely while away from home.",
+                supporting: String(localized: "Use Tailscale when you want to reach Hermes securely while away from home."),
                 badge: String(localized: "Recommended for remote access"),
                 identifier: "setup.method-tailscale"
             ) {
@@ -449,7 +448,7 @@ struct ConnectionSetupView: View {
 
             methodCard(
                 title: ConnectionAccessMethod.reverseProxy.displayTitle,
-                supporting: "Use this if you already access Hermes through an HTTPS hostname you manage.",
+                supporting: String(localized: "Use this if you already access Hermes through an HTTPS hostname you manage."),
                 identifier: "setup.method-reverseProxy"
             ) {
                 flow.selectAccessMethod(.reverseProxy)
@@ -639,7 +638,7 @@ struct ConnectionSetupView: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            answerRow("Yes", selected: selectedAnswer == .yes, identifier: "setup.answer-yes") {
+            answerRow(String(localized: "Yes"), selected: selectedAnswer == .yes, identifier: "setup.answer-yes") {
                 onAnswer(.yes)
             }
             answerRow(String(localized: "No"), selected: selectedAnswer == .no, identifier: "setup.answer-no") {
