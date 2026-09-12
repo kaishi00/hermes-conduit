@@ -95,6 +95,12 @@ jobs:
             --baseline scripts/test-timings.json $HISTORY_ARG
           python3 -m unittest discover -s scripts/tests -p 'test_*.py'
 
+      - name: Localization catalog coverage
+        # Cheap Linux guard: every String(localized:) / SwiftUI literal call
+        # site must resolve to a key in Conduit/Localizable.xcstrings, so a
+        # translated string can never silently render English again.
+        run: python3 scripts/check-l10n-coverage.py --repo-root .
+
       - name: Generate execution plan
         id: plan
         run: |
