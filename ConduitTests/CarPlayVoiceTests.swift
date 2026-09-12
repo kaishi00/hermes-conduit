@@ -760,48 +760,51 @@ final class CarPlayVoiceLifecycleRegressionTests: XCTestCase {
         XCTAssertEqual(harness.activations.last, .listening)
     }
 
-    func testStalePrepareCompletionWithActivePhoneSurfaceKeepsTheConversation() async {
-        let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
-        addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
-            defaults.removePersistentDomain(forName: suite)
-        }
-        harness.appState.activeSessionId = "session-1"
-        harness.controller.beginVoiceTurn(sessionID: "session-1")
-        await harness.controller.startListening()
-
-        // A prepare captured under a DIFFERENT generation completes while the
-        // phone surface is active: the conversation is not torn down — the
-        // phone still legitimately presents it.
-        await harness.coordinator.completeVoiceEstablishment(
-            generation: harness.coordinator.connectionGeneration &+ 1,
-            outcome: .handled
-        )
-
-        XCTAssertTrue(harness.controller.hasLiveVoiceSession, "the phone surface keeps the conversation")
-        XCTAssertEqual(harness.controller.state, .listening)
-        XCTAssertNil(harness.appState.suspendedVoiceConversation)
-    }
-
-    func testStalePrepareCompletionWithNoActiveSurfaceDoesNotOrphanAnArmedSession() async {
+    func testStalePrepareCompletionWithPhoneSheetPresentingKeepsTheConversation() async {
         let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
         addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
             defaults.removePersistentDomain(forName: suite)
         }
         harness.openVoice(session: "session-1")
         await harness.controller.startListening()
-        harness.appState.handleScenePhase(.background)
-        XCTAssertTrue(harness.controller.isRuntimeSuspended)
 
-        // A prepare completing after the surface disappeared must apply the
-        // no-surface release contract instead of leaving the session armed.
+        // A prepare captured under a DIFFERENT generation completes while the
+        // phone sheet still presents Voice: the conversation is not torn
+        // down — the phone legitimately presents it.
         await harness.coordinator.completeVoiceEstablishment(
             generation: harness.coordinator.connectionGeneration &+ 1,
             outcome: .handled
         )
 
-        XCTAssertTrue(harness.controller.isRuntimeSuspended, "the session stays released, not resurrected-armed")
-        XCTAssertEqual(harness.appState.suspendedVoiceConversation?.sessionID, "session-1", "still restorable")
-        XCTAssertEqual(harness.capture.startCount, 1, "no capture was (re)started by the stale completion")
+        XCTAssertTrue(harness.controller.hasLiveVoiceSession, "the presenting sheet keeps the conversation")
+        XCTAssertEqual(harness.controller.state, .listening)
+        XCTAssertNil(harness.appState.suspendedVoiceConversation)
+        XCTAssertEqual(harness.capture.startCount, 1, "and capture keeps running")
+    }
+
+    func testStalePrepareCompletionWithNoPresentingSurfaceReleasesTheConversation() async {
+        let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
+        addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
+            defaults.removePersistentDomain(forName: suite)
+        }
+        // The Voice sheet is closed and no CarPlay surface exists: a stale
+        // armed session presents nothing, so the fence releases it.
+        harness.appState.activeSessionId = "session-1"
+        harness.controller.beginVoiceTurn(sessionID: "session-1")
+        await harness.controller.startListening()
+
+        await harness.coordinator.completeVoiceEstablishment(
+            generation: harness.coordinator.connectionGeneration &+ 1,
+            outcome: .handled
+        )
+
+        XCTAssertFalse(
+            harness.controller.hasLiveVoiceSession,
+            "the stale armed session must not survive with no presenting surface"
+        )
+        XCTAssertEqual(harness.controller.state, .idle)
+        XCTAssertGreaterThanOrEqual(harness.capture.stopCount, 1, "capture is released")
+        XCTAssertNil(harness.appState.suspendedVoiceConversation)
     }
 
     func testFailedAttachSettlesIntoErrorStateAndKeepsThePhoneRestorePath() async {
@@ -985,6 +988,34 @@ final class ConduitWindowClaimKeeperTests: XCTestCase {
     }
 }
 
+// MARK: - Duplicate-window dismissal source contract
+
+final class CarPlayDuplicateWindowDismissalTests: XCTestCase {
+    /// Static source contract (UIKit/iPad runtime behavior stays on the
+    /// physical checklist): the duplicate-window path must dismiss the
+    /// CURRENT instance via the environment-scoped `dismissWindow()`, and
+    /// must never use ID-scoped `dismissWindow(id:)`, which targets the
+    /// whole WindowGroup — including the primary window.
+    func testDuplicateWindowUsesEnvironmentScopedDismissal() throws {
+        let testFile = URL(fileURLWithPath: #filePath)
+        let repoRoot = testFile
+            .deletingLastPathComponent()   // ConduitTests
+            .deletingLastPathComponent()   // repo root
+        let rootViewSource = try String(
+            contentsOf: repoRoot.appendingPathComponent("Conduit/Views/RootView.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(
+            rootViewSource.contains("dismissWindow()"),
+            "the duplicate window must dismiss only itself"
+        )
+        XCTAssertFalse(
+            rootViewSource.contains("dismissWindow(id:"),
+            "ID-scoped dismissal would close the entire WindowGroup, primary included"
+        )
+    }
+}
+
 // MARK: - Phone-open attach to a live (CarPlay-owned) Voice session
 
 @MainActor
@@ -1078,6 +1109,192 @@ final class CarPlayVoicePhoneAttachTests: XCTestCase {
             harness.appState.errorMessage,
             "attaching to the live session must not emit the turn-running rejection"
         )
+    }
+}
+
+// MARK: - Prepare outcome semantics + surface-gate matrix
+
+@MainActor
+final class CarPlayVoicePrepareOutcomeTests: XCTestCase {
+    private func makeHarness(
+        voiceEnabled: Bool = true,
+        activeSessionID: String? = nil
+    ) -> CarPlayVoiceCoordinatorTests.Harness {
+        let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
+        addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
+            defaults.removePersistentDomain(forName: suite)
+        }
+        harness.appState.activeSessionId = activeSessionID
+        if !voiceEnabled {
+            harness.defaults.set(false, forKey: "conduit.voice.enabled.v1.https://example.com.default")
+        }
+        return harness
+    }
+
+    /// Voice capability unavailable: prepare is REJECTED (.failed), the
+    /// open contract stays router-friendly (returns true = consumed), the
+    /// error is surfaced, and NOTHING Voice-shaped is presented or armed.
+    func testCapabilityUnavailableFailsPreparationWithoutPresentingVoice() async {
+        let harness = makeHarness(voiceEnabled: false)
+
+        let outcome = await harness.appState.prepareVoiceConversation(
+            profile: nil,
+            startsFreshConversation: false
+        )
+
+        guard case .failed(let message) = outcome else {
+            return XCTFail("capability-unavailable preparation must fail, got \(outcome)")
+        }
+        XCTAssertFalse(message.isEmpty)
+        XCTAssertEqual(harness.appState.errorMessage, message)
+        XCTAssertFalse(harness.controller.hasLiveVoiceSession)
+        XCTAssertEqual(harness.capture.startCount, 0)
+
+        // The phone open contract: consumed (router-friendly) but Voice is
+        // never presented and auto-listen is never armed.
+        let opened = await harness.appState.openVoiceConversation(
+            PendingVoiceIntent(profile: nil, startsFreshConversation: false, source: .composer)
+        )
+        XCTAssertTrue(opened, "the request is consumed with the error surfaced")
+        XCTAssertEqual(harness.appState.errorMessage, message)
+        XCTAssertFalse(harness.appState.showVoiceSheet, "a rejected preparation must not present Voice")
+        XCTAssertFalse(harness.appState.consumeVoiceSheetAutoListen())
+        XCTAssertEqual(harness.capture.startCount, 0, "the microphone is never acquired")
+    }
+
+    /// A non-fresh request with NO session (session creation is a no-op
+    /// without a client here) must fail instead of presenting a dead sheet.
+    func testMissingSessionFailsPreparation() async {
+        let harness = makeHarness()
+        XCTAssertNil(harness.appState.activeSessionId)
+
+        let outcome = await harness.appState.prepareVoiceConversation(
+            profile: nil,
+            startsFreshConversation: false
+        )
+
+        guard case .failed(let message) = outcome else {
+            return XCTFail("missing-session preparation must fail, got \(outcome)")
+        }
+        XCTAssertEqual(message, "Hermes could not prepare a voice conversation.")
+        XCTAssertEqual(harness.appState.errorMessage, message)
+        XCTAssertFalse(harness.controller.hasLiveVoiceSession)
+        XCTAssertEqual(harness.capture.startCount, 0)
+    }
+
+    /// Fresh-session creation failure is likewise a .failed rejection.
+    func testFreshSessionCreationFailureFailsPreparation() async {
+        let harness = makeHarness()
+        XCTAssertNil(harness.appState.activeSessionId)
+
+        let outcome = await harness.appState.prepareVoiceConversation(
+            profile: nil,
+            startsFreshConversation: true
+        )
+
+        guard case .failed(let message) = outcome else {
+            return XCTFail("failed fresh creation must be a .failed rejection, got \(outcome)")
+        }
+        XCTAssertEqual(message, "Hermes could not create the requested voice conversation.")
+        XCTAssertFalse(harness.controller.hasLiveVoiceSession)
+        XCTAssertEqual(harness.capture.startCount, 0)
+    }
+}
+
+@MainActor
+final class CarPlayVoiceSurfaceGateTests: XCTestCase {
+    /// The original privacy case: CarPlay-only Voice listening while the
+    /// phone is foreground with its Voice sheet closed. When CarPlay
+    /// disconnects, a foreground phone scene must NOT count as an active
+    /// Voice surface — capture must be released with no Voice controls
+    /// anywhere.
+    func testCarPlayDisconnectWithForegroundPhoneButClosedSheetReleasesVoice() async {
+        let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
+        addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
+            defaults.removePersistentDomain(forName: suite)
+        }
+        // Phone foreground (fresh AppState default), Voice sheet closed,
+        // CarPlay listening.
+        harness.appState.activeSessionId = "session-1"
+        harness.controller.beginVoiceTurn(sessionID: "session-1")
+        await harness.controller.startListening()
+        harness.coordinator.handleConnect(harness.spy)
+        XCTAssertTrue(harness.controller.hasLiveVoiceSession)
+        let startsBefore = harness.capture.startCount
+
+        harness.coordinator.handleDisconnect()
+
+        XCTAssertFalse(
+            harness.controller.hasLiveVoiceSession,
+            "no Voice surface remains: the runtime must be released"
+        )
+        XCTAssertGreaterThanOrEqual(
+            harness.capture.stopCount, 1,
+            "capture is stopped on the CarPlay-only disconnect"
+        )
+        XCTAssertEqual(harness.capture.startCount, startsBefore, "capture is never restarted")
+        XCTAssertNil(harness.appState.suspendedVoiceConversation)
+    }
+
+    /// Ordinary phone Voice must still open and listen after the predicate
+    /// change: the gate is false while the sheet is closed, presenting the
+    /// sheet re-asserts it, and the sheet's auto-listen reaches the
+    /// microphone.
+    func testPhoneVoiceOpenReArmsTheGateAndListens() async {
+        let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
+        harness.appState.activeSessionId = "session-1"
+        // Background/foreground cycle with the sheet closed: under the new
+        // predicate the gate ends false (no Voice surface is presenting).
+        harness.appState.handleScenePhase(.background)
+        harness.appState.handleScenePhase(.active)
+
+        await harness.controller.startListening()
+        XCTAssertEqual(
+            harness.controller.state, .idle,
+            "listening is gated while no Voice surface presents"
+        )
+
+        // The user taps Voice: prepare arms the conversation, the sheet
+        // presents, the gate is re-asserted, and listen reaches capture.
+        let opened = await harness.appState.openVoiceConversation(
+            PendingVoiceIntent(profile: nil, startsFreshConversation: false, source: .composer)
+        )
+        XCTAssertTrue(opened)
+        XCTAssertTrue(harness.appState.showVoiceSheet)
+
+        await harness.controller.startListening()
+        XCTAssertEqual(harness.controller.state, .listening, "the re-asserted gate lets the sheet's listen work")
+        XCTAssertEqual(harness.capture.startCount, 1)
+    }
+
+    /// Sheet matrix for the CarPlay disconnect boundary, phone foreground:
+    /// sheet open → the phone Voice surface survives the disconnect; sheet
+    /// closed → the runtime is released.
+    func testPhoneForegroundDisconnectMatrix() async {
+        // Sheet OPEN: the phone still presents Voice.
+        let openHarness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
+        addTeardownBlock { [defaults = openHarness.defaults, suite = openHarness.defaultsSuiteName] in
+            openHarness.defaults.removePersistentDomain(forName: openHarness.defaultsSuiteName)
+        }
+        openHarness.openVoice(session: "session-1")
+        await openHarness.controller.startListening()
+        openHarness.coordinator.handleConnect(openHarness.spy)
+        openHarness.coordinator.handleDisconnect()
+        XCTAssertTrue(openHarness.controller.hasLiveVoiceSession, "the phone sheet keeps Voice alive")
+        XCTAssertFalse(openHarness.controller.isRuntimeSuspended)
+        XCTAssertEqual(openHarness.controller.state, .listening)
+
+        // Sheet CLOSED: nothing presents Voice after the disconnect.
+        let closedHarness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
+        addTeardownBlock { [defaults = closedHarness.defaults, suite = closedHarness.defaultsSuiteName] in
+            closedHarness.defaults.removePersistentDomain(forName: closedHarness.defaultsSuiteName)
+        }
+        closedHarness.appState.activeSessionId = "session-1"
+        closedHarness.controller.beginVoiceTurn(sessionID: "session-1")
+        await closedHarness.controller.startListening()
+        closedHarness.coordinator.handleConnect(closedHarness.spy)
+        closedHarness.coordinator.handleDisconnect()
+        XCTAssertFalse(closedHarness.controller.hasLiveVoiceSession, "nothing presents Voice: runtime released")
     }
 }
 

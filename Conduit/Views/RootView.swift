@@ -48,7 +48,10 @@ struct RootView: View {
             if ConduitWindowClaimKeeper.claimPrimaryWindow() {
                 isPrimaryWindow = true
             } else {
-                dismissWindow(id: "conduit-primary")
+                // Environment-scoped dismissal: close THIS duplicate window
+                // only. ID-scoped dismissal targets the WindowGroup and
+                // would take the primary window down with it.
+                dismissWindow()
             }
         }
         .onDisappear {
