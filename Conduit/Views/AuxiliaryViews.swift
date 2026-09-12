@@ -29,7 +29,7 @@ struct ContextSheet: View {
                 ScrollView {
                     VStack(spacing: 14) {
                         ConduitSettingsSection(title: String(localized: "Context"), symbol: "circle.dotted.circle", tint: .conduitAura) {
-                            SettingsMetricRow(label: String(localized: "Used"), value: String(localized: "\(appState.runtime.contextUsed) tokens"))
+                            SettingsMetricRow(label: String(localized: "Used"), value: String(localized: "\(String(appState.runtime.contextUsed)) tokens"))
                             SettingsMetricRow(label: String(localized: "Capacity"), value: String(localized: "\(String(appState.runtime.contextMax)) tokens"))
                             VStack(alignment: .leading, spacing: 7) {
                                 HStack {
@@ -37,7 +37,7 @@ struct ContextSheet: View {
                                         .font(.caption.weight(.medium))
                                         .foregroundStyle(.secondary)
                                     Spacer()
-                                    Text("\(Int(appState.runtime.contextPercent.rounded()))%")
+                                    Text("\(String(Int(appState.runtime.contextPercent.rounded())))%")
                                         .font(.caption.monospacedDigit().weight(.semibold))
                                 }
                                 ProgressView(value: appState.runtime.contextPercent, total: 100)
@@ -434,7 +434,7 @@ private enum SettingsDestination: Hashable {
     case profile, model, chat, voice, workspace, memory, capabilities, gateway, appearance, notifications, about
 }
 
-private enum ProfileSettingControl {
+enum ProfileSettingControl {
     case toggle(defaultValue: Bool)
     case textToggle(onValue: String, offValue: String, defaultValue: Bool)
     case options([String], defaultValue: String)
@@ -443,7 +443,7 @@ private enum ProfileSettingControl {
     case number(defaultValue: Double)
 }
 
-private struct ProfileSettingField: Identifiable {
+struct ProfileSettingField: Identifiable {
     let key: String
     let label: String
     let help: String
@@ -579,7 +579,7 @@ struct SettingsView: View {
         }
     }
 
-    private static let workspaceFields: [ProfileSettingField] = [
+    static let workspaceFields: [ProfileSettingField] = [
         .init(key: "terminal.cwd", label: String(localized: "Default working directory"), help: String(localized: "Server-side path for new workspaces."), control: .text(defaultValue: "")),
         .init(key: "code_execution.mode", label: String(localized: "Code execution mode"), help: String(localized: "Default execution boundary."), control: .options(["project", "strict"], defaultValue: "project")),
         .init(key: "approvals.mode", label: String(localized: "Approval mode"), help: String(localized: "Profile-wide default: manual asks every time; smart asks when risk warrants it; off is YOLO mode. When set to off, Hermes auto-approves everything and per-session YOLO toggles have no effect — that's a Hermes limitation, not a Conduit bug. To use per-session YOLO, set this to manual or smart."), control: .options(["manual", "smart", "off"], defaultValue: "smart")),
@@ -587,7 +587,7 @@ struct SettingsView: View {
         .init(key: "security.allow_private_urls", label: String(localized: "Allow private URLs"), help: String(localized: "Permit tool access to private-network URLs."), control: .toggle(defaultValue: false)),
     ]
 
-    private static let memoryFields: [ProfileSettingField] = [
+    static let memoryFields: [ProfileSettingField] = [
         .init(key: "memory.provider", label: String(localized: "Memory provider"), help: String(localized: "Provider used for long-term memory."), control: .options([], defaultValue: "")),
         .init(key: "memory.memory_enabled", label: String(localized: "Long-term memory"), help: String(localized: "Allow Hermes to retain relevant working memory."), control: .toggle(defaultValue: true)),
         .init(key: "memory.user_profile_enabled", label: String(localized: "User profile memory"), help: String(localized: "Allow Hermes to maintain user preferences."), control: .toggle(defaultValue: true)),
@@ -814,7 +814,7 @@ private struct ProfileSettingsDetail: View {
     }
 }
 
-private struct ChatSettingsDetail: View {
+struct ChatSettingsDetail: View {
     let busyInputMode: BusyInputMode
     let persistBusyInputMode: (BusyInputMode) async -> Bool
     let chatResumeBehavior: ChatResumeBehavior
@@ -858,14 +858,14 @@ private struct ChatSettingsDetail: View {
         .task { options = await loadOptions() }
     }
 
-    private static let fields: [ProfileSettingField] = [
+    static let fields: [ProfileSettingField] = [
         .init(key: "display.personality", label: String(localized: "Personality"), help: String(localized: "Default response style for new conversations."), control: .options([], defaultValue: "")),
         .init(key: "timezone", label: String(localized: "Timezone"), help: String(localized: "Used for dates, reminders, and scheduled work."), control: .text(defaultValue: "")),
         .init(key: "display.show_reasoning", label: String(localized: "Show thinking"), help: String(localized: "Show collapsible thinking blocks when provided."), control: .toggle(defaultValue: true)),
         .init(key: "display.tool_progress", label: String(localized: "Tool cards"), help: String(localized: "Show tool calls and expandable details in conversations."), control: .textToggle(onValue: "all", offValue: "off", defaultValue: true)),
         .init(key: "display.expand_tools", label: String(localized: "Keep tool cards expanded"), help: String(localized: "Keep completed tool details open by default."), control: .toggle(defaultValue: false)),
         .init(key: "display.memory_notifications", label: String(localized: "Self-improvement updates"), help: String(localized: "Choose whether Conduit follows Hermes, always shows, or never shows maintenance updates."), control: .labeledOptions([(value: "default", label: String(localized: "Use Hermes default")), (value: "on", label: String(localized: "Always show")), (value: "off", label: String(localized: "Never show"))], defaultValue: "default")),
-        .init(key: "agent.image_input_mode", label: String(localized: "Image attachments"), help: String(localized: "How Hermes supplies images to a model."), control: .options([String(localized: "auto"), "native", "text"], defaultValue: String(localized: "auto"))),
+        .init(key: "agent.image_input_mode", label: String(localized: "Image attachments"), help: String(localized: "How Hermes supplies images to a model."), control: .options(["auto", "native", "text"], defaultValue: "auto")),
     ]
 }
 
@@ -1297,7 +1297,31 @@ private struct MemorySettingsDetail: View {
     }
 }
 
-private struct ProfileConfigSettingsPage: View {
+/// 服务器配置值 → 英文显示名（走 String Catalog 翻译）；未收录的动态值原样显示。
+/// 值本身绝不能翻译：它们会原样写回 Hermes 配置。
+enum ProfileConfigValueDisplay {
+    static let optionValueDisplay: [String: [String: String]] = [
+        "approvals.mode": ["manual": "Manual", "smart": "Smart", "off": "YOLO mode"],
+        "code_execution.mode": ["project": "Project", "strict": "Strict"],
+        "agent.image_input_mode": ["auto": "Automatic", "native": "Native images", "text": "Text only"],
+        "display.personality": [
+            "": "Default", "helpful": "Helpful", "concise": "Concise", "technical": "Technical",
+            "creative": "Creative", "teacher": "Teacher", "kawaii": "Kawaii", "catgirl": "Catgirl",
+            "pirate": "Pirate", "shakespeare": "Shakespeare", "surfer": "Surfer", "noir": "Noir",
+            "uwu": "uwu", "philosopher": "Philosopher", "hype": "Hype",
+        ],
+    ]
+
+    static func label(forFieldKey key: String, _ value: String) -> String {
+        if value.isEmpty { return String(localized: "Default") }
+        if let mapped = optionValueDisplay[key]?[value] {
+            return String(localized: String.LocalizationValue(mapped))
+        }
+        return value
+    }
+}
+
+struct ProfileConfigSettingsPage: View {
     let title: String
     let subtitle: String
     let fields: [ProfileSettingField]
@@ -1334,27 +1358,6 @@ private struct ProfileConfigSettingsPage: View {
         .task { await reload() }
     }
 
-    /// 服务器配置值 → 英文显示名（走 String Catalog 翻译）；未收录的动态值原样显示。
-    /// 值本身绝不能翻译：它们会原样写回 Hermes 配置。
-    private static let optionValueDisplay: [String: [String: String]] = [
-        "approvals.mode": ["manual": "Manual", "smart": "Smart", "off": "YOLO mode"],
-        "code_execution.mode": ["project": "Project", "strict": "Strict"],
-        "agent.image_input_mode": ["auto": "Automatic", "native": "Native images", "text": "Text only"],
-        "display.personality": [
-            "": "Default", "helpful": "Helpful", "concise": "Concise", "technical": "Technical",
-            "creative": "Creative", "teacher": "Teacher", "kawaii": "Kawaii", "catgirl": "Catgirl",
-            "pirate": "Pirate", "shakespeare": "Shakespeare", "surfer": "Surfer", "noir": "Noir",
-            "uwu": "uwu", "philosopher": "Philosopher", "hype": "Hype",
-        ],
-    ]
-
-    private static func displayLabel(forFieldKey key: String, _ value: String) -> String {
-        if let mapped = optionValueDisplay[key]?[value] {
-            return String(localized: String.LocalizationValue(mapped))
-        }
-        return value
-    }
-
     @ViewBuilder
     private func settingCard(_ field: ProfileSettingField) -> some View {
         ConduitSettingsSection(title: field.label, symbol: fieldIcon(field.key), tint: .conduitAura) {
@@ -1372,13 +1375,13 @@ private struct ProfileConfigSettingsPage: View {
             case .options(let options, let defaultValue):
                 let choices = optionOverrides[field.key] ?? options
                 let selectedValue = textValue(field.key, defaultValue: defaultValue)
-                let displayedValue = selectedValue.isEmpty ? choices.first ?? "" : selectedValue
+                let displayedValue = selectedValue
                 Menu {
                     ForEach(choices, id: \.self) { option in
-                        Button(Self.displayLabel(forFieldKey: field.key, option)) { save(field, value: .text(option)) }
+                        Button(ProfileConfigValueDisplay.label(forFieldKey: field.key, option)) { save(field, value: .text(option)) }
                     }
                 } label: {
-                    HStack { Text(Self.displayLabel(forFieldKey: field.key, displayedValue)); Spacer(); Image(systemName: "chevron.up.chevron.down").foregroundStyle(.secondary) }
+                    HStack { Text(ProfileConfigValueDisplay.label(forFieldKey: field.key, displayedValue)); Spacer(); Image(systemName: "chevron.up.chevron.down").foregroundStyle(.secondary) }
                         .font(.subheadline.weight(.medium)).padding(.horizontal, 12).frame(height: 42)
                 }
                 .disabled(savingKey != nil || choices.isEmpty).conduitGlassControl(cornerRadius: 14)
