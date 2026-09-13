@@ -3238,6 +3238,14 @@ final class AppState: ObservableObject {
                 profile: profile,
                 purpose: purpose
             )
+            if let missingSavedSessionID {
+                chatResumeRestorationRequest = nil
+                chatResumeCoordinator.prepareDirectTarget(
+                    sessionID: missingSavedSessionID,
+                    profile: profile,
+                    purpose: purpose
+                )
+            }
             let target = missingSavedSessionID == nil
                 ? selectChatResumeTarget(
                     in: allSessions,
@@ -3297,7 +3305,7 @@ final class AppState: ObservableObject {
                    ),
                    token == reconciliationToken,
                    profile == activeProfile {
-                    scheduleReconnect(purpose: purpose)
+                    scheduleReconnectAfterFailedSync()
                 }
                 return succeeded
                     ? .completed
@@ -3382,7 +3390,11 @@ final class AppState: ObservableObject {
                            ),
                            token == reconciliationToken,
                            profile == activeProfile {
-                            scheduleReconnect(purpose: purpose)
+                            // The prior saved identity was authoritatively
+                            // deleted; do not let it masquerade as a visible
+                            // preserve-current target on the retry.
+                            activeSessionId = nil
+                            scheduleReconnectAfterFailedSync()
                         }
                         return fallbackSucceeded
                             ? .completed
@@ -3410,7 +3422,7 @@ final class AppState: ObservableObject {
                    ),
                    token == reconciliationToken,
                    profile == activeProfile {
-                    scheduleReconnect(purpose: purpose)
+                    scheduleReconnectAfterFailedSync()
                 }
                 return succeeded
                     ? .completed
@@ -3475,7 +3487,7 @@ final class AppState: ObservableObject {
                 automaticSyncOperationID: automaticOperationID
             )
             if purpose == .automaticReturn {
-                scheduleReconnect(purpose: purpose)
+                scheduleReconnectAfterFailedSync()
             }
             return .completed
         }
@@ -4263,10 +4275,11 @@ final class AppState: ObservableObject {
     /// detached from the foreground restore path and additive: an absent row
     /// is not expiry evidence, and a replay must not unlock a local submission
     /// or terminal decision.
+    @discardableResult
     func schedulePendingApprovalsRefresh(
         sessionId: String,
         using client: HermesClient
-    ) {
+    ) -> Task<Void, Never> {
         pendingApprovalsRequestGeneration &+= 1
         let generation = pendingApprovalsRequestGeneration
         let profile = activeProfile
@@ -4275,7 +4288,7 @@ final class AppState: ObservableObject {
         let acceptedSessionIDs = activeChatScrollSessionIdentity.equivalentSessionIDs
             .union([sessionId])
 
-        Task { @MainActor [weak self] in
+        return Task { @MainActor [weak self] in
             let approvals: [ApprovalActivity]
             do {
                 if let pendingApprovals = self?.chatResumeLifecycleOperations.pendingApprovals {
@@ -5309,6 +5322,19 @@ final class AppState: ObservableObject {
         }
     }
 
+    private func scheduleReconnectAfterFailedSync() {
+        // Once an automatic sync fails with a visible conversation, repair
+        // around that conversation. On a truly cold launch there is no
+        // visible identity to preserve, so retain automatic return to the
+        // saved conversation instead of selecting an arbitrary catalog row.
+        let retryPurpose: ChatResumeSyncPurpose = activeSessionId == nil
+            ? .automaticReturn
+            : .preserveCurrent
+        cancelScheduledReconnect()
+        recoverySequence.complete()
+        scheduleReconnect(purpose: retryPurpose)
+    }
+
     func reconnect() async {
         cancelChatResumeTransportRecovery()
         await executeReconnect(purpose: .preserveCurrent)
@@ -5446,7 +5472,7 @@ final class AppState: ObservableObject {
                 turnState = .reconnecting
                 lastConnectionFailure = ConnectionFailureClassifier.classify(error)
                 errorMessage = AppLocalization.string("Failed to refresh the dashboard session: \(error.localizedDescription)")
-                scheduleReconnect(purpose: continuationPurpose)
+                scheduleReconnectAfterFailedSync()
             }
             return
         }
@@ -5498,7 +5524,7 @@ final class AppState: ObservableObject {
             isConnected = false
             isConnecting = false
             turnState = .reconnecting
-            scheduleReconnect(purpose: continuationPurpose)
+            scheduleReconnectAfterFailedSync()
         }
     }
 
@@ -12814,9 +12840,25 @@ final class AppState: ObservableObject {
         _ activity: ApprovalActivity,
         authoritative: Bool
     ) {
+        let equivalentSessionIDs = activeChatScrollSessionIdentity.equivalentSessionIDs
+            .union([activity.sessionId])
+        if activity.requestId != nil {
+            // A legacy card has no request identity to correlate with the
+            // authoritative row. While its response is in flight, keep its
+            // message id and cache entry stable so the RPC completion can
+            // settle the card it actually owns. Never retain this pre-answer
+            // pending snapshot for replay after success; the fresh pending
+            // refresh below the response owns any still-queued request.
+            if messages.contains(where: { message in
+                guard let existing = message.approval else { return false }
+                return equivalentSessionIDs.contains(existing.sessionId)
+                    && existing.requestId == nil
+                    && existing.status == .submitting
+            }) {
+                return
+            }
+        }
         if authoritative, activity.requestId != nil {
-            let equivalentSessionIDs = activeChatScrollSessionIdentity.equivalentSessionIDs
-                .union([activity.sessionId])
             messages.removeAll { message in
                 guard let existing = message.approval,
                       equivalentSessionIDs.contains(existing.sessionId),

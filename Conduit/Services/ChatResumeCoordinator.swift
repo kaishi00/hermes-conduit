@@ -111,6 +111,22 @@ final class ChatResumeCoordinator {
         return selected
     }
 
+    /// Records the same viewport-restoration ownership as `selectTarget` when
+    /// a cold catalog has not indexed the saved session yet and AppState must
+    /// resume that durable identity directly.
+    func prepareDirectTarget(
+        sessionID: String,
+        profile: String,
+        purpose: ChatResumeSyncPurpose
+    ) {
+        guard purpose == .automaticReturn else { return }
+        pendingRestoration = nil
+        let key = ChatScrollSessionKey(profile: profile, sessionID: sessionID)
+        pendingSessionKey = key.isValid ? key : nil
+        pendingFallbackSelection = false
+        if pendingSessionKey != nil { viewportIsFrozen = true }
+    }
+
     func recordViewport(_ snapshot: ChatScrollSnapshot, for key: ChatScrollSessionKey) {
         guard !viewportIsFrozen, key.isValid else { return }
 

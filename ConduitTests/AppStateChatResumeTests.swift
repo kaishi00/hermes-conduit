@@ -3363,6 +3363,7 @@ final class AppStateChatResumeTests: XCTestCase {
             baseUrl: "https://one.example",
             ticket: "saved-ticket"
         )
+        harness.appState.activeSessionId = "stored-visible"
 
         let reconnect = Task { @MainActor in
             await harness.appState.reconnectForRetry(purpose: .automaticReturn)
@@ -3382,6 +3383,57 @@ final class AppStateChatResumeTests: XCTestCase {
         await scheduler.runAll()
         XCTAssertEqual(scheduler.cancelledCount, 0)
         XCTAssertEqual(reconnectSpy.purposes, [.preserveCurrent])
+    }
+
+    func testFailedAutomaticReconnectRetriesWithoutStickyAutomaticSelection() async {
+        let scheduler = ControlledReconnectScheduler()
+        let reconnectSpy = ReconnectExecutionSpy()
+        let harness = makeHarness(
+            reconnectScheduler: scheduler.schedule(after:operation:),
+            reconnectExecutor: { purpose in reconnectSpy.purposes.append(purpose) },
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                connectClient: { _ in throw ControlledLifecycleError.failed },
+                mintTicket: { _ in "refreshed-ticket" }
+            )
+        )
+        harness.appState.connection = HermesConnection(
+            baseUrl: "https://one.example",
+            ticket: "saved-ticket"
+        )
+        let visible = session("stored-visible")
+        harness.appState.sessions = [visible]
+        harness.appState.activeSessionId = visible.id
+
+        await harness.appState.reconnectForRetry(purpose: .automaticReturn)
+        await scheduler.runAll()
+
+        XCTAssertEqual(reconnectSpy.purposes, [.preserveCurrent])
+        XCTAssertEqual(harness.recoverySequence.currentPurpose, .preserveCurrent)
+        XCTAssertEqual(harness.appState.activeSessionId, visible.id)
+    }
+
+    func testFailedColdAutomaticReconnectRetainsSavedSessionPurpose() async {
+        let scheduler = ControlledReconnectScheduler()
+        let reconnectSpy = ReconnectExecutionSpy()
+        let harness = makeHarness(
+            reconnectScheduler: scheduler.schedule(after:operation:),
+            reconnectExecutor: { purpose in reconnectSpy.purposes.append(purpose) },
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                connectClient: { _ in throw ControlledLifecycleError.failed },
+                mintTicket: { _ in "refreshed-ticket" }
+            )
+        )
+        harness.coordinator.rememberSessionID("stored-saved", for: "default")
+        harness.appState.connection = HermesConnection(
+            baseUrl: "https://one.example",
+            ticket: "saved-ticket"
+        )
+
+        await harness.appState.reconnectForRetry(purpose: .automaticReturn)
+        await scheduler.runAll()
+
+        XCTAssertEqual(reconnectSpy.purposes, [.automaticReturn])
+        XCTAssertEqual(harness.recoverySequence.currentPurpose, .automaticReturn)
     }
 
     func testViewportCancellationDuringInitialConnectHandsOffToPreserveCurrentSynchronization() async {
@@ -4306,6 +4358,42 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertNil(harness.appState.activeSessionId)
         XCTAssertTrue(harness.appState.sessions.isEmpty)
         XCTAssertEqual(harness.cacheClearSpy.count, 1)
+    }
+
+    func testMissingSavedSessionDirectSyncRestoresSavedViewport() async throws {
+        var requests: [String] = []
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            loadCatalog: { _, _ in [] },
+            openSession: { _, sessionID, _ in
+                requests.append(sessionID)
+                return SessionResumeResult(
+                    sessionId: sessionID,
+                    storedSessionId: sessionID,
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            refreshContext: { _, _ in }
+        ))
+        let key = ChatScrollSessionKey(profile: "default", sessionID: "stored-missing")
+        let saved = ChatScrollSnapshot(anchorMessageID: "saved-anchor", followsLatest: false)
+        harness.coordinator.rememberSessionID("stored-missing", for: "default")
+        harness.coordinator.recordViewport(saved, for: key)
+        harness.coordinator.flush()
+        installComposerClient(in: harness)
+
+        await harness.appState.syncSession(
+            purpose: .automaticReturn,
+            using: nil,
+            automaticWorkToken: nil
+        )
+
+        XCTAssertEqual(requests, ["stored-missing"])
+        XCTAssertEqual(
+            try XCTUnwrap(harness.appState.chatResumeRestorationRequest).destination,
+            .snapshot(saved)
+        )
+        XCTAssertEqual(harness.store.snapshot(for: key), saved)
     }
 
     func testLegacySameServerLoginOrderingPreservesServerScopedState() throws {
