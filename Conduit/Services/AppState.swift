@@ -12451,8 +12451,8 @@ final class AppState: ObservableObject {
                 .messageComplete(let sessionId, _, _, _), .messageError(let sessionId, _),
                 .messageInterrupted(let sessionId), .sessionBusy(let sessionId, _),
                 .sessionInfo(let sessionId, _), .sessionTitle(let sessionId, _, _),
-                .toolStart(let sessionId, _, _),
-                .toolComplete(let sessionId, _, _), .reviewSummary(let sessionId, _), .clarify(let sessionId, _), .clarifyExpire(let sessionId, _),
+                .toolStart(let sessionId, _, _, _),
+                .toolComplete(let sessionId, _, _, _), .reviewSummary(let sessionId, _), .clarify(let sessionId, _), .clarifyExpire(let sessionId, _),
                 .approval(let sessionId, _),
                 .contextUpdate(let sessionId, _, _, _), .cwdUpdate(let sessionId, _),
                 .modelUpdate(let sessionId, _, _), .agentCount(let sessionId, _),
@@ -12585,8 +12585,17 @@ final class AppState: ObservableObject {
             // active-session stream gate in handleStreamEvent(_:).
             break
 
-        case .toolStart(_, let name, let input):
+        case .toolStart(_, let name, let input, let eventToolID):
             if name.lowercased() == "clarify" { break }
+            let toolID = eventToolID?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let stableToolID = toolID?.isEmpty == false ? toolID : nil
+            // Tool lifecycle events can be replayed after a resume. A stable
+            // gateway id makes a repeated start idempotent without splitting
+            // the current reasoning or text projection.
+            if let stableToolID,
+               messages.contains(where: { $0.tool?.id == stableToolID }) {
+                break
+            }
             // The tool card must land after a complete reasoning card; commit
             // the coalesced segment before the boundary reorders the
             // transcript. A tool ends the reasoning SEGMENT only — the turn
@@ -12600,7 +12609,7 @@ final class AppState: ObservableObject {
                 role: .tool,
                 content: "",
                 timestamp: Self.localTimestamp(),
-                tool: ToolActivity(id: nil, name: name, input: input, output: nil, status: .running)
+                tool: ToolActivity(id: stableToolID, name: name, input: input, output: nil, status: .running)
             )
             messages.append(message)
             sessionPresentationCache.recordPendingToolStart(
@@ -12609,20 +12618,34 @@ final class AppState: ObservableObject {
                 sessionIDs: presentationCacheSessionIDs(for: streamSessionId)
             )
 
-        case .toolComplete(_, let name, let output):
+        case .toolComplete(_, let name, let output, let eventToolID):
             if name.lowercased() == "clarify" { break }
             settleReasoningSegmentIntoTranscript()
             resetReasoningSegment()
+            let toolID = eventToolID?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let stableToolID = toolID?.isEmpty == false ? toolID : nil
             // Update the matching running tool card in place instead of
             // appending a duplicate. This keeps input + output together in
             // one chronological entry, matching how the HTTP API returns
             // stored messages on reload.
-            if let index = messages.lastIndex(where: {
-                $0.role == .tool && $0.tool?.name == name && $0.tool?.status == .running
-            }) {
+            let matchingIndex: Int?
+            if let stableToolID {
+                // An ID-bearing completion must never fall back to the tool
+                // name: an unknown ID is a distinct call, not a license to
+                // complete the newest same-name card.
+                matchingIndex = messages.lastIndex(where: {
+                    $0.role == .tool
+                        && $0.tool?.id == stableToolID
+                })
+            } else {
+                matchingIndex = messages.lastIndex(where: {
+                    $0.role == .tool && $0.tool?.name == name && $0.tool?.status == .running
+                })
+            }
+            if let index = matchingIndex {
                 let existing = messages[index].tool
                 messages[index].tool = ToolActivity(
-                    id: existing?.id,
+                    id: stableToolID ?? existing?.id,
                     name: name,
                     input: existing?.input,
                     output: output,
@@ -12634,11 +12657,12 @@ final class AppState: ObservableObject {
                     role: .tool,
                     content: "",
                     timestamp: Self.localTimestamp(),
-                    tool: ToolActivity(id: nil, name: name, input: nil, output: output, status: .complete)
+                    tool: ToolActivity(id: stableToolID, name: name, input: nil, output: output, status: .complete)
                 ))
             }
             sessionPresentationCache.resolvePendingTool(
                 named: name,
+                toolID: stableToolID,
                 profile: activeProfile,
                 sessionIDs: presentationCacheSessionIDs(for: streamSessionId)
             )

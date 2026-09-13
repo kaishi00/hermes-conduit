@@ -167,7 +167,8 @@ final class AppStateChatResumeTests: XCTestCase {
         source.handleStreamEvent(.toolStart(
             sessionId: active.id,
             toolName: "read_file",
-            toolInput: "README.md"
+            toolInput: "README.md",
+            toolID: "call-reopen"
         ))
 
         // Simulate terminate/relaunch with a new AppState and cache object
@@ -187,14 +188,26 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(resumed.messages.count, 1)
         XCTAssertEqual(resumed.messages[0].tool?.name, "read_file")
         XCTAssertEqual(resumed.messages[0].tool?.input, "README.md")
+        XCTAssertEqual(resumed.messages[0].tool?.id, "call-reopen")
         XCTAssertEqual(resumed.messages[0].tool?.status, .running)
+
+        // The resumed gateway can replay its start event; it must not append
+        // a second card for the persisted tool identity.
+        resumed.handleStreamEvent(.toolStart(
+            sessionId: active.id,
+            toolName: "read_file",
+            toolInput: "README.md",
+            toolID: "call-reopen"
+        ))
+        XCTAssertEqual(resumed.messages.count, 1)
 
         // The result event must update that restored card in place rather
         // than append a second completed tool row.
         resumed.handleStreamEvent(.toolComplete(
             sessionId: active.id,
             toolName: "read_file",
-            toolOutput: "contents"
+            toolOutput: "contents",
+            toolID: "call-reopen"
         ))
         XCTAssertEqual(resumed.messages.count, 1)
         XCTAssertEqual(resumed.messages[0].tool?.status, .complete)
@@ -1149,7 +1162,7 @@ final class AppStateChatResumeTests: XCTestCase {
             .messageDelta(sessionId: active.id, text: " brown fox jumps")
         )
         harness.appState.handleStreamEvent(
-            .toolStart(sessionId: active.id, toolName: "Bash", toolInput: "ls")
+            .toolStart(sessionId: active.id, toolName: "Bash", toolInput: "ls", toolID: "buffered-tool")
         )
         harness.appState.handleStreamEvent(
             .messageDelta(sessionId: active.id, text: " now")
@@ -1266,7 +1279,7 @@ final class AppStateChatResumeTests: XCTestCase {
             .messageDelta(sessionId: active.id, text: "CDE")
         )
         harness.appState.handleStreamEvent(
-            .toolStart(sessionId: active.id, toolName: "Bash", toolInput: "ls")
+            .toolStart(sessionId: active.id, toolName: "Bash", toolInput: "ls", toolID: "buffered-tool")
         )
         openGate.resume()
         await refresh.value
@@ -1279,6 +1292,7 @@ final class AppStateChatResumeTests: XCTestCase {
         let partialIndex = harness.appState.messages.firstIndex { $0.role == .partial }
         XCTAssertEqual(partials.map(\.content), ["CDE"])
         XCTAssertEqual(harness.appState.messages.filter { $0.role == .tool }.count, 2)
+        XCTAssertEqual(harness.appState.messages[replayedToolIndex ?? 0].tool?.id, "buffered-tool")
         XCTAssertTrue(
             olderToolIndex.map { index in partialIndex.map { index < $0 } ?? false } ?? false,
             "The older identical running call must be preserved ahead of the buffered text"

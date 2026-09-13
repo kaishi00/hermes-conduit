@@ -1035,6 +1035,54 @@ final class SessionPresentationCacheTests: XCTestCase {
         XCTAssertEqual(merged.filter { $0.tool?.status == .running }.count, 2)
     }
 
+    func testResolvePendingToolByIDKeepsOtherSameNameCallsAndIgnoresUnknownID() throws {
+        let (cache, _, _, _) = try makeIsolatedCache()
+        let profile = "pending-tool-id-resolution"
+        let sessionID = "pending-tool-id-" + UUID().uuidString
+        let first = ChatMessage(
+            id: "cached-a",
+            role: .tool,
+            content: "",
+            timestamp: "a",
+            tool: ToolActivity(id: "call-a", name: "terminal", input: "git status", output: nil, status: .running)
+        )
+        let second = ChatMessage(
+            id: "cached-b",
+            role: .tool,
+            content: "",
+            timestamp: "b",
+            tool: ToolActivity(id: "call-b", name: "terminal", input: "git status", output: nil, status: .running)
+        )
+        cache.recordPendingToolStart(first, profile: profile, sessionIDs: [sessionID])
+        cache.recordPendingToolStart(second, profile: profile, sessionIDs: [sessionID])
+
+        cache.resolvePendingTool(
+            named: "terminal",
+            toolID: "unknown-call",
+            profile: profile,
+            sessionIDs: [sessionID]
+        )
+        XCTAssertEqual(
+            cache.merge([], profile: profile, sessionIDs: [sessionID], includePendingTools: true)
+                .compactMap(\.tool).compactMap(\.id),
+            ["call-a", "call-b"],
+            "An unmatched stable completion must not fall back to the newest same-name cache record"
+        )
+
+        cache.resolvePendingTool(
+            named: "terminal",
+            toolID: "call-a",
+            profile: profile,
+            sessionIDs: [sessionID]
+        )
+        XCTAssertEqual(
+            cache.merge([], profile: profile, sessionIDs: [sessionID], includePendingTools: true)
+                .compactMap(\.tool).compactMap(\.id),
+            ["call-b"],
+            "An out-of-order completion removes only its exact pending tool"
+        )
+    }
+
     func testMergeRestoresLaterPendingToolOnceAcrossAliasesAfterDifferentHistoricalInput() throws {
         let (cache, _, _, _) = try makeIsolatedCache()
         let profile = "pending-tool-aliases"

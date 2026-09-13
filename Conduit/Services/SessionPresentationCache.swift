@@ -440,26 +440,30 @@ final class SessionPresentationCache {
         persist(store)
     }
 
-    /// A completion event makes the local running projection obsolete. Drop
-    /// the latest matching unresolved record immediately; the normal
-    /// debounced presentation save will persist the completed transcript row.
+    /// A completion event makes the local running projection obsolete. A
+    /// stable tool id resolves only its exact record; legacy id-less events
+    /// retain the historical latest-same-name fallback.
     func resolvePendingTool(
         named name: String,
+        toolID: String? = nil,
         profile: String,
         sessionIDs: [String]
     ) {
         let ids = Set(sessionIDs.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })
         guard !ids.isEmpty else { return }
         let normalizedName = normalized(name)
+        let trimmedToolID = toolID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let stableToolID = trimmedToolID.isEmpty ? nil : trimmedToolID
         var store = load()
         var changed = false
         for id in ids {
             let cacheKey = key(profile: profile, sessionID: id)
             guard var session = store[cacheKey],
-                  let index = session.messages.lastIndex(where: {
-                      $0.role == .tool
-                          && $0.toolStatus == .running
-                          && $0.toolName == normalizedName
+                  let index = session.messages.lastIndex(where: { message in
+                      message.role == .tool
+                          && message.toolStatus == .running
+                          && (stableToolID.map { toolID in message.toolID == toolID }
+                              ?? (message.toolName == normalizedName))
                   }) else {
                 continue
             }

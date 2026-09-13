@@ -173,8 +173,8 @@ enum StreamEvent {
     case sessionBusy(sessionId: String, busy: Bool)
     case sessionInfo(sessionId: String, snapshot: SessionRuntimeSnapshot)
     case sessionTitle(runtimeSessionId: String, storedSessionId: String, title: String)
-    case toolStart(sessionId: String, toolName: String, toolInput: String?)
-    case toolComplete(sessionId: String, toolName: String, toolOutput: String?)
+    case toolStart(sessionId: String, toolName: String, toolInput: String?, toolID: String? = nil)
+    case toolComplete(sessionId: String, toolName: String, toolOutput: String?, toolID: String? = nil)
     case reviewSummary(sessionId: String, activity: ReviewActivity)
     /// The complete normalized clarification — batch structure intact. The
     /// parser must not flatten `questions[]` back into scalar fields, or a

@@ -218,7 +218,7 @@ final class StreamEventParserTests: XCTestCase {
         let event = parse(#"""
         {"type": "tool.start", "session_id": "s1", "payload": {"name": "web_search", "args_text": "query=test"}}
         """#)
-        guard case .toolStart(_, let toolName, let toolInput) = event else {
+        guard case .toolStart(_, let toolName, let toolInput, _) = event else {
             return XCTFail("Expected toolStart")
         }
         XCTAssertEqual(toolName, "web_search")
@@ -229,7 +229,7 @@ final class StreamEventParserTests: XCTestCase {
         let event = parse(#"""
         {"type": "tool.start", "session_id": "s1", "payload": {"name": "terminal", "input": "ls -la"}}
         """#)
-        guard case .toolStart(_, _, let toolInput) = event else {
+        guard case .toolStart(_, _, let toolInput, _) = event else {
             return XCTFail("Expected toolStart")
         }
         XCTAssertEqual(toolInput, "ls -la")
@@ -239,11 +239,39 @@ final class StreamEventParserTests: XCTestCase {
         let event = parse(#"""
         {"type": "tool_call", "session_id": "s1", "payload": {"name": "terminal", "arguments": {"command": "pwd"}}}
         """#)
-        guard case .toolStart(_, _, let toolInput) = event else {
+        guard case .toolStart(_, _, let toolInput, _) = event else {
             return XCTFail("Expected toolStart")
         }
         XCTAssertNotNil(toolInput)
         XCTAssertTrue(toolInput!.contains("command"))
+    }
+
+    func testToolLifecycleParsesTrimmedStableToolID() {
+        let start = parse(#"""
+        {"type": "tool.start", "session_id": "s1", "payload": {"tool_id": " tool-1 ", "name": "terminal"}}
+        """#)
+        guard case .toolStart(_, _, _, let startID) = start else {
+            return XCTFail("Expected toolStart")
+        }
+        XCTAssertEqual(startID, "tool-1")
+
+        let completion = parse(#"""
+        {"type": "tool.complete", "session_id": "s1", "payload": {"tool_id": "tool-1", "name": "terminal", "result": "done"}}
+        """#)
+        guard case .toolComplete(_, _, _, let completionID) = completion else {
+            return XCTFail("Expected toolComplete")
+        }
+        XCTAssertEqual(completionID, "tool-1")
+    }
+
+    func testToolLifecycleMissingOrBlankToolIDRemainsNil() {
+        let event = parse(#"""
+        {"type": "tool.start", "session_id": "s1", "payload": {"tool_id": "  ", "name": "terminal"}}
+        """#)
+        guard case .toolStart(_, _, _, let toolID) = event else {
+            return XCTFail("Expected toolStart")
+        }
+        XCTAssertNil(toolID)
     }
 
     // MARK: - tool.complete
@@ -252,7 +280,7 @@ final class StreamEventParserTests: XCTestCase {
         let event = parse(#"""
         {"type": "tool.complete", "session_id": "s1", "payload": {"name": "terminal", "output": "done"}}
         """#)
-        guard case .toolComplete(_, let toolName, let toolOutput) = event else {
+        guard case .toolComplete(_, let toolName, let toolOutput, _) = event else {
             return XCTFail("Expected toolComplete")
         }
         XCTAssertEqual(toolName, "terminal")
@@ -263,7 +291,7 @@ final class StreamEventParserTests: XCTestCase {
         let event = parse(#"""
         {"type": "tool_result", "session_id": "s1", "payload": {"name": "search", "result": "found"}}
         """#)
-        guard case .toolComplete(_, _, let toolOutput) = event else {
+        guard case .toolComplete(_, _, let toolOutput, _) = event else {
             return XCTFail("Expected toolComplete")
         }
         XCTAssertEqual(toolOutput, "found")
