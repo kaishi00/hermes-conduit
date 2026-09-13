@@ -5470,7 +5470,9 @@ final class AppState: ObservableObject {
                             lifecycleLog.notice(
                                 "Foreground refresh: health check failed (\(error.localizedDescription, privacy: .private)); reconnecting"
                             )
-                            await self.reconnectForRetry(purpose: .automaticReturn)
+                            await self.reconnectForRetry(
+                                purpose: self.foregroundRecoveryPurpose
+                            )
                             self.settleReconciliation(token)
                         }
                     }
@@ -5486,7 +5488,9 @@ final class AppState: ObservableObject {
                         lifecycleLog.notice(
                             "Foreground refresh start: transport=missing-or-unhealthy; reconnecting"
                         )
-                        await self.reconnectForRetry(purpose: .automaticReturn)
+                        await self.reconnectForRetry(
+                            purpose: self.foregroundRecoveryPurpose
+                        )
                         self.settleReconciliation(token)
                     }
                 }
@@ -5752,6 +5756,17 @@ final class AppState: ObservableObject {
         case unavailable(String)
     }
 
+    /// Foreground recovery repairs the current conversation whenever one is
+    /// visible. Automatic return is only appropriate when there is no current
+    /// identity to preserve.
+    private var foregroundRecoveryPurpose: ChatResumeSyncPurpose {
+        guard let activeSessionId,
+              !activeSessionId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return .automaticReturn
+        }
+        return .preserveCurrent
+    }
+
     /// A healthy foreground transition must be observational, not a session
     /// replacement. `session.resume` is a session SWITCH upstream (switch_
     /// session), and the full sync path re-derives the target session,
@@ -5774,6 +5789,11 @@ final class AppState: ObservableObject {
             return
         }
         let requestedSessionID = activeSessionId
+        // A foreground recovery is repairing the conversation already on
+        // screen. It must never use automatic-return fallback selection while
+        // that conversation still has an identity: a transient catalog gap or
+        // stale saved id would otherwise replace it with an unrelated chat.
+        let recoveryPurpose = foregroundRecoveryPurpose
         let probe: ForegroundRuntimeProbe
         if let requestedSessionID {
             probe = await probeForegroundRuntime(
@@ -5825,7 +5845,20 @@ final class AppState: ObservableObject {
                     forRequested: requestedSessionID ?? ""
                 )
                 let continuesLocalTurn = !preSuspensionRunningIDs.isDisjoint(with: acceptedIDs)
-                if !freshnessCheckArmed {
+                if row.status == "waiting", !Self.hasPendingDecision(in: messages) {
+                    // Waiting is a committed busy state, but it normally
+                    // represents an answerable approval or clarification.
+                    // A registry probe alone cannot restore the missing card,
+                    // so re-resume the current conversation authoritatively.
+                    lifecycleLog.notice(
+                        "Foreground refresh: probe=waiting without visible decision → authoritative resume"
+                    )
+                    await syncSession(
+                        purpose: recoveryPurpose,
+                        using: token,
+                        automaticWorkToken: automaticWorkToken
+                    )
+                } else if !freshnessCheckArmed {
                     // Overlay-dip semantics: the socket survived the dip and
                     // live events kept the transcript current, so the
                     // observational adopt stands without a transcript read.
@@ -5847,7 +5880,7 @@ final class AppState: ObservableObject {
                             "Foreground refresh: probe=live localTranscript=empty → resume refresh (attach live projection)"
                         )
                         await syncSession(
-                            purpose: .automaticReturn,
+                            purpose: recoveryPurpose,
                             using: token,
                             automaticWorkToken: automaticWorkToken
                         )
@@ -5877,7 +5910,7 @@ final class AppState: ObservableObject {
                         "Foreground refresh: probe=live status=\(row.status, privacy: .public) session=\(requestedSessionID ?? "-", privacy: .public) → authoritative attach (remote running turn)"
                     )
                     await syncSession(
-                        purpose: .automaticReturn,
+                        purpose: recoveryPurpose,
                         using: token,
                         automaticWorkToken: automaticWorkToken
                     )
@@ -5891,7 +5924,7 @@ final class AppState: ObservableObject {
                     "Foreground refresh: probe=idle localTurn=running → resume refresh (turn ended while away)"
                 )
                 await syncSession(
-                    purpose: .automaticReturn,
+                    purpose: recoveryPurpose,
                     using: token,
                     automaticWorkToken: automaticWorkToken
                 )
@@ -5925,7 +5958,7 @@ final class AppState: ObservableObject {
                 "Foreground refresh: probe=absent → resume refresh (runtime not live)"
             )
             await syncSession(
-                purpose: .automaticReturn,
+                purpose: recoveryPurpose,
                 using: token,
                 automaticWorkToken: automaticWorkToken
             )
@@ -5936,7 +5969,7 @@ final class AppState: ObservableObject {
                 "Foreground refresh: probe unavailable (\(reason, privacy: .private)) → resume refresh"
             )
             await syncSession(
-                purpose: .automaticReturn,
+                purpose: recoveryPurpose,
                 using: token,
                 automaticWorkToken: automaticWorkToken
             )
@@ -6442,6 +6475,7 @@ final class AppState: ObservableObject {
         automaticWorkToken: ChatResumeAutomaticWorkToken?
     ) async {
         let profile = activeProfile
+        let recoveryPurpose = foregroundRecoveryPurpose
         let bridge = dashboardTicketBridge
         let localFrontier = durablePersistedRowIDs
         let localMessageIDs = Set(messages.map { $0.id })
@@ -6469,7 +6503,7 @@ final class AppState: ObservableObject {
                 "Foreground freshness: session=\(requestedSessionID, privacy: .public) transcript moved during read → bounded resume refresh"
             )
             await syncSession(
-                purpose: .automaticReturn,
+                purpose: recoveryPurpose,
                 using: token,
                 automaticWorkToken: automaticWorkToken
             )
@@ -6496,7 +6530,7 @@ final class AppState: ObservableObject {
                     "Foreground freshness: probe=running session=\(requestedSessionID, privacy: .public) verdict=advanced rows=\(newRows.count, privacy: .public) → authoritative attach"
                 )
                 await syncSession(
-                    purpose: .automaticReturn,
+                    purpose: recoveryPurpose,
                     using: token,
                     automaticWorkToken: automaticWorkToken
                 )
@@ -6565,7 +6599,7 @@ final class AppState: ObservableObject {
                 "Foreground freshness: probe=\(livenessIsRunning ? "running" : "idle", privacy: .public) session=\(requestedSessionID, privacy: .public) verdict=source-unavailable → single authoritative resume"
             )
             await syncSession(
-                purpose: .automaticReturn,
+                purpose: recoveryPurpose,
                 using: token,
                 automaticWorkToken: automaticWorkToken,
                 historySourceUnavailable: true
@@ -6575,7 +6609,7 @@ final class AppState: ObservableObject {
                 "Foreground freshness: probe=\(livenessIsRunning ? "running" : "idle", privacy: .public) session=\(requestedSessionID, privacy: .public) verdict=inconclusive → bounded resume refresh"
             )
             await syncSession(
-                purpose: .automaticReturn,
+                purpose: recoveryPurpose,
                 using: token,
                 automaticWorkToken: automaticWorkToken
             )
