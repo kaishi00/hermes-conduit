@@ -151,57 +151,6 @@ enum MarkdownShowcaseFixtures {
     }
 }
 
-private final class MarkdownBaselineProbe {
-    var markerBaseline: CGFloat?
-    var bodyBaseline: CGFloat?
-}
-
-/// Test-only equivalent of the two-column baseline placement used by HStack.
-/// It exposes the child alignment values so the UIKit glyph location can be
-/// compared with the guide SwiftUI receives from InlineMarkdown.
-private struct MarkdownBaselineProbeLayout: Layout {
-    let probe: MarkdownBaselineProbe
-    private let spacing: CGFloat = 9
-
-    func sizeThatFits(
-        proposal: ProposedViewSize,
-        subviews: Subviews,
-        cache: inout ()
-    ) -> CGSize {
-        guard subviews.count == 2 else { return .zero }
-        let markerSize = subviews[0].sizeThatFits(.unspecified)
-        let bodyWidth = max(1, (proposal.width ?? 390) - markerSize.width - spacing)
-        let bodySize = subviews[1].sizeThatFits(ProposedViewSize(width: bodyWidth, height: proposal.height))
-        return CGSize(width: proposal.width ?? markerSize.width + spacing + bodySize.width,
-                      height: max(markerSize.height, bodySize.height))
-    }
-
-    func placeSubviews(
-        in bounds: CGRect,
-        proposal: ProposedViewSize,
-        subviews: Subviews,
-        cache: inout ()
-    ) {
-        guard subviews.count == 2 else { return }
-        let markerDimensions = subviews[0].dimensions(in: .unspecified)
-        let bodyWidth = max(1, bounds.width - markerDimensions.width - spacing)
-        let bodyProposal = ProposedViewSize(width: bodyWidth, height: proposal.height)
-        let bodyDimensions = subviews[1].dimensions(in: bodyProposal)
-        let baseline = max(markerDimensions[.firstTextBaseline], bodyDimensions[.firstTextBaseline])
-        probe.markerBaseline = markerDimensions[.firstTextBaseline]
-        probe.bodyBaseline = bodyDimensions[.firstTextBaseline]
-        subviews[0].place(
-            at: CGPoint(x: bounds.minX, y: bounds.minY + baseline - markerDimensions[.firstTextBaseline]),
-            proposal: .unspecified
-        )
-        subviews[1].place(
-            at: CGPoint(x: bounds.minX + markerDimensions.width + spacing,
-                        y: bounds.minY + baseline - bodyDimensions[.firstTextBaseline]),
-            proposal: bodyProposal
-        )
-    }
-}
-
 // MARK: - Pure policy tests
 
 final class MarkdownRichContentPolicyTests: XCTestCase {
@@ -859,51 +808,6 @@ final class MarkdownRichContentHostedTests: XCTestCase {
         )
     }
 
-    /// Lists beside another rich block take the block renderer, where their
-    /// marker is SwiftUI Text but their body is a UIKit text view. Verify the
-    /// body publishes its real TextKit glyph baseline to SwiftUI's baseline
-    /// layout, including a wrapped body item; a flow-only document would use
-    /// one UITextView and could not catch this.
-    func testRichListMarkersShareTheirBodiesFirstLineBaseline() throws {
-        let source = """
-        - bullet baseline marker with enough text to wrap in the phone-sized host and prove it stays with the first rendered line instead of drifting down beside the continuation
-        - short bullet marker
-
-        1. numbered baseline marker with enough text to wrap in the phone-sized host and prove it stays with the first rendered line instead of drifting down beside the continuation
-        2. short numbered marker
-
-        - [ ] incomplete task marker
-        - [x] completed task marker
-
-        ---
-        """
-        let blocks = MarkdownParser.parse(source)
-        XCTAssertTrue(blocks.contains { if case .divider = $0 { return true }; return false })
-        _ = mountMarkdown { MarkdownText(source: source) }
-
-        let root = try XCTUnwrap(testHost?.view)
-        let attachment = XCTAttachment(image: renderedImage(of: root))
-        attachment.name = "rich-list-marker-alignment"
-        attachment.lifetime = .keepAlways
-        add(attachment)
-        let textViews = allSubviews(in: root).compactMap { $0 as? UITextView }
-        let bulletBody = try textView(containing: "bullet baseline marker", in: textViews)
-        let numberBody = try textView(containing: "numbered baseline marker", in: textViews)
-        XCTAssertGreaterThan(
-            lineFragmentCount(in: bulletBody), 1,
-            "fixture must wrap the bullet body to prove first-line alignment"
-        )
-        XCTAssertGreaterThan(
-            lineFragmentCount(in: numberBody), 1,
-            "fixture must wrap the numbered body to prove first-line alignment"
-        )
-        XCTAssertNotNil(textViews.first { $0.attributedText.string.contains("incomplete task marker") })
-        XCTAssertNotNil(textViews.first { $0.attributedText.string.contains("completed task marker") })
-
-        try assertInlineMarkdownBaseline(chatSize: .default)
-        try assertInlineMarkdownBaseline(chatSize: .largest)
-    }
-
     /// Widest UIView frame in the currently hosted hierarchy — the honest
     /// signal for "did table content overflow the container", since a
     /// horizontal ScrollView's own frame always matches the proposal while
@@ -921,79 +825,6 @@ final class MarkdownRichContentHostedTests: XCTestCase {
         }
         walk(root)
         return widest
-    }
-
-    private func allSubviews(in view: UIView) -> [UIView] {
-        view.subviews.flatMap { [$0] + allSubviews(in: $0) }
-    }
-
-    private func textView(containing text: String, in textViews: [UITextView]) throws -> UITextView {
-        try XCTUnwrap(
-            textViews.first { $0.attributedText.string.contains(text) },
-            "missing rendered text view containing '\(text)'"
-        )
-    }
-
-    private func lineFragmentCount(in textView: UITextView) -> Int {
-        let glyphRange = textView.layoutManager.glyphRange(for: textView.textContainer)
-        var count = 0
-        textView.layoutManager.enumerateLineFragments(forGlyphRange: glyphRange) { _, _, _, _, _ in
-            count += 1
-        }
-        return count
-    }
-
-    private func renderedFirstLineBaseline(of textView: UITextView) -> CGFloat {
-        let glyphRange = textView.layoutManager.glyphRange(for: textView.textContainer)
-        var lineRect = CGRect.null
-        textView.layoutManager.enumerateLineFragments(forGlyphRange: glyphRange) { rect, _, _, _, stop in
-            lineRect = rect
-            stop.pointee = true
-        }
-        XCTAssertFalse(lineRect.isNull, "text view must have a first line")
-        let glyphLocation = textView.layoutManager.location(forGlyphAt: glyphRange.location)
-        return lineRect.minY + glyphLocation.y + textView.textContainerInset.top
-    }
-
-    private func assertInlineMarkdownBaseline(chatSize: ChatTextSize) throws {
-        let probe = MarkdownBaselineProbe()
-        let font = ChatTypography.font(for: .body, chatSize: chatSize)
-        let host = UIHostingController(rootView:
-            MarkdownBaselineProbeLayout(probe: probe) {
-                Text("•").font(.system(size: font.pointSize, weight: .semibold))
-                InlineMarkdown(source: "wrapped body baseline probe", foregroundStyle: .primary, usesAccentSurface: false)
-            }
-            .environment(\.chatTextSize, chatSize)
-            .frame(width: 390)
-        )
-        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 120))
-        window.rootViewController = host
-        window.isHidden = false
-        defer {
-            window.isHidden = true
-            window.rootViewController = nil
-            host.view.removeFromSuperview()
-            let deadline = Date().addingTimeInterval(1.5)
-            while Date() < deadline, !host.view.subviews.isEmpty {
-                RunLoop.current.run(until: Date().addingTimeInterval(0.05))
-            }
-        }
-        host.view.setNeedsLayout()
-        host.view.layoutIfNeeded()
-
-        let textView = try XCTUnwrap(allSubviews(in: host.view).compactMap { $0 as? UITextView }.first)
-        let markerBaseline = try XCTUnwrap(probe.markerBaseline)
-        let bodyBaseline = try XCTUnwrap(probe.bodyBaseline)
-        XCTAssertEqual(markerBaseline, bodyBaseline, accuracy: 1.5, "list marker and body guides must align")
-        XCTAssertEqual(bodyBaseline, renderedFirstLineBaseline(of: textView), accuracy: 1.5,
-                       "InlineMarkdown must publish its UIKit glyph baseline")
-    }
-
-    private func renderedImage(of view: UIView) -> UIImage {
-        let renderer = UIGraphicsImageRenderer(bounds: view.bounds)
-        return renderer.image { _ in
-            view.drawHierarchy(in: view.bounds, afterScreenUpdates: true)
-        }
     }
     /// Hosted live-tail regression: when the reveal cut starts PAST the
     /// tail boundary (30 moderate tables: cut 16 > tail 14), the union

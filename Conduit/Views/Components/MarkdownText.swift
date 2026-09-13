@@ -915,7 +915,7 @@ enum InlineMarkdownContent {
     }
 }
 
-struct InlineMarkdown: View {
+private struct InlineMarkdown: View {
     let source: String
     let foregroundStyle: Color
     let usesAccentSurface: Bool
@@ -959,13 +959,6 @@ struct InlineMarkdown: View {
             selectionSegment: selectionSegment
         )
             .frame(maxWidth: .infinity, alignment: .leading)
-            // UIViewRepresentable does not forward UITextView's glyph
-            // baseline to SwiftUI. List rows align their marker Text to this
-            // view, so publish the same baseline TextKit uses: this text
-            // view has zero content inset and line-fragment padding.
-            .alignmentGuide(.firstTextBaseline) { dimensions in
-                dimensions[.top] + effectiveFont.ascender
-            }
     }
 }
 
