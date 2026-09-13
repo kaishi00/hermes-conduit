@@ -61,7 +61,11 @@ final class AppStateChatResumeTests: XCTestCase {
         )
 
         XCTAssertEqual(restoredState.activeSessionId, "stored-a")
-        await restoredState.syncSession(purpose: .automaticReturn)
+        await restoredState.syncSession(
+            purpose: .automaticReturn,
+            using: nil,
+            automaticWorkToken: nil
+        )
 
         XCTAssertEqual(
             relaunchedRequests,
@@ -517,6 +521,180 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(scheduler.scheduledCount, 0, "A contradictory resume is not a reconnect candidate")
         XCTAssertNotNil(harness.appState.errorMessage)
         XCTAssertNil(harness.appState.activeSessionId, "No navigation happened")
+    }
+
+    func testAutomaticReturnRetiresDeletedMissingSavedSessionAndOpensNewestFallback() async {
+        let scheduler = ControlledReconnectScheduler()
+        var requests: [String] = []
+        let harness = makeHarness(
+            reconnectScheduler: scheduler.schedule(after:operation:),
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in
+                    [self.session("stored-newest"), self.session("stored-older")]
+                },
+                openSession: { _, sessionID, _ in
+                    requests.append(sessionID)
+                    if sessionID == "stored-deleted" {
+                        throw RpcError(code: 4007, message: "Session not found")
+                    }
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                refreshContext: { _, _ in }
+            )
+        )
+        installComposerClient(in: harness)
+        harness.store.setLastSessionID("stored-deleted", for: "default")
+
+        await harness.appState.syncSession(
+            purpose: .automaticReturn,
+            using: nil,
+            automaticWorkToken: nil
+        )
+
+        XCTAssertEqual(requests, ["stored-deleted", "stored-newest"])
+        XCTAssertEqual(harness.appState.activeSessionId, "stored-newest")
+        XCTAssertEqual(harness.store.lastSessionID(for: "default"), "stored-newest")
+        XCTAssertEqual(scheduler.scheduledCount, 0)
+        XCTAssertNil(harness.appState.errorMessage)
+    }
+
+    func testAutomaticReturnKeepsMissingSavedSessionAndRetriesTransientResumeFailure() async {
+        let scheduler = ControlledReconnectScheduler()
+        var requests: [String] = []
+        let harness = makeHarness(
+            reconnectScheduler: scheduler.schedule(after:operation:),
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in [self.session("stored-fallback")] },
+                openSession: { _, sessionID, _ in
+                    requests.append(sessionID)
+                    throw ControlledLifecycleError.failed
+                }
+            )
+        )
+        installComposerClient(in: harness)
+        harness.store.setLastSessionID("stored-temporarily-unavailable", for: "default")
+
+        await harness.appState.syncSession(
+            purpose: .automaticReturn,
+            using: nil,
+            automaticWorkToken: nil
+        )
+
+        XCTAssertEqual(requests, ["stored-temporarily-unavailable"])
+        XCTAssertEqual(
+            harness.store.lastSessionID(for: "default"),
+            "stored-temporarily-unavailable"
+        )
+        XCTAssertEqual(scheduler.scheduledCount, 1)
+    }
+
+    func testAutomaticReturnDeletedMissingSavedSessionWithEmptyCatalogFallsBackToCreate() async {
+        let scheduler = ControlledReconnectScheduler()
+        var requests: [String] = []
+        let harness = makeHarness(
+            reconnectScheduler: scheduler.schedule(after:operation:),
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in [] },
+                openSession: { _, sessionID, _ in
+                    requests.append(sessionID)
+                    throw RpcError(code: 4007, message: "Session not found")
+                }
+            )
+        )
+        installComposerClient(in: harness)
+        harness.store.setLastSessionID("stored-deleted", for: "default")
+
+        await harness.appState.syncSession(
+            purpose: .automaticReturn,
+            using: nil,
+            automaticWorkToken: nil
+        )
+
+        XCTAssertEqual(requests, ["stored-deleted"])
+        XCTAssertNil(harness.store.lastSessionID(for: "default"))
+        XCTAssertNil(harness.appState.activeSessionId)
+        XCTAssertTrue(
+            harness.appState.errorMessage?.hasPrefix("Failed to create session:") == true,
+            "The definitive deletion should advance to the ordinary empty-catalog create path"
+        )
+        XCTAssertEqual(scheduler.scheduledCount, 1, "Only the failed create remains retryable")
+    }
+
+    func testTranscriptRpc4007DoesNotRetireMissingSavedSession() async {
+        let scheduler = ControlledReconnectScheduler()
+        var requests: [String] = []
+        let harness = makeHarness(
+            reconnectScheduler: scheduler.schedule(after:operation:),
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in [self.session("stored-fallback")] },
+                openSession: { _, sessionID, _ in
+                    requests.append(sessionID)
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        storedSessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                persistedTranscript: { _, _ in
+                    .failed(RpcError(code: 4007, message: "Transcript route failure"))
+                }
+            )
+        )
+        installComposerClient(in: harness)
+        harness.store.setLastSessionID("stored-still-present", for: "default")
+
+        await harness.appState.syncSession(
+            purpose: .automaticReturn,
+            using: nil,
+            automaticWorkToken: nil
+        )
+
+        XCTAssertEqual(requests, ["stored-still-present"])
+        XCTAssertEqual(harness.store.lastSessionID(for: "default"), "stored-still-present")
+        XCTAssertNil(harness.appState.activeSessionId)
+        XCTAssertEqual(scheduler.scheduledCount, 1)
+    }
+
+    func testStaleDeletedSessionFailureCannotRetireSavedSelectionOrOpenFallback() async {
+        let gate = ControlledSuspension()
+        var requests: [String] = []
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in [self.session("stored-fallback")] },
+                openSession: { _, sessionID, _ in
+                    requests.append(sessionID)
+                    await gate.suspend()
+                    throw RpcError(code: 4007, message: "Session not found")
+                }
+            )
+        )
+        harness.appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+        harness.store.setLastSessionID("stored-deleted", for: "default")
+        let automaticWork = harness.appState.beginAutomaticChatResumeWork()
+
+        let synchronization = Task { @MainActor in
+            await harness.appState.syncSession(
+                purpose: .automaticReturn,
+                using: nil,
+                automaticWorkToken: automaticWork
+            )
+        }
+        await gate.waitUntilSuspended()
+        harness.appState.cancelChatResumeRestoration()
+        gate.resume()
+        await synchronization.value
+
+        XCTAssertEqual(requests, ["stored-deleted"])
+        XCTAssertEqual(harness.store.lastSessionID(for: "default"), "stored-deleted")
+        XCTAssertNil(harness.appState.activeSessionId)
     }
 
     func testDeletedActiveSessionIsNotResurrectedByPreserveCurrentRecovery() async {
@@ -1073,6 +1251,10 @@ final class AppStateChatResumeTests: XCTestCase {
         harness.appState.sessions = [active]
         harness.appState.activeSessionId = active.id
         harness.appState.handleStreamEvent(
+            .toolStart(sessionId: active.id, toolName: "Bash", toolInput: "ls")
+        )
+        let olderToolID = harness.appState.messages.last?.id
+        harness.appState.handleStreamEvent(
             .messageDelta(sessionId: active.id, text: "A")
         )
 
@@ -1092,10 +1274,16 @@ final class AppStateChatResumeTests: XCTestCase {
         harness.appState.showSidebar = true
         harness.appState.showSidebar = false
         let partials = harness.appState.messages.filter { $0.role == .partial }
-        let toolIndex = harness.appState.messages.firstIndex { $0.role == .tool }
+        let olderToolIndex = harness.appState.messages.firstIndex { $0.id == olderToolID }
+        let replayedToolIndex = harness.appState.messages.lastIndex { $0.role == .tool }
         let partialIndex = harness.appState.messages.firstIndex { $0.role == .partial }
         XCTAssertEqual(partials.map(\.content), ["CDE"])
-        XCTAssertEqual(toolIndex, partialIndex.map { $0 + 1 })
+        XCTAssertEqual(harness.appState.messages.filter { $0.role == .tool }.count, 2)
+        XCTAssertTrue(
+            olderToolIndex.map { index in partialIndex.map { index < $0 } ?? false } ?? false,
+            "The older identical running call must be preserved ahead of the buffered text"
+        )
+        XCTAssertEqual(replayedToolIndex, partialIndex.map { $0 + 1 })
     }
 
     func testResumeDedupAcceptsAlternateSessionIDForBufferedDelta() async {
@@ -5326,7 +5514,7 @@ final class AppStateChatResumeTests: XCTestCase {
         reconnectScheduler: ChatResumeReconnectScheduler? = nil,
         reconnectExecutor: ChatResumeReconnectExecutor? = nil,
         lifecycleOperations: ChatResumeLifecycleOperations = .live,
-        sessionPresentationCache: SessionPresentationCache = .shared,
+        sessionPresentationCache: SessionPresentationCache? = nil,
         conversationIdentityIndex: ConversationIdentityIndex? = nil,
         sessionYoloStore: SessionYoloStore? = nil
     ) -> (
@@ -5360,7 +5548,8 @@ final class AppStateChatResumeTests: XCTestCase {
             reconnectScheduler: reconnectScheduler,
             reconnectExecutor: reconnectExecutor,
             chatResumeLifecycleOperations: lifecycleOperations,
-            sessionPresentationCache: sessionPresentationCache,
+            sessionPresentationCache: sessionPresentationCache
+                ?? SessionPresentationCache(defaults: defaults),
             sessionYoloStore: sessionYoloStore,
             conversationIdentityIndex: conversationIdentityIndex
         )
