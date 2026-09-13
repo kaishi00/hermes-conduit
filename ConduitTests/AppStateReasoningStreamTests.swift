@@ -30,7 +30,8 @@ final class AppStateReasoningStreamTests: XCTestCase {
         return AppState(
             defaults: defaults,
             loadSavedConnection: false,
-            chatResumeLifecycleOperations: lifecycleOperations
+            chatResumeLifecycleOperations: lifecycleOperations,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
         )
     }
 

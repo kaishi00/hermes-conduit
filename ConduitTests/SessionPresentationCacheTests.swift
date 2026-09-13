@@ -844,6 +844,127 @@ final class SessionPresentationCacheTests: XCTestCase {
 
     // MARK: - Merge: pending tool restoration
 
+    func testPendingToolStartUsesSideRecordUntilFullSave() throws {
+        let (cache, defaults, _, _) = try makeIsolatedCache()
+        let profile = "pending-side-record"
+        let sessionID = "pending-side-" + UUID().uuidString
+        cache.save(
+            [ChatMessage(id: "history", role: .assistant, content: "History", timestamp: "old")],
+            profile: profile,
+            sessionIDs: [sessionID]
+        )
+        let fullStoreBefore = defaults.data(forKey: "conduit.sessionPresentation.v1")
+        let pending = ChatMessage(
+            id: "pending", role: .tool, content: "", timestamp: "now",
+            tool: ToolActivity(id: "call-1", name: "terminal", input: "pwd", output: nil, status: .running)
+        )
+
+        cache.recordPendingToolStart(pending, profile: profile, sessionIDs: [sessionID])
+
+        XCTAssertEqual(defaults.data(forKey: "conduit.sessionPresentation.v1"), fullStoreBefore)
+        XCTAssertNotNil(defaults.data(forKey: "conduit.sessionPresentation.pendingTools.v1"))
+        XCTAssertEqual(cache.merge([], profile: profile, sessionIDs: [sessionID], includePendingTools: true).map(\.id), [pending.id])
+
+        cache.save([pending], profile: profile, sessionIDs: [sessionID])
+        XCTAssertNil(defaults.data(forKey: "conduit.sessionPresentation.pendingTools.v1"))
+        XCTAssertEqual(cache.merge([], profile: profile, sessionIDs: [sessionID], includePendingTools: true).map(\.id), [pending.id])
+    }
+
+    func testLegacyIDLessCompletionRemovesOnlyLatestSameNamePendingCall() throws {
+        let (cache, _, _, _) = try makeIsolatedCache()
+        let profile = "legacy-idless-pending"
+        let sessionID = "legacy-idless-" + UUID().uuidString
+        for (id, input) in [("first", "pwd"), ("second", "git status")] {
+            cache.recordPendingToolStart(
+                ChatMessage(
+                    id: id, role: .tool, content: "", timestamp: id,
+                    tool: ToolActivity(id: nil, name: "terminal", input: input, output: nil, status: .running)
+                ),
+                profile: profile,
+                sessionIDs: [sessionID]
+            )
+        }
+
+        cache.resolvePendingTool(named: "terminal", profile: profile, sessionIDs: [sessionID])
+
+        XCTAssertEqual(
+            cache.merge([], profile: profile, sessionIDs: [sessionID], includePendingTools: true).map(\.id),
+            ["first"],
+            "Legacy events have no safe identity for duplicate names, so the older candidate remains"
+        )
+    }
+
+    func testFullSaveDoesNotFoldPendingMarkerSupersededByStableCompletion() throws {
+        let (cache, defaults, _, _) = try makeIsolatedCache()
+        let profile = "pending-completed-before-flush"
+        let sessionID = "pending-completed-" + UUID().uuidString
+        let pending = ChatMessage(
+            id: "local-running", role: .tool, content: "", timestamp: "start",
+            tool: ToolActivity(id: "call-1", name: "terminal", input: "pwd", output: nil, status: .running)
+        )
+        cache.recordPendingToolStart(pending, profile: profile, sessionIDs: [sessionID])
+
+        let completion = ChatMessage(
+            id: "gateway-complete", role: .tool, content: "", timestamp: "done",
+            tool: ToolActivity(id: "call-1", name: "terminal", input: nil, output: "/repo", status: .complete)
+        )
+        cache.save([completion], profile: profile, sessionIDs: [sessionID])
+
+        XCTAssertNil(defaults.data(forKey: "conduit.sessionPresentation.pendingTools.v1"))
+        let restored = cache.merge([], profile: profile, sessionIDs: [sessionID], includePendingTools: true)
+        XCTAssertFalse(restored.contains { $0.tool?.status == .running })
+    }
+
+    func testProfileClearAndAliasConsolidationCoverPendingSideRecords() throws {
+        let (cache, _, _, _) = try makeIsolatedCache()
+        let profile = "pending-side-lifecycle"
+        let runtimeID = "runtime-" + UUID().uuidString
+        let durableID = "durable-" + UUID().uuidString
+        let pending = ChatMessage(
+            id: "pending", role: .tool, content: "", timestamp: "now",
+            tool: ToolActivity(id: "call-1", name: "terminal", input: "pwd", output: nil, status: .running)
+        )
+        cache.recordPendingToolStart(pending, profile: profile, sessionIDs: [runtimeID])
+
+        cache.consolidateUnderDurableKey(
+            profile: profile,
+            durableSessionID: durableID,
+            runtimeAliases: [runtimeID]
+        )
+
+        XCTAssertTrue(cache.merge([], profile: profile, sessionIDs: [runtimeID], includePendingTools: true).isEmpty)
+        XCTAssertEqual(
+            cache.merge([], profile: profile, sessionIDs: [durableID], includePendingTools: true).map(\.id),
+            [pending.id]
+        )
+        cache.clear(profile: profile)
+        XCTAssertTrue(cache.merge([], profile: profile, sessionIDs: [durableID], includePendingTools: true).isEmpty)
+    }
+
+    func testLegacyIDLessResolutionRemovesNewerSideRecordButKeepsOlderFullRecord() throws {
+        let (cache, _, _, _) = try makeIsolatedCache()
+        let profile = "legacy-split-store"
+        let sessionID = "legacy-split-" + UUID().uuidString
+        let older = ChatMessage(
+            id: "older-full", role: .tool, content: "", timestamp: "older",
+            tool: ToolActivity(id: nil, name: "terminal", input: "pwd", output: nil, status: .running)
+        )
+        cache.save([older], profile: profile, sessionIDs: [sessionID])
+        let newer = ChatMessage(
+            id: "newer-side", role: .tool, content: "", timestamp: "newer",
+            tool: ToolActivity(id: nil, name: "terminal", input: "git status", output: nil, status: .running)
+        )
+        cache.recordPendingToolStart(newer, profile: profile, sessionIDs: [sessionID])
+
+        cache.resolvePendingTool(named: "terminal", profile: profile, sessionIDs: [sessionID])
+
+        XCTAssertEqual(
+            cache.merge([], profile: profile, sessionIDs: [sessionID], includePendingTools: true).map(\.id),
+            [older.id],
+            "One ambiguous completion must not remove distinct calls from both persistence layers"
+        )
+    }
+
     func testMergeRestoresLaterPendingToolAfterHistoricalCompletionWithSameInput() throws {
         let (cache, _, _, _) = try makeIsolatedCache()
         let profile = "pending-tool-same-input"

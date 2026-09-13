@@ -139,6 +139,7 @@ final class SessionPresentationCache {
     private let defaults: UserDefaults
     private let now: () -> Date
     private let storageKey = "conduit.sessionPresentation.v1"
+    private let pendingToolsStorageKey = "conduit.sessionPresentation.pendingTools.v1"
     private let maxSessions = 32
     private let maxMessagesPerSession = 320
 
@@ -212,7 +213,7 @@ final class SessionPresentationCache {
                 snapshotByID[identity] = session
             }
         }
-        let cached = resolutionOrder.compactMap { snapshotByID[$0] }
+        var cached = resolutionOrder.compactMap { snapshotByID[$0] }
             .flatMap { session -> [CachedMessage] in
                 let unconfirmedExpired = isUnconfirmedPendingDecisionExpired(
                     since: session.unconfirmedPendingDecisionAt
@@ -221,6 +222,9 @@ final class SessionPresentationCache {
                     ? removingPendingDecisionPresentation(from: session.messages)
                     : session.messages
             }
+        var cachedIDs = Set(cached.map(\.id))
+        cached.append(contentsOf: pendingToolRecords(profile: profile, sessionIDs: sessionIDs)
+            .filter { cachedIDs.insert($0.id).inserted })
         guard !cached.isEmpty else { return messages }
 
         var remaining = Set(cached.indices)
@@ -383,6 +387,10 @@ final class SessionPresentationCache {
         for cached: CachedMessage,
         gatewayMessages: [ChatMessage]
     ) -> Bool {
+        // Legacy rows without a stable tool id can only match by message id.
+        // If Hermes regenerates that id, a missed completion may temporarily
+        // render beside the recovered running card. Matching by name/input
+        // would be unsafe when same-name calls overlap or history is compact.
         gatewayMessages.contains { message in
             guard message.role == .tool,
                   let tool = message.tool,
@@ -405,10 +413,9 @@ final class SessionPresentationCache {
         return trimmed.isEmpty ? nil : trimmed
     }
 
-    /// Records a tool-start event before the gateway has had an opportunity
-    /// to commit a transcript row. Unlike ordinary presentation writes, this
-    /// is synchronous so process termination immediately after the event does
-    /// not lose the only structured representation of the running tool.
+    /// Records the crash-recovery marker synchronously, without decoding and
+    /// rewriting the much larger presentation store. The next ordinary,
+    /// debounced `save` folds this bounded side record into the full snapshot.
     func recordPendingToolStart(
         _ message: ChatMessage,
         profile: String,
@@ -418,31 +425,34 @@ final class SessionPresentationCache {
         let ids = Set(sessionIDs.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })
         guard !ids.isEmpty else { return }
 
-        var store = load()
+        var store = loadPendingTools()
         let record = CachedMessage(message)
-        let stampedAt = now()
         for id in ids {
             let cacheKey = key(profile: profile, sessionID: id)
-            var session = store[cacheKey] ?? CachedSession(
-                updatedAt: stampedAt,
-                messages: [],
-                unconfirmedPendingDecisionAt: nil
-            )
+            var records = store[cacheKey] ?? []
             // Upsert by the local card id while allowing distinct, sequential
             // calls of the same tool to remain independently representable.
-            session.messages.removeAll { $0.id == record.id }
-            session.messages.append(record)
-            session.messages = Array(session.messages.suffix(maxMessagesPerSession))
-            session.updatedAt = stampedAt
-            store[cacheKey] = session
+            records.removeAll { $0.id == record.id }
+            records.append(record)
+            store[cacheKey] = Array(records.suffix(maxMessagesPerSession))
         }
-        trim(&store)
-        persist(store)
+        if store.count > maxSessions {
+            let protectedKeys = Set(ids.map { key(profile: profile, sessionID: $0) })
+            while store.count > maxSessions {
+                let cacheKey = store.keys.sorted().first { !protectedKeys.contains($0) }
+                    ?? store.keys.sorted().first
+                guard let cacheKey else { break }
+                store.removeValue(forKey: cacheKey)
+            }
+        }
+        persistPendingTools(store)
     }
 
     /// A completion event makes the local running projection obsolete. A
-    /// stable tool id resolves only its exact record; legacy id-less events
-    /// retain the historical latest-same-name fallback.
+    /// stable tool id resolves only its exact record. Legacy id-less events
+    /// are inherently ambiguous when same-name calls overlap; removing the
+    /// latest observed call preserves historical behavior without guessing
+    /// from inputs that Hermes may truncate or omit.
     func resolvePendingTool(
         named name: String,
         toolID: String? = nil,
@@ -454,10 +464,27 @@ final class SessionPresentationCache {
         let normalizedName = normalized(name)
         let trimmedToolID = toolID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let stableToolID = trimmedToolID.isEmpty ? nil : trimmedToolID
+        var pendingStore = loadPendingTools()
+        var pendingChanged = false
+        var matchedPendingKeys = Set<String>()
+        for id in ids {
+            let cacheKey = key(profile: profile, sessionID: id)
+            guard var records = pendingStore[cacheKey],
+                  let index = records.lastIndex(where: { message in
+                      message.toolStatus == .running
+                          && (stableToolID.map { message.toolID == $0 }
+                              ?? (message.toolName == normalizedName))
+                  }) else { continue }
+            records.remove(at: index)
+            pendingStore[cacheKey] = records.isEmpty ? nil : records
+            pendingChanged = true
+            matchedPendingKeys.insert(cacheKey)
+        }
         var store = load()
         var changed = false
         for id in ids {
             let cacheKey = key(profile: profile, sessionID: id)
+            if stableToolID == nil && matchedPendingKeys.contains(cacheKey) { continue }
             guard var session = store[cacheKey],
                   let index = session.messages.lastIndex(where: { message in
                       message.role == .tool
@@ -473,6 +500,7 @@ final class SessionPresentationCache {
             changed = true
         }
         if changed { persist(store) }
+        if pendingChanged { persistPendingTools(pendingStore) }
     }
 
     /// An explicitly idle resume is authoritative: any local tool-start
@@ -482,6 +510,7 @@ final class SessionPresentationCache {
         let ids = Set(sessionIDs.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })
         guard !ids.isEmpty else { return }
         var store = load()
+        var pendingStore = loadPendingTools()
         var changed = false
         for id in ids {
             let cacheKey = key(profile: profile, sessionID: id)
@@ -493,7 +522,9 @@ final class SessionPresentationCache {
             store[cacheKey] = session
             changed = true
         }
+        for id in ids { pendingStore[key(profile: profile, sessionID: id)] = nil }
         if changed { persist(store) }
+        persistPendingTools(pendingStore)
     }
 
     /// Pending decision keys currently held in the store for the given
@@ -646,6 +677,14 @@ final class SessionPresentationCache {
             from: existingRecords,
             matching: unconfirmedPendingDecisionKeys
         )
+        let pendingRecords = pendingToolRecords(profile: profile, sessionIDs: Array(ids)).filter { pending in
+            guard let pendingID = stableToolID(pending.toolID) else { return true }
+            return !freshRecords.contains { fresh in
+                stableToolID(fresh.toolID) == pendingID && fresh.toolStatus != .running
+            }
+        }
+        let recordIDs = Set(records.map(\.id))
+        records.append(contentsOf: pendingRecords.filter { !recordIDs.contains($0.id) })
         if !preservePendingDecisionCards {
             records = removingPendingDecisionPresentation(
                 from: records,
@@ -668,6 +707,7 @@ final class SessionPresentationCache {
         }
         trim(&store)
         persist(store)
+        removePendingToolSideRecords(profile: profile, sessionIDs: Array(ids))
     }
 
     /// A resume without an explicit active-turn signal may temporarily show a
@@ -741,6 +781,7 @@ final class SessionPresentationCache {
     func clear(profile: String? = nil) {
         guard let profile else {
             defaults.removeObject(forKey: storageKey)
+            defaults.removeObject(forKey: pendingToolsStorageKey)
             return
         }
 
@@ -748,6 +789,9 @@ final class SessionPresentationCache {
         var store = load()
         store.keys.filter { $0.hasPrefix(prefix) }.forEach { store.removeValue(forKey: $0) }
         persist(store)
+        var pendingStore = loadPendingTools()
+        pendingStore.keys.filter { $0.hasPrefix(prefix) }.forEach { pendingStore.removeValue(forKey: $0) }
+        persistPendingTools(pendingStore)
     }
 
     /// Removes the cached records for the given sessions inside `profile`,
@@ -769,8 +813,8 @@ final class SessionPresentationCache {
                 changed = true
             }
         }
-        guard changed else { return }
-        persist(store)
+        if changed { persist(store) }
+        removePendingToolSideRecords(profile: profile, sessionIDs: Array(ids))
     }
 
     /// Durable-owned persistence: once this conversation's durable identity
@@ -806,6 +850,19 @@ final class SessionPresentationCache {
             runtimeAliases.map { key(profile: profile, sessionID: $0) }
         ).subtracting([durableKey])
         guard !aliasKeys.isEmpty else { return }
+        var pendingStore = loadPendingTools()
+        var durablePending = pendingStore[durableKey] ?? []
+        var pendingIDs = Set(durablePending.map(\.id))
+        for aliasKey in aliasKeys {
+            for record in pendingStore.removeValue(forKey: aliasKey) ?? []
+                where pendingIDs.insert(record.id).inserted {
+                durablePending.append(record)
+            }
+        }
+        if !durablePending.isEmpty {
+            pendingStore[durableKey] = Array(durablePending.suffix(maxMessagesPerSession))
+        }
+        persistPendingTools(pendingStore)
         var store = load()
         if store[durableKey] == nil {
             let freshest = aliasKeys
@@ -966,6 +1023,39 @@ final class SessionPresentationCache {
     private func persist(_ store: [String: CachedSession]) {
         guard let data = try? JSONEncoder().encode(store) else { return }
         defaults.set(data, forKey: storageKey)
+    }
+
+    private func loadPendingTools() -> [String: [CachedMessage]] {
+        guard let data = defaults.data(forKey: pendingToolsStorageKey),
+              let decoded = try? JSONDecoder().decode([String: [CachedMessage]].self, from: data) else {
+            return [:]
+        }
+        return decoded
+    }
+
+    private func persistPendingTools(_ store: [String: [CachedMessage]]) {
+        guard !store.isEmpty else {
+            defaults.removeObject(forKey: pendingToolsStorageKey)
+            return
+        }
+        guard let data = try? JSONEncoder().encode(store) else { return }
+        defaults.set(data, forKey: pendingToolsStorageKey)
+    }
+
+    private func pendingToolRecords(profile: String, sessionIDs: [String]) -> [CachedMessage] {
+        let store = loadPendingTools()
+        var seen = Set<String>()
+        return sessionIDs.flatMap { store[key(profile: profile, sessionID: $0)] ?? [] }
+            .filter { seen.insert($0.id).inserted }
+    }
+
+    private func removePendingToolSideRecords(profile: String, sessionIDs: [String]) {
+        var store = loadPendingTools()
+        var changed = false
+        for sessionID in sessionIDs {
+            changed = store.removeValue(forKey: key(profile: profile, sessionID: sessionID)) != nil || changed
+        }
+        if changed { persistPendingTools(store) }
     }
 
     private func trim(_ store: inout [String: CachedSession]) {
