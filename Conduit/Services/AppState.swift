@@ -59,6 +59,7 @@ struct ChatResumeLifecycleOperations {
     ) async throws -> BranchResult)?
     var setSessionTitle: (@MainActor (HermesClient, String, String) async throws -> Void)?
     var refreshContext: (@MainActor (HermesClient, String) async -> Void)?
+    var pendingApprovals: (@MainActor (HermesClient, String) async throws -> [ApprovalActivity])?
     var sendPrompt: (@MainActor (HermesClient, String, String) async throws -> PromptSubmissionOutcome)?
     /// Foreground transport verification. Production calls the client's
     /// `session.list` health check; tests substitute a controllable outcome.
@@ -104,6 +105,7 @@ struct ChatResumeLifecycleOperations {
         ) async throws -> BranchResult)? = nil,
         setSessionTitle: (@MainActor (HermesClient, String, String) async throws -> Void)? = nil,
         refreshContext: (@MainActor (HermesClient, String) async -> Void)? = nil,
+        pendingApprovals: (@MainActor (HermesClient, String) async throws -> [ApprovalActivity])? = nil,
         sendPrompt: (@MainActor (HermesClient, String, String) async throws -> PromptSubmissionOutcome)? = nil,
         verifyTransportHealth: (@MainActor (HermesClient) async throws -> Void)? = nil,
         probeActiveSessions: (@MainActor (HermesClient) async throws -> [LiveSessionStatus])? = nil,
@@ -137,6 +139,7 @@ struct ChatResumeLifecycleOperations {
         self.branchSession = branchSession
         self.setSessionTitle = setSessionTitle
         self.refreshContext = refreshContext
+        self.pendingApprovals = pendingApprovals
         self.sendPrompt = sendPrompt
         self.verifyTransportHealth = verifyTransportHealth
         self.probeActiveSessions = probeActiveSessions
@@ -1118,6 +1121,9 @@ final class AppState: ObservableObject {
     private var connectedAt: Date?
     private var sessionCatalogCache = SessionCatalogCache()
     private var projectsRequestGeneration = 0
+    /// Fences optional approval-queue reads across re-entrant MainActor
+    /// awaits. A late response must not populate a replacement conversation.
+    private var pendingApprovalsRequestGeneration: UInt64 = 0
     private let sessionPresentationCache: SessionPresentationCache
     private let sessionYoloStore: SessionYoloStore
     private let conversationIdentityIndex: ConversationIdentityIndex
@@ -4075,6 +4081,7 @@ final class AppState: ObservableObject {
                 settleReconciliation(token, automaticSyncOperationID: automaticSyncOperationID)
                 return false
             }
+            schedulePendingApprovalsRefresh(sessionId: result.sessionId, using: client)
             await refreshChatResumeContext(sessionId: result.sessionId, using: client)
 
             guard automaticChatResumeWorkIsCurrent(
@@ -4248,6 +4255,56 @@ final class AppState: ObservableObject {
             await refreshContext(client, sessionId)
         } else {
             await refreshContextUsage(sessionId: sessionId, using: client)
+        }
+    }
+
+    /// Best-effort recovery for approvals queued behind the single oldest
+    /// `pending_approval` carried by `session.resume`. The read is deliberately
+    /// detached from the foreground restore path and additive: an absent row
+    /// is not expiry evidence, and a replay must not unlock a local submission
+    /// or terminal decision.
+    func schedulePendingApprovalsRefresh(
+        sessionId: String,
+        using client: HermesClient
+    ) {
+        pendingApprovalsRequestGeneration &+= 1
+        let generation = pendingApprovalsRequestGeneration
+        let profile = activeProfile
+        let viewportGeneration = chatViewportTransitionGeneration
+        let reconciliationGeneration = reconciliationToken
+        let acceptedSessionIDs = activeChatScrollSessionIdentity.equivalentSessionIDs
+            .union([sessionId])
+
+        Task { @MainActor [weak self] in
+            let approvals: [ApprovalActivity]
+            do {
+                if let pendingApprovals = self?.chatResumeLifecycleOperations.pendingApprovals {
+                    approvals = try await pendingApprovals(client, sessionId)
+                } else {
+                    approvals = try await client.pendingApprovals(sessionId: sessionId)
+                }
+            } catch {
+                // Older gateways do not expose approval.pending, and this
+                // optional recovery read may also time out. Neither is
+                // evidence that an already-present card was resolved.
+                return
+            }
+            guard let self,
+                  generation == self.pendingApprovalsRequestGeneration,
+                  profile == self.activeProfile,
+                  self.client === client,
+                  viewportGeneration == self.chatViewportTransitionGeneration,
+                  reconciliationGeneration == self.reconciliationToken,
+                  !acceptedSessionIDs.isDisjoint(
+                    with: self.activeChatScrollSessionIdentity.equivalentSessionIDs
+                  ) else { return }
+
+            for approval in approvals where acceptedSessionIDs.contains(approval.sessionId) {
+                self.applyApprovalActivity(approval, authoritative: false)
+            }
+            if !approvals.isEmpty {
+                self.cacheMessagePresentation()
+            }
         }
     }
 
@@ -11489,6 +11546,9 @@ final class AppState: ObservableObject {
                 messages[updatedIndex].approval?.error = AppLocalization.string("This approval is no longer active — Hermes timed it out and continued.")
             }
             cacheMessagePresentation()
+            if let activeSessionId {
+                schedulePendingApprovalsRefresh(sessionId: activeSessionId, using: client)
+            }
         } catch {
             guard profile == activeProfile, self.client === client else { return }
             guard let updatedIndex = messages.firstIndex(where: { $0.id == messageId }),

@@ -171,6 +171,125 @@ final class AppStateDecisionFenceTests: XCTestCase {
         ))
     }
 
+    private func rpcID(_ text: String) throws -> Int {
+        let request = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any]
+        )
+        return try XCTUnwrap(request["id"] as? Int)
+    }
+
+    private func prepareActiveSession(_ appState: AppState, id: String = "runtime-queue") {
+        appState.sessions = [SessionSummary(
+            id: id,
+            alternateIds: [],
+            title: "Queue",
+            model: "Hermes",
+            updatedLabel: "now",
+            profile: "default",
+            source: .chat,
+            isActive: true,
+            isArchived: false,
+            lineageRootId: nil
+        )]
+        appState.activeSessionId = id
+    }
+
+    func testPendingApprovalRefreshAddsQueuedCardsWithoutResettingSubmission() async throws {
+        let appState = makeAppState()
+        prepareActiveSession(appState)
+        appState.messages = [approvalFixture(status: .submitting, requestId: "approval-a")]
+        appState.messages[0].approval?.sessionId = "runtime-queue"
+        appState.messages[0].approval?.choice = "once"
+        let transport = ClarifyFakeTransport()
+        let socket = ClarifyFakeSocket()
+        let client = try await installConnectedClient(appState, socket: socket, transport: transport)
+
+        appState.schedulePendingApprovalsRefresh(sessionId: "runtime-queue", using: client)
+        for _ in 0..<1_000 where socket.sentTexts.isEmpty { await Task.yield() }
+        let id = try rpcID(try XCTUnwrap(socket.sentTexts.last))
+        deliverResult(socket, rpcID: id, result: ["approvals": [
+            ["request_id": "approval-a", "description": "Run A?"],
+            ["request_id": "approval-b", "description": "Run B?"]
+        ]])
+        for _ in 0..<1_000 where appState.messages.count < 2 { await Task.yield() }
+
+        XCTAssertEqual(appState.messages.count, 2)
+        let first = try XCTUnwrap(appState.messages.first(where: { $0.approval?.requestId == "approval-a" })?.approval)
+        XCTAssertEqual(first.status, .submitting)
+        XCTAssertEqual(first.choice, "once")
+        XCTAssertEqual(appState.messages.last?.approval?.requestId, "approval-b")
+    }
+
+    func testOlderPendingApprovalRefreshCannotPopulateAfterNewerGeneration() async throws {
+        let appState = makeAppState()
+        prepareActiveSession(appState)
+        let transport = ClarifyFakeTransport()
+        let socket = ClarifyFakeSocket()
+        let client = try await installConnectedClient(appState, socket: socket, transport: transport)
+
+        appState.schedulePendingApprovalsRefresh(sessionId: "runtime-queue", using: client)
+        for _ in 0..<1_000 where socket.sentTexts.count < 1 { await Task.yield() }
+        appState.schedulePendingApprovalsRefresh(sessionId: "runtime-queue", using: client)
+        for _ in 0..<1_000 where socket.sentTexts.count < 2 { await Task.yield() }
+        let oldID = try rpcID(socket.sentTexts[0])
+        let newID = try rpcID(socket.sentTexts[1])
+        deliverResult(socket, rpcID: newID, result: ["approvals": [
+            ["request_id": "approval-new", "description": "New?"]
+        ]])
+        for _ in 0..<1_000 where appState.messages.isEmpty { await Task.yield() }
+        deliverResult(socket, rpcID: oldID, result: ["approvals": [
+            ["request_id": "approval-old", "description": "Old?"]
+        ]])
+        await Task.yield()
+        await Task.yield()
+
+        XCTAssertEqual(appState.messages.compactMap { $0.approval?.requestId }, ["approval-new"])
+    }
+
+    func testPendingApprovalRefreshCannotPopulateReplacementClient() async throws {
+        let appState = makeAppState()
+        prepareActiveSession(appState)
+        let transport = ClarifyFakeTransport()
+        let socket = ClarifyFakeSocket()
+        let client = try await installConnectedClient(appState, socket: socket, transport: transport)
+
+        appState.schedulePendingApprovalsRefresh(sessionId: "runtime-queue", using: client)
+        for _ in 0..<1_000 where socket.sentTexts.isEmpty { await Task.yield() }
+        let id = try rpcID(try XCTUnwrap(socket.sentTexts.last))
+        appState.client = makeReplacementClient(baseURL: "https://two.example")
+        deliverResult(socket, rpcID: id, result: ["approvals": [
+            ["request_id": "approval-stale", "description": "Stale?"]
+        ]])
+        await Task.yield()
+        await Task.yield()
+
+        XCTAssertTrue(appState.messages.isEmpty)
+    }
+
+    func testSuccessfulApprovalResponseRefreshesAndRevealsNextQueuedRequest() async throws {
+        let appState = makeAppState()
+        prepareActiveSession(appState)
+        appState.messages = [approvalFixture(requestId: "approval-a")]
+        appState.messages[0].approval?.sessionId = "runtime-queue"
+        let transport = ClarifyFakeTransport()
+        let socket = ClarifyFakeSocket()
+        _ = try await installConnectedClient(appState, socket: socket, transport: transport)
+
+        let parked = try await parkApprovalRespond(appState: appState, socket: socket)
+        deliverResult(socket, rpcID: parked.rpcID, result: ["resolved": 1])
+        await parked.task.value
+        for _ in 0..<1_000 where socket.sentTexts.count < 2 { await Task.yield() }
+        let pendingID = try rpcID(socket.sentTexts[1])
+        deliverResult(socket, rpcID: pendingID, result: ["approvals": [
+            ["request_id": "approval-b", "description": "Run B?"]
+        ]])
+        for _ in 0..<1_000 where appState.messages.count < 2 { await Task.yield() }
+
+        XCTAssertEqual(appState.messages.first?.approval?.status, .approved)
+        XCTAssertEqual(appState.messages.last?.approval?.requestId, "approval-b")
+        XCTAssertEqual(appState.messages.last?.approval?.status, .pending)
+    }
+
     // MARK: - Stale approval completions
 
     func testApprovalCompletionCannotMutateReplacementRequestWithSameMessageID() async throws {

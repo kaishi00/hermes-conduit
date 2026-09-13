@@ -4,6 +4,61 @@ import XCTest
 
 @MainActor
 final class AppStateChatResumeTests: XCTestCase {
+    func testResumeHydratesApprovalsQueuedBehindSnapshotHead() async {
+        let pending: (String) -> ApprovalActivity = { requestID in
+            ApprovalActivity(
+                sessionId: "runtime-queue",
+                requestId: requestID,
+                command: "deploy \(requestID)",
+                description: "Run \(requestID)?",
+                choices: ["once", "deny"],
+                allowPermanent: true,
+                smartDenied: false,
+                status: .pending,
+                choice: nil,
+                error: nil
+            )
+        }
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            loadCatalog: { _, _ in [self.session("stored-queue", alternateIDs: ["runtime-queue"])] },
+            openSession: { _, _, _ in
+                SessionResumeResult(
+                    sessionId: "runtime-queue",
+                    storedSessionId: "stored-queue",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: [
+                        "running": .bool(true),
+                        "pending_approval": .object([
+                            "request_id": .string("approval-a"),
+                            "description": .string("Run approval-a?")
+                        ])
+                    ])
+                )
+            },
+            refreshContext: { _, _ in },
+            pendingApprovals: { _, sessionID in
+                XCTAssertEqual(sessionID, "runtime-queue")
+                return [pending("approval-a"), pending("approval-b")]
+            }
+        ))
+        harness.appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+        harness.appState.sessions = [session("stored-queue", alternateIDs: ["runtime-queue"])]
+        harness.appState.activeSessionId = "stored-queue"
+
+        await harness.appState.syncSession()
+        for _ in 0..<1_000 where harness.appState.messages.compactMap({ $0.approval }).count < 2 {
+            await Task.yield()
+        }
+
+        XCTAssertEqual(
+            harness.appState.messages.compactMap { $0.approval?.requestId },
+            ["approval-a", "approval-b"]
+        )
+    }
+
     func testColdRelaunchResumesDurableSavedSessionWhenCatalogTemporarilyOmitsIt() async {
         var initialRequests: [String] = []
         let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(

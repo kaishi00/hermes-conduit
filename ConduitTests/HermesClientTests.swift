@@ -752,6 +752,40 @@ final class HermesClientTests: XCTestCase {
         XCTAssertEqual(activity?.sessionId, "runtime-2")
     }
 
+    func testPendingApprovalsUsesSessionScopeAndParsesFullQueue() async throws {
+        let transport = FakeTransport()
+        let socket = FakeSocket()
+        transport.nextSocket = { socket }
+        let client = makeClient(transport: transport)
+        let connectTask = Task { try? await client.connect() }
+        transport.open(socket)
+        try await awaitCompletion(of: connectTask, "connect() to complete")
+
+        let sent = Gate()
+        socket.onSend = { sent.signal() }
+        let pendingTask = Task { try await client.pendingApprovals(sessionId: "runtime-queue") }
+        try await sent.wait("the approval.pending request to be sent")
+        let request = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(try XCTUnwrap(socket.sentTexts.last).utf8)) as? [String: Any]
+        )
+        XCTAssertEqual(request["method"] as? String, "approval.pending")
+        let params = try XCTUnwrap(request["params"] as? [String: Any])
+        XCTAssertEqual(params["session_id"] as? String, "runtime-queue")
+        let id = try XCTUnwrap(request["id"] as? Int)
+        socket.deliver(String(data: try JSONSerialization.data(withJSONObject: [
+            "jsonrpc": "2.0", "id": id, "result": ["approvals": [
+                ["request_id": "approval-a", "description": "Run A?"],
+                ["request_id": "approval-b", "description": "Run B?", "choices": ["once", "deny"]]
+            ]]
+        ]), encoding: .utf8)!)
+
+        let approvals = try await awaitResult(of: pendingTask, "the approval.pending response")
+        XCTAssertEqual(approvals.map(\.requestId), ["approval-a", "approval-b"])
+        XCTAssertEqual(approvals.map(\.sessionId), ["runtime-queue", "runtime-queue"])
+        XCTAssertEqual(HermesClient.pendingApprovalsTimeout, 3)
+        client.disconnect()
+    }
+
     // MARK: - pending_clarify restore
 
     func testResumeSnapshotParsesPendingClarifyBatchWithLockedAnswers() throws {

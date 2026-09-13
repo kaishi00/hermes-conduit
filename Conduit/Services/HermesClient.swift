@@ -539,6 +539,9 @@ final class HermesClient: ObservableObject {
     /// health-check budget; a timed-out probe takes the same fallback paths
     /// as any other probe failure.
     static let livenessProbeTimeout: TimeInterval = 8
+    /// Approval queue hydration is optional recovery context. It must never
+    /// hold foreground restoration behind the ordinary RPC timeout.
+    static let pendingApprovalsTimeout: TimeInterval = 3
 
     init(
         connection: HermesConnection,
@@ -1197,6 +1200,21 @@ final class HermesClient: ObservableObject {
         // Current Hermes reports the number of queue entries resolved. Older
         // gateways omitted the field after a successful response.
         return result.objectValue?["resolved"]?.intValue.map { $0 > 0 } ?? true
+    }
+
+    /// Returns every unresolved approval for one live Hermes session. Current
+    /// Hermes scopes this method through `session_id`; bind payloads to that
+    /// requested identity rather than trusting optional fields inside a row.
+    func pendingApprovals(sessionId: String) async throws -> [ApprovalActivity] {
+        let result = try await rpc(
+            "approval.pending",
+            params: ["session_id": sessionId],
+            timeout: Self.pendingApprovalsTimeout
+        )
+        return (result.objectValue?["approvals"]?.arrayValue ?? []).compactMap { value in
+            guard let payload = value.objectValue else { return nil }
+            return MessageNormalizer.approvalActivity(from: payload, sessionId: sessionId)
+        }
     }
 
     func modelOptions(sessionId: String? = nil) async throws -> (model: String?, provider: String?, providers: [ProviderInfo]?) {
