@@ -842,6 +842,240 @@ final class SessionPresentationCacheTests: XCTestCase {
         cache.clear(profile: profile)
     }
 
+    // MARK: - Merge: pending tool restoration
+
+    func testMergeRestoresLaterPendingToolAfterHistoricalCompletionWithSameInput() throws {
+        let (cache, _, _, _) = try makeIsolatedCache()
+        let profile = "pending-tool-same-input"
+        let sessionID = "pending-tool-" + UUID().uuidString
+        let historical = ChatMessage(
+            id: "cached-historical",
+            role: .tool,
+            content: "",
+            timestamp: "older",
+            tool: ToolActivity(id: nil, name: "terminal", input: "git status", output: "clean", status: .complete)
+        )
+        let pending = ChatMessage(
+            id: "cached-pending",
+            role: .tool,
+            content: "",
+            timestamp: "newer",
+            tool: ToolActivity(id: nil, name: "terminal", input: "git status", output: nil, status: .running)
+        )
+        cache.save([historical], profile: profile, sessionIDs: [sessionID])
+        cache.recordPendingToolStart(pending, profile: profile, sessionIDs: [sessionID])
+
+        let gatewayHistorical = ChatMessage(
+            id: "gateway-historical",
+            role: .tool,
+            content: "",
+            timestamp: "",
+            tool: ToolActivity(id: nil, name: "terminal", input: "git status", output: "clean", status: .complete)
+        )
+        let merged = cache.merge(
+            [gatewayHistorical],
+            profile: profile,
+            sessionIDs: [sessionID],
+            includePendingTools: true
+        )
+
+        XCTAssertEqual(merged.count, 2)
+        XCTAssertEqual(merged.last?.id, pending.id)
+        XCTAssertEqual(merged.last?.tool?.status, .running)
+    }
+
+    func testMergeKeepsPendingOnlyCacheWhenGatewayHasHistoricalSameNameCompletion() throws {
+        let (cache, _, _, _) = try makeIsolatedCache()
+        let profile = "pending-tool-only"
+        let sessionID = "pending-only-" + UUID().uuidString
+        let pending = ChatMessage(
+            id: "cached-pending-only",
+            role: .tool,
+            content: "",
+            timestamp: "newer",
+            tool: ToolActivity(id: nil, name: "terminal", input: "git status", output: nil, status: .running)
+        )
+        cache.recordPendingToolStart(pending, profile: profile, sessionIDs: [sessionID])
+
+        let merged = cache.merge(
+            [
+                ChatMessage(
+                    id: "gateway-historical",
+                    role: .tool,
+                    content: "",
+                    timestamp: "",
+                    tool: ToolActivity(id: nil, name: "terminal", input: "pwd", output: "/repo", status: .complete)
+                ),
+            ],
+            profile: profile,
+            sessionIDs: [sessionID],
+            includePendingTools: true
+        )
+
+        XCTAssertEqual(merged.map(\.id), ["gateway-historical", pending.id])
+        XCTAssertEqual(merged.last?.tool?.status, .running)
+    }
+
+    func testMergeDoesNotResurrectPendingToolWhenCompletionSharesMessageIdentity() throws {
+        let (cache, _, _, _) = try makeIsolatedCache()
+        let profile = "resolved-pending-tool"
+        let sessionID = "resolved-pending-" + UUID().uuidString
+        let historical = ChatMessage(
+            id: "cached-historical",
+            role: .tool,
+            content: "",
+            timestamp: "older",
+            tool: ToolActivity(id: nil, name: "terminal", input: "pwd", output: "/repo", status: .complete)
+        )
+        let pending = ChatMessage(
+            id: "cached-pending",
+            role: .tool,
+            content: "",
+            timestamp: "newer",
+            tool: ToolActivity(id: nil, name: "terminal", input: "git status", output: nil, status: .running)
+        )
+        cache.save([historical], profile: profile, sessionIDs: [sessionID])
+        cache.recordPendingToolStart(pending, profile: profile, sessionIDs: [sessionID])
+
+        let gatewayMessages = [
+            ChatMessage(
+                id: "gateway-before-cache-window",
+                role: .tool,
+                content: "",
+                timestamp: "",
+                tool: ToolActivity(id: nil, name: "terminal", input: "echo earlier", output: "earlier", status: .complete)
+            ),
+            ChatMessage(
+                id: "gateway-historical",
+                role: .tool,
+                content: "",
+                timestamp: "",
+                tool: ToolActivity(id: nil, name: "terminal", input: "pwd", output: "/repo", status: .complete)
+            ),
+            ChatMessage(
+                id: pending.id,
+                role: .tool,
+                content: "",
+                timestamp: "",
+                tool: ToolActivity(id: nil, name: "terminal", input: "git status", output: "clean", status: .complete)
+            ),
+        ]
+        let merged = cache.merge(
+            gatewayMessages,
+            profile: profile,
+            sessionIDs: [sessionID],
+            includePendingTools: true
+        )
+
+        XCTAssertEqual(merged.count, gatewayMessages.count)
+        XCTAssertEqual(merged.last?.id, pending.id)
+        XCTAssertEqual(merged.last?.tool?.status, .complete)
+        XCTAssertFalse(merged.contains { $0.tool?.status == .running })
+    }
+
+    func testMergeKeepsPendingToolWhenCompletionHasDifferentKnownIdentity() throws {
+        let (cache, _, _, _) = try makeIsolatedCache()
+        let profile = "ambiguous-completed-tool"
+        let sessionID = "ambiguous-completed-" + UUID().uuidString
+        let pending = ChatMessage(
+            id: "cached-pending",
+            role: .tool,
+            content: "",
+            timestamp: "newer",
+            tool: ToolActivity(id: "cached-tool", name: "terminal", input: "git status", output: nil, status: .running)
+        )
+        cache.recordPendingToolStart(pending, profile: profile, sessionIDs: [sessionID])
+
+        let gatewayCompletion = ChatMessage(
+            id: "gateway-completion",
+            role: .tool,
+            content: "",
+            timestamp: "",
+            tool: ToolActivity(id: "gateway-tool", name: "terminal", input: "git status", output: "clean", status: .complete)
+        )
+        let merged = cache.merge(
+            [gatewayCompletion],
+            profile: profile,
+            sessionIDs: [sessionID],
+            includePendingTools: true
+        )
+
+        XCTAssertEqual(merged.map(\.id), [gatewayCompletion.id, pending.id])
+        XCTAssertEqual(merged.last?.tool?.status, .running)
+    }
+
+    func testMergeKeepsDistinctRunningToolWhenKnownToolIDsConflict() throws {
+        let (cache, _, _, _) = try makeIsolatedCache()
+        let profile = "ambiguous-running-tool"
+        let sessionID = "ambiguous-running-" + UUID().uuidString
+        let pending = ChatMessage(
+            id: "cached-pending",
+            role: .tool,
+            content: "",
+            timestamp: "newer",
+            tool: ToolActivity(id: "cached-tool", name: "terminal", input: "git status", output: nil, status: .running)
+        )
+        cache.recordPendingToolStart(pending, profile: profile, sessionIDs: [sessionID])
+
+        let gatewayRunning = ChatMessage(
+            id: "gateway-running",
+            role: .tool,
+            content: "",
+            timestamp: "",
+            tool: ToolActivity(id: "gateway-tool", name: "terminal", input: "git status", output: nil, status: .running)
+        )
+        let merged = cache.merge(
+            [gatewayRunning],
+            profile: profile,
+            sessionIDs: [sessionID],
+            includePendingTools: true
+        )
+
+        XCTAssertEqual(merged.map(\.id), [gatewayRunning.id, pending.id])
+        XCTAssertEqual(merged.filter { $0.tool?.status == .running }.count, 2)
+    }
+
+    func testMergeRestoresLaterPendingToolOnceAcrossAliasesAfterDifferentHistoricalInput() throws {
+        let (cache, _, _, _) = try makeIsolatedCache()
+        let profile = "pending-tool-aliases"
+        let requestedID = "pending-tool-requested-" + UUID().uuidString
+        let resolvedID = "pending-tool-resolved-" + UUID().uuidString
+        let historical = ChatMessage(
+            id: "cached-historical",
+            role: .tool,
+            content: "",
+            timestamp: "older",
+            tool: ToolActivity(id: nil, name: "terminal", input: "pwd", output: "/repo", status: .complete)
+        )
+        let pending = ChatMessage(
+            id: "cached-pending",
+            role: .tool,
+            content: "",
+            timestamp: "newer",
+            tool: ToolActivity(id: nil, name: "terminal", input: "git status", output: nil, status: .running)
+        )
+        cache.save([historical], profile: profile, sessionIDs: [requestedID, resolvedID])
+        cache.recordPendingToolStart(pending, profile: profile, sessionIDs: [requestedID, resolvedID])
+
+        let merged = cache.merge(
+            [
+                ChatMessage(
+                    id: "gateway-historical",
+                    role: .tool,
+                    content: "",
+                    timestamp: "",
+                    tool: ToolActivity(id: nil, name: " TERMINAL ", input: "pwd", output: "/repo", status: .complete)
+                ),
+            ],
+            profile: profile,
+            sessionIDs: [resolvedID, requestedID],
+            includePendingTools: true
+        )
+
+        XCTAssertEqual(merged.filter { $0.tool?.status == .running }.map(\.id), [pending.id])
+        XCTAssertEqual(merged.count, 2)
+    }
+
     /// Duplicate STRINGS inside sessionIDs behave like any other
     /// multi-alias lookup rather than a doubled pool.
     func testDuplicateStringsInsideSessionIDsDoNotDuplicateCandidates() throws {

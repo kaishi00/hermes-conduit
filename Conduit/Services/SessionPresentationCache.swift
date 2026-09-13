@@ -278,7 +278,10 @@ final class SessionPresentationCache {
                 let presentation = cached[index]
                 guard presentation.role == .tool,
                       presentation.toolStatus == .running,
-                      !containsResolvedTool(for: presentation, in: merged) else {
+                      !containsResolvedTool(
+                          for: presentation,
+                          gatewayMessages: messages
+                      ) else {
                     continue
                 }
                 merged.append(ChatMessage(
@@ -365,22 +368,28 @@ final class SessionPresentationCache {
 
     private func containsResolvedTool(
         for cached: CachedMessage,
-        in messages: [ChatMessage]
+        gatewayMessages: [ChatMessage]
     ) -> Bool {
-        messages.contains { message in
+        gatewayMessages.contains { message in
             guard message.role == .tool,
                   let tool = message.tool,
                   normalized(tool.name) == cached.toolName else {
                 return false
             }
             if message.id == cached.id { return true }
-            // A committed tool result supersedes an unresolved local start
-            // even when Hermes assigns a different row id on resume.
-            if tool.status == .complete { return true }
-            return tool.status == .running
-                && Self.fingerprint(tool.input ?? "")
-                    == (cached.toolInputSignature ?? Self.fingerprint(""))
+            let cachedToolID = stableToolID(cached.toolID)
+            let gatewayToolID = stableToolID(tool.id)
+            if let cachedToolID, let gatewayToolID {
+                return cachedToolID == gatewayToolID
+            }
+            return false
         }
+    }
+
+    private func stableToolID(_ id: String?) -> String? {
+        guard let id else { return nil }
+        let trimmed = id.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     /// Records a tool-start event before the gateway has had an opportunity
@@ -977,6 +986,14 @@ final class SessionPresentationCache {
                 return index
             } else if let tool = message.tool {
                 guard candidate.toolName == normalized(tool.name) else { continue }
+                // A locally recorded start belongs after the cached history.
+                // Do not let any generic same-name gateway row consume it:
+                // without a shared row or tool id, it can be a distinct
+                // invocation that happens to have the same input.
+                if candidate.toolStatus == .running,
+                   !hasSameStableToolIdentity(candidate, tool) {
+                    continue
+                }
                 score = 50
                 if let input = tool.input, candidate.toolInputSignature == Self.fingerprint(input) { score += 30 }
                 if let output = tool.output, candidate.toolOutputSignature == Self.fingerprint(output) { score += 30 }
@@ -1004,6 +1021,17 @@ final class SessionPresentationCache {
             }
         }
         return bestIndex
+    }
+
+    private func hasSameStableToolIdentity(
+        _ cached: CachedMessage,
+        _ gateway: ToolActivity
+    ) -> Bool {
+        guard let cachedID = stableToolID(cached.toolID),
+              let gatewayID = stableToolID(gateway.id) else {
+            return false
+        }
+        return cachedID == gatewayID
     }
 
     /// Never replace a cached timestamp/preview with a newer history record
