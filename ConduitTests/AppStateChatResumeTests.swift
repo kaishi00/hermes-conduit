@@ -4,6 +4,74 @@ import XCTest
 
 @MainActor
 final class AppStateChatResumeTests: XCTestCase {
+    func testColdRelaunchResumesDurableSavedSessionWhenCatalogTemporarilyOmitsIt() async {
+        var initialRequests: [String] = []
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            loadCatalog: { _, _ in [] },
+            openSession: { _, sessionID, _ in
+                initialRequests.append(sessionID)
+                return SessionResumeResult(
+                    sessionId: "runtime-a",
+                    storedSessionId: "stored-a",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(true)])
+                )
+            },
+            refreshContext: { _, _ in }
+        ))
+        harness.appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+        // This is the pre-persistence state after session.create: only the
+        // runtime ID is known locally. The next admitted resume establishes
+        // Hermes's durable stored ID.
+        harness.appState.activeSessionId = "runtime-a"
+
+        await harness.appState.syncSession()
+
+        XCTAssertEqual(initialRequests, ["runtime-a"])
+        XCTAssertEqual(harness.store.lastSessionID(for: "default"), "stored-a")
+
+        var relaunchedRequests: [String] = []
+        let restoredStore = ChatResumeStore(defaults: harness.defaults)
+        let restoredState = AppState(
+            defaults: harness.defaults,
+            chatResumeCoordinator: ChatResumeCoordinator(store: restoredStore),
+            loadSavedConnection: false,
+            clearSessionPresentationCache: {},
+            chatResumeLifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in [self.session("stored-older")] },
+                openSession: { _, sessionID, _ in
+                    relaunchedRequests.append(sessionID)
+                    return SessionResumeResult(
+                        sessionId: "runtime-a-relaunched",
+                        storedSessionId: "stored-a",
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(true)])
+                    )
+                },
+                refreshContext: { _, _ in }
+            ),
+            sessionPresentationCache: SessionPresentationCache(defaults: harness.defaults)
+        )
+        restoredState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+
+        XCTAssertEqual(restoredState.activeSessionId, "stored-a")
+        await restoredState.syncSession(purpose: .automaticReturn)
+
+        XCTAssertEqual(
+            relaunchedRequests,
+            ["stored-a"],
+            "A partial cold-start catalog must not redirect restoration to an unrelated row"
+        )
+        XCTAssertEqual(restoredState.activeSessionId, "runtime-a-relaunched")
+        XCTAssertEqual(restoredStore.lastSessionID(for: "default"), "stored-a")
+    }
+
     func testPreserveCurrentUsesEstablishedStoredIdentityWhenCatalogLosesRuntimeAlias() async {
         var requests: [String] = []
         let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(

@@ -58,6 +58,20 @@ final class ChatResumeCoordinator {
         store.setLastSessionID(sessionID, for: profile)
     }
 
+    func missingSavedSessionID(
+        in catalog: [SessionSummary],
+        profile: String,
+        purpose: ChatResumeSyncPurpose
+    ) -> String? {
+        ChatResumeSessionResolver.missingSavedSessionID(
+            in: catalog,
+            behavior: store.behavior,
+            purpose: purpose,
+            savedSessionID: store.lastSessionID(for: profile),
+            activeProfile: profile
+        )
+    }
+
     func selectTarget(
         in catalog: [SessionSummary],
         profile: String,

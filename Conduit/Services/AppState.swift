@@ -3206,14 +3206,26 @@ final class AppState: ObservableObject {
                 )
                 return chatResumeSyncInterruptionOutcome(for: automaticWorkToken)
             }
-            let target = selectChatResumeTarget(
+            // A cold launch can receive a catalog before Hermes has indexed
+            // the just-created/in-flight conversation. When Continue Where I
+            // Left Off names a saved identity that is absent from that
+            // catalog, resume it directly rather than letting the catalog's
+            // first row replace the user's conversation.
+            let missingSavedSessionID = chatResumeCoordinator.missingSavedSessionID(
                 in: allSessions,
                 profile: profile,
-                purpose: purpose,
-                currentSessionID: activeSessionId,
-                automaticWorkToken: automaticWorkToken,
-                automaticSyncOperationID: automaticOperationID
+                purpose: purpose
             )
+            let target = missingSavedSessionID == nil
+                ? selectChatResumeTarget(
+                    in: allSessions,
+                    profile: profile,
+                    purpose: purpose,
+                    currentSessionID: activeSessionId,
+                    automaticWorkToken: automaticWorkToken,
+                    automaticSyncOperationID: automaticOperationID
+                )
+                : nil
             if let target {
                 // A freshly selected catalog row positively establishes the
                 // target's identity: the row's ids are the accepted set, and
@@ -3256,6 +3268,41 @@ final class AppState: ObservableObject {
                 )
                 if !succeeded,
                    purpose == .automaticReturn,
+                   !reconciliationWasIdentityRejected,
+                   automaticChatResumeWorkIsCurrent(
+                    automaticWorkToken,
+                    syncOperationID: automaticOperationID
+                   ),
+                   token == reconciliationToken,
+                   profile == activeProfile {
+                    scheduleReconnect(purpose: purpose)
+                }
+                return succeeded
+                    ? .completed
+                    : chatResumeSyncInterruptionOutcome(for: automaticWorkToken)
+            } else if let missingSavedSessionID {
+                // The store holds the durable session ID after an admitted
+                // resume. It remains safe to address directly even while the
+                // catalog temporarily omits the row; an identity gate still
+                // rejects a contradictory server response.
+                let savedIdentity = ConversationIdentity(
+                    profile: profile,
+                    durableSessionID: missingSavedSessionID,
+                    runtimeSessionID: nil,
+                    acceptedSessionIDs: [missingSavedSessionID]
+                )
+                let succeeded = await reconcile(
+                    sessionId: missingSavedSessionID,
+                    using: client,
+                    token: token,
+                    acceptedSessionIDs: savedIdentity.acceptedSessionIDs,
+                    conversationIdentity: savedIdentity,
+                    automaticWorkToken: automaticWorkToken,
+                    automaticSyncOperationID: automaticOperationID,
+                    requiredViewportTransitionGeneration: requiredViewportTransitionGeneration,
+                    historySourceUnavailable: historySourceUnavailable
+                )
+                if !succeeded,
                    !reconciliationWasIdentityRejected,
                    automaticChatResumeWorkIsCurrent(
                     automaticWorkToken,
@@ -4263,6 +4310,7 @@ final class AppState: ObservableObject {
         let retainedRestoredMessages = pendingDecisionRestorationMessages(for: result.sessionId)
         markChatViewportReplacement()
         setActiveSessionState(id: result.sessionId, title: AppLocalization.string("New conversation"))
+        persistAdmittedDurableSessionIdentity(from: result)
         updateActiveSessionTitle(
             for: result.sessionId,
             fallbackSessionId: reconciliation?.requestedSessionId
@@ -4413,6 +4461,34 @@ final class AppState: ObservableObject {
         )
         turnStateIsStale = false
         return true
+    }
+
+    /// A resume can rotate the ephemeral runtime ID after a process relaunch.
+    /// Persist the stored identity that Hermes admitted, not the runtime ID
+    /// that happens to route this process, so the next cold launch addresses
+    /// the durable conversation even before its catalog row appears.
+    private func persistAdmittedDurableSessionIdentity(from result: SessionResumeResult) {
+        guard let durableSessionID = ChatScrollIdentityNormalization.sessionID(
+            reconciliation?.resolvedDurableSessionId ?? result.storedSessionId
+        ) else {
+            return
+        }
+        let durableKey = ChatScrollSessionKey(
+            profile: activeProfile,
+            sessionID: durableSessionID
+        )
+        guard durableKey.isValid else { return }
+
+        if let runtimeSessionID = ChatScrollIdentityNormalization.sessionID(result.sessionId) {
+            let runtimeKey = ChatScrollSessionKey(
+                profile: activeProfile,
+                sessionID: runtimeSessionID
+            )
+            if runtimeKey.isValid, runtimeKey != durableKey {
+                chatResumeCoordinator.migrateSessionIdentity(from: runtimeKey, to: durableKey)
+            }
+        }
+        chatResumeCoordinator.rememberSessionID(durableKey.sessionID, for: durableKey.profile)
     }
 
     static func hasPendingDecision(in messages: [ChatMessage]) -> Bool {
