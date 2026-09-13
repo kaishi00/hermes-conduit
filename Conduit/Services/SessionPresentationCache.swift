@@ -86,9 +86,12 @@ final class SessionPresentationCache {
         var signature: String
         var timestamp: String
         var toolName: String?
+        var toolDisplayName: String?
+        var toolID: String?
         var toolInputSignature: String?
         var toolOutputSignature: String?
         var toolPreview: String?
+        var toolStatus: ToolActivity.Status?
         var attachments: [Attachment]?
         var clarify: ClarifyActivity?
         var approval: ApprovalActivity?
@@ -108,9 +111,12 @@ final class SessionPresentationCache {
             signature = SessionPresentationCache.fingerprint(message.content)
             timestamp = message.timestamp
             toolName = tool.map { $0.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+            toolDisplayName = tool?.name
+            toolID = tool?.id
             toolInputSignature = tool?.input.map(SessionPresentationCache.fingerprint)
             toolOutputSignature = tool?.output.map(SessionPresentationCache.fingerprint)
             toolPreview = preview
+            toolStatus = tool?.status
             attachments = message.attachments
             clarify = message.clarify
             approval = message.approval
@@ -161,7 +167,8 @@ final class SessionPresentationCache {
         profile: String,
         sessionIDs: [String],
         includePendingClarifications: Bool = false,
-        includePendingApprovals: Bool = false
+        includePendingApprovals: Bool = false,
+        includePendingTools: Bool = false
     ) -> [ChatMessage] {
         let stored = load()
         // Resolve every supplied alias, but let each LOGICAL cached snapshot
@@ -266,6 +273,30 @@ final class SessionPresentationCache {
             return message
         }
 
+        if includePendingTools {
+            for index in remaining.sorted() {
+                let presentation = cached[index]
+                guard presentation.role == .tool,
+                      presentation.toolStatus == .running,
+                      !containsResolvedTool(for: presentation, in: merged) else {
+                    continue
+                }
+                merged.append(ChatMessage(
+                    id: presentation.id,
+                    role: .tool,
+                    content: "",
+                    timestamp: presentation.timestamp,
+                    tool: ToolActivity(
+                        id: presentation.toolID,
+                        name: presentation.toolDisplayName ?? presentation.toolName ?? "Tool",
+                        input: presentation.toolPreview,
+                        output: nil,
+                        status: .running
+                    )
+                ))
+            }
+        }
+
         if includePendingClarifications {
             let pendingClarifications = cached.compactMap(\.clarify).filter {
                 Self.isPendingDecision($0.status)
@@ -330,6 +361,113 @@ final class SessionPresentationCache {
             }
         }
         return merged
+    }
+
+    private func containsResolvedTool(
+        for cached: CachedMessage,
+        in messages: [ChatMessage]
+    ) -> Bool {
+        messages.contains { message in
+            guard message.role == .tool,
+                  let tool = message.tool,
+                  normalized(tool.name) == cached.toolName else {
+                return false
+            }
+            if message.id == cached.id { return true }
+            // A committed tool result supersedes an unresolved local start
+            // even when Hermes assigns a different row id on resume.
+            if tool.status == .complete { return true }
+            return tool.status == .running
+                && Self.fingerprint(tool.input ?? "")
+                    == (cached.toolInputSignature ?? Self.fingerprint(""))
+        }
+    }
+
+    /// Records a tool-start event before the gateway has had an opportunity
+    /// to commit a transcript row. Unlike ordinary presentation writes, this
+    /// is synchronous so process termination immediately after the event does
+    /// not lose the only structured representation of the running tool.
+    func recordPendingToolStart(
+        _ message: ChatMessage,
+        profile: String,
+        sessionIDs: [String]
+    ) {
+        guard message.role == .tool, message.tool?.status == .running else { return }
+        let ids = Set(sessionIDs.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })
+        guard !ids.isEmpty else { return }
+
+        var store = load()
+        let record = CachedMessage(message)
+        let stampedAt = now()
+        for id in ids {
+            let cacheKey = key(profile: profile, sessionID: id)
+            var session = store[cacheKey] ?? CachedSession(
+                updatedAt: stampedAt,
+                messages: [],
+                unconfirmedPendingDecisionAt: nil
+            )
+            // Upsert by the local card id while allowing distinct, sequential
+            // calls of the same tool to remain independently representable.
+            session.messages.removeAll { $0.id == record.id }
+            session.messages.append(record)
+            session.messages = Array(session.messages.suffix(maxMessagesPerSession))
+            session.updatedAt = stampedAt
+            store[cacheKey] = session
+        }
+        trim(&store)
+        persist(store)
+    }
+
+    /// A completion event makes the local running projection obsolete. Drop
+    /// the latest matching unresolved record immediately; the normal
+    /// debounced presentation save will persist the completed transcript row.
+    func resolvePendingTool(
+        named name: String,
+        profile: String,
+        sessionIDs: [String]
+    ) {
+        let ids = Set(sessionIDs.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })
+        guard !ids.isEmpty else { return }
+        let normalizedName = normalized(name)
+        var store = load()
+        var changed = false
+        for id in ids {
+            let cacheKey = key(profile: profile, sessionID: id)
+            guard var session = store[cacheKey],
+                  let index = session.messages.lastIndex(where: {
+                      $0.role == .tool
+                          && $0.toolStatus == .running
+                          && $0.toolName == normalizedName
+                  }) else {
+                continue
+            }
+            session.messages.remove(at: index)
+            session.updatedAt = now()
+            store[cacheKey] = session
+            changed = true
+        }
+        if changed { persist(store) }
+    }
+
+    /// An explicitly idle resume is authoritative: any local tool-start
+    /// projection that has not been committed is stale and must not become a
+    /// permanently-running card on later launches.
+    func removePendingTools(profile: String, sessionIDs: [String]) {
+        let ids = Set(sessionIDs.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })
+        guard !ids.isEmpty else { return }
+        var store = load()
+        var changed = false
+        for id in ids {
+            let cacheKey = key(profile: profile, sessionID: id)
+            guard var session = store[cacheKey] else { continue }
+            let originalCount = session.messages.count
+            session.messages.removeAll { $0.role == .tool && $0.toolStatus == .running }
+            guard session.messages.count != originalCount else { continue }
+            session.updatedAt = now()
+            store[cacheKey] = session
+            changed = true
+        }
+        if changed { persist(store) }
     }
 
     /// Pending decision keys currently held in the store for the given

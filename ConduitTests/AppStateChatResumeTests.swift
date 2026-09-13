@@ -141,6 +141,91 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(harness.appState.activeSessionId, "stored-newest")
     }
 
+    func testFreshResumeRestoresInFlightToolAndReconcilesItsCompletion() {
+        let suite = "AppStateChatResumeTests.inFlightTool.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suite) else {
+            return XCTFail("Failed to create test UserDefaults suite")
+        }
+        addTeardownBlock {
+            defaults.removePersistentDomain(forName: suite)
+        }
+        let active = session("stored-a")
+        let sourceCache = SessionPresentationCache(defaults: defaults)
+        let source = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: {},
+            sessionPresentationCache: sourceCache
+        )
+        source.sessions = [active]
+        source.activeSessionId = active.id
+
+        source.handleStreamEvent(.toolStart(
+            sessionId: active.id,
+            toolName: "read_file",
+            toolInput: "README.md"
+        ))
+
+        // Simulate terminate/relaunch with a new AppState and cache object
+        // backed by the same durable defaults store. Hermes has not committed
+        // a transcript row yet, but it still reports an active turn.
+        let resumed = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: {},
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        XCTAssertTrue(resumed.applyChatResume(SessionResumeResult(
+            sessionId: active.id,
+            messages: [],
+            snapshot: SessionRuntimeSnapshot(object: ["running": .bool(true)])
+        )))
+        XCTAssertEqual(resumed.messages.count, 1)
+        XCTAssertEqual(resumed.messages[0].tool?.name, "read_file")
+        XCTAssertEqual(resumed.messages[0].tool?.input, "README.md")
+        XCTAssertEqual(resumed.messages[0].tool?.status, .running)
+
+        // The result event must update that restored card in place rather
+        // than append a second completed tool row.
+        resumed.handleStreamEvent(.toolComplete(
+            sessionId: active.id,
+            toolName: "read_file",
+            toolOutput: "contents"
+        ))
+        XCTAssertEqual(resumed.messages.count, 1)
+        XCTAssertEqual(resumed.messages[0].tool?.status, .complete)
+        XCTAssertEqual(resumed.messages[0].tool?.output, "contents")
+
+        // Once complete, the transient record is gone; a later authoritative
+        // resume uses Hermes' committed row without reviving a running twin.
+        let settled = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: {},
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        let committed = ChatMessage(
+            id: "server-tool",
+            role: .tool,
+            content: "",
+            timestamp: "1",
+            tool: ToolActivity(
+                id: nil,
+                name: "read_file",
+                input: "README.md",
+                output: "contents",
+                status: .complete
+            )
+        )
+        XCTAssertTrue(settled.applyChatResume(SessionResumeResult(
+            sessionId: active.id,
+            messages: [committed],
+            snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+        )))
+        XCTAssertEqual(settled.messages.count, 1)
+        XCTAssertEqual(settled.messages[0].tool?.status, .complete)
+    }
+
     func testPristineCanvasWithEmptyCatalogStillAttemptsSessionCreate() async {
         // The other half of the no-current-identity boundary: an empty
         // catalog with no current identity keeps the preexisting

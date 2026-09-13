@@ -1170,6 +1170,18 @@ final class AppState: ObservableObject {
         return [durableSessionID]
     }
 
+    private func presentationCacheSessionIDs(for sessionID: String) -> [String] {
+        Self.durableOwnedPresentationIDs(
+            [
+                sessionID,
+                activeSessionId,
+                reconciliation?.requestedSessionId,
+                reconciliation?.resolvedSessionId
+            ].compactMap { $0 },
+            durableSessionID: activeChatScrollSessionIdentity.canonicalSessionID
+        )
+    }
+
     /// Hermes can omit UI-only fields from persisted history. Retain a bounded
     /// local record so a reload does not drop a timestamp or tool preview.
     private func cacheMessagePresentation(for sessionIDs: [String] = []) {
@@ -4337,9 +4349,16 @@ final class AppState: ObservableObject {
             profile: activeProfile,
             sessionIDs: sessionIDs,
             includePendingClarifications: restorePendingDecisionCards,
-            includePendingApprovals: restorePendingDecisionCards
+            includePendingApprovals: restorePendingDecisionCards,
+            includePendingTools: result.snapshot.running != false
         )
         messages = mergeCachedReviews(into: restored, sessionId: result.sessionId)
+        if result.snapshot.running == false {
+            sessionPresentationCache.removePendingTools(
+                profile: activeProfile,
+                sessionIDs: presentationCacheSessionIDs(for: result.sessionId)
+            )
+        }
         // The gateway's authoritative pending clarification restores the
         // answerable card even when the one-shot clarify.request fired while
         // this device was detached; answers locked before the detach come
@@ -12398,13 +12417,19 @@ final class AppState: ObservableObject {
             settleReasoningSegmentIntoTranscript()
             resetReasoningSegment()
             flushStreamingPartial()
-            messages.append(ChatMessage(
+            let message = ChatMessage(
                 id: "tool-start-\(Date().timeIntervalSince1970)",
                 role: .tool,
                 content: "",
                 timestamp: Self.localTimestamp(),
                 tool: ToolActivity(id: nil, name: name, input: input, output: nil, status: .running)
-            ))
+            )
+            messages.append(message)
+            sessionPresentationCache.recordPendingToolStart(
+                message,
+                profile: activeProfile,
+                sessionIDs: presentationCacheSessionIDs(for: streamSessionId)
+            )
 
         case .toolComplete(_, let name, let output):
             if name.lowercased() == "clarify" { break }
@@ -12434,6 +12459,11 @@ final class AppState: ObservableObject {
                     tool: ToolActivity(id: nil, name: name, input: nil, output: output, status: .complete)
                 ))
             }
+            sessionPresentationCache.resolvePendingTool(
+                named: name,
+                profile: activeProfile,
+                sessionIDs: presentationCacheSessionIDs(for: streamSessionId)
+            )
 
         case .reviewSummary(let sessionId, let activity):
             let id = "review-summary-\(sessionId)-\(UUID().uuidString)"
