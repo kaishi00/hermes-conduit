@@ -37,7 +37,8 @@ final class SessionPresentationCache {
             return "clarify:\(clarify.requestId)"
         }
         if let approval = message.approval {
-            return "approval:\(approval.sessionId)"
+            return approval.requestId.map { "approval-request:\($0)" }
+                ?? "approval:\(approval.sessionId)"
         }
         return nil
     }
@@ -47,7 +48,8 @@ final class SessionPresentationCache {
             return "clarify:\(clarify.requestId)"
         }
         if let approval = message.approval, isPendingDecision(approval.status) {
-            return "approval:\(approval.sessionId)"
+            return approval.requestId.map { "approval-request:\($0)" }
+                ?? "approval:\(approval.sessionId)"
         }
         return nil
     }
@@ -71,7 +73,8 @@ final class SessionPresentationCache {
             }
             if let approval = message.approval,
                isPendingDecision(approval.status),
-               keys.contains("approval:\(approval.sessionId)") {
+               keys.contains(approval.requestId.map { "approval-request:\($0)" }
+                    ?? "approval:\(approval.sessionId)") {
                 message.approval = nil
             }
             if message.role == .clarify, message.clarify == nil { return nil }
@@ -349,11 +352,21 @@ final class SessionPresentationCache {
                     )
             }
             for approval in pendingApprovals {
-                if gatewayAnnouncesPendingGate { break }
-                guard !merged.contains(where: {
-                    $0.approval?.sessionId == approval.sessionId
-                }) else { continue }
-                let cachedMessage = cached.last { $0.approval?.sessionId == approval.sessionId }
+                let alreadyPresent = merged.contains { message in
+                    guard let existing = message.approval else { return false }
+                    if let requestId = approval.requestId {
+                        return existing.requestId == requestId
+                    }
+                    return existing.requestId == nil
+                        && existing.sessionId == approval.sessionId
+                }
+                if alreadyPresent || (approval.requestId == nil && gatewayAnnouncesPendingGate) {
+                    continue
+                }
+                let cachedMessage = cached.last {
+                    $0.approval?.requestId == approval.requestId
+                        && $0.approval?.sessionId == approval.sessionId
+                }
                 merged.append(ChatMessage(
                     id: cachedMessage?.id ?? "approval-\(approval.sessionId)",
                     role: .approval,
@@ -670,7 +683,8 @@ final class SessionPresentationCache {
             }
             if let approval = message.approval,
                Self.isPendingDecision(approval.status),
-               !keys.contains("approval:\(approval.sessionId)") {
+               !keys.contains(approval.requestId.map { "approval-request:\($0)" }
+                    ?? "approval:\(approval.sessionId)") {
                 message.approval = nil
             }
             if message.role == .clarify, message.clarify == nil { return nil }
@@ -684,7 +698,8 @@ final class SessionPresentationCache {
             return "clarify:\(clarify.requestId)"
         }
         if let approval = message.approval {
-            return "approval:\(approval.sessionId)"
+            return approval.requestId.map { "approval-request:\($0)" }
+                ?? "approval:\(approval.sessionId)"
         }
         return nil
     }
@@ -694,7 +709,8 @@ final class SessionPresentationCache {
             return "clarify:\(clarify.requestId)"
         }
         if let approval = message.approval, Self.isPendingDecision(approval.status) {
-            return "approval:\(approval.sessionId)"
+            return approval.requestId.map { "approval-request:\($0)" }
+                ?? "approval:\(approval.sessionId)"
         }
         return nil
     }

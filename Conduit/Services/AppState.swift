@@ -4471,6 +4471,12 @@ final class AppState: ObservableObject {
         if let pendingClarify = result.snapshot.pendingClarify {
             applyClarifyActivity(pendingClarify, source: .authoritativeSnapshot)
         }
+        let authoritativePendingApproval = result.snapshot.pendingApprovalPayload.flatMap {
+            MessageNormalizer.approvalActivity(from: $0, sessionId: result.sessionId)
+        }
+        if let pendingApproval = authoritativePendingApproval {
+            applyApprovalActivity(pendingApproval, authoritative: true)
+        }
         noteChatViewportTranscriptReplacement()
         // An authoritative resume/reconcile just replaced the transcript:
         // whatever rows a failed freshness read could not see are now either
@@ -4481,7 +4487,20 @@ final class AppState: ObservableObject {
         transcriptFreshnessIsStale = false
         locallyOwnedInFlightTurn = nil
         pendingLocalOrderingDebt = nil
-        let gatewayPendingDecisionKeys = SessionPresentationCache.pendingDecisionKeys(in: result.messages)
+        var gatewayPendingDecisionKeys = SessionPresentationCache.pendingDecisionKeys(in: result.messages)
+        if let pendingClarify = result.snapshot.pendingClarify {
+            gatewayPendingDecisionKeys.insert("clarify:\(pendingClarify.requestId)")
+        }
+        if let pendingApproval = authoritativePendingApproval,
+           let key = SessionPresentationCache.pendingDecisionKey(for: ChatMessage(
+               id: "pending-approval-key",
+               role: .approval,
+               content: pendingApproval.description,
+               timestamp: "",
+               approval: pendingApproval
+           )) {
+            gatewayPendingDecisionKeys.insert(key)
+        }
         let restoredPendingDecisionKeys = SessionPresentationCache
             .pendingDecisionKeys(in: messages)
             .subtracting(gatewayPendingDecisionKeys)
@@ -11429,6 +11448,7 @@ final class AppState: ObservableObject {
         guard let index = messages.firstIndex(where: { $0.id == messageId }),
               let current = messages[index].approval,
               current.status == .pending || current.status == .error else { return }
+        let decisionKey = SessionPresentationCache.decisionKey(for: messages[index])
 
         messages[index].approval?.status = .submitting
         messages[index].approval?.choice = choice
@@ -11453,17 +11473,30 @@ final class AppState: ObservableObject {
         // pointer identity is needed.
         let profile = activeProfile
         do {
-            try await client.respondToApproval(sessionId: current.sessionId, choice: choice)
+            let accepted = try await client.respondToApproval(
+                sessionId: current.sessionId,
+                requestId: current.requestId,
+                choice: choice
+            )
             guard profile == activeProfile, self.client === client else { return }
-            guard let updatedIndex = messages.firstIndex(where: { $0.id == messageId }) else { return }
-            messages[updatedIndex].approval?.status = choice == "deny" ? .rejected : .approved
+            guard let updatedIndex = messages.firstIndex(where: { $0.id == messageId }),
+                  SessionPresentationCache.decisionKey(for: messages[updatedIndex]) == decisionKey else { return }
+            if accepted {
+                messages[updatedIndex].approval?.status = choice == "deny" ? .rejected : .approved
+            } else {
+                messages[updatedIndex].approval?.status = .expired
+                messages[updatedIndex].approval?.choice = nil
+                messages[updatedIndex].approval?.error = AppLocalization.string("This approval is no longer active — Hermes timed it out and continued.")
+            }
             cacheMessagePresentation()
         } catch {
             guard profile == activeProfile, self.client === client else { return }
-            guard let updatedIndex = messages.firstIndex(where: { $0.id == messageId }) else { return }
+            guard let updatedIndex = messages.firstIndex(where: { $0.id == messageId }),
+                  SessionPresentationCache.decisionKey(for: messages[updatedIndex]) == decisionKey else { return }
             messages[updatedIndex].approval?.status = .error
             messages[updatedIndex].approval?.choice = nil
             if Self.isExpiredPromptError(error) {
+                messages[updatedIndex].approval?.status = .expired
                 messages[updatedIndex].approval?.error = AppLocalization.string("This approval is no longer active — Hermes timed it out and continued.")
             } else {
                 messages[updatedIndex].approval?.error = "Hermes did not accept that decision."
@@ -12536,6 +12569,13 @@ final class AppState: ObservableObject {
             if let pendingClarify = snapshot.pendingClarify {
                 applyClarifyActivity(pendingClarify, source: .authoritativeSnapshot)
             }
+            if let payload = snapshot.pendingApprovalPayload,
+               let pendingApproval = MessageNormalizer.approvalActivity(
+                   from: payload,
+                   sessionId: sessionID
+               ) {
+                applyApprovalActivity(pendingApproval, authoritative: true)
+            }
             if let running = snapshot.running {
                 setRunning(running)
             }
@@ -12633,23 +12673,7 @@ final class AppState: ObservableObject {
             expireClarifyRequest(requestId: requestId)
 
         case .approval(_, let activity):
-            if let index = messages.lastIndex(where: {
-                $0.approval?.sessionId == activity.sessionId
-                    && ($0.approval?.status == .pending || $0.approval?.status == .submitting)
-            }) {
-                messages[index].content = activity.description
-                messages[index].approval = activity
-            } else {
-                // Same mid-turn ordering rule as clarify above.
-                settleReasoningSegmentIntoTranscript()
-                messages.append(ChatMessage(
-                    id: "approval-\(activity.sessionId)-\(UUID().uuidString)",
-                    role: .approval,
-                    content: activity.description,
-                    timestamp: Self.localTimestamp(),
-                    approval: activity
-                ))
-            }
+            applyApprovalActivity(activity, authoritative: false)
             setRunning(true)
 
         case .contextUpdate(_, let percent, let used, let max):
@@ -12697,6 +12721,65 @@ final class AppState: ObservableObject {
                 answer: answer
             )
         }
+
+    /// Upserts an approval by Hermes request identity. Legacy events without a
+    /// request id retain the historical one-card-per-session behavior. A
+    /// modern authoritative replay removes only an ambiguous legacy card for
+    /// that session; explicitly identified queued approvals remain distinct.
+    private func applyApprovalActivity(
+        _ activity: ApprovalActivity,
+        authoritative: Bool
+    ) {
+        if authoritative, activity.requestId != nil {
+            let equivalentSessionIDs = activeChatScrollSessionIdentity.equivalentSessionIDs
+                .union([activity.sessionId])
+            messages.removeAll { message in
+                guard let existing = message.approval,
+                      equivalentSessionIDs.contains(existing.sessionId),
+                      existing.requestId == nil else { return false }
+                return SessionPresentationCache.isPendingDecision(existing.status)
+            }
+            let cacheSessionIDs = presentationCacheSessionIDs(for: activity.sessionId)
+            for sessionID in equivalentSessionIDs {
+                sessionPresentationCache.removePendingDecision(
+                    key: "approval:\(sessionID)",
+                    profile: activeProfile,
+                    sessionIDs: cacheSessionIDs
+                )
+            }
+        }
+
+        let targetKey = activity.requestId.map { "approval-request:\($0)" }
+            ?? "approval:\(activity.sessionId)"
+        if let index = messages.lastIndex(where: {
+            SessionPresentationCache.decisionKey(for: $0) == targetKey
+                && $0.approval != nil
+        }) {
+            if !authoritative, let existing = messages[index].approval,
+               existing.status != .pending {
+                var replay = activity
+                replay.status = existing.status
+                replay.choice = existing.choice
+                replay.error = existing.error
+                messages[index].content = replay.description
+                messages[index].approval = replay
+                return
+            }
+            messages[index].content = activity.description
+            messages[index].approval = activity
+            return
+        }
+
+        settleReasoningSegmentIntoTranscript()
+        let identity = activity.requestId ?? activity.sessionId
+        messages.append(ChatMessage(
+            id: "approval-\(identity)-\(UUID().uuidString)",
+            role: .approval,
+            content: activity.description,
+            timestamp: Self.localTimestamp(),
+            approval: activity
+        ))
+    }
 
     /// How a clarification activity reached AppState. Replay defenses for the
     /// one-shot stream event are deliberately weaker than the gateway's

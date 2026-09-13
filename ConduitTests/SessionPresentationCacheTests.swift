@@ -1357,6 +1357,107 @@ final class SessionPresentationCacheTests: XCTestCase {
 
     // MARK: - Merge: pending approval restoration
 
+    func testApplyChatResumeRestoresAuthoritativePendingApprovalWithoutCache() throws {
+        let suiteName = "conduit.tests.pending-approval-snapshot-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        let cache = SessionPresentationCache(defaults: defaults)
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: { cache.clear() },
+            sessionPresentationCache: cache
+        )
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        XCTAssertTrue(appState.applyChatResume(SessionResumeResult(
+            sessionId: "runtime-approval",
+            messages: [],
+            snapshot: SessionRuntimeSnapshot(object: [
+                "running": .bool(true),
+                "pending_approval": .object([
+                    "request_id": .string("approval-42"),
+                    "command": .string("deploy"),
+                    "description": .string("Deploy now?"),
+                    "choices": .array([.string("once"), .string("deny")])
+                ])
+            ])
+        )))
+
+        let card = try XCTUnwrap(appState.messages.first?.approval)
+        XCTAssertEqual(card.requestId, "approval-42")
+        XCTAssertEqual(card.sessionId, "runtime-approval")
+        XCTAssertEqual(card.status, .pending)
+    }
+
+    func testAuthoritativeApprovalResetsSameCachedSubmittingRequestAndDropsLegacyAmbiguity() throws {
+        let suiteName = "conduit.tests.pending-approval-authority-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        let cache = SessionPresentationCache(defaults: defaults)
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: { cache.clear() },
+            sessionPresentationCache: cache
+        )
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let sessionId = "approval-authority"
+        let cards = [
+            ApprovalActivity(sessionId: sessionId, requestId: "req-current", command: "old", description: "Old text", choices: nil, allowPermanent: false, smartDenied: false, status: .submitting),
+            ApprovalActivity(sessionId: sessionId, command: "legacy", description: "Legacy card", choices: nil, allowPermanent: false, smartDenied: false, status: .pending)
+        ].enumerated().map { index, approval in
+            ChatMessage(id: "approval-\(index)", role: .approval, content: approval.description, timestamp: "1", approval: approval)
+        }
+        cache.save(cards, profile: appState.activeProfile, sessionIDs: [sessionId])
+
+        XCTAssertTrue(appState.applyChatResume(SessionResumeResult(
+            sessionId: sessionId,
+            messages: [],
+            snapshot: SessionRuntimeSnapshot(object: [
+                "pending_approval": .object([
+                    "request_id": .string("req-current"),
+                    "command": .string("new"),
+                    "description": .string("Current text")
+                ])
+            ])
+        )))
+
+        let approvals = appState.messages.compactMap(\.approval)
+        XCTAssertEqual(approvals.count, 1)
+        XCTAssertEqual(approvals[0].requestId, "req-current")
+        XCTAssertEqual(approvals[0].description, "Current text")
+        XCTAssertEqual(approvals[0].status, .pending)
+    }
+
+    func testCacheKeepsTwoRequestIdentifiedApprovalsForOneSessionDistinct() throws {
+        let suiteName = "conduit.tests.approval-request-identity-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        let cache = SessionPresentationCache(defaults: defaults)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let sessionId = "same-session"
+        for requestId in ["req-a", "req-b"] {
+            let approval = ApprovalActivity(
+                sessionId: sessionId,
+                requestId: requestId,
+                command: requestId,
+                description: requestId,
+                choices: nil,
+                allowPermanent: false,
+                smartDenied: false,
+                status: .pending
+            )
+            cache.recordPendingDecision(
+                ChatMessage(id: requestId, role: .approval, content: requestId, timestamp: "1", approval: approval),
+                profile: "default",
+                sessionIDs: [sessionId]
+            )
+        }
+
+        let restored = cache.merge(
+            [], profile: "default", sessionIDs: [sessionId], includePendingApprovals: true
+        ).compactMap(\.approval)
+        XCTAssertEqual(Set(restored.compactMap(\.requestId)), Set(["req-a", "req-b"]))
+    }
+
     func testMergeRestoresPendingApprovalWhenRequested() {
         let cache = SessionPresentationCache.shared
         let sessionId = "test-merge-approval-\(UUID().uuidString)"

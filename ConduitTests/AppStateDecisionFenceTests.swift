@@ -22,7 +22,10 @@ final class AppStateDecisionFenceTests: XCTestCase {
 
     // MARK: - Fixtures
 
-    private func approvalFixture(status: ApprovalActivity.Status = .pending) -> ChatMessage {
+    private func approvalFixture(
+        status: ApprovalActivity.Status = .pending,
+        requestId: String? = nil
+    ) -> ChatMessage {
         ChatMessage(
             id: "approval-msg",
             role: .approval,
@@ -30,6 +33,7 @@ final class AppStateDecisionFenceTests: XCTestCase {
             timestamp: "1",
             approval: ApprovalActivity(
                 sessionId: "default",
+                requestId: requestId,
                 command: "deploy",
                 description: "Run the deploy?",
                 choices: nil,
@@ -169,6 +173,24 @@ final class AppStateDecisionFenceTests: XCTestCase {
 
     // MARK: - Stale approval completions
 
+    func testApprovalCompletionCannotMutateReplacementRequestWithSameMessageID() async throws {
+        let appState = makeAppState()
+        appState.messages = [approvalFixture(requestId: "request-a")]
+        let transport = ClarifyFakeTransport()
+        let socket = ClarifyFakeSocket()
+        _ = try await installConnectedClient(appState, socket: socket, transport: transport)
+
+        let parked = try await parkApprovalRespond(appState: appState, socket: socket)
+        appState.messages = [approvalFixture(requestId: "request-b")]
+        deliverResult(socket, rpcID: parked.rpcID, result: ["resolved": 1])
+        await parked.task.value
+
+        let card = try XCTUnwrap(appState.messages.first?.approval)
+        XCTAssertEqual(card.requestId, "request-b")
+        XCTAssertEqual(card.status, .pending)
+        XCTAssertNil(card.choice)
+    }
+
     func testStaleApprovalSuccessCannotMutateReplacedClientState() async throws {
         let appState = makeAppState()
         appState.messages = [approvalFixture()]
@@ -292,6 +314,24 @@ final class AppStateDecisionFenceTests: XCTestCase {
         let card = try XCTUnwrap(appState.messages.first?.approval)
         XCTAssertEqual(card.status, .rejected)
         XCTAssertEqual(card.choice, "deny")
+    }
+
+    func testRequestIdentifiedApprovalWithZeroResolvedExpires() async throws {
+        let appState = makeAppState()
+        appState.messages = [approvalFixture(requestId: "stale-request")]
+        let transport = ClarifyFakeTransport()
+        let socket = ClarifyFakeSocket()
+        _ = try await installConnectedClient(appState, socket: socket, transport: transport)
+
+        let parked = try await parkApprovalRespond(appState: appState, socket: socket)
+        deliverResult(socket, rpcID: parked.rpcID, result: ["resolved": 0])
+        await parked.task.value
+
+        let card = try XCTUnwrap(appState.messages.first?.approval)
+        XCTAssertEqual(card.status, .expired)
+        XCTAssertNil(card.choice)
+        XCTAssertNotNil(card.error)
+        XCTAssertFalse(SessionPresentationCache.isPendingDecision(card.status))
     }
 
     func testSameClientApprovalFailureStillReportsOnError() async throws {

@@ -372,11 +372,12 @@ struct ClarifyActivity: Codable, Equatable {
     }
 }
 
-/// A session-scoped command decision requested by Hermes while a turn is
-/// paused. Hermes uses the session as the request identity, so there is no
-/// separate request ID to send back with `approval.respond`.
+/// A command decision requested by Hermes while a turn is paused. Current
+/// gateways identify each queued approval with `request_id`; older gateways
+/// omit it and retain session-scoped FIFO behavior.
 struct ApprovalActivity: Codable, Equatable {
     var sessionId: String
+    var requestId: String? = nil
     var command: String
     var description: String
     var choices: [String]?
@@ -391,6 +392,7 @@ struct ApprovalActivity: Codable, Equatable {
         case submitting
         case approved
         case rejected
+        case expired
         case error
     }
 }

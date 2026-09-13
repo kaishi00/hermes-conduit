@@ -685,6 +685,73 @@ final class HermesClientTests: XCTestCase {
         XCTAssertFalse(outcome.requestCompleted)
     }
 
+    // MARK: - approval.respond / pending_approval
+
+    private func capturedApprovalRespond(
+        requestId: String?,
+        resolved: Int
+    ) async throws -> (request: [String: Any], accepted: Bool) {
+        let transport = FakeTransport()
+        let socket = FakeSocket()
+        transport.nextSocket = { socket }
+        let client = makeClient(transport: transport)
+        let connectTask = Task { try? await client.connect() }
+        transport.open(socket)
+        try await awaitCompletion(of: connectTask, "connect() to complete")
+
+        let sent = Gate()
+        socket.onSend = { sent.signal() }
+        let respondTask = Task<Bool, Error> {
+            try await client.respondToApproval(
+                sessionId: "runtime-1",
+                requestId: requestId,
+                choice: "once"
+            )
+        }
+        try await sent.wait("the approval.respond request to be sent")
+        let request = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(try XCTUnwrap(socket.sentTexts.last).utf8)) as? [String: Any]
+        )
+        let id = try XCTUnwrap(request["id"] as? Int)
+        socket.deliver(String(data: try JSONSerialization.data(withJSONObject: [
+            "jsonrpc": "2.0", "id": id, "result": ["resolved": resolved]
+        ]), encoding: .utf8)!)
+        let accepted = try await awaitResult(of: respondTask, "the approval.respond response")
+        client.disconnect()
+        return (request, accepted)
+    }
+
+    func testApprovalRespondSendsRequestIdentityAndRejectsZeroResolved() async throws {
+        let (request, accepted) = try await capturedApprovalRespond(requestId: "approval-2", resolved: 0)
+        let params = try XCTUnwrap(request["params"] as? [String: Any])
+        XCTAssertEqual(params["request_id"] as? String, "approval-2")
+        XCTAssertEqual(params["session_id"] as? String, "runtime-1")
+        XCTAssertFalse(accepted, "A successful RPC that resolved no queue entry is a stale card")
+    }
+
+    func testLegacyApprovalRespondOmitsRequestIdentity() async throws {
+        let (request, accepted) = try await capturedApprovalRespond(requestId: nil, resolved: 1)
+        let params = try XCTUnwrap(request["params"] as? [String: Any])
+        XCTAssertNil(params["request_id"])
+        XCTAssertTrue(accepted)
+    }
+
+    func testResumeSnapshotParsesPendingApprovalRequestIdentity() throws {
+        let snapshot = SessionRuntimeSnapshot(object: [
+            "pending_approval": .object([
+                "request_id": .string("approval-resume"),
+                "description": .string("Run deployment?"),
+                "choices": .array([.string("once"), .string("deny")])
+            ])
+        ])
+        XCTAssertEqual(snapshot.pendingApprovalPayload?["request_id"]?.stringValue, "approval-resume")
+        let activity = snapshot.pendingApprovalPayload.flatMap {
+            MessageNormalizer.approvalActivity(from: $0, sessionId: "runtime-2")
+        }
+        XCTAssertEqual(activity?.requestId, "approval-resume")
+        XCTAssertEqual(activity?.sessionId, "runtime-2")
+    }
+
     // MARK: - pending_clarify restore
 
     func testResumeSnapshotParsesPendingClarifyBatchWithLockedAnswers() throws {
