@@ -15,6 +15,14 @@ import Security
 /// often issue a session cookie. Mirror the authenticated dashboard cookies in
 /// Keychain and restore them before the cold-launch bridge loads. Values stay
 /// device-local and are cleared with the saved connection on explicit sign-out.
+///
+/// Live session state is DASHBOARD-OWNED, not global (#148): each dashboard
+/// gets its own `WKWebsiteDataStore(forIdentifier:)` (iOS 17) and its own
+/// `HTTPCookieStorage` instance for native (URLSession) login cookies. Two
+/// dashboards that share a parent domain (a.example.com / b.example.com with
+/// Domain=.example.com cookies) therefore can never see each other's live
+/// cookies — neither through WebKit nor through the suffix-matched
+/// `HTTPCookieStorage.shared` reads this layer used before.
 @MainActor
 enum DashboardCookiePersistence {
     private struct StoredCookie: Codable {
@@ -53,20 +61,98 @@ enum DashboardCookiePersistence {
         }
     }
 
-    static func restore(into cookieStore: WKHTTPCookieStore) async {
-        guard let data = KeychainHelper.loadDashboardCookies(),
+    static func restore(into cookieStore: WKHTTPCookieStore, dashboardID: UUID? = nil) async {
+        // Dashboard-scoped mirror first (#148); the legacy global record is
+        // only consulted when the caller has no dashboard identity (tests).
+        let data: Data?
+        if let dashboardID {
+            data = KeychainHelper.loadDashboardCookies(dashboardID: dashboardID)
+        } else {
+            data = KeychainHelper.loadDashboardCookies()
+        }
+        guard let data,
               let saved = try? JSONDecoder().decode([StoredCookie].self, from: data) else { return }
         for cookie in saved.compactMap(\.cookie) {
             await cookieStore.setCookie(cookie)
         }
     }
 
-    /// URLSession and WebKit maintain separate cookie stores. Copy the native
-    /// password-login session into WebKit before the bridge loads its first
-    /// dashboard request, keeping the existing dashboard API path authenticated.
-    static func restoreNativeCookies(into cookieStore: WKHTTPCookieStore, for baseURL: String) async {
+    /// The dashboard-owned WebKit session store. `WKWebsiteDataStore` caches
+    /// instances per identifier, so every caller for one dashboard — bridge,
+    /// sign-in WebView, cleanup — shares the same context, and no other
+    /// dashboard can ever read it. A nil dashboard (legacy/test construction)
+    /// falls back to the default store.
+    static func webKitStore(for dashboardID: UUID?) -> WKWebsiteDataStore {
+        guard let dashboardID else { return .default() }
+        return WKWebsiteDataStore(forIdentifier: dashboardID)
+    }
+
+    /// Clears a dashboard's identified WebKit session entirely. Call from
+    /// Sign Out / Remove Dashboard.
+    ///
+    /// `WKWebsiteDataStore.remove(forIdentifier:)` segfaults inside WebKit's
+    /// run-loop dispatch on current simulator hosts, so the session is
+    /// cleared by wiping the identified store's cookie store instead — the
+    /// same stable primitive the origin-scoped cleanup uses. The store is
+    /// exclusively this dashboard's, so a full wipe is the correct scope and
+    /// no other dashboard's session can ever be touched.
+    static func clearWebKitSession(for dashboardID: UUID) async {
+        removeNativeCookieStorage(for: dashboardID)
+        let store = WKWebsiteDataStore(forIdentifier: dashboardID)
+        let cookies = await store.httpCookieStore.allCookies()
+        for cookie in cookies {
+            await store.httpCookieStore.deleteCookie(cookie)
+        }
+    }
+
+    private nonisolated(unsafe) static var nativeCookieStorages: [UUID: HTTPCookieStorage] = [:]
+    private static let nativeCookieStorageLock = NSLock()
+
+    /// Every mutation of `nativeCookieStorages` goes through the lock: the
+    /// jar factory runs `nonisolated` (native login commits can arrive from
+    /// any executor), so cleanup from the MainActor must take the same lock.
+    private nonisolated static func removeNativeCookieStorage(for dashboardID: UUID) {
+        nativeCookieStorageLock.lock()
+        defer { nativeCookieStorageLock.unlock() }
+        nativeCookieStorages.removeValue(forKey: dashboardID)
+    }
+
+    /// The dashboard-owned native cookie jar for URLSession-based password
+    /// logins. Instances created here are never persisted to disk and are
+    /// never shared between dashboards; the durable record for this state is
+    /// the dashboard's scoped Keychain mirror. A nil dashboard (legacy/test
+    /// construction) falls back to the shared jar. Thread-safe by lock, so
+    /// both the MainActor bridge path and the nonisolated cleanup path can
+    /// use it.
+    nonisolated static func nativeCookieStorage(for dashboardID: UUID?) -> HTTPCookieStorage {
+        guard let dashboardID else { return .shared }
+        nativeCookieStorageLock.lock()
+        defer { nativeCookieStorageLock.unlock() }
+        if let storage = nativeCookieStorages[dashboardID] { return storage }
+        // A bare HTTPCookieStorage() does not retain cookies on every OS
+        // version; the ephemeral configuration's private storage is the
+        // supported way to hold an independent in-memory jar. It is never
+        // persisted and never shared with another dashboard (or with
+        // URLSession.shared).
+        let configuration = URLSessionConfiguration.ephemeral
+        let storage = configuration.httpCookieStorage ?? HTTPCookieStorage()
+        nativeCookieStorages[dashboardID] = storage
+        return storage
+    }
+
+    /// URLSession and WebKit maintain separate cookie stores. Copy the
+    /// dashboard's OWN native password-login session into WebKit before the
+    /// bridge loads its first dashboard request, keeping the existing
+    /// dashboard API path authenticated. Only the dashboard's owned jar is
+    /// consulted — never `HTTPCookieStorage.shared` — so another dashboard's
+    /// parent-domain cookies cannot be imported here.
+    static func restoreNativeCookies(
+        into cookieStore: WKHTTPCookieStore,
+        for baseURL: String,
+        dashboardID: UUID? = nil
+    ) async {
         guard let host = URL(string: baseURL)?.host?.lowercased() else { return }
-        let cookies = HTTPCookieStorage.shared.cookies ?? []
+        let cookies = nativeCookieStorage(for: dashboardID).cookies ?? []
         for cookie in cookies where cookieMatchesHost(cookie, host: host) {
             await cookieStore.setCookie(cookie)
         }
@@ -75,7 +161,8 @@ enum DashboardCookiePersistence {
     static func capture(
         from cookieStore: WKHTTPCookieStore,
         for url: URL?,
-        shouldPersist: (() -> Bool)? = nil
+        shouldPersist: (() -> Bool)? = nil,
+        dashboardID: UUID
     ) async {
         guard let host = url?.host?.lowercased() else { return }
         let cookies = await cookieStore.allCookies().filter { cookie in
@@ -86,7 +173,7 @@ enum DashboardCookiePersistence {
         // the durable mirror survives, so consult the guard here.
         if let shouldPersist, !shouldPersist() { return }
         guard let data = try? JSONEncoder().encode(cookies.map(StoredCookie.init)) else { return }
-        KeychainHelper.saveDashboardCookies(data)
+        KeychainHelper.saveDashboardCookies(data, dashboardID: dashboardID)
     }
 
     /// Removes dashboard-origin cookies from a WebKit cookie store. Disconnect
@@ -100,18 +187,37 @@ enum DashboardCookiePersistence {
         }
     }
 
-    /// Removes dashboard-origin cookies from the shared Foundation cookie
-    /// store. The native password-login flow authenticates through
-    /// `HTTPCookieStorage.shared`; without this, its session cookie outlives
-    /// Disconnect and can satisfy a later silent resume. `HTTPCookieStorage`
-    /// is thread-safe, so this is `nonisolated` to stay callable from any
-    /// context (including tests) without requiring main-actor isolation.
+    /// Removes the dashboard's ENTIRE owned native cookie jar (sign-out /
+    /// removal), and — for residue the dashboard era may have left in the
+    /// shared jar — deletes only cookies whose canonical domain EXACTLY
+    /// matches the dashboard host. Parent-domain cookies (Domain=.example.com
+    /// shared with a sibling dashboard) never exact-match, so cleaning one
+    /// dashboard can never retire a sibling's shared-domain cookie.
+    /// `HTTPCookieStorage` is thread-safe, so this stays `nonisolated` to
+    /// remain callable from any context (including tests).
+    nonisolated static func clearNativeCookies(dashboardID: UUID, baseURL: String) {
+        let jar = nativeCookieStorage(for: dashboardID)
+        for cookie in jar.cookies ?? [] {
+            jar.deleteCookie(cookie)
+        }
+        guard let host = URL(string: baseURL)?.host?.lowercased() else { return }
+        for cookie in HTTPCookieStorage.shared.cookies ?? [] {
+            let canonicalDomain = cookie.domain.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "."))
+            if canonicalDomain == host {
+                HTTPCookieStorage.shared.deleteCookie(cookie)
+            }
+        }
+    }
+
+    /// Legacy global cleanup for callers without a dashboard identity
+    /// (pre-#148 shapes and tests): suffix-matched clearing of the shared jar.
     nonisolated static func clearNativeCookies(for baseURL: String) {
         guard let host = URL(string: baseURL)?.host?.lowercased() else { return }
         for cookie in HTTPCookieStorage.shared.cookies ?? [] where cookieMatchesHost(cookie, host: host) {
             HTTPCookieStorage.shared.deleteCookie(cookie)
         }
     }
+
 
     nonisolated private static func cookieMatchesHost(_ cookie: HTTPCookie, host: String) -> Bool {
         let domain = cookie.domain.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "."))
@@ -212,6 +318,10 @@ final class DashboardTicketBridge: NSObject {
     let baseURL: String
     let webView: WKWebView
     let cloudflareAccess: CloudflareAccessCredentials?
+    /// The saved dashboard this bridge authenticates against, when one
+    /// exists — decides which dashboard's scoped cookie mirror is restored
+    /// into the WebKit store on load.
+    let dashboardID: UUID?
 
     private var isReady = false
     /// Whether the current dashboard page load has terminally failed (as
@@ -260,6 +370,7 @@ final class DashboardTicketBridge: NSObject {
     init(
         baseURL: String,
         cloudflareAccess: CloudflareAccessCredentials? = nil,
+        dashboardID: UUID? = nil,
         pendingRequests: DashboardTicketBridgePendingRequests = DashboardTicketBridgePendingRequests(),
         readinessPollAttempts: Int = 30,
         readinessPollInterval: Duration = .milliseconds(100),
@@ -268,13 +379,19 @@ final class DashboardTicketBridge: NSObject {
         let normalizedBaseURL = (try? ConnectionURLPolicy.normalizedBaseURL(baseURL)) ?? ""
         self.baseURL = normalizedBaseURL
         self.cloudflareAccess = cloudflareAccess
+        self.dashboardID = dashboardID ?? SavedDashboardRegistryStore.load()?.dashboardID(atNormalizedURL: normalizedBaseURL)
         self.pendingRequests = pendingRequests
         // A negative count would build an invalid Range in the polling loops.
         self.readinessPollAttempts = max(0, readinessPollAttempts)
         self.readinessPollInterval = readinessPollInterval
         self.requestDeadlineGraceMilliseconds = max(0, requestDeadlineGraceMilliseconds)
         let configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore = .default()
+        // The bridge lives inside the dashboard's OWN WebKit session store:
+        // another dashboard's WebView (or the default store) can never read
+        // these cookies, and sibling-host parent-domain cookies cannot leak
+        // in. Nil dashboards (legacy/test construction) keep the default
+        // store.
+        configuration.websiteDataStore = DashboardCookiePersistence.webKitStore(for: self.dashboardID)
         if let script = cloudflareAccess?.fetchInjectionUserScript(expectedBaseURL: normalizedBaseURL), !script.isEmpty {
             configuration.userContentController.addUserScript(
                 WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true)
@@ -286,10 +403,14 @@ final class DashboardTicketBridge: NSObject {
         webView.navigationDelegate = self
         Task { [weak self] in
             guard let self else { return }
-            await DashboardCookiePersistence.restore(into: self.webView.configuration.websiteDataStore.httpCookieStore)
+            await DashboardCookiePersistence.restore(
+                into: self.webView.configuration.websiteDataStore.httpCookieStore,
+                dashboardID: self.dashboardID
+            )
             await DashboardCookiePersistence.restoreNativeCookies(
                 into: self.webView.configuration.websiteDataStore.httpCookieStore,
-                for: self.baseURL
+                for: self.baseURL,
+                dashboardID: self.dashboardID
             )
             guard !self.isInvalidated else { return }
             self.loadDashboardSession()
@@ -344,10 +465,14 @@ final class DashboardTicketBridge: NSObject {
         rejectPending(with: DashboardTicketBridgeError.notReady)
         Task { [weak self] in
             guard let self else { return }
-            await DashboardCookiePersistence.restore(into: self.webView.configuration.websiteDataStore.httpCookieStore)
+            await DashboardCookiePersistence.restore(
+                into: self.webView.configuration.websiteDataStore.httpCookieStore,
+                dashboardID: self.dashboardID
+            )
             await DashboardCookiePersistence.restoreNativeCookies(
                 into: self.webView.configuration.websiteDataStore.httpCookieStore,
-                for: self.baseURL
+                for: self.baseURL,
+                dashboardID: self.dashboardID
             )
             guard !self.isInvalidated else { return }
             self.loadDashboardSession()
@@ -750,15 +875,20 @@ extension DashboardTicketBridge: WKNavigationDelegate {
             // Late cookie capture after disconnect must not resurrect the
             // durable mirror AppState just cleared: the write guard runs at
             // the moment of the keychain save, after the cookie-store await.
-            Task { @MainActor in
-                await DashboardCookiePersistence.capture(
-                    from: webView.configuration.websiteDataStore.httpCookieStore,
-                    for: expectedURL,
-                    shouldPersist: { [weak self] in
-                        guard let self else { return false }
-                        return !self.isInvalidated
-                    }
-                )
+            // The mirror is dashboard-owned: without a dashboard identity
+            // there is no record to write.
+            if let dashboardID = self.dashboardID {
+                Task { @MainActor in
+                    await DashboardCookiePersistence.capture(
+                        from: webView.configuration.websiteDataStore.httpCookieStore,
+                        for: expectedURL,
+                        shouldPersist: { [weak self] in
+                            guard let self else { return false }
+                            return !self.isInvalidated
+                        },
+                        dashboardID: dashboardID
+                    )
+                }
             }
         }
     }

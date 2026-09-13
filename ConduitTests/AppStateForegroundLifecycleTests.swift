@@ -22,7 +22,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                 return SessionResumeResult(sessionId: id == "stored-a" ? "runtime-a" : id,
                     messages: [], snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)]))
             },
-            persistedTranscript: { _, _ in .payload([
+            persistedTranscript: { _, _, _ in .payload([
                 "session_id": "stored-a", "messages": rows,
                 "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 2]
             ]) },
@@ -76,7 +76,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                     snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                 )
             },
-            persistedTranscript: { _, _ in .payload([
+            persistedTranscript: { _, _, _ in .payload([
                 "session_id": "stored-a", "messages": rows,
                 "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 2]
             ]) },
@@ -177,7 +177,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     // The bounded tail always matches what the device last
                     // hydrated: same-turn continuity, provably unchanged.
@@ -271,7 +271,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     .payload([
                         "messages": [
                             ["id": "user", "role": "user", "content": "Question", "timestamp": "1"]
@@ -347,7 +347,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     return .payload(seedPayload)
                 },
@@ -416,7 +416,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     return .payload([
                         "messages": [
@@ -533,7 +533,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     return .payload([
                         "messages": [
@@ -618,7 +618,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     .payload([
                         "messages": [
                             ["id": "user", "role": "user", "content": "Earlier", "timestamp": "1"]
@@ -698,7 +698,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     if transcriptReads == 1 {
                         // The seeding hydration: two durable rows held.
@@ -810,7 +810,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         )
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     if transcriptReads == 1 {
                         return .payload([
@@ -897,7 +897,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     return .payload([
                         "messages": [
@@ -972,7 +972,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     return .payload(seedPayload)
                 },
@@ -1033,7 +1033,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     if transcriptReads == 1 {
                         return .payload([
@@ -1116,7 +1116,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     if transcriptReads == 1 {
                         return .payload([
@@ -1201,7 +1201,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     if transcriptReads == 1 {
                         return .payload([
@@ -1290,7 +1290,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     if transcriptReads == 1 {
                         return .payload([
@@ -1394,7 +1394,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     return .payload([
                         "messages": [],
@@ -1451,7 +1451,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     if transcriptReads == 1 {
                         return .payload([
@@ -1561,7 +1561,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     if transcriptReads == 1 {
                         return .payload([
@@ -1640,7 +1640,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     if transcriptReads == 1 {
                         return .payload([
@@ -1720,7 +1720,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     if transcriptReads == 1 {
                         return .payload(seedPayload)
@@ -1801,7 +1801,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(true)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     if transcriptReads == 1 {
                         return .payload(midTurnPayload)
@@ -1879,7 +1879,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         )
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     if transcriptReads == 1 {
                         return .payload([
@@ -1969,7 +1969,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(true)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     if transcriptReads == 1 {
                         return .payload([
@@ -2068,7 +2068,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(true)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     return .payload(midTurnPayload)
                 },
@@ -2144,7 +2144,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     .payload([
                         "messages": [
                             ["id": "100", "role": "user", "content": "Earlier", "timestamp": "1"]
@@ -2214,7 +2214,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     return .payload([
                         "messages": [
@@ -3074,7 +3074,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     if transcriptReads == 1 {
                         // The pre-submit hydration: two durable rows held.
@@ -3164,7 +3164,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     return .payload([
                         "messages": [
@@ -3232,7 +3232,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     if transcriptReads == 1 {
                         // Pre-submit hydration: the older identical "go on".
@@ -3305,7 +3305,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in .unavailable },
+                persistedTranscript: { _, _, _ in .unavailable },
                 sendPrompt: { _, _, _ in
                     submitCount += 1
                     throw HermesError.timeout("prompt.submit")
@@ -3513,7 +3513,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     .payload([
                         "messages": [
                             ["id": "user", "role": "user", "content": "Question", "timestamp": "1"]
@@ -3591,7 +3591,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     if transcriptReads == 1 {
                         // Pre-submit hydration: two durable rows held.
@@ -3679,7 +3679,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     if transcriptReads == 1 {
                         // Pre-submit hydration: the first identical turn is
@@ -3758,7 +3758,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     .payload([
                         "messages": [
                             ["id": "501", "role": "user", "content": "continue", "timestamp": "5"]
@@ -3819,7 +3819,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     .payload([
                         "messages": [
                             ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
@@ -3903,7 +3903,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     if transcriptReads == 1 {
                         // Pre-submit hydration: one durable anchor row held.
@@ -3983,7 +3983,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                             snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                         )
                     },
-                    persistedTranscript: { _, _ in
+                    persistedTranscript: { _, _, _ in
                         .payload([
                             "messages": [
                                 ["id": "501", "role": "user", "content": "continue", "timestamp": "5"]
@@ -4059,7 +4059,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     // Every read returns only the durable pre-turn history:
                     // the in-flight turn has persisted nothing.
@@ -4175,7 +4175,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         )
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     if transcriptReads == 1 {
                         return .payload([
@@ -4276,7 +4276,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     if transcriptReads == 1 {
                         return .payload([
@@ -4389,7 +4389,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     if transcriptReads == 1 {
                         return .payload([
@@ -4484,7 +4484,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     if transcriptReads == 1 {
                         return .payload(seedPayload)
@@ -4588,7 +4588,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     if transcriptReads == 1 {
                         return .payload([
@@ -4683,7 +4683,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     if transcriptReads == 1 {
                         return .payload([
@@ -4799,7 +4799,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         )
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     if transcriptReads == 1 {
                         return .payload([
@@ -4897,7 +4897,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     if transcriptReads == 1 {
                         // A positively empty conversation: no durable rows.
@@ -5001,7 +5001,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     if transcriptReads == 1 {
                         return .payload([
@@ -5168,7 +5168,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         )
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     if transcriptReads == 1 {
                         return .payload([
@@ -5291,7 +5291,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         )
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     if transcriptReads == 1 {
                         return .payload([
@@ -5442,7 +5442,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     return .payload(emptyPage)
                 },
@@ -5518,7 +5518,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     if transcriptReads == 1 {
                         return .payload([
@@ -5651,7 +5651,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     if transcriptReads == 1 {
                         return .payload([
@@ -5765,7 +5765,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     if transcriptReads == 1 {
                         return .payload([
@@ -5964,7 +5964,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     let rows = persistedRowsOnDebtRead ?? seedRows
                     return .payload([
@@ -6029,7 +6029,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     if transcriptReads == 1 {
                         return .payload([
@@ -6175,7 +6175,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     if transcriptReads == 1 {
                         return .payload([
@@ -6349,7 +6349,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     if transcriptReads == 1 {
                         return .payload([
@@ -6604,7 +6604,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     if transcriptReads == 1 {
                         // The pre-submit hydration: two durable rows held.
@@ -6722,7 +6722,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     if transcriptReads == 1 {
                         return .payload([
@@ -6835,7 +6835,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     // Every read, including recovery's, sees only the
                     // pre-submit tail: the submitted row is not provable.
@@ -6986,7 +6986,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     if transcriptReads == 1 {
                         return .payload([
@@ -7090,7 +7090,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     return .payload([
                         "messages": [
@@ -7219,7 +7219,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     if transcriptReads == 1 {
                         return .payload([
@@ -7356,7 +7356,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     if transcriptReads == 1 {
                         return .payload([
@@ -7468,7 +7468,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     transcriptReads += 1
                     if transcriptReads == 1 {
                         return .payload([
@@ -7589,7 +7589,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     // Stubbed so the transcriptReads assertions below are
                     // live: any accidental verifier or debt read fails them.
                     transcriptReads += 1
@@ -7843,7 +7843,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     .payload([
                         "messages": [
                             ["id": "user", "role": "user", "content": "Question", "timestamp": "1"]

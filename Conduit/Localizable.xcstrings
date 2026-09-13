@@ -331,6 +331,40 @@
         }
       }
     },
+    "%lld dashboards" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld dashboard"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld dashboards"
+                }
+              }
+            }
+          }
+        },
+        "zh-Hans" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld 个仪表板"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "%lld earlier events hidden" : {
       "localizations" : {
         "en" : {
@@ -525,6 +559,36 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "回合因错误停止"
+          }
+        }
+      }
+    },
+    "Active dashboard" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前仪表板"
+          }
+        }
+      }
+    },
+    "Add Dashboard" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加仪表板"
+          }
+        }
+      }
+    },
+    "Add your first Hermes dashboard" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加你的第一个 Hermes 仪表板"
           }
         }
       }
@@ -2469,6 +2533,26 @@
         }
       }
     },
+    "Compressing…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在压缩…"
+          }
+        }
+      }
+    },
+    "Compression is already in progress for this conversation." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此对话已在进行压缩。"
+          }
+        }
+      }
+    },
     "Compression target" : {
       "localizations" : {
         "zh-Hans" : {
@@ -2755,6 +2839,16 @@
         }
       }
     },
+    "Connect to a dashboard before creating a pairing code." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "先连接一个仪表板，再创建配对码。"
+          }
+        }
+      }
+    },
     "Connect to Hermes to configure voice for this profile." : {
       "localizations" : {
         "zh-Hans" : {
@@ -2786,6 +2880,16 @@
       }
     },
     "Connecting..." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接中…"
+          }
+        }
+      }
+    },
+    "Connecting…" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -3169,6 +3273,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "无法检查仪表盘登录选项：%@"
+          }
+        }
+      }
+    },
+    "Could not connect to that dashboard to open this notification." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法连接该仪表板，无法打开此通知。"
           }
         }
       }
@@ -3739,6 +3853,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "暗色"
+          }
+        }
+      }
+    },
+    "Dashboard" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仪表板"
           }
         }
       }
@@ -6141,6 +6265,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "安装通知插件"
+          }
+        }
+      }
+    },
+    "Install the notifier once on each gateway, then create a short-lived pairing code here for each Hermes dashboard you want to reach." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在每个网关上安装一次 notifier，然后在此为你要通知的每个 Hermes 仪表板创建短期配对码。"
           }
         }
       }
@@ -8619,6 +8753,16 @@
         }
       }
     },
+    "Pair the active dashboard" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "配对当前仪表板"
+          }
+        }
+      }
+    },
     "PCM sample rate requested from Hermes." : {
       "localizations" : {
         "zh-Hans" : {
@@ -9705,6 +9849,26 @@
         }
       }
     },
+    "Remove Dashboard" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除仪表板"
+          }
+        }
+      }
+    },
+    "Remove Dashboard?" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除仪表板？"
+          }
+        }
+      }
+    },
     "Remove dependency %@" : {
       "localizations" : {
         "en" : {
@@ -10121,6 +10285,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在 Hermes 主机上以其本地 Whisper 安装运行，而非这台 iPhone。"
+          }
+        }
+      }
+    },
+    "Saved Dashboards" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已保存的仪表板"
           }
         }
       }
@@ -11035,12 +11209,42 @@
         }
       }
     },
+    "Sign In" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "登录"
+          }
+        }
+      }
+    },
+    "Sign In required" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要登录"
+          }
+        }
+      }
+    },
     "Sign In to Reconnect" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "登录以重新连接"
+          }
+        }
+      }
+    },
+    "Sign Out of This Dashboard" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "退出登录此仪表板"
           }
         }
       }
@@ -11699,6 +11903,26 @@
         }
       }
     },
+    "Switch" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "切换"
+          }
+        }
+      }
+    },
+    "Switch between your saved Hermes dashboards. Each dashboard keeps its own sign-in and cookies on this device." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在已保存的 Hermes 仪表板之间切换。每个仪表板在此设备上保留各自的登录状态和 Cookie。"
+          }
+        }
+      }
+    },
     "Switch the session personality" : {
       "localizations" : {
         "zh-Hans" : {
@@ -11745,6 +11969,36 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "系统通知"
+          }
+        }
+      }
+    },
+    "This dashboard's saved sign-in and cookies will be deleted from this device. Other dashboards are not affected." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此仪表板已保存的登录信息和 Cookie 将从此设备删除。其他仪表板不受影响。"
+          }
+        }
+      }
+    },
+    "This notification belongs to a dashboard this device doesn't recognize. Add that dashboard again to continue." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此通知属于此设备无法识别的仪表板。请重新添加该仪表板后继续。"
+          }
+        }
+      }
+    },
+    "This notification predates multi-dashboard pairing. Update the notifier on the sending gateway and pair it again to continue." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此通知早于多仪表板配对。请在发送通知的网关上更新 notifier 并重新配对后继续。"
           }
         }
       }

@@ -813,6 +813,246 @@ final class HermesClientTests: XCTestCase {
         XCTAssertNil(snapshot.pendingClarify)
     }
 
+    // MARK: - session.compress
+
+    func testSessionCompressTimeoutPinsDedicatedBudget() {
+        // The budget must exceed the gateway's 630s compute-host compress
+        // wait cap (_COMPUTE_HOST_COMPRESS_WAIT_CAP_SECS): the gateway answers
+        // `status: "pending"` after the cap, so a smaller budget reports a
+        // false client timeout while the host is still compressing (#97948).
+        XCTAssertEqual(HermesClient.sessionCompressTimeout, 660)
+        XCTAssertGreaterThan(HermesClient.sessionCompressTimeout, HermesClient.requestTimeout)
+    }
+
+    func testCompressSessionSendsDedicatedRPCAndAdoptsResponse() async throws {
+        let transport = FakeTransport()
+        let socket = FakeSocket()
+        transport.nextSocket = { socket }
+        let client = makeClient(transport: transport)
+        let connectTask = Task { try? await client.connect() }
+        transport.open(socket)
+        try await awaitCompletion(of: connectTask, "connect() to complete after the handshake")
+
+        let sent = Gate()
+        socket.onSend = { sent.signal() }
+        let compressTask = Task<SessionCompressResult, Error> {
+            try await client.compressSession(sessionId: "sess-c")
+        }
+        try await sent.wait("the session.compress request to be sent")
+
+        let request = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(try XCTUnwrap(socket.sentTexts.last).utf8)) as? [String: Any]
+        )
+        XCTAssertEqual(request["method"] as? String, "session.compress")
+        let params = try XCTUnwrap(request["params"] as? [String: Any])
+        XCTAssertEqual(params["session_id"] as? String, "sess-c")
+        XCTAssertNil(params["focus_topic"], "A missing focus topic must be omitted, not sent as an empty string")
+
+        let id = try XCTUnwrap(request["id"] as? Int)
+        let response: [String: Any] = [
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": [
+                "status": "compressed",
+                "removed": 9,
+                "summary": [
+                    "headline": "Compressed 13 → 4 messages",
+                    "token_line": "~12,000 → ~3,100 tokens"
+                ],
+                "messages": [
+                    ["role": "user", "content": "Summary carrier", "timestamp": "2026-09-13T08:00:00Z"],
+                    ["role": "assistant", "content": "Tail answer", "timestamp": "2026-09-13T08:00:05Z"]
+                ]
+            ]
+        ]
+        socket.deliver(String(data: try JSONSerialization.data(withJSONObject: response), encoding: .utf8)!)
+
+        let result = try await awaitResult(of: compressTask, "the session.compress response")
+        XCTAssertEqual(result.status, .compressed)
+        XCTAssertFalse(result.isAborted)
+        XCTAssertFalse(result.lockHeld)
+        XCTAssertEqual(result.removed, 9)
+        XCTAssertTrue(result.hasMessagesPayload)
+        XCTAssertEqual(result.messages.map { $0.role }, [.user, .assistant])
+        XCTAssertEqual(result.summaryHeadline, "Compressed 13 → 4 messages")
+        client.disconnect()
+    }
+
+    func testCompressSessionSendsFocusTopicWhenProvided() async throws {
+        let transport = FakeTransport()
+        let socket = FakeSocket()
+        transport.nextSocket = { socket }
+        let client = makeClient(transport: transport)
+        let connectTask = Task { try? await client.connect() }
+        transport.open(socket)
+        try await awaitCompletion(of: connectTask, "connect() to complete after the handshake")
+
+        let sent = Gate()
+        socket.onSend = { sent.signal() }
+        let compressTask = Task<SessionCompressResult, Error> {
+            try await client.compressSession(sessionId: "sess-c", focusTopic: "  auth refactor  ")
+        }
+        try await sent.wait("the session.compress request to be sent")
+
+        let request = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(try XCTUnwrap(socket.sentTexts.last).utf8)) as? [String: Any]
+        )
+        let params = try XCTUnwrap(request["params"] as? [String: Any])
+        XCTAssertEqual(params["focus_topic"] as? String, "auth refactor", "The focus topic ships trimmed, like upstream Desktop")
+
+        let id = try XCTUnwrap(request["id"] as? Int)
+        let response: [String: Any] = [
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": ["status": "pending", "message": "compression still running in the background"]
+        ]
+        socket.deliver(String(data: try JSONSerialization.data(withJSONObject: response), encoding: .utf8)!)
+
+        let result = try await awaitResult(of: compressTask, "the pending session.compress response")
+        XCTAssertTrue(result.isPending)
+        XCTAssertEqual(result.message, "compression still running in the background")
+        XCTAssertFalse(result.hasMessagesPayload)
+        client.disconnect()
+    }
+
+    func testSessionCompressResultDistinguishesUpstreamShapes() {
+        // Compute-host pending: the bounded gateway wait expired, the host is
+        // still compressing — a success-shaped protocol answer, not an error.
+        let pending = SessionCompressResult(from: .object([
+            "status": .string("pending"),
+            "message": .string("compression still running in the background; the transcript will refresh when it finishes")
+        ]))
+        XCTAssertTrue(pending.isPending)
+        XCTAssertNotNil(pending.message)
+        XCTAssertFalse(pending.hasMessagesPayload)
+        XCTAssertFalse(pending.isAborted)
+
+        // Concurrent compression holds the lock: no `status`, never an error.
+        let lockHeld = SessionCompressResult(from: .object([
+            "compressed": .bool(false),
+            "lock_held": .bool(true),
+            "message": .string("compression already running")
+        ]))
+        XCTAssertTrue(lockHeld.lockHeld)
+        XCTAssertNil(lockHeld.status)
+        XCTAssertEqual(lockHeld.message, "compression already running")
+
+        // In-process abort: nothing changed, transcript must not be replaced.
+        let aborted = SessionCompressResult(from: .object([
+            "status": .string("aborted"),
+            "summary": .object(["headline": .string("compression aborted"), "aborted": .bool(true)])
+        ]))
+        XCTAssertTrue(aborted.isAborted)
+        XCTAssertEqual(aborted.summaryHeadline, "compression aborted")
+
+        // Compute-host results can carry the abort flag inside `summary`
+        // while `status` still reads "compressed".
+        let summaryAborted = SessionCompressResult(from: .object([
+            "status": .string("compressed"),
+            "summary": .object(["aborted": .bool(true)])
+        ]))
+        XCTAssertTrue(summaryAborted.isAborted)
+
+        // An absent `messages` payload is distinct from an empty one.
+        let absent = SessionCompressResult(from: .object(["status": .string("compressed"), "removed": .number(3)]))
+        XCTAssertFalse(absent.hasMessagesPayload)
+        XCTAssertTrue(absent.messages.isEmpty)
+        XCTAssertEqual(absent.removed, 3)
+
+        // Lock-held responses carry no status and must not read as pending.
+        XCTAssertFalse(lockHeld.isPending)
+    }
+
+    func testCompressSessionTimeoutSurfacesAsTimeoutOfTheCompressMethod() async throws {
+        let transport = FakeTransport()
+        let socket = FakeSocket()
+        transport.nextSocket = { socket }
+        let client = makeClient(transport: transport)
+        let connectTask = Task { try? await client.connect() }
+        transport.open(socket)
+        try await awaitCompletion(of: connectTask, "connect() to complete after the handshake")
+
+        let compressTask = Task<SessionCompressResult, Error> {
+            try await client.compressSession(sessionId: "sess-slow", timeout: 0.2)
+        }
+        do {
+            _ = try await awaitResult(of: compressTask, "the compress timeout")
+            XCTFail("Expected compressSession to time out without a response")
+        } catch HermesError.timeout(let method) {
+            XCTAssertEqual(method, "session.compress")
+        } catch {
+            XCTFail("Expected HermesError.timeout, got \(error)")
+        }
+        client.disconnect()
+    }
+
+    func testSessionCompressResultRejectsOutOfRangeAndInexactRemoved() {
+        // `Int(Double)` traps outside the Int64 range — `removed` is
+        // gateway-authored, so an out-of-range payload must degrade to nil,
+        // never crash the client.
+        let outOfRange = SessionCompressResult(from: .object([
+            "status": .string("compressed"),
+            "removed": .number(1e300)
+        ]))
+        XCTAssertNil(outOfRange.removed)
+
+        let justOverMax = SessionCompressResult(from: .object([
+            "removed": .number(9_223_372_036_854_775_808.0) // 2^63 exactly
+        ]))
+        XCTAssertNil(justOverMax.removed)
+
+        // Non-integer doubles are rejected too: only exact whole values
+        // convert.
+        let nonInteger = SessionCompressResult(from: .object([
+            "removed": .number(2.5)
+        ]))
+        XCTAssertNil(nonInteger.removed)
+
+        // Exact in-range values still convert, including both Int64 edges:
+        // -2^63 converts to Int.min, and the largest admitted Double
+        // (2^63 − 1024, the spacing at that magnitude) converts to
+        // Int.max − 1023.
+        let whole = SessionCompressResult(from: .object(["removed": .number(9)]))
+        XCTAssertEqual(whole.removed, 9)
+        let minBound = SessionCompressResult(from: .object([
+            "removed": .number(-9_223_372_036_854_775_808.0) // -2^63 == Int.min
+        ]))
+        XCTAssertEqual(minBound.removed, Int.min)
+        let maxEdge = SessionCompressResult(from: .object([
+            "removed": .number(9_223_372_036_854_775_808.0 - 1024.0)
+        ]))
+        XCTAssertEqual(maxEdge.removed, Int.max - 1023)
+    }
+
+    func testMissingRPCMethodClassificationMirrorsUpstream() {
+        // The gateway answers unknown methods with JSON-RPC -32601
+        // ("unknown method: …", tui_gateway/server.py).
+        XCTAssertTrue(HermesClient.isMissingRPCMethod(
+            RpcError(code: -32601, message: "unknown method: session.compress")
+        ))
+        XCTAssertTrue(HermesClient.isMissingRPCMethod(
+            RpcError(code: nil, message: "Method not found: session.compress")
+        ))
+        XCTAssertTrue(HermesClient.isMissingRPCMethod(
+            NSError(domain: "test", code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: "no such method: session.compress"])
+        ))
+
+        // NOT in the class: a timeout (compression is legitimately slow),
+        // busy rejections, compression failures, transport loss.
+        XCTAssertFalse(HermesClient.isMissingRPCMethod(
+            HermesError.timeout("session.compress")
+        ))
+        XCTAssertFalse(HermesClient.isMissingRPCMethod(
+            RpcError(code: 4009, message: "session busy — /interrupt the current turn before /compress")
+        ))
+        XCTAssertFalse(HermesClient.isMissingRPCMethod(
+            RpcError(code: 5005, message: "compression failed: provider exploded")
+        ))
+        XCTAssertFalse(HermesClient.isMissingRPCMethod(HermesError.connectionClosed))
+        XCTAssertFalse(HermesClient.isMissingRPCMethod(HermesError.notConnected))
+    }
+
     // MARK: - Helpers
 
     private final class ResultBox<T>: @unchecked Sendable {

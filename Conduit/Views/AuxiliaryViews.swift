@@ -433,7 +433,7 @@ private struct LegacySettingsView: View {
 // MARK: - Settings home and detail routes
 
 private enum SettingsDestination: Hashable {
-    case profile, model, chat, voice, workspace, memory, capabilities, gateway, appearance, notifications, about
+    case profile, model, chat, voice, workspace, memory, capabilities, gateway, savedDashboards, appearance, notifications, about
 }
 
 enum ProfileSettingControl {
@@ -573,6 +573,8 @@ struct SettingsView: View {
             CapabilitiesView()
         case .gateway:
             GatewaySettingsDetail(snapshot: snapshot, reconnect: reconnect, disconnect: disconnect, close: { dismiss() }, saveCloudflareAccess: appState.saveCloudflareAccess, removeCloudflareAccess: appState.removeCloudflareAccess)
+        case .savedDashboards:
+            SavedDashboardsSettingsDetail(close: { dismiss() })
         case .appearance:
             AppearanceSettingsDetail(theme: appState.themePreference, saveTheme: saveTheme)
         case .notifications:
@@ -646,6 +648,7 @@ private struct SettingsHome: View {
                         settingsLink(.capabilities, icon: "puzzlepiece.extension", title: AppLocalization.string("Capabilities"), detail: AppLocalization.string("Skills, toolsets, and categories"))
                     }
                     homeSection("Connection", tint: .conduitAura) {
+                        settingsLink(.savedDashboards, icon: "server.rack", title: AppLocalization.string("Saved Dashboards"), detail: savedDashboardsDetail, identifier: "settings.saved-dashboards")
                         settingsLink(.gateway, icon: "radio", title: AppLocalization.string("Gateway"), detail: snapshot.server ?? AppLocalization.string("Not connected"), identifier: "settings.gateway")
                         settingsActionRow(
                             icon: "checkmark.circle",
@@ -654,13 +657,13 @@ private struct SettingsHome: View {
                             identifier: "settings.connection-setup"
                         ) {
                             let seedURL = currentDashboardURL
-                            let saved = KeychainHelper.loadCredentials()
+                            let saved = appState.savedCredentialsForDashboard(at: seedURL)
                             let seeded = ConnectionSetupSeeding.wizardCredentials(for: seedURL, saved: saved)
                             connectionSetupSeed = ConnectionSetupSeed(
                                 url: seedURL,
                                 username: seeded?.username ?? "",
                                 password: seeded?.password ?? "",
-                                cloudflareAccess: KeychainHelper.loadCloudflareAccess(for: seedURL)
+                                cloudflareAccess: appState.dashboardScopedCloudflareAccess(for: seedURL)
                             )
                         }
                     }
@@ -702,8 +705,8 @@ private struct SettingsHome: View {
                 let plan = ConnectionSetupApplication.plan(
                     result: result,
                     currentDashboardURL: seed.url,
-                    savedCredentials: KeychainHelper.loadCredentials(),
-                    savedCloudflareAccess: KeychainHelper.loadCloudflareAccess(for: seed.url)
+                    savedCredentials: appState.savedCredentialsForDashboard(at: seed.url),
+                    savedCloudflareAccess: appState.dashboardScopedCloudflareAccess(for: seed.url)
                 )
                 plan.perform(appState: appState)
                 pendingAppliedNotice = !plan.isEmpty
@@ -721,6 +724,19 @@ private struct SettingsHome: View {
     /// tested result never writes to the live session itself.
     private var currentDashboardURL: String {
         appState.connection?.baseUrl ?? appState.lastDashboardURL
+    }
+
+    /// Saved Dashboards row detail: the active dashboard's label plus how
+    /// many dashboards are saved.
+    private var savedDashboardsDetail: String {
+        let registry = appState.savedDashboardRegistry
+        guard !registry.dashboards.isEmpty else {
+            return AppLocalization.string("Add your first Hermes dashboard")
+        }
+        let activeLabel = registry.activeDashboardID
+            .flatMap { registry.dashboard(with: $0)?.label }
+        let count = AppLocalization.string("\(registry.dashboards.count) dashboards")
+        return activeLabel.map { "\($0) · \(count)" } ?? count
     }
 
     private var profileDisplayName: String {
@@ -1511,7 +1527,7 @@ private struct GatewaySettingsDetail: View {
                         .font(.footnote).foregroundStyle(.secondary)
                 }
             }
-            Button(role: .destructive) { disconnect(); close() } label: { Label("Disconnect from Hermes", systemImage: "rectangle.portrait.and.arrow.right").frame(maxWidth: .infinity).frame(height: 48) }
+            Button(role: .destructive) { disconnect(); close() } label: { Label(AppLocalization.string("Sign Out of This Dashboard"), systemImage: "rectangle.portrait.and.arrow.right").frame(maxWidth: .infinity).frame(height: 48) }
                 .conduitGlassControl(cornerRadius: 18, tint: .red.opacity(0.18))
         }
         .navigationTitle("Gateway")
@@ -1613,6 +1629,7 @@ private struct AppearanceSettingsDetail: View {
 private struct NotificationsSettingsDetail: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @ObservedObject private var notifications = PushNotificationService.shared
+    @EnvironmentObject private var appState: AppState
     @AppStorage("conduit.relayURL") private var customRelayURL: String = ""
 
     var body: some View {
@@ -1717,14 +1734,21 @@ private struct NotificationsSettingsDetail: View {
                 .task { await notifications.refreshMeta() }
 
                 ConduitSettingsSection(title: AppLocalization.string("Connect a Hermes profile"), symbol: "link.badge.plus", tint: .conduitAura) {
-                    Text("Install the notifier once on the gateway, then create a short-lived pairing code here for each Hermes profile you want to reach.")
+                    Text("Install the notifier once on each gateway, then create a short-lived pairing code here for each Hermes dashboard you want to reach.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                     NotificationSetupCommand(step: 1, title: AppLocalization.string("Install the notifier"), command: "hermes plugins install kaishi00/hermes-conduit-notifier --enable")
                     NotificationSetupCommand(step: 2, title: AppLocalization.string("Restart the gateway"), command: "hermes gateway restart")
                     Button {
                         Task {
-                            await notifications.createPairingCode()
+                            // Pairings are bound to the active dashboard
+                            // (#148): pushes from the claimed gateway are
+                            // stamped with its identity, so server A can
+                            // never act against server B. The action is
+                            // disabled without an active dashboard — Conduit
+                            // never creates a new unscoped pairing.
+                            guard let dashboardID = appState.activeDashboardID else { return }
+                            await notifications.createPairingCode(dashboardID: dashboardID)
                             notifications.pairingCode == nil ? Haptics.error() : Haptics.success()
                         }
                     } label: {
@@ -1732,11 +1756,16 @@ private struct NotificationsSettingsDetail: View {
                             .frame(maxWidth: .infinity)
                             .frame(height: 46)
                     }
-                    .disabled(notifications.isWorking)
+                    .disabled(notifications.isWorking || appState.activeDashboardID == nil)
                     .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.16))
+                    if appState.activeDashboardID == nil {
+                        Text("Connect to a dashboard before creating a pairing code.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
 
                     if let code = notifications.pairingCode {
-                        NotificationSetupCommand(step: 3, title: AppLocalization.string("Pair the active profile"), command: "hermes conduit-push pair \(code)")
+                        NotificationSetupCommand(step: 3, title: AppLocalization.string("Pair the active dashboard"), command: "hermes conduit-push pair \(code)")
                         if let expiry = notifications.pairingExpiry {
                             Text("This code expires \(expiry).")
                                 .font(.caption)
@@ -1930,7 +1959,7 @@ private struct AboutSettingsDetail: View {
 
 }
 
-private struct SettingsDetailContainer<Content: View>: View {
+struct SettingsDetailContainer<Content: View>: View {
     var compact = false
     @ViewBuilder let content: Content
     var body: some View {

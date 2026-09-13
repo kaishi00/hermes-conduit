@@ -37,7 +37,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
                     snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                 )
             },
-            persistedTranscript: { _, _ in
+            persistedTranscript: { _, _, _ in
                 // Raw history payload exactly as the dashboard messages
                 // endpoint returns it; the production normalizer parses it.
                 .payload([
@@ -119,7 +119,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
                     snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                 )
             },
-            persistedTranscript: { _, _ in
+            persistedTranscript: { _, _, _ in
                 // Raw history payload exactly as the dashboard messages
                 // endpoint returns it, including a hidden scaffolding row, an
                 // auto-continue pivot, and a display_content compaction
@@ -234,7 +234,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
                     )
                 )
             },
-            persistedTranscript: { _, _ in
+            persistedTranscript: { _, _, _ in
                 .payload([
                     "session_id": "stored-a",
                     "messages": [
@@ -320,7 +320,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
                     snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                 )
             },
-            persistedTranscript: { _, _ in .payload(["session_id": "stored-a", "messages": rows]) }
+            persistedTranscript: { _, _, _ in .payload(["session_id": "stored-a", "messages": rows]) }
         )
         harness.appState.sessions = [active]
 
@@ -374,7 +374,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
                     snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                 )
             },
-            persistedTranscript: { _, _ in
+            persistedTranscript: { _, _, _ in
                 // The gateway predates the session-messages endpoint.
                 .unavailable
             }
@@ -416,7 +416,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
                     snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                 )
             },
-            persistedTranscript: { _, _ in .failed(failure) }
+            persistedTranscript: { _, _, _ in .failed(failure) }
         )
         harness.appState.sessions = [active]
 
@@ -490,7 +490,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     .failed(DashboardTicketBridgeError.http(status: status, detail: "missing endpoint"))
                 }
             )
@@ -523,7 +523,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
                     snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                 )
             },
-            persistedTranscript: { _, _ in
+            persistedTranscript: { _, _, _ in
                 try? await Task.sleep(for: .milliseconds(150))
                 return .payload([
                     "session_id": "stored-a",
@@ -647,7 +647,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
                     snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                 )
             },
-            persistedTranscript: { _, _ in .unavailable }
+            persistedTranscript: { _, _, _ in .unavailable }
         )
         harness.appState.sessions = [active]
 
@@ -676,7 +676,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
                     snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                 )
             },
-            persistedTranscript: { _, _ in
+            persistedTranscript: { _, _, _ in
                 // An unrelated authentication failure on the history source.
                 .failed(DashboardTicketBridgeError.signInRequired)
             }
@@ -709,7 +709,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
                     snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                 )
             },
-            persistedTranscript: { _, _ in
+            persistedTranscript: { _, _, _ in
                 // A 200 response without the expected messages array.
                 .payload(["session_id": "stored-a"])
             }
@@ -794,7 +794,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
                     snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                 )
             },
-            persistedTranscript: { _, _ in
+            persistedTranscript: { _, _, _ in
                 // The session holds 2,000 persisted rows; the paginated
                 // endpoint answers with only the newest 120 plus its
                 // pagination echo.
@@ -840,7 +840,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
                     snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                 )
             },
-            persistedTranscript: { _, _ in
+            persistedTranscript: { _, _, _ in
                 self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1880..<2000), offset: 0)
             },
             loadEarlierTranscriptPage: { sessionId, profile, offset in
@@ -893,7 +893,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
                     snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                 )
             },
-            persistedTranscript: { _, _ in
+            persistedTranscript: { _, _, _ in
                 self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1880..<2000), offset: 0)
             },
             loadEarlierTranscriptPage: { _, _, offset in
@@ -934,7 +934,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
                     snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                 )
             },
-            persistedTranscript: { sessionId, _ in
+            persistedTranscript: { sessionId, _, _ in
                 if sessionId == "stored-a" {
                     return self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1880..<2000), offset: 0)
                 }
@@ -992,7 +992,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
                     snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                 )
             },
-            persistedTranscript: { _, _ in
+            persistedTranscript: { _, _, _ in
                 self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1880..<2000), offset: 0)
             },
             loadEarlierTranscriptPage: { _, _, offset in
@@ -1062,7 +1062,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
                     snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                 )
             },
-            persistedTranscript: { _, _ in
+            persistedTranscript: { _, _, _ in
                 .payload([
                     "session_id": "stored-a",
                     "messages": self.syntheticRows(0..<300)
@@ -1097,7 +1097,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
                     snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                 )
             },
-            persistedTranscript: { _, _ in
+            persistedTranscript: { _, _, _ in
                 fetchCalls.value += 1
                 if fetchCalls.value == 1 {
                     // Oldest-anchored build: bounded request, no order echo.
@@ -1147,7 +1147,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
                     snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                 )
             },
-            persistedTranscript: { _, _ in
+            persistedTranscript: { _, _, _ in
                 .failed(DashboardTicketBridgeError.oversizedResponse(
                     limit: DataURLLimits.maxJSONResponseBytes
                 ))
@@ -1187,7 +1187,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
                     snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                 )
             },
-            persistedTranscript: { _, _ in
+            persistedTranscript: { _, _, _ in
                 fetchCalls.value += 1
                 if fetchCalls.value == 1 {
                     // Oldest-anchored build: bounded request, no order echo.
@@ -1240,7 +1240,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
                     )
                 )
             },
-            persistedTranscript: { _, _ in
+            persistedTranscript: { _, _, _ in
                 .payload([
                     "session_id": "stored-a",
                     "messages": [
@@ -1286,7 +1286,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
                     snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                 )
             },
-            persistedTranscript: { _, _ in
+            persistedTranscript: { _, _, _ in
                 if holdsRefreshedTail.isOn {
                     // Twenty new rows persisted since the backfill: the
                     // refreshed tail covers the newest 120 rows.
@@ -1380,7 +1380,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
                     snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                 )
             },
-            persistedTranscript: { _, _ in
+            persistedTranscript: { _, _, _ in
                 self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1880..<2000), offset: 0)
             },
             loadEarlierTranscriptPage: { _, _, offset in
@@ -1428,7 +1428,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
                     snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                 )
             },
-            persistedTranscript: { _, _ in
+            persistedTranscript: { _, _, _ in
                 self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1880..<2000), offset: 0)
             },
             loadEarlierTranscriptPage: { _, _, offset in
@@ -1459,7 +1459,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
                     snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                 )
             },
-            persistedTranscript: { _, _ in
+            persistedTranscript: { _, _, _ in
                 self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1880..<2000), offset: 0)
             },
             loadEarlierTranscriptPage: { _, _, _ in
@@ -1491,7 +1491,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
                     snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                 )
             },
-            persistedTranscript: { _, _ in
+            persistedTranscript: { _, _, _ in
                 if holdsRefreshedTail.isOn {
                     return self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1900..<2020), offset: 0)
                 }
@@ -1544,7 +1544,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
                     snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                 )
             },
-            persistedTranscript: { _, _ in
+            persistedTranscript: { _, _, _ in
                 self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1880..<2000), offset: 0)
             },
             loadEarlierTranscriptPage: { _, _, offset in
@@ -1581,7 +1581,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
                     snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                 )
             },
-            persistedTranscript: { _, _ in
+            persistedTranscript: { _, _, _ in
                 self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1880..<2000), offset: 0)
             },
             loadEarlierTranscriptPage: { _, _, offset in
@@ -1629,7 +1629,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
                     snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                 )
             },
-            persistedTranscript: { _, _ in
+            persistedTranscript: { _, _, _ in
                 var resultRow = self.transcriptRow(1880, role: "tool", content: "file body")
                 resultRow["tool_call_id"] = "call_123"
                 resultRow["name"] = "read_file"
@@ -1693,7 +1693,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
                     snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                 )
             },
-            persistedTranscript: { _, _ in
+            persistedTranscript: { _, _, _ in
                 // Newer page: 12 unmatched result rows (their call row is on
                 // the older page) followed by the untouched loaded tail.
                 let resultRows = (1...callCount).map { index -> [String: Any] in
@@ -1797,7 +1797,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
                     snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                 )
             },
-            persistedTranscript: { _, _ in
+            persistedTranscript: { _, _, _ in
                 self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1880..<2000), offset: 0)
             },
             loadEarlierTranscriptPage: { sessionId, profile, offset in
@@ -1852,7 +1852,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
                     snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                 )
             },
-            persistedTranscript: { _, _ in
+            persistedTranscript: { _, _, _ in
                 self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1880..<2000), offset: 0)
             },
             loadEarlierTranscriptPage: { sessionId, profile, offset in
@@ -1898,7 +1898,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
                     snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                 )
             },
-            persistedTranscript: { sessionId, _ in
+            persistedTranscript: { sessionId, _, _ in
                 if sessionId == "stored-a" {
                     return self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1880..<2000), offset: 0)
                 }
@@ -1951,7 +1951,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
                     snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                 )
             },
-            persistedTranscript: { _, _ in
+            persistedTranscript: { _, _, _ in
                 self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1880..<2000), offset: 0)
             },
             loadEarlierTranscriptPage: { sessionId, profile, offset in
@@ -1990,7 +1990,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
                     snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                 )
             },
-            persistedTranscript: { _, _ in
+            persistedTranscript: { _, _, _ in
                 self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1880..<2000), offset: 0)
             },
             loadEarlierTranscriptPage: { sessionId, profile, offset in
@@ -2041,7 +2041,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
                     snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                 )
             },
-            persistedTranscript: { _, _ in
+            persistedTranscript: { _, _, _ in
                 if holdsRefreshedTail.isOn {
                     return self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1900..<2020), offset: 0)
                 }
@@ -2175,7 +2175,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
                     snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                 )
             },
-            persistedTranscript: { _, _ in
+            persistedTranscript: { _, _, _ in
                 self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1880..<2000), offset: 0)
             },
             loadEarlierTranscriptPage: { sessionId, profile, offset in
@@ -2227,7 +2227,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
                     snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                 )
             },
-            persistedTranscript: { _, _ in
+            persistedTranscript: { _, _, _ in
                 // Tail page under the current contract, but with NO
                 // `session_id` echo.
                 .payload([
@@ -2269,7 +2269,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
                     snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                 )
             },
-            persistedTranscript: { _, _ in
+            persistedTranscript: { _, _, _ in
                 self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1880..<2000), offset: 0)
             },
             loadEarlierTranscriptPage: { _, _, offset in
@@ -2291,7 +2291,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
 
     private func makeHarness(
         openSession: @escaping @MainActor (HermesClient, String, Bool) async throws -> SessionResumeResult,
-        persistedTranscript: (@MainActor (String, String) async -> PersistedTranscriptFetchOutcome)? = nil,
+        persistedTranscript: (@MainActor (String, String, String) async -> PersistedTranscriptFetchOutcome)? = nil,
         loadEarlierTranscriptPage: (@MainActor (String, String, Int) async -> PersistedTranscriptFetchOutcome)? = nil,
         additionalOperations: (inout ChatResumeLifecycleOperations) -> Void = { _ in }
     ) throws -> (appState: AppState, coordinator: ChatResumeCoordinator, defaults: UserDefaults) {

@@ -485,7 +485,10 @@ final class NativeAuthClientTests: XCTestCase {
     }
 
     func testPersistExpiredCookieDeletesOnlyMatchingCanonicalIdentity() throws {
-        let storage = HTTPCookieStorage.shared
+        // The production persist target is the dashboard-owned jar (#148).
+        let jarID = UUID()
+        let storage = DashboardCookiePersistence.nativeCookieStorage(for: jarID)
+        addTeardownBlock { storage.cookies?.forEach(storage.deleteCookie) }
         func makeCookie(_ name: String, _ value: String, _ domain: String, _ path: String, expires: Date? = nil) -> HTTPCookie {
             var properties: [HTTPCookiePropertyKey: Any] = [
                 .name: name,
@@ -514,7 +517,7 @@ final class NativeAuthClientTests: XCTestCase {
             "/",
             expires: Date(timeIntervalSinceNow: -60)
         )
-        NativeAuthCookiePolicy.persist([expired])
+        NativeAuthCookiePolicy.persist([expired], dashboardID: jarID)
 
         XCTAssertFalse(
             storage.cookies?.contains { $0.name == "persist_probe" && $0.path == "/" } ?? false,
@@ -530,7 +533,7 @@ final class NativeAuthClientTests: XCTestCase {
         )
 
         // A non-expired rotation with the same identity replaces normally.
-        NativeAuthCookiePolicy.persist([makeCookie("persist_probe", "fresh", "192.168.1.200", "/")])
+        NativeAuthCookiePolicy.persist([makeCookie("persist_probe", "fresh", "192.168.1.200", "/")], dashboardID: jarID)
         XCTAssertEqual(
             storage.cookies?.first { $0.name == "persist_probe" && $0.path == "/" }?.value,
             "fresh"

@@ -1347,12 +1347,15 @@ final class AppStateChatResumeTests: XCTestCase {
         let partialIndex = harness.appState.messages.firstIndex { $0.role == .partial }
         XCTAssertEqual(partials.map(\.content), ["CDE"])
         XCTAssertEqual(harness.appState.messages.filter { $0.role == .tool }.count, 2)
-        XCTAssertEqual(harness.appState.messages[replayedToolIndex ?? 0].tool?.id, "buffered-tool")
+        guard let replayedToolIndex else {
+            return XCTFail("Expected the buffered tool call to survive reconciliation")
+        }
+        XCTAssertEqual(harness.appState.messages[replayedToolIndex].tool?.id, "buffered-tool")
         XCTAssertTrue(
             olderToolIndex.map { index in partialIndex.map { index < $0 } ?? false } ?? false,
             "The older identical running call must be preserved ahead of the buffered text"
         )
-        XCTAssertEqual(replayedToolIndex, partialIndex.map { $0 + 1 })
+        XCTAssertEqual(Optional(replayedToolIndex), partialIndex.map { $0 + 1 })
     }
 
     func testResumeDedupAcceptsAlternateSessionIDForBufferedDelta() async {

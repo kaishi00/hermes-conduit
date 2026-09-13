@@ -45,6 +45,12 @@ struct LoginView: View {
     /// Keychain restore), so a returning saved-token user is not scrolled
     /// away from the top of the form every time the login screen appears.
     @State private var revealCloudflareSection = false
+    /// The WebKit session store used for the CURRENT browser sign-in (#148):
+    /// the registered dashboard's own identified store when one exists, or a
+    /// fresh per-presentation identity for a dashboard being added. Set at
+    /// sign-in intent (not render time), so a store is only created when the
+    /// user actually begins a browser sign-in.
+    @State private var signInWebKitStoreID: UUID?
     @FocusState private var focusedField: LoginField?
 
     var body: some View {
@@ -97,7 +103,7 @@ struct LoginView: View {
         .onAppear {
             guard serverUrl.isEmpty else { return }
             serverUrl = appState.lastDashboardURL
-            if let access = KeychainHelper.loadCloudflareAccess(for: serverUrl) {
+            if let access = appState.dashboardScopedCloudflareAccess(for: serverUrl) {
                 cloudflareEnabled = true
                 cloudflareClientID = access.clientID
                 cloudflareClientSecret = access.clientSecret
@@ -154,18 +160,24 @@ struct LoginView: View {
             AuthWebView(
                 url: serverUrl,
                 cloudflareAccess: configuredCloudflareAccess,
+                dashboardIDProvider: { [appState, url = serverUrl] in
+                    appState.resolveDashboardID(forURL: url, registerIfMissing: true)
+                },
+                websiteDataStoreIdentifier: signInWebKitStoreID,
             onTicket: { ticket, baseUrl in
-                // The dashboard is solely an authentication bridge. Dismiss it
-                // before connection work begins so Conduit, not the dashboard,
-                // becomes the active surface as soon as we have a ticket.
-                showWebView = false
-                Task {
-                    // OAuth and cloud dashboard logins do not provide a
-                    // password credential that Conduit can safely reuse.
-                    KeychainHelper.clearCredentials()
-                    appState.rememberDashboardURL(baseUrl)
-                    await appState.connect(with: HermesConnection(baseUrl: baseUrl, ticket: ticket))
-                }
+                    // The dashboard is solely an authentication bridge. Dismiss it
+                    // before connection work begins so Conduit, not the dashboard,
+                    // becomes the active surface as soon as we have a ticket.
+                    showWebView = false
+                    Task {
+                        // OAuth and cloud dashboard logins do not provide a
+                        // password credential that Conduit can safely reuse.
+                        if let dashboardID = appState.resolveDashboardID(forURL: baseUrl, registerIfMissing: true) {
+                            KeychainHelper.clearCredentials(dashboardID: dashboardID)
+                        }
+                        appState.rememberDashboardURL(baseUrl)
+                        await appState.connect(with: HermesConnection(baseUrl: baseUrl, ticket: ticket))
+                    }
                 },
                 onError: { classifiedFailure, detail in
                     // Fixed classified copy only — the dashboard-provided
@@ -526,23 +538,44 @@ struct LoginView: View {
             }
             if requiresBrowserSignIn {
                 showWebView = true
-                if let access { KeychainHelper.saveCloudflareAccess(access, origin: serverUrl) }
+                // The WebKit session for this sign-in is dashboard-owned:
+                // reuse the registered dashboard's identified store when one
+                // exists (repair / re-sign-in), otherwise isolate this new
+                // sign-in in its own per-presentation store. Never the
+                // default store — sibling-host parent-domain cookies must not
+                // cross dashboards.
+                signInWebKitStoreID = appState.resolveDashboardID(forURL: serverUrl, registerIfMissing: false) ?? UUID()
+                // The service token is bound to the dashboard it
+                // authenticates; resolve (or pre-register) that dashboard so
+                // the scoped write cannot land on another server's record.
+                if let access, let dashboardID = appState.resolveDashboardID(forURL: serverUrl, registerIfMissing: true) {
+                    KeychainHelper.saveCloudflareAccess(access, origin: serverUrl, dashboardID: dashboardID)
+                }
                 return
             }
 
             let authenticatedConnection = try await client.connect(username: username, password: password)
-            if saveCredentials {
-                KeychainHelper.saveCredentials(DashboardCredentials(
-                    baseURL: serverUrl,
-                    username: username,
-                    password: password,
-                    requiresFaceID: useFaceID
-                ))
-            } else {
-                KeychainHelper.clearCredentials()
+            let dashboardID = appState.resolveDashboardID(forURL: serverUrl, registerIfMissing: true)
+            if let dashboardID {
+                if saveCredentials {
+                    KeychainHelper.saveCredentials(DashboardCredentials(
+                        baseURL: serverUrl,
+                        username: username,
+                        password: password,
+                        requiresFaceID: useFaceID
+                    ), dashboardID: dashboardID)
+                } else {
+                    KeychainHelper.clearCredentials(dashboardID: dashboardID)
+                }
+                if let access {
+                    KeychainHelper.saveCloudflareAccess(access, origin: serverUrl, dashboardID: dashboardID)
+                } else {
+                    KeychainHelper.clearCloudflareAccess(dashboardID: dashboardID)
+                }
             }
-            if let access { KeychainHelper.saveCloudflareAccess(access, origin: serverUrl) } else { KeychainHelper.clearCloudflareAccess() }
-            authenticatedConnection.commitCookies()
+            if let dashboardID {
+                authenticatedConnection.commitCookies(dashboardID: dashboardID)
+            }
             await appState.connect(with: HermesConnection(baseUrl: serverUrl, ticket: authenticatedConnection.ticket))
         } catch is CancellationError {
             return
@@ -703,6 +736,20 @@ enum AuthWebViewNavigationPolicy {
 struct AuthWebView: UIViewRepresentable {
     let url: String
     let cloudflareAccess: CloudflareAccessCredentials?
+    /// Resolves the saved dashboard being signed into AT CAPTURE TIME (on
+    /// successful sign-in), so the cookie mirror is written to that
+    /// dashboard's scoped record. A closure, not a value: resolving during
+    /// view construction would register a dashboard for every render of the
+    /// login card, and the binding belongs to the commit moment. Nil
+    /// (callers without a registry context, e.g. tests) captures nothing —
+    /// no identity, no durable mirror.
+    var dashboardIDProvider: (() -> UUID?)? = nil
+    /// The dashboard-owned WebKit session store identifier for this sign-in.
+    /// Non-nil means the WebView runs inside `WKWebsiteDataStore(
+    /// forIdentifier:)` for that identity — never the shared default store —
+    /// so sign-in cookies are isolated per dashboard from the first request.
+    /// Nil (legacy/test construction) keeps the default store.
+    var websiteDataStoreIdentifier: UUID? = nil
     let onTicket: (String, String) -> Void
     /// Classified failure + raw diagnostic detail. The dashboard controls the
     /// detail text (e.g. `payload["error"]`), so it is never rendered — the
@@ -712,7 +759,7 @@ struct AuthWebView: UIViewRepresentable {
     func makeUIView(context: Context) -> WKWebView {
         let normalized = try? ConnectionURLPolicy.normalizedBaseURL(url)
         let config = WKWebViewConfiguration()
-        config.websiteDataStore = .default()
+        config.websiteDataStore = DashboardCookiePersistence.webKitStore(for: websiteDataStoreIdentifier)
         config.userContentController.add(context.coordinator, name: "ticket")
         if let normalized,
            let script = cloudflareAccess?.fetchInjectionUserScript(expectedBaseURL: normalized),
@@ -858,10 +905,11 @@ struct AuthWebView: UIViewRepresentable {
             let webView = authenticatedWebView
             Task { @MainActor [weak self, weak webView] in
                 guard let self else { return }
-                if let webView {
+                if let webView, let dashboardID = parent.dashboardIDProvider?() {
                     await DashboardCookiePersistence.capture(
                         from: webView.configuration.websiteDataStore.httpCookieStore,
-                        for: self.expectedURL
+                        for: self.expectedURL,
+                        dashboardID: dashboardID
                     )
                 }
                 self.deliver(ticket: ticket)

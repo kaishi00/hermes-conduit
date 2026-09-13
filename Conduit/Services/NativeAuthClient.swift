@@ -69,11 +69,14 @@ struct NativeAuthConnection {
     let ticket: String
     fileprivate let cookies: [HTTPCookie]
 
-    /// Publishes this successful transaction for DashboardTicketBridge/WebKit.
-    /// Calling this more than once is harmless; callers should commit only the
-    /// connection they are about to make active.
-    func commitCookies() {
-        NativeAuthCookiePolicy.persist(cookies)
+    /// Publishes this successful transaction into the DASHBOARD's owned
+    /// native cookie jar (#148) for DashboardTicketBridge/WebKit. Calling
+    /// this more than once is harmless; callers should commit only the
+    /// connection they are about to make active. The dashboard identity is
+    /// mandatory: cookies without an owner would be readable through the
+    /// wrong dashboard.
+    func commitCookies(dashboardID: UUID) {
+        NativeAuthCookiePolicy.persist(cookies, dashboardID: dashboardID)
     }
 }
 
@@ -454,21 +457,27 @@ enum NativeAuthCookiePolicy {
         HTTPCookie.requestHeaderFields(with: applicableCookies(cookies, to: url))
     }
 
-    static func persist(_ cookies: [HTTPCookie]) {
+    /// Persists committed login cookies into the DASHBOARD's owned native
+    /// jar — never `HTTPCookieStorage.shared`. The jar is exclusively this
+    /// dashboard's (see DashboardCookiePersistence.nativeCookieStorage), so
+    /// two dashboards that share a parent domain can never read each other's
+    /// committed sessions.
+    static func persist(_ cookies: [HTTPCookie], dashboardID: UUID) {
+        let jar = DashboardCookiePersistence.nativeCookieStorage(for: dashboardID)
         let now = Date()
         for cookie in cookies {
             guard let expires = cookie.expiresDate, expires <= now else {
-                HTTPCookieStorage.shared.setCookie(cookie)
+                jar.setCookie(cookie)
                 continue
             }
             // An expired Set-Cookie is the server retiring that cookie
             // identity. Delete the matching stored cookies (name + canonical
             // domain + path) without inserting the expired parse itself, so
-            // a committed transaction fully determines the shared state.
+            // a committed transaction fully determines the jar's state.
             let identity = CookieIdentity(cookie)
-            for storedCookie in HTTPCookieStorage.shared.cookies ?? []
+            for storedCookie in jar.cookies ?? []
                 where CookieIdentity(storedCookie) == identity {
-                HTTPCookieStorage.shared.deleteCookie(storedCookie)
+                jar.deleteCookie(storedCookie)
             }
         }
     }

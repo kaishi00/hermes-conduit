@@ -3,12 +3,19 @@ import Network
 import XCTest
 @testable import Conduit
 
-/// These suites intentionally exercise `HTTPCookieStorage.shared` because the
-/// production bridge consumes the shared cookie store. Fixture domains are
-/// disjoint from other test classes (loopback hosts here) and setUp/tearDown
-/// scrub exactly those domains, so parallel class execution cannot
-/// cross-contaminate the jar.
+/// These suites exercise the DASHBOARD-SCOPED native cookie jar (the
+/// production `commitCookies(dashboardID:)` target since #148); the jar is
+/// exclusively the test dashboard's, so parallel class execution cannot
+/// cross-contaminate it and no scrubbing of `HTTPCookieStorage.shared` is
+/// needed.
 final class NativeAuthClientIntegrationTests: XCTestCase {
+    /// The dashboard identity every test in this suite commits cookies under.
+    let jarDashboardID = UUID()
+
+    /// The dashboard-owned jar the tests assert against.
+    var jar: HTTPCookieStorage {
+        DashboardCookiePersistence.nativeCookieStorage(for: jarDashboardID)
+    }
     override func setUp() {
         super.setUp()
         clearLoopbackCookies()
@@ -68,7 +75,7 @@ final class NativeAuthClientIntegrationTests: XCTestCase {
             hasLoopbackSession(value: "rotated-access"),
             "A valid but uncommitted transaction must not publish its cookies."
         )
-        connection.commitCookies()
+        connection.commitCookies(dashboardID: jarDashboardID)
         XCTAssertTrue(
             hasLoopbackSession(value: "rotated-access"),
             "The accepted ticket response rotation must be committed for the WebKit bridge."
@@ -82,7 +89,7 @@ final class NativeAuthClientIntegrationTests: XCTestCase {
             "An expired cookie must never be published."
         )
         XCTAssertFalse(
-            (HTTPCookieStorage.shared.cookies ?? []).contains {
+            (jar.cookies ?? []).contains {
                 $0.domain.trimmingCharacters(in: CharacterSet(charactersIn: ".")) == "conduit-auth-poison.invalid"
             },
             "A response must not publish a cookie for an unrelated domain."
@@ -181,7 +188,7 @@ final class NativeAuthClientIntegrationTests: XCTestCase {
             hasLoopbackSession(value: "prefix-redirect-access"),
             "A valid but uncommitted transaction must not publish its cookies."
         )
-        connection.commitCookies()
+        connection.commitCookies(dashboardID: jarDashboardID)
         XCTAssertTrue(
             hasLoopbackSession(value: "prefix-redirect-access"),
             "The accepted transaction's cookie must be committed."
@@ -307,7 +314,7 @@ final class NativeAuthClientIntegrationTests: XCTestCase {
             "Nothing may be published or deleted before commitCookies()."
         )
 
-        connection.commitCookies()
+        connection.commitCookies(dashboardID: jarDashboardID)
 
         XCTAssertFalse(
             hasLoopbackCookie(name: "hermes_session_at", value: "stale-session"),
@@ -388,9 +395,9 @@ final class NativeAuthClientIntegrationTests: XCTestCase {
         XCTAssertFalse(hasLoopbackSession(value: "session-alpha"))
         XCTAssertFalse(hasLoopbackSession(value: "session-beta"))
 
-        alphaConnection.commitCookies()
+        alphaConnection.commitCookies(dashboardID: jarDashboardID)
         XCTAssertTrue(hasLoopbackSession(value: "session-alpha"))
-        betaConnection.commitCookies()
+        betaConnection.commitCookies(dashboardID: jarDashboardID)
         XCTAssertTrue(hasLoopbackSession(value: "session-beta"))
         XCTAssertFalse(hasLoopbackSession(value: "session-alpha"))
     }
@@ -532,7 +539,7 @@ final class NativeAuthClientIntegrationTests: XCTestCase {
     }
 
     private func hasLoopbackCookie(name: String, value: String) -> Bool {
-        (HTTPCookieStorage.shared.cookies ?? []).contains {
+        (jar.cookies ?? []).contains {
             $0.name == name
                 && $0.value == value
                 && $0.domain.trimmingCharacters(in: CharacterSet(charactersIn: ".")) == "127.0.0.1"
@@ -540,7 +547,7 @@ final class NativeAuthClientIntegrationTests: XCTestCase {
     }
 
     private func hasLoopbackCookie(name: String, path: String) -> Bool {
-        (HTTPCookieStorage.shared.cookies ?? []).contains {
+        (jar.cookies ?? []).contains {
             $0.name == name
                 && $0.path == path
                 && $0.domain.trimmingCharacters(in: CharacterSet(charactersIn: ".")) == "127.0.0.1"
@@ -556,16 +563,13 @@ final class NativeAuthClientIntegrationTests: XCTestCase {
         ]) else {
             return XCTFail("Could not create loopback fixture cookie")
         }
-        HTTPCookieStorage.shared.setCookie(cookie)
+        jar.setCookie(cookie)
     }
 
     private func clearLoopbackCookies() {
-        let fixtureDomains = Set(["127.0.0.1", "localhost", "conduit-auth-poison.invalid"])
-        for cookie in HTTPCookieStorage.shared.cookies ?? [] {
-            let domain = cookie.domain.trimmingCharacters(in: CharacterSet(charactersIn: "."))
-            if fixtureDomains.contains(domain) {
-                HTTPCookieStorage.shared.deleteCookie(cookie)
-            }
+        // The dashboard-owned jar is exclusively this test's; wipe it whole.
+        for cookie in jar.cookies ?? [] {
+            jar.deleteCookie(cookie)
         }
     }
 }

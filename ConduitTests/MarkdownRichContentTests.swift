@@ -969,7 +969,15 @@ final class MarkdownRichContentHostedTests: XCTestCase {
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 120))
         window.rootViewController = host
         window.isHidden = false
-        defer { window.isHidden = true; window.rootViewController = nil }
+        defer {
+            window.isHidden = true
+            window.rootViewController = nil
+            host.view.removeFromSuperview()
+            let deadline = Date().addingTimeInterval(1.5)
+            while Date() < deadline, !host.view.subviews.isEmpty {
+                RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+            }
+        }
         host.view.setNeedsLayout()
         host.view.layoutIfNeeded()
 

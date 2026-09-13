@@ -313,6 +313,10 @@ struct ComposerBar: View {
                 stateNotice
             }
 
+            if appState.isCompressingActiveSession {
+                compressingNotice
+            }
+
             if let composerErrorMessage, !composerErrorMessage.isEmpty {
                 pasteErrorNotice(composerErrorMessage)
             }
@@ -450,6 +454,24 @@ struct ComposerBar: View {
                 .accessibilityLabel("Repair Connection")
                 .accessibilityHint("Test and fix the failed connection, then reconnect")
             }
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 10)
+        .padding(.bottom, 2)
+    }
+
+    /// Small in-flight affordance for the dedicated `session.compress` RPC
+    /// (manual compression is LLM-bound and can take minutes). Upstream
+    /// exposes no incremental compression progress, so this is deliberately
+    /// just a spinner and a label.
+    private var compressingNotice: some View {
+        HStack(spacing: 8) {
+            ProgressView()
+                .controlSize(.small)
+            Text(AppLocalization.string("Compressing…"))
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 0)
         }
         .padding(.horizontal, 14)
         .padding(.top, 10)

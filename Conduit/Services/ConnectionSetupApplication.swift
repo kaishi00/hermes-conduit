@@ -20,6 +20,11 @@ struct ConnectionSetupApplication: Equatable, CustomStringConvertible, CustomDeb
     /// The dashboard URL to hand to `AppState.rememberDashboardURL`. Nil when
     /// the tested URL already equals the current one.
     let dashboardURLToRemember: String?
+    /// The normalized address the plan's writes belong to — the saved
+    /// dashboard whose scoped secure records this plan updates (#148).
+    /// Always present, even when nothing moves, so `perform` can resolve the
+    /// right dashboard without re-deriving it.
+    let targetDashboardURL: String
     /// Replacement saved credentials. Non-nil only when credentials were
     /// already saved for the current connection AND the tested values differ:
     /// an explicit apply updates an existing saved configuration, it never
@@ -114,6 +119,7 @@ extension ConnectionSetupApplication {
 
         return ConnectionSetupApplication(
             dashboardURLToRemember: urlChanged ? newURL : nil,
+            targetDashboardURL: newURL,
             credentialsToSave: credentialsToSave,
             clearsSavedCredentials: clearsSavedCredentials,
             cloudflareTokenRewrite: rewrite
@@ -124,15 +130,23 @@ extension ConnectionSetupApplication {
     /// `connection`, `client`, session, and chat state — is never touched:
     /// only the saved/login configuration moves, so the current session keeps
     /// running and the new settings take effect on the next explicit
-    /// reconnect (an app relaunch, or signing in again).
+    /// reconnect (an app relaunch, or signing in again). Every write is
+    /// scoped to the saved dashboard the plan's target address belongs to
+    /// (registering the entry when new); the active selection never moves.
     @MainActor
     func perform(appState: AppState) {
-        if let url = dashboardURLToRemember { appState.rememberDashboardURL(url) }
-        if let credentials = credentialsToSave { KeychainHelper.saveCredentials(credentials) }
-        if clearsSavedCredentials { KeychainHelper.clearCredentials() }
-        if let rewrite = cloudflareTokenRewrite {
-            KeychainHelper.saveCloudflareAccess(rewrite.access, origin: rewrite.origin)
+        if let dashboardID = appState.resolveDashboardID(forURL: targetDashboardURL, registerIfMissing: true) {
+            if let credentials = credentialsToSave {
+                KeychainHelper.saveCredentials(credentials, dashboardID: dashboardID)
+            }
+            if clearsSavedCredentials {
+                KeychainHelper.clearCredentials(dashboardID: dashboardID)
+            }
+            if let rewrite = cloudflareTokenRewrite {
+                KeychainHelper.saveCloudflareAccess(rewrite.access, origin: rewrite.origin, dashboardID: dashboardID)
+            }
         }
+        if let url = dashboardURLToRemember { appState.rememberDashboardURL(url) }
     }
 }
 

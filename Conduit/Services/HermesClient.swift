@@ -296,6 +296,84 @@ struct SessionResumeResult {
     let snapshot: SessionRuntimeSnapshot
 }
 
+/// Typed result of `session.compress` — the dedicated manual-compression RPC
+/// the TUI and Hermes Desktop use for `/compress`. Shapes verified against
+/// upstream `tui_gateway`:
+/// - in-process compression (`_compress_live`): `status` of `"compressed"` or
+///   `"aborted"`, `removed`, a `summary` object, and `messages` — the
+///   post-compress history in the same shape `session.resume` returns;
+/// - compute-host compression (`_compress_via_compute_host`): the host's
+///   result forwarded verbatim (same fields), or `status: "pending"` when the
+///   gateway's bounded wait expired while the host is still compressing;
+/// - a concurrent compression already holding the lock:
+///   `lock_held: true` with a human-readable `message` and no `status`.
+struct SessionCompressResult {
+    enum Status: Equatable {
+        case compressed
+        case pending
+        case aborted
+    }
+
+    let status: Status?
+    let lockHeld: Bool
+    let message: String?
+    let removed: Int?
+    let messages: [ChatMessage]
+    /// Distinguishes "gateway returned no transcript" from "returned an empty
+    /// one" — an absent `messages` payload must never clear the transcript.
+    let hasMessagesPayload: Bool
+    let summaryHeadline: String?
+    let summaryTokenLine: String?
+    let summaryNote: String?
+    /// `summary.aborted`. The compute-host result can carry the abort flag
+    /// inside `summary` alone, so abort detection checks both fields.
+    let summaryAborted: Bool
+    /// Compute-host results carry the host's rendered feedback under
+    /// `host_ack.output`; rendered when the response has no summary lines
+    /// (upstream Desktop falls back to it before the removed-count text).
+    let hostOutput: String?
+
+    var isPending: Bool { status == .pending }
+    var isAborted: Bool { status == .aborted || summaryAborted }
+
+    /// Non-trapping exact `Int` extraction. `Int(Double)` traps outside the
+    /// Int64 range, and `removed` is gateway-authored — a hostile or buggy
+    /// payload must degrade to "unknown", never crash the client. Non-integer
+    /// doubles are likewise rejected: only exact whole values convert.
+    private static func exactIntValue(_ value: AnyCodable?) -> Int? {
+        guard case .number(let n)? = value else { return nil }
+        guard n.isFinite,
+              n >= -9_223_372_036_854_775_808.0, // Int.min == -2^63, exact as Double
+              n < 9_223_372_036_854_775_808.0,   // 2^63 itself already overflows
+              n == n.rounded(.towardZero) else {
+            return nil
+        }
+        return Int(n)
+    }
+
+    init(from result: AnyCodable) {
+        let object = result.objectValue ?? [:]
+        switch object["status"]?.stringValue?.lowercased() {
+        case "pending": status = .pending
+        case "aborted": status = .aborted
+        case "compressed": status = .compressed
+        default: status = nil
+        }
+        lockHeld = object["lock_held"]?.boolValue == true
+        message = object["message"]?.stringValue
+        removed = Self.exactIntValue(object["removed"])
+        hasMessagesPayload = object["messages"]?.arrayValue != nil
+        messages = MessageNormalizer.normalizeMessages(object["messages"]?.arrayValue ?? [])
+        let summary = object["summary"]?.objectValue ?? [:]
+        summaryHeadline = summary["headline"]?.stringValue
+        summaryTokenLine = summary["token_line"]?.stringValue
+        summaryNote = summary["note"]?.stringValue
+        summaryAborted = summary["aborted"]?.boolValue == true
+        hostOutput = object["host_ack"]?.objectValue?["output"]?.stringValue?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
 struct SessionBranchMessage {
     let role: MessageRole
     let content: String
@@ -542,6 +620,19 @@ final class HermesClient: ObservableObject {
     /// Approval queue hydration is optional recovery context. It must never
     /// hold foreground restoration behind the ordinary RPC timeout.
     static let pendingApprovalsTimeout: TimeInterval = 3
+
+    /// Dedicated budget for `session.compress`. Manual compression is
+    /// LLM-bound and routinely outlives the generic request timeout on large
+    /// sessions, while the gateway keeps compressing after the client gives
+    /// up. Its compute-host wait alone runs for up to
+    /// `compression.context_total_ceiling_seconds + 30s`, capped at 630s
+    /// (upstream `tui_gateway/compute_host_bridge.py`
+    /// `_COMPUTE_HOST_COMPRESS_WAIT_CAP_SECS`), and then answers
+    /// `status: "pending"` rather than an error — so this budget must sit
+    /// above that cap or the client reports a false timeout while the host is
+    /// still compressing (upstream #97948; Hermes Desktop parity:
+    /// `SESSION_COMPRESS_TIMEOUT_MS = 660_000`).
+    static let sessionCompressTimeout: TimeInterval = 660
 
     init(
         connection: HermesConnection,
@@ -1292,6 +1383,57 @@ final class HermesClient: ObservableObject {
             "name": name,
             "arg": arg
         ])
+    }
+
+    /// Dedicated manual-compression RPC (`session.compress`) — the same path
+    /// the TUI and Hermes Desktop use for `/compress`. It must NOT go through
+    /// `slash.exec`: compressing a large session legitimately outlives the
+    /// generic request timeout, and the timed-out `slash.exec` error cascades
+    /// into `command.dispatch`'s misleading "not a quick/plugin/skill
+    /// command" failure (upstream #44456). `focusTopic` mirrors Desktop: it is
+    /// omitted entirely when empty rather than sent as an empty string.
+    func compressSession(
+        sessionId: String,
+        focusTopic: String? = nil,
+        timeout: TimeInterval = sessionCompressTimeout
+    ) async throws -> SessionCompressResult {
+        var params: [String: Any] = ["session_id": sessionId]
+        let trimmedTopic = focusTopic?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let trimmedTopic, !trimmedTopic.isEmpty {
+            params["focus_topic"] = trimmedTopic
+        }
+        let result = try await rpc("session.compress", params: params, timeout: timeout)
+        return SessionCompressResult(from: result)
+    }
+
+    /// Whether `error` means "this gateway predates the RPC method". Upstream
+    /// answers unknown methods with the JSON-RPC `-32601` "unknown method"
+    /// error (`tui_gateway/server.py`), and Hermes Desktop treats the same
+    /// message family (`method not found` / `-32601` / `unknown method` /
+    /// `no such method`, `apps/desktop/src/lib/gateway-rpc.ts`) as the
+    /// legacy-gateway signal. Timeouts, busy rejections, connection failures,
+    /// and compression errors are deliberately NOT in this class — a slow RPC
+    /// must never be retried as a missing one.
+    static func isMissingRPCMethod(_ error: Error) -> Bool {
+        let message: String
+        if let rpcError = error as? RpcError {
+            if rpcError.code == -32601 { return true }
+            message = rpcError.message
+        } else {
+            message = (error as? LocalizedError)?.errorDescription
+                ?? String(describing: error)
+        }
+        return matchesMissingMethodPattern(message)
+    }
+
+    private static func matchesMissingMethodPattern(_ message: String) -> Bool {
+        // Plain substring checks over Desktop's regex — the pattern is a
+        // compile-constant, so NSRegularExpression buys nothing here.
+        let lowered = message.lowercased()
+        return lowered.contains("method not found")
+            || lowered.contains("-32601")
+            || lowered.contains("unknown method")
+            || lowered.contains("no such method")
     }
 
     // MARK: - Attachments
