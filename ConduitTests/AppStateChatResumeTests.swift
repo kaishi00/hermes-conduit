@@ -708,7 +708,7 @@ final class AppStateChatResumeTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _ in
+                persistedTranscript: { _, _, _ in
                     .failed(RpcError(code: 4007, message: "Transcript route failure"))
                 }
             )

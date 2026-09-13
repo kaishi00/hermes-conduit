@@ -8,6 +8,71 @@ import XCTest
 /// stale local idle state is corrected before the next submission is routed.
 @MainActor
 final class AppStateForegroundLifecycleTests: XCTestCase {
+    func testForegroundAfterFailedInitialConnectPreservesRestoredVisibleSession() async {
+        var scheduledCount = 0
+        var connectCount = 0
+        var openedSessionIDs: [String] = []
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                connectClient: { _ in
+                    connectCount += 1
+                    if connectCount == 1 { throw NSError(domain: "connect", code: 1) }
+                },
+                loadCatalog: { _, _ in
+                    [self.session("stored-newest"), self.session("stored-visible")]
+                },
+                mintTicket: { _ in "refreshed-ticket" },
+                openSession: { _, sessionID, _ in
+                    openedSessionIDs.append(sessionID)
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        storedSessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                refreshContext: { _, _ in },
+                loadProfiles: {},
+                loadBusyInputMode: { _ in },
+                loadProfileDisplayPreferences: {},
+                loadSlashCommands: {}
+            ),
+            configureDefaults: { defaults in
+                defaults.set(
+                    "https://one.example",
+                    forKey: AppState.chatResumeServerIdentityKey
+                )
+                ChatResumeStore(defaults: defaults).setLastSessionID(
+                    "stored-visible",
+                    for: "default"
+                )
+            },
+            reconnectScheduler: { _, _ in
+                scheduledCount += 1
+                return {}
+            }
+        )
+        let visible = session("stored-visible")
+        harness.appState.sessions = [visible]
+        XCTAssertEqual(harness.appState.activeSessionId, visible.id)
+
+        await harness.appState.connect(
+            with: HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        )
+        XCTAssertEqual(harness.appState.activeSessionId, visible.id)
+        XCTAssertEqual(harness.recoverySequence.currentPurpose, .preserveCurrent)
+        XCTAssertEqual(scheduledCount, 1)
+
+        harness.appState.handleScenePhase(.background)
+        let foreground = harness.appState.handleScenePhase(.active)
+        await foreground?.value
+
+        XCTAssertEqual(openedSessionIDs, [visible.id])
+        XCTAssertEqual(connectCount, 2)
+        XCTAssertEqual(harness.appState.activeSessionId, visible.id)
+        XCTAssertEqual(harness.recoverySequence.currentPurpose, .preserveCurrent)
+    }
+
     func testFastSecondSendKeepsStoredConversationWhenRefreshedCatalogDropsRuntimeAlias() async {
         var resumes: [String] = []
         var sends: [String] = []
@@ -7912,7 +7977,10 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
     // MARK: - Harness
 
     private func makeHarness(
-        lifecycleOperations: ChatResumeLifecycleOperations = .live
+        lifecycleOperations: ChatResumeLifecycleOperations = .live,
+        configureDefaults: (UserDefaults) -> Void = { _ in },
+        reconnectScheduler: ChatResumeReconnectScheduler? = nil,
+        reconnectExecutor: ChatResumeReconnectExecutor? = nil
     ) -> (
         appState: AppState,
         coordinator: ChatResumeCoordinator,
@@ -7926,6 +7994,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         addTeardownBlock {
             defaults.removePersistentDomain(forName: suite)
         }
+        configureDefaults(defaults)
         let store = ChatResumeStore(defaults: defaults)
         let coordinator = ChatResumeCoordinator(store: store)
         let recoverySequence = ChatResumeRecoverySequence()
@@ -7938,6 +8007,8 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
             recoverySequence: recoverySequence,
             loadSavedConnection: false,
             clearSessionPresentationCache: {},
+            reconnectScheduler: reconnectScheduler,
+            reconnectExecutor: reconnectExecutor,
             chatResumeLifecycleOperations: lifecycleOperations,
             sessionPresentationCache: presentationCache
         )

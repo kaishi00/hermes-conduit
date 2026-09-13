@@ -2772,7 +2772,11 @@ final class AppState: ObservableObject {
             // sign-in screen. A transient gateway or WebKit startup failure
             // must retain the saved dashboard session and retry.
             showLogin = false
-            scheduleReconnect(purpose: continuation.purpose)
+            if continuation.purpose == .preserveCurrent {
+                scheduleReconnect(purpose: continuation.purpose)
+            } else {
+                scheduleReconnectAfterFailedSync()
+            }
         }
     }
 
@@ -4696,7 +4700,8 @@ final class AppState: ObservableObject {
     @discardableResult
     func schedulePendingApprovalsRefresh(
         sessionId: String,
-        using client: HermesClient
+        using client: HermesClient,
+        replacingLegacyErrorMessageID: String? = nil
     ) -> Task<Void, Never> {
         pendingApprovalsRequestGeneration &+= 1
         let generation = pendingApprovalsRequestGeneration
@@ -4730,10 +4735,33 @@ final class AppState: ObservableObject {
                     with: self.activeChatScrollSessionIdentity.equivalentSessionIDs
                   ) else { return }
 
-            for approval in approvals where acceptedSessionIDs.contains(approval.sessionId) {
-                self.applyApprovalActivity(approval, authoritative: false)
+            let acceptedApprovals = approvals.filter {
+                acceptedSessionIDs.contains($0.sessionId)
             }
-            if !approvals.isEmpty {
+            if let replacingLegacyErrorMessageID {
+                let identifiedApprovals = acceptedApprovals.filter { $0.requestId != nil }
+                guard !identifiedApprovals.isEmpty,
+                      let legacyIndex = self.messages.firstIndex(where: {
+                          $0.id == replacingLegacyErrorMessageID
+                      }),
+                      let legacy = self.messages[legacyIndex].approval,
+                      legacy.requestId == nil,
+                      legacy.status == .error,
+                      acceptedSessionIDs.contains(legacy.sessionId) else {
+                    return
+                }
+                // Started only after the legacy response settled: these
+                // identified rows are fresh gateway truth and can replace the
+                // ambiguous legacy card without guessing by text or position.
+                for approval in identifiedApprovals {
+                    self.applyApprovalActivity(approval, authoritative: true)
+                }
+            } else {
+                for approval in acceptedApprovals {
+                    self.applyApprovalActivity(approval, authoritative: false)
+                }
+            }
+            if !acceptedApprovals.isEmpty {
                 self.cacheMessagePresentation()
             }
         }
@@ -12407,6 +12435,26 @@ final class AppState: ObservableObject {
                 errorMessage = error.localizedDescription
             }
             cacheMessagePresentation()
+            if current.requestId == nil, let activeSessionId {
+                switch messages[updatedIndex].approval?.status {
+                case .error:
+                    schedulePendingApprovalsRefresh(
+                        sessionId: activeSessionId,
+                        using: client,
+                        replacingLegacyErrorMessageID: messageId
+                    )
+                case .expired:
+                    // The legacy request is definitively terminal, so fresh
+                    // identified queued rows can be added without replacing
+                    // or re-arming its expired presentation.
+                    schedulePendingApprovalsRefresh(
+                        sessionId: activeSessionId,
+                        using: client
+                    )
+                default:
+                    break
+                }
+            }
         }
     }
 

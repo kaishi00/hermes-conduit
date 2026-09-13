@@ -565,6 +565,134 @@ final class AppStateDecisionFenceTests: XCTestCase {
         XCTAssertNil(appState.messages[0].approval?.requestId)
     }
 
+    func testLegacySubmissionFailureFreshPendingSnapshotReplacesErrorWithoutDuplicate() async throws {
+        let appState = makeAppState()
+        prepareActiveSession(appState)
+        appState.messages = [approvalFixture()]
+        appState.messages[0].approval?.sessionId = "runtime-queue"
+        let transport = ClarifyFakeTransport()
+        let socket = ClarifyFakeSocket()
+        let client = try await installConnectedClient(appState, socket: socket, transport: transport)
+
+        let parked = try await parkApprovalRespond(appState: appState, socket: socket)
+        deliverError(socket, rpcID: parked.rpcID, code: 4002, message: "temporary failure")
+        await parked.task.value
+        for _ in 0..<1_000 where socket.sentTexts.count < 2 { await Task.yield() }
+        let refresh = appState.schedulePendingApprovalsRefresh(
+            sessionId: "runtime-queue",
+            using: client,
+            replacingLegacyErrorMessageID: "approval-msg"
+        )
+        for _ in 0..<1_000 where socket.sentTexts.count < 3 { await Task.yield() }
+        let pendingID = try rpcID(socket.sentTexts[2])
+        deliverResult(socket, rpcID: pendingID, result: ["approvals": [
+            ["request_id": "approval-a", "description": "Run A?"],
+            ["request_id": "approval-b", "description": "Run B?"]
+        ]])
+        await refresh.value
+
+        XCTAssertEqual(
+            Set(appState.messages.compactMap { $0.approval?.requestId }),
+            Set(["approval-a", "approval-b"])
+        )
+        XCTAssertFalse(appState.messages.contains { $0.approval?.requestId == nil })
+        XCTAssertTrue(appState.messages.allSatisfy { $0.approval?.status == .pending })
+    }
+
+    func testLegacySubmissionFailurePendingRefreshFailureRetainsRetryableError() async throws {
+        let appState = makeAppState()
+        prepareActiveSession(appState)
+        appState.messages = [approvalFixture()]
+        appState.messages[0].approval?.sessionId = "runtime-queue"
+        let transport = ClarifyFakeTransport()
+        let socket = ClarifyFakeSocket()
+        let client = try await installConnectedClient(appState, socket: socket, transport: transport)
+
+        let parked = try await parkApprovalRespond(appState: appState, socket: socket)
+        deliverError(socket, rpcID: parked.rpcID, code: 4002, message: "temporary failure")
+        await parked.task.value
+        for _ in 0..<1_000 where socket.sentTexts.count < 2 { await Task.yield() }
+        let refresh = appState.schedulePendingApprovalsRefresh(
+            sessionId: "runtime-queue",
+            using: client,
+            replacingLegacyErrorMessageID: "approval-msg"
+        )
+        for _ in 0..<1_000 where socket.sentTexts.count < 3 { await Task.yield() }
+        deliverError(socket, rpcID: try rpcID(socket.sentTexts[2]), code: -32601, message: "method unavailable")
+        await refresh.value
+
+        let emptyRefresh = appState.schedulePendingApprovalsRefresh(
+            sessionId: "runtime-queue",
+            using: client,
+            replacingLegacyErrorMessageID: "approval-msg"
+        )
+        for _ in 0..<1_000 where socket.sentTexts.count < 4 { await Task.yield() }
+        deliverResult(socket, rpcID: try rpcID(socket.sentTexts[3]), result: ["approvals": []])
+        await emptyRefresh.value
+
+        XCTAssertEqual(appState.messages.count, 1)
+        XCTAssertEqual(appState.messages[0].approval?.status, .error)
+        XCTAssertNil(appState.messages[0].approval?.requestId)
+    }
+
+    func testLegacyFailureReplacementRefreshCannotPopulateReplacementClient() async throws {
+        let appState = makeAppState()
+        prepareActiveSession(appState)
+        appState.messages = [approvalFixture()]
+        appState.messages[0].approval?.sessionId = "runtime-queue"
+        let transport = ClarifyFakeTransport()
+        let socket = ClarifyFakeSocket()
+        let client = try await installConnectedClient(appState, socket: socket, transport: transport)
+
+        let parked = try await parkApprovalRespond(appState: appState, socket: socket)
+        deliverError(socket, rpcID: parked.rpcID, code: 4002, message: "temporary failure")
+        await parked.task.value
+        for _ in 0..<1_000 where socket.sentTexts.count < 2 { await Task.yield() }
+        let refresh = appState.schedulePendingApprovalsRefresh(
+            sessionId: "runtime-queue",
+            using: client,
+            replacingLegacyErrorMessageID: "approval-msg"
+        )
+        for _ in 0..<1_000 where socket.sentTexts.count < 3 { await Task.yield() }
+        appState.client = makeReplacementClient(baseURL: "https://replacement.example")
+        deliverResult(socket, rpcID: try rpcID(socket.sentTexts[2]), result: ["approvals": [
+            ["request_id": "approval-new", "description": "New?"]
+        ]])
+        await refresh.value
+
+        XCTAssertEqual(appState.messages.count, 1)
+        XCTAssertEqual(appState.messages[0].approval?.status, .error)
+        XCTAssertNil(appState.messages[0].approval?.requestId)
+    }
+
+    func testExpiredLegacySubmissionRefreshesQueuedIdentifiedApproval() async throws {
+        let appState = makeAppState()
+        prepareActiveSession(appState)
+        appState.messages = [approvalFixture()]
+        appState.messages[0].approval?.sessionId = "runtime-queue"
+        let transport = ClarifyFakeTransport()
+        let socket = ClarifyFakeSocket()
+        let client = try await installConnectedClient(appState, socket: socket, transport: transport)
+
+        let parked = try await parkApprovalRespond(appState: appState, socket: socket)
+        deliverError(socket, rpcID: parked.rpcID, code: 4009, message: "no pending approval request")
+        await parked.task.value
+        for _ in 0..<1_000 where socket.sentTexts.count < 2 { await Task.yield() }
+        let refresh = appState.schedulePendingApprovalsRefresh(
+            sessionId: "runtime-queue",
+            using: client
+        )
+        for _ in 0..<1_000 where socket.sentTexts.count < 3 { await Task.yield() }
+        deliverResult(socket, rpcID: try rpcID(socket.sentTexts[2]), result: ["approvals": [
+            ["request_id": "approval-next", "description": "Run next?"]
+        ]])
+        await refresh.value
+
+        XCTAssertEqual(appState.messages.first?.approval?.status, .expired)
+        XCTAssertEqual(appState.messages.last?.approval?.requestId, "approval-next")
+        XCTAssertEqual(appState.messages.last?.approval?.status, .pending)
+    }
+
     func testSameClientClarifySuccessStillCommits() async throws {
         let appState = makeAppState()
         appState.messages = [clarifyFixture()]
