@@ -14870,6 +14870,176 @@
           }
         }
       }
+    },
+    "Bots" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "机器人"
+          }
+        }
+      }
+    },
+    "Loading bots…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在加载机器人…"
+          }
+        }
+      }
+    },
+    "Bot Mode requires a newer Hermes gateway." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bot Mode 需要更新版本的 Hermes 网关。"
+          }
+        }
+      }
+    },
+    "Update the gateway, then come back to chat with your bots." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请先更新网关，再回来与你的机器人聊天。"
+          }
+        }
+      }
+    },
+    "Retry" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重试"
+          }
+        }
+      }
+    },
+    "Could not load bots." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法加载机器人。"
+          }
+        }
+      }
+    },
+    "Could not refresh bots." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法刷新机器人。"
+          }
+        }
+      }
+    },
+    "No Bots Yet" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "还没有机器人"
+          }
+        }
+      }
+    },
+    "Bots you create with Hermes appear here." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你用 Hermes 创建的机器人会显示在这里。"
+          }
+        }
+      }
+    },
+    "Opens this bot's chat." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开该机器人的聊天。"
+          }
+        }
+      }
+    },
+    "Connect to Hermes to see your bots." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接到 Hermes 以查看你的机器人。"
+          }
+        }
+      }
+    },
+    "Connect to Hermes to chat with bots." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接到 Hermes 以与机器人聊天。"
+          }
+        }
+      }
+    },
+    "Could not check %@'s Bot Chat — not starting a new chat." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法检查 %@ 的 Bot Chat —— 不新建聊天。"
+          }
+        }
+      }
+    },
+    "Could not confirm %@'s Bot Chat — not starting a new chat." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法确认 %@ 的 Bot Chat —— 不新建聊天。"
+          }
+        }
+      }
+    },
+    "Could not create %@'s Bot Chat." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法创建 %@ 的 Bot Chat。"
+          }
+        }
+      }
+    },
+    "Could not title %@'s Bot Chat — not starting a new chat." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法为 %@ 的 Bot Chat 命名 —— 不新建聊天。"
+          }
+        }
+      }
+    },
+    "Could not open %@'s Bot Chat." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法打开 %@ 的 Bot Chat。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

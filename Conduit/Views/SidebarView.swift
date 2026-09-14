@@ -116,6 +116,8 @@ struct SidebarView: View {
                         switch selectedTab {
                         case .sessions:
                             SessionList()
+                        case .bots:
+                            BotRosterView()
                         case .cron:
                             CronList()
                         case .kanban:
