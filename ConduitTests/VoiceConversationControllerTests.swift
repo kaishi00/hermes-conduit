@@ -1275,11 +1275,10 @@ final class VoiceConversationControllerTests: XCTestCase {
         controller.pauseMicrophone()
         XCTAssertEqual(controller.microphoneLevel, 0, accuracy: 0.0001)
 
-        // Audio interruption.
+        // Audio interruption. The explicit user pause deliberately survives
+        // a fresh startListening (capture stays paused), so no level event
+        // publishes here; the interruption itself is what must land.
         await controller.startListening()
-        capture.emit(level: 0.4)
-        let republished = await controller.waitForMicrophoneLevel { abs($0 - 0.4) < 0.0001 }
-        XCTAssertTrue(republished)
         capture.emit(.interrupted(generation: capture.captureGeneration))
         let failed = await controller.waitForFailedState()
         XCTAssertTrue(failed, "the interruption failed the session")
@@ -2148,7 +2147,7 @@ final class ContinuousConversationPreferenceTests: XCTestCase {
 
         controller.stop()
         controller.setProfilePreferences(Self.preferences(continuous: false))
-        await Self.driveToAssistantCompletion(controller, gateway: gateway)
+        await Self.driveToAssistantCompletion(controller, gateway: gateway, transcriptions: 2)
         let settledSecond = await controller.waitForState(.idle)
         XCTAssertTrue(settledSecond)
         XCTAssertEqual(controller.state, .idle)
@@ -2156,7 +2155,7 @@ final class ContinuousConversationPreferenceTests: XCTestCase {
 
         controller.stop()
         controller.setProfilePreferences(Self.preferences(continuous: true))
-        await Self.driveToAssistantCompletion(controller, gateway: gateway)
+        await Self.driveToAssistantCompletion(controller, gateway: gateway, transcriptions: 3)
         let relistenedThird = await controller.waitForState(.listening)
         XCTAssertTrue(relistenedThird)
         XCTAssertEqual(controller.state, .listening)
@@ -2255,14 +2254,17 @@ final class ContinuousConversationPreferenceTests: XCTestCase {
     private static func driveToSpeaking(
         _ controller: VoiceConversationController,
         gateway: MockGateway,
-        sessionID: String = "session"
+        sessionID: String = "session",
+        transcriptions: Int = 1
     ) async {
         controller.beginVoiceTurn(sessionID: sessionID)
         await controller.startListening()
         let utteranceStart = Date()
         controller.ingestAudioLevel(0.1, at: utteranceStart)
         controller.ingestAudioLevel(0, at: utteranceStart.addingTimeInterval(1.3))
-        await gateway.waitUntilTranscriptionStarted()
+        // Absolute count: tests that drive several turns must observe THEIR
+        // turn's transcription, not an earlier one.
+        await gateway.waitUntilTranscriptionCount(transcriptions)
         XCTAssertEqual(controller.state, .thinking)
         controller.receiveAssistantEvent(.started(sessionID: sessionID))
         controller.receiveAssistantEvent(.delta(sessionID: sessionID, text: "Answer."))
@@ -2277,9 +2279,10 @@ final class ContinuousConversationPreferenceTests: XCTestCase {
     private static func driveToAssistantCompletion(
         _ controller: VoiceConversationController,
         gateway: MockGateway,
-        sessionID: String = "session"
+        sessionID: String = "session",
+        transcriptions: Int = 1
     ) async {
-        await driveToSpeaking(controller, gateway: gateway, sessionID: sessionID)
+        await driveToSpeaking(controller, gateway: gateway, sessionID: sessionID, transcriptions: transcriptions)
         controller.receiveAssistantEvent(.completed(sessionID: sessionID, content: "Answer."))
     }
 }
