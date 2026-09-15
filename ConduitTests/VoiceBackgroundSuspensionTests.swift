@@ -167,7 +167,7 @@ final class VoiceConversationLifecycleSuspensionTests: XCTestCase {
         let spy = SubmitSpy()
         let flags = Flags()
         let gate = InterruptParkingGate()
-        let submitAction: @MainActor (String) async -> Bool = { spy.submit($0) }
+        let submitAction: @MainActor (String) async -> Bool = { await spy.submit($0) }
         let interruptAction: @MainActor () async -> Bool = {
             flags.interrupts.increment()
             await gate.waitInInterrupt()
@@ -267,7 +267,7 @@ final class VoiceConversationLifecycleSuspensionTests: XCTestCase {
         let gateway = GatedTranscriptionGateway(transcript: "Question")
         let spy = SubmitSpy()
         let flags = Flags()
-        let submitAction: @MainActor (String) async -> Bool = { spy.submit($0) }
+        let submitAction: @MainActor (String) async -> Bool = { await spy.submit($0) }
         let interruptAction: @MainActor () async -> Bool = {
             flags.interrupts.increment()
             return flags.interruptSucceeds
@@ -305,7 +305,7 @@ final class VoiceConversationLifecycleSuspensionTests: XCTestCase {
         let spy = SubmitSpy()
         let flags = Flags()
         let policy = RoutePolicyBox(.speakerSafeHalfDuplex)
-        let submitAction: @MainActor (String) async -> Bool = { spy.submit($0) }
+        let submitAction: @MainActor (String) async -> Bool = { await spy.submit($0) }
         let interruptAction: @MainActor () async -> Bool = {
             flags.interrupts.increment()
             return flags.interruptSucceeds
@@ -348,7 +348,7 @@ final class VoiceConversationLifecycleSuspensionTests: XCTestCase {
         let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
         let spy = SubmitSpy()
         let flags = Flags()
-        let submitAction: @MainActor (String) async -> Bool = { spy.submit($0) }
+        let submitAction: @MainActor (String) async -> Bool = { await spy.submit($0) }
         let interruptAction: @MainActor () async -> Bool = {
             flags.interrupts.increment()
             return flags.interruptSucceeds
@@ -1275,7 +1275,7 @@ final class AppStateVoiceSuspensionTests: XCTestCase {
         let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
         let spy = SubmitSpy()
         let flags = Flags()
-        let submitAction: @MainActor (String) async -> Bool = { spy.submit($0) }
+        let submitAction: @MainActor (String) async -> Bool = { await spy.submit($0) }
         let interruptAction: @MainActor () async -> Bool = {
             flags.interrupts.increment()
             return flags.interruptSucceeds
@@ -1339,7 +1339,7 @@ final class AppStateVoiceSuspensionTests: XCTestCase {
             playback: MockPlayback(),
             gateway: gateway,
             routePolicyProvider: { .fullDuplex },
-            submit: { spy.submit($0) },
+            submit: { await spy.submit($0) },
             interrupt: { true },
             onEndConversation: { [weak appStateRef] in
                 appStateRef?.closeVoiceConversation()

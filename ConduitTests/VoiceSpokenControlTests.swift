@@ -507,7 +507,7 @@ final class VoiceConversationSpokenEndCommandTests: XCTestCase {
         } else {
             routeProvider = nil
         }
-        let submitAction: @MainActor (String) async -> Bool = { spy.submit($0) }
+        let submitAction: @MainActor (String) async -> Bool = { await spy.submit($0) }
         let interruptAction: @MainActor () async -> Bool = {
             // The End Conversation teardown cancels the utterance task that
             // called it; the Hermes interrupt must still run in an

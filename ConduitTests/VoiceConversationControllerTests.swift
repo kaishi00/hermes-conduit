@@ -210,7 +210,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             capture: capture,
             playback: MockPlayback(),
             gateway: gateway,
-            submit: { submitted.submit($0) },
+            submit: { await submitted.submit($0) },
             interrupt: { true }
         )
         controller.beginVoiceTurn(sessionID: "session")
@@ -237,7 +237,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             playback: MockPlayback(),
             deviceTranscriber: deviceTranscriber,
             gateway: gateway,
-            submit: { submitted.submit($0) },
+            submit: { await submitted.submit($0) },
             interrupt: { true }
         )
         var preferences = VoiceProfilePreferences()
@@ -336,7 +336,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             capture: capture,
             playback: MockPlayback(),
             gateway: gateway,
-            submit: { submitted.submit($0) },
+            submit: { await submitted.submit($0) },
             interrupt: { true }
         )
         controller.beginVoiceTurn(sessionID: "voice-session")
@@ -520,7 +520,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             capture: capture,
             playback: MockPlayback(),
             gateway: gateway,
-            submit: { submitted.submit($0) },
+            submit: { await submitted.submit($0) },
             interrupt: { true }
         )
         await controller.startListening()
@@ -906,7 +906,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             capture: capture,
             playback: MockPlayback(),
             gateway: gateway,
-            submit: { submitted.submit($0) },
+            submit: { await submitted.submit($0) },
             interrupt: { true }
         )
         controller.beginVoiceTurn(sessionID: "session")
@@ -940,7 +940,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             capture: capture,
             playback: MockPlayback(),
             gateway: gateway,
-            submit: { submitted.submit($0) },
+            submit: { await submitted.submit($0) },
             interrupt: { true }
         )
         await controller.startListening()
@@ -967,7 +967,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             capture: capture,
             playback: MockPlayback(),
             gateway: gateway,
-            submit: { submitted.submit($0) },
+            submit: { await submitted.submit($0) },
             interrupt: { true }
         )
         await controller.startListening()
@@ -996,7 +996,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             capture: capture,
             playback: MockPlayback(),
             gateway: gateway,
-            submit: { submitted.submit($0) },
+            submit: { await submitted.submit($0) },
             interrupt: { true }
         )
         await controller.startListening()
@@ -1057,7 +1057,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             capture: capture,
             playback: MockPlayback(),
             gateway: gateway,
-            submit: { submitted.submit($0) },
+            submit: { await submitted.submit($0) },
             interrupt: { true }
         )
 
@@ -1313,7 +1313,7 @@ final class VoiceSpeakerSafeBargeInTests: XCTestCase {
             playback: MockPlayback(),
             gateway: gateway,
             routePolicyProvider: { policy.policy },
-            submit: { submitted.submit($0) },
+            submit: { await submitted.submit($0) },
             interrupt: { interrupts.increment(); return true }
         )
 

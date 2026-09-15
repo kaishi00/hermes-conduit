@@ -360,7 +360,7 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
             playback: MockPlayback(),
             gateway: gateway,
             routePolicyProvider: { .fullDuplex },
-            submit: { submits.submit($0) },
+            submit: { await submits.submit($0) },
             interrupt: { true },
             onEndConversation: { [weak appState] in appState?.closeVoiceConversation() }
         )
