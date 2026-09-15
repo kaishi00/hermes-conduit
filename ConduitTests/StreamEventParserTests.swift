@@ -679,4 +679,55 @@ final class StreamEventParserTests: XCTestCase {
             XCTFail("Missing type should produce unparsed")
         }
     }
+
+    // MARK: - status.update
+
+    func testStatusUpdateCompactingParses() {
+        let event = parse(#"""
+        {"type": "status.update", "session_id": "s1", "payload": {"kind": "compacting", "text": "Summarizing…"}}
+        """#)
+        guard case .statusUpdate(let sessionId, let kind, let text) = event else {
+            return XCTFail("Expected statusUpdate, got \(String(describing: event))")
+        }
+        XCTAssertEqual(sessionId, "s1")
+        XCTAssertEqual(kind, .compacting)
+        XCTAssertEqual(text, "Summarizing…")
+    }
+
+    func testStatusUpdateCompactedParses() {
+        let event = parse(#"""
+        {"type": "status.update", "session_id": "s1", "payload": {"kind": "compacted", "text": "✓ Context compression complete"}}
+        """#)
+        guard case .statusUpdate(let sessionId, let kind, let text) = event else {
+            return XCTFail("Expected statusUpdate, got \(String(describing: event))")
+        }
+        XCTAssertEqual(sessionId, "s1")
+        XCTAssertEqual(kind, .compacted)
+        XCTAssertEqual(text, "✓ Context compression complete")
+    }
+
+    func testStatusUpdateWithoutSessionIDIsRejected() {
+        let event = parse(#"""
+        {"type": "status.update", "session_id": "", "payload": {"kind": "compacted"}}
+        """#)
+        XCTAssertNil(event, "A session-less status edge must not drive conversation-scoped state")
+    }
+
+    func testStatusUpdateUnrelatedKindsNeverMasqueradeAsCompaction() {
+        // The in-process manual compression path emits `compressing` and bare
+        // `status` kinds; drivers use arbitrary strings. None of them may
+        // parse as a compaction edge — they stay typed as `.other`.
+        for rawKind in ["compressing", "status", "ready", "lifecycle"] {
+            let event = parse(#"""
+            {"type": "status.update", "session_id": "s1", "payload": {"kind": "\#(rawKind)"}}
+            """#)
+            guard case .statusUpdate(_, let kind, let text) = event else {
+                return XCTFail("Expected statusUpdate for kind \(rawKind)")
+            }
+            XCTAssertNotEqual(kind, .compacting, rawKind)
+            XCTAssertNotEqual(kind, .compacted, rawKind)
+            XCTAssertEqual(kind, .other(rawKind), rawKind)
+            XCTAssertNil(text, rawKind)
+        }
+    }
 }

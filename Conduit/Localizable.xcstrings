@@ -2533,12 +2533,52 @@
         }
       }
     },
+    "Compressed %lld messages." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已压缩 %lld 条消息。"
+          }
+        }
+      }
+    },
     "Compressing…" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在压缩…"
+          }
+        }
+      }
+    },
+    "Compression is already in progress." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已有压缩正在进行。"
+          }
+        }
+      }
+    },
+    "⚠️ Compression failed: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⚠️ 压缩失败：%@"
+          }
+        }
+      }
+    },
+    "Compression continues in the background; the transcript will refresh when it finishes." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "压缩正在后台继续；完成后对话记录将刷新。"
           }
         }
       }
@@ -2975,6 +3015,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "上下文"
+          }
+        }
+      }
+    },
+    "⚠️ Context compression was aborted; the transcript is unchanged." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上下文压缩已中止；对话记录未发生更改。"
           }
         }
       }
@@ -8293,6 +8343,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "备注并重新排队"
+          }
+        }
+      }
+    },
+    "Nothing to compress." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有可压缩的内容。"
           }
         }
       }

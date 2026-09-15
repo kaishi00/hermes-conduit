@@ -1024,6 +1024,31 @@ final class HermesClientTests: XCTestCase {
         XCTAssertEqual(maxEdge.removed, Int.max - 1023)
     }
 
+    func testSessionNotFoundErrorClassification() {
+        // The gateway answers session-scoped RPCs for a reaped runtime with
+        // _err(4001, "session not found") (tui_gateway/server.py).
+        XCTAssertTrue(HermesClient.isSessionNotFoundError(
+            RpcError(code: 4001, message: "session not found")
+        ))
+        XCTAssertTrue(HermesClient.isSessionNotFoundError(
+            RpcError(code: nil, message: "Session Not Found: runtime-a")
+        ))
+
+        // NOT in the class: busy rejections, timeouts, connection loss,
+        // compression failures — stale-runtime recovery must never fire for
+        // these.
+        XCTAssertFalse(HermesClient.isSessionNotFoundError(
+            RpcError(code: 4009, message: "session busy — /interrupt the current turn before /compress")
+        ))
+        XCTAssertFalse(HermesClient.isSessionNotFoundError(
+            HermesError.timeout("session.compress")
+        ))
+        XCTAssertFalse(HermesClient.isSessionNotFoundError(HermesError.connectionClosed))
+        XCTAssertFalse(HermesClient.isSessionNotFoundError(
+            RpcError(code: 5005, message: "compression failed: provider exploded")
+        ))
+    }
+
     func testMissingRPCMethodClassificationMirrorsUpstream() {
         // The gateway answers unknown methods with JSON-RPC -32601
         // ("unknown method: …", tui_gateway/server.py).

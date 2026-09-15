@@ -188,7 +188,24 @@ enum StreamEvent {
     case modelUpdate(sessionId: String, model: String, provider: String)
     case agentCount(sessionId: String, count: Int)
     case delegateAgent(sessionId: String, activity: DelegateAgentActivity)
+    /// `status.update` — gateway lifecycle status for a session. Compaction
+    /// edges drive the compression spinner/state; unrelated kinds are typed
+    /// as `.other` so they can never masquerade as compaction events.
+    case statusUpdate(sessionId: String, kind: StatusUpdateKind, text: String?)
     case unparsed(payload: [String: Any])
+}
+
+/// `status.update` `payload.kind` values Hermes emits on the compression
+/// lifecycle (verified against `tui_gateway/server.py::_status_update`):
+/// `compacting` is active server-side compaction (auto-compaction progress
+/// re-tagged from the generic "lifecycle" kind), and `compacted` is the
+/// terminal completion edge (e.g. the compute-host late ack). The in-process
+/// manual path uses unrelated kinds (`compressing`, then a bare `status`),
+/// which land in `.other` together with every driver-specific string.
+enum StatusUpdateKind: Equatable {
+    case compacting
+    case compacted
+    case other(String)
 }
 
 /// Runtime fields returned by `session.resume` and `session.info`.
@@ -1434,6 +1451,23 @@ final class HermesClient: ObservableObject {
             || lowered.contains("-32601")
             || lowered.contains("unknown method")
             || lowered.contains("no such method")
+    }
+
+    /// Whether `error` means "the runtime session id is gone" — the gateway
+    /// answers session-scoped RPCs for a reaped/detached runtime with
+    /// `_err(4001, "session not found")` (`tui_gateway/server.py::_sess_nowait`),
+    /// and the client is expected to recover by resuming the STORED session
+    /// id. Hermes Desktop classifies the same condition by the
+    /// `/session not found/i` message. Timeouts, busy rejections, connection
+    /// loss, and compression failures are never in this class.
+    static func isSessionNotFoundError(_ error: Error) -> Bool {
+        if let rpcError = error as? RpcError {
+            if rpcError.code == 4001 { return true }
+            return rpcError.message.lowercased().contains("session not found")
+        }
+        let message = (error as? LocalizedError)?.errorDescription
+            ?? String(describing: error)
+        return message.lowercased().contains("session not found")
     }
 
     // MARK: - Attachments

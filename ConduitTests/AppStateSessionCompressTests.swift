@@ -640,6 +640,661 @@ final class AppStateSessionCompressTests: XCTestCase {
         XCTAssertFalse(harness.appState.canLoadEarlierMessagesForActiveConversation)
     }
 
+    // MARK: - Stale runtime recovery
+
+    func testSessionNotFoundRecoversStoredRuntimeAndRetriesOnce() async throws {
+        let recorder = SlashCallRecorder()
+        let page = Self.persistedPagePayload(
+            rowIDs: ["row-1", "row-2", "row-3"],
+            limit: 3,
+            sessionEcho: "runtime-new"
+        )
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            openSession: { _, sessionID, compact in
+                recorder.recordResume(sessionID: sessionID, compact: compact)
+                return SessionResumeResult(
+                    sessionId: "runtime-new",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { _, _, _ in
+                recorder.recordHydration()
+                return .payload(page)
+            },
+            compressSession: { _, sessionID, _ in
+                recorder.recordCompress(sessionID: sessionID, focusTopic: nil)
+                if recorder.compressCalls.count == 1 {
+                    throw RpcError(code: 4001, message: "session not found")
+                }
+                return Self.compressedResult()
+            }
+        ))
+        installComposerClient(in: harness)
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+
+        let submitted = await harness.appState.submitComposer(text: "/compress")
+        XCTAssertTrue(submitted)
+        // Exactly one bounded recovery: resume the stored session, then retry
+        // once against the fresh runtime.
+        XCTAssertEqual(recorder.compressCalls.map { $0.sessionID }, ["composer-origin", "runtime-new"])
+        XCTAssertEqual(recorder.resumeCalls.count, 1)
+        XCTAssertEqual(recorder.resumeCalls.first?.sessionID, "composer-origin")
+        XCTAssertEqual(recorder.resumeCalls.first?.compact, true)
+        // The recovered runtime is adopted as the active binding.
+        XCTAssertEqual(harness.appState.activeSessionId, "runtime-new")
+        // The retry result applies, and the rehydration re-establishes the
+        // persisted-history window for the recovered runtime.
+        XCTAssertEqual(harness.appState.messages.first?.content, "Summary carrier")
+        let window = try XCTUnwrap(harness.appState.persistedTranscriptWindow)
+        XCTAssertEqual(window.nextOffset, 3)
+        XCTAssertEqual(window.requestedSessionID, "runtime-new")
+    }
+
+    func testSessionNotFoundResumeDriftPreventsRetry() async throws {
+        let recorder = SlashCallRecorder()
+        let resumeGate = ControlledSuspension()
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            openSession: { _, sessionID, _ in
+                await resumeGate.suspend()
+                recorder.recordResume(sessionID: sessionID, compact: true)
+                return SessionResumeResult(
+                    sessionId: "runtime-new",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            compressSession: { _, sessionID, _ in
+                recorder.recordCompress(sessionID: sessionID, focusTopic: nil)
+                throw RpcError(code: 4001, message: "session not found")
+            }
+        ))
+        installComposerClient(in: harness)
+        let origin = session("composer-origin")
+        let destination = session("composer-destination")
+        harness.appState.sessions = [origin, destination]
+        harness.appState.activeSessionId = origin.id
+
+        let submission = Task { await harness.appState.submitComposer(text: "/compress") }
+        await resumeGate.waitUntilSuspended()
+        // The user navigates away while the recovery resume is in flight.
+        harness.appState.activeSessionId = destination.id
+        resumeGate.resume()
+        _ = await submission.value
+
+        XCTAssertEqual(recorder.compressCalls.map { $0.sessionID }, ["composer-origin"], "Identity drift must prevent the recovery retry")
+        XCTAssertEqual(recorder.resumeCalls.count, 1)
+        XCTAssertEqual(harness.appState.activeSessionId, "composer-destination", "A drifted recovery must not rebind the active runtime")
+        XCTAssertNil(harness.appState.persistedTranscriptWindow)
+    }
+
+    func testSessionNotFoundResumeFailureSurfacesOriginalError() async throws {
+        let recorder = SlashCallRecorder()
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            openSession: { _, sessionID, _ in
+                recorder.recordResume(sessionID: sessionID, compact: true)
+                throw URLError(.networkConnectionLost)
+            },
+            compressSession: { _, sessionID, _ in
+                recorder.recordCompress(sessionID: sessionID, focusTopic: nil)
+                throw RpcError(code: 4001, message: "session not found")
+            }
+        ))
+        installComposerClient(in: harness)
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+
+        _ = await harness.appState.submitComposer(text: "/compress")
+        XCTAssertEqual(recorder.compressCalls.count, 1, "No retry after a failed recovery resume")
+        XCTAssertEqual(recorder.resumeCalls.count, 1)
+        // The ORIGINAL compression error is the meaningful one to surface.
+        let lastRow = try XCTUnwrap(harness.appState.messages.last)
+        XCTAssertTrue(lastRow.content.contains("session not found"), "Expected the original error, got: \(lastRow.content)")
+    }
+
+    func testTimeoutNeverTriggersSessionRecovery() async throws {
+        let recorder = SlashCallRecorder()
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            openSession: { _, sessionID, _ in
+                recorder.recordResume(sessionID: sessionID, compact: true)
+                return SessionResumeResult(
+                    sessionId: "runtime-recovered",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            compressSession: { _, sessionID, _ in
+                recorder.recordCompress(sessionID: sessionID, focusTopic: nil)
+                throw HermesError.timeout("session.compress")
+            }
+        ))
+        installComposerClient(in: harness)
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+
+        _ = await harness.appState.submitComposer(text: "/compress")
+        // A timeout means the gateway IS compressing — never a stale-runtime
+        // signal, and never retried.
+        XCTAssertTrue(recorder.resumeCalls.isEmpty)
+        XCTAssertEqual(recorder.compressCalls.count, 1)
+        XCTAssertTrue(harness.appState.messages.last?.content.contains("Request timed out") == true)
+    }
+
+    // MARK: - Compaction lifecycle (`status.update`)
+
+    func testPendingCompressionStaysCompactingUntilCompactedEdge() async throws {
+        let page = Self.persistedPagePayload(rowIDs: ["row-1", "row-2", "row-3"], limit: 3)
+        var secondCompressionIsPending = false
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            persistedTranscript: { _, _, _ in
+                .payload(page)
+            },
+            compressSession: { _, _, _ in
+                if secondCompressionIsPending {
+                    return SessionCompressResult(from: .object([
+                        "status": .string("pending"),
+                        "message": .string("compression still running in the background")
+                    ]))
+                }
+                return Self.compressedResult()
+            }
+        ))
+        installComposerClient(in: harness)
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+
+        // First compression adopts and re-establishes a backfill window.
+        _ = await harness.appState.submitComposer(text: "/compress")
+        XCTAssertNotNil(harness.appState.persistedTranscriptWindow)
+        XCTAssertFalse(harness.appState.isCompressingActiveSession)
+
+        // Second compression answers `pending`: the RPC ended but the host is
+        // still compressing, so the server-side state keeps the spinner
+        // truthful.
+        secondCompressionIsPending = true
+        _ = await harness.appState.submitComposer(text: "/compress")
+        XCTAssertEqual(harness.appState.serverCompactingSessionIDs, ["composer-origin"])
+        XCTAssertTrue(harness.appState.isCompressingActiveSession, "A pending result must keep the compression affordance visible")
+
+        // The `compacted` edge is terminal: server state clears, and the
+        // pre-compaction persisted-history provenance is invalidated.
+        harness.appState.handleStreamEvent(.statusUpdate(sessionId: origin.id, kind: .compacted, text: nil))
+        XCTAssertTrue(harness.appState.serverCompactingSessionIDs.isEmpty)
+        XCTAssertNil(harness.appState.persistedTranscriptWindow)
+        XCTAssertFalse(harness.appState.isCompressingActiveSession)
+    }
+
+    func testCompactedDuringLiveTurnDefersReplacementAndInvalidates() async throws {
+        let page = Self.persistedPagePayload(rowIDs: ["row-1", "row-2", "row-3"], limit: 3)
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            persistedTranscript: { _, _, _ in
+                .payload(page)
+            },
+            compressSession: { _, _, _ in
+                Self.compressedResult()
+            }
+        ))
+        installComposerClient(in: harness)
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+
+        // Compression #1 adopts and rebuilds the backfill window.
+        _ = await harness.appState.submitComposer(text: "/compress")
+        XCTAssertNotNil(harness.appState.persistedTranscriptWindow)
+
+        // A live turn starts, then the gateway reports `compacted`.
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: origin.id, busy: true))
+        harness.appState.messages = [
+            ChatMessage(id: "m1", role: .user, content: "Live turn row", timestamp: "1")
+        ]
+        harness.appState.handleStreamEvent(.statusUpdate(sessionId: origin.id, kind: .compacted, text: nil))
+
+        // The live turn's transcript is never replaced underneath it; the
+        // obsolete provenance dies and freshness defers to the post-turn
+        // authoritative path.
+        XCTAssertEqual(harness.appState.messages.first?.content, "Live turn row")
+        XCTAssertNil(harness.appState.persistedTranscriptWindow)
+        XCTAssertTrue(harness.appState.transcriptFreshnessIsStale)
+        XCTAssertTrue(harness.appState.serverCompactingSessionIDs.isEmpty)
+    }
+
+    func testInactiveSessionCompactedClearsOnlySessionState() async throws {
+        let page = Self.persistedPagePayload(
+            rowIDs: ["row-1", "row-2", "row-3"],
+            limit: 3,
+            sessionEcho: "composer-destination"
+        )
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            persistedTranscript: { _, _, _ in
+                .payload(page)
+            },
+            compressSession: { _, _, _ in
+                Self.compressedResult()
+            }
+        ))
+        installComposerClient(in: harness)
+        let origin = session("composer-origin")
+        let destination = session("composer-destination")
+        harness.appState.sessions = [origin, destination]
+        harness.appState.activeSessionId = destination.id
+
+        // The active (destination) conversation compressed and has a window.
+        _ = await harness.appState.submitComposer(text: "/compress")
+        let windowBefore = harness.appState.persistedTranscriptWindow
+        XCTAssertNotNil(windowBefore)
+        let messagesBefore = harness.appState.messages
+
+        // A BACKGROUND conversation (origin) reports compaction activity.
+        harness.appState.handleStreamEvent(.statusUpdate(sessionId: origin.id, kind: .compacting, text: nil))
+        XCTAssertEqual(harness.appState.serverCompactingSessionIDs, ["composer-origin"])
+        harness.appState.handleStreamEvent(.statusUpdate(sessionId: origin.id, kind: .compacted, text: nil))
+
+        // Only origin's session-scoped state clears; the ACTIVE
+        // conversation's transcript and window are untouched.
+        XCTAssertTrue(harness.appState.serverCompactingSessionIDs.isEmpty)
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow, windowBefore)
+        XCTAssertEqual(harness.appState.messages, messagesBefore)
+    }
+
+    // MARK: - Compression identity
+
+    func testSpinnerSurvivesRuntimeAliasRebind() async throws {
+        let gate = ControlledSuspension()
+        let recorder = SlashCallRecorder()
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            compressSession: { _, sessionID, _ in
+                recorder.recordCompress(sessionID: sessionID, focusTopic: nil)
+                await gate.suspend()
+                return Self.compressedResult()
+            }
+        ))
+        installComposerClient(in: harness)
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+
+        let first = Task { await harness.appState.submitComposer(text: "/compress") }
+        await gate.waitUntilSuspended()
+
+        // The gateway re-homes the runtime mid-compression: same durable
+        // conversation, new runtime string.
+        let rebound = SessionSummary(
+            id: origin.id,
+            storedSessionId: origin.storedSessionId,
+            alternateIds: ["runtime-new"],
+            title: origin.title,
+            model: origin.model,
+            updatedLabel: origin.updatedLabel,
+            profile: origin.profile,
+            source: origin.source,
+            isActive: origin.isActive,
+            isArchived: origin.isArchived,
+            lineageRootId: origin.lineageRootId
+        )
+        harness.appState.sessions = [rebound]
+        harness.appState.activeSessionId = "runtime-new"
+
+        XCTAssertTrue(
+            harness.appState.isCompressingActiveSession,
+            "The Compressing affordance must survive a runtime alias rebind of the same conversation"
+        )
+        gate.resume()
+        _ = await first.value
+    }
+
+    func testDuplicateCompressionCoalescedAcrossEquivalentRuntimeIDs() async throws {
+        let recorder = SlashCallRecorder()
+        let gate = ControlledSuspension()
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            compressSession: { _, sessionID, _ in
+                recorder.recordCompress(sessionID: sessionID, focusTopic: nil)
+                await gate.suspend()
+                return Self.compressedResult()
+            }
+        ))
+        installComposerClient(in: harness)
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+
+        let first = Task { await harness.appState.submitComposer(text: "/compress") }
+        await gate.waitUntilSuspended()
+
+        // Re-home the runtime, then try again under the new runtime string:
+        // duplicate detection is equivalence-based, so this must coalesce —
+        // never launch a second server-side compression.
+        let rebound = SessionSummary(
+            id: origin.id,
+            storedSessionId: origin.storedSessionId,
+            alternateIds: ["runtime-new"],
+            title: origin.title,
+            model: origin.model,
+            updatedLabel: origin.updatedLabel,
+            profile: origin.profile,
+            source: origin.source,
+            isActive: origin.isActive,
+            isArchived: origin.isArchived,
+            lineageRootId: origin.lineageRootId
+        )
+        harness.appState.sessions = [rebound]
+        harness.appState.activeSessionId = "runtime-new"
+
+        let second = Task { await harness.appState.submitComposer(text: "/compress") }
+        _ = await second.value
+        gate.resume()
+        _ = await first.value
+
+        XCTAssertEqual(recorder.compressCalls.count, 1, "Equivalent runtime ids must coalesce into one compression")
+        XCTAssertNotNil(harness.appState.errorMessage)
+    }
+
+    func testDoubleSessionNotFoundResumesOnlyOnce() async throws {
+        let recorder = SlashCallRecorder()
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            openSession: { _, sessionID, _ in
+                recorder.recordResume(sessionID: sessionID, compact: true)
+                return SessionResumeResult(
+                    sessionId: "runtime-new",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            compressSession: { _, sessionID, _ in
+                recorder.recordCompress(sessionID: sessionID, focusTopic: nil)
+                // Even the recovered runtime answers session-not-found: the
+                // recovery is bounded to ONE resume + ONE retry.
+                throw RpcError(code: 4001, message: "session not found")
+            }
+        ))
+        installComposerClient(in: harness)
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+
+        _ = await harness.appState.submitComposer(text: "/compress")
+        XCTAssertEqual(recorder.compressCalls.count, 2, "Initial attempt plus exactly one recovered retry")
+        XCTAssertEqual(recorder.resumeCalls.count, 1, "A second 4001 is a real error, never a second resume")
+        XCTAssertTrue(harness.appState.messages.last?.content.hasPrefix("⚠️ Compression failed:") == true)
+    }
+
+    func testRetryFailureAfterRebindSurfacesAgainstRecoveredRuntime() async throws {
+        let recorder = SlashCallRecorder()
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            openSession: { _, _, _ in
+                recorder.recordResume(sessionID: "composer-origin", compact: true)
+                return SessionResumeResult(
+                    sessionId: "runtime-new",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            compressSession: { _, sessionID, _ in
+                recorder.recordCompress(sessionID: sessionID, focusTopic: nil)
+                if recorder.compressCalls.count == 1 {
+                    throw RpcError(code: 4001, message: "session not found")
+                }
+                // The retry lands on the recovered runtime but then times out:
+                // a real failure against the RECOVERED identity.
+                throw HermesError.timeout("session.compress")
+            }
+        ))
+        installComposerClient(in: harness)
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+
+        _ = await harness.appState.submitComposer(text: "/compress")
+        XCTAssertEqual(recorder.compressCalls.map { $0.sessionID }, ["composer-origin", "runtime-new"])
+        XCTAssertEqual(harness.appState.activeSessionId, "runtime-new", "The rebind survives a failed retry")
+        let lastRow = try XCTUnwrap(harness.appState.messages.last)
+        XCTAssertTrue(
+            lastRow.content.contains("Request timed out"),
+            "The retry's own failure is the meaningful one to surface, got: \(lastRow.content)"
+        )
+    }
+
+    func testAliasedCompactedEdgeClearsPendingServerState() async throws {
+        // `pending` inserted the claim under the origin runtime; the terminal
+        // `compacted` edge arrives addressed to an equivalent ALIAS runtime.
+        // Equivalence-aware removal must clear it anyway.
+        let origin = session("composer-origin", alternateIDs: ["runtime-new"])
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            compressSession: { _, _, _ in
+                SessionCompressResult(from: .object([
+                    "status": .string("pending"),
+                    "message": .string("compression still running in the background")
+                ]))
+            }
+        ))
+        installComposerClient(in: harness)
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+
+        _ = await harness.appState.submitComposer(text: "/compress")
+        XCTAssertEqual(harness.appState.serverCompactingSessionIDs, ["composer-origin"])
+
+        harness.appState.handleStreamEvent(.statusUpdate(sessionId: "runtime-new", kind: .compacted, text: nil))
+        XCTAssertTrue(
+            harness.appState.serverCompactingSessionIDs.isEmpty,
+            "A compacted edge addressed to an alias runtime must clear the claim"
+        )
+        XCTAssertFalse(harness.appState.isCompressingActiveSession)
+    }
+
+    // MARK: - Server-claim lifecycle (generation-fenced, bounded)
+
+    func testTerminalCompressionResultClearsPendingServerClaim() async throws {
+        var pending = true
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            compressSession: { _, _, _ in
+                if pending {
+                    return SessionCompressResult(from: .object([
+                        "status": .string("pending"),
+                        "message": .string("compression still running in the background")
+                    ]))
+                }
+                return Self.compressedResult()
+            }
+        ))
+        installComposerClient(in: harness)
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+
+        _ = await harness.appState.submitComposer(text: "/compress")
+        XCTAssertEqual(harness.appState.serverCompactingSessionIDs, ["composer-origin"])
+        XCTAssertTrue(harness.appState.isCompressingActiveSession)
+
+        // An authoritative terminal result ends the server-side claim.
+        pending = false
+        _ = await harness.appState.submitComposer(text: "/compress")
+        XCTAssertTrue(harness.appState.serverCompactingSessionIDs.isEmpty)
+        XCTAssertFalse(harness.appState.isCompressingActiveSession)
+    }
+
+    func testCompactedEdgeBeforePendingContinuationPreventsResurrection() async throws {
+        let gate = ControlledSuspension()
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            compressSession: { _, _, _ in
+                await gate.suspend()
+                return SessionCompressResult(from: .object([
+                    "status": .string("pending"),
+                    "message": .string("compression still running in the background")
+                ]))
+            }
+        ))
+        installComposerClient(in: harness)
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+
+        let submission = Task { await harness.appState.submitComposer(text: "/compress") }
+        await gate.waitUntilSuspended()
+
+        // The gateway's terminal `compacted` edge lands while the RPC await
+        // is still pending (the compute host finished ahead of the response).
+        harness.appState.handleStreamEvent(.statusUpdate(sessionId: origin.id, kind: .compacted, text: nil))
+
+        gate.resume()
+        _ = await submission.value
+
+        // The stale pending continuation must NOT resurrect the claim.
+        XCTAssertTrue(
+            harness.appState.serverCompactingSessionIDs.isEmpty,
+            "A pending continuation that lost the race to a terminal edge must not establish server-side state"
+        )
+        XCTAssertFalse(harness.appState.isCompressingActiveSession)
+    }
+
+    func testLostCompactedEdgeExpiresClaimWithoutTouchingOtherConversations() async throws {
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            compressSession: { _, _, _ in
+                SessionCompressResult(from: .object([
+                    "status": .string("pending"),
+                    "message": .string("compression still running in the background")
+                ]))
+            }
+        ))
+        installComposerClient(in: harness)
+        let origin = session("composer-origin")
+        let destination = session("composer-destination")
+        harness.appState.sessions = [origin, destination]
+        harness.appState.activeSessionId = origin.id
+
+        // Both conversations carry a pending server-side claim; origin's uses
+        // a short bounded lifetime, destination's the production budget.
+        harness.appState.establishServerCompactionClaim(sessionId: origin.id, generation: 0, lifetime: 0.3)
+        harness.appState.establishServerCompactionClaim(sessionId: destination.id, generation: 0)
+        XCTAssertTrue(harness.appState.isCompressingActiveSession)
+
+        // Past origin's bound: its lost-edge claim expires, destination's is
+        // untouched.
+        try await Task.sleep(for: .seconds(1))
+        XCTAssertFalse(
+            harness.appState.serverCompactingSessionIDs.contains(origin.id),
+            "A claim whose bounded lifetime elapsed must expire"
+        )
+        XCTAssertTrue(
+            harness.appState.serverCompactingSessionIDs.contains(destination.id),
+            "An unrelated conversation's claim is never touched by origin's expiry"
+        )
+    }
+
+    // MARK: - Identity admission for stale-runtime recovery
+
+    func testSessionNotFoundResumeEmptyRuntimeIDPreventsRecovery() async throws {
+        let recorder = SlashCallRecorder()
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            openSession: { _, _, _ in
+                recorder.recordResume(sessionID: "composer-origin", compact: true)
+                return SessionResumeResult(
+                    sessionId: "",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            compressSession: { _, sessionID, _ in
+                recorder.recordCompress(sessionID: sessionID, focusTopic: nil)
+                throw RpcError(code: 4001, message: "session not found")
+            }
+        ))
+        installComposerClient(in: harness)
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+
+        _ = await harness.appState.submitComposer(text: "/compress")
+        // A blank runtime id cannot be rebound or retried.
+        XCTAssertEqual(recorder.compressCalls.count, 1)
+        XCTAssertEqual(recorder.resumeCalls.count, 1)
+        XCTAssertEqual(harness.appState.activeSessionId, "composer-origin", "No rebind from a blank runtime id")
+        XCTAssertTrue(harness.appState.messages.last?.content.contains("session not found") == true)
+    }
+
+    func testSessionNotFoundForeignIdentityPreventsRecovery() async throws {
+        let recorder = SlashCallRecorder()
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            openSession: { _, _, _ in
+                recorder.recordResume(sessionID: "composer-origin", compact: true)
+                // The resume answered with a runtime of a DIFFERENT durable
+                // conversation: contradictory identity, admission rejects.
+                return SessionResumeResult(
+                    sessionId: "runtime-foreign",
+                    storedSessionId: "stored-foreign",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            compressSession: { _, sessionID, _ in
+                recorder.recordCompress(sessionID: sessionID, focusTopic: nil)
+                throw RpcError(code: 4001, message: "session not found")
+            }
+        ))
+        installComposerClient(in: harness)
+        let origin = session("composer-origin")
+        let foreign = session("foreign-id", storedID: "stored-foreign")
+        harness.appState.sessions = [origin, foreign]
+        harness.appState.activeSessionId = origin.id
+
+        _ = await harness.appState.submitComposer(text: "/compress")
+        // Admission rejected the contradictory claim: no rebind, no retry.
+        XCTAssertEqual(recorder.compressCalls.count, 1)
+        XCTAssertEqual(recorder.resumeCalls.count, 1)
+        XCTAssertEqual(harness.appState.activeSessionId, "composer-origin", "A rejected admission must not rebind the active runtime")
+        XCTAssertTrue(harness.appState.messages.last?.content.contains("session not found") == true)
+    }
+
+    func testValidRecoveryRecordsAuthoritativeRuntimeMapping() async throws {
+        let identityIndex = ConversationIdentityIndex()
+        let recorder = SlashCallRecorder()
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                openSession: { _, _, _ in
+                    recorder.recordResume(sessionID: "stored-origin", compact: true)
+                    return SessionResumeResult(
+                        sessionId: "runtime-new",
+                        storedSessionId: "stored-origin",
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                compressSession: { _, _, _ in
+                    recorder.recordCompress(sessionID: "composer-origin", focusTopic: nil)
+                    if recorder.compressCalls.count == 1 {
+                        throw RpcError(code: 4001, message: "session not found")
+                    }
+                    return Self.compressedResult()
+                }
+            ),
+            conversationIdentityIndex: identityIndex
+        )
+        installComposerClient(in: harness)
+        let origin = session("composer-origin", storedID: "stored-origin")
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+
+        _ = await harness.appState.submitComposer(text: "/compress")
+        // The recovery resumed the STORED conversation and rebound to its
+        // fresh runtime.
+        XCTAssertEqual(recorder.resumeCalls.count, 1)
+        XCTAssertEqual(recorder.resumeCalls.first?.sessionID, "stored-origin")
+        XCTAssertEqual(harness.appState.activeSessionId, "runtime-new")
+        // The authoritative runtime → durable mapping was recorded from the
+        // admitted recovery.
+        XCTAssertEqual(
+            identityIndex.durableID(forRuntime: "runtime-new", profile: "default"),
+            "stored-origin"
+        )
+        // The retry applied the compressed transcript.
+        XCTAssertEqual(harness.appState.messages.first?.content, "Summary carrier")
+    }
+
     // MARK: - Fixtures
 
     /// A validated `order=latest` persisted-history page the `persistedTranscript`
@@ -647,10 +1302,11 @@ final class AppStateSessionCompressTests: XCTestCase {
     /// and a pagination echo honoring the tail contract.
     private static func persistedPagePayload(
         rowIDs: [String],
-        limit: Int
+        limit: Int,
+        sessionEcho: String = "composer-origin"
     ) -> [String: Any] {
         [
-            "session_id": "composer-origin",
+            "session_id": sessionEcho,
             "messages": rowIDs.map { id in
                 [
                     "id": id,
@@ -689,7 +1345,8 @@ final class AppStateSessionCompressTests: XCTestCase {
     }
 
     private func makeHarness(
-        lifecycleOperations: ChatResumeLifecycleOperations = .live
+        lifecycleOperations: ChatResumeLifecycleOperations = .live,
+        conversationIdentityIndex: ConversationIdentityIndex? = nil
     ) -> (
         appState: AppState,
         defaults: UserDefaults,
@@ -710,7 +1367,9 @@ final class AppStateSessionCompressTests: XCTestCase {
             recoverySequence: ChatResumeRecoverySequence(),
             loadSavedConnection: false,
             clearSessionPresentationCache: {},
-            chatResumeLifecycleOperations: lifecycleOperations
+            chatResumeLifecycleOperations: lifecycleOperations,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults),
+            conversationIdentityIndex: conversationIdentityIndex
         )
         return (appState, defaults, suite)
     }
@@ -762,13 +1421,28 @@ private final class SlashCallRecorder {
         let focusTopic: String?
     }
 
+    struct ResumeCall {
+        let sessionID: String
+        let compact: Bool
+    }
+
     private(set) var compressCalls: [CompressCall] = []
+    private(set) var resumeCalls: [ResumeCall] = []
     private(set) var slashExecCount = 0
     private(set) var slashExecCommands: [String] = []
     private(set) var dispatchCount = 0
+    private(set) var hydrationCount = 0
 
     func recordCompress(sessionID: String, focusTopic: String?) {
         compressCalls.append(CompressCall(sessionID: sessionID, focusTopic: focusTopic))
+    }
+
+    func recordResume(sessionID: String, compact: Bool) {
+        resumeCalls.append(ResumeCall(sessionID: sessionID, compact: compact))
+    }
+
+    func recordHydration() {
+        hydrationCount += 1
     }
 
     func recordSlashExec(command: String = "") {
