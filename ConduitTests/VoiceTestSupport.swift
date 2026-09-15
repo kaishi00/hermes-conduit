@@ -151,6 +151,12 @@ func awaitPublishedValue<Value>(
     return await waiter.wait(timeout: timeout)
 }
 
+/// MainActor-isolated on purpose: `sink()` must subscribe on the main actor
+/// because `@Published` replays the current value SYNCHRONOUSLY on the
+/// subscribing thread, and every production write to these properties happens
+/// on the MainActor. A nonisolated `wait()` would subscribe from the generic
+/// executor and trip the `assumeIsolated` assert with the replayed value.
+@MainActor
 private final class PublishedValueWaiter<Value> {
     private let publisher: Published<Value>.Publisher
     private let predicate: (Value) -> Bool
