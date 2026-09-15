@@ -241,6 +241,7 @@ def lane_result(args) -> int:
             c for c in (args.infra_recovered_classes or "").split(",") if c],
         "persistent_infra_classes": [
             c for c in (args.persistent_infra_classes or "").split(",") if c],
+        "coreaudio_wedge": None,
         "isolation": None,
     }
     # Every external input is best-effort: this script assembles the canonical
@@ -251,6 +252,13 @@ def lane_result(args) -> int:
                 result[field] = json.loads(raw)
             except json.JSONDecodeError as exc:
                 warn(f"lane-result: malformed {field} JSON ignored ({exc})")
+    if getattr(args, "coreaudio_wedge_json", "") and os.path.exists(
+            args.coreaudio_wedge_json):
+        try:
+            with open(args.coreaudio_wedge_json, encoding="utf-8") as fh:
+                result["coreaudio_wedge"] = json.load(fh)
+        except (OSError, json.JSONDecodeError) as exc:
+            warn(f"lane-result: unreadable CoreAudio wedge document ignored ({exc})")
 
     def load_side_file(path):
         if path and os.path.exists(path):
@@ -596,8 +604,17 @@ def aggregate(args) -> int:
         (name, res) for name, res in sorted(results.items())
         if res.get("infra_recovered_classes")
     ]
+    # CoreAudio wedge classifications travel in the lane result so repeated
+    # incidents are trackable; they render whether the lane ultimately
+    # passed (recovered on a clean host) or failed (persistent wedge).
+    wedge_rows = [
+        (name, res) for name, res in sorted(results.items())
+        if isinstance(res.get("coreaudio_wedge"), dict)
+        and res["coreaudio_wedge"].get("wedge")
+    ]
     lines.append("## Retries & flaky tests")
-    if not flaky_rows and not retried_class_rows and not infra_recovered_rows:
+    if not (flaky_rows or retried_class_rows or infra_recovered_rows
+            or wedge_rows):
         lines.append("- None: every test passed on its first attempt.")
     else:
         for name, res in flaky_rows:
@@ -626,6 +643,36 @@ def aggregate(args) -> int:
                     f"- `{cls}` [{name}]: passed after an infrastructure retry "
                     "(simulator/environment wedge recovered; not a test flake)"
                 )
+        for name, res in wedge_rows:
+            wedge = res["coreaudio_wedge"]
+            signals = wedge.get("signals", {})
+            chain = " -> ".join(
+                str(a.get("status", "?")) for a in res.get("attempts", []))
+            if res.get("status") == "pass":
+                recovered = "recovered on a clean host"
+            elif "persistent-coreaudio-wedge" in chain:
+                recovered = (f"lane status **{res.get('status')}** "
+                             "(persistent CoreAudio runner failure)")
+            else:
+                recovered = f"lane status **{res.get('status')}**"
+            # The affected scope comes from the lane result, never from the
+            # classifier: the failure path names the identified failed
+            # classes; the timeout path retried the whole lane and claims
+            # no per-test scope.
+            if any(a.get("status") == "host-wedge-timeout"
+                   for a in res.get("attempts", [])):
+                affected = "whole lane (timeout path - no per-test scope)"
+            else:
+                affected = (wedge.get("affected_classes")
+                            or res.get("infra_recovered_classes") or [])
+                affected = ", ".join("`" + c + "`" for c in affected) or "none"
+            lines.append(
+                f"- **CoreAudio infrastructure wedge detected** [{name}]: "
+                f"AURemoteIO -10851 x{signals.get('auremoteio_10851', '?')}, "
+                f"HALC overload skips x{signals.get('halc_overload', '?')}; "
+                f"affected: {affected}; "
+                f"{recovered} (attempts: {chain})"
+            )
     lines.append("")
 
     # --- Failures / hangs ------------------------------------------------------
@@ -792,6 +839,9 @@ def main(argv=None) -> int:
     p.add_argument("--retried-classes", default="")
     p.add_argument("--infra-recovered-classes", default="")
     p.add_argument("--persistent-infra-classes", default="")
+    p.add_argument("--coreaudio-wedge-json", default="",
+                   help="classification document from "
+                        "classify-coreaudio-wedge.py to embed as metadata")
     p.add_argument("--simulator-reset", action="store_true")
     p.add_argument("--simulator-erase", action="store_true")
     p.add_argument("--hung-class", default="")

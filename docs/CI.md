@@ -211,6 +211,57 @@ the rest of CI v2.
    later classes are recorded as `not_diagnosed`. Recovery-to-green is
    only legitimate when the retried class completed successfully; any
    undiagnosed class fails the lane so unexecuted tests stay visible.
+5. **CoreAudio host wedge** (any unit lane) - a broken GitHub-hosted audio
+   host is a RUNNER failure, not a property of any test class: it floods
+   the invocation log with `AURemoteIO ... failed: -10851` lines and HAL
+   `skipping cycle due to overload` lines, then starves timing-sensitive
+   assertions anywhere in the lane or hangs the invocation outright.
+   `scripts/classify-coreaudio-wedge.py` is a HOST-HEALTH classifier: the
+   strong log signature alone (>= 150 AURemoteIO -10851 lines AND >= 10
+   HALC overload skips in that invocation) identifies the broken
+   environment. Healthy lanes emit up to ~93-116 ambient AURemoteIO lines
+   from AppState construction but only ~0-11 HALC overload skips, and a
+   non-audio slow-timeout lane shows 48 / 4 - the joint AND with those
+   margins fails closed, and thresholds are flag-overridable for
+   recalibration, and the lane runner honors the
+   `COREAUDIO_WEDGE_MIN_AURIOC` / `COREAUDIO_WEDGE_MIN_HALC` environment
+   variables (defaults 150 / 10) for the same purpose. There is deliberately NO test-class allowlist: any
+   failed test may be poisoned by the host, and growing an allowlist per
+   failing class would recreate the classification bug this domain
+   exists to fix.
+   - Failure path (identified test failures): the retry scope is EVERY
+     identified failed class - mixed audio and non-audio classes are all
+     retried, because a real product regression fails again on the
+     recovered environment. An unattributable failure record cannot be
+     scoped, so it fails closed as unclassified instead of authorizing a
+     subset retry.
+   - Timeout path: CoreAudio starvation frequently hangs the invocation
+     instead of failing it. Before entering generic class-granular
+     isolation, the timed-out invocation's log is classified; on a strong
+     signature the simulator is erased and the WHOLE lane retried once (a
+     timeout yields no reliable per-test attribution, so the recovery is
+     recorded at lane level and no per-class recovery is claimed). A weak
+     or absent signature preserves the unchanged isolation semantics.
+   - Outcome semantics are identical on both paths: retry passes ->
+     infrastructure recovery (`coreaudio_wedge` signal metadata in
+     lane-result.json, rendered in the CI Test Report even on green
+     lanes; the affected scope is drawn from `infra_recovered_classes` on
+     the failure path and shown as the whole lane on the timeout path;
+     both attempt bundles kept); retry fails without the
+     signature -> real product failure; retry carries the signature
+     again -> **persistent CoreAudio runner failure** (an environment
+     verdict, not a product claim); retry timeout / unclassifiable ->
+     the lane fails. There is no second recovery: the escalation path
+     for a persistent fleet wedge is re-running the lane when the fleet
+     has recovered.
+   - Historical note: the first version of this classifier gated recovery
+     on a hand-maintained "audio-sensitive class inventory" and reserved
+     those classes into a dedicated lane, under the assumption that only
+     voice/CarPlay classes could be poisoned. Run 34885607864 disproved
+     that - a non-audio lane stalled on the same host family while the
+     audio lane passed on its own healthy runner - so the gate and the
+     reservation were removed; every unit lane carries the host-level
+     recovery instead.
 
 ### Destination readiness gate
 
@@ -344,7 +395,10 @@ classes left `not_diagnosed` after a confirmed hang.
 
 Just add it. The planner discovers it on the next run, gives it the default
 estimate (or its real history entry after the first main run), and balances
-it into a lane. No lane-assignment files to maintain. To check locally:
+it into a lane. No lane-assignment files to maintain, and no test-class
+allowlist exists for the CoreAudio host-wedge recovery: the host-health
+classifier keys on the runner's log signature alone, so a new test inherits
+the protection without registration. To check locally:
 
 ```
 python3 scripts/plan-tests.py validate

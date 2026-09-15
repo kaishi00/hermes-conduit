@@ -135,6 +135,7 @@ class LaneResultTests(unittest.TestCase):
                 isolation_json="", simulator_reset=True, simulator_erase=False,
                 hung_class="", retried_classes="", infra_recovered_classes="",
                 persistent_infra_classes="",
+                coreaudio_wedge_json="",
                 observations=str(obs), detail=str(detail), out=str(out))
             rc = ext.lane_result(args)
             self.assertEqual(rc, ext.EXIT_OK)
@@ -579,7 +580,7 @@ class AggregateTests(unittest.TestCase):
                 attempts_json="[not valid json",
                 isolation_json="", simulator_reset=False,
 simulator_erase=False, hung_class="", retried_classes="", persistent_infra_classes="",
-                infra_recovered_classes="",
+                coreaudio_wedge_json="", infra_recovered_classes="",
                 observations=str(obs), detail=str(detail), out=str(out))
             rc = ext.lane_result(args)
             self.assertEqual(rc, ext.EXIT_OK)
@@ -587,6 +588,60 @@ simulator_erase=False, hung_class="", retried_classes="", persistent_infra_class
             self.assertNotIn("class_seconds", doc)  # corrupt side file ignored
             self.assertEqual(doc["attempts"], [])   # malformed attempts ignored
             self.assertEqual(doc["status"], "pass")
+
+    def test_coreaudio_wedge_metadata_is_embedded_and_rendered(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            obs = Path(tmp) / "observations.json"
+            obs.write_text(json.dumps({
+                "schema_version": 1, "classes": {"AppStateVoiceSuspensionTests": 9.0},
+            }), encoding="utf-8")
+            detail = Path(tmp) / "detail.json"
+            detail.write_text(json.dumps({"schema_version": 1, "failures": []}),
+                              encoding="utf-8")
+            wedge = Path(tmp) / "wedge.json"
+            wedge.write_text(json.dumps({
+                "wedge": True, "signature_strong": True,
+                "signals": {"auremoteio_10851": 185, "halc_overload": 48,
+                            "chhaptic_engine": 20},
+            }), encoding="utf-8")
+            out = Path(tmp) / "lane-result.json"
+            args = SimpleNamespace(
+                lane="unit-audio", kind="unit", target="ConduitTests",
+                classes="AppStateVoiceSuspensionTests", status="pass",
+                predicted_s=40.0, timeout_s=600, actual_s=210.0,
+                started_at="2026-09-14T00:00:00Z",
+                attempts_json='[{"n": 1, "mode": "lane", "status": "audio-wedge"},'
+                              ' {"n": 2, "mode": "audio-retry", "status": "passed"}]',
+                isolation_json="", simulator_reset=True, simulator_erase=True,
+                hung_class="", retried_classes="",
+                infra_recovered_classes="AppStateVoiceSuspensionTests",
+                persistent_infra_classes="",
+                coreaudio_wedge_json=str(wedge),
+                observations=str(obs), detail=str(detail), out=str(out))
+            self.assertEqual(ext.lane_result(args), ext.EXIT_OK)
+            doc = json.loads(out.read_text(encoding="utf-8"))
+            self.assertTrue(doc["coreaudio_wedge"]["wedge"])
+            self.assertEqual(doc["coreaudio_wedge"]["signals"]["auremoteio_10851"], 185)
+
+            # The aggregate must render the wedge even on a green lane.
+            plan = Path(tmp) / "plan.json"
+            plan.write_text(json.dumps({"unit_lanes": [
+                {"lane": "unit-audio", "predicted_s": 40.0, "classes": [
+                    "AppStateVoiceSuspensionTests"]}],
+                "ui_lanes": []}), encoding="utf-8")
+            lanes_dir = Path(tmp) / "lanes" / "lane-unit-audio"
+            lanes_dir.mkdir(parents=True)
+            (lanes_dir / "lane-result.json").write_text(
+                json.dumps(doc), encoding="utf-8")
+            summary = Path(tmp) / "summary.md"
+            rc = ext.aggregate(SimpleNamespace(
+                plan=str(plan), lanes_dir=os.path.join(tmp, "lanes"),
+                build_result="", out=str(summary)))
+            self.assertEqual(rc, ext.EXIT_OK)
+            text = summary.read_text(encoding="utf-8")
+            self.assertIn("CoreAudio infrastructure wedge detected", text)
+            self.assertIn("AURemoteIO -10851 x185", text)
+            self.assertIn("recovered on a clean host", text)
 
     def test_hang_is_reported_prominently(self):
         with tempfile.TemporaryDirectory() as tmp:
