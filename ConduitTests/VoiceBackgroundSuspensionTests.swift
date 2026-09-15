@@ -6,6 +6,15 @@
 //  runtime release) instead of hard teardown, and conservative foreground
 //  restoration gated on profile/session/server identity.
 //
+//  Synchronization convention: asynchronous controller/AppState work is
+//  observed through the explicit signals in VoiceTestSupport.swift
+//  (`SubmitSpy.waitUntilSubmitted`, `MockGateway.waitUntil*`,
+//  `ControlledSuspension.waitUntilSuspended`,
+//  `GatedTranscriptionGateway.waitUntilTranscribing`,
+//  `InterruptGate.waitUntilEntered`, `waitForState`/`waitForMicrophoneLevel`
+//  @Published waits). No test waits on a fixed settling window; negative
+//  assertions drain pending MainActor work instead.
+//
 
 import XCTest
 @testable import Conduit
@@ -15,8 +24,8 @@ import XCTest
 @MainActor
 final class VoiceConversationLifecycleSuspensionTests: XCTestCase {
     func testSuspensionReleasesRuntimeButPreservesConversationIdentity() async {
-        let (controller, capture, gateway, flags) = makeFixture()
-        await driveToThinking(controller, gateway: gateway, flags: flags)
+        let (controller, capture, gateway, spy, flags) = makeFixture()
+        await driveToThinking(controller, gateway: gateway, spy: spy)
         let transcriptAfterTurn = controller.conversationTranscript
 
         controller.suspendRuntimeForLifecycle()
@@ -28,8 +37,8 @@ final class VoiceConversationLifecycleSuspensionTests: XCTestCase {
     }
 
     func testSuspensionWhileSpeakingStopsPlaybackAndPreservesIdentity() async {
-        let (controller, capture, playback, gateway, flags) = makeFixtureWithPlayback()
-        await driveToSpeaking(controller, gateway: gateway, flags: flags)
+        let (controller, capture, playback, gateway, spy, flags) = makeFixture()
+        await driveToSpeaking(controller, gateway: gateway, spy: spy)
         XCTAssertTrue(playback.isPlaying)
 
         controller.suspendRuntimeForLifecycle()
@@ -42,7 +51,7 @@ final class VoiceConversationLifecycleSuspensionTests: XCTestCase {
     }
 
     func testSuspensionPreservesExplicitUserPause() async {
-        let (controller, capture, gateway, flags) = makeFixture()
+        let (controller, capture, gateway, spy, flags) = makeFixture()
         controller.beginVoiceTurn(sessionID: "session")
         await controller.startListening()
         controller.pauseMicrophone()
@@ -66,27 +75,29 @@ final class VoiceConversationLifecycleSuspensionTests: XCTestCase {
         // through the gate into the meter and VAD.
         let firstHeard = Date()
         capture.emit(level: 0.5, at: firstHeard)
-        capture.emit(level: 0.5, at: firstHeard.addingTimeInterval(0.4))
-        try? await Task.sleep(nanoseconds: 150_000_000)
+        let heard = await controller.waitForMicrophoneLevel { $0 > 0 }
+        XCTAssertTrue(heard, "the recaptured microphone hears speech")
         XCTAssertGreaterThan(controller.microphoneLevel, 0, "the recaptured microphone hears speech")
 
         // …and the heard speech completes a full utterance: transcription
         // then submission.
+        capture.emit(level: 0.5, at: firstHeard.addingTimeInterval(0.4))
         capture.emit(level: 0, at: firstHeard.addingTimeInterval(1.8))
-        try? await Task.sleep(nanoseconds: 250_000_000)
+        await gateway.waitUntilTranscriptionStarted()
+        await spy.waitUntilSubmitted(1)
         XCTAssertEqual(gateway.transcriptionCount, 1, "the utterance reaches transcription")
-        XCTAssertEqual(flags.submitTexts, ["Question"], "and reaches submission")
+        XCTAssertEqual(spy.texts, ["Question"], "and reaches submission")
         XCTAssertEqual(controller.state, .thinking)
     }
 
     func testSuspensionRetiresInFlightTurnVoiceContinuationWithoutCancellingServerTurn() async {
-        let (controller, capture, gateway, flags) = makeFixture()
-        await driveToThinking(controller, gateway: gateway, flags: flags)
-        XCTAssertEqual(flags.submitTexts, ["Question"], "the turn was submitted before suspension")
+        let (controller, capture, gateway, spy, flags) = makeFixture()
+        await driveToThinking(controller, gateway: gateway, spy: spy)
+        XCTAssertEqual(spy.texts, ["Question"], "the turn was submitted before suspension")
 
         controller.suspendRuntimeForLifecycle()
 
-        XCTAssertEqual(flags.interrupts, 0, "the Hermes turn is not cancelled by suspension")
+        XCTAssertEqual(flags.interrupts.value, 0, "the Hermes turn is not cancelled by suspension")
         let startsAtSuspension = capture.startCount
 
         // The suspended turn's terminal events belong to the retired turn:
@@ -94,16 +105,16 @@ final class VoiceConversationLifecycleSuspensionTests: XCTestCase {
         controller.receiveAssistantEvent(.started(sessionID: "session"))
         controller.receiveAssistantEvent(.delta(sessionID: "session", text: "late"))
         controller.receiveAssistantEvent(.completed(sessionID: "session", content: "late answer"))
-        try? await Task.sleep(nanoseconds: 150_000_000)
+        await drainPendingMainActorWork()
 
         XCTAssertEqual(controller.state, .idle)
         XCTAssertEqual(capture.startCount, startsAtSuspension, "no stale relisten after suspension")
-        XCTAssertEqual(flags.speechStreamOpens, 0, "no stale TTS after suspension")
+        XCTAssertEqual(gateway.openCount, 0, "no stale TTS after suspension")
     }
 
     func testNextSubmitAfterSuspensionCancelsOrphanedTurnAndContinues() async {
-        let (controller, capture, gateway, flags) = makeFixture()
-        await driveToThinking(controller, gateway: gateway, flags: flags)
+        let (controller, capture, gateway, spy, flags) = makeFixture()
+        await driveToThinking(controller, gateway: gateway, spy: spy)
         controller.suspendRuntimeForLifecycle()
         controller.setForegroundActive(true)
 
@@ -115,10 +126,11 @@ final class VoiceConversationLifecycleSuspensionTests: XCTestCase {
         let start = Date()
         controller.ingestAudioLevel(0.1, at: start)
         controller.ingestAudioLevel(0, at: start.addingTimeInterval(1.3))
-        try? await Task.sleep(nanoseconds: 150_000_000)
+        await flags.interrupts.waitUntil(1)
+        await spy.waitUntilSubmitted(2)
 
-        XCTAssertEqual(flags.interrupts, 1, "the orphaned turn is cancelled by the next user submission")
-        XCTAssertEqual(flags.submitTexts, ["Question", "Question"], "the new turn submits normally")
+        XCTAssertEqual(flags.interrupts.value, 1, "the orphaned turn is cancelled by the next user submission")
+        XCTAssertEqual(spy.texts, ["Question", "Question"], "the new turn submits normally")
 
         // The orphan's cancellation terminal arrives before the new turn
         // starts; it must not fail or settle the new turn.
@@ -127,8 +139,8 @@ final class VoiceConversationLifecycleSuspensionTests: XCTestCase {
     }
 
     func testOrphanSurvivesConsecutiveSuspensions() async {
-        let (controller, capture, gateway, flags) = makeFixture()
-        await driveToThinking(controller, gateway: gateway, flags: flags)
+        let (controller, capture, gateway, spy, flags) = makeFixture()
+        await driveToThinking(controller, gateway: gateway, spy: spy)
 
         // background → foreground → background: the second suspension must
         // not forget the orphan recorded by the first (the awaiting state it
@@ -142,35 +154,34 @@ final class VoiceConversationLifecycleSuspensionTests: XCTestCase {
         let start = Date()
         controller.ingestAudioLevel(0.1, at: start)
         controller.ingestAudioLevel(0, at: start.addingTimeInterval(1.3))
-        try? await Task.sleep(nanoseconds: 150_000_000)
+        await flags.interrupts.waitUntil(1)
+        await spy.waitUntilSubmitted(2)
 
-        XCTAssertEqual(flags.interrupts, 1, "the orphan survives a background/foreground/background cycle")
-        XCTAssertEqual(flags.submitTexts, ["Question", "Question"])
+        XCTAssertEqual(flags.interrupts.value, 1, "the orphan survives a background/foreground/background cycle")
+        XCTAssertEqual(spy.texts, ["Question", "Question"])
     }
 
     func testOrphanProtectionSurvivesSupersededCancelAwait() async {
         let capture = MockCapture(permissionGranted: true)
         let gateway = MockGateway(transcript: "Question")
+        let spy = SubmitSpy()
         let flags = Flags()
         let gate = InterruptGate()
-        let submitAction: @MainActor (String) async -> Bool = { text in
-            flags.submitTexts.append(text)
-            return true
-        }
+        let submitAction: @MainActor (String) async -> Bool = { spy.submit($0) }
         let interruptAction: @MainActor () async -> Bool = {
-            flags.interrupts += 1
+            flags.interrupts.increment()
             await gate.waitInInterrupt()
             return true
         }
         let controller = VoiceConversationController(
             capture: capture,
-            playback: GatedPlayback(),
+            playback: MockPlayback(),
             gateway: gateway,
             routePolicyProvider: { .fullDuplex },
             submit: submitAction,
             interrupt: interruptAction
         )
-        await driveToThinking(controller, gateway: gateway, flags: flags)
+        await driveToThinking(controller, gateway: gateway, spy: spy)
         controller.suspendRuntimeForLifecycle()
         controller.setForegroundActive(true)
 
@@ -186,23 +197,24 @@ final class VoiceConversationLifecycleSuspensionTests: XCTestCase {
         // dies, and the sticky orphan flag must survive it.
         controller.suspendRuntimeForLifecycle()
         gate.release()
-        try? await Task.sleep(nanoseconds: 120_000_000)
-        XCTAssertEqual(flags.submitTexts, ["Question"], "the superseded submission never reached Hermes")
+        await drainPendingMainActorWork()
+        XCTAssertEqual(spy.texts, ["Question"], "the superseded submission never reached Hermes")
 
         controller.setForegroundActive(true)
         await controller.resumeMicrophone()
         let secondStart = Date()
         controller.ingestAudioLevel(0.1, at: secondStart)
         controller.ingestAudioLevel(0, at: secondStart.addingTimeInterval(1.3))
-        try? await Task.sleep(nanoseconds: 150_000_000)
+        await flags.interrupts.waitUntil(2)
+        await spy.waitUntilSubmitted(2)
 
-        XCTAssertEqual(flags.interrupts, 2, "the next submission still cancels the orphan")
-        XCTAssertEqual(flags.submitTexts, ["Question", "Question"], "and then submits normally")
+        XCTAssertEqual(flags.interrupts.value, 2, "the next submission still cancels the orphan")
+        XCTAssertEqual(spy.texts, ["Question", "Question"], "and then submits normally")
     }
 
     func testFailedOrphanCancellationRetainsFlagAndBlocksSubmissionUntilRetry() async {
-        let (controller, capture, gateway, flags) = makeFixture()
-        await driveToThinking(controller, gateway: gateway, flags: flags)
+        let (controller, capture, gateway, spy, flags) = makeFixture()
+        await driveToThinking(controller, gateway: gateway, spy: spy)
         controller.suspendRuntimeForLifecycle()
         controller.setForegroundActive(true)
 
@@ -213,11 +225,13 @@ final class VoiceConversationLifecycleSuspensionTests: XCTestCase {
         let start = Date()
         controller.ingestAudioLevel(0.1, at: start)
         controller.ingestAudioLevel(0, at: start.addingTimeInterval(1.3))
-        try? await Task.sleep(nanoseconds: 150_000_000)
+        await flags.interrupts.waitUntil(1)
+        let failed = await controller.waitForFailedState()
+        XCTAssertTrue(failed, "the failed orphan cancellation failed the session")
 
-        XCTAssertEqual(flags.interrupts, 1)
+        XCTAssertEqual(flags.interrupts.value, 1)
         XCTAssertEqual(gateway.transcriptionCount, 2, "the retry utterance was heard again…")
-        XCTAssertEqual(flags.submitTexts, ["Question"], "…but never submitted while the orphan stands")
+        XCTAssertEqual(spy.texts, ["Question"], "…but never submitted while the orphan stands")
         XCTAssertEqual(controller.state, .failed("Hermes could not cancel the previous response."))
 
         // A later successful retry clears the orphan and submits normally.
@@ -226,15 +240,16 @@ final class VoiceConversationLifecycleSuspensionTests: XCTestCase {
         let retryStart = Date()
         controller.ingestAudioLevel(0.1, at: retryStart)
         controller.ingestAudioLevel(0, at: retryStart.addingTimeInterval(1.3))
-        try? await Task.sleep(nanoseconds: 150_000_000)
+        await flags.interrupts.waitUntil(2)
+        await spy.waitUntilSubmitted(2)
 
-        XCTAssertEqual(flags.interrupts, 2, "the retry cancels the orphan again")
-        XCTAssertEqual(flags.submitTexts, ["Question", "Question"], "the retry submits normally")
+        XCTAssertEqual(flags.interrupts.value, 2, "the retry cancels the orphan again")
+        XCTAssertEqual(spy.texts, ["Question", "Question"], "the retry submits normally")
         XCTAssertEqual(controller.state, .thinking)
     }
 
     func testStopAfterSuspensionStillClosesFully() async {
-        let (controller, _, _, _) = makeFixture()
+        let (controller, _, _, _, _) = makeFixture()
         controller.beginVoiceTurn(sessionID: "session")
         await controller.startListening()
 
@@ -250,18 +265,16 @@ final class VoiceConversationLifecycleSuspensionTests: XCTestCase {
     func testLateUtteranceTranscriptionAfterSuspensionCannotSubmit() async {
         let capture = MockCapture(permissionGranted: true)
         let gateway = GatedTranscriptionGateway(transcript: "Question")
+        let spy = SubmitSpy()
         let flags = Flags()
-        let submitAction: @MainActor (String) async -> Bool = { text in
-            flags.submitTexts.append(text)
-            return true
-        }
+        let submitAction: @MainActor (String) async -> Bool = { spy.submit($0) }
         let interruptAction: @MainActor () async -> Bool = {
-            flags.interrupts += 1
+            flags.interrupts.increment()
             return flags.interruptSucceeds
         }
         let controller = VoiceConversationController(
             capture: capture,
-            playback: GatedPlayback(),
+            playback: MockPlayback(),
             gateway: gateway,
             routePolicyProvider: { .fullDuplex },
             submit: submitAction,
@@ -279,24 +292,22 @@ final class VoiceConversationLifecycleSuspensionTests: XCTestCase {
 
         controller.suspendRuntimeForLifecycle()
         gateway.releaseTranscription()
-        try? await Task.sleep(nanoseconds: 150_000_000)
+        await drainPendingMainActorWork()
 
-        XCTAssertEqual(flags.submitTexts, [], "the suspended utterance must never submit")
+        XCTAssertEqual(spy.texts, [], "the suspended utterance must never submit")
         XCTAssertEqual(controller.state, .idle)
     }
 
     func testSpeakerRouteRemainsHalfDuplexInTurnsAfterRestore() async {
         let capture = MockCapture(permissionGranted: true)
-        let playback = GatedPlayback()
-        let gateway = MockGateway(transcript: "Question")
+        let playback = MockPlayback()
+        let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
+        let spy = SubmitSpy()
         let flags = Flags()
         let policy = RoutePolicyBox(.speakerSafeHalfDuplex)
-        let submitAction: @MainActor (String) async -> Bool = { text in
-            flags.submitTexts.append(text)
-            return true
-        }
+        let submitAction: @MainActor (String) async -> Bool = { spy.submit($0) }
         let interruptAction: @MainActor () async -> Bool = {
-            flags.interrupts += 1
+            flags.interrupts.increment()
             return flags.interruptSucceeds
         }
         let controller = VoiceConversationController(
@@ -308,7 +319,7 @@ final class VoiceConversationLifecycleSuspensionTests: XCTestCase {
             interrupt: interruptAction
         )
 
-        await driveToSpeaking(controller, gateway: gateway, flags: flags)
+        await driveToSpeaking(controller, gateway: gateway, spy: spy)
         XCTAssertTrue(controller.isPlaybackCaptureSuspended)
         controller.suspendRuntimeForLifecycle()
         XCTAssertFalse(controller.isPlaybackCaptureSuspended, "suspension releases the playback-suspension state")
@@ -316,37 +327,31 @@ final class VoiceConversationLifecycleSuspensionTests: XCTestCase {
 
         // A fresh turn after restoration behaves exactly like before: the
         // speaker-safe route suspends capture during TTS again.
-        await driveToSpeaking(controller, gateway: gateway, flags: flags)
+        await driveToSpeaking(controller, gateway: gateway, spy: spy, submissions: 2)
         XCTAssertTrue(controller.isPlaybackCaptureSuspended, "route safety is unchanged after restoration")
     }
 
     // MARK: fixtures
 
     final class Flags {
-        var submitTexts: [String] = []
-        var interrupts = 0
-        var speechStreamOpens = 0
-        var playbackStopCount = 0
+        let interrupts = AwaitableCounter()
+        let endConversations = AwaitableCounter()
         /// Toggle per phase: a failed orphan cancellation must retain the
         /// orphan flag and block the new submission.
         var interruptSucceeds = true
     }
 
-    private func makeFixture() -> (VoiceConversationController, MockCapture, MockGateway, Flags) {
+    private func makeFixture() -> (VoiceConversationController, MockCapture, MockPlayback, MockGateway, SubmitSpy, Flags) {
         let capture = MockCapture(permissionGranted: true)
-        let playback = GatedPlayback()
-        let gateway = MockGateway(transcript: "Question")
+        let playback = MockPlayback()
+        let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
+        let spy = SubmitSpy()
         let flags = Flags()
-        let submitAction: @MainActor (String) async -> Bool = { text in
-            flags.submitTexts.append(text)
-            return true
-        }
+        let submitAction: @MainActor (String) async -> Bool = { spy.submit($0) }
         let interruptAction: @MainActor () async -> Bool = {
-            flags.interrupts += 1
+            flags.interrupts.increment()
             return flags.interruptSucceeds
         }
-        playback.onStop = { flags.playbackStopCount += 1 }
-        gateway.onStreamOpen = { flags.speechStreamOpens += 1 }
         let controller = VoiceConversationController(
             capture: capture,
             playback: playback,
@@ -355,58 +360,36 @@ final class VoiceConversationLifecycleSuspensionTests: XCTestCase {
             submit: submitAction,
             interrupt: interruptAction
         )
-        return (controller, capture, gateway, flags)
-    }
-
-    private func makeFixtureWithPlayback() -> (VoiceConversationController, MockCapture, GatedPlayback, MockGateway, Flags) {
-        let capture = MockCapture(permissionGranted: true)
-        let playback = GatedPlayback()
-        let gateway = MockGateway(transcript: "Question")
-        let flags = Flags()
-        let submitAction: @MainActor (String) async -> Bool = { text in
-            flags.submitTexts.append(text)
-            return true
-        }
-        let interruptAction: @MainActor () async -> Bool = {
-            flags.interrupts += 1
-            return flags.interruptSucceeds
-        }
-        gateway.onStreamOpen = { flags.speechStreamOpens += 1 }
-        let controller = VoiceConversationController(
-            capture: capture,
-            playback: playback,
-            gateway: gateway,
-            routePolicyProvider: { .fullDuplex },
-            submit: submitAction,
-            interrupt: interruptAction
-        )
-        return (controller, capture, playback, gateway, flags)
+        return (controller, capture, playback, gateway, spy, flags)
     }
 
     private func driveToThinking(
         _ controller: VoiceConversationController,
         gateway: MockGateway,
-        flags: Flags
+        spy: SubmitSpy,
+        submissions: Int = 1
     ) async {
         controller.beginVoiceTurn(sessionID: "session")
         await controller.startListening()
         let start = Date()
         controller.ingestAudioLevel(0.1, at: start)
         controller.ingestAudioLevel(0, at: start.addingTimeInterval(1.3))
-        try? await Task.sleep(nanoseconds: 150_000_000)
+        await spy.waitUntilSubmitted(submissions)
         XCTAssertEqual(controller.state, .thinking)
-        XCTAssertEqual(flags.submitTexts.last, "Question")
+        XCTAssertEqual(spy.texts.last, "Question")
     }
 
     private func driveToSpeaking(
         _ controller: VoiceConversationController,
         gateway: MockGateway,
-        flags: Flags
+        spy: SubmitSpy,
+        submissions: Int = 1
     ) async {
-        await driveToThinking(controller, gateway: gateway, flags: flags)
+        await driveToThinking(controller, gateway: gateway, spy: spy, submissions: submissions)
         controller.receiveAssistantEvent(.started(sessionID: "session"))
         controller.receiveAssistantEvent(.delta(sessionID: "session", text: "Answer."))
-        try? await Task.sleep(nanoseconds: 150_000_000)
+        let speaking = await controller.waitForState(.speaking)
+        XCTAssertTrue(speaking, "the assistant reply is audible")
         XCTAssertEqual(controller.state, .speaking)
     }
 }
@@ -448,11 +431,12 @@ final class AppStateVoiceSuspensionTests: XCTestCase {
 
         // Capture events arriving against suspended runtime state are
         // rejected before the meter — hasLiveVoiceSession is logical
-        // ownership, not a claim that capture is live.
+        // ownership, not a claim that capture is live. Drain the pump so
+        // both events are provably processed before the negative assertions.
         let start = Date()
         harness.capture.emit(level: 0.5, at: start)
         harness.capture.emit(level: 0.5, at: start.addingTimeInterval(0.4))
-        try? await Task.sleep(nanoseconds: 150_000_000)
+        await drainPendingMainActorWork()
 
         XCTAssertEqual(harness.controller.microphoneLevel, 0, "no meter publication while suspended")
         XCTAssertEqual(harness.gateway.transcriptionCount, 0)
@@ -722,14 +706,16 @@ final class AppStateVoiceSuspensionTests: XCTestCase {
         harness.appState.handleScenePhase(.background)
         harness.controller.setForegroundActive(true)
 
+        // Drain the pump so the suspended-runtime rejection of all three
+        // events is provably processed before the negative assertions.
         let start = Date()
         harness.capture.emit(level: 0.4, at: start)
         harness.capture.emit(level: 0.4, at: start.addingTimeInterval(0.4))
         harness.capture.emit(level: 0, at: start.addingTimeInterval(1.6))
-        try? await Task.sleep(nanoseconds: 200_000_000)
+        await drainPendingMainActorWork()
 
         XCTAssertEqual(harness.gateway.transcriptionCount, 0, "suspended capture events must not transcribe")
-        XCTAssertEqual(harness.flags.submitTexts, [])
+        XCTAssertEqual(harness.spy.texts, [])
     }
 
     func testBackgroundWhileSpeakingStopsPlaybackAndFencesLateCompletion() async {
@@ -744,12 +730,13 @@ final class AppStateVoiceSuspensionTests: XCTestCase {
         XCTAssertFalse(harness.playback.isPlaying, "local TTS stops on suspension")
 
         // The assistant completes while Conduit is away; the late completion
-        // must neither speak nor relisten.
+        // is rejected synchronously (no assistant turn is awaited) and must
+        // neither speak nor relisten.
         harness.controller.receiveAssistantEvent(
             .completed(sessionID: "session-1", content: "Answer.")
         )
         harness.controller.setForegroundActive(true)
-        try? await Task.sleep(nanoseconds: 150_000_000)
+        await drainPendingMainActorWork()
 
         XCTAssertEqual(harness.capture.startCount, startsBeforeBackground, "late completion must not relisten")
         XCTAssertEqual(harness.controller.state, .idle)
@@ -762,7 +749,7 @@ final class AppStateVoiceSuspensionTests: XCTestCase {
 
         harness.appState.handleScenePhase(.background)
 
-        XCTAssertEqual(harness.flags.interrupts, 0, "suspension must not cancel the running Hermes turn")
+        XCTAssertEqual(harness.flags.interrupts.value, 0, "suspension must not cancel the running Hermes turn")
         XCTAssertNotNil(harness.appState.suspendedVoiceConversation)
     }
 
@@ -827,7 +814,7 @@ final class AppStateVoiceSuspensionTests: XCTestCase {
         let harness = makeHarness()
         await harness.openVoice(session: "session-1")
         await harness.speakUtterance("Goodbye.")
-        try? await Task.sleep(nanoseconds: 150_000_000)
+        await harness.flags.endConversations.waitUntil(1)
 
         XCTAssertFalse(harness.appState.showVoiceSheet, "the spoken End Conversation closed Voice through the Close path")
         harness.appState.handleScenePhase(.background)
@@ -930,9 +917,10 @@ final class AppStateVoiceSuspensionTests: XCTestCase {
 
         // A stale interruption from the RELEASED runtime arrives while the
         // logical Voice session is dormant: it must not clear ownership,
-        // orphan bookkeeping, or restoration eligibility.
+        // orphan bookkeeping, or restoration eligibility. Drain the pump so
+        // the rejection is provably processed before the negative assertions.
         harness.capture.emitInterrupted()
-        try? await Task.sleep(nanoseconds: 150_000_000)
+        await drainPendingMainActorWork()
 
         XCTAssertTrue(harness.controller.hasLiveVoiceSession, "logical ownership survives the stale interruption")
         XCTAssertTrue(harness.controller.isRuntimeSuspended)
@@ -1168,12 +1156,13 @@ final class AppStateVoiceSuspensionTests: XCTestCase {
         await harness.controller.resumeMicrophone()
         XCTAssertEqual(harness.controller.state, .listening)
         await harness.speakUtterance("Follow-up question", sessionArmed: true)
-        try? await Task.sleep(nanoseconds: 150_000_000)
+        await harness.spy.waitUntilSubmitted(2)
 
-        XCTAssertEqual(harness.flags.submitTexts, ["Question", "Follow-up question"])
+        XCTAssertEqual(harness.spy.texts, ["Question", "Follow-up question"])
         harness.controller.receiveAssistantEvent(.started(sessionID: "session-1"))
         harness.controller.receiveAssistantEvent(.delta(sessionID: "session-1", text: "Reply."))
-        try? await Task.sleep(nanoseconds: 150_000_000)
+        let speaking = await harness.controller.waitForState(.speaking)
+        XCTAssertTrue(speaking, "assistant replies are voiced for the restored conversation")
         XCTAssertEqual(harness.controller.state, .speaking, "assistant replies are voiced for the restored conversation")
     }
 
@@ -1184,8 +1173,9 @@ final class AppStateVoiceSuspensionTests: XCTestCase {
         let appState: AppState
         let controller: VoiceConversationController
         let capture: MockCapture
-        let playback: GatedPlayback
+        let playback: MockPlayback
         let gateway: MockGateway
+        let spy: SubmitSpy
         let flags: Flags
         let defaults: UserDefaults
 
@@ -1196,18 +1186,20 @@ final class AppStateVoiceSuspensionTests: XCTestCase {
             appState.voiceControllerSessionProfile = appState.activeProfile
         }
 
-        /// Drives one submitted user turn end to end (listening → thinking).
+        /// Drives one submitted user turn end to end (listening → thinking):
+        /// the submission of the transcript is the completion signal.
         func driveToThinking() async {
             await controller.startListening()
             speakUtteranceIntoVAD("Question")
-            try? await Task.sleep(nanoseconds: 150_000_000)
+            await spy.waitUntilSubmitted(1)
         }
 
         /// Drives the assistant reply until audible playback.
         func driveToSpeaking() async {
             controller.receiveAssistantEvent(.started(sessionID: "session-1"))
             controller.receiveAssistantEvent(.delta(sessionID: "session-1", text: "Answer."))
-            try? await Task.sleep(nanoseconds: 150_000_000)
+            let speaking = await controller.waitForState(.speaking)
+            XCTAssertTrue(speaking, "the assistant reply is audible")
         }
 
         /// Speaks one utterance through the live capture. With
@@ -1239,8 +1231,8 @@ final class AppStateVoiceSuspensionTests: XCTestCase {
     }
 
     final class Flags {
-        var submitTexts: [String] = []
-        var interrupts = 0
+        let interrupts = AwaitableCounter()
+        let endConversations = AwaitableCounter()
         var interruptSucceeds = true
     }
 
@@ -1277,15 +1269,13 @@ final class AppStateVoiceSuspensionTests: XCTestCase {
         )
 
         let capture = MockCapture(permissionGranted: true)
-        let playback = GatedPlayback()
-        let gateway = MockGateway(transcript: "Question")
+        let playback = MockPlayback()
+        let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
+        let spy = SubmitSpy()
         let flags = Flags()
-        let submitAction: @MainActor (String) async -> Bool = { text in
-            flags.submitTexts.append(text)
-            return true
-        }
+        let submitAction: @MainActor (String) async -> Bool = { spy.submit($0) }
         let interruptAction: @MainActor () async -> Bool = {
-            flags.interrupts += 1
+            flags.interrupts.increment()
             return flags.interruptSucceeds
         }
         let appStateRef = appState
@@ -1297,6 +1287,7 @@ final class AppStateVoiceSuspensionTests: XCTestCase {
             submit: submitAction,
             interrupt: interruptAction,
             onEndConversation: { [weak appStateRef] in
+                flags.endConversations.increment()
                 appStateRef?.closeVoiceConversation()
             }
         )
@@ -1308,6 +1299,7 @@ final class AppStateVoiceSuspensionTests: XCTestCase {
             capture: capture,
             playback: playback,
             gateway: gateway,
+            spy: spy,
             flags: flags,
             defaults: defaults
         )
@@ -1338,13 +1330,14 @@ final class AppStateVoiceSuspensionTests: XCTestCase {
 
         let capture = MockCapture(permissionGranted: true)
         let gateway = MockGateway(transcript: "Question")
+        let spy = SubmitSpy()
         let appStateRef = appState
         let controller = VoiceConversationController(
             capture: capture,
-            playback: GatedPlayback(),
+            playback: MockPlayback(),
             gateway: gateway,
             routePolicyProvider: { .fullDuplex },
-            submit: { _ in true },
+            submit: { spy.submit($0) },
             interrupt: { true },
             onEndConversation: { [weak appStateRef] in
                 appStateRef?.closeVoiceConversation()
@@ -1356,263 +1349,11 @@ final class AppStateVoiceSuspensionTests: XCTestCase {
             appState: appState,
             controller: controller,
             capture: capture,
-            playback: GatedPlayback(),
+            playback: MockPlayback(),
             gateway: gateway,
+            spy: spy,
             flags: Flags(),
             defaults: defaults
         )
-    }
-}
-
-/// A parkable async step for hermetic reconciliation tests.
-@MainActor
-private final class ControlledSuspension {
-    private var suspension: CheckedContinuation<Void, Never>?
-    private var observer: CheckedContinuation<Void, Never>?
-
-    func suspend() async {
-        await withCheckedContinuation { continuation in
-            suspension = continuation
-            observer?.resume()
-            observer = nil
-        }
-    }
-
-    func waitUntilSuspended() async {
-        guard suspension == nil else { return }
-        await withCheckedContinuation { continuation in
-            observer = continuation
-        }
-    }
-
-    func resume() {
-        suspension?.resume()
-        suspension = nil
-    }
-}
-
-/// Capability-requester doubles for the restoration path: `.failing` keeps
-/// capability refreshes off the network and resolves the snapshot to
-/// "no support"; `.fullSupport` answers a minimal config plus a ready Edge
-/// TTS toolset row so a refreshed snapshot is genuinely capable.
-@MainActor
-private final class ImmediateVoiceConfigRequester: VoiceConfigurationRequesting {
-    enum Mode { case failing, fullSupport }
-
-    private let mode: Mode
-
-    init(mode: Mode = .failing) { self.mode = mode }
-
-    func requestJSON(path: String, method: String, body: [String: Any]?) async throws -> [String: Any] {
-        switch mode {
-        case .failing:
-            throw URLError(.notConnectedToInternet)
-        case .fullSupport:
-            if path.hasSuffix("/api/config") {
-                return ["stt": ["enabled": true], "tts": ["provider": "edge"]]
-            }
-            if path.hasSuffix("/api/tools/toolsets/tts/config") {
-                return ["providers": [[
-                    "name": "Microsoft Edge TTS",
-                    "tts_provider": "edge",
-                    "status": "ready",
-                    "is_active": true,
-                ]]]
-            }
-            throw URLError(.notConnectedToInternet)
-        }
-    }
-}
-
-// MARK: - Mocks (file-local copies of the established voice doubles)
-
-@MainActor
-private final class MockCapture: AudioCaptureService {
-    let events: AsyncStream<VoiceCaptureEvent>
-    var captureGeneration: UInt64 = 0
-    private var continuation: AsyncStream<VoiceCaptureEvent>.Continuation?
-    private let permissionGranted: Bool
-    private(set) var startCount = 0
-    private(set) var stopCount = 0
-    private(set) var resumeCount = 0
-
-    init(permissionGranted: Bool) {
-        self.permissionGranted = permissionGranted
-        var captured: AsyncStream<VoiceCaptureEvent>.Continuation?
-        events = AsyncStream { captured = $0 }
-        continuation = captured
-    }
-    func requestPermission() async -> Bool { permissionGranted }
-    func startListening(includePreRoll: Bool) throws {
-        startCount += 1
-        captureGeneration &+= 1
-    }
-    func beginBargeInMonitoring() throws {}
-    func pause() { captureGeneration &+= 1 }
-    func resume() throws {
-        resumeCount += 1
-        captureGeneration &+= 1
-    }
-    func finishUtterance() throws -> VoiceCapturedAudio {
-        VoiceCapturedAudio(wavData: Data([1]), pcm16Data: Data([1, 0]), sampleRate: 16_000, duration: 0.01)
-    }
-    func stop() {
-        stopCount += 1
-        captureGeneration &+= 1
-    }
-    func emit(level: Float, at date: Date = Date()) {
-        continuation?.yield(.level(level, date: date, generation: captureGeneration))
-    }
-    func emitInterrupted(generation: UInt64? = nil) {
-        continuation?.yield(.interrupted(generation: generation ?? captureGeneration))
-    }
-}
-
-@MainActor
-private final class GatedPlayback: SpeechPlaybackService {
-    var isPlaying = false
-    var ownershipIntent: VoiceAudioIntent = .standalonePlayback
-    var onStop: (() -> Void)?
-    func start(sampleRate: Double) throws { isPlaying = true }
-    func enqueuePCM16(_ data: Data, sampleRate: Double) throws -> Int { data.count - (data.count % 2) }
-    func playEncodedAudioData(_ data: Data) throws { isPlaying = true }
-    func finish() throws {}
-    func drain() async { isPlaying = false }
-    func stop() {
-        isPlaying = false
-        onStop?()
-    }
-}
-
-@MainActor
-private final class MockGateway: VoiceGatewayService {
-    let profile = "default"
-    /// Mutable so multi-utterance tests can pin what the recognizer returns
-    /// per phase (normal turn, spoken command, follow-up).
-    var transcript: String
-    var onStreamOpen: (() -> Void)?
-    private(set) var transcriptionCount = 0
-    init(transcript: String) { self.transcript = transcript }
-    func transcribe(_ audio: VoiceCapturedAudio) async throws -> String {
-        transcriptionCount += 1
-        return transcript
-    }
-    func openSpeechStream(
-        onStart: @escaping @MainActor (Double) throws -> Void,
-        onPCM16: @escaping @MainActor (Data, Double) throws -> Void,
-        onEncodedAudio: @escaping @MainActor (Data) throws -> Void
-    ) async throws -> VoiceSpeechStream {
-        // Mirror the production streaming provider: opening a stream for a
-        // drain that has deltas delivers the start control immediately.
-        try onStart(24_000)
-        onStreamOpen?()
-        return StubSpeechStream()
-    }
-}
-
-/// Transcription that parks until released, so a test can suspend Voice
-/// while a transcription is provably in flight.
-@MainActor
-private final class GatedTranscriptionGateway: VoiceGatewayService {
-    let profile = "default"
-    let transcript: String
-    private(set) var transcriptionCount = 0
-    private var pendingContinuation: CheckedContinuation<String, Error>?
-    private var transcribingWaiters: [CheckedContinuation<Void, Never>] = []
-    private var isReleased = false
-
-    init(transcript: String) { self.transcript = transcript }
-
-    func transcribe(_ audio: VoiceCapturedAudio) async throws -> String {
-        transcriptionCount += 1
-        let waiters = transcribingWaiters
-        transcribingWaiters.removeAll()
-        waiters.forEach { $0.resume() }
-        if isReleased { return transcript }
-        return try await withTaskCancellationHandler(operation: {
-            try await withCheckedThrowingContinuation { continuation in
-                self.pendingContinuation = continuation
-                if self.isReleased || Task.isCancelled {
-                    self.pendingContinuation = nil
-                    continuation.resume(with: .success(self.transcript))
-                }
-            }
-        }, onCancel: { [weak self] in
-            Task { @MainActor [weak self] in
-                guard let self, let continuation = self.pendingContinuation else { return }
-                self.pendingContinuation = nil
-                continuation.resume(throwing: CancellationError())
-            }
-        })
-    }
-
-    func waitUntilTranscribing() async {
-        if transcriptionCount > 0 { return }
-        await withCheckedContinuation { transcribingWaiters.append($0) }
-    }
-
-    func releaseTranscription() {
-        // Guarded: the cancellation handler may already have consumed the
-        // parked continuation when suspension cancelled the utterance task.
-        guard !isReleased, let continuation = pendingContinuation else { return }
-        isReleased = true
-        pendingContinuation = nil
-        continuation.resume(with: .success(transcript))
-    }
-
-    func openSpeechStream(
-        onStart: @escaping @MainActor (Double) throws -> Void,
-        onPCM16: @escaping @MainActor (Data, Double) throws -> Void,
-        onEncodedAudio: @escaping @MainActor (Data) throws -> Void
-    ) async throws -> VoiceSpeechStream {
-        try onStart(24_000)
-        return StubSpeechStream()
-    }
-}
-
-@MainActor
-private final class StubSpeechStream: VoiceSpeechStream {
-    func append(_ text: String) async throws {}
-    func finish() async throws -> Bool { false }
-    func cancel() {}
-}
-
-/// Mutable route policy so tests can pin route classification
-/// deterministically; production reads the live AVAudioSession route.
-@MainActor
-private final class RoutePolicyBox {
-    var policy: VoiceBargeInRoutePolicy
-    init(_ policy: VoiceBargeInRoutePolicy) { self.policy = policy }
-}
-
-/// An interruption closure that parks mid-flight so tests can interleave
-/// suspension into the cancel await. `release()` disarms the gate: later
-/// interrupts pass through immediately.
-@MainActor
-private final class InterruptGate {
-    private(set) var count = 0
-    private var parked: [CheckedContinuation<Void, Never>] = []
-    private var entryWaiters: [CheckedContinuation<Void, Never>] = []
-    private var isDisarmed = false
-
-    func waitInInterrupt() async {
-        count += 1
-        let waiters = entryWaiters
-        entryWaiters.removeAll()
-        waiters.forEach { $0.resume() }
-        guard !isDisarmed else { return }
-        await withCheckedContinuation { parked.append($0) }
-    }
-
-    func waitUntilEntered() async {
-        guard count == 0 else { return }
-        await withCheckedContinuation { entryWaiters.append($0) }
-    }
-
-    func release() {
-        isDisarmed = true
-        let parkedContinuations = parked
-        parked.removeAll()
-        parkedContinuations.forEach { $0.resume() }
     }
 }
