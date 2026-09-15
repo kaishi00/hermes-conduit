@@ -170,5 +170,86 @@ class PruneAndSafetyTests(unittest.TestCase):
             self.assertAlmostEqual(doc["classes"]["SelectionObserverUITests"], 68.0)
 
 
+class LaneResultGateTests(unittest.TestCase):
+    """--lane-results pairs each observations file with its lane result:
+    only clean primary passes merge; stalled lanes and fresh-runner recovery
+    artifacts are excluded from history."""
+
+    def _lane_dir(self, tmp, name):
+        d = Path(tmp) / name
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def _lane_result(self, directory, status, fresh=False):
+        doc = {"schema_version": 1, "lane": directory.name, "status": status,
+               "finished_at": "2026-09-15T10:00:00Z",
+               "fresh_runner_recovery": fresh}
+        path = directory / "lane-result.json"
+        path.write_text(json.dumps(doc), encoding="utf-8")
+        return path
+
+    def _run(self, tmp, observations, lane_results, inventory):
+        out = Path(tmp) / "out.json"
+        proc = subprocess.run(
+            [sys.executable, str(Path(SCRIPTS_DIR) / "update-timing-history.py"),
+             "--observations", *[str(o) for o in observations],
+             "--lane-results", *[str(lr) for lr in lane_results],
+             "--inventory", str(inventory), "--out", str(out)],
+            capture_output=True, text=True)
+        doc = None
+        if out.exists():
+            doc = json.loads(out.read_text(encoding="utf-8"))
+        return proc, doc
+
+    def test_passing_lane_merges(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            inv = inventory_file(tmp, ["AlphaTests"])
+            lane = self._lane_dir(tmp, "unit-1")
+            obs = write_json(lane / "observations.json",
+                             {"schema_version": 1, "classes": {"AlphaTests": 20.0}})
+            lr = self._lane_result(lane, "pass")
+            proc, doc = self._run(tmp, [obs], [lr], inv)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertAlmostEqual(doc["classes"]["AlphaTests"], 20.0)
+
+    def test_stalled_lane_excluded(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            inv = inventory_file(tmp, ["AlphaTests"])
+            lane = self._lane_dir(tmp, "unit-2")
+            obs = write_json(lane / "observations.json",
+                             {"schema_version": 1, "classes": {"AlphaTests": 900.0}})
+            lr = self._lane_result(lane, "timeout")
+            proc, doc = self._run(tmp, [obs], [lr], inv)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertNotIn("AlphaTests", doc["classes"])
+
+    def test_recovery_artifact_excluded(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            inv = inventory_file(tmp, ["AlphaTests"])
+            lane = self._lane_dir(tmp, "unit-2")
+            obs = write_json(lane / "observations.json",
+                             {"schema_version": 1, "classes": {"AlphaTests": 55.0}})
+            lr = self._lane_result(lane, "pass", fresh=True)
+            proc, doc = self._run(tmp, [obs], [lr], inv)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertNotIn("AlphaTests", doc["classes"])
+
+    def test_mixed_lanes_merge_only_passes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            inv = inventory_file(tmp, ["AlphaTests", "BetaTests"])
+            lane1 = self._lane_dir(tmp, "unit-1")
+            obs1 = write_json(lane1 / "observations.json",
+                              {"schema_version": 1, "classes": {"AlphaTests": 12.0}})
+            lane2 = self._lane_dir(tmp, "unit-2")
+            obs2 = write_json(lane2 / "observations.json",
+                              {"schema_version": 1, "classes": {"BetaTests": 777.0}})
+            lr1 = self._lane_result(lane1, "pass")
+            lr2 = self._lane_result(lane2, "timeout")
+            proc, doc = self._run(tmp, [obs1, obs2], [lr1, lr2], inv)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertAlmostEqual(doc["classes"]["AlphaTests"], 12.0)
+            self.assertNotIn("BetaTests", doc["classes"])
+
+
 if __name__ == "__main__":
     unittest.main()

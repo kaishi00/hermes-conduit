@@ -32,9 +32,17 @@ quarantined, or moved to a nightly gate.
    |         |         |         |
    +---------+----+----+---------+
                   v
+     unit-recovery-plan (ubuntu, always):
+     classify each lane from its lane-result.json
+                  v
+     unit-recovery (macos-26 matrix, only affected lanes):
+     one retry per stalled lane on a NEW hosted runner
+                  v
           report job -> GitHub Step Summary
                   v
-        timing-history-update (main only, EWMA)
+        CI Gate (per-lane adjudication of the FINAL unit verdict)
+                  v
+        timing-history-update (main only, EWMA, final-verdict gated)
 ```
 
 ### Jobs
@@ -45,9 +53,12 @@ quarantined, or moved to a nightly gate.
 | `self-test` | ubuntu | CI-tooling regression suites (planner tests, lane-runner state machine, destination lookup, gate/timing contracts) - concurrent with `build`, so the minutes-long bash state-machine suite never delays macOS work nor risks the plan job's timeout. |
 | `build` | macos-26 | `build-for-testing` exactly once; `.xctestrun` portability audit; uploads products. |
 | `unit` (matrix) | macos-26 | One dynamically planned lane per matrix entry. |
+| `unit-recovery-plan` | ubuntu | Classifies every finished unit lane and emits the recovery matrix (empty on the happy path). |
+| `unit-recovery` (matrix) | macos-26 | One fresh-runner retry per recoverable lane - a NEW GitHub-hosted machine (`runs-on` allocates a different runner than the stalled job). |
 | `ui` (matrix) | macos-26 | Dynamically planned UI lane; runs each shard as ONE batched invocation (see below). |
 | `report` | ubuntu | Aggregates lane results into the CI Test Report step summary. |
-| `timing-history-update` | ubuntu | Main-only: merges fresh timings into the history cache (EWMA). |
+| `ci-gate` | ubuntu | The single branch-protection check; adjudicates every planned unit lane (see below). |
+| `timing-history-update` | ubuntu | Main-only: merges fresh timings into the history cache (EWMA), gated on the adjudicated final unit verdict. |
 
 The self-test job's timeout hierarchy is load-bearing: each synthetic hang
 in the state-machine suite is watchdog-killed within a 1-6 s test budget <
@@ -143,9 +154,13 @@ Recovery never lets ordinary-failure retries re-execute healthy work:
   Unseen classes get a conservative default (20 s) so a batch of new tests
   cannot all pile into one lane.
 * **Timing history** - living estimates kept in a GitHub Actions cache
-  (`timing-history-v1-*`). Only successful main runs write it; PR runs
-  consume it read-only. Missing, corrupt, or stale history simply falls back
-  to the baseline; planning correctness never depends on it.
+  (`timing-history-v1-*`). Only main runs with a green FINAL unit verdict
+  write it (a recovered run still updates; a genuinely red run never
+  does), and per lane only clean primary passes merge - a stalled
+  invocation's partial timings and a fresh-runner recovery's timings are
+  excluded. PR runs consume it read-only. Missing, corrupt, or stale
+  history simply falls back to the baseline; planning correctness never
+  depends on it.
 * `scripts/update-timing-history.py` merges fresh per-class durations with an
   EWMA (`updated = 0.75 * previous + 0.25 * observed`), clamps extreme
   outliers to 5x the previous estimate, takes first observations verbatim,
@@ -211,6 +226,54 @@ the rest of CI v2.
    later classes are recorded as `not_diagnosed`. Recovery-to-green is
    only legitimate when the retried class completed successfully; any
    undiagnosed class fails the lane so unexecuted tests stay visible.
+5. **Residual hosted-runner stall (fresh-runner recovery, units only)** -
+   the GitHub-hosted macOS fleet occasionally stalls a unit lane outright:
+   the whole-lane invocation watchdogs, the same-runner isolation re-runs
+   classes individually (they pass), but the budget is exhausted and the
+   lane finishes red with ZERO identified test failures. This shape was
+   demonstrated repeatedly (unit-2 stalls with unrelated classes, zero
+   XCTest failures, deterministic tests green once a different machine ran
+   them). No amount of same-runner retry helps - every invocation inside
+   one job stays on the same broken Mac - so the recovery is workflow-level:
+
+   * Every lane result embeds a machine-readable classification
+     (`scripts/ci_lane_recovery.py`, written at lane finish). A unit lane
+     whose PRIMARY invocation hit its watchdog with no failure records
+     anywhere in the lane (a watchdog-killed extraction counts as
+     "nothing identified") classifies as
+     `recoverable-timeout-zero-failures`. Ordinary test failures,
+     unclassifiable failures, infra errors that already burned their
+     same-runner retry, and a retry-timeout whose primary never
+     watchdoged are final.
+   * `unit-recovery-plan` (ubuntu, `if: always()`) reads every
+     `lane-unit-*` artifact, cross-checks it against the authoritative
+     plan (kind, membership, target, watchdog - any disagreement fails
+     closed), and emits a recovery matrix rebuilt from the plan's original
+     lane inputs. Unknown/undecidable metadata never becomes a recovery.
+   * `unit-recovery` re-runs exactly those lanes ONCE, each as its own
+     `runs-on: macos-26` job - GitHub allocates a NEW hosted runner. The
+     run is marked `--fresh-runner-recovery`: its lane result carries
+     `fresh_runner_recovery: true` and its classification can never come
+     out recovery-eligible again, so there is no third attempt.
+   * The **CI Gate** adjudicates every planned lane: original pass ->
+     accepted; recoverable stall + exactly one fresh-runner pass ->
+     accepted (reported as a recovered infrastructure PASS); recoverable
+     with the recovery missing/failing/timing out -> FAIL; test failures,
+     unclassifiable, unplanned, or malformed results -> FAIL. The
+     recovery result must itself agree with the plan (same target,
+     membership, watchdog) and carry its own embedded classification -
+     both re-derived and cross-checked, failing closed on mismatch. The
+     raw `needs.unit.result` is no longer the unit truth - a lane red for
+     infrastructure that passed on its one fresh-runner retry is a
+     recovered PASS, and every planned lane still needs exactly one
+     accepted disposition. Re-running a FAILED recovery leg follows the
+     repo's usual re-run policy: the newest attempt's artifact supersedes
+     the older one, and only genuinely ambiguous duplicates (same stamp,
+     differing documents) fail closed.
+   * Timing history stays conservative: the main-only update runs behind
+     the same per-lane adjudication, merges only lanes whose PRIMARY
+     result is a clean pass, and excludes the stalled invocation's
+     partial timings and the recovery run's timings entirely.
 
 ### Destination readiness gate
 
@@ -321,9 +384,15 @@ real runtimes.
 The `CI Gate` job is the single stable required status check for branch
 protection. It passes only when:
 
-* `plan`, `build`, `self-test` and every dynamic `unit` lane succeed, and
-* every dynamic `ui` lane succeeds (or is skipped entirely because the repo
-  contains no UI tests).
+* `plan`, `build`, `self-test` and `unit-recovery-plan` succeed;
+* the raw `unit` result is `success` or `failure` (a failure is redeemable
+  only through the per-lane adjudication; cancelled/skipped fail);
+* the per-lane adjudication (against the plan artifact and the downloaded
+  `lane-unit-*` / `lane-recovery-*` results) accepts every planned lane -
+  original passes, plus exactly one fresh-runner pass per recoverable
+  stall, with nothing missing, duplicated, unplanned, or malformed; and
+* every dynamic `ui` lane succeeds (or is skipped entirely because the
+  repo contains no UI tests).
 
 The number of dynamic unit AND UI lanes can change between runs, so lane
 jobs must never be pinned individually. Configure repository branch
@@ -332,7 +401,9 @@ check from the previous architecture. The `Report` job is best-effort and
 must not be used as a required check.
 
 Every run ends with a **CI Test Report** step summary: build duration,
-per-lane predicted vs actual runtimes (unit and UI), retries/flake warnings
+per-lane predicted vs actual runtimes with the final disposition (unit and
+UI), a dedicated fresh-runner recovery section rendering each affected
+lane as "original / fresh runner / final", retries/flake warnings
 (native-test flakes, runner-level class retries, and infrastructure-wedge
 recoveries - each labeled for what it is), hang results with the identified
 class, slowest classes, predicted and actual lane imbalance, and overall

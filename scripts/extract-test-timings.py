@@ -38,6 +38,11 @@ import re
 import subprocess
 import sys
 
+# Sibling module (also loaded via importlib by the regression tests, so a
+# plain `import` cannot rely on sys.path already carrying this directory).
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import ci_lane_recovery
+
 SCHEMA_VERSION = 1
 
 # Exit codes with contractual meaning for callers.
@@ -242,6 +247,7 @@ def lane_result(args) -> int:
         "persistent_infra_classes": [
             c for c in (args.persistent_infra_classes or "").split(",") if c],
         "isolation": None,
+        "fresh_runner_recovery": bool(getattr(args, "fresh_runner_recovery", False)),
     }
     # Every external input is best-effort: this script assembles the canonical
     # lane result, so malformed side data must never crash a green lane.
@@ -272,6 +278,18 @@ def lane_result(args) -> int:
     if detail is not None:
         result["failures"] = detail.get("failures", [])
         result["flaky"] = detail.get("retried", [])
+
+    # Machine-readable recovery classification (ci_lane_recovery is the
+    # single source of truth): embedded for the report and re-derived at
+    # read time by the recovery planner and the CI Gate. UI lanes get no
+    # recovery block - fresh-runner recovery is unit-only.
+    classification, reason = ci_lane_recovery.classify_lane_result(result)
+    result["recovery"] = None if classification is None else {
+        "classification": classification,
+        "reason": reason,
+        "eligible": (classification in ci_lane_recovery.RECOVERY_ELIGIBLE_CLASSES
+                     and not result["fresh_runner_recovery"]),
+    }
 
     text = json.dumps(result, indent=2, sort_keys=True)
     with open(args.out, "w", encoding="utf-8", newline="\n") as fh:
@@ -483,25 +501,75 @@ def _load_json(path: str):
         return json.load(fh)
 
 
+def _collect_lane_results(lanes_dir):
+    """(primary, recovery) lane-result documents keyed by lane name, plus
+    unreadable-file warnings. Attempt duplicates (a re-run of failed jobs
+    re-uploads only the re-run lanes) collapse to the newest finished_at."""
+    records = ci_lane_recovery.scan_lane_results(lanes_dir)
+    primary_records = [r for r in records
+                       if r.doc is not None and not r.doc.get("fresh_runner_recovery")]
+    recovery_records = [r for r in records
+                        if r.doc is not None and r.doc.get("fresh_runner_recovery")]
+    for record in records:
+        if record.doc is None:
+            warn(f"unreadable lane result {record.path}: {record.error}")
+    primary, conflicts = ci_lane_recovery.dedupe_lane_results(primary_records)
+    recovery, recovery_conflicts = ci_lane_recovery.dedupe_lane_results(recovery_records)
+    for problem in conflicts + recovery_conflicts:
+        warn(problem)
+    return ({lane: record.doc for lane, record in primary.items()},
+            {lane: record.doc for lane, record in recovery.items()})
+
+
+def _lane_recovery_rows(name, res, recovery_doc):
+    """The three-line fresh-runner recovery story for one lane, in the
+    report's terminology (no vendor/audio wording)."""
+    classification, reason = ci_lane_recovery.classify_lane_result(res)
+    lines = [f"- **{name}**"]
+    if classification == ci_lane_recovery.CLASS_RECOVERABLE_TIMEOUT_ZERO_FAILURES:
+        lines.append(f"  - original: {classification}, zero XCTest failures "
+                     f"identified ({reason})")
+    else:
+        lines.append(f"  - original: {res.get('status', 'no result')}")
+    if recovery_doc is None:
+        lines.append("  - fresh runner: (no result)")
+        lines.append(f"  - final: FAIL - {reason}")
+        return lines
+    recovery_class, recovery_reason = ci_lane_recovery.classify_lane_result(recovery_doc)
+    lines.append(f"  - fresh runner: {recovery_doc.get('status', 'no result')} "
+                 f"({recovery_reason})")
+    if recovery_class == ci_lane_recovery.CLASS_PASS:
+        lines.append("  - final: recovered infrastructure PASS")
+    else:
+        lines.append("  - final: FAIL")
+    return lines
+
+
+def _lane_final_label(res: dict, recovery_doc):
+    """The unit table's Final column for a lane with recovery involvement,
+    or None when the plain status is all there is to say."""
+    classification, _reason = ci_lane_recovery.classify_lane_result(res)
+    if classification is None:
+        return None
+    if classification == ci_lane_recovery.CLASS_PASS:
+        return None
+    if classification == ci_lane_recovery.CLASS_RECOVERABLE_TIMEOUT_ZERO_FAILURES:
+        if recovery_doc is None:
+            return "FAIL (recovery missing)"
+        recovery_class, _r = ci_lane_recovery.classify_lane_result(recovery_doc)
+        if recovery_class == ci_lane_recovery.CLASS_PASS:
+            return "recovered infrastructure PASS"
+        return f"FAIL (fresh runner {recovery_doc.get('status', 'no result')})"
+    return None
+
+
 def aggregate(args) -> int:
     lines: list = []
     plan = _load_json(args.plan)
 
     lanes = plan.get("unit_lanes", [])
 
-    results = {}  # lane name -> lane-result dict
-    for root, _dirs, files in os.walk(args.lanes_dir):
-        for fname in files:
-            if fname == "lane-result.json":
-                path = os.path.join(root, fname)
-                try:
-                    doc = _load_json(path)
-                    lane_name = doc.get("lane", path)
-                    if lane_name in results:
-                        warn(f"duplicate lane result for {lane_name!r} ({path}); keeping the last one")
-                    results[lane_name] = doc
-                except (OSError, json.JSONDecodeError) as exc:
-                    warn(f"unreadable lane result {path}: {exc}")
+    results, recovery_results = _collect_lane_results(args.lanes_dir)
 
     build = None
     if args.build_result and os.path.exists(args.build_result):
@@ -532,22 +600,38 @@ def aggregate(args) -> int:
     # --- Unit lanes ----------------------------------------------------------
     lines.append("## Unit lanes")
     lines.append("")
-    lines.append("| Lane | Predicted | Actual | Status | Classes |")
-    lines.append("|---|---|---|---|---|")
+    lines.append("| Lane | Predicted | Actual | Status | Final | Classes |")
+    lines.append("|---|---|---|---|---|---|")
     any_actual = False
+    recovery_section: list = []
     for lane in lanes:
         name = lane.get("lane")
         res = results.get(name, {})
         actual = res.get("actual_s")
         if actual is not None:
             any_actual = True
+        recovery_doc = recovery_results.get(name)
+        final = _lane_final_label(res, recovery_doc)
+        if final is not None or recovery_doc is not None:
+            recovery_section.extend(
+                _lane_recovery_rows(name, res, recovery_doc))
+        final_text = final if final is not None else res.get("status", "no result")
         lines.append(
             f"| {name} | {_fmt_secs(lane.get('predicted_s'))} | {_fmt_secs(actual)} "
-            f"| {res.get('status', 'no result')} | {len(lane.get('classes', []))} |"
-        )
+            f"| {res.get('status', 'no result')} | {final_text} "
+            f"| {len(lane.get('classes', []))} |")
     if not lanes:
-        lines.append("| (no unit lanes planned) | | | | |")
+        lines.append("| (no unit lanes planned) | | | | | |")
     lines.append("")
+
+    # --- Fresh-runner recovery ------------------------------------------------
+    # Rendered whenever any unit lane was classified as a recoverable stall
+    # or carries a fresh-runner result, so a recovered lane is obvious.
+    if recovery_section:
+        lines.append("## Fresh-runner recovery")
+        lines.append("")
+        lines.extend(recovery_section)
+        lines.append("")
 
     # --- UI ------------------------------------------------------------------
     lines.append("## UI lanes")
@@ -795,6 +879,11 @@ def main(argv=None) -> int:
     p.add_argument("--simulator-reset", action="store_true")
     p.add_argument("--simulator-erase", action="store_true")
     p.add_argument("--hung-class", default="")
+    # Set by ci-test-lane.sh only when the job is a fresh-runner recovery
+    # (second and final attempt): the lane result is marked so no consumer
+    # can mistake it for a primary observation, and the classification can
+    # never come out recovery-eligible again (no third attempt).
+    p.add_argument("--fresh-runner-recovery", action="store_true")
     p.add_argument("--observations", default="")
     p.add_argument("--detail", default="")
     p.add_argument("--out", required=True)

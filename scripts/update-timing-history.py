@@ -40,6 +40,48 @@ def load_json(path: str):
         return json.load(fh)
 
 
+def _lane_result_gate(lane_result_paths):
+    """Map directory -> lane-result document for the --lane-results pairings.
+    Observations are only merged for lanes whose PRIMARY result finished
+    green: a stalled (timeout) invocation's partial timings must never
+    become history, and a fresh-runner recovery artifact is marked
+    fresh_runner_recovery and is excluded entirely (its wall-clock includes
+    a different machine's session overhead; correctness beats harvesting
+    every timing sample)."""
+    paired = {}
+    for path in lane_result_paths or []:
+        try:
+            doc = load_json(path)
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            warn(f"lane result unreadable, ignoring ({path}: {exc})")
+            continue
+        paired[os.path.dirname(os.path.abspath(path))] = doc
+    return paired if lane_result_paths is not None else None
+
+
+def observations_allowed(observations_path, paired):
+    """Whether one observations.json may merge, given the paired lane
+    results (paired is None when --lane-results was not passed: legacy
+    callers merge everything, unchanged)."""
+    if paired is None:
+        return True
+    key = os.path.dirname(os.path.abspath(observations_path))
+    doc = paired.get(key)
+    if doc is None:
+        warn(f"no paired lane result for {observations_path}; skipping these "
+             "timings (only lanes with a readable green lane result merge)")
+        return False
+    if doc.get("fresh_runner_recovery"):
+        warn(f"skipping fresh-runner recovery timings ({observations_path}); "
+             "recovered lanes are excluded from history in this first version")
+        return False
+    if doc.get("status") != "pass":
+        warn(f"skipping timings from a lane whose final status is "
+             f"{doc.get('status')!r} ({observations_path})")
+        return False
+    return True
+
+
 def try_load_history(path) -> tuple:
     if not path:
         return {}, []
@@ -97,6 +139,11 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--observations", nargs="+", required=True,
                         help="observation JSON files from extract-test-timings.py")
+    parser.add_argument("--lane-results", nargs="*", default=None,
+                        help="lane-result.json paths paired with the "
+                             "observation files (same directory); when "
+                             "passed, only lanes whose primary result is a "
+                             "clean pass merge into history")
     parser.add_argument("--inventory", required=True,
                         help="plan.json whose inventory defines the class universe")
     parser.add_argument("--history", default="",
@@ -128,8 +175,11 @@ def main(argv=None) -> int:
         warn(f"inventory unreadable ({exc}); keeping history unchanged")
         return 0
 
+    paired = _lane_result_gate(args.lane_results)
     docs = []
     for path in args.observations:
+        if not observations_allowed(path, paired):
+            continue
         try:
             docs.append(load_json(path))
         except (OSError, ValueError, json.JSONDecodeError) as exc:

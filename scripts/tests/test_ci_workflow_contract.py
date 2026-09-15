@@ -2,7 +2,10 @@
 
 These tests pin the workflow/script interface so it cannot silently diverge
 again (e.g. passing observation files positionally when the script requires
---observations).
+--observations), plus the fresh-runner recovery architecture: the retry
+must be a separate macos-26 job (a new GitHub-hosted runner), planned from
+lane artifacts against the plan, marked non-recursive, and the gate/timing
+jobs must consume the adjudicated final unit verdict.
 """
 
 import io
@@ -12,8 +15,12 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 
 from _util import SCRIPTS_DIR
+
+sys.path.insert(0, SCRIPTS_DIR)
+import ci_lane_recovery  # noqa: E402  (fixture embedding mirrors the runner)
 
 REPO_ROOT = os.path.dirname(SCRIPTS_DIR)
 WORKFLOW = os.path.join(REPO_ROOT, ".github", "workflows", "ci.yml")
@@ -62,6 +69,92 @@ class WorkflowContractTests(unittest.TestCase):
             out.append(line)
         return "\n".join(out)
 
+    # --- fresh-runner recovery architecture --------------------------------
+
+    def test_unit_recovery_is_a_fresh_macos_matrix_job(self):
+        # THE core property: the retry is its own GitHub Actions job on
+        # macos-26, so GitHub allocates a NEW runner. A retry inside
+        # ci-test-lane.sh would stay on the same broken host.
+        recovery = self._job_text("unit-recovery")
+        self.assertIn("runs-on: macos-26", recovery)
+        self.assertIn(
+            "matrix: ${{ fromJSON(needs.unit-recovery-plan.outputs.matrix) }}",
+            recovery)
+        # The per-entry watchdog budget comes from the planner; without this
+        # pin a dropped matrix field would fail as an invalid-bool job error.
+        self.assertIn("timeout-minutes: ${{ matrix.job_timeout_min }}",
+                      recovery)
+        self.assertIn("fail-fast: false", recovery)
+        # Same commit + shared products: checkout has no ref, and the job
+        # downloads build-products instead of rebuilding.
+        self.assertIn("uses: actions/checkout@v7", recovery)
+        self.assertIn("name: build-products", recovery)
+        self.assertNotIn("ci-build-for-testing.sh", recovery)
+        # Exactly ONE bounded attempt: the lane runner is marked
+        # --fresh-runner-recovery (anti-recursion fence), and the recovery
+        # job never chains another recovery plan.
+        self.assertIn("--fresh-runner-recovery", recovery)
+        self.assertNotIn("ci-recovery-plan.py", recovery)
+
+    def test_unit_recovery_plan_job_consumes_artifacts_and_plan(self):
+        planner = self._job_text("unit-recovery-plan")
+        self.assertIn("runs-on: ubuntu-latest", planner)
+        self.assertIn("if: always()", planner)
+        self.assertIn("pattern: lane-unit-*", planner)
+        self.assertIn("ci-recovery-plan.py", planner)
+        self.assertIn("--unit-result", planner)
+        # The matrix must be emitted for the downstream matrix job.
+        self.assertIn("echo \"matrix=", planner)
+        self.assertIn("recovery-count=", planner)
+
+    def test_anti_recursion_exactly_one_fresh_runner_flag(self):
+        text = self._workflow_text()
+        invocations = [line.strip() for line in text.splitlines()
+                       if line.strip() == "--fresh-runner-recovery"]
+        self.assertEqual(
+            len(invocations), 1,
+            "the recovery marker must be passed exactly once (the "
+            "unit-recovery job); a second use would allow a recovery of a "
+            "recovery")
+
+    def test_gate_adjudicates_lane_artifacts(self):
+        gate = self._job_text("ci-gate")
+        self.assertIn("needs: [plan, build, unit, ui, self-test, "
+                      "unit-recovery-plan, unit-recovery]", gate)
+        self.assertIn("if: always()", gate)
+        # The gate consumes artifacts + both recovery job results, never the
+        # raw needs.unit.result alone.
+        self.assertIn("--recovery-plan", gate)
+        self.assertIn("--recovery ", gate)
+        self.assertIn("--plan-json", gate)
+        self.assertIn("--unit-lanes-dir", gate)
+        self.assertIn("--recovery-lanes-dir", gate)
+        self.assertIn("pattern: lane-unit-*", gate)
+        self.assertIn("pattern: lane-recovery-*", gate)
+
+    def test_artifact_names_carry_run_attempt(self):
+        text = self._workflow_text()
+        self.assertIn("name: lane-${{ matrix.lane }}-attempt-${{ github.run_attempt }}",
+                      text)
+        self.assertIn(
+            "name: lane-recovery-${{ matrix.lane }}-attempt-${{ github.run_attempt }}",
+            text)
+
+    def test_timing_history_uses_final_unit_verdict(self):
+        text = self._workflow_text()
+        update = self._job_text("timing-history-update")
+        # A recovered main run must still update history: unit failure is
+        # acceptable when the fresh-runner recovery succeeded...
+        self.assertIn("needs.unit.result == 'success' || "
+                      "needs.unit-recovery.result == 'success'", update)
+        # ...but the in-step preflight re-checks every lane, so a red lane
+        # hiding next to a recovered one still blocks the update.
+        self.assertIn("ci_lane_recovery.py adjudicate", update)
+        # Recovered/stalled lanes' timings never merge: only clean primary
+        # passes are paired into the EWMA.
+        self.assertIn("--lane-results", update)
+        self.assertIn("final unit verdict is red", text)
+
     def test_ui_job_is_a_dynamic_matrix_with_batched_lane_runner(self):
         text = self._workflow_text()
         ui = self._job_text("ui")
@@ -90,24 +183,66 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn('echo "ui-matrix=', text)
 
     def test_ci_gate_script_verdict_matches_spec_examples(self):
+        """Coarse job-result semantics, exercised through the v3 CLI with a
+        minimal (all-green) artifact world."""
         spec = {
-            ("success", "success", "success", "success", "success"): True,
-            ("success", "success", "success", "skipped", "success"): True,
-            ("success", "success", "success", "success", "failure"): False,
-            ("success", "success", "failure", "success", "success"): False,
-            ("success", "failure", "skipped", "skipped", "skipped"): False,
-            ("cancelled", "success", "success", "success", "success"): False,
-            ("success", "success", "cancelled", "success", "success"): False,
+            # (plan, build, unit, ui, self_test, recovery_plan, recovery) -> pass?
+            ("success", "success", "success", "success", "success",
+             "success", "skipped"): True,
+            ("success", "success", "success", "skipped", "success",
+             "success", "skipped"): True,
+            ("success", "success", "success", "success", "failure",
+             "success", "skipped"): False,
+            ("success", "failure", "skipped", "skipped", "skipped",
+             "skipped", "skipped"): False,
+            ("cancelled", "success", "success", "success", "success",
+             "success", "skipped"): False,
+            ("success", "success", "cancelled", "success", "success",
+             "success", "skipped"): False,
+            ("success", "success", "failure", "success", "success",
+             "success", "skipped"): False,   # failure without recovery data
+            ("success", "success", "failure", "success", "success",
+             "failure", "skipped"): False,
         }
-        for (plan, build, unit, ui, self_test), expected in spec.items():
-            proc = subprocess.run(
-                [sys.executable, os.path.join(SCRIPTS_DIR, "ci-gate.py"),
-                 "--plan", plan, "--build", build,
-                 "--unit", unit, "--ui", ui, "--self-test", self_test],
-                capture_output=True, text=True)
-            self.assertEqual(
-                proc.returncode == 0, expected,
-                f"gate({plan},{build},{unit},{ui},{self_test}) -> {proc.stdout}")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "plan.json").write_text(json.dumps({
+                "unit_lanes": [
+                    {"lane": "unit-1", "target": "ConduitTests",
+                     "classes": ["A"], "predicted_s": 10.0,
+                     "timeout_s": 600, "job_timeout_min": 42}]}),
+                encoding="utf-8")
+            lanes = root / "lanes"
+            doc = {
+                "schema_version": 1, "lane": "unit-1", "kind": "unit",
+                "target": "ConduitTests", "classes": ["A"], "status": "pass",
+                "predicted_s": 10.0, "timeout_s": 600,
+                "finished_at": "2026-09-15T10:00:00Z",
+                "attempts": [{"mode": "lane", "n": 1, "status": "passed"}],
+                "hung_class": None, "isolation": None,
+            }
+            doc["fresh_runner_recovery"] = False
+            doc["recovery"] = {"classification": "pass", "reason": "lane passed",
+                               "eligible": False}
+            d = lanes / "lane-unit-1-attempt-1" / "unit-1"
+            d.mkdir(parents=True)
+            (d / "lane-result.json").write_text(
+                json.dumps(doc), encoding="utf-8")
+            (root / "recovery").mkdir()
+            for results, expected in spec.items():
+                plan, build, unit, ui, self_test, recovery_plan, recovery = results
+                proc = subprocess.run(
+                    [sys.executable, os.path.join(SCRIPTS_DIR, "ci-gate.py"),
+                     "--plan", plan, "--build", build, "--unit", unit,
+                     "--ui", ui, "--self-test", self_test,
+                     "--recovery-plan", recovery_plan, "--recovery", recovery,
+                     "--plan-json", str(root / "plan.json"),
+                     "--unit-lanes-dir", str(lanes),
+                     "--recovery-lanes-dir", str(root / "recovery")],
+                    capture_output=True, text=True)
+                self.assertEqual(
+                    proc.returncode == 0, expected,
+                    f"gate{results} -> {proc.stdout} {proc.stderr}")
 
 
 class TimingUpdateCliShapeTests(unittest.TestCase):

@@ -48,6 +48,16 @@
 #      it (its simulator state is contaminated) while earlier results are
 #      kept and later classes are recorded as not_diagnosed so a
 #      contaminated simulator cannot produce misleading secondary failures.
+#   5. Fresh-runner recovery (units only): a lane whose PRIMARY invocation
+#      watchdogs with zero identified test failures is classified
+#      recoverable-timeout-zero-failures in lane-result.json, and the
+#      workflow's unit-recovery job re-runs the exact same lane ONCE on a
+#      NEW GitHub-hosted macOS runner (a retry inside this script would
+#      stay on the same broken host). The recovery job passes
+#      --fresh-runner-recovery: its lane result is marked
+#      fresh_runner_recovery and its classification can never come out
+#      recovery-eligible again - a retry that stalls or fails is final
+#      (no third attempt).
 #
 # UI watchdog budgets are owned by plan-tests.py alone: every UI lane
 # receives an explicit per-class budget table (--class-timeouts) and the
@@ -75,6 +85,7 @@ while [ $# -gt 0 ]; do
     --iterations) ITERATIONS="$2"; shift 2 ;;
     --xctestrun) XCRUN_FILE="$2"; shift 2 ;;
     --result-dir) RESULT_DIR="$2"; shift 2 ;;
+    --fresh-runner-recovery) FRESH_RUNNER_RECOVERY=1; shift ;;
     *) echo "::error::unknown argument: $1"; exit 2 ;;
   esac
 done
@@ -480,6 +491,8 @@ finish_lane() { # $1=status $2=attempts_json $3=isolation_json $4=exit_code
   local reset_flag="" erase_flag=""
   [ "$RESET_USED" -eq 1 ] && reset_flag="--simulator-reset"
   [ "$ERASE_USED" -eq 1 ] && erase_flag="--simulator-erase"
+  local recovery_flag=""
+  [ -n "${FRESH_RUNNER_RECOVERY:-}" ] && recovery_flag="--fresh-runner-recovery"
   # Intentional unquoted expansion of the optional flag variables below.
   python3 "$SCRIPT_DIR/extract-test-timings.py" lane-result \
     --lane "$LANE" --kind "$KIND" --target "$TARGET" --classes "$CLASSES" \
@@ -492,7 +505,7 @@ finish_lane() { # $1=status $2=attempts_json $3=isolation_json $4=exit_code
     --infra-recovered-classes "$(infra_recovered_csv)" \
     --persistent-infra-classes "$(persistent_infra_csv)" \
     --hung-class "$HUNG_CLASS" \
-    $reset_flag $erase_flag \
+    $reset_flag $erase_flag $recovery_flag \
     --observations "$RESULT_DIR/observations.json" \
     --detail "$RESULT_DIR/detail.json" \
     --out "$RESULT_DIR/lane-result.json" || true

@@ -801,5 +801,147 @@ simulator_erase=False, hung_class="", retried_classes="", persistent_infra_class
             self.assertIn("remaining classes still ran", text)
 
 
+class RecoveryEmbeddingTests(unittest.TestCase):
+    """lane-result must embed the machine-readable recovery classification
+    (ci_lane_recovery is the single source of truth; the flag lands BEFORE
+    classification so a fresh-runner retry can never classify eligible)."""
+
+    STALL_ATTEMPTS = '[{"n": 1, "mode": "lane", "status": "timeout"}, ' \
+                     '{"n": 2, "mode": "isolation", "status": "incomplete"}]'
+
+    def _write(self, tmp, kind="unit", status="timeout",
+               attempts=STALL_ATTEMPTS, fresh=False):
+        out = Path(tmp) / "lane-result.json"
+        args = SimpleNamespace(
+            lane="unit-2", kind=kind, target="ConduitTests",
+            classes="BetaTests", status=status,
+            predicted_s=372.6, timeout_s=932, actual_s=1955.0,
+            started_at="2026-09-15T10:00:00Z",
+            attempts_json=attempts, isolation_json="",
+            simulator_reset=True, simulator_erase=True, hung_class="",
+            retried_classes="", infra_recovered_classes="",
+            persistent_infra_classes="", observations="", detail="",
+            fresh_runner_recovery=fresh, out=str(out))
+        rc = ext.lane_result(args)
+        self.assertEqual(rc, ext.EXIT_OK)
+        return json.loads(out.read_text(encoding="utf-8"))
+
+    def test_stall_embeds_recoverable_classification(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            doc = self._write(tmp)
+            self.assertFalse(doc["fresh_runner_recovery"])
+            self.assertEqual(
+                doc["recovery"]["classification"],
+                "recoverable-timeout-zero-failures")
+            self.assertTrue(doc["recovery"]["eligible"])
+
+    def test_clean_pass_embeds_pass(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            doc = self._write(tmp, status="pass",
+                              attempts='[{"n": 1, "mode": "lane", "status": "passed"}]')
+            self.assertEqual(doc["recovery"]["classification"], "pass")
+            self.assertFalse(doc["recovery"]["eligible"])
+
+    def test_fresh_retry_embeds_nonrecoverable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            doc = self._write(tmp, fresh=True)
+            self.assertTrue(doc["fresh_runner_recovery"])
+            self.assertEqual(
+                doc["recovery"]["classification"],
+                "nonrecoverable-infrastructure")
+            self.assertFalse(doc["recovery"]["eligible"])
+
+    def test_ui_lanes_have_no_recovery_block(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            doc = self._write(tmp, kind="ui", status="fail",
+                              attempts='[{"n": 1, "mode": "batch", "status": "test-failures"}]')
+            self.assertIsNone(doc["recovery"])
+            self.assertFalse(doc["fresh_runner_recovery"])
+
+
+class AggregateRecoveryTests(unittest.TestCase):
+    """The report must make a recovered lane obvious (original / fresh
+    runner / final)."""
+
+    PLAN = {
+        "unit_lanes": [
+            {"lane": "unit-1", "predicted_s": 30.0, "classes": ["A"]},
+            {"lane": "unit-2", "predicted_s": 40.0, "classes": ["B"]},
+        ],
+        "ui_lanes": [],
+    }
+
+    def _doc(self, lane, status, attempts, fresh=False,
+             finished="2026-08-29T10:02:00Z"):
+        import ci_lane_recovery
+        doc = {"lane": lane, "kind": "unit", "target": "ConduitTests",
+               "status": status, "actual_s": 120.0, "predicted_s": 5.0,
+               "timeout_s": 932, "started_at": "2026-08-29T10:00:00Z",
+               "finished_at": finished, "attempts": attempts,
+               "hung_class": None, "isolation": None,
+               "flaky": [], "failures": [],
+               "class_seconds": {"AlphaTests": 3.0}}
+        doc["fresh_runner_recovery"] = fresh
+        classification, reason = ci_lane_recovery.classify_lane_result(doc)
+        doc["recovery"] = None if classification is None else {
+            "classification": classification, "reason": reason,
+            "eligible": (classification in
+                         ci_lane_recovery.RECOVERY_ELIGIBLE_CLASSES) and not fresh}
+        return doc
+
+    def _write(self, tmp, artifact, doc):
+        lane = doc["lane"]
+        d = Path(tmp) / artifact / lane
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "lane-result.json").write_text(json.dumps(doc), encoding="utf-8")
+
+    def _aggregate(self, tmp):
+        out = Path(tmp) / "summary.md"
+        plan_path = Path(tmp) / "plan.json"
+        plan_path.write_text(json.dumps(self.PLAN), encoding="utf-8")
+        args = SimpleNamespace(plan=str(plan_path), lanes_dir=str(tmp),
+                               build_result="", out=str(out))
+        rc = ext.aggregate(args)
+        self.assertEqual(rc, ext.EXIT_OK)
+        return out.read_text(encoding="utf-8")
+
+    def test_recovered_lane_renders_three_line_story(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            stall = [{"n": 1, "mode": "lane", "status": "timeout"},
+                     {"n": 2, "mode": "isolation", "status": "incomplete"}]
+            self._write(tmp, "lane-unit-1-attempt-1",
+                        self._doc("unit-1", "pass",
+                                  [{"n": 1, "mode": "lane", "status": "passed"}]))
+            self._write(tmp, "lane-unit-2-attempt-1",
+                        self._doc("unit-2", "timeout", stall))
+            self._write(tmp, "lane-recovery-unit-2-attempt-1",
+                        self._doc("unit-2", "pass",
+                                  [{"n": 1, "mode": "lane", "status": "passed"}],
+                                  fresh=True,
+                                  finished="2026-08-29T10:20:00Z"))
+            text = self._aggregate(tmp)
+            self.assertIn("## Fresh-runner recovery", text)
+            self.assertIn("original: recoverable-timeout-zero-failures, "
+                          "zero XCTest failures identified", text)
+            self.assertIn("fresh runner: pass", text)
+            self.assertIn("final: recovered infrastructure PASS", text)
+            unit_table = text.split("## Unit lanes")[1].split("## Fresh-runner")[0]
+            self.assertIn("recovered infrastructure PASS", unit_table)
+
+    def test_persistent_failure_renders_fail(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            stall = [{"n": 1, "mode": "lane", "status": "timeout"},
+                     {"n": 2, "mode": "isolation", "status": "incomplete"}]
+            self._write(tmp, "lane-unit-1-attempt-1",
+                        self._doc("unit-1", "timeout", stall))
+            self._write(tmp, "lane-recovery-unit-1-attempt-1",
+                        self._doc("unit-1", "timeout", stall, fresh=True,
+                                  finished="2026-08-29T10:20:00Z"))
+            text = self._aggregate(tmp)
+            self.assertIn("## Fresh-runner recovery", text)
+            self.assertIn("fresh runner: timeout", text)
+            self.assertIn("final: FAIL", text)
+
+
 if __name__ == "__main__":
     unittest.main()

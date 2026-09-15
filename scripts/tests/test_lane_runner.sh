@@ -130,6 +130,14 @@ run_lane() { # $1=classes $2=timeout $3=mode $4=iterations
   echo $? > "$WORKCASE/exit-code"
 }
 
+# Same invocation with the fresh-runner recovery marker (the workflow's
+# unit-recovery job passes it; the lane result must carry the flag).
+run_lane_fresh() { # $1=classes $2=timeout $3=mode $4=iterations
+  _classes="$1"; _timeout="$2"; _mode="$3"; _iters="$4"; shift 4
+  FAKE_MODE="$_mode" CLASS_TIMEOUT_MIN_S="1" CLASS_TIMEOUT_MULTIPLIER="0.1"     bash "$SCRIPTS/ci-test-lane.sh"     --kind unit --lane unit-t --target ConduitTests     --classes "$_classes"     --predicted 42 --timeout "$_timeout"     --iterations "$_iters"     --xctestrun "$WORK/fake.xctestrun"     --result-dir "$WORKCASE"     --fresh-runner-recovery >"$WORKCASE/stdout.log" 2>&1
+  echo $? > "$WORKCASE/exit-code"
+}
+
 lane_field() { # $1=python expression applied to the lane-result document
   python3 -c "
 import json, sys
@@ -548,6 +556,65 @@ run_lane "AlphaTests,BetaTests" 3 fail65 1
 assert_eq "exit code" "$(cat "$WORKCASE/exit-code")" "1"
 assert_eq "verdict" "$(lane_field "['status']")" "fail"
 assert_eq "isolation statuses" "$(isolation_statuses)" "['fail', 'fail']"
+
+# --- case 11: primary stall with zero failures is RECOVERABLE -----------------
+# The PR #175 shape: the whole-lane invocation watchdogs, isolation finds
+# no assertion failures (a class may even "hang" on the wedged host), and
+# the fresh runner is the arbiter. The lane result must classify this as
+# recoverable-timeout-zero-failures WITHOUT the fresh-runner flag.
+end_case
+begin_case "primary stall classifies recoverable" "$WORK/r1"
+cat > "$STUBS/xcodebuild" <<'EOF'
+#!/bin/bash
+n=$(printf '%s\n' "$@" | grep -c -- '-only-testing:' || true)
+if [ "$n" -gt 1 ]; then
+  sleep 300
+  exit 0
+fi
+cls=$(printf '%s\n' "$@" | grep 'only-testing:' | head -1 | sed 's|.*/||')
+case "$cls" in
+  BetaTests) sleep 300; exit 0 ;;
+  *) exit 0 ;;
+esac
+EOF
+chmod +x "$STUBS/xcodebuild"
+write_canned "$WORK/canned-r1.json" "AlphaTests" "Passed"
+export ISOLATION_BUDGET_S=200 CLASS_TIMEOUT_MIN_S=1 CLASS_TIMEOUT_MULTIPLIER=0.1
+run_lane "AlphaTests,BetaTests" 3 pass 1
+assert_eq "exit code" "$(cat "$WORKCASE/exit-code")" "1"
+assert_eq "verdict" "$(lane_field "['status']")" "timeout"
+assert_eq "classification" "$(lane_field "['recovery']['classification']")" "recoverable-timeout-zero-failures"
+assert_eq "eligible" "$(lane_field "['recovery']['eligible']")" "True"
+assert_eq "not marked fresh-runner" "$(lane_field "['fresh_runner_recovery']")" "False"
+
+# --- case 12: the fresh-runner retry itself is never eligible again -----------
+# The unit-recovery job passes --fresh-runner-recovery: the same stall then
+# classifies nonrecoverable-infrastructure (no third attempt).
+end_case
+begin_case "fresh-runner retry marked non-recursive" "$WORK/r2"
+export ISOLATION_BUDGET_S=200 CLASS_TIMEOUT_MIN_S=1 CLASS_TIMEOUT_MULTIPLIER=0.1
+run_lane_fresh "AlphaTests,BetaTests" 3 pass 1
+assert_eq "exit code" "$(cat "$WORKCASE/exit-code")" "1"
+assert_eq "verdict" "$(lane_field "['status']")" "timeout"
+assert_eq "classification" "$(lane_field "['recovery']['classification']")" "nonrecoverable-infrastructure"
+assert_eq "not eligible" "$(lane_field "['recovery']['eligible']")" "False"
+assert_eq "marked fresh-runner" "$(lane_field "['fresh_runner_recovery']")" "True"
+
+# --- case 13: a clean pass carries the pass classification --------------------
+end_case
+begin_case "green lane classification" "$WORK/r3"
+cat > "$STUBS/xcodebuild" <<'EOF'
+#!/bin/bash
+exit 0
+EOF
+chmod +x "$STUBS/xcodebuild"
+write_canned "$WORK/canned-r3.json" "AlphaTests" "Passed"
+export ISOLATION_BUDGET_S=200 CLASS_TIMEOUT_MIN_S=1 CLASS_TIMEOUT_MULTIPLIER=0.1
+run_lane "AlphaTests" 5 pass 3
+assert_eq "exit code" "$(cat "$WORKCASE/exit-code")" "0"
+assert_eq "verdict" "$(lane_field "['status']")" "pass"
+assert_eq "classification" "$(lane_field "['recovery']['classification']")" "pass"
+assert_eq "not marked fresh-runner" "$(lane_field "['fresh_runner_recovery']")" "False"
 
 echo ""
 end_case

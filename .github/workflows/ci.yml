@@ -23,9 +23,27 @@ name: CI
 #                             shard with method-precise retry of only the
 #                             failed tests and a per-class diagnosis
 #                             fallback for timeouts/infrastructure wedges.
+#   unit-recovery-plan (ubuntu, always)
+#                             classify each finished unit lane from its
+#                             lane-result.json. A lane whose PRIMARY
+#                             invocation watchdogs with zero identified
+#                             test failures is a recoverable infrastructure
+#                             stall and becomes one entry in the recovery
+#                             matrix (rebuilt from the authoritative plan).
+#   unit-recovery (macos-26, matrix, only affected lanes)
+#                             re-runs exactly those lanes ONCE on a NEW
+#                             GitHub-hosted runner - runs-on allocates a
+#                             different Mac than the stalled job, which a
+#                             retry inside one job never could. The run is
+#                             marked --fresh-runner-recovery and is FINAL:
+#                             a retry that fails or stalls again is red
+#                             (no third attempt).
 #   report   (ubuntu, always) aggregate lane results into the step summary.
 #   timing-history-update (main only) EWMA-merge fresh per-class timings into
-#                             the timing-history cache.
+#                             the timing-history cache, gated on the
+#                             adjudicated FINAL unit verdict - a recovered
+#                             run still updates (minus the recovered lane's
+#                             timings); a genuinely red run never does.
 #
 # A compilation failure fails the build job and never spawns test lanes.
 # Cancellation of superseded runs is preserved per-PR/per-branch.
@@ -271,10 +289,151 @@ jobs:
           xcrun simctl list devices available
 
       - name: Upload lane results for report and timing history
+        # The run-attempt suffix keeps re-run uploads distinct from the
+        # previous attempt's artifacts, so consumers can order them
+        # deterministically (newest finished_at wins).
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: lane-${{ matrix.lane }}
+          name: lane-${{ matrix.lane }}-attempt-${{ github.run_attempt }}
+          path: ci-lane/
+          retention-days: 7
+          if-no-files-found: error
+
+  unit-recovery-plan:
+    name: Plan unit recovery
+    # Classify every finished unit lane and decide whether any needs a
+    # fresh-runner retry. Runs even when the unit matrix failed (an
+    # infrastructure stall IS a unit failure); an empty recovery matrix is
+    # the healthy outcome.
+    needs: [plan, unit]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      matrix: "${{ steps.recovery.outputs.matrix }}"
+      recovery-count: "${{ steps.recovery.outputs.recovery-count }}"
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Download plan
+        uses: actions/download-artifact@v4
+        with:
+          name: plan
+          path: ci-recovery/plan
+
+      - name: Download unit lane results
+        # The plan remains the lane-membership authority: every recovery
+        # entry is rebuilt from plan.json, and any lane result that
+        # disagrees with the plan fails closed (ci-recovery-plan.py).
+        if: needs.unit.result == 'success' || needs.unit.result == 'failure'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: lane-unit-*
+          path: ci-recovery/lanes
+
+      - name: Classify lanes and plan fresh-runner recovery
+        id: recovery
+        run: |
+          set -euo pipefail
+          python3 scripts/ci-recovery-plan.py \
+            --plan-json ci-recovery/plan/plan.json \
+            --lanes-dir ci-recovery/lanes \
+            --unit-result "${{ needs.unit.result }}" \
+            --matrix-out ci-recovery/unit-recovery-matrix.json
+          echo "matrix=$(jq -c . ci-recovery/unit-recovery-matrix.json)" >> "$GITHUB_OUTPUT"
+          echo "recovery-count=$(jq -r '.include | length' ci-recovery/unit-recovery-matrix.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload recovery plan (audit trail)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-recovery-matrix-attempt-${{ github.run_attempt }}
+          path: ci-recovery/unit-recovery-matrix.json
+          retention-days: 7
+          if-no-files-found: error
+
+  unit-recovery:
+    name: "Unit recovery - ${{ matrix.lane }} (fresh runner)"
+    # The ONLY second attempt in the pipeline, and it happens on a NEW
+    # GitHub-hosted macOS runner: runs-on allocates another machine than the
+    # one that stalled. The lane runs once, marked
+    # --fresh-runner-recovery; any failure or timeout here is final
+    # (the gate fails closed on the lane - there is no third attempt).
+    needs: [plan, build, unit-recovery-plan]
+    if: >-
+      always() &&
+      needs.unit-recovery-plan.result == 'success' &&
+      needs.build.result == 'success' &&
+      needs.unit-recovery-plan.outputs.recovery-count != '0'
+    runs-on: macos-26
+    timeout-minutes: ${{ matrix.job_timeout_min }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.unit-recovery-plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Download shared build products
+        # Same commit (checkout pins the triggering SHA), same build
+        # products, same lane membership - only the runner is new.
+        uses: actions/download-artifact@v4
+        with:
+          name: build-products
+          path: "${{ env.DERIVED_DATA_PATH }}/Build"
+
+      - name: Verify restored .xctestrun paths
+        run: |
+          set -euo pipefail
+          XCRUN_FILE=$(ls -t "$DERIVED_DATA_PATH"/Build/Products/*.xctestrun | head -n 1)
+          echo "XCRUN_FILE=$XCRUN_FILE" >> "$GITHUB_ENV"
+          python3 scripts/plan-tests.py audit-xctestrun \
+            --xctestrun "$XCRUN_FILE" --workspace-root "$GITHUB_WORKSPACE"
+
+      - name: Run unit lane (fresh-runner recovery)
+        # Matrix values enter through the environment, never through bash
+        # template interpolation (same rule as the primary unit job). The
+        # recovery flag marks the lane result so the gate can never grant
+        # another recovery, and it is the anti-recursion fence: a
+        # classification out of this run is never recovery-eligible.
+        env:
+          CLASS_TIMEOUT_MIN_S: "180"
+          CLASS_TIMEOUT_MULTIPLIER: "4.0"
+          CONDUIT_PERF_TRACE: "1"
+          LANE_NAME: "${{ matrix.lane }}"
+          LANE_TARGET: "${{ matrix.target }}"
+          LANE_CLASSES: "${{ matrix.classes }}"
+          LANE_CLASS_ESTIMATES: "${{ matrix.class_estimates }}"
+          LANE_PREDICTED: "${{ matrix.predicted_s }}"
+          LANE_TIMEOUT: "${{ matrix.timeout_s }}"
+        run: |
+          bash scripts/ci-test-lane.sh \
+            --kind unit \
+            --lane "$LANE_NAME" \
+            --target "$LANE_TARGET" \
+            --classes "$LANE_CLASSES" \
+            --class-estimates "$LANE_CLASS_ESTIMATES" \
+            --predicted "$LANE_PREDICTED" \
+            --timeout "$LANE_TIMEOUT" \
+            --iterations 3 \
+            --xctestrun "$XCRUN_FILE" \
+            --result-dir "ci-lane/$LANE_NAME" \
+            --fresh-runner-recovery
+
+      - name: Dump simulator state (failure diagnostics)
+        if: failure()
+        run: |
+          xcrun simctl list runtimes available || true
+          xcrun simctl list devices available
+
+      - name: Upload recovery lane results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-recovery-${{ matrix.lane }}-attempt-${{ github.run_attempt }}
           path: ci-lane/
           retention-days: 7
           if-no-files-found: error
@@ -353,14 +512,14 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: lane-${{ matrix.lane }}
+          name: lane-${{ matrix.lane }}-attempt-${{ github.run_attempt }}
           path: ci-lane/
           retention-days: 7
           if-no-files-found: error
 
   report:
     name: Report
-    needs: [plan, build, unit, ui]
+    needs: [plan, build, unit, unit-recovery-plan, unit-recovery, ui]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -407,15 +566,45 @@ jobs:
 
   # Single stable branch-protection check. The number of dynamic unit lanes
   # can change run to run, so individual lane jobs must never be required
-  # directly - require "CI Gate" instead (see docs/CI.md).
+  # directly - require "CI Gate" instead (see docs/CI.md). The gate no
+  # longer reads needs.unit.result as the unit truth: it adjudicates every
+  # planned lane's lane-result.json against the plan (scripts/ci-gate.py),
+  # accepting exactly one fresh-runner recovery pass for a lane whose
+  # primary invocation stalled with zero identified test failures.
   ci-gate:
     name: CI Gate
-    needs: [plan, build, unit, ui, self-test]
+    needs: [plan, build, unit, ui, self-test, unit-recovery-plan, unit-recovery]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
+
+      - name: Download plan
+        # Tolerated download: the gate script fails closed with a precise
+        # reason when an artifact is missing (missing metadata = FAIL).
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: plan
+          path: ci-gate/plan
+
+      - name: Download unit lane results
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          pattern: lane-unit-*
+          path: ci-gate/lanes
+
+      - name: Download fresh-runner recovery results
+        if: >-
+          needs.unit-recovery-plan.result == 'success' &&
+          needs.unit-recovery-plan.outputs.recovery-count != '0'
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          pattern: lane-recovery-*
+          path: ci-gate/recovery
 
       - name: Enforce final CI verdict
         run: |
@@ -424,17 +613,27 @@ jobs:
             --build "${{ needs.build.result }}" \
             --unit "${{ needs.unit.result }}" \
             --ui "${{ needs.ui.result }}" \
-            --self-test "${{ needs.self-test.result }}"
+            --self-test "${{ needs.self-test.result }}" \
+            --recovery-plan "${{ needs.unit-recovery-plan.result }}" \
+            --recovery "${{ needs.unit-recovery.result }}" \
+            --plan-json ci-gate/plan/plan.json \
+            --unit-lanes-dir ci-gate/lanes \
+            --recovery-lanes-dir ci-gate/recovery
 
   timing-history-update:
     name: Update timing history
-    needs: [plan, unit, ui]
-    # Only successful main runs evolve the estimates; PR runs never write.
+    needs: [plan, unit, unit-recovery-plan, unit-recovery, ui]
+    # Only main runs with a green FINAL unit verdict evolve the estimates:
+    # needs.unit.result == 'success', OR the failure was redeemed by the
+    # fresh-runner recovery (the in-step adjudication re-checks every lane,
+    # so a red lane hiding next to a recovered one still blocks the update).
+    # PR runs never write.
     if: >-
       github.ref == 'refs/heads/main' &&
       !cancelled() &&
       needs.plan.result == 'success' &&
-      needs.unit.result == 'success' &&
+      needs.unit-recovery-plan.result == 'success' &&
+      (needs.unit.result == 'success' || needs.unit-recovery.result == 'success') &&
       (needs.ui.result == 'success' || needs.ui.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -470,21 +669,39 @@ jobs:
             echo "plan artifact missing; skipping timing history update"
             exit 0
           fi
+          # Final-verdict preflight: the update proceeds only when every
+          # planned unit lane ends green (pass or exactly one fresh-runner
+          # recovery pass). A genuinely red main run - including one where a
+          # real test failure sits next to a recovered lane - keeps the
+          # previous history.
+          if ! python3 scripts/ci_lane_recovery.py adjudicate \
+              --plan-json ci-update/plan/plan.json \
+              --unit-lanes-dir ci-update/lanes \
+              --recovery-lanes-dir ci-update/lanes; then
+            echo "final unit verdict is red; keeping previous history"
+            exit 0
+          fi
           mkdir -p ci-timing
           OBS=$(find ci-update/lanes -name observations.json 2>/dev/null | sort)
           if [ -z "$OBS" ]; then
             echo "no lane observations found - keeping previous history"
             exit 0
           fi
+          # The recovered lanes' own observations are excluded downstream via
+          # their paired lane results (--lane-results): only primary lanes
+          # whose result is a clean pass merge; the stalled invocation's
+          # partial timings and the recovery run's timings never do.
+          LRS=$(find ci-update/lanes -name lane-result.json 2>/dev/null | sort)
           HIST=""
           if [ -f ci-timing/timing-history.json ]; then
             HIST="--history ci-timing/timing-history.json"
           fi
-          # OBS must expand to separate paths here; no spaces on runners.
+          # OBS/LRS must expand to separate paths here; no spaces on runners.
           # The flags below must mirror update-timing-history.py's CLI exactly
           # (scripts/tests/test_timing_history.py pins this contract).
           python3 scripts/update-timing-history.py \
             --observations $OBS \
+            --lane-results $LRS \
             --inventory ci-update/plan/plan.json \
             $HIST \
             --out ci-timing/timing-history.json
