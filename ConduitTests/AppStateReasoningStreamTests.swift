@@ -30,7 +30,8 @@ final class AppStateReasoningStreamTests: XCTestCase {
         return AppState(
             defaults: defaults,
             loadSavedConnection: false,
-            chatResumeLifecycleOperations: lifecycleOperations
+            chatResumeLifecycleOperations: lifecycleOperations,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
         )
     }
 
@@ -478,6 +479,65 @@ final class AppStateReasoningStreamTests: XCTestCase {
         XCTAssertLessThan(toolIndex, assistantIndex)
         XCTAssertEqual(state.messages[assistantIndex].content, "Final answer")
         XCTAssertEqual(state.messages[toolIndex].tool?.status, .complete)
+    }
+
+    func testStableToolIDsKeepConcurrentIdenticalCallsDistinctOutOfOrder() {
+        let state = makeAppState()
+        installActiveSession(state, id: "stored-a")
+
+        for toolID in ["call-a", "call-b"] {
+            state.handleStreamEvent(.toolStart(
+                sessionId: "stored-a", toolName: "terminal", toolInput: "git status", toolID: toolID
+            ))
+        }
+        state.handleStreamEvent(.toolComplete(
+            sessionId: "stored-a", toolName: "terminal", toolOutput: "b-output", toolID: "call-b"
+        ))
+        state.handleStreamEvent(.toolComplete(
+            sessionId: "stored-a", toolName: "terminal", toolOutput: "a-output", toolID: "call-a"
+        ))
+
+        let tools = state.messages.compactMap(\.tool)
+        XCTAssertEqual(tools.count, 2)
+        XCTAssertEqual(tools.first { $0.id == "call-a" }?.output, "a-output")
+        XCTAssertEqual(tools.first { $0.id == "call-b" }?.output, "b-output")
+
+        // Replayed completion updates the same terminal card in place.
+        state.handleStreamEvent(.toolComplete(
+            sessionId: "stored-a", toolName: "terminal", toolOutput: "b-replayed", toolID: "call-b"
+        ))
+        XCTAssertEqual(state.messages.compactMap(\.tool).count, 2)
+        XCTAssertEqual(state.messages.compactMap(\.tool).first { $0.id == "call-b" }?.output, "b-replayed")
+
+        // A replayed start cannot re-arm a completed card with the same id.
+        state.handleStreamEvent(.toolStart(
+            sessionId: "stored-a", toolName: "terminal", toolInput: "git status", toolID: "call-a"
+        ))
+        XCTAssertEqual(state.messages.compactMap(\.tool).count, 2)
+        XCTAssertEqual(state.messages.compactMap(\.tool).first { $0.id == "call-a" }?.status, .complete)
+
+        // A completion for another known id must append its own result, not
+        // steal either of the two same-name calls.
+        state.handleStreamEvent(.toolComplete(
+            sessionId: "stored-a", toolName: "terminal", toolOutput: "c-output", toolID: "call-c"
+        ))
+        XCTAssertEqual(state.messages.compactMap(\.tool).first { $0.id == "call-a" }?.output, "a-output")
+        XCTAssertEqual(state.messages.compactMap(\.tool).first { $0.id == "call-b" }?.output, "b-replayed")
+        XCTAssertEqual(state.messages.compactMap(\.tool).first { $0.id == "call-c" }?.status, .complete)
+    }
+
+    func testLegacyIdlessCompletionStillCompletesLatestSameNameCall() {
+        let state = makeAppState()
+        installActiveSession(state, id: "stored-a")
+        state.handleStreamEvent(.toolStart(sessionId: "stored-a", toolName: "terminal", toolInput: "first"))
+        state.handleStreamEvent(.toolStart(sessionId: "stored-a", toolName: "terminal", toolInput: "second"))
+        state.handleStreamEvent(.toolComplete(sessionId: "stored-a", toolName: "terminal", toolOutput: "done"))
+
+        let tools = state.messages.compactMap(\.tool)
+        XCTAssertEqual(tools.count, 2)
+        XCTAssertEqual(tools[0].status, .running)
+        XCTAssertEqual(tools[1].status, .complete)
+        XCTAssertEqual(tools[1].output, "done")
     }
 
     func testMultiSegmentTurnKeepsBothSegmentsAndSkipsCompletionTrace() {

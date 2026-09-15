@@ -8,6 +8,71 @@ import XCTest
 /// stale local idle state is corrected before the next submission is routed.
 @MainActor
 final class AppStateForegroundLifecycleTests: XCTestCase {
+    func testForegroundAfterFailedInitialConnectPreservesRestoredVisibleSession() async {
+        var scheduledCount = 0
+        var connectCount = 0
+        var openedSessionIDs: [String] = []
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                connectClient: { _ in
+                    connectCount += 1
+                    if connectCount == 1 { throw NSError(domain: "connect", code: 1) }
+                },
+                loadCatalog: { _, _ in
+                    [self.session("stored-newest"), self.session("stored-visible")]
+                },
+                mintTicket: { _ in "refreshed-ticket" },
+                openSession: { _, sessionID, _ in
+                    openedSessionIDs.append(sessionID)
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        storedSessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                refreshContext: { _, _ in },
+                loadProfiles: {},
+                loadBusyInputMode: { _ in },
+                loadProfileDisplayPreferences: {},
+                loadSlashCommands: {}
+            ),
+            configureDefaults: { defaults in
+                defaults.set(
+                    "https://one.example",
+                    forKey: AppState.chatResumeServerIdentityKey
+                )
+                ChatResumeStore(defaults: defaults).setLastSessionID(
+                    "stored-visible",
+                    for: "default"
+                )
+            },
+            reconnectScheduler: { _, _ in
+                scheduledCount += 1
+                return {}
+            }
+        )
+        let visible = session("stored-visible")
+        harness.appState.sessions = [visible]
+        XCTAssertEqual(harness.appState.activeSessionId, visible.id)
+
+        await harness.appState.connect(
+            with: HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        )
+        XCTAssertEqual(harness.appState.activeSessionId, visible.id)
+        XCTAssertEqual(harness.recoverySequence.currentPurpose, .preserveCurrent)
+        XCTAssertEqual(scheduledCount, 1)
+
+        harness.appState.handleScenePhase(.background)
+        let foreground = harness.appState.handleScenePhase(.active)
+        await foreground?.value
+
+        XCTAssertEqual(openedSessionIDs, [visible.id])
+        XCTAssertEqual(connectCount, 2)
+        XCTAssertEqual(harness.appState.activeSessionId, visible.id)
+        XCTAssertEqual(harness.recoverySequence.currentPurpose, .preserveCurrent)
+    }
+
     func testFastSecondSendKeepsStoredConversationWhenRefreshedCatalogDropsRuntimeAlias() async {
         var resumes: [String] = []
         var sends: [String] = []
@@ -2428,6 +2493,67 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         )
         XCTAssertEqual(harness.appState.messages.map(\.id), ["restored"])
         XCTAssertEqual(harness.appState.turnState, .idle)
+        box.client.disconnect()
+    }
+
+    func testForegroundWaitingWithoutVisibleDecisionResumesAndSettlesControls() async {
+        let active = session("stored-a")
+        var openedSessionIDs: [String] = []
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in [active] },
+                openSession: { _, sessionID, _ in
+                    openedSessionIDs.append(sessionID)
+                    return SessionResumeResult(
+                        sessionId: "runtime-a",
+                        storedSessionId: active.id,
+                        messages: [
+                            ChatMessage(
+                                id: "completed",
+                                role: .assistant,
+                                content: "Recovered after the decision cleared",
+                                timestamp: "2"
+                            )
+                        ],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                refreshContext: { _, _ in },
+                verifyTransportHealth: { _ in },
+                probeActiveSessions: { _ in
+                    [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: active.id,
+                        status: "waiting"
+                    )]
+                }
+            )
+        )
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        harness.appState.messages = [
+            ChatMessage(id: "user", role: .user, content: "Question", timestamp: "1")
+        ]
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: true))
+
+        // An inactive/active cycle leaves the transport alive, so this test
+        // isolates decision hydration from the separate dead-transport path.
+        harness.appState.handleScenePhase(.inactive)
+        await runSceneActivation(harness)
+
+        XCTAssertEqual(
+            openedSessionIDs, [active.id],
+            "Waiting without an answerable card must be rehydrated from session.resume"
+        )
+        XCTAssertEqual(harness.appState.activeSessionId, "runtime-a")
+        XCTAssertTrue(harness.appState.isConnected)
+        XCTAssertFalse(harness.appState.isConnecting)
+        XCTAssertFalse(harness.appState.isChatRefreshing)
+        XCTAssertEqual(
+            harness.appState.turnState, .idle,
+            "The authoritative resume must release a stale waiting composer state"
+        )
         box.client.disconnect()
     }
 
@@ -7738,23 +7864,19 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
 
     /// The slow/flaky health-check window: the foreground attempt suspends
     /// inside the transport liveness check, the user starts typing into the
-    /// visible conversation, and the health check then fails. The failure's
-    /// fallback must no longer select a session by resume policy: the edit
-    /// invalidated the automatic-return token, so the recovery proceeds as a
-    /// `.preserveCurrent` repair — the transport is restored and the visible
-    /// session is resumed, never the saved (older) one. Without the edit the
-    /// same failure still falls back to `.automaticReturn` and restores the
-    /// saved session — the reported symptom.
+    /// visible conversation, and the health check then fails. The edit keeps
+    /// its existing ownership guarantee while the foreground recovery repairs
+    /// the same visible session.
     func testForegroundHealthCheckFailureRespectsComposerUserEditOwnership() async throws {
         try await assertForegroundHealthCheckFailureFallback(
             userEditsDuringHealthCheck: true
         )
     }
 
-    /// Control: before any composer interaction, a foreground health-check
-    /// failure must still recover according to the configured resume
-    /// behavior (Continue Where I Left Off → the saved older session).
-    func testForegroundHealthCheckFailureWithoutComposerEditStillRestoresSavedSession() async throws {
+    /// A transport failure is not navigation authority. Even before the
+    /// composer is edited, reconnecting must repair the visible conversation
+    /// rather than applying the saved-session fallback to an older chat.
+    func testForegroundHealthCheckFailurePreservesVisibleSession() async throws {
         try await assertForegroundHealthCheckFailureFallback(
             userEditsDuringHealthCheck: false
         )
@@ -7830,37 +7952,35 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
             await activation.value
         }
 
-        if userEditsDuringHealthCheck {
-            XCTAssertEqual(
-                mintCount, 1,
-                "The invalidated foreground attempt must still repair the transport, without resume-policy selection",
-                file: file, line: line
-            )
-            XCTAssertEqual(
-                openedSessionIDs, [visible.id],
-                "The repair must resume the visible session, never the saved one",
-                file: file, line: line
-            )
-            XCTAssertEqual(harness.appState.activeSessionId, visible.id, file: file, line: line)
-            XCTAssertEqual(
-                harness.recoverySequence.currentPurpose, .preserveCurrent,
-                "The repair recovery must proceed with .preserveCurrent",
-                file: file, line: line
-            )
-            XCTAssertTrue(harness.appState.isConnected, file: file, line: line)
-            XCTAssertEqual(harness.appState.turnState, .idle, file: file, line: line)
-        } else {
-            XCTAssertEqual(mintCount, 1, file: file, line: line)
-            XCTAssertEqual(openedSessionIDs, [savedOlder.id], file: file, line: line)
-            XCTAssertEqual(harness.appState.activeSessionId, savedOlder.id, file: file, line: line)
-        }
+        XCTAssertEqual(
+            mintCount, 1,
+            "The foreground attempt must reconnect exactly once",
+            file: file, line: line
+        )
+        XCTAssertEqual(
+            openedSessionIDs, [visible.id],
+            "Transport recovery must resume the visible session, never the saved older one",
+            file: file, line: line
+        )
+        XCTAssertEqual(harness.appState.activeSessionId, visible.id, file: file, line: line)
+        XCTAssertEqual(
+            harness.recoverySequence.currentPurpose, .preserveCurrent,
+            "Foreground transport recovery must proceed with .preserveCurrent",
+            file: file, line: line
+        )
+        XCTAssertTrue(harness.appState.isConnected, file: file, line: line)
+        XCTAssertFalse(harness.appState.isConnecting, file: file, line: line)
+        XCTAssertEqual(harness.appState.turnState, .idle, file: file, line: line)
         box.client.disconnect()
     }
 
     // MARK: - Harness
 
     private func makeHarness(
-        lifecycleOperations: ChatResumeLifecycleOperations = .live
+        lifecycleOperations: ChatResumeLifecycleOperations = .live,
+        configureDefaults: (UserDefaults) -> Void = { _ in },
+        reconnectScheduler: ChatResumeReconnectScheduler? = nil,
+        reconnectExecutor: ChatResumeReconnectExecutor? = nil
     ) -> (
         appState: AppState,
         coordinator: ChatResumeCoordinator,
@@ -7874,6 +7994,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         addTeardownBlock {
             defaults.removePersistentDomain(forName: suite)
         }
+        configureDefaults(defaults)
         let store = ChatResumeStore(defaults: defaults)
         let coordinator = ChatResumeCoordinator(store: store)
         let recoverySequence = ChatResumeRecoverySequence()
@@ -7886,6 +8007,8 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
             recoverySequence: recoverySequence,
             loadSavedConnection: false,
             clearSessionPresentationCache: {},
+            reconnectScheduler: reconnectScheduler,
+            reconnectExecutor: reconnectExecutor,
             chatResumeLifecycleOperations: lifecycleOperations,
             sessionPresentationCache: presentationCache
         )

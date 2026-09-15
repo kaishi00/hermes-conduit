@@ -22,6 +22,40 @@ enum ChatResumeSyncPurpose: Equatable {
 }
 
 enum ChatResumeSessionResolver {
+    /// Returns the persisted continue-where-left-off target when the current
+    /// catalog has not caught up with it yet. The caller must resume this
+    /// identity directly before considering a different conversation: a
+    /// partial cold-start catalog is discovery data, not authority to replace
+    /// the conversation the user last selected.
+    static func missingSavedSessionID(
+        in catalog: [SessionSummary],
+        behavior: ChatResumeBehavior,
+        purpose: ChatResumeSyncPurpose,
+        savedSessionID: String?,
+        activeProfile: String? = nil
+    ) -> String? {
+        guard purpose == .automaticReturn,
+              behavior == .continueWhereLeftOff,
+              let savedSessionID = ChatScrollIdentityNormalization.sessionID(savedSessionID) else {
+            return nil
+        }
+
+        let scoped = activeProfile.map { profile in
+            catalog.filter { entry in
+                guard let entryProfile = entry.profile else { return true }
+                return entryProfile.trimmingCharacters(in: .whitespacesAndNewlines)
+                    .caseInsensitiveCompare(profile.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame
+            }
+        } ?? catalog
+
+        guard !scoped.contains(where: {
+            $0.id == savedSessionID || $0.alternateIds.contains(savedSessionID)
+        }) else {
+            return nil
+        }
+        return savedSessionID
+    }
+
     static func target(
         in catalog: [SessionSummary],
         behavior: ChatResumeBehavior,

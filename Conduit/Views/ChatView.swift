@@ -2502,6 +2502,7 @@ struct ApprovalCard: View {
         case .submitting: return AppLocalization.string("SENDING DECISION")
         case .approved: return AppLocalization.string("APPROVED")
         case .rejected: return AppLocalization.string("REJECTED")
+        case .expired: return AppLocalization.string("EXPIRED")
         case .error: return AppLocalization.string("TRY AGAIN")
         }
     }
@@ -2510,7 +2511,7 @@ struct ApprovalCard: View {
         switch status {
         case .pending, .submitting: return .orange
         case .approved: return .green
-        case .rejected, .error: return .red
+        case .rejected, .expired, .error: return .red
         }
     }
 }

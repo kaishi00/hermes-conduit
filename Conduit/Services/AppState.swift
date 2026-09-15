@@ -63,6 +63,7 @@ struct ChatResumeLifecycleOperations {
     ) async throws -> BranchResult)?
     var setSessionTitle: (@MainActor (HermesClient, String, String) async throws -> Void)?
     var refreshContext: (@MainActor (HermesClient, String) async -> Void)?
+    var pendingApprovals: (@MainActor (HermesClient, String) async throws -> [ApprovalActivity])?
     var sendPrompt: (@MainActor (HermesClient, String, String) async throws -> PromptSubmissionOutcome)?
     /// Foreground transport verification. Production calls the client's
     /// `session.list` health check; tests substitute a controllable outcome.
@@ -117,6 +118,7 @@ struct ChatResumeLifecycleOperations {
         ) async throws -> BranchResult)? = nil,
         setSessionTitle: (@MainActor (HermesClient, String, String) async throws -> Void)? = nil,
         refreshContext: (@MainActor (HermesClient, String) async -> Void)? = nil,
+        pendingApprovals: (@MainActor (HermesClient, String) async throws -> [ApprovalActivity])? = nil,
         sendPrompt: (@MainActor (HermesClient, String, String) async throws -> PromptSubmissionOutcome)? = nil,
         verifyTransportHealth: (@MainActor (HermesClient) async throws -> Void)? = nil,
         probeActiveSessions: (@MainActor (HermesClient) async throws -> [LiveSessionStatus])? = nil,
@@ -155,6 +157,7 @@ struct ChatResumeLifecycleOperations {
         self.branchSession = branchSession
         self.setSessionTitle = setSessionTitle
         self.refreshContext = refreshContext
+        self.pendingApprovals = pendingApprovals
         self.sendPrompt = sendPrompt
         self.verifyTransportHealth = verifyTransportHealth
         self.probeActiveSessions = probeActiveSessions
@@ -1056,6 +1059,10 @@ final class AppState: ObservableObject {
     /// so reconnect scheduling skips it instead of looping on the same
     /// contradiction. Main-actor state, valid for the current reconcile only.
     private var reconciliationWasIdentityRejected = false
+    /// Set only when the currently owned resume RPC definitively reports
+    /// that its requested session no longer exists. Callers use this to
+    /// retire a saved automatic-return target instead of retrying it forever.
+    private var reconciliationSessionWasNotFound = false
     private var reconciliation: Reconciliation?
     private var activeClientEpoch = UUID()
     private var activeAssistantMessageId: String?
@@ -1187,6 +1194,9 @@ final class AppState: ObservableObject {
     private var connectedAt: Date?
     private var sessionCatalogCache = SessionCatalogCache()
     private var projectsRequestGeneration = 0
+    /// Fences optional approval-queue reads across re-entrant MainActor
+    /// awaits. A late response must not populate a replacement conversation.
+    private var pendingApprovalsRequestGeneration: UInt64 = 0
     private let sessionPresentationCache: SessionPresentationCache
     private let sessionYoloStore: SessionYoloStore
     private let conversationIdentityIndex: ConversationIdentityIndex
@@ -1241,6 +1251,18 @@ final class AppState: ObservableObject {
         // A lookup may need the whole alias set, but a WRITE does not: the
         // durable key owns the persisted record.
         return [durableSessionID]
+    }
+
+    private func presentationCacheSessionIDs(for sessionID: String) -> [String] {
+        Self.durableOwnedPresentationIDs(
+            [
+                sessionID,
+                activeSessionId,
+                reconciliation?.requestedSessionId,
+                reconciliation?.resolvedSessionId
+            ].compactMap { $0 },
+            durableSessionID: activeChatScrollSessionIdentity.canonicalSessionID
+        )
     }
 
     /// Hermes can omit UI-only fields from persisted history. Retain a bounded
@@ -2782,7 +2804,11 @@ final class AppState: ObservableObject {
             // sign-in screen. A transient gateway or WebKit startup failure
             // must retain the saved dashboard session and retry.
             showLogin = false
-            scheduleReconnect(purpose: continuation.purpose)
+            if continuation.purpose == .preserveCurrent {
+                scheduleReconnect(purpose: continuation.purpose)
+            } else {
+                scheduleReconnectAfterFailedSync()
+            }
         }
     }
 
@@ -3657,14 +3683,34 @@ final class AppState: ObservableObject {
                 )
                 return chatResumeSyncInterruptionOutcome(for: automaticWorkToken)
             }
-            let target = selectChatResumeTarget(
+            // A cold launch can receive a catalog before Hermes has indexed
+            // the just-created/in-flight conversation. When Continue Where I
+            // Left Off names a saved identity that is absent from that
+            // catalog, resume it directly rather than letting the catalog's
+            // first row replace the user's conversation.
+            let missingSavedSessionID = chatResumeCoordinator.missingSavedSessionID(
                 in: allSessions,
                 profile: profile,
-                purpose: purpose,
-                currentSessionID: activeSessionId,
-                automaticWorkToken: automaticWorkToken,
-                automaticSyncOperationID: automaticOperationID
+                purpose: purpose
             )
+            if let missingSavedSessionID {
+                chatResumeRestorationRequest = nil
+                chatResumeCoordinator.prepareDirectTarget(
+                    sessionID: missingSavedSessionID,
+                    profile: profile,
+                    purpose: purpose
+                )
+            }
+            let target = missingSavedSessionID == nil
+                ? selectChatResumeTarget(
+                    in: allSessions,
+                    profile: profile,
+                    purpose: purpose,
+                    currentSessionID: activeSessionId,
+                    automaticWorkToken: automaticWorkToken,
+                    automaticSyncOperationID: automaticOperationID
+                )
+                : nil
             if let target {
                 // A freshly selected catalog row positively establishes the
                 // target's identity: the row's ids are the accepted set, and
@@ -3714,7 +3760,124 @@ final class AppState: ObservableObject {
                    ),
                    token == reconciliationToken,
                    profile == activeProfile {
-                    scheduleReconnect(purpose: purpose)
+                    scheduleReconnectAfterFailedSync()
+                }
+                return succeeded
+                    ? .completed
+                    : chatResumeSyncInterruptionOutcome(for: automaticWorkToken)
+            } else if let missingSavedSessionID {
+                // The store holds the durable session ID after an admitted
+                // resume. It remains safe to address directly even while the
+                // catalog temporarily omits the row; an identity gate still
+                // rejects a contradictory server response.
+                let savedIdentity = ConversationIdentity(
+                    profile: profile,
+                    durableSessionID: missingSavedSessionID,
+                    runtimeSessionID: nil,
+                    acceptedSessionIDs: [missingSavedSessionID]
+                )
+                let succeeded = await reconcile(
+                    sessionId: missingSavedSessionID,
+                    using: client,
+                    token: token,
+                    acceptedSessionIDs: savedIdentity.acceptedSessionIDs,
+                    conversationIdentity: savedIdentity,
+                    automaticWorkToken: automaticWorkToken,
+                    automaticSyncOperationID: automaticOperationID,
+                    requiredViewportTransitionGeneration: requiredViewportTransitionGeneration,
+                    historySourceUnavailable: historySourceUnavailable
+                )
+                if !succeeded,
+                   reconciliationSessionWasNotFound,
+                   automaticChatResumeWorkIsCurrent(
+                    automaticWorkToken,
+                    syncOperationID: automaticOperationID
+                   ),
+                   chatViewportTransitionIsCurrent(requiredViewportTransitionGeneration),
+                   token == reconciliationToken,
+                   profile == activeProfile,
+                   let activeClient = self.client,
+                   activeClient === client {
+                    // `session.resume` code 4007 is authoritative evidence
+                    // that the saved conversation was deleted. Forget only
+                    // the still-current pointer, then select from the catalog
+                    // we already loaded under the same ownership fences.
+                    guard chatResumeCoordinator.lastSessionID(for: profile) == missingSavedSessionID else {
+                        return .superseded
+                    }
+                    let handledMissingSessionError = errorMessage
+                    chatResumeCoordinator.rememberSessionID(nil, for: profile)
+                    if let fallback = selectChatResumeTarget(
+                        in: allSessions,
+                        profile: profile,
+                        purpose: purpose,
+                        currentSessionID: nil,
+                        automaticWorkToken: automaticWorkToken,
+                        automaticSyncOperationID: automaticOperationID
+                    ) {
+                        let fallbackIDs = Set([fallback.id] + fallback.alternateIds)
+                        let fallbackIdentity = ConversationIdentity(
+                            profile: profile,
+                            durableSessionID: fallback.storedSessionId ?? fallback.id,
+                            runtimeSessionID: fallback.storedSessionId != nil ? fallback.id : nil,
+                            acceptedSessionIDs: fallbackIDs
+                        )
+                        let fallbackSucceeded = await reconcile(
+                            sessionId: fallback.id,
+                            using: client,
+                            token: token,
+                            acceptedSessionIDs: fallbackIDs,
+                            conversationIdentity: fallbackIdentity,
+                            automaticWorkToken: automaticWorkToken,
+                            automaticSyncOperationID: automaticOperationID,
+                            requiredViewportTransitionGeneration: requiredViewportTransitionGeneration,
+                            historySourceUnavailable: historySourceUnavailable
+                        )
+                        if fallbackSucceeded, errorMessage == handledMissingSessionError {
+                            errorMessage = nil
+                        }
+                        if !fallbackSucceeded,
+                           !reconciliationWasIdentityRejected,
+                           !reconciliationSessionWasNotFound,
+                           automaticChatResumeWorkIsCurrent(
+                            automaticWorkToken,
+                            syncOperationID: automaticOperationID
+                           ),
+                           token == reconciliationToken,
+                           profile == activeProfile {
+                            // The prior saved identity was authoritatively
+                            // deleted; do not let it masquerade as a visible
+                            // preserve-current target on the retry.
+                            activeSessionId = nil
+                            scheduleReconnectAfterFailedSync()
+                        }
+                        return fallbackSucceeded
+                            ? .completed
+                            : chatResumeSyncInterruptionOutcome(for: automaticWorkToken)
+                    }
+                    await createAndReconcileSession(
+                        using: client,
+                        profile: profile,
+                        token: token,
+                        resumePurpose: purpose,
+                        automaticWorkToken: automaticWorkToken,
+                        automaticSyncOperationID: automaticOperationID,
+                        requiredViewportTransitionGeneration: requiredViewportTransitionGeneration
+                    )
+                    return automaticChatResumeWorkIsCurrent(
+                        automaticWorkToken,
+                        syncOperationID: automaticOperationID
+                    ) ? .completed : chatResumeSyncInterruptionOutcome(for: automaticWorkToken)
+                }
+                if !succeeded,
+                   !reconciliationWasIdentityRejected,
+                   automaticChatResumeWorkIsCurrent(
+                    automaticWorkToken,
+                    syncOperationID: automaticOperationID
+                   ),
+                   token == reconciliationToken,
+                   profile == activeProfile {
+                    scheduleReconnectAfterFailedSync()
                 }
                 return succeeded
                     ? .completed
@@ -3779,7 +3942,7 @@ final class AppState: ObservableObject {
                 automaticSyncOperationID: automaticOperationID
             )
             if purpose == .automaticReturn {
-                scheduleReconnect(purpose: purpose)
+                scheduleReconnectAfterFailedSync()
             }
             return .completed
         }
@@ -3996,6 +4159,7 @@ final class AppState: ObservableObject {
         let savedDurablePersistedRowIDs = durablePersistedRowIDs
         durablePersistedRowIDs = []
         reconciliationWasIdentityRejected = false
+        reconciliationSessionWasNotFound = false
         refreshActiveChatScrollSessionIdentity(isReconciling: true)
         turnState = .synchronizing
         let profile = activeProfile
@@ -4003,6 +4167,7 @@ final class AppState: ObservableObject {
         // local-write position before launching either request so a response
         // from the older snapshot cannot clear the newer override.
         let yoloWriteBaseline = sessionYoloWriteBaseline(for: sessionId)
+        var resumeRPCFailedSessionNotFound = false
 
         do {
             // Match Hermes Desktop: fetch the durable transcript and resume the
@@ -4042,7 +4207,12 @@ final class AppState: ObservableObject {
                     profile: profile,
                     using: bridge
                 )
-                result = try await resumedSession
+                do {
+                    result = try await resumedSession
+                } catch {
+                    resumeRPCFailedSessionNotFound = (error as? RpcError)?.code == 4007
+                    throw error
+                }
                 switch await transcriptOutcome {
                 case .hydrated(let persisted):
                     // The endpoint may resolve a runtime ID to its stored
@@ -4057,32 +4227,47 @@ final class AppState: ObservableObject {
                     ) {
                         transcript = persisted
                     } else {
-                        result = try await openChatResumeSession(
-                            sessionId,
-                            using: client,
-                            compact: false
-                        )
+                        do {
+                            result = try await openChatResumeSession(
+                                sessionId,
+                                using: client,
+                                compact: false
+                            )
+                        } catch {
+                            resumeRPCFailedSessionNotFound = (error as? RpcError)?.code == 4007
+                            throw error
+                        }
                     }
                 case .unavailable:
                     // No usable history source (missing bridge, or a gateway
                     // predating the messages endpoint): re-resume carrying
                     // the transcript, exactly as pre-compact builds did.
-                    result = try await openChatResumeSession(
-                        sessionId,
-                        using: client,
-                        compact: false
-                    )
+                    do {
+                        result = try await openChatResumeSession(
+                            sessionId,
+                            using: client,
+                            compact: false
+                        )
+                    } catch {
+                        resumeRPCFailedSessionNotFound = (error as? RpcError)?.code == 4007
+                        throw error
+                    }
                 case .failed(let error):
                     // An unrelated history failure must not be papered over by
                     // a legacy resume that would hide it: surface it instead.
                     throw error
                 }
             } else {
-                result = try await openChatResumeSession(
-                    sessionId,
-                    using: client,
-                    compact: false
-                )
+                do {
+                    result = try await openChatResumeSession(
+                        sessionId,
+                        using: client,
+                        compact: false
+                    )
+                } catch {
+                    resumeRPCFailedSessionNotFound = (error as? RpcError)?.code == 4007
+                    throw error
+                }
             }
             guard automaticChatResumeWorkIsCurrent(
                     automaticWorkToken,
@@ -4355,7 +4540,6 @@ final class AppState: ObservableObject {
                 since: yoloWriteBaseline,
                 sessionIDs: resumeSessionIDs
             )
-
             guard applyChatResume(
                 presentationResult,
                 automaticWorkToken: automaticWorkToken,
@@ -4364,6 +4548,7 @@ final class AppState: ObservableObject {
                 settleReconciliation(token, automaticSyncOperationID: automaticSyncOperationID)
                 return false
             }
+            schedulePendingApprovalsRefresh(sessionId: result.sessionId, using: client)
             await refreshChatResumeContext(sessionId: result.sessionId, using: client)
 
             guard automaticChatResumeWorkIsCurrent(
@@ -4497,6 +4682,7 @@ final class AppState: ObservableObject {
                 return false
             }
             turnState = .reconnecting
+            reconciliationSessionWasNotFound = resumeRPCFailedSessionNotFound
             switch error {
             case is LegacyTranscriptOversizedError, DashboardTicketBridgeError.oversizedResponse:
                 // Oversized history responses carry their own user-facing
@@ -4536,6 +4722,81 @@ final class AppState: ObservableObject {
             await refreshContext(client, sessionId)
         } else {
             await refreshContextUsage(sessionId: sessionId, using: client)
+        }
+    }
+
+    /// Best-effort recovery for approvals queued behind the single oldest
+    /// `pending_approval` carried by `session.resume`. The read is deliberately
+    /// detached from the foreground restore path and additive: an absent row
+    /// is not expiry evidence, and a replay must not unlock a local submission
+    /// or terminal decision.
+    @discardableResult
+    func schedulePendingApprovalsRefresh(
+        sessionId: String,
+        using client: HermesClient,
+        replacingLegacyErrorMessageID: String? = nil
+    ) -> Task<Void, Never> {
+        pendingApprovalsRequestGeneration &+= 1
+        let generation = pendingApprovalsRequestGeneration
+        let profile = activeProfile
+        let viewportGeneration = chatViewportTransitionGeneration
+        let reconciliationGeneration = reconciliationToken
+        let acceptedSessionIDs = activeChatScrollSessionIdentity.equivalentSessionIDs
+            .union([sessionId])
+
+        return Task { @MainActor [weak self] in
+            let approvals: [ApprovalActivity]
+            do {
+                if let pendingApprovals = self?.chatResumeLifecycleOperations.pendingApprovals {
+                    approvals = try await pendingApprovals(client, sessionId)
+                } else {
+                    approvals = try await client.pendingApprovals(sessionId: sessionId)
+                }
+            } catch {
+                // Older gateways do not expose approval.pending, and this
+                // optional recovery read may also time out. Neither is
+                // evidence that an already-present card was resolved.
+                return
+            }
+            guard let self,
+                  generation == self.pendingApprovalsRequestGeneration,
+                  profile == self.activeProfile,
+                  self.client === client,
+                  viewportGeneration == self.chatViewportTransitionGeneration,
+                  reconciliationGeneration == self.reconciliationToken,
+                  !acceptedSessionIDs.isDisjoint(
+                    with: self.activeChatScrollSessionIdentity.equivalentSessionIDs
+                  ) else { return }
+
+            let acceptedApprovals = approvals.filter {
+                acceptedSessionIDs.contains($0.sessionId)
+            }
+            if let replacingLegacyErrorMessageID {
+                let identifiedApprovals = acceptedApprovals.filter { $0.requestId != nil }
+                guard !identifiedApprovals.isEmpty,
+                      let legacyIndex = self.messages.firstIndex(where: {
+                          $0.id == replacingLegacyErrorMessageID
+                      }),
+                      let legacy = self.messages[legacyIndex].approval,
+                      legacy.requestId == nil,
+                      legacy.status == .error,
+                      acceptedSessionIDs.contains(legacy.sessionId) else {
+                    return
+                }
+                // Started only after the legacy response settled: these
+                // identified rows are fresh gateway truth and can replace the
+                // ambiguous legacy card without guessing by text or position.
+                for approval in identifiedApprovals {
+                    self.applyApprovalActivity(approval, authoritative: true)
+                }
+            } else {
+                for approval in acceptedApprovals {
+                    self.applyApprovalActivity(approval, authoritative: false)
+                }
+            }
+            if !acceptedApprovals.isEmpty {
+                self.cacheMessagePresentation()
+            }
         }
     }
 
@@ -4714,6 +4975,7 @@ final class AppState: ObservableObject {
         let retainedRestoredMessages = pendingDecisionRestorationMessages(for: result.sessionId)
         markChatViewportReplacement()
         setActiveSessionState(id: result.sessionId, title: AppLocalization.string("New conversation"))
+        persistAdmittedDurableSessionIdentity(from: result)
         updateActiveSessionTitle(
             for: result.sessionId,
             fallbackSessionId: reconciliation?.requestedSessionId
@@ -4740,9 +5002,16 @@ final class AppState: ObservableObject {
             profile: activeProfile,
             sessionIDs: sessionIDs,
             includePendingClarifications: restorePendingDecisionCards,
-            includePendingApprovals: restorePendingDecisionCards
+            includePendingApprovals: restorePendingDecisionCards,
+            includePendingTools: result.snapshot.running != false
         )
         messages = mergeCachedReviews(into: restored, sessionId: result.sessionId)
+        if result.snapshot.running == false {
+            sessionPresentationCache.removePendingTools(
+                profile: activeProfile,
+                sessionIDs: presentationCacheSessionIDs(for: result.sessionId)
+            )
+        }
         // The gateway's authoritative pending clarification restores the
         // answerable card even when the one-shot clarify.request fired while
         // this device was detached; answers locked before the detach come
@@ -4750,6 +5019,12 @@ final class AppState: ObservableObject {
         // refresh updates an existing card instead of duplicating it.
         if let pendingClarify = result.snapshot.pendingClarify {
             applyClarifyActivity(pendingClarify, source: .authoritativeSnapshot)
+        }
+        let authoritativePendingApproval = result.snapshot.pendingApprovalPayload.flatMap {
+            MessageNormalizer.approvalActivity(from: $0, sessionId: result.sessionId)
+        }
+        if let pendingApproval = authoritativePendingApproval {
+            applyApprovalActivity(pendingApproval, authoritative: true)
         }
         noteChatViewportTranscriptReplacement()
         // An authoritative resume/reconcile just replaced the transcript:
@@ -4761,7 +5036,20 @@ final class AppState: ObservableObject {
         transcriptFreshnessIsStale = false
         locallyOwnedInFlightTurn = nil
         pendingLocalOrderingDebt = nil
-        let gatewayPendingDecisionKeys = SessionPresentationCache.pendingDecisionKeys(in: result.messages)
+        var gatewayPendingDecisionKeys = SessionPresentationCache.pendingDecisionKeys(in: result.messages)
+        if let pendingClarify = result.snapshot.pendingClarify {
+            gatewayPendingDecisionKeys.insert("clarify:\(pendingClarify.requestId)")
+        }
+        if let pendingApproval = authoritativePendingApproval,
+           let key = SessionPresentationCache.pendingDecisionKey(for: ChatMessage(
+               id: "pending-approval-key",
+               role: .approval,
+               content: pendingApproval.description,
+               timestamp: "",
+               approval: pendingApproval
+           )) {
+            gatewayPendingDecisionKeys.insert(key)
+        }
         let restoredPendingDecisionKeys = SessionPresentationCache
             .pendingDecisionKeys(in: messages)
             .subtracting(gatewayPendingDecisionKeys)
@@ -4864,6 +5152,34 @@ final class AppState: ObservableObject {
         )
         turnStateIsStale = false
         return true
+    }
+
+    /// A resume can rotate the ephemeral runtime ID after a process relaunch.
+    /// Persist the stored identity that Hermes admitted, not the runtime ID
+    /// that happens to route this process, so the next cold launch addresses
+    /// the durable conversation even before its catalog row appears.
+    private func persistAdmittedDurableSessionIdentity(from result: SessionResumeResult) {
+        guard let durableSessionID = ChatScrollIdentityNormalization.sessionID(
+            reconciliation?.resolvedDurableSessionId ?? result.storedSessionId
+        ) else {
+            return
+        }
+        let durableKey = ChatScrollSessionKey(
+            profile: activeProfile,
+            sessionID: durableSessionID
+        )
+        guard durableKey.isValid else { return }
+
+        if let runtimeSessionID = ChatScrollIdentityNormalization.sessionID(result.sessionId) {
+            let runtimeKey = ChatScrollSessionKey(
+                profile: activeProfile,
+                sessionID: runtimeSessionID
+            )
+            if runtimeKey.isValid, runtimeKey != durableKey {
+                chatResumeCoordinator.migrateSessionIdentity(from: runtimeKey, to: durableKey)
+            }
+        }
+        chatResumeCoordinator.rememberSessionID(durableKey.sessionID, for: durableKey.profile)
     }
 
     static func hasPendingDecision(in messages: [ChatMessage]) -> Bool {
@@ -5511,6 +5827,19 @@ final class AppState: ObservableObject {
         }
     }
 
+    private func scheduleReconnectAfterFailedSync() {
+        // Once an automatic sync fails with a visible conversation, repair
+        // around that conversation. On a truly cold launch there is no
+        // visible identity to preserve, so retain automatic return to the
+        // saved conversation instead of selecting an arbitrary catalog row.
+        let retryPurpose: ChatResumeSyncPurpose = activeSessionId == nil
+            ? .automaticReturn
+            : .preserveCurrent
+        cancelScheduledReconnect()
+        recoverySequence.complete()
+        scheduleReconnect(purpose: retryPurpose)
+    }
+
     func reconnect() async {
         cancelChatResumeTransportRecovery()
         await executeReconnect(purpose: .preserveCurrent)
@@ -5675,7 +6004,7 @@ final class AppState: ObservableObject {
                 turnState = .reconnecting
                 lastConnectionFailure = ConnectionFailureClassifier.classify(error)
                 errorMessage = AppLocalization.string("Failed to refresh the dashboard session: \(error.localizedDescription)")
-                scheduleReconnect(purpose: continuationPurpose)
+                scheduleReconnectAfterFailedSync()
             }
             return
         }
@@ -5727,7 +6056,7 @@ final class AppState: ObservableObject {
             isConnected = false
             isConnecting = false
             turnState = .reconnecting
-            scheduleReconnect(purpose: continuationPurpose)
+            scheduleReconnectAfterFailedSync()
         }
     }
 
@@ -5879,7 +6208,9 @@ final class AppState: ObservableObject {
                             lifecycleLog.notice(
                                 "Foreground refresh: health check failed (\(error.localizedDescription, privacy: .private)); reconnecting"
                             )
-                            await self.reconnectForRetry(purpose: .automaticReturn)
+                            await self.reconnectForRetry(
+                                purpose: self.foregroundRecoveryPurpose
+                            )
                             self.settleReconciliation(token)
                         }
                     }
@@ -5895,7 +6226,9 @@ final class AppState: ObservableObject {
                         lifecycleLog.notice(
                             "Foreground refresh start: transport=missing-or-unhealthy; reconnecting"
                         )
-                        await self.reconnectForRetry(purpose: .automaticReturn)
+                        await self.reconnectForRetry(
+                            purpose: self.foregroundRecoveryPurpose
+                        )
                         self.settleReconciliation(token)
                     }
                 }
@@ -6161,6 +6494,17 @@ final class AppState: ObservableObject {
         case unavailable(String)
     }
 
+    /// Foreground recovery repairs the current conversation whenever one is
+    /// visible. Automatic return is only appropriate when there is no current
+    /// identity to preserve.
+    private var foregroundRecoveryPurpose: ChatResumeSyncPurpose {
+        guard let activeSessionId,
+              !activeSessionId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return .automaticReturn
+        }
+        return .preserveCurrent
+    }
+
     /// A healthy foreground transition must be observational, not a session
     /// replacement. `session.resume` is a session SWITCH upstream (switch_
     /// session), and the full sync path re-derives the target session,
@@ -6183,6 +6527,11 @@ final class AppState: ObservableObject {
             return
         }
         let requestedSessionID = activeSessionId
+        // A foreground recovery is repairing the conversation already on
+        // screen. It must never use automatic-return fallback selection while
+        // that conversation still has an identity: a transient catalog gap or
+        // stale saved id would otherwise replace it with an unrelated chat.
+        let recoveryPurpose = foregroundRecoveryPurpose
         let probe: ForegroundRuntimeProbe
         if let requestedSessionID {
             probe = await probeForegroundRuntime(
@@ -6234,7 +6583,20 @@ final class AppState: ObservableObject {
                     forRequested: requestedSessionID ?? ""
                 )
                 let continuesLocalTurn = !preSuspensionRunningIDs.isDisjoint(with: acceptedIDs)
-                if !freshnessCheckArmed {
+                if row.status == "waiting", !Self.hasPendingDecision(in: messages) {
+                    // Waiting is a committed busy state, but it normally
+                    // represents an answerable approval or clarification.
+                    // A registry probe alone cannot restore the missing card,
+                    // so re-resume the current conversation authoritatively.
+                    lifecycleLog.notice(
+                        "Foreground refresh: probe=waiting without visible decision → authoritative resume"
+                    )
+                    await syncSession(
+                        purpose: recoveryPurpose,
+                        using: token,
+                        automaticWorkToken: automaticWorkToken
+                    )
+                } else if !freshnessCheckArmed {
                     // Overlay-dip semantics: the socket survived the dip and
                     // live events kept the transcript current, so the
                     // observational adopt stands without a transcript read.
@@ -6256,7 +6618,7 @@ final class AppState: ObservableObject {
                             "Foreground refresh: probe=live localTranscript=empty → resume refresh (attach live projection)"
                         )
                         await syncSession(
-                            purpose: .automaticReturn,
+                            purpose: recoveryPurpose,
                             using: token,
                             automaticWorkToken: automaticWorkToken
                         )
@@ -6286,7 +6648,7 @@ final class AppState: ObservableObject {
                         "Foreground refresh: probe=live status=\(row.status, privacy: .public) session=\(requestedSessionID ?? "-", privacy: .public) → authoritative attach (remote running turn)"
                     )
                     await syncSession(
-                        purpose: .automaticReturn,
+                        purpose: recoveryPurpose,
                         using: token,
                         automaticWorkToken: automaticWorkToken
                     )
@@ -6300,7 +6662,7 @@ final class AppState: ObservableObject {
                     "Foreground refresh: probe=idle localTurn=running → resume refresh (turn ended while away)"
                 )
                 await syncSession(
-                    purpose: .automaticReturn,
+                    purpose: recoveryPurpose,
                     using: token,
                     automaticWorkToken: automaticWorkToken
                 )
@@ -6334,7 +6696,7 @@ final class AppState: ObservableObject {
                 "Foreground refresh: probe=absent → resume refresh (runtime not live)"
             )
             await syncSession(
-                purpose: .automaticReturn,
+                purpose: recoveryPurpose,
                 using: token,
                 automaticWorkToken: automaticWorkToken
             )
@@ -6345,7 +6707,7 @@ final class AppState: ObservableObject {
                 "Foreground refresh: probe unavailable (\(reason, privacy: .private)) → resume refresh"
             )
             await syncSession(
-                purpose: .automaticReturn,
+                purpose: recoveryPurpose,
                 using: token,
                 automaticWorkToken: automaticWorkToken
             )
@@ -6851,6 +7213,7 @@ final class AppState: ObservableObject {
         automaticWorkToken: ChatResumeAutomaticWorkToken?
     ) async {
         let profile = activeProfile
+        let recoveryPurpose = foregroundRecoveryPurpose
         let bridge = dashboardTicketBridge
         let localFrontier = durablePersistedRowIDs
         let localMessageIDs = Set(messages.map { $0.id })
@@ -6878,7 +7241,7 @@ final class AppState: ObservableObject {
                 "Foreground freshness: session=\(requestedSessionID, privacy: .public) transcript moved during read → bounded resume refresh"
             )
             await syncSession(
-                purpose: .automaticReturn,
+                purpose: recoveryPurpose,
                 using: token,
                 automaticWorkToken: automaticWorkToken
             )
@@ -6905,7 +7268,7 @@ final class AppState: ObservableObject {
                     "Foreground freshness: probe=running session=\(requestedSessionID, privacy: .public) verdict=advanced rows=\(newRows.count, privacy: .public) → authoritative attach"
                 )
                 await syncSession(
-                    purpose: .automaticReturn,
+                    purpose: recoveryPurpose,
                     using: token,
                     automaticWorkToken: automaticWorkToken
                 )
@@ -6974,7 +7337,7 @@ final class AppState: ObservableObject {
                 "Foreground freshness: probe=\(livenessIsRunning ? "running" : "idle", privacy: .public) session=\(requestedSessionID, privacy: .public) verdict=source-unavailable → single authoritative resume"
             )
             await syncSession(
-                purpose: .automaticReturn,
+                purpose: recoveryPurpose,
                 using: token,
                 automaticWorkToken: automaticWorkToken,
                 historySourceUnavailable: true
@@ -6984,7 +7347,7 @@ final class AppState: ObservableObject {
                 "Foreground freshness: probe=\(livenessIsRunning ? "running" : "idle", privacy: .public) session=\(requestedSessionID, privacy: .public) verdict=inconclusive → bounded resume refresh"
             )
             await syncSession(
-                purpose: .automaticReturn,
+                purpose: recoveryPurpose,
                 using: token,
                 automaticWorkToken: automaticWorkToken
             )
@@ -12292,6 +12655,7 @@ final class AppState: ObservableObject {
         guard let index = messages.firstIndex(where: { $0.id == messageId }),
               let current = messages[index].approval,
               current.status == .pending || current.status == .error else { return }
+        let decisionKey = SessionPresentationCache.decisionKey(for: messages[index])
 
         messages[index].approval?.status = .submitting
         messages[index].approval?.choice = choice
@@ -12316,23 +12680,59 @@ final class AppState: ObservableObject {
         // pointer identity is needed.
         let profile = activeProfile
         do {
-            try await client.respondToApproval(sessionId: current.sessionId, choice: choice)
+            let accepted = try await client.respondToApproval(
+                sessionId: current.sessionId,
+                requestId: current.requestId,
+                choice: choice
+            )
             guard profile == activeProfile, self.client === client else { return }
-            guard let updatedIndex = messages.firstIndex(where: { $0.id == messageId }) else { return }
-            messages[updatedIndex].approval?.status = choice == "deny" ? .rejected : .approved
+            guard let updatedIndex = messages.firstIndex(where: { $0.id == messageId }),
+                  SessionPresentationCache.decisionKey(for: messages[updatedIndex]) == decisionKey else { return }
+            if accepted {
+                messages[updatedIndex].approval?.status = choice == "deny" ? .rejected : .approved
+            } else {
+                messages[updatedIndex].approval?.status = .expired
+                messages[updatedIndex].approval?.choice = nil
+                messages[updatedIndex].approval?.error = AppLocalization.string("This approval is no longer active — Hermes timed it out and continued.")
+            }
             cacheMessagePresentation()
+            if let activeSessionId {
+                schedulePendingApprovalsRefresh(sessionId: activeSessionId, using: client)
+            }
         } catch {
             guard profile == activeProfile, self.client === client else { return }
-            guard let updatedIndex = messages.firstIndex(where: { $0.id == messageId }) else { return }
+            guard let updatedIndex = messages.firstIndex(where: { $0.id == messageId }),
+                  SessionPresentationCache.decisionKey(for: messages[updatedIndex]) == decisionKey else { return }
             messages[updatedIndex].approval?.status = .error
             messages[updatedIndex].approval?.choice = nil
             if Self.isExpiredPromptError(error) {
+                messages[updatedIndex].approval?.status = .expired
                 messages[updatedIndex].approval?.error = AppLocalization.string("This approval is no longer active — Hermes timed it out and continued.")
             } else {
                 messages[updatedIndex].approval?.error = "Hermes did not accept that decision."
                 errorMessage = error.localizedDescription
             }
             cacheMessagePresentation()
+            if current.requestId == nil, let activeSessionId {
+                switch messages[updatedIndex].approval?.status {
+                case .error:
+                    schedulePendingApprovalsRefresh(
+                        sessionId: activeSessionId,
+                        using: client,
+                        replacingLegacyErrorMessageID: messageId
+                    )
+                case .expired:
+                    // The legacy request is definitively terminal, so fresh
+                    // identified queued rows can be added without replacing
+                    // or re-arming its expired presentation.
+                    schedulePendingApprovalsRefresh(
+                        sessionId: activeSessionId,
+                        using: client
+                    )
+                default:
+                    break
+                }
+            }
         }
     }
 
@@ -13442,8 +13842,8 @@ final class AppState: ObservableObject {
                 .messageComplete(let sessionId, _, _, _), .messageError(let sessionId, _),
                 .messageInterrupted(let sessionId), .sessionBusy(let sessionId, _),
                 .sessionInfo(let sessionId, _), .sessionTitle(let sessionId, _, _),
-                .toolStart(let sessionId, _, _),
-                .toolComplete(let sessionId, _, _), .reviewSummary(let sessionId, _), .clarify(let sessionId, _), .clarifyExpire(let sessionId, _),
+                .toolStart(let sessionId, _, _, _),
+                .toolComplete(let sessionId, _, _, _), .reviewSummary(let sessionId, _), .clarify(let sessionId, _), .clarifyExpire(let sessionId, _),
                 .approval(let sessionId, _),
                 .contextUpdate(let sessionId, _, _, _), .cwdUpdate(let sessionId, _),
                 .modelUpdate(let sessionId, _, _), .agentCount(let sessionId, _),
@@ -13562,6 +13962,13 @@ final class AppState: ObservableObject {
             if let pendingClarify = snapshot.pendingClarify {
                 applyClarifyActivity(pendingClarify, source: .authoritativeSnapshot)
             }
+            if let payload = snapshot.pendingApprovalPayload,
+               let pendingApproval = MessageNormalizer.approvalActivity(
+                   from: payload,
+                   sessionId: sessionID
+               ) {
+                applyApprovalActivity(pendingApproval, authoritative: true)
+            }
             if let running = snapshot.running {
                 setRunning(running)
             }
@@ -13571,8 +13978,17 @@ final class AppState: ObservableObject {
             // active-session stream gate in handleStreamEvent(_:).
             break
 
-        case .toolStart(_, let name, let input):
+        case .toolStart(_, let name, let input, let eventToolID):
             if name.lowercased() == "clarify" { break }
+            let toolID = eventToolID?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let stableToolID = toolID?.isEmpty == false ? toolID : nil
+            // Tool lifecycle events can be replayed after a resume. A stable
+            // gateway id makes a repeated start idempotent without splitting
+            // the current reasoning or text projection.
+            if let stableToolID,
+               messages.contains(where: { $0.tool?.id == stableToolID }) {
+                break
+            }
             // The tool card must land after a complete reasoning card; commit
             // the coalesced segment before the boundary reorders the
             // transcript. A tool ends the reasoning SEGMENT only — the turn
@@ -13581,28 +13997,48 @@ final class AppState: ObservableObject {
             settleReasoningSegmentIntoTranscript()
             resetReasoningSegment()
             flushStreamingPartial()
-            messages.append(ChatMessage(
+            let message = ChatMessage(
                 id: "tool-start-\(Date().timeIntervalSince1970)",
                 role: .tool,
                 content: "",
                 timestamp: Self.localTimestamp(),
-                tool: ToolActivity(id: nil, name: name, input: input, output: nil, status: .running)
-            ))
+                tool: ToolActivity(id: stableToolID, name: name, input: input, output: nil, status: .running)
+            )
+            messages.append(message)
+            sessionPresentationCache.recordPendingToolStart(
+                message,
+                profile: activeProfile,
+                sessionIDs: presentationCacheSessionIDs(for: streamSessionId)
+            )
 
-        case .toolComplete(_, let name, let output):
+        case .toolComplete(_, let name, let output, let eventToolID):
             if name.lowercased() == "clarify" { break }
             settleReasoningSegmentIntoTranscript()
             resetReasoningSegment()
+            let toolID = eventToolID?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let stableToolID = toolID?.isEmpty == false ? toolID : nil
             // Update the matching running tool card in place instead of
             // appending a duplicate. This keeps input + output together in
             // one chronological entry, matching how the HTTP API returns
             // stored messages on reload.
-            if let index = messages.lastIndex(where: {
-                $0.role == .tool && $0.tool?.name == name && $0.tool?.status == .running
-            }) {
+            let matchingIndex: Int?
+            if let stableToolID {
+                // An ID-bearing completion must never fall back to the tool
+                // name: an unknown ID is a distinct call, not a license to
+                // complete the newest same-name card.
+                matchingIndex = messages.lastIndex(where: {
+                    $0.role == .tool
+                        && $0.tool?.id == stableToolID
+                })
+            } else {
+                matchingIndex = messages.lastIndex(where: {
+                    $0.role == .tool && $0.tool?.name == name && $0.tool?.status == .running
+                })
+            }
+            if let index = matchingIndex {
                 let existing = messages[index].tool
                 messages[index].tool = ToolActivity(
-                    id: existing?.id,
+                    id: stableToolID ?? existing?.id,
                     name: name,
                     input: existing?.input,
                     output: output,
@@ -13614,9 +14050,15 @@ final class AppState: ObservableObject {
                     role: .tool,
                     content: "",
                     timestamp: Self.localTimestamp(),
-                    tool: ToolActivity(id: nil, name: name, input: nil, output: output, status: .complete)
+                    tool: ToolActivity(id: stableToolID, name: name, input: nil, output: output, status: .complete)
                 ))
             }
+            sessionPresentationCache.resolvePendingTool(
+                named: name,
+                toolID: stableToolID,
+                profile: activeProfile,
+                sessionIDs: presentationCacheSessionIDs(for: streamSessionId)
+            )
 
         case .reviewSummary(let sessionId, let activity):
             let id = "review-summary-\(sessionId)-\(UUID().uuidString)"
@@ -13648,23 +14090,7 @@ final class AppState: ObservableObject {
             expireClarifyRequest(requestId: requestId)
 
         case .approval(_, let activity):
-            if let index = messages.lastIndex(where: {
-                $0.approval?.sessionId == activity.sessionId
-                    && ($0.approval?.status == .pending || $0.approval?.status == .submitting)
-            }) {
-                messages[index].content = activity.description
-                messages[index].approval = activity
-            } else {
-                // Same mid-turn ordering rule as clarify above.
-                settleReasoningSegmentIntoTranscript()
-                messages.append(ChatMessage(
-                    id: "approval-\(activity.sessionId)-\(UUID().uuidString)",
-                    role: .approval,
-                    content: activity.description,
-                    timestamp: Self.localTimestamp(),
-                    approval: activity
-                ))
-            }
+            applyApprovalActivity(activity, authoritative: false)
             setRunning(true)
 
         case .contextUpdate(_, let percent, let used, let max):
@@ -13717,6 +14143,81 @@ final class AppState: ObservableObject {
                 answer: answer
             )
         }
+
+    /// Upserts an approval by Hermes request identity. Legacy events without a
+    /// request id retain the historical one-card-per-session behavior. A
+    /// modern authoritative replay removes only an ambiguous legacy card for
+    /// that session; explicitly identified queued approvals remain distinct.
+    private func applyApprovalActivity(
+        _ activity: ApprovalActivity,
+        authoritative: Bool
+    ) {
+        let equivalentSessionIDs = activeChatScrollSessionIdentity.equivalentSessionIDs
+            .union([activity.sessionId])
+        if activity.requestId != nil {
+            // A legacy card has no request identity to correlate with the
+            // authoritative row. While its response is in flight, keep its
+            // message id and cache entry stable so the RPC completion can
+            // settle the card it actually owns. Never retain this pre-answer
+            // pending snapshot for replay after success; the fresh pending
+            // refresh below the response owns any still-queued request.
+            if messages.contains(where: { message in
+                guard let existing = message.approval else { return false }
+                return equivalentSessionIDs.contains(existing.sessionId)
+                    && existing.requestId == nil
+                    && existing.status == .submitting
+            }) {
+                return
+            }
+        }
+        if authoritative, activity.requestId != nil {
+            messages.removeAll { message in
+                guard let existing = message.approval,
+                      equivalentSessionIDs.contains(existing.sessionId),
+                      existing.requestId == nil else { return false }
+                return SessionPresentationCache.isPendingDecision(existing.status)
+            }
+            let cacheSessionIDs = presentationCacheSessionIDs(for: activity.sessionId)
+            for sessionID in equivalentSessionIDs {
+                sessionPresentationCache.removePendingDecision(
+                    key: "approval:\(sessionID)",
+                    profile: activeProfile,
+                    sessionIDs: cacheSessionIDs
+                )
+            }
+        }
+
+        let targetKey = activity.requestId.map { "approval-request:\($0)" }
+            ?? "approval:\(activity.sessionId)"
+        if let index = messages.lastIndex(where: {
+            SessionPresentationCache.decisionKey(for: $0) == targetKey
+                && $0.approval != nil
+        }) {
+            if !authoritative, let existing = messages[index].approval,
+               existing.status != .pending {
+                var replay = activity
+                replay.status = existing.status
+                replay.choice = existing.choice
+                replay.error = existing.error
+                messages[index].content = replay.description
+                messages[index].approval = replay
+                return
+            }
+            messages[index].content = activity.description
+            messages[index].approval = activity
+            return
+        }
+
+        settleReasoningSegmentIntoTranscript()
+        let identity = activity.requestId ?? activity.sessionId
+        messages.append(ChatMessage(
+            id: "approval-\(identity)-\(UUID().uuidString)",
+            role: .approval,
+            content: activity.description,
+            timestamp: Self.localTimestamp(),
+            approval: activity
+        ))
+    }
 
     /// How a clarification activity reached AppState. Replay defenses for the
     /// one-shot stream event are deliberately weaker than the gateway's

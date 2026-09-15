@@ -92,17 +92,23 @@ enum StreamEventParser {
 
         case "tool.start", "tool_call":
             let name = payload?["name"]?.stringValue ?? ""
+            let toolID = ["tool_id", "tool_call_id", "call_id"]
+                .compactMap { payload?[$0]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .first { !$0.isEmpty }
             let input = payload?["args_text"]?.descriptiveStringValue
                 ?? payload?["context"]?.descriptiveStringValue
                 ?? payload?["input"]?.descriptiveStringValue
                 ?? payload?["arguments"]?.descriptiveStringValue
                 ?? payload?["args"]?.descriptiveStringValue
-            return .toolStart(sessionId: sessionId, toolName: name, toolInput: input)
+            return .toolStart(sessionId: sessionId, toolName: name, toolInput: input, toolID: toolID)
 
         case "tool.complete", "tool_result":
             let name = payload?["name"]?.stringValue ?? ""
+            let toolID = ["tool_id", "tool_call_id", "call_id"]
+                .compactMap { payload?[$0]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .first { !$0.isEmpty }
             let output = payload?["output"]?.descriptiveStringValue ?? payload?["result"]?.descriptiveStringValue
-            return .toolComplete(sessionId: sessionId, toolName: name, toolOutput: output)
+            return .toolComplete(sessionId: sessionId, toolName: name, toolOutput: output, toolID: toolID)
 
         case "review.summary":
             guard let payload, let review = MessageNormalizer.reviewActivity(from: payload, eventSessionId: sessionId) else { return nil }

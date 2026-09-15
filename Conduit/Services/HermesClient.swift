@@ -173,8 +173,8 @@ enum StreamEvent {
     case sessionBusy(sessionId: String, busy: Bool)
     case sessionInfo(sessionId: String, snapshot: SessionRuntimeSnapshot)
     case sessionTitle(runtimeSessionId: String, storedSessionId: String, title: String)
-    case toolStart(sessionId: String, toolName: String, toolInput: String?)
-    case toolComplete(sessionId: String, toolName: String, toolOutput: String?)
+    case toolStart(sessionId: String, toolName: String, toolInput: String?, toolID: String? = nil)
+    case toolComplete(sessionId: String, toolName: String, toolOutput: String?, toolID: String? = nil)
     case reviewSummary(sessionId: String, activity: ReviewActivity)
     /// The complete normalized clarification — batch structure intact. The
     /// parser must not flatten `questions[]` back into scalar fields, or a
@@ -235,6 +235,9 @@ struct SessionRuntimeSnapshot {
     /// is not sufficient for restore: it may have fired while the app was
     /// backgrounded or disconnected.
     let pendingClarify: ClarifyActivity?
+    /// Raw authoritative approval still blocking the session. AppState adds
+    /// the enclosing runtime session id when normalizing the card.
+    let pendingApprovalPayload: [String: AnyCodable]?
 
     /// `session.resume` may include an in-flight or queued projection that is
     /// newer than the persisted database transcript. Keep that projection for
@@ -293,6 +296,7 @@ struct SessionRuntimeSnapshot {
             ?? object["approvals"]?.objectValue?["mode"]?.stringValue
         pendingClarify = object["pending_clarify"]?.objectValue
             .flatMap { MessageNormalizer.pendingClarifyActivity(from: $0) }
+        pendingApprovalPayload = object["pending_approval"]?.objectValue
         self.inflight = inflight
         self.queued = queued
     }
@@ -630,6 +634,10 @@ final class HermesClient: ObservableObject {
     /// health-check budget; a timed-out probe takes the same fallback paths
     /// as any other probe failure.
     static let livenessProbeTimeout: TimeInterval = 8
+    /// Approval queue hydration is optional recovery context. It must never
+    /// hold foreground restoration behind the ordinary RPC timeout.
+    static let pendingApprovalsTimeout: TimeInterval = 3
+
     /// Dedicated budget for `session.compress`. Manual compression is
     /// LLM-bound and routinely outlives the generic request timeout on large
     /// sessions, while the gateway keeps compressing after the client gives
@@ -1042,11 +1050,12 @@ final class HermesClient: ObservableObject {
                 snapshotObject[key] = value
             }
         }
-        // `pending_clarify` rides the resume response top level (upstream
-        // `_build_resume_payload`), mirroring how `pending_approval` is
-        // delivered; hoist it so the snapshot parser sees it.
-        if let pendingClarify = object["pending_clarify"] {
-            snapshotObject["pending_clarify"] = pendingClarify
+        // Pending decisions ride the resume response top level. Hoist both so
+        // the snapshot parser sees the same contract as session.info.
+        for key in ["pending_clarify", "pending_approval"] {
+            if let value = object[key] {
+                snapshotObject[key] = value
+            }
         }
         return SessionResumeResult(
             sessionId: resolvedId,
@@ -1286,11 +1295,34 @@ final class HermesClient: ObservableObject {
         return .accepted(remaining: remaining)
     }
 
-    func respondToApproval(sessionId: String, choice: String) async throws {
-        _ = try await rpc("approval.respond", params: [
+    func respondToApproval(sessionId: String, requestId: String? = nil, choice: String) async throws -> Bool {
+        var params: [String: Any] = [
             "choice": choice,
             "session_id": sessionId
-        ])
+        ]
+        if let requestId = requestId?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !requestId.isEmpty {
+            params["request_id"] = requestId
+        }
+        let result = try await rpc("approval.respond", params: params)
+        // Current Hermes reports the number of queue entries resolved. Older
+        // gateways omitted the field after a successful response.
+        return result.objectValue?["resolved"]?.intValue.map { $0 > 0 } ?? true
+    }
+
+    /// Returns every unresolved approval for one live Hermes session. Current
+    /// Hermes scopes this method through `session_id`; bind payloads to that
+    /// requested identity rather than trusting optional fields inside a row.
+    func pendingApprovals(sessionId: String) async throws -> [ApprovalActivity] {
+        let result = try await rpc(
+            "approval.pending",
+            params: ["session_id": sessionId],
+            timeout: Self.pendingApprovalsTimeout
+        )
+        return (result.objectValue?["approvals"]?.arrayValue ?? []).compactMap { value in
+            guard let payload = value.objectValue else { return nil }
+            return MessageNormalizer.approvalActivity(from: payload, sessionId: sessionId)
+        }
     }
 
     func modelOptions(sessionId: String? = nil) async throws -> (model: String?, provider: String?, providers: [ProviderInfo]?) {
@@ -2436,6 +2468,9 @@ enum MessageNormalizer {
     ) -> ApprovalActivity? {
         let normalizedSessionId = sessionId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedSessionId.isEmpty else { return nil }
+        let requestId = ["request_id", "requestId"]
+            .compactMap { payload[$0]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
 
         let command = ["command", "code", "text"]
             .compactMap { payload[$0]?.stringValue }
@@ -2456,6 +2491,7 @@ enum MessageNormalizer {
 
         return ApprovalActivity(
             sessionId: normalizedSessionId,
+            requestId: requestId,
             command: command,
             description: description,
             choices: uniqueChoices?.isEmpty == true ? nil : uniqueChoices,
