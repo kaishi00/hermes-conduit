@@ -2590,7 +2590,17 @@ final class AppState: ObservableObject {
             return
         }
         rememberDashboardURL(dashboard.normalizedURL)
-        if let credentials = KeychainHelper.loadCredentials(dashboardID: activeID) {
+        if KeychainHelper.loadNativeOAuthTokens(dashboardID: activeID) != nil {
+            showLogin = false
+            isConnecting = true
+            turnState = .synchronizing
+            Task {
+                await restoreNativeOAuthConnection(
+                    baseURL: dashboard.normalizedURL,
+                    dashboardID: activeID
+                )
+            }
+        } else if let credentials = KeychainHelper.loadCredentials(dashboardID: activeID) {
             Task { await restoreSavedCredentials(credentials, dashboardID: activeID) }
         } else if let saved = KeychainHelper.loadConnection(dashboardID: activeID) {
             // Keep the authenticated app shell in place while WebKit restores
@@ -2608,6 +2618,29 @@ final class AppState: ObservableObject {
             showLogin = true
         }
     }
+
+    func restoreNativeOAuthConnection(baseURL: String, dashboardID: UUID) async {
+        do {
+            let ticket = try await mintChatResumeTicket(for: HermesConnection(baseUrl: baseURL, ticket: ""))
+            await connect(with: HermesConnection(baseUrl: baseURL, ticket: ticket), profile: activeProfile)
+            if isConnected {
+                KeychainHelper.clearCredentials(dashboardID: dashboardID)
+                KeychainHelper.clearDashboardCookies(dashboardID: dashboardID)
+            }
+        } catch is CancellationError {
+            isConnecting = false
+        } catch {
+            // A rejected grant can clear storage while the bridge still owns
+            // its old in-memory session. Tear it down before presenting login.
+            dashboardTicketBridge?.invalidate()
+            dashboardTicketBridge = nil
+            isConnecting = false
+            isConnected = false
+            showLogin = true
+            pendingLoginFailure = .presenting(ConnectionFailureClassifier.classify(error))
+        }
+    }
+
     func connect(with conn: HermesConnection, profile: String = "default") async {
         await connect(
             with: conn,
@@ -2900,10 +2933,74 @@ final class AppState: ObservableObject {
                 baseUrl: baseURL,
                 ticket: ticket
             ))
+        case .nativeOAuth(let result, let baseURL, _):
+            guard let dashboardID = resolveDashboardID(forURL: baseURL, registerIfMissing: true) else {
+                return .failed(.unexpectedServerResponse)
+            }
+            let storedTokens = KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID)
+            let previousTokens = storedTokens == result.tokens ? result.previousTokens : storedTokens
+            KeychainHelper.saveNativeOAuthTokens(result.tokens, dashboardID: dashboardID)
+            guard KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID) == result.tokens else {
+                restoreNativeOAuthTokens(previousTokens, dashboardID: dashboardID, baseURL: baseURL)
+                return .failed(.unexpectedServerResponse)
+            }
+            outcome = await activateRepairedConnection(with: HermesConnection(
+                baseUrl: baseURL,
+                ticket: result.ticket
+            ))
+            if outcome != .activated {
+                // The candidate did not become the active connection. Restore
+                // the exact prior bearer state and force bridge reconstruction
+                // so a same-mode previous session is not left shadowed by the
+                // failed candidate's in-memory tokens.
+                restoreNativeOAuthTokens(previousTokens, dashboardID: dashboardID, baseURL: baseURL)
+            }
         }
         guard outcome == .activated else { return outcome }
         persistActivatedRepair(handoff, failedTarget: failedTarget)
         return outcome
+    }
+
+    /// Activates a normal-login native OAuth result transactionally. The
+    /// broker grant is already durable so a transient ticket failure is
+    /// retryable, but a failed socket activation must restore whichever auth
+    /// mode was authoritative before the user started this sign-in.
+    func connectWithNativeOAuth(_ result: NativeOAuthLoginResult, baseURL: String) async -> Bool {
+        guard let dashboardID = resolveDashboardID(forURL: baseURL, registerIfMissing: true) else {
+            return false
+        }
+        let storedTokens = KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID)
+        let previousTokens = storedTokens == result.tokens ? result.previousTokens : storedTokens
+        KeychainHelper.saveNativeOAuthTokens(result.tokens, dashboardID: dashboardID)
+        guard KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID) == result.tokens else {
+            restoreNativeOAuthTokens(previousTokens, dashboardID: dashboardID, baseURL: baseURL)
+            return false
+        }
+        rememberDashboardURL(baseURL)
+        await connect(with: HermesConnection(baseUrl: baseURL, ticket: result.ticket))
+        guard isConnected else {
+            restoreNativeOAuthTokens(previousTokens, dashboardID: dashboardID, baseURL: baseURL)
+            return false
+        }
+        KeychainHelper.clearCredentials(dashboardID: dashboardID)
+        KeychainHelper.clearDashboardCookies(dashboardID: dashboardID)
+        return true
+    }
+
+    private func restoreNativeOAuthTokens(
+        _ tokens: NativeOAuthTokenSet?,
+        dashboardID: UUID,
+        baseURL: String
+    ) {
+        cancelScheduledReconnect()
+        if let tokens {
+            KeychainHelper.saveNativeOAuthTokens(tokens, dashboardID: dashboardID)
+        } else {
+            KeychainHelper.clearNativeOAuthTokens(dashboardID: dashboardID)
+        }
+        dashboardTicketBridge?.invalidate()
+        dashboardTicketBridge = nil
+        prepareDashboardBridge(for: baseURL)
     }
 
     /// The authoritative activation step. A test success is not a guarantee
@@ -2961,6 +3058,13 @@ final class AppState: ObservableObject {
             rememberDashboardURL(baseURL)
             if let dashboardID = resolveDashboardID(forURL: baseURL, registerIfMissing: false) {
                 KeychainHelper.clearCredentials(dashboardID: dashboardID)
+                KeychainHelper.clearNativeOAuthTokens(dashboardID: dashboardID)
+            }
+        case .nativeOAuth(_, let baseURL, _):
+            rememberDashboardURL(baseURL)
+            if let dashboardID = resolveDashboardID(forURL: baseURL, registerIfMissing: false) {
+                KeychainHelper.clearCredentials(dashboardID: dashboardID)
+                KeychainHelper.clearDashboardCookies(dashboardID: dashboardID)
             }
         }
     }
@@ -3414,15 +3518,21 @@ final class AppState: ObservableObject {
         return true
     }
 
-    private func prepareDashboardBridge(for baseUrl: String) {
+    func prepareDashboardBridge(for baseUrl: String) {
         let normalized = baseUrl.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         let access = dashboardScopedCloudflareAccess(for: normalized)
-        if dashboardTicketBridge?.baseURL != normalized || dashboardTicketBridge?.cloudflareAccess != access {
+        let dashboardID = resolveDashboardID(forURL: normalized, registerIfMissing: false)
+        let storedNativeOAuthTokens = dashboardID.flatMap {
+            KeychainHelper.loadNativeOAuthTokens(dashboardID: $0)
+        }
+        if dashboardTicketBridge?.baseURL != normalized
+            || dashboardTicketBridge?.cloudflareAccess != access
+            || dashboardTicketBridge?.matchesNativeOAuthTokens(storedNativeOAuthTokens) != true {
             dashboardTicketBridge?.invalidate()
             dashboardTicketBridge = DashboardTicketBridge(
                 baseURL: normalized,
                 cloudflareAccess: access,
-                dashboardID: resolveDashboardID(forURL: normalized, registerIfMissing: false)
+                dashboardID: dashboardID
             )
         }
     }
@@ -15344,6 +15454,7 @@ enum KeychainHelper {
     private static let dashboardCookieKey = "hermes-conduit.dashboard-cookies.v1"
     private static let credentialsKey = "hermes-conduit.credentials.v1"
     private static let cloudflareAccessKey = "hermes-conduit.cloudflare-access.v1"
+    private static let nativeOAuthTokensKey = "hermes-conduit.native-oauth-tokens.v1"
     private static let pushRegistrationKey = "hermes-conduit.push-registration.v1"
     private static let service = "com.milim.conduit"
 
@@ -15467,6 +15578,25 @@ enum KeychainHelper {
     static func clearConnection(dashboardID: UUID) {
         delete(account: scopedAccount(key, dashboardID: dashboardID))
         delete(account: scopedAccount(dashboardCookieKey, dashboardID: dashboardID))
+        delete(account: scopedAccount(nativeOAuthTokensKey, dashboardID: dashboardID))
+    }
+
+    static func saveNativeOAuthTokens(_ tokens: NativeOAuthTokenSet, dashboardID: UUID) {
+        guard let data = try? JSONEncoder().encode(tokens) else { return }
+        save(
+            data,
+            account: scopedAccount(nativeOAuthTokensKey, dashboardID: dashboardID),
+            accessibility: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        )
+    }
+
+    static func loadNativeOAuthTokens(dashboardID: UUID) -> NativeOAuthTokenSet? {
+        guard let data = load(account: scopedAccount(nativeOAuthTokensKey, dashboardID: dashboardID)) else { return nil }
+        return try? JSONDecoder().decode(NativeOAuthTokenSet.self, from: data)
+    }
+
+    static func clearNativeOAuthTokens(dashboardID: UUID) {
+        delete(account: scopedAccount(nativeOAuthTokensKey, dashboardID: dashboardID))
     }
 
     static func saveDashboardCookies(_ data: Data, dashboardID: UUID) {

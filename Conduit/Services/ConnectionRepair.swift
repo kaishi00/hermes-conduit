@@ -75,9 +75,14 @@ enum ConnectionRepairHandoff: CustomStringConvertible, CustomDebugStringConverti
     /// A browser sign-in completed over the existing AuthWebView
     /// (Sign In to Reconnect).
     case browserSignIn(ticket: String, baseURL: String, configuration: ConnectionSetupResult)
+    /// A Hermes-native OAuth transaction completed in the approved external
+    /// browser surface. The newly issued grant is already durable so a
+    /// transient first ticket failure can be retried; AppState makes the
+    /// connection-mode transition atomic and restores prior auth on failure.
+    case nativeOAuth(result: NativeOAuthLoginResult, baseURL: String, configuration: ConnectionSetupResult)
 
-    // Redacted: the native case carries a ticket-bearing transaction and the
-    // browser case a raw ticket.
+    // Redacted: the password and OAuth cases carry authenticated transactions,
+    // while the browser case carries a raw ticket.
     var description: String { "ConnectionRepairHandoff(redacted)" }
     var debugDescription: String { description }
 }
@@ -86,8 +91,9 @@ enum ConnectionRepairHandoff: CustomStringConvertible, CustomDebugStringConverti
 /// when the wizard runs in Repair mode. The view evaluates candidate
 /// currency; the form only renders states and forwards taps.
 struct ConnectionSetupRepairReview {
-    /// The staged test ended in the browser sign-in outcome — the final
-    /// action is Sign In to Reconnect, not Reconnect Now.
+    /// The staged test ended in an interactive sign-in outcome — the final
+    /// action is Sign In to Reconnect, not Reconnect Now. The view selects
+    /// native OAuth or the legacy browser bridge from fresh discovery.
     let isInteractive: Bool
     /// A validated native transaction exists and is still current. Reconnect
     /// Now requires it; a consumed candidate forces a fresh test.

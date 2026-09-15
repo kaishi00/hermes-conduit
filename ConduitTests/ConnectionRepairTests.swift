@@ -17,6 +17,19 @@ import XCTest
 @MainActor
 final class ConnectionRepairTests: XCTestCase {
     private static let failedURL = "https://hermes.example:9443/hermes"
+    private var keychainBackend: InMemoryKeychainBackend!
+
+    override func setUp() {
+        super.setUp()
+        keychainBackend = InMemoryKeychainBackend()
+        KeychainHelper.useBackendForTesting(keychainBackend)
+    }
+
+    override func tearDown() {
+        KeychainHelper.useBackendForTesting(KeychainHelper.SystemKeychainBackend())
+        keychainBackend = nil
+        super.tearDown()
+    }
 
     // MARK: - Harness (mirrors AppStateChatResumeTests)
 
@@ -97,6 +110,16 @@ final class ConnectionRepairTests: XCTestCase {
             nativeConnection: .debugStub(ticket: ticket),
             validatedRevision: revision,
             generation: generation
+        )
+    }
+
+    private func oauthTokens(_ suffix: String) -> NativeOAuthTokenSet {
+        NativeOAuthTokenSet(
+            accessToken: "access-\(suffix)",
+            refreshToken: "refresh-\(suffix)",
+            expiresAt: Date().addingTimeInterval(3_600).timeIntervalSince1970,
+            provider: "google",
+            userID: "user-\(suffix)"
         )
     }
 
@@ -478,6 +501,167 @@ final class ConnectionRepairTests: XCTestCase {
         // Existing browser-auth semantics: the activated dashboard is
         // remembered and no native credentials are invented.
         XCTAssertEqual(harness.defaults.string(forKey: "conduit.dashboardURL"), ConnectionRepairTests.failedURL)
+    }
+
+    func testFailedNativeOAuthRepairRestoresPriorAuthenticationState() async throws {
+        let harness = makeHarness(lifecycleOperations: activationFakes(
+            connectClient: { _ in throw RepairControlledError.activationFailed },
+            loadCatalog: { _, _ in [] }
+        ))
+        let dashboardID = try XCTUnwrap(harness.appState.resolveDashboardID(
+            forURL: ConnectionRepairTests.failedURL,
+            registerIfMissing: true
+        ))
+        let previousTokens = oauthTokens("previous")
+        let previousCredentials = DashboardCredentials(
+            baseURL: ConnectionRepairTests.failedURL,
+            username: "existing-user",
+            password: "existing-password",
+            requiresFaceID: false
+        )
+        let previousCookies = Data("existing-cookies".utf8)
+        KeychainHelper.saveNativeOAuthTokens(previousTokens, dashboardID: dashboardID)
+        KeychainHelper.saveCredentials(previousCredentials, dashboardID: dashboardID)
+        KeychainHelper.saveDashboardCookies(previousCookies, dashboardID: dashboardID)
+
+        let outcome = await harness.appState.performConnectionRepair(.nativeOAuth(
+            result: NativeOAuthLoginResult(tokens: oauthTokens("candidate"), ticket: "candidate-ticket"),
+            baseURL: ConnectionRepairTests.failedURL,
+            configuration: ConnectionSetupResult(
+                serverURL: ConnectionRepairTests.failedURL,
+                username: "",
+                password: ""
+            )
+        ))
+
+        guard case .failed = outcome else {
+            return XCTFail("Expected failed activation, got: \(outcome)")
+        }
+        XCTAssertEqual(KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID), previousTokens)
+        XCTAssertEqual(KeychainHelper.loadCredentials(dashboardID: dashboardID), previousCredentials)
+        XCTAssertEqual(KeychainHelper.loadDashboardCookies(dashboardID: dashboardID), previousCookies)
+    }
+
+    func testSuccessfulNativeOAuthRepairCommitsNewModeAfterActivation() async throws {
+        let harness = makeHarness(lifecycleOperations: sessionPreservingFakes(connectClient: { _ in }))
+        let dashboardID = try XCTUnwrap(harness.appState.resolveDashboardID(
+            forURL: ConnectionRepairTests.failedURL,
+            registerIfMissing: true
+        ))
+        let previousCredentials = DashboardCredentials(
+            baseURL: ConnectionRepairTests.failedURL,
+            username: "existing-user",
+            password: "existing-password",
+            requiresFaceID: false
+        )
+        KeychainHelper.saveCredentials(previousCredentials, dashboardID: dashboardID)
+        KeychainHelper.saveDashboardCookies(Data("existing-cookies".utf8), dashboardID: dashboardID)
+        let candidateTokens = oauthTokens("candidate")
+
+        let outcome = await harness.appState.performConnectionRepair(.nativeOAuth(
+            result: NativeOAuthLoginResult(tokens: candidateTokens, ticket: "candidate-ticket"),
+            baseURL: ConnectionRepairTests.failedURL,
+            configuration: ConnectionSetupResult(
+                serverURL: ConnectionRepairTests.failedURL,
+                username: "",
+                password: ""
+            )
+        ))
+
+        XCTAssertEqual(outcome, .activated)
+        XCTAssertEqual(KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID), candidateTokens)
+        XCTAssertNil(KeychainHelper.loadCredentials(dashboardID: dashboardID))
+        XCTAssertNil(KeychainHelper.loadDashboardCookies(dashboardID: dashboardID))
+    }
+
+    func testColdStartNativeGrantMintsTicketBeforeSavedPasswordRestore() async throws {
+        let connected = expectation(description: "native token connection activated")
+        var mintedBaseURL: String?
+        let lifecycle = ChatResumeLifecycleOperations(
+            connectClient: { _ in connected.fulfill() },
+            loadCatalog: { _, _ in [self.session("stored-a")] },
+            mintTicket: { baseURL in
+                mintedBaseURL = baseURL
+                return "native-ticket"
+            },
+            openSession: { _, id, _ in
+                SessionResumeResult(
+                    sessionId: id,
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            refreshContext: { _, _ in },
+            loadProfiles: {},
+            loadBusyInputMode: { _ in },
+            loadProfileDisplayPreferences: {},
+            loadSlashCommands: {}
+        )
+        let harness = makeHarness(lifecycleOperations: lifecycle)
+        let dashboardID = harness.appState.adoptDashboard(
+            forNormalizedURL: ConnectionRepairTests.failedURL
+        )
+        KeychainHelper.saveNativeOAuthTokens(oauthTokens("durable"), dashboardID: dashboardID)
+        KeychainHelper.saveCredentials(DashboardCredentials(
+            baseURL: ConnectionRepairTests.failedURL,
+            username: "saved-user",
+            password: "saved-password",
+            requiresFaceID: false
+        ), dashboardID: dashboardID)
+
+        harness.appState.setActiveProfileForTesting("work")
+        harness.appState.loadSavedConnection()
+        await fulfillment(of: [connected], timeout: 2)
+
+        // The transport hook fires before connect() finishes restoring the
+        // session. Credential cleanup happens only after that work returns.
+        let cleanupDeadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while KeychainHelper.loadCredentials(dashboardID: dashboardID) != nil,
+              ContinuousClock.now < cleanupDeadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+
+        XCTAssertEqual(harness.appState.activeProfile, "work")
+        XCTAssertEqual(mintedBaseURL, ConnectionRepairTests.failedURL)
+        XCTAssertTrue(harness.appState.isConnected)
+        XCTAssertEqual(harness.appState.connection?.ticket, "native-ticket")
+        XCTAssertTrue(KeychainHelper.loadCredentials(dashboardID: dashboardID) == nil,
+                      "Successful OAuth restoration must clear saved password credentials")
+    }
+
+    func testNativeOAuthBridgeRebuildsAfterSameModeGrantReplacement() throws {
+        let app = makeHarness().appState
+        let id = app.adoptDashboard(forNormalizedURL: Self.failedURL)
+        KeychainHelper.saveNativeOAuthTokens(oauthTokens("old"), dashboardID: id)
+        app.prepareDashboardBridge(for: Self.failedURL)
+        let oldBridge = try XCTUnwrap(app.dashboardTicketBridge)
+        app.prepareDashboardBridge(for: Self.failedURL)
+        XCTAssertTrue(app.dashboardTicketBridge === oldBridge, "Unchanged grants reuse the bridge")
+
+        let replacement = oauthTokens("replacement")
+        KeychainHelper.saveNativeOAuthTokens(replacement, dashboardID: id)
+        app.prepareDashboardBridge(for: Self.failedURL)
+        XCTAssertFalse(app.dashboardTicketBridge === oldBridge)
+        XCTAssertTrue(app.dashboardTicketBridge?.matchesNativeOAuthTokens(replacement) == true)
+        app.dashboardTicketBridge?.invalidate()
+    }
+
+    func testRejectedColdStartDiscardsTheStaleBearerBridge() async throws {
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            mintTicket: { _ in throw DashboardTicketBridgeError.signInRequired }
+        ))
+        let app = harness.appState
+        let id = app.adoptDashboard(forNormalizedURL: Self.failedURL)
+        KeychainHelper.saveNativeOAuthTokens(oauthTokens("rejected"), dashboardID: id)
+        app.prepareDashboardBridge(for: Self.failedURL)
+        XCTAssertTrue(app.dashboardTicketBridge?.usesNativeOAuth == true)
+        // Model the rejected-refresh boundary: storage has been cleared but
+        // the live bridge still owns the previous in-memory session.
+        KeychainHelper.clearNativeOAuthTokens(dashboardID: id)
+        await app.restoreNativeOAuthConnection(baseURL: Self.failedURL, dashboardID: id)
+        XCTAssertNil(app.dashboardTicketBridge)
+        XCTAssertTrue(app.showLogin)
+        XCTAssertFalse(app.isConnected)
     }
 
     // MARK: - Race: explicit repair outranks late automatic recovery (spec 26)

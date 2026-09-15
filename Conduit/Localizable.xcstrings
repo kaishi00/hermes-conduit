@@ -1,6 +1,46 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Could not save this dashboard." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法保存此仪表板。"
+          }
+        }
+      }
+    },
+    "Please try again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请重试。"
+          }
+        }
+      }
+    },
+    "Preparing secure sign-in…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在准备安全登录…"
+          }
+        }
+      }
+    },
+    "Sign-in failed." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "登录失败。"
+          }
+        }
+      }
+    },
     "\n… (%lld more lines)" : {
       "localizations" : {
         "en" : {
@@ -14831,6 +14871,96 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "密码错误"
+          }
+        }
+      }
+    },
+    "Could not prepare a secure sign-in request." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法准备安全登录请求。"
+          }
+        }
+      }
+    },
+    "Could not start the secure sign-in callback." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法启动安全登录回调。"
+          }
+        }
+      }
+    },
+    "Dashboard sign-in failed (HTTP %@)." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仪表盘登录失败（HTTP %@）。"
+          }
+        }
+      }
+    },
+    "Sign-in timed out. Please try again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "登录超时。请重试。"
+          }
+        }
+      }
+    },
+    "The dashboard returned an invalid sign-in response." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仪表盘返回了无效的登录响应。"
+          }
+        }
+      }
+    },
+    "The dashboard returned an invalid sign-in URL." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仪表盘返回了无效的登录 URL。"
+          }
+        }
+      }
+    },
+    "The dashboard returned invalid authentication tokens." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仪表盘返回了无效的身份验证令牌。"
+          }
+        }
+      }
+    },
+    "The identity provider did not complete sign-in." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "身份提供商未完成登录。"
+          }
+        }
+      }
+    },
+    "The sign-in response failed its security check." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "登录响应未通过安全检查。"
           }
         }
       }

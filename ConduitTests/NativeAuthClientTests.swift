@@ -218,6 +218,41 @@ final class NativeAuthClientTests: XCTestCase {
         }
     }
 
+    func testNativeOAuthCapabilityRecognizesAdvertisedFlow() async throws {
+        let client = NativeAuthClient(
+            baseURL: "https://native-capability.example",
+            sessionConfiguration: makeSessionConfiguration()
+        )
+
+        let supported = try await client.supportsNativeOAuth()
+        XCTAssertTrue(supported)
+    }
+
+    func testNativeOAuthCapabilityAllowsRecognizableOlderStatus() async throws {
+        let client = NativeAuthClient(
+            baseURL: "https://legacy-capability.example",
+            sessionConfiguration: makeSessionConfiguration()
+        )
+
+        let supported = try await client.supportsNativeOAuth()
+        XCTAssertFalse(supported)
+    }
+
+    func testNativeOAuthCapabilityDoesNotDowngradeMalformedOrFailedProbe() async {
+        for host in ["malformed-capability.example", "failed-capability.example"] {
+            let client = NativeAuthClient(
+                baseURL: "https://\(host)",
+                sessionConfiguration: makeSessionConfiguration()
+            )
+            do {
+                _ = try await client.supportsNativeOAuth()
+                XCTFail("Expected capability probe failure for \(host)")
+            } catch {
+                XCTAssertTrue(error is AuthClientError)
+            }
+        }
+    }
+
     func testProviderDiscoverySendsCloudflareAccessHeaders() async throws {
         let credentials = CloudflareAccessCredentials(
             clientID: "test-client-id",
@@ -566,6 +601,10 @@ private final class NativeAuthURLProtocol: URLProtocol {
             "192.168.1.202",
             "redirect.example",
             "providers.example",
+            "native-capability.example",
+            "legacy-capability.example",
+            "malformed-capability.example",
+            "failed-capability.example",
             "server-error.example",
             "headers.example",
             "multiple.example",
@@ -782,6 +821,30 @@ private final class NativeAuthURLProtocol: URLProtocol {
             return Fixture(statusCode: 200, headers: [:], body: providerBody())
         case "server-error.example":
             return Fixture(statusCode: 500, headers: [:], body: Data(#"{"error":"origin unavailable"}"#.utf8))
+        case "native-capability.example":
+            return Fixture(
+                statusCode: 200,
+                headers: ["Content-Type": "application/json"],
+                body: Data(#"{"status":"ok","auth_flows":["native_pkce"]}"#.utf8)
+            )
+        case "legacy-capability.example":
+            return Fixture(
+                statusCode: 200,
+                headers: ["Content-Type": "application/json"],
+                body: Data(#"{"status":"ok"}"#.utf8)
+            )
+        case "malformed-capability.example":
+            return Fixture(
+                statusCode: 200,
+                headers: ["Content-Type": "text/html"],
+                body: Data("not json".utf8)
+            )
+        case "failed-capability.example":
+            return Fixture(
+                statusCode: 503,
+                headers: ["Content-Type": "application/json"],
+                body: Data(#"{"error":"temporarily unavailable"}"#.utf8)
+            )
         case "multiple.example":
             return Fixture(statusCode: 300, headers: [:], body: Data())
         case "cookieless.example":

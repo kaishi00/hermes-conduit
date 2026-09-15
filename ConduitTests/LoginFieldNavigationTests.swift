@@ -59,14 +59,9 @@ final class LoginFieldNavigationTests: XCTestCase {
         XCTAssertTrue(LoginField.cloudflareClientSecret.submits(cloudflareTokenEntryEnabled: true))
     }
 
-    func testWhitespaceOnlyInputsBlockConnectPresence() {
-        // The Connect button and connect()'s return-key guard share this
-        // trimmed-presence rule: a whitespace-only dashboard URL reached
-        // through the return-key path surfaces invalid-URL feedback rather
-        // than silently no-oping.
-        XCTAssertFalse(LoginView.hasConnectableInput(serverURL: "   ", username: "chris", password: "pw"))
-        XCTAssertFalse(LoginView.hasConnectableInput(serverURL: "https://hermes.example", username: "  ", password: "pw"))
-        XCTAssertFalse(LoginView.hasConnectableInput(serverURL: "https://hermes.example", username: "chris", password: " "))
-        XCTAssertTrue(LoginView.hasConnectableInput(serverURL: " https://hermes.example ", username: " chris ", password: "pw"))
+    func testURLAloneEnablesProviderDiscovery() {
+        XCTAssertFalse(LoginView.hasConnectableInput(serverURL: "   "))
+        XCTAssertTrue(LoginView.hasConnectableInput(serverURL: "https://hermes.example"))
+        XCTAssertTrue(LoginView.hasConnectableInput(serverURL: " https://hermes.example "))
     }
 }

@@ -322,6 +322,21 @@ final class DashboardTicketBridge: NSObject {
     /// exists — decides which dashboard's scoped cookie mirror is restored
     /// into the WebKit store on load.
     let dashboardID: UUID?
+    /// Bearer-backed session for Hermes' native PKCE flow. The bridge keeps
+    /// one interface for callers while cookie/password mode stays intact.
+    private var nativeOAuthSession: NativeOAuthSession?
+    /// AppState includes the authentication transport in its bridge-reuse
+    /// identity. A same-URL login that changes cookie ↔ bearer mode must
+    /// replace this bridge rather than retaining its in-memory session.
+    var usesNativeOAuth: Bool { nativeOAuthSession != nil }
+
+    /// A same-mode bridge is reusable only while its live grant still matches
+    /// storage. Internal refresh updates the live grant as well as storage.
+    func matchesNativeOAuthTokens(_ tokens: NativeOAuthTokenSet?) -> Bool {
+        guard let tokens else { return nativeOAuthSession == nil }
+        return nativeOAuthSession?.matchesStoredTokens(tokens) == true
+    }
+
 
     private var isReady = false
     /// Whether the current dashboard page load has terminally failed (as
@@ -379,7 +394,11 @@ final class DashboardTicketBridge: NSObject {
         let normalizedBaseURL = (try? ConnectionURLPolicy.normalizedBaseURL(baseURL)) ?? ""
         self.baseURL = normalizedBaseURL
         self.cloudflareAccess = cloudflareAccess
-        self.dashboardID = dashboardID ?? SavedDashboardRegistryStore.load()?.dashboardID(atNormalizedURL: normalizedBaseURL)
+        let resolvedDashboardID = dashboardID ?? SavedDashboardRegistryStore.load()?.dashboardID(atNormalizedURL: normalizedBaseURL)
+        self.dashboardID = resolvedDashboardID
+        self.nativeOAuthSession = resolvedDashboardID.flatMap {
+            NativeOAuthSession(baseURL: normalizedBaseURL, dashboardID: $0, cloudflareAccess: cloudflareAccess)
+        }
         self.pendingRequests = pendingRequests
         // A negative count would build an invalid Range in the polling loops.
         self.readinessPollAttempts = max(0, readinessPollAttempts)
@@ -401,6 +420,10 @@ final class DashboardTicketBridge: NSObject {
         super.init()
         configuration.userContentController.add(WeakScriptMessageHandler(self), name: "dashboard-response")
         webView.navigationDelegate = self
+        if nativeOAuthSession != nil {
+            isReady = true
+            return
+        }
         Task { [weak self] in
             guard let self else { return }
             await DashboardCookiePersistence.restore(
@@ -431,6 +454,8 @@ final class DashboardTicketBridge: NSObject {
         guard !isInvalidated else { return }
         isInvalidated = true
         isReady = false
+        nativeOAuthSession?.invalidate()
+        nativeOAuthSession = nil
         // A torn-down bridge must report plain unreadiness: leaving a stale
         // login verdict would surface .signInRequired (with its session
         // recovery) from an invalidated instance.
@@ -440,6 +465,12 @@ final class DashboardTicketBridge: NSObject {
 
     func reload() {
         guard !isInvalidated else { return }
+        if nativeOAuthSession != nil {
+            isReady = true
+            isLoadFailed = false
+            didLandOnLogin = false
+            return
+        }
         reloadCount += 1
         isReady = false
         // Supersede the old navigation immediately: its late failure
@@ -494,6 +525,10 @@ final class DashboardTicketBridge: NSObject {
     }
 
     func mintTicket() async throws -> String {
+        if let nativeOAuthSession {
+            guard !isInvalidated else { throw DashboardTicketBridgeError.notReady }
+            return try await nativeOAuthSession.mintTicket()
+        }
         // Retry twice on the two recoverable failures, then let the final
         // attempt's error propagate to the caller unchanged:
         //  - signInRequired: a freshly restored session cookie can reach
@@ -569,6 +604,16 @@ final class DashboardTicketBridge: NSObject {
         timeoutMilliseconds: Int = 12_000,
         maxResponseBytes: Int = DataURLLimits.maxJSONResponseBytes
     ) async throws -> [String: Any] {
+        if let nativeOAuthSession {
+            guard !isInvalidated else { throw DashboardTicketBridgeError.notReady }
+            return try await nativeOAuthSession.requestJSON(
+                path: path,
+                method: method,
+                body: body,
+                timeoutMilliseconds: timeoutMilliseconds,
+                maxResponseBytes: maxResponseBytes
+            )
+        }
         for _ in 0..<readinessPollAttempts where !isReady && !isInvalidated && !isLoadFailed && !didLandOnLogin {
             try await Task.sleep(for: readinessPollInterval)
         }
@@ -776,6 +821,10 @@ final class DashboardTicketBridge: NSObject {
     }
 
     private func loadDashboardSession() {
+        guard nativeOAuthSession == nil else {
+            isReady = !isInvalidated
+            return
+        }
         guard let normalized = try? ConnectionURLPolicy.normalizedBaseURL(baseURL),
               let url = URL(string: "\(normalized)/api/status") else { return }
         var request = URLRequest(url: url)

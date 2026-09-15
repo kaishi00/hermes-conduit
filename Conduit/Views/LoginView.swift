@@ -27,6 +27,10 @@ struct LoginView: View {
     @State var cloudflareClientSecret = ""
     @State private var isConnecting = false
     @State private var showWebView = false
+    @State private var showNativeOAuth = false
+    @State private var nativeOAuthProvider: String?
+    @State private var nativeOAuthBaseURL = ""
+    @State private var nativeOAuthDashboardID = UUID()
     /// The presented failure state: classified connection failures with
     /// recovery actions, or plain validation notices. The view never renders
     /// raw Foundation error strings directly.
@@ -156,6 +160,37 @@ struct LoginView: View {
         .sheet(item: $connectionRepairContext) { context in
             ConnectionRepairSetupSheet(context: context)
         }
+        .sheet(isPresented: $showNativeOAuth) {
+            NativeOAuthSignInSheet(
+                baseURL: nativeOAuthBaseURL,
+                cloudflareAccess: configuredCloudflareAccess,
+                provider: nativeOAuthProvider,
+                dashboardID: nativeOAuthDashboardID,
+                onSuccess: { result in
+                    Task { @MainActor in
+                        failure = nil
+                        let baseURL = nativeOAuthBaseURL
+                        guard await appState.connectWithNativeOAuth(result, baseURL: baseURL) else {
+                            failure = .notice(
+                                title: AppLocalization.string("Sign-in failed."),
+                                message: AppLocalization.string("Please try again.")
+                            )
+                            return
+                        }
+                        if configuredCloudflareAccess == nil {
+                            KeychainHelper.clearCloudflareAccess(dashboardID: nativeOAuthDashboardID)
+                        }
+                    }
+                },
+                onError: { error in
+                    Self.logger.error("Native OAuth sign-in failed: \(String(describing: type(of: error)), privacy: .public)")
+                    failure = .notice(
+                        title: AppLocalization.string("Sign-in failed."),
+                        message: (error as? LocalizedError)?.errorDescription ?? AppLocalization.string("Please try again.")
+                    )
+                }
+            )
+        }
         .sheet(isPresented: $showWebView) {
             AuthWebView(
                 url: serverUrl,
@@ -174,6 +209,7 @@ struct LoginView: View {
                         // password credential that Conduit can safely reuse.
                         if let dashboardID = appState.resolveDashboardID(forURL: baseUrl, registerIfMissing: true) {
                             KeychainHelper.clearCredentials(dashboardID: dashboardID)
+                            KeychainHelper.clearNativeOAuthTokens(dashboardID: dashboardID)
                         }
                         appState.rememberDashboardURL(baseUrl)
                         await appState.connect(with: HermesConnection(baseUrl: baseUrl, ticket: ticket))
@@ -439,18 +475,16 @@ struct LoginView: View {
         .padding(.horizontal, 24)
     }
 
-    /// Trimmed-presence check so whitespace-only input is treated the same
-    /// by the Connect button and by connect()'s guard.
+    /// URL-presence check shared by the Connect button and connect()'s guard.
+    /// Provider discovery decides whether credentials are required.
     private var connectInputsArePresent: Bool {
-        Self.hasConnectableInput(serverURL: serverUrl, username: username, password: password)
+        Self.hasConnectableInput(serverURL: serverUrl)
     }
 
-    /// Static seam for the trimmed-presence rule so the validation contract
-    /// is unit-testable without hosting the view.
-    static func hasConnectableInput(serverURL: String, username: String, password: String) -> Bool {
+    /// URL-only gate: provider discovery decides whether credentials are
+    /// required. OAuth-only dashboards must not need dummy username/password.
+    static func hasConnectableInput(serverURL: String) -> Bool {
         !serverURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && !password.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     /// Return-key behavior shared by every field: walk the focus chain
@@ -486,16 +520,6 @@ struct LoginView: View {
             focusedField = .server
             return
         }
-        // The return-key chain can reach submit while an earlier field was
-        // skipped (e.g. tapping straight into the Cloudflare Secret); land
-        // focus on the missing field instead of a raw remote 401. The
-        // password value itself is sent untrimmed.
-        guard !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              !password.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            failure = .notice(title: AppLocalization.string("Enter your dashboard username and password."))
-            focusedField = username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .username : .password
-            return
-        }
         // Preserve WHICH URL-policy rule failed: a malformed address and an
         // insecure remote transport are different mistakes with different
         // fixes, so they classify differently instead of collapsing into one
@@ -520,21 +544,40 @@ struct LoginView: View {
         do {
             let access = configuredCloudflareAccess
             let client = NativeAuthClient(baseURL: serverUrl, cloudflareAccess: access)
-            // Provider discovery is typed: only the unauthenticated redirect
-            // is THE interactive sign-in signal. A recognizable Hermes
-            // provider answer without password support (none configured, or
-            // only OAuth providers) intentionally routes to the browser too
-            // — an explicit decision, not the old "empty list" ambiguity. An
-            // unrecognized 2xx body keeps the same browser fallback it
-            // always had.
-            let requiresBrowserSignIn: Bool
+            let credentialsArePresent = !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && !password.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            var requiresBrowserSignIn = false
+            var shouldUseNativeOAuth = false
+            var discoveredNativeProvider: String?
             switch try await client.authProviderDiscovery() {
             case .interactiveSignInRequired:
                 requiresBrowserSignIn = true
             case .providers(let providers):
-                requiresBrowserSignIn = !HermesProviderCheck.supportsPassword(providers)
+                let supportsPassword = HermesProviderCheck.supportsPassword(providers)
+                let supportsOAuth = HermesProviderCheck.hasNativeOAuthProvider(providers)
+                if supportsOAuth && (!supportsPassword || !credentialsArePresent),
+                   try await client.supportsNativeOAuth() {
+                    shouldUseNativeOAuth = true
+                    discoveredNativeProvider = HermesProviderCheck.nativeOAuthProvider(providers)
+                } else {
+                    requiresBrowserSignIn = !supportsPassword
+                }
             case .unrecognized:
                 requiresBrowserSignIn = true
+            }
+            if shouldUseNativeOAuth {
+                guard let dashboardID = appState.resolveDashboardID(forURL: serverUrl, registerIfMissing: true) else {
+                    failure = .notice(title: AppLocalization.string("Could not save this dashboard."))
+                    return
+                }
+                nativeOAuthBaseURL = serverUrl
+                nativeOAuthProvider = discoveredNativeProvider
+                nativeOAuthDashboardID = dashboardID
+                showNativeOAuth = true
+                if let access {
+                    KeychainHelper.saveCloudflareAccess(access, origin: serverUrl, dashboardID: dashboardID)
+                }
+                return
             }
             if requiresBrowserSignIn {
                 showWebView = true
@@ -554,6 +597,13 @@ struct LoginView: View {
                 return
             }
 
+            // Discovery proved this is the password path. Only now require
+            // credentials; OAuth-only dashboards reached discovery URL-first.
+            guard credentialsArePresent else {
+                failure = .notice(title: AppLocalization.string("Enter your dashboard username and password."))
+                focusedField = username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .username : .password
+                return
+            }
             let authenticatedConnection = try await client.connect(username: username, password: password)
             let dashboardID = appState.resolveDashboardID(forURL: serverUrl, registerIfMissing: true)
             if let dashboardID {

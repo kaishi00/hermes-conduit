@@ -43,6 +43,10 @@ struct ConnectionRepairSetupSheet: View {
 }
 
 struct ConnectionSetupView: View {
+    private enum RepairSignInMode {
+        case browser
+        case nativeOAuth(provider: String?)
+    }
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var appState: AppState
@@ -63,6 +67,8 @@ struct ConnectionSetupView: View {
     @State private var activationFailure: ConnectionFailure?
     @State private var showRepairSignIn = false
     @State private var repairSignInConfiguration: ConnectionSetupResult?
+    @State private var repairSignInMode: RepairSignInMode = .browser
+    @State private var repairNativeOAuthDashboardID = UUID()
     private let onComplete: (ConnectionSetupResult) -> Void
     /// Round 6 (Repair): the explicit activation boundary. Nil outside
     /// Repair mode, in which case the Review shows its normal context action.
@@ -173,13 +179,37 @@ struct ConnectionSetupView: View {
         )
     }
 
-    /// The existing AuthWebView, pointed at the tested address with the
-    /// wizard's same-origin Cloudflare state. The probe never hosts a
-    /// WebView; sign-in happens only on this explicit action.
+    /// Interactive repair sign-in, pointed at the tested address with the
+    /// wizard's same-origin Cloudflare state. Native-capable OAuth providers
+    /// use the external-browser PKCE flow; other interactive deployments keep
+    /// the existing AuthWebView. Sign-in happens only on this explicit action.
     @ViewBuilder
     private var repairSignInSheet: some View {
         if let configuration = repairSignInConfiguration {
-            AuthWebView(
+            switch repairSignInMode {
+            case .nativeOAuth(let provider):
+                NativeOAuthSignInSheet(
+                    baseURL: configuration.serverURL,
+                    cloudflareAccess: flow.cloudflareAccessForDraft(),
+                    provider: provider,
+                    dashboardID: repairNativeOAuthDashboardID,
+                    onSuccess: { result in
+                        Task { @MainActor in
+                            showRepairSignIn = false
+                            await activate(.nativeOAuth(
+                                result: result,
+                                baseURL: configuration.serverURL,
+                                configuration: configuration
+                            ))
+                        }
+                    },
+                    onError: { error in
+                        showRepairSignIn = false
+                        activationFailure = ConnectionFailureClassifier.classify(error)
+                    }
+                )
+            case .browser:
+                AuthWebView(
                 url: configuration.serverURL,
                 cloudflareAccess: flow.cloudflareAccessForDraft(),
                 dashboardIDProvider: { [appState, url = configuration.serverURL] in
@@ -208,7 +238,8 @@ struct ConnectionSetupView: View {
                     // retry sign-in directly, without re-testing.
                     activationFailure = classifiedFailure
                 }
-            )
+                )
+            }
         } else {
             // Unreachable: the sheet is only presented with a configuration.
             Color.clear.onAppear { showRepairSignIn = false }
@@ -237,8 +268,38 @@ struct ConnectionSetupView: View {
     private func beginRepairSignIn() {
         guard !isActivating, flow.canUseSettings, onRepair != nil else { return }
         guard let result = flow.complete() else { return }
-        repairSignInConfiguration = result
-        showRepairSignIn = true
+        isActivating = true
+        Task { @MainActor in
+            defer { isActivating = false }
+            let client = NativeAuthClient(
+                baseURL: result.serverURL,
+                cloudflareAccess: flow.cloudflareAccessForDraft()
+            )
+            do {
+                let discovery = try await client.authProviderDiscovery()
+                if case .providers(let providers) = discovery,
+                   HermesProviderCheck.hasNativeOAuthProvider(providers),
+                   try await client.supportsNativeOAuth() {
+                    guard let dashboardID = appState.resolveDashboardID(
+                        forURL: result.serverURL,
+                        registerIfMissing: true
+                    ) else {
+                        activationFailure = .unexpectedServerResponse
+                        return
+                    }
+                    repairNativeOAuthDashboardID = dashboardID
+                    repairSignInMode = .nativeOAuth(
+                        provider: HermesProviderCheck.nativeOAuthProvider(providers)
+                    )
+                } else {
+                    repairSignInMode = .browser
+                }
+                repairSignInConfiguration = result
+                showRepairSignIn = true
+            } catch {
+                activationFailure = ConnectionFailureClassifier.classify(error)
+            }
+        }
     }
 
     private func testAgainAfterFailedActivation() {

@@ -125,8 +125,8 @@ final class LoginKeyboardUITests: XCTestCase {
         )
     }
 
-    /// Fills the username/password fields so the Connect button is enabled
-    /// (its trimmed-presence rule disables it while either is empty).
+    /// Fills credentials for the password-login keyboard/focus scenarios.
+    /// Connect itself is URL-gated so OAuth-only dashboards can be discovered.
     private func fillRequiredCredentials(_ app: XCUIApplication) throws {
         let username = app.textFields["login.username"]
         XCTAssertTrue(username.waitForExistence(timeout: 5), "Username field did not appear. Tree:\n\(app.debugDescription)")

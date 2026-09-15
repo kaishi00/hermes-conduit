@@ -986,6 +986,23 @@ final class ConnectionSetupTestTests: XCTestCase {
         ])
     }
 
+    func testProbeNativeOAuthOnlyDashboardRequiresApprovedInteractiveSignIn() async {
+        let host = "probe-native-oauth.example"
+        let events = await runProbe("https://\(host)")
+        XCTAssertEqual(events, [
+            .started(.server),
+            .succeeded(.server),
+            .started(.dashboard),
+            .succeeded(.dashboard),
+            .started(.authentication),
+            .requiresInteractiveSignIn(.authentication),
+        ])
+        XCTAssertEqual(SetupProbeURLProtocol.requestCount(forPath: "/api/auth/providers", host: host), 1)
+        XCTAssertEqual(SetupProbeURLProtocol.requestCount(forPath: "/api/status", host: host), 1)
+        XCTAssertEqual(SetupProbeURLProtocol.requestCount(forPath: "/auth/password-login", host: host), 0)
+        XCTAssertEqual(SetupProbeURLProtocol.requestCount(forPath: "/api/auth/ws-ticket", host: host), 0)
+    }
+
     func testProbeMalformed200IsUnexpectedServerResponseNotInteractive() async {
         // Arbitrary website content: an unexpected server response, never
         // the interactive-auth outcome.
@@ -1117,6 +1134,7 @@ private final class SetupProbeURLProtocol: URLProtocol {
         "probe-cfreject.example",
         "probe-hang.example",
         "probe-interactive.example",
+        "probe-native-oauth.example",
         "probe-empty-providers.example",
         "probe-malformed.example"
     ]
@@ -1247,6 +1265,22 @@ private final class SetupProbeURLProtocol: URLProtocol {
             case "/api/auth/providers": return providers
             case "/auth/password-login": return acceptedLogin
             case "/api/auth/ws-ticket": return ticket
+            default: return nil
+            }
+        case "probe-native-oauth.example":
+            switch request.url?.path {
+            case "/api/auth/providers":
+                return Fixture(
+                    statusCode: 200,
+                    headers: ["Content-Type": "application/json"],
+                    body: Data(#"{"providers":[{"name":"google","supports_password":false}]}"#.utf8)
+                )
+            case "/api/status":
+                return Fixture(
+                    statusCode: 200,
+                    headers: ["Content-Type": "application/json"],
+                    body: Data(#"{"auth_flows":["native_pkce"]}"#.utf8)
+                )
             default: return nil
             }
         case "probe-cookieless.example":

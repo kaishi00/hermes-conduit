@@ -19,7 +19,10 @@
 //  password-capable dashboard whose tested configuration carries no usable
 //  credentials ends in the supported `requiresCredentials` partial outcome —
 //  credential absence is not an authentication mode, and an empty-credential
-//  login is never sent. The probe commits nothing: no cookie store write, no
+//  login is never sent. An OAuth-only Hermes provider plus the advertised
+//  native_pkce capability ends in the same interactive handoff; the view then
+//  uses Hermes' native browser flow rather than the embedded WebView. The
+//  probe commits nothing: no cookie store write, no
 //  Keychain, no AppState mutation, no websocket, no screen changes. A
 //  successful native test RETURNS the validated transaction memory-only
 //  (Round 6): Repair mode may promote it to an explicit reconnect, and the
@@ -118,10 +121,10 @@ enum ConnectionSetupStageState: Equatable {
 enum ConnectionSetupTestEvent: Equatable {
     case started(ConnectionSetupTestStage)
     case succeeded(ConnectionSetupTestStage)
-    /// Terminal supported outcome: the dashboard requires interactive
-    /// (browser) sign-in. Emitted once, at the authentication stage, after
-    /// server and dashboard have succeeded. No password login, ticket mint,
-    /// or WebView follows inside the probe.
+    /// Terminal supported outcome: the dashboard requires interactive sign-in
+    /// in the appropriate approved surface. Emitted once, at the
+    /// authentication stage, after server and dashboard have succeeded. No
+    /// password login, ticket mint, or WebView follows inside the probe.
     case requiresInteractiveSignIn(ConnectionSetupTestStage)
     /// Terminal partial outcome: the dashboard is a native password
     /// dashboard but the tested configuration carries no usable credentials.
@@ -384,9 +387,9 @@ struct ConnectionSetupProbe: ConnectionSetupTesting {
         // Stage 2: the discovery answer must identify a Hermes dashboard
         // with the authentication shape the probe can exercise. An arbitrary
         // website answering 200 (unrecognized body) and a recognizable
-        // provider answer with no password provider are both NOT Hermes
-        // password dashboards — and neither is the interactive-auth signal,
-        // which only the redirect classification above may produce.
+        // provider answer with no usable authentication route is not a Hermes
+        // password dashboard. Native-capable OAuth is classified explicitly
+        // below rather than being confused with an arbitrary web redirect.
         onEvent(.started(.dashboard))
         switch discovery {
         case .interactiveSignInRequired:
@@ -396,7 +399,7 @@ struct ConnectionSetupProbe: ConnectionSetupTesting {
             // supported terminal outcome. It stays side-effect-free: no
             // native login attempt, no ticket mint, no WebView, no
             // cookie/Keychain writes. The actual sign-in happens over the
-            // existing AuthWebView, never inside the probe.
+            // approved interactive surface, never inside the probe.
             onEvent(.succeeded(.dashboard))
             onEvent(.started(.authentication))
             onEvent(.requiresInteractiveSignIn(.authentication))
@@ -405,7 +408,29 @@ struct ConnectionSetupProbe: ConnectionSetupTesting {
             Self.reportFailure(.dashboard, .unexpectedServerResponse, to: onEvent)
             return nil
         case .providers(let providers):
-            guard HermesProviderCheck.supportsPassword(providers) else {
+            let supportsPassword = HermesProviderCheck.supportsPassword(providers)
+            let supportsOAuth = HermesProviderCheck.hasNativeOAuthProvider(providers)
+            if supportsOAuth && (!supportsPassword || !result.hasUsableCredentials) {
+                let supportsNativeOAuth: Bool
+                do {
+                    supportsNativeOAuth = try await client.supportsNativeOAuth()
+                } catch {
+                    guard !Self.wasCancelled(error) else { return nil }
+                    Self.reportFailure(
+                        .dashboard,
+                        ConnectionFailureClassifier.classify(error),
+                        to: onEvent
+                    )
+                    return nil
+                }
+                if supportsNativeOAuth {
+                    onEvent(.succeeded(.dashboard))
+                    onEvent(.started(.authentication))
+                    onEvent(.requiresInteractiveSignIn(.authentication))
+                    return nil
+                }
+            }
+            guard supportsPassword else {
                 Self.reportFailure(.dashboard, .unexpectedServerResponse, to: onEvent)
                 return nil
             }
