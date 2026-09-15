@@ -5390,31 +5390,6 @@ private final class ConnectCount {
     var value = 0
 }
 
-@MainActor
-private final class ControlledSuspension {
-    private var suspension: CheckedContinuation<Void, Never>?
-    private var observer: CheckedContinuation<Void, Never>?
-
-    func suspend() async {
-        await withCheckedContinuation { continuation in
-            suspension = continuation
-            observer?.resume()
-            observer = nil
-        }
-    }
-
-    func waitUntilSuspended() async {
-        guard suspension == nil else { return }
-        await withCheckedContinuation { continuation in
-            observer = continuation
-        }
-    }
-
-    func resume() {
-        suspension?.resume()
-        suspension = nil
-    }
-}
 
 @MainActor
 private final class SessionOpenGates {

@@ -196,11 +196,3 @@ final class AppStateContinuousConversationPreferenceTests: XCTestCase {
     }
 }
 
-/// Fail-fast requester so refreshVoiceCapabilities skips the network without
-/// waiting on dashboard timeouts; preference loading still runs.
-@MainActor
-private final class ImmediateVoiceConfigRequester: VoiceConfigurationRequesting {
-    func requestJSON(path: String, method: String, body: [String: Any]?) async throws -> [String: Any] {
-        throw URLError(.notConnectedToInternet)
-    }
-}

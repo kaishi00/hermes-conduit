@@ -277,8 +277,9 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
     struct Harness {
         let appState: AppState
         let controller: VoiceConversationController
-        let capture: FakeCapture
-        let gateway: FakeGateway
+        let capture: MockCapture
+        let gateway: MockGateway
+        let submits: SubmitSpy
         let spy: InterfacingSpy
         let coordinator: CarPlayVoiceCoordinator
         let defaults: UserDefaults
@@ -351,14 +352,15 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
             isVoiceEnabled: true
         )
 
-        let capture = FakeCapture(permissionGranted: true)
-        let gateway = FakeGateway(transcript: "Question")
+        let capture = MockCapture(permissionGranted: true)
+        let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
+        let submits = SubmitSpy()
         let controller = VoiceConversationController(
             capture: capture,
-            playback: FakePlayback(),
+            playback: MockPlayback(),
             gateway: gateway,
             routePolicyProvider: { .fullDuplex },
-            submit: { _ in true },
+            submit: { await submits.submit($0) },
             interrupt: { true },
             onEndConversation: { [weak appState] in appState?.closeVoiceConversation() }
         )
@@ -376,6 +378,7 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
             controller: controller,
             capture: capture,
             gateway: gateway,
+            submits: submits,
             spy: spy,
             coordinator: coordinator,
             defaults: defaults,
@@ -438,11 +441,12 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
         let start = Date()
         harness.controller.ingestAudioLevel(0.1, at: start)
         harness.controller.ingestAudioLevel(0, at: start.addingTimeInterval(1.3))
-        try? await Task.sleep(nanoseconds: 250_000_000)
+        await harness.submits.waitUntilSubmitted(1)
         XCTAssertEqual(harness.controller.state, .thinking)
         harness.controller.receiveAssistantEvent(.started(sessionID: "session-1"))
         harness.controller.receiveAssistantEvent(.delta(sessionID: "session-1", text: "Answer."))
-        try? await Task.sleep(nanoseconds: 250_000_000)
+        let speaking = await harness.controller.waitForState(.speaking)
+        XCTAssertTrue(speaking, "the assistant reply is audible")
         XCTAssertEqual(harness.controller.state, .speaking)
         let sheetBefore = harness.appState.showVoiceSheet
         let autoListenBefore = harness.appState.voiceSheetShouldAutoListen
@@ -859,10 +863,11 @@ final class CarPlayVoicePresentationGatingTests: XCTestCase {
         let start = Date()
         harness.controller.ingestAudioLevel(0.1, at: start)
         harness.controller.ingestAudioLevel(0, at: start.addingTimeInterval(1.3))
-        try? await Task.sleep(nanoseconds: 250_000_000)
+        await harness.submits.waitUntilSubmitted(1)
         harness.controller.receiveAssistantEvent(.started(sessionID: "session-1"))
         harness.controller.receiveAssistantEvent(.delta(sessionID: "session-1", text: "Answer."))
-        try? await Task.sleep(nanoseconds: 250_000_000)
+        let speaking = await harness.controller.waitForState(.speaking)
+        XCTAssertTrue(speaking, "the assistant reply is audible")
         XCTAssertEqual(harness.controller.state, .speaking)
         return harness
     }
@@ -1037,10 +1042,11 @@ final class CarPlayVoicePhoneAttachTests: XCTestCase {
         let start = Date()
         harness.controller.ingestAudioLevel(0.1, at: start)
         harness.controller.ingestAudioLevel(0, at: start.addingTimeInterval(1.3))
-        try? await Task.sleep(nanoseconds: 250_000_000)
+        await harness.submits.waitUntilSubmitted(1)
         harness.controller.receiveAssistantEvent(.started(sessionID: "session-S"))
         harness.controller.receiveAssistantEvent(.delta(sessionID: "session-S", text: "Answer."))
-        try? await Task.sleep(nanoseconds: 250_000_000)
+        let speaking = await harness.controller.waitForState(.speaking)
+        XCTAssertTrue(speaking, "the assistant reply is audible")
         XCTAssertTrue(harness.controller.hasLiveVoiceSession)
         XCTAssertFalse(harness.controller.conversationTranscript.isEmpty)
         let transcriptBefore = harness.controller.conversationTranscript
@@ -1088,7 +1094,7 @@ final class CarPlayVoicePhoneAttachTests: XCTestCase {
         let start = Date()
         harness.controller.ingestAudioLevel(0.1, at: start)
         harness.controller.ingestAudioLevel(0, at: start.addingTimeInterval(1.3))
-        try? await Task.sleep(nanoseconds: 250_000_000)
+        await harness.submits.waitUntilSubmitted(1)
         XCTAssertEqual(harness.controller.state, .thinking, "an assistant turn is in flight")
         let transcriptBefore = harness.controller.conversationTranscript
 
@@ -1350,111 +1356,10 @@ final class CarPlayVoiceRoutePolicyTests: XCTestCase {
     }
 }
 
-// MARK: - Fakes (file-local copies of the established voice doubles)
+// MARK: - Voice doubles
 
-@MainActor
-private final class ImmediateVoiceConfigRequester: VoiceConfigurationRequesting {
-    enum Mode { case failing, fullSupport }
-
-    private let mode: Mode
-
-    init(mode: Mode = .failing) { self.mode = mode }
-
-    func requestJSON(path: String, method: String, body: [String: Any]?) async throws -> [String: Any] {
-        switch mode {
-        case .failing:
-            throw URLError(.notConnectedToInternet)
-        case .fullSupport:
-            if path.hasSuffix("/api/config") {
-                return ["stt": ["enabled": true], "tts": ["provider": "edge"]]
-            }
-            if path.hasSuffix("/api/tools/toolsets/tts/config") {
-                return ["providers": [[
-                    "name": "Microsoft Edge TTS",
-                    "tts_provider": "edge",
-                    "status": "ready",
-                    "is_active": true,
-                ]]]
-            }
-            throw URLError(.notConnectedToInternet)
-        }
-    }
-}
-
-@MainActor
-final class FakeCapture: AudioCaptureService {
-    let events: AsyncStream<VoiceCaptureEvent>
-    var captureGeneration: UInt64 = 0
-    private var continuation: AsyncStream<VoiceCaptureEvent>.Continuation?
-    private let permissionGranted: Bool
-    private(set) var startCount = 0
-    private(set) var stopCount = 0
-    private(set) var resumeCount = 0
-
-    init(permissionGranted: Bool) {
-        self.permissionGranted = permissionGranted
-        var captured: AsyncStream<VoiceCaptureEvent>.Continuation?
-        events = AsyncStream { captured = $0 }
-        continuation = captured
-    }
-    func requestPermission() async -> Bool { permissionGranted }
-    func startListening(includePreRoll: Bool) throws {
-        startCount += 1
-        captureGeneration &+= 1
-    }
-    func beginBargeInMonitoring() throws {}
-    func pause() { captureGeneration &+= 1 }
-    func resume() throws {
-        resumeCount += 1
-        captureGeneration &+= 1
-    }
-    func finishUtterance() throws -> VoiceCapturedAudio {
-        VoiceCapturedAudio(wavData: Data([1]), pcm16Data: Data([1, 0]), sampleRate: 16_000, duration: 0.01)
-    }
-    func stop() {
-        stopCount += 1
-        captureGeneration &+= 1
-    }
-    func emit(level: Float, at date: Date = Date()) {
-        continuation?.yield(.level(level, date: date, generation: captureGeneration))
-    }
-}
-
-@MainActor
-private final class FakePlayback: SpeechPlaybackService {
-    var isPlaying = false
-    var ownershipIntent: VoiceAudioIntent = .standalonePlayback
-    func start(sampleRate: Double) throws { isPlaying = true }
-    func enqueuePCM16(_ data: Data, sampleRate: Double) throws -> Int { data.count - (data.count % 2) }
-    func playEncodedAudioData(_ data: Data) throws { isPlaying = true }
-    func finish() throws {}
-    func drain() async { isPlaying = false }
-    func stop() { isPlaying = false }
-}
-
-@MainActor
-final class FakeGateway: VoiceGatewayService {
-    let profile = "default"
-    var transcript: String
-    private(set) var transcriptionCount = 0
-    init(transcript: String) { self.transcript = transcript }
-    func transcribe(_ audio: VoiceCapturedAudio) async throws -> String {
-        transcriptionCount += 1
-        return transcript
-    }
-    func openSpeechStream(
-        onStart: @escaping @MainActor (Double) throws -> Void,
-        onPCM16: @escaping @MainActor (Data, Double) throws -> Void,
-        onEncodedAudio: @escaping @MainActor (Data) throws -> Void
-    ) async throws -> VoiceSpeechStream {
-        try onStart(24_000)
-        return FakeSpeechStream()
-    }
-}
-
-@MainActor
-private final class FakeSpeechStream: VoiceSpeechStream {
-    func append(_ text: String) async throws {}
-    func finish() async throws -> Bool { false }
-    func cancel() {}
-}
+// The voice doubles (MockCapture/MockPlayback/MockGateway, SubmitSpy,
+// ImmediateVoiceConfigRequester) live in VoiceTestSupport.swift, shared with
+// the other Voice/CarPlay/AppState suites. The speech-path signals
+// (`waitUntilSpeechStreamOpened`, `waitUntilSubmitted`, `waitForState`)
+// replace the fixed settling sleeps this file previously relied on.
