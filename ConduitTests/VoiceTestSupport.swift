@@ -81,7 +81,7 @@ final class AwaitableCounter {
             waiters.append(waiter)
             waiter.timeoutTask = Task { [weak self] in
                 try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
-                guard let self else { return }
+                guard let self, !Task.isCancelled else { return }
                 self.expire(waiter)
             }
         }
@@ -111,15 +111,13 @@ final class AwaitableCounter {
 final class SubmitSpy {
     private(set) var texts: [String] = []
     private let submissions = AwaitableCounter()
-    /// Toggle for tests that exercise a failing submission.
-    var succeeds = true
 
     var count: Int { submissions.value }
 
     func submit(_ text: String) async -> Bool {
         texts.append(text)
         submissions.increment()
-        return succeeds
+        return true
     }
 
     func waitUntilSubmitted(_ count: Int, timeout: TimeInterval = 10) async {
@@ -182,6 +180,7 @@ private final class PublishedValueWaiter<Value> {
             }
             self.timeoutTask = Task { @MainActor [weak self] in
                 try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                guard !Task.isCancelled else { return }
                 self?.finish(returning: false)
             }
         }
@@ -340,8 +339,6 @@ final class MockPlayback: SpeechPlaybackService {
     /// When set, `drain()` parks until the gate is released, so tests can
     /// hold a playback operation open deterministically.
     var drainGate: InterruptParkingGate?
-    /// Invoked from `stop()` so tests can count real playback teardowns.
-    var onStop: (() -> Void)?
     /// The ownership intent in force when playback last started, so tests can
     /// assert which session policy a flow claimed.
     private(set) var intentAtLastStart: VoiceAudioIntent?
@@ -359,10 +356,7 @@ final class MockPlayback: SpeechPlaybackService {
         isPlaying = false
         await drainGate?.waitInInterrupt()
     }
-    func stop() {
-        isPlaying = false
-        onStop?()
-    }
+    func stop() { isPlaying = false }
 }
 
 // MARK: - Gateway double
@@ -373,8 +367,6 @@ final class MockGateway: VoiceGatewayService {
     /// Mutable so multi-phase tests can pin what the recognizer returns
     /// per phase (normal turn, spoken command, follow-up).
     var transcript: String
-    /// Invoked after each speech stream opens (before the call returns).
-    var onStreamOpen: (() -> Void)?
     let startsPlaybackOnOpen: Bool
     /// When true, the FIRST opened stream parks inside its first `append`.
     let blocksFirstStreamAppend: Bool
@@ -440,7 +432,6 @@ final class MockGateway: VoiceGatewayService {
         self.stream = stream
         streams.append(stream)
         streamOpens.increment()
-        onStreamOpen?()
         return stream
     }
 
@@ -514,6 +505,8 @@ final class MockSpeechStream: VoiceSpeechStream {
 /// Transcription that parks until released, so a test can suspend Voice
 /// while a transcription is provably in flight (or assert mid-transcription
 /// gates without a wall-clock window).
+/// Single-release use: `releaseTranscription()` disarms the park, so a
+/// second parked transcription needs a fresh gateway.
 @MainActor
 final class GatedTranscriptionGateway: VoiceGatewayService {
     let profile = "default"
@@ -610,6 +603,8 @@ final class RoutePolicyBox {
 /// immediately if entry already happened so the signal cannot be missed.
 /// `release()` resumes every parked interruption exactly once and disarms
 /// the gate (later interrupts pass through immediately); safe to call twice.
+/// Single-phase use: create a fresh gate per test phase — `count` never
+/// resets, so a second `waitUntilEntered()` would observe the first entry.
 @MainActor
 final class InterruptParkingGate {
     private(set) var count = 0

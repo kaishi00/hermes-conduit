@@ -2255,7 +2255,7 @@ final class ContinuousConversationPreferenceTests: XCTestCase {
         _ controller: VoiceConversationController,
         gateway: MockGateway,
         sessionID: String = "session",
-        transcriptions: Int = 1
+        transcriptions: Int = 1  // absolute: multi-turn callers pass their turn index
     ) async {
         controller.beginVoiceTurn(sessionID: sessionID)
         await controller.startListening()

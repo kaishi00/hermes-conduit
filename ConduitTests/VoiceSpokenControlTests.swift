@@ -253,6 +253,7 @@ final class VoiceConversationSpokenEndCommandTests: XCTestCase {
         await driveUtterance(controller)
         await flags.endConversations.waitUntil(1)
         await flags.interrupts.waitUntil(1)
+        await drainPendingMainActorWork()
 
         XCTAssertEqual(flags.endConversations.value, 1, "the Close teardown seam must be requested exactly once")
         XCTAssertEqual(gateway.transcriptionCount, 1)
@@ -317,6 +318,7 @@ final class VoiceConversationSpokenEndCommandTests: XCTestCase {
         await driveUtterance(controller)
         await flags.endConversations.waitUntil(1)
         await flags.interrupts.waitUntil(1)
+        await drainPendingMainActorWork()
 
         XCTAssertEqual(flags.endConversations.value, 1, "the stronger action must be deterministic")
         XCTAssertFalse(controller.hasLiveVoiceSession, "end must close, not stop-and-relisten")
@@ -368,6 +370,7 @@ final class VoiceConversationSpokenEndCommandTests: XCTestCase {
         await driveUtterance(controller, silentFinish: true)
         await flags.endConversations.waitUntil(1)
         await flags.interrupts.waitUntil(2)
+        await drainPendingMainActorWork()
 
         XCTAssertFalse(controller.hasLiveVoiceSession)
         XCTAssertEqual(controller.state, .idle)

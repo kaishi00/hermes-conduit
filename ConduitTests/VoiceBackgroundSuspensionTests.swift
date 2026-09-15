@@ -368,7 +368,7 @@ final class VoiceConversationLifecycleSuspensionTests: XCTestCase {
         _ controller: VoiceConversationController,
         gateway: MockGateway,
         spy: SubmitSpy,
-        submissions: Int = 1
+        submissions: Int = 1  // absolute: multi-turn callers pass their turn index
     ) async {
         controller.beginVoiceTurn(sessionID: "session")
         await controller.startListening()
