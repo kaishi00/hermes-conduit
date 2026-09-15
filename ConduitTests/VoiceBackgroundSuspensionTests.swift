@@ -24,7 +24,7 @@ import XCTest
 @MainActor
 final class VoiceConversationLifecycleSuspensionTests: XCTestCase {
     func testSuspensionReleasesRuntimeButPreservesConversationIdentity() async {
-        let (controller, capture, gateway, spy, flags) = makeFixture()
+        let (controller, capture, playback, gateway, spy, flags) = makeFixture()
         await driveToThinking(controller, gateway: gateway, spy: spy)
         let transcriptAfterTurn = controller.conversationTranscript
 
@@ -51,7 +51,7 @@ final class VoiceConversationLifecycleSuspensionTests: XCTestCase {
     }
 
     func testSuspensionPreservesExplicitUserPause() async {
-        let (controller, capture, gateway, spy, flags) = makeFixture()
+        let (controller, capture, playback, gateway, spy, flags) = makeFixture()
         controller.beginVoiceTurn(sessionID: "session")
         await controller.startListening()
         controller.pauseMicrophone()
@@ -91,7 +91,7 @@ final class VoiceConversationLifecycleSuspensionTests: XCTestCase {
     }
 
     func testSuspensionRetiresInFlightTurnVoiceContinuationWithoutCancellingServerTurn() async {
-        let (controller, capture, gateway, spy, flags) = makeFixture()
+        let (controller, capture, playback, gateway, spy, flags) = makeFixture()
         await driveToThinking(controller, gateway: gateway, spy: spy)
         XCTAssertEqual(spy.texts, ["Question"], "the turn was submitted before suspension")
 
@@ -113,7 +113,7 @@ final class VoiceConversationLifecycleSuspensionTests: XCTestCase {
     }
 
     func testNextSubmitAfterSuspensionCancelsOrphanedTurnAndContinues() async {
-        let (controller, capture, gateway, spy, flags) = makeFixture()
+        let (controller, capture, playback, gateway, spy, flags) = makeFixture()
         await driveToThinking(controller, gateway: gateway, spy: spy)
         controller.suspendRuntimeForLifecycle()
         controller.setForegroundActive(true)
@@ -139,7 +139,7 @@ final class VoiceConversationLifecycleSuspensionTests: XCTestCase {
     }
 
     func testOrphanSurvivesConsecutiveSuspensions() async {
-        let (controller, capture, gateway, spy, flags) = makeFixture()
+        let (controller, capture, playback, gateway, spy, flags) = makeFixture()
         await driveToThinking(controller, gateway: gateway, spy: spy)
 
         // background → foreground → background: the second suspension must
@@ -213,7 +213,7 @@ final class VoiceConversationLifecycleSuspensionTests: XCTestCase {
     }
 
     func testFailedOrphanCancellationRetainsFlagAndBlocksSubmissionUntilRetry() async {
-        let (controller, capture, gateway, spy, flags) = makeFixture()
+        let (controller, capture, playback, gateway, spy, flags) = makeFixture()
         await driveToThinking(controller, gateway: gateway, spy: spy)
         controller.suspendRuntimeForLifecycle()
         controller.setForegroundActive(true)
@@ -249,7 +249,7 @@ final class VoiceConversationLifecycleSuspensionTests: XCTestCase {
     }
 
     func testStopAfterSuspensionStillClosesFully() async {
-        let (controller, _, _, _, _) = makeFixture()
+        let (controller, _, _, _, _, _) = makeFixture()
         controller.beginVoiceTurn(sessionID: "session")
         await controller.startListening()
 

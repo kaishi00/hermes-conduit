@@ -582,10 +582,11 @@ final class VoiceConversationControllerTests: XCTestCase {
     }
 
     func testEmptyAssistantCompletionDoesNotEraseDeltasOrAddBlankEntry() async {
+        let gateway = MockGateway(transcript: "Question")
         let controller = VoiceConversationController(
             capture: MockCapture(permissionGranted: true),
             playback: MockPlayback(),
-            gateway: MockGateway(transcript: "Question"),
+            gateway: gateway,
             submit: { _ in true },
             interrupt: { true }
         )
