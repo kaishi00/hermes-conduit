@@ -18,7 +18,7 @@
 //  - `MockCapture.waitUntilStartCount(_:)` — a capture window opened.
 //  - `VoiceConversationController.waitForState(...)` and friends — a
 //    @Published value transitioned (Combine-driven, no polling).
-//  - `GatedTranscriptionGateway` / `InterruptGate` / `ControlledSuspension` /
+//  - `GatedTranscriptionGateway` / `InterruptParkingGate` / `ControlledSuspension` /
 //    `MockPlayback.drainGate` — parked operations the test releases by hand.
 //
 //  Negative assertions ("this event must never arrive") cannot wait on an
@@ -333,7 +333,7 @@ final class MockPlayback: SpeechPlaybackService {
     var ownershipIntent: VoiceAudioIntent = .standalonePlayback
     /// When set, `drain()` parks until the gate is released, so tests can
     /// hold a playback operation open deterministically.
-    var drainGate: InterruptGate?
+    var drainGate: InterruptParkingGate?
     /// Invoked from `stop()` so tests can count real playback teardowns.
     var onStop: (() -> Void)?
     /// The ownership intent in force when playback last started, so tests can
@@ -605,7 +605,7 @@ final class RoutePolicyBox {
 /// `release()` resumes every parked interruption exactly once and disarms
 /// the gate (later interrupts pass through immediately); safe to call twice.
 @MainActor
-final class InterruptGate {
+final class InterruptParkingGate {
     private(set) var count = 0
     private var parked: [CheckedContinuation<Void, Never>] = []
     private var entryWaiters: [CheckedContinuation<Void, Never>] = []

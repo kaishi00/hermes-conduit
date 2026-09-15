@@ -7,7 +7,7 @@
 //  explicit signals from the shared doubles in VoiceTestSupport.swift —
 //  `SubmitSpy.waitUntilSubmitted`, `MockGateway.waitUntil*`,
 //  `MockCapture.waitUntilStartCount`, `waitForState`/`waitForMicrophoneLevel`
-//  @Published waits, and the parked-operation gates (`InterruptGate`,
+//  @Published waits, and the parked-operation gates (`InterruptParkingGate`,
 //  `GatedTranscriptionGateway`, `MockPlayback.drainGate`). No test waits on a
 //  fixed settling window; timeouts exist only as deadlock guards.
 //
@@ -1224,7 +1224,7 @@ final class VoiceConversationControllerTests: XCTestCase {
         let playback = MockPlayback()
         let gateway = MockGateway(transcript: "test", startsPlaybackOnOpen: true, deliversPCM: true)
         let policy = RoutePolicyBox(.speakerSafeHalfDuplex)
-        let gate = InterruptGate()
+        let gate = InterruptParkingGate()
         playback.drainGate = gate
         let controller = VoiceConversationController(
             capture: capture,
@@ -1756,7 +1756,7 @@ final class VoiceSpeakerSafeBargeInTests: XCTestCase {
         let capture = MockCapture(permissionGranted: true)
         let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
         let playback = MockPlayback()
-        let gate = InterruptGate()
+        let gate = InterruptParkingGate()
         let policy = RoutePolicyBox(.speakerSafeHalfDuplex)
         let controller = VoiceConversationController(
             capture: capture,
@@ -1799,7 +1799,7 @@ final class VoiceSpeakerSafeBargeInTests: XCTestCase {
     func testInterruptParkedAcrossStopAndReopenCannotClobberNewSession() async {
         let capture = MockCapture(permissionGranted: true)
         let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
-        let gate = InterruptGate()
+        let gate = InterruptParkingGate()
         let policy = RoutePolicyBox(.speakerSafeHalfDuplex)
         let controller = VoiceConversationController(
             capture: capture,
@@ -1834,7 +1834,7 @@ final class VoiceSpeakerSafeBargeInTests: XCTestCase {
     func testBargeInOverlappingPlaybackSuspensionCannotReopenCapture() async {
         let capture = MockCapture(permissionGranted: true)
         let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
-        let gate = InterruptGate()
+        let gate = InterruptParkingGate()
         let policy = RoutePolicyBox(.fullDuplex)
         let controller = VoiceConversationController(
             capture: capture,
@@ -2202,7 +2202,7 @@ final class ContinuousConversationPreferenceTests: XCTestCase {
         let capture = MockCapture(permissionGranted: true)
         let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
         let playback = MockPlayback()
-        let gate = InterruptGate()
+        let gate = InterruptParkingGate()
         playback.drainGate = gate
         let controller = VoiceConversationController(
             capture: capture,

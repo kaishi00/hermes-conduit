@@ -477,6 +477,7 @@ final class VoiceConversationSpokenEndCommandTests: XCTestCase {
 
     // MARK: fixtures
 
+    @MainActor
     final class Flags {
         let interrupts = AwaitableCounter()
         let endConversations = AwaitableCounter()

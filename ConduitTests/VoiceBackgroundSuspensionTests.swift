@@ -11,7 +11,7 @@
 //  (`SubmitSpy.waitUntilSubmitted`, `MockGateway.waitUntil*`,
 //  `ControlledSuspension.waitUntilSuspended`,
 //  `GatedTranscriptionGateway.waitUntilTranscribing`,
-//  `InterruptGate.waitUntilEntered`, `waitForState`/`waitForMicrophoneLevel`
+//  `InterruptParkingGate.waitUntilEntered`, `waitForState`/`waitForMicrophoneLevel`
 //  @Published waits). No test waits on a fixed settling window; negative
 //  assertions drain pending MainActor work instead.
 //
@@ -166,7 +166,7 @@ final class VoiceConversationLifecycleSuspensionTests: XCTestCase {
         let gateway = MockGateway(transcript: "Question")
         let spy = SubmitSpy()
         let flags = Flags()
-        let gate = InterruptGate()
+        let gate = InterruptParkingGate()
         let submitAction: @MainActor (String) async -> Bool = { spy.submit($0) }
         let interruptAction: @MainActor () async -> Bool = {
             flags.interrupts.increment()
@@ -333,6 +333,7 @@ final class VoiceConversationLifecycleSuspensionTests: XCTestCase {
 
     // MARK: fixtures
 
+    @MainActor
     final class Flags {
         let interrupts = AwaitableCounter()
         let endConversations = AwaitableCounter()
@@ -1230,6 +1231,7 @@ final class AppStateVoiceSuspensionTests: XCTestCase {
         }
     }
 
+    @MainActor
     final class Flags {
         let interrupts = AwaitableCounter()
         let endConversations = AwaitableCounter()
