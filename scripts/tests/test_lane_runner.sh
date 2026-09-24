@@ -29,7 +29,7 @@ assert_eq() { # $1=desc $2=actual $3=expected
 }
 
 seq_line() { # $1=exact line → first line number in SEQ_LOG, empty if absent
-  grep -nx -m1 "$1" "$SEQ_LOG" 2>/dev/null | cut -d: -f1
+  grep -nFx -m1 "$1" "$SEQ_LOG" 2>/dev/null | cut -d: -f1
 }
 
 seq_between() { # $1=earlier line no, $2=later line no, $3=exact line between them → yes/no
@@ -505,11 +505,16 @@ _x1="$(seq_line "xcodebuild batch-1-a1")"
 _sd="$(seq_line "simctl shutdown")"
 _bt="$(seq_line "simctl boot")"
 _bs="$(seq_line "simctl bootstatus")"
-assert_eq "lane start shuts the device down" "$([ -n "$_sd" ] && [ "$_sd" -lt "${_x1:-9999}" ] && echo yes || echo no)" "yes"
+assert_eq "first xcodebuild recorded" "$([ -n "$_x1" ] && echo yes || echo no)" "yes"
+assert_eq "lane start shuts the device down" "$([ -n "$_sd" ] && [ "$_sd" -lt "${_x1:-0}" ] && echo yes || echo no)" "yes"
 assert_eq "settle boots the device before first xcodebuild" \
   "$(seq_between "$_sd" "$_x1" "$_bt")" "yes"
 assert_eq "settle waits for bootstatus before first xcodebuild" \
   "$(seq_between "$_bt" "$_x1" "$_bs")" "yes"
+# The settle is PREPARATION, never a retry: reset_and_boot_simulator 0 must
+# never erase. Changing either new call site to erase=1 makes these fail.
+assert_eq "lane start settle never erases" \
+  "$(grep -cFx "simctl erase" "$SEQ_LOG" 2>/dev/null || true)" "0"
 assert_eq "attempts" "$(attempts_statuses)" "['passed', 'passed', 'passed']"
 assert_eq "batch statuses" "$(batch_statuses)" "['pass', 'pass', 'pass']"
 assert_eq "batch 1 invoked once" "$(batch_invocations "batch-1-a1")" "1"
@@ -529,6 +534,26 @@ if ls "$WORKCASE"/batch-*.xcresult >/dev/null 2>&1; then
   bad "clean batch bundles should be pruned from a green lane artifact"
 else
   ok "clean batch bundles pruned from a green lane artifact"
+fi
+
+# --- unit case 1b: a degraded settle is best-effort preparation, never a failure ---
+end_case
+begin_case "unit lane start settle degrades best-effort" "$WORK/b1s"
+: > "$INVOCATION_LOG"
+reset_unit_stub_vars
+# FAKE_UI_RECOVERY_FAILS makes every stubbed bootstatus exit 1, so the new
+# lane-start settle's bootstatus fails: with erase=0 that must WARN and
+# continue (best-effort preparation), never fail or stall the lane.
+export FAKE_UI_RECOVERY_FAILS="1"
+run_lane "AlphaTests" 300 1
+export FAKE_UI_RECOVERY_FAILS=""
+assert_eq "exit code" "$(cat "$WORKCASE/exit-code")" "0"
+assert_eq "verdict" "$(lane_field "['status']")" "pass"
+assert_eq "batch invoked once" "$(batch_invocations "batch-1-a1")" "1"
+if grep -q "bootstatus did not confirm" "$WORKCASE/stdout.log"; then
+  ok "degraded settle warns instead of failing"
+else
+  bad "a settle whose bootstatus fails must warn, not fail the lane"
 fi
 
 # --- unit case 2: real test failure -> lane fails, NO batch retry --------------
@@ -584,6 +609,10 @@ assert_eq "retry path shuts the device down again" \
   "$([ -n "$_sd2" ] && [ -n "$_a2" ] && [ "$_sd2" -gt "$_a1" ] && [ "$_sd2" -lt "$_a2" ] && echo yes || echo no)" "yes"
 assert_eq "retry path settles (boot+bootstatus) before attempt 2" \
   "$(seq_between "$_sd2" "$_a2" "$_bt2")$(seq_between "$_bt2" "$_a2" "$_bs2")" "yesyes"
+# The timeout branch is shutdown + settle ONLY: its settle must never erase
+# (that is the infra branch's contract, one line below). erase=1 here fails.
+assert_eq "watchdog-retry settle never erases" \
+  "$(grep -cFx "simctl erase" "$SEQ_LOG" 2>/dev/null || true)" "0"
 assert_eq "lane continued after the recovered batch" "$(batch_invocations "batch-3-a1")" "1"
 assert_eq "no hung batch on a recovered lane" "$(lane_field "['hung_batch']")" "None"
 assert_eq "watchdog retry shutdown recorded (no erase)" \
