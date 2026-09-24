@@ -261,9 +261,10 @@ i.e. exactly one batch):
   erase or reset between successful batches** (the fresh process is the
   recovery boundary; a fresh hosted runner is not needed).
 * Recovery is batch-level, exactly once per batch: a watchdog stall retries
-  THAT batch after a bounded simulator shutdown (NO erase); an
-  infrastructure wedge (nonzero exit, KNOWN zero failing tests) retries it
-  after the historical erase. Real test failures (after the native
+  THAT batch after a bounded simulator shutdown plus a boot/wait settle
+  (NO erase - the retry's xcodebuild must find an already-Booted device,
+  see the launch-wedge note below); an infrastructure wedge (nonzero exit,
+  KNOWN zero failing tests) retries it after the historical erase. Real test failures (after the native
   in-invocation retry) and unclassifiable results are never retried - they
   fail the lane on that batch. A second stall fails the lane with the batch
   named (`hung_batch`).
@@ -378,9 +379,11 @@ everything else in this shape.
    through to hang handling (4).
 4. **Hang / timeout** - a watchdog kill is positive identification of a
    hang. Units retry THAT BATCH once with a fresh xcodebuild process on the
-   same runner and Simulator (bounded shutdown only - NO erase; the
-   fresh-process boundary IS the recovery, per the sequential-invocation
-   diagnostic). A second stall fails the lane with the batch as the
+   same runner and Simulator (bounded shutdown plus a boot/wait settle,
+   NO erase; the fresh-process boundary IS the recovery, per the
+   sequential-invocation diagnostic - the settle only ensures the retry
+   does not itself launch into the cold-boot refusal described under
+   "prepare" below). A second stall fails the lane with the batch as the
    identified culprit (`hung_batch` in the lane result); later batches are
    recorded as `not_run` so unexecuted tests stay visible. A UI batch
    timeout cannot name the hung class, so it erases and enters per-class
