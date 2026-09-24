@@ -268,7 +268,14 @@ simulator_udid() {
 # and returns 1 so the caller can fail closed instead of shutting down an
 # ambiguous simulator that may belong to another project or developer.
 shutdown_own_simulator() {
-  local json matches udid
+  local json matches
+  # A run-owned pin (the gate resolves or creates its device before any lane
+  # and passes the UDID down) is authoritative: UDIDs are unique and never
+  # recycled, so a pinned shutdown can never reach another project's device.
+  if [ -n "${SIMULATOR_UDID:-}" ]; then
+    bounded_run 60 xcrun simctl shutdown "$SIMULATOR_UDID" || true
+    return 0
+  fi
   if ! command -v jq >/dev/null 2>&1; then
     echo "::error::jq not found - cannot establish this run's own simulator UDID; refusing to shut down any simulator"
     return 1

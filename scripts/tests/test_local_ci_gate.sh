@@ -571,9 +571,9 @@ FAKE_SIMCTL_DUPLICATE=1 PATH="$STUBS:$PATH" XCODEBUILD_POLL_INTERVAL_S=1 \
   bash "$GATE" --allow-another-run --ref HEAD --gate-root "$WORK/gate-dup" \
     --run-dir "$(new_run_dir)" >"$DUP_LOG" 2>&1
 DUP_EXIT=$?
-assert_eq "ambiguous device name fails the gate" "$DUP_EXIT" "1"
+assert_eq "ambiguous device name fails closed with exit 2" "$DUP_EXIT" "2"
 assert_contains "the refusal names the ambiguity" "$(cat "$DUP_LOG")" "is ambiguous"
-assert_contains "nothing was shut down blindly" "$(cat "$DUP_LOG")" "refusing to shut down"
+assert_contains "nothing was run against the ambiguous device" "$(cat "$DUP_LOG")" "refusing to run"
 
 echo ""
 echo "--- case: the monitor's invalid-run teardown is not a verdict ---"

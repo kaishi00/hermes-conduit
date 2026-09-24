@@ -766,6 +766,19 @@ DEVICES_JSON="$RUN_DIR/simctl-devices.json"
 run_bounded 60 "$DEVICES_JSON" "$RUN_DIR" \
   sh -c 'xcrun simctl list devices available -j 2>/dev/null' || \
   echo "local-ci-gate: could not list simulator devices within its budget; the recorded device may be incomplete" >&2
+# Ambiguity refusal BEFORE any device is chosen: if the pinned NAME answers
+# to more than one device, this gate cannot know which one it owns, and
+# every downstream UDID-scoped operation (shutdown, erase, boot) would be a
+# guess. Fail closed instead of resolving by newest-runtime silently.
+if command -v jq >/dev/null 2>&1 && [ -s "$DEVICES_JSON" ]; then
+  GATE_SIM_MATCHES="$(jq -r --arg n "$SIMULATOR_NAME" \
+    '[.devices[][]? | select(.name == $n) | .udid] | unique | .[]' "$DEVICES_JSON" 2>/dev/null | grep -v '^$' || true)"
+  if [ "$(printf '%s\n' "$GATE_SIM_MATCHES" | grep -c .)" -gt 1 ]; then
+    echo "local-ci-gate: simulator name '$SIMULATOR_NAME' is ambiguous (matches UDIDs: $(printf '%s ' $GATE_SIM_MATCHES))" >&2
+    echo "local-ci-gate: refusing to run against a device this gate cannot prove it owns; remove the duplicate device or pass --simulator with a unique name" >&2
+    exit 2
+  fi
+fi
 python3 "$HELPER" simulator --devices "$DEVICES_JSON" \
   --name "$SIMULATOR_NAME" --out "$RUN_DIR/simulator.json" >/dev/null 2>&1 || true
 SIMULATOR_RUNTIME="$(python3 -c '
@@ -951,6 +964,7 @@ run_lane() { # $1=kind $2=lane $3=target $4=classes $5=predicted $6=timeout
   # the recorded simulator/runtime must describe the device the tests ran on.
   CONDUIT_PERF_TRACE="${CONDUIT_PERF_TRACE:-1}" \
     SIMULATOR_NAME="$SIMULATOR_NAME" \
+    SIMULATOR_UDID="${SIMULATOR_UDID:-}" \
     bash "$LANE_RUNNER" --kind "$kind" --lane "$lane" --target "$target" \
       --classes "$classes" --predicted "$predicted" --timeout "$timeout" \
       --iterations 1 --xctestrun "$XCTESTRUN" --result-dir "$result_dir" "$@" 3>&-
@@ -1008,6 +1022,7 @@ simulator_prep() { # $1 = label
   local started status=0
   started=$(date +%s)
   ( cd "$WT" && LOG_DIR="$RUN_DIR/sim-prep" SIMULATOR_NAME="$SIMULATOR_NAME" \
+      SIMULATOR_UDID="${SIMULATOR_UDID:-}" \
       bash -c '. "$1/scripts/ci-lib.sh"; reset_and_boot_simulator "$2" || exit 1
               # Bounded like every other simctl call: a wedged
               # CoreSimulatorService hangs simctl indefinitely, and this runs
