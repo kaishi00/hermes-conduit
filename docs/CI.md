@@ -261,12 +261,13 @@ i.e. exactly one batch):
   erase or reset between successful batches** (the fresh process is the
   recovery boundary; a fresh hosted runner is not needed).
 * Recovery is batch-level, exactly once per batch: a watchdog stall retries
-  THAT batch after a bounded simulator shutdown (NO erase); an
-  infrastructure wedge (nonzero exit, KNOWN zero failing tests) retries it
-  after the historical erase. Real test failures (after the native
-  in-invocation retry) and unclassifiable results are never retried - they
-  fail the lane on that batch. A second stall fails the lane with the batch
-  named (`hung_batch`).
+  THAT batch after a bounded simulator shutdown plus a boot/wait settle
+  (NO erase - the retry's xcodebuild must find an already-Booted device,
+  see the launch-wedge note below); an infrastructure wedge (nonzero exit,
+  KNOWN zero failing tests) retries it after the historical erase. Real
+  test failures (after the native in-invocation retry) and unclassifiable
+  results are never retried - they fail the lane on that batch. A second
+  stall fails the lane with the batch named (`hung_batch`).
 
 ### Parallel UI lanes
 
@@ -378,9 +379,11 @@ everything else in this shape.
    through to hang handling (4).
 4. **Hang / timeout** - a watchdog kill is positive identification of a
    hang. Units retry THAT BATCH once with a fresh xcodebuild process on the
-   same runner and Simulator (bounded shutdown only - NO erase; the
-   fresh-process boundary IS the recovery, per the sequential-invocation
-   diagnostic). A second stall fails the lane with the batch as the
+   same runner and Simulator (bounded shutdown plus a boot/wait settle,
+   NO erase; the fresh-process boundary IS the recovery, per the
+   sequential-invocation diagnostic - the settle only ensures the retry
+   does not itself launch into the cold-boot refusal described under
+   "prepare" below). A second stall fails the lane with the batch as the
    identified culprit (`hung_batch` in the lane result); later batches are
    recorded as `not_run` so unexecuted tests stay visible. A UI batch
    timeout cannot name the hung class, so it erases and enters per-class
@@ -657,7 +660,7 @@ inherited `SIMULATOR_NAME` is deliberately ignored.
 | generate | `xcodegen generate` | The generated `.xcodeproj` is never committed |
 | static | `plan-tests.py validate`, `python3 -m unittest discover -s scripts/tests`, `check-l10n-coverage.py` | `--skip-static` exists for developer loops and marks the result **partial** |
 | build | `ci-build-for-testing.sh` once, into a gate-specific DerivedData | The same build-once contract as hosted CI, without the artifact round trip |
-| prepare | before each lane: ci-lib.sh's own bounded shutdown/**erase**/boot/wait-for-boot | Environment preparation, never a retry — it re-runs nothing and a lane that fails afterwards still fails. Without it, the host app's install/launch is refused (`Simulator device failed to launch com.milim.relay … Application failed preflight checks … reason: Busy`) and the batch is lost. An A/B probe on our Mac settled that the erase is the part that matters (shutdown+boot alone still refused the next lane; erase+boot passed it), but it is a **partial** mitigation: on a full run the refusal returned a batch or two into a lane, so it accumulates over successive launches of the same bundle on one device. Costs ~40 s per lane. `--no-simulator-erase` keeps the cheaper mode for observing the raw behavior; `--no-simulator-prep` skips preparation entirely. |
+| prepare | before each lane: ci-lib.sh's own bounded shutdown/**erase**/boot/wait-for-boot | Environment preparation, never a retry — it re-runs nothing and a lane that fails afterwards still fails. Without it, the host app's install/launch is refused (`Simulator device failed to launch com.milim.relay … Application failed preflight checks … reason: Busy`) and the batch is lost. An early A/B probe on our Mac (one sample per arm) suggested the erase was the part that matters; the controlled A/B of 2026-09-24 (88 invocations across four arms, frozen release products) superseded it: what decides the refusal is the device's state when xcodebuild starts - Shutdown-at-launch (xcodebuild cold-boots the device itself) refused 40% and 70% of launches with and without a preceding erase (8/20, 14/20), while Booted-at-launch was clean either way (0/24, 0/24). The prepare sequence remains a **partial** mitigation: it leaves the device Booted for the next launch, but on a full run the lane runner's own shutdown used to re-arm the cold boot, so the refusal returned a batch or two into a lane. Costs ~40 s per lane. `--no-simulator-erase` keeps the cheaper mode for observing the raw behavior; `--no-simulator-prep` skips preparation entirely. |
 
 | unit | the **complete** `ConduitTests` suite | One exhaustive lane: the planner is forced to `--min-lanes 1 --max-lanes 1` so it still owns the sequential batches and every per-batch watchdog |
 | ui | the **complete** `ConduitUITests` suite | One batched invocation over every UI class, with the planner's per-class watchdogs |
@@ -669,8 +672,9 @@ The gate runs on a dedicated simulator device ("Conduit CI Gate", created on
 demand) precisely so it can erase that device freely: on our Mac the host
 app's install/launch is periodically refused (`Simulator device failed to
 launch com.milim.relay … Application failed preflight checks … reason: Busy`),
-and the A/B probe that diagnosed it showed only `simctl erase` clears the
-condition reliably.
+and the A/B evidence that diagnosed it points at the device's state when
+xcodebuild starts (see the "prepare" row above: a Booted-at-launch device
+was clean in every arm, while a Shutdown-at-launch cold boot was refused).
 
 Because the wedge accumulates again over successive launches, a one-time
 pre-run erase is not enough. The gate therefore allows at most one bounded

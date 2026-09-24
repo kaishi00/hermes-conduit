@@ -28,6 +28,19 @@ assert_eq() { # $1=desc $2=actual $3=expected
   if [ "$2" = "$3" ]; then ok "$1"; else bad "$1 (actual='$2' expected='$3')"; fi
 }
 
+seq_line() { # $1=exact line → first line number in SEQ_LOG, empty if absent
+  grep -nFx -m1 "$1" "$SEQ_LOG" 2>/dev/null | cut -d: -f1
+}
+
+seq_between() { # $1=earlier line no, $2=later line no, $3=exact line between them → yes/no
+  if [ -n "$1" ] && [ -n "$2" ] && [ -n "$3" ] \
+     && [ "$1" -lt "$2" ] && [ "$3" -gt "$1" ] && [ "$3" -lt "$2" ]; then
+    echo yes
+  else
+    echo no
+  fi
+}
+
 write_stub_xcrun() {
   cat > "$STUBS/xcrun" <<'EOF'
 #!/bin/bash
@@ -40,6 +53,9 @@ if [ "$1" = "xcresulttool" ]; then
   exit 0
 fi
 if [ "$1" = "simctl" ]; then
+  # Every simctl subcommand lands in SEQ_LOG so cases can assert the exact
+  # device-lifecycle ORDER (settle before xcodebuild), not just outcomes.
+  echo "simctl $2" >> "${SEQ_LOG:-/dev/null}"
   # The erase-gated simulator recovery must be able to SUCCEED in tests, so
   # simctl list -j serves one pinned device (matching the default
   # SIMULATOR_NAME) for ci-lib's jq-based UDID resolution. FAKE_SIMCTL_DUPLICATE
@@ -106,6 +122,7 @@ stem=$(basename "$bundle" .xcresult)
 n="${stem#batch-}"; n="${n%%-*}"
 attempt="${stem##*-a}"
 echo "batch-$n-a$attempt" >> "$INVOCATION_LOG"
+echo "xcodebuild batch-$n-a$attempt" >> "${SEQ_LOG:-/dev/null}"
 classes=""
 for a in "$@"; do
   case "$a" in
@@ -172,11 +189,21 @@ touch "$WORK/fake.xctestrun"
 # job's budget), so shrink the cadence. Behavior under test is unaffected:
 # the deadline math and kill semantics are identical at any cadence.
 export XCODEBUILD_POLL_INTERVAL_S=1
+# The lane's settle (reset_and_boot_simulator) sleeps between shutdown and
+# boot. Deadlines are wall-clock (date), never sleep-derived - the same
+# rationale as the gate's stubbed integration suite - so scale the settling
+# sleeps out to keep this suite's wall clock as it was before the settle.
+export GATE_SLEEP_SCALE=0
+# Ordered device-lifecycle trace (simctl subcommands + xcodebuild
+# invocations) for the settle-before-launch assertions. Truncated per case
+# in begin_case.
+export SEQ_LOG="$WORK/seq.log"
 
 begin_case() { # $1=name $2=workdir
   current="$1"
   WORKCASE="$2"
   mkdir -p "$2"
+  : > "$SEQ_LOG"
   CASE_START=$(date +%s)
   echo "START $current"
 }
@@ -469,6 +496,30 @@ reset_unit_stub_vars
 run_lane "AlphaTests,BetaTests,GammaTests" 300 3
 assert_eq "exit code" "$(cat "$WORKCASE/exit-code")" "0"
 assert_eq "verdict" "$(lane_field "['status']")" "pass"
+# The lane must settle the device (shutdown -> boot -> bootstatus) BEFORE the
+# first xcodebuild: a Shutdown destination makes xcodebuild cold-boot it, and
+# that launch is the one refused with the FBS/preflight/Busy wedge. Removing
+# reset_and_boot_simulator from run_unit_batches deletes the boot/bootstatus
+# lines and fails these.
+_x1="$(seq_line "xcodebuild batch-1-a1")"
+_sd="$(seq_line "simctl shutdown")"
+_bt="$(seq_line "simctl boot")"
+_bs="$(seq_line "simctl bootstatus")"
+assert_eq "first xcodebuild recorded" "$([ -n "$_x1" ] && echo yes || echo no)" "yes"
+assert_eq "lane start shuts the device down" "$([ -n "$_sd" ] && [ "$_sd" -lt "${_x1:-0}" ] && echo yes || echo no)" "yes"
+assert_eq "settle boots the device before first xcodebuild" \
+  "$(seq_between "$_sd" "$_x1" "$_bt")" "yes"
+assert_eq "settle waits for bootstatus before first xcodebuild" \
+  "$(seq_between "$_bt" "$_x1" "$_bs")" "yes"
+# The settle is PREPARATION, never a retry: reset_and_boot_simulator 0 must
+# never erase. Changing either new call site to erase=1 makes these fail.
+assert_eq "lane start settle never erases" \
+  "$(grep -cFx "simctl erase" "$SEQ_LOG" 2>/dev/null || true)" "0"
+# ...and must not mark a recovery reset either (RESET_USED/ERASE_USED feed
+# simulator_reset/simulator_erase in the lane result): a future "helpful"
+# RESET_USED=1 at lane start would flip a clean lane's telemetry otherwise.
+assert_eq "lane-start settle is not a recovery reset" \
+  "$(lane_field "['simulator_reset']")$(lane_field "['simulator_erase']")" "FalseFalse"
 assert_eq "attempts" "$(attempts_statuses)" "['passed', 'passed', 'passed']"
 assert_eq "batch statuses" "$(batch_statuses)" "['pass', 'pass', 'pass']"
 assert_eq "batch 1 invoked once" "$(batch_invocations "batch-1-a1")" "1"
@@ -488,6 +539,26 @@ if ls "$WORKCASE"/batch-*.xcresult >/dev/null 2>&1; then
   bad "clean batch bundles should be pruned from a green lane artifact"
 else
   ok "clean batch bundles pruned from a green lane artifact"
+fi
+
+# --- unit case 1b: a degraded settle is best-effort preparation, never a failure ---
+end_case
+begin_case "unit lane start settle degrades best-effort" "$WORK/b1s"
+: > "$INVOCATION_LOG"
+reset_unit_stub_vars
+# FAKE_UI_RECOVERY_FAILS makes every stubbed bootstatus exit 1, so the new
+# lane-start settle's bootstatus fails: with erase=0 that must WARN and
+# continue (best-effort preparation), never fail or stall the lane.
+export FAKE_UI_RECOVERY_FAILS="1"
+run_lane "AlphaTests" 300 1
+export FAKE_UI_RECOVERY_FAILS=""
+assert_eq "exit code" "$(cat "$WORKCASE/exit-code")" "0"
+assert_eq "verdict" "$(lane_field "['status']")" "pass"
+assert_eq "batch invoked once" "$(batch_invocations "batch-1-a1")" "1"
+if grep -q "bootstatus did not confirm" "$WORKCASE/stdout.log"; then
+  ok "degraded settle warns instead of failing"
+else
+  bad "a settle whose bootstatus fails must warn, not fail the lane"
 fi
 
 # --- unit case 2: real test failure -> lane fails, NO batch retry --------------
@@ -530,6 +601,23 @@ assert_eq "verdict" "$(lane_field "['status']")" "pass"
 assert_eq "attempts" "$(attempts_statuses)" "['passed', 'timeout', 'passed', 'passed']"
 assert_eq "batch attempt chain" "$(batch_attempt_chain 2)" "['timeout', 'passed']"
 assert_eq "stalled batch invoked exactly twice" "$(batch_invocations "batch-2-a1")$(batch_invocations "batch-2-a2")" "11"
+# The watchdog retry's fresh xcodebuild must also find a Booted device:
+# between the timed-out attempt and its retry the runner must shut down,
+# boot, and wait (bootstatus) again. Removing the settle from the timeout
+# branch deletes boot/bootstatus between the two xcodebuild lines and fails.
+_a1="$(seq_line "xcodebuild batch-2-a1")"
+_a2="$(seq_line "xcodebuild batch-2-a2")"
+_sd2="$(awk -v lo="${_a1:-0}" '$0=="simctl shutdown" && NR>lo {print NR; exit}' "$SEQ_LOG" 2>/dev/null)"
+_bt2="$(awk -v lo="${_a1:-0}" '$0=="simctl boot" && NR>lo {print NR; exit}' "$SEQ_LOG" 2>/dev/null)"
+_bs2="$(awk -v lo="${_a1:-0}" '$0=="simctl bootstatus" && NR>lo {print NR; exit}' "$SEQ_LOG" 2>/dev/null)"
+assert_eq "retry path shuts the device down again" \
+  "$([ -n "$_sd2" ] && [ -n "$_a2" ] && [ "$_sd2" -gt "$_a1" ] && [ "$_sd2" -lt "$_a2" ] && echo yes || echo no)" "yes"
+assert_eq "retry path settles (boot+bootstatus) before attempt 2" \
+  "$(seq_between "$_sd2" "$_a2" "$_bt2")$(seq_between "$_bt2" "$_a2" "$_bs2")" "yesyes"
+# The timeout branch is shutdown + settle ONLY: its settle must never erase
+# (that is the infra branch's contract, one line below). erase=1 here fails.
+assert_eq "watchdog-retry settle never erases" \
+  "$(grep -cFx "simctl erase" "$SEQ_LOG" 2>/dev/null || true)" "0"
 assert_eq "lane continued after the recovered batch" "$(batch_invocations "batch-3-a1")" "1"
 assert_eq "no hung batch on a recovered lane" "$(lane_field "['hung_batch']")" "None"
 assert_eq "watchdog retry shutdown recorded (no erase)" \

@@ -43,10 +43,11 @@
 #      later results would be misleading: the lane stops there.
 #   4. A watchdog timeout is positive identification of a hang. Units retry
 #      THAT BATCH ONCE with a fresh xcodebuild process on the same runner
-#      and Simulator (bounded shutdown only - NO erase; the fresh-process
-#      boundary IS the recovery, per the sequential-invocation diagnostic
-#      that showed stalled workloads completing when re-entered through a
-#      new xcodebuild). A second stall fails the lane with the batch as the
+#      and Simulator (bounded shutdown followed by a boot/wait settle, NO
+#      erase; the fresh-process boundary IS the recovery, per the
+#      sequential-invocation diagnostic that showed stalled workloads
+#      completing when re-entered through a new xcodebuild). A second
+#      stall fails the lane with the batch as the
 #      identified culprit. A UI batch timeout cannot name the hung class, so
 #      it erases and enters the same per-class diagnosis, where a class that
 #      hangs twice names the culprit, fails the lane, and stops it (its
@@ -700,16 +701,33 @@ finish_unit_lane() { # $1=status $2=exit_code
 #     unclassifiable result -> the lane FAILS on that batch;
 #   * watchdog stall OR infrastructure wedge (nonzero exit, KNOWN zero
 #     failures) -> THIS batch retries ONCE: fresh xcodebuild, same runner,
-#     same Simulator. The watchdog path adds only a bounded simulator
-#     shutdown (NO erase); the infra path keeps the historical
-#     erase-before-retry. A second stall fails the lane with the batch
-#     named - exactly one batch-level retry ever, never a lane rerun.
+#     same Simulator. The watchdog path adds a bounded simulator shutdown
+#     plus a boot/wait settle (NO erase); the infra path keeps the
+#     historical erase-before-retry. A second stall fails the lane with the
+#     batch named - exactly one batch-level retry ever, never a lane rerun.
 run_unit_batches() {
 if ! shutdown_own_simulator; then  # bounded + UDID-scoped, and refused outright when the run's own UDID cannot be established
   echo "::error::unit $LANE: cannot establish this run's own simulator - refusing to run against an ambiguous device"
   mark_later_batches_not_run 1
   finish_unit_lane "error" 1
 fi
+# Settle the device before the first xcodebuild - the same shape
+# run_ui_lane already uses below. A Shutdown destination is cold-booted by
+# xcodebuild itself, and that first cold-boot launch is the one SpringBoard
+# refuses with the launch wedge (FBSOpenApplicationServiceErrorDomain ...
+# Application failed preflight checks ... Busy). Controlled A/B on the
+# wedge Mac (2026-09-24, frozen release products): every launch on an
+# already-Booted device was clean (0 refusals across 48 invocations),
+# while Shutdown-at-launch refused 40-70% of launches with the documented
+# alternating pattern - this lane-start shutdown was handing xcodebuild
+# exactly that state (cert147 lost batch 1 of every unit lane and 11 of 12
+# repeat iterations to it; the UI lane, which already settled, was clean).
+# Preparation, never a retry: it re-runs nothing, erases nothing, and is
+# best-effort (erase=0 degrades to a warning, letting xcodebuild boot the
+# destination itself, bounded by ci-lib). reset_and_boot_simulator shuts
+# down again internally; the explicit fail-closed shutdown above is kept
+# for its refusal on an ambiguous UDID (the settle only warns there).
+reset_and_boot_simulator 0
 
 local batch_idx=1 batch_total="${#BATCH_CLASSES_ARR[@]}"
 local batch_classes budget cls t0 secs status missing fail_count a1_status
@@ -789,13 +807,17 @@ while [ "$batch_idx" -le "$batch_total" ]; do
   # The only two retry-eligible failures. Exactly ONE retry of THIS batch:
   # a fresh xcodebuild on the same runner, same Simulator.
   if [ "$a1_status" = "timeout" ]; then
-    echo "::warning::unit $LANE batch $batch_idx/$batch_total exceeded its "${budget}"s watchdog - shutting down the simulator (NO erase) and retrying THIS batch once with a fresh xcodebuild"
+    echo "::warning::unit $LANE batch $batch_idx/$batch_total exceeded its "${budget}"s watchdog - shutting down and rebooting the simulator (NO erase) and retrying THIS batch once with a fresh xcodebuild"
     bounded_run 45 xcrun simctl list devices >"$LOG_DIR/simctl-devices-after-batch-$batch_idx-timeout.txt" 2>&1 || true
     if ! shutdown_own_simulator; then
       echo "::error::unit $LANE batch $batch_idx/$batch_total: cannot establish this run's own simulator for the retry - the environment cannot be trusted; stopping the lane"
       mark_later_batches_not_run "$batch_idx"
       finish_unit_lane "error" 1
     fi
+    # Same settle as the lane start: the retry's fresh xcodebuild must also
+    # find an already-Booted device, or its first launch re-enters the
+    # cold-boot launch wedge and can consume the ONE retry this batch gets.
+    reset_and_boot_simulator 0
     RESET_USED=1
   else
     echo "::warning::unit $LANE batch $batch_idx/$batch_total failed with zero failing tests (exit $status) - infrastructure failure; erasing the simulator and retrying THIS batch once"
