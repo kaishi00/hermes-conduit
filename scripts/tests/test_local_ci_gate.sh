@@ -448,10 +448,14 @@ rm -f "$IOS_CI_HOST_PIDFILE"
 
 # ---------------------------------------------------------------------------
 echo ""
-echo "--- case: clean run ---"
+echo "--- case: clean run (on the DEFAULT gate root) ---"
+# Deliberately NO --gate-root: the default (repo parent +/conduit-local-gate
+# = $WORK/conduit-local-gate, inside this sandbox) must work - a lease block
+# placed before the GATE_ROOT default would die at mkfifo /host-lease/... .
+# This run doubles as the default-gate-root regression.
 RUN1="$(new_run_dir)"
 CLEAN_EXIT=0
-run_gate --ref HEAD --gate-root "$WORK/gate" --run-dir "$RUN1" \
+run_gate --ref HEAD --run-dir "$RUN1" \
     --repeat-classes AlphaTests --repeat-iterations 2 || CLEAN_EXIT=$?
 if needs_extraction; then
   if [ "$CLEAN_EXIT" -eq 0 ]; then
@@ -625,28 +629,11 @@ for i in $(seq 1 40); do
 done
 assert_eq "kernel EOF released the lease holder without any trap" "$KILL_RELEASED" "0"
 
-echo ""
-echo "--- case: the default gate root works (no --gate-root passed) ---"
-DEF_LOG="$WORK/gate-defroot-$RANDOM.log"
-# The default GATE_ROOT is the repository's PARENT directory +/conduit-local-gate;
-# the fixture repo lives at $WORK/repo, so this stays inside the sandbox. The
-# fixture repo only has the 15 synthetic classes, so the default repeat
-# families are replaced by one that exists here (same as the clean-run case).
-PATH="$STUBS:$PATH" XCODEBUILD_POLL_INTERVAL_S=1 \
-  bash "$GATE" --allow-another-run --ref HEAD \
-    --repeat-classes AlphaTests --repeat-iterations 2 >"$DEF_LOG" 2>&1
-DEF_EXIT=$?
-if needs_extraction; then
-  if [ "$DEF_EXIT" -eq 0 ]; then
-    ok "default gate root run exits 0"
-  else
-    bad "default gate root run exited $DEF_EXIT (see $DEF_LOG)"
-    tail -n 30 "$DEF_LOG"
-  fi
-else
-  ok "default gate root run failed closed on unreadable bundles"
-fi
-assert_eq "the default run acquired the host lease" \
+# The default gate root is already proven by the CLEAN RUN (it ran without
+# --gate-root, on $WORK/conduit-local-gate); this only re-asserts the lease
+# evidence landed there - a separate full gate run would spend the hosted
+# self-test job's time ceiling for no extra coverage.
+assert_eq "the default root run acquired the host lease" \
   "$([ -s "$WORK/conduit-local-gate/host-lease/attempt.json" ] && echo yes || echo no)" "yes"
 
 # ---------------------------------------------------------------------------
