@@ -705,7 +705,11 @@ finish_unit_lane() { # $1=status $2=exit_code
 #     erase-before-retry. A second stall fails the lane with the batch
 #     named - exactly one batch-level retry ever, never a lane rerun.
 run_unit_batches() {
-shutdown_own_simulator  # bounded + UDID-scoped: a wedged CoreSimulatorService must not stall batch 1
+if ! shutdown_own_simulator; then  # bounded + UDID-scoped, and refused outright when the run's own UDID cannot be established
+  echo "::error::unit $LANE: cannot establish this run's own simulator - refusing to run against an ambiguous device"
+  mark_later_batches_not_run 1
+  finish_unit_lane "error" 1
+fi
 
 local batch_idx=1 batch_total="${#BATCH_CLASSES_ARR[@]}"
 local batch_classes budget cls t0 secs status missing fail_count a1_status
@@ -787,7 +791,11 @@ while [ "$batch_idx" -le "$batch_total" ]; do
   if [ "$a1_status" = "timeout" ]; then
     echo "::warning::unit $LANE batch $batch_idx/$batch_total exceeded its "${budget}"s watchdog - shutting down the simulator (NO erase) and retrying THIS batch once with a fresh xcodebuild"
     bounded_run 45 xcrun simctl list devices >"$LOG_DIR/simctl-devices-after-batch-$batch_idx-timeout.txt" 2>&1 || true
-    shutdown_own_simulator
+    if ! shutdown_own_simulator; then
+      echo "::error::unit $LANE batch $batch_idx/$batch_total: cannot establish this run's own simulator for the retry - the environment cannot be trusted; stopping the lane"
+      mark_later_batches_not_run "$batch_idx"
+      finish_unit_lane "error" 1
+    fi
     RESET_USED=1
   else
     echo "::warning::unit $LANE batch $batch_idx/$batch_total failed with zero failing tests (exit $status) - infrastructure failure; erasing the simulator and retrying THIS batch once"
@@ -887,7 +895,10 @@ finish_unit_lane "pass" 0
 #     the original per-class failure-domain properties (per-class watchdogs,
 #     one retry, hang attribution).
 run_ui_lane() {
-  shutdown_own_simulator
+  if ! shutdown_own_simulator; then
+    echo "::error::ui $LANE: cannot establish this run's own simulator - refusing to run against an ambiguous device"
+    finish_lane "error" "$(serialize_attempts)" "" 1
+  fi
   reset_and_boot_simulator 0
 
   batch_budget=$(sum_of_class_budgets "${CLASSES_ARR[@]}")

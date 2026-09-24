@@ -192,6 +192,21 @@ fi
       exit 0
     fi
     if [ "$2 $3 $4" = "list devices available" ]; then
+      if [ -n "${FAKE_SIMCTL_DUPLICATE:-}" ]; then
+        # Two devices sharing the pinned name across runtimes: the gate must
+        # REFUSE to shut either down rather than pick one.
+        cat <<'DEV'
+{"devices" : {"com.apple.CoreSimulator.SimRuntime.iOS-26-0" : [
+  { "udid" : "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE",
+    "name" : "iPhone 17 Pro", "state" : "Booted" },
+  { "udid" : "6D08B063-B890-4D18-893B-D1E89E119919",
+    "name" : "Conduit CI Gate", "state" : "Shutdown" }],
+ "com.apple.CoreSimulator.SimRuntime.iOS-26-5" : [
+  { "udid" : "99999999-8888-7777-6666-555555555555",
+    "name" : "Conduit CI Gate", "state" : "Shutdown" }]}}
+DEV
+        exit 0
+      fi
       if [ -n "${FAKE_NO_GATE_DEVICE:-}" ]; then
         cat <<'DEV'
 {"devices" : {"com.apple.CoreSimulator.SimRuntime.iOS-26-0" : [
@@ -424,6 +439,12 @@ echo "result-bundle extraction exercised here: $([ "$EXTRACTION_SUPPORTED" -eq 1
 
 FIXTURE_HEAD="$(git -C "$WORK/repo" rev-parse HEAD)"
 export FAKE_CANNED="$WORK/canned.json"
+# The stub holder records its pid here. Exported BEFORE the first gate run so
+# the holder-exit assertions below test the holder that actually served that
+# run - and asserted non-empty, so a stub regression that stops writing the
+# pidfile cannot silently turn the check into a vacuous pass.
+export IOS_CI_HOST_PIDFILE="$WORK/holder.pid"
+rm -f "$IOS_CI_HOST_PIDFILE"
 
 # ---------------------------------------------------------------------------
 echo ""
@@ -494,17 +515,16 @@ fi
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- case: the host lease is acquired, held, and released ---"
-# The stub holder records its pid so these assertions never pattern-match
-# the SHARED host's process table (a real coordinator holding a lease for
-# another project must not fail this suite).
-export IOS_CI_HOST_PIDFILE="$WORK/holder.pid"
-rm -f "$IOS_CI_HOST_PIDFILE"
+# IOS_CI_HOST_PIDFILE was exported before the run that produced $RUN1, so
+# this is the holder that actually served that run.
 assert_eq "acquisition evidence lands in the run dir" \
   "$([ -f "$RUN1/host-lease.json" ] && echo yes || echo no)" "yes"
 assert_contains "lease id recorded" "$(cat "$RUN1/host-lease.json")" "L-stub00000000"
 HOLDER_PID="$(cat "$IOS_CI_HOST_PIDFILE" 2>/dev/null || true)"
+assert_eq "the holder recorded its pid (non-vacuous regression)" \
+  "$([ -n "$HOLDER_PID" ] && echo yes || echo no)" "yes"
 if [ -n "$HOLDER_PID" ] && kill -0 "$HOLDER_PID" 2>/dev/null; then
-  bad "a lease-holder helper survived the gate's exit"
+  bad "a lease-holder helper survived the gate's exit (pid $HOLDER_PID)"
 else
   ok "lease-holder helper exited with the gate"
 fi
@@ -545,6 +565,17 @@ assert_eq "a verdict-less helper refuses with exit 2" "$DEAD_EXIT" "2"
 assert_contains "the refusal explains the coordinator failure" "$(cat "$DEAD_LOG")" "coordinator failed to grant"
 
 echo ""
+echo "--- case: an ambiguous simulator name fails closed ---"
+DUP_LOG="$WORK/gate-dup-$RANDOM.log"
+FAKE_SIMCTL_DUPLICATE=1 PATH="$STUBS:$PATH" XCODEBUILD_POLL_INTERVAL_S=1 \
+  bash "$GATE" --allow-another-run --ref HEAD --gate-root "$WORK/gate-dup" \
+    --run-dir "$(new_run_dir)" >"$DUP_LOG" 2>&1
+DUP_EXIT=$?
+assert_eq "ambiguous device name fails the gate" "$DUP_EXIT" "1"
+assert_contains "the refusal names the ambiguity" "$(cat "$DUP_LOG")" "is ambiguous"
+assert_contains "nothing was shut down blindly" "$(cat "$DUP_LOG")" "refusing to shut down"
+
+echo ""
 echo "--- case: the monitor's invalid-run teardown is not a verdict ---"
 FOREIGN_DIR="$(new_run_dir)"
 FOREIGN_LOG="$WORK/gate-foreign-$RANDOM.log"
@@ -562,13 +593,19 @@ echo ""
 echo "--- case: SIGKILL of the gate releases the lease via kernel EOF ---"
 KILL_DIR="$(new_run_dir)"
 KILL_LOG="$WORK/gate-kill-$RANDOM.log"
+# A fresh pidfile proves the holder recorded by the assertions below served
+# THIS run, not an earlier one.
+rm -f "$IOS_CI_HOST_PIDFILE"
 PATH="$STUBS:$PATH" XCODEBUILD_POLL_INTERVAL_S=1 \
   bash "$GATE" --allow-another-run --ref HEAD --gate-root "$WORK/gate-kill" \
     --run-dir "$KILL_DIR" >"$KILL_LOG" 2>&1 &
 KILL_GATE_PID=$!
 KILL_ACQUIRED=1
 for i in $(seq 1 120); do
-  if [ -s "$KILL_DIR/host-lease.json" ]; then KILL_ACQUIRED=0; break; fi
+  if [ -s "$KILL_DIR/host-lease.json" ] && [ -s "$IOS_CI_HOST_PIDFILE" ]; then
+    KILL_ACQUIRED=0
+    break
+  fi
   if ! kill -0 "$KILL_GATE_PID" 2>/dev/null; then break; fi
   sleep 0.5
 done
@@ -576,6 +613,8 @@ assert_eq "the run acquired the lease before the kill" "$KILL_ACQUIRED" "0"
 kill -9 "$KILL_GATE_PID" 2>/dev/null || true
 wait "$KILL_GATE_PID" 2>/dev/null || true
 KILL_HOLDER_PID="$(cat "$IOS_CI_HOST_PIDFILE" 2>/dev/null || true)"
+assert_eq "the killed run's holder recorded its pid" \
+  "$([ -n "$KILL_HOLDER_PID" ] && echo yes || echo no)" "yes"
 KILL_RELEASED=1
 for i in $(seq 1 40); do
   if [ -z "$KILL_HOLDER_PID" ] || ! kill -0 "$KILL_HOLDER_PID" 2>/dev/null; then

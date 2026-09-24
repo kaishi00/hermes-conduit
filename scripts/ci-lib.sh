@@ -258,21 +258,38 @@ simulator_udid() {
   return 1
 }
 
-# Shut down ONLY the lane's own device (resolved through simulator_udid).
-# Shutting down every simulator on the host in one command is FORBIDDEN in
-# automation: this Mac is a shared build host, and a host-wide shutdown
-# reaches simulators other projects and developers own - the exact
-# interference the host coordinator exists to prevent (see
-# scripts/tests/test_simulator_safety.py). When the UDID cannot be resolved
-# the shutdown is skipped with a warning: xcodebuild boots the destination
-# itself, matching this library's existing degradation.
+# Shut down ONLY this run's own device, and only when exactly one device
+# answers to the pinned identity. Shutting down every simulator on the host
+# in one command is FORBIDDEN in automation (shared build host - see
+# scripts/tests/test_simulator_safety.py), and so is guessing: the UDID is
+# established from `simctl list devices available -j` by exact name, and if
+# that name maps to MORE THAN ONE device (across runtimes) - or to none, or
+# jq/the inventory is unavailable - the helper REFUSES to touch anything
+# and returns 1 so the caller can fail closed instead of shutting down an
+# ambiguous simulator that may belong to another project or developer.
 shutdown_own_simulator() {
-  local udid
-  if udid=$(simulator_udid) && [ -n "$udid" ]; then
-    bounded_run 60 xcrun simctl shutdown "$udid" || true
-  else
-    echo "::warning::could not resolve simulator UDID - skipping the UDID-scoped shutdown"
+  local json matches udid
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "::error::jq not found - cannot establish this run's own simulator UDID; refusing to shut down any simulator"
+    return 1
   fi
+  if ! bounded_run 60 xcrun simctl list devices available -j; then
+    echo "::error::simctl device inventory unavailable - cannot establish this run's own simulator UDID; refusing to shut down any simulator"
+    return 1
+  fi
+  json="$BOUNDED_OUTPUT"
+  matches=$(printf '%s\n' "$json" | jq -r --arg n "$SIMULATOR_NAME" \
+    '[.devices[][]? | select(.name == $n) | .udid] | unique | .[]' | grep -v '^$')
+  if [ -z "$matches" ]; then
+    echo "::error::no simulator named '$SIMULATOR_NAME' in the inventory - cannot establish this run's own device; refusing to shut down any simulator"
+    return 1
+  fi
+  if [ "$(printf '%s\n' "$matches" | grep -c .)" -gt 1 ]; then
+    echo "::error::simulator name '$SIMULATOR_NAME' is ambiguous (matches UDIDs: $(printf '%s ' $matches)) - refusing to shut down a device this run may not own"
+    return 1
+  fi
+  udid="$matches"
+  bounded_run 60 xcrun simctl shutdown "$udid" || true
 }
 
 # Reset the simulator to a known-clean state. $1 = 1 erases the device before
@@ -283,13 +300,19 @@ shutdown_own_simulator() {
 # function returns 0 - xcodebuild boots the destination itself, so callers
 # degrade gracefully (every simctl call is deadline-bounded). When an erase
 # WAS requested the caller is about to trust this device with a retry, so a
-# failed erase, an unresolvable UDID, or a boot that never completes returns
-# 1: the environment cannot be trusted and the caller must not run further
-# classes on it.
+# failed erase, an unresolvable or AMBIGUOUS UDID, or a boot that never
+# completes returns 1: the environment cannot be trusted and the caller must
+# not run further classes on it.
 reset_and_boot_simulator() {
   local erase="${1:-0}"
   local udid
-  shutdown_own_simulator
+  if ! shutdown_own_simulator; then
+    if [ "$erase" -eq 1 ]; then
+      echo "::error::could not establish this run's own simulator UDID for the erase - clean simulator recovery unavailable"
+      return 1
+    fi
+    echo "::warning::own-device shutdown unavailable - continuing best-effort (xcodebuild boots the destination itself)"
+  fi
   if [ "$erase" -eq 1 ]; then
     echo "::warning::erasing simulator before the retry"
     if ! udid=$(simulator_udid); then

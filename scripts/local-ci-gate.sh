@@ -310,17 +310,20 @@ cleanup() {
   local status=$?
   # Reap the acquisition watchdog first: a TERM landing in the small window
   # between its spawn and the post-exec kill would otherwise leave a 60s
-  # orphaned sleep behind.
+  # orphaned sleep behind. The variable is cleared once reaped so no later
+  # signal can reach a reused PID.
   if [ -n "${HOST_LEASE_WATCHDOG:-}" ]; then
     kill "$HOST_LEASE_WATCHDOG" 2>/dev/null || true
     wait "$HOST_LEASE_WATCHDOG" 2>/dev/null || true
+    HOST_LEASE_WATCHDOG=""
   fi
   # Release the host SIMULATOR_TEST lease FIRST: closing fd 3 EOFs the
   # holder helper's stdin, which releases the lease - and this works even
   # for exit paths that reach nothing else (no LONG-LIVED child keeps the
   # write end open; short-lived probes inherit it only transiently).
-  # TERM/KILL are only a backstop for a wedged helper; the lease evidence
-  # is (re-)copied into the run dir while it still exists.
+  # Escalation (TERM, then KILL) happens ONLY while the holder is
+  # demonstrably alive, and the PID is cleared once reaped: a signal to a
+  # reaped PID can reach an unrelated process on this shared host.
   if [ -n "${HOST_LEASE_HOLDER:-}" ]; then
     exec 3>&- || true
     local _w=0
@@ -328,10 +331,13 @@ cleanup() {
       sleep 1
       _w=$(( _w + 1 ))
     done
-    kill -TERM "$HOST_LEASE_HOLDER" 2>/dev/null || true
-    sleep 1
-    kill -KILL "$HOST_LEASE_HOLDER" 2>/dev/null || true
+    if kill -0 "$HOST_LEASE_HOLDER" 2>/dev/null; then
+      kill -TERM "$HOST_LEASE_HOLDER" 2>/dev/null || true
+      sleep 1
+      kill -0 "$HOST_LEASE_HOLDER" 2>/dev/null && kill -KILL "$HOST_LEASE_HOLDER" 2>/dev/null || true
+    fi
     wait "$HOST_LEASE_HOLDER" 2>/dev/null || true
+    HOST_LEASE_HOLDER=""
   fi
   if [ -n "${HOST_LEASE_DIR:-}" ] && [ -n "${RUN_DIR:-}" ] && [ -d "$RUN_DIR" ]; then
     if [ -s "$HOST_LEASE_JSON" ]; then
@@ -586,7 +592,10 @@ HOST_LEASE_HOLDER=$!
 # MISSING VERDICT alone - a dead helper fails `kill -0`, so conditioning on
 # liveness would miss exactly the deadlock this exists to break.
 (
-  sleep 60
+  # The sleep must not inherit the gate's stdio: killing THIS subshell does
+  # not kill the sleep child, and an orphaned sleep holding stdout/stderr
+  # keeps an SSH channel open until it expires.
+  sleep 60 </dev/null >/dev/null 2>&1
   if [ ! -s "$HOST_LEASE_JSON" ]; then
     echo "local-ci-gate: the host-lease helper never completed acquisition (is ios-ci-host functional?)" >&2
     kill -TERM "$HOST_LEASE_HOLDER" 2>/dev/null || true
@@ -597,6 +606,7 @@ HOST_LEASE_WATCHDOG=$!
 exec 3>"$HOST_LEASE_FIFO"
 kill "$HOST_LEASE_WATCHDOG" 2>/dev/null || true
 wait "$HOST_LEASE_WATCHDOG" 2>/dev/null || true
+HOST_LEASE_WATCHDOG=""
 # The helper prints exactly one flushed JSON line before holding; wait for
 # it (or for the helper to die refusing).
 HOST_LEASE_WAITED=0
@@ -614,8 +624,9 @@ done
 HOST_LEASE_STATUS="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8")).get("status",""))' "$HOST_LEASE_JSON" 2>/dev/null || true)"
 if [ "$HOST_LEASE_STATUS" != "acquired" ]; then
   exec 3>&- || true
-  kill "$HOST_LEASE_HOLDER" 2>/dev/null || true
+  kill -0 "$HOST_LEASE_HOLDER" 2>/dev/null && kill "$HOST_LEASE_HOLDER" 2>/dev/null || true
   wait "$HOST_LEASE_HOLDER" 2>/dev/null || true
+  HOST_LEASE_HOLDER=""
   if [ "$HOST_LEASE_STATUS" = "busy" ]; then
     echo "local-ci-gate: HOST BUSY - the SIMULATOR_TEST host resource is not available to this gate:" >&2
     sed 's/^/  /' "$HOST_LEASE_JSON" >&2 2>/dev/null || true
@@ -640,6 +651,7 @@ if ! kill -0 "$HOST_LEASE_HOLDER" 2>/dev/null; then
   echo "local-ci-gate: the lease holder exited immediately after granting - refusing to run uncoordinated" >&2
   exec 3>&- || true
   wait "$HOST_LEASE_HOLDER" 2>/dev/null || true
+  HOST_LEASE_HOLDER=""
   exit 2
 fi
 echo "== host lease: SIMULATOR_TEST held (lease ${HOST_LEASE_ID:-unknown}) =="
