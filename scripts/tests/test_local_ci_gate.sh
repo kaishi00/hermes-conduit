@@ -510,10 +510,12 @@ assert_contains "human summary names the tested commit" \
   "$(cat "$RUN1/summary.md")" "$FIXTURE_HEAD"
 assert_eq "build metadata moved into the run dir" \
   "$([ -f "$RUN1/build/build.log" ] && echo yes || echo no)" "yes"
-if [ -d "$WORK/gate/worktrees" ] && [ -n "$(ls -A "$WORK/gate/worktrees" 2>/dev/null)" ]; then
-  bad "throwaway worktree was left behind"
+# The clean run uses the DEFAULT gate root, so its worktree-leak check must
+# inspect that root (later explicit-root runs keep their own checks).
+if [ -d "$WORK/conduit-local-gate/worktrees" ] && [ -n "$(ls -A "$WORK/conduit-local-gate/worktrees" 2>/dev/null)" ]; then
+  bad "throwaway worktree was left behind (default root)"
 else
-  ok "throwaway worktree removed"
+  ok "throwaway worktree removed (default root)"
 fi
 
 # ---------------------------------------------------------------------------
