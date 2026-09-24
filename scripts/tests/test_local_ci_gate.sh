@@ -192,6 +192,21 @@ fi
       exit 0
     fi
     if [ "$2 $3 $4" = "list devices available" ]; then
+      if [ -n "${FAKE_SIMCTL_DUPLICATE:-}" ]; then
+        # Two devices sharing the pinned name across runtimes: the gate must
+        # REFUSE to shut either down rather than pick one.
+        cat <<'DEV'
+{"devices" : {"com.apple.CoreSimulator.SimRuntime.iOS-26-0" : [
+  { "udid" : "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE",
+    "name" : "iPhone 17 Pro", "state" : "Booted" },
+  { "udid" : "6D08B063-B890-4D18-893B-D1E89E119919",
+    "name" : "Conduit CI Gate", "state" : "Shutdown" }],
+ "com.apple.CoreSimulator.SimRuntime.iOS-26-5" : [
+  { "udid" : "99999999-8888-7777-6666-555555555555",
+    "name" : "Conduit CI Gate", "state" : "Shutdown" }]}}
+DEV
+        exit 0
+      fi
       if [ -n "${FAKE_NO_GATE_DEVICE:-}" ]; then
         cat <<'DEV'
 {"devices" : {"com.apple.CoreSimulator.SimRuntime.iOS-26-0" : [
@@ -214,7 +229,53 @@ fi
 exit 0
 EOF
 
-  chmod +x "$STUBS/xcodegen" "$STUBS/xcodebuild" "$STUBS/xcrun"
+  cat > "$STUBS/ios-ci-host" <<'EOF'
+#!/bin/bash
+# Models the host coordinator for fixtures. Default mode: always-granting
+# and always-quiet - `doctor` self-checks clean, `acquire --hold` grants
+# instantly and holds exactly as long as its stdin stays open (the real
+# FIFO contract the gate relies on). IOS_CI_HOST_MODE selects the failure
+# shapes the gate must fail closed on:
+#   doctor-fail - the coordinator's self-check fails (gate must exit 2)
+#   busy        - another project holds the resource (gate must exit 3)
+#   foreign     - the monitor signals the controller mid-run (invalid run)
+#   dead        - the helper dies without any verdict (gate must exit 2)
+# IOS_CI_HOST_PIDFILE, when set, receives the holder's pid so suite
+# assertions never have to pattern-match the shared host's process table.
+if [ "${IOS_CI_HOST_MODE:-grant}" = "doctor-fail" ] && [ "${1:-}" = "doctor" ]; then
+  echo "stub doctor failure" >&2
+  exit 1
+fi
+case "${1:-}" in
+  doctor|status|audit) exit 0 ;;
+esac
+if [ "${1:-}" = "acquire" ]; then
+  if [ "${IOS_CI_HOST_MODE:-grant}" = "busy" ]; then
+    echo "{\"status\": \"busy\", \"resource\": \"simulator-test\", \"owner\": {\"project\": \"VitalRoute\", \"workflow\": \"background-tests\", \"owner_pid\": 4242, \"acquired_at\": \"stub\"}, \"hint\": \"stubbed busy\"}"
+    exit 0
+  fi
+  if [ "${IOS_CI_HOST_MODE:-grant}" = "dead" ]; then
+    exit 1
+  fi
+  if [ "${IOS_CI_HOST_MODE:-grant}" = "foreign" ]; then
+    # Model the monitor's release-policy action: shortly after granting,
+    # signal the controller (the gate) that uncoordinated activity was seen.
+    (
+      sleep 1
+      if [ -n "${IOS_CI_HOST_CONTROLLER_PID:-}" ]; then
+        kill -TERM "$IOS_CI_HOST_CONTROLLER_PID" 2>/dev/null || true
+      fi
+    ) &
+  fi
+  [ -n "${IOS_CI_HOST_PIDFILE:-}" ] && echo $$ > "$IOS_CI_HOST_PIDFILE"
+  echo "{\"status\": \"acquired\", \"lease_id\": \"L-stub00000000\", \"resource\": \"simulator-test\", \"project\": \"stub\", \"simulator_udid\": null, \"acquired_at\": \"stub\", \"owner_pid\": $$, \"waited_seconds\": 0.0, \"tool_version\": \"stub\"}"
+  cat > /dev/null
+  exit 0
+fi
+exit 0
+EOF
+
+  chmod +x "$STUBS/xcodegen" "$STUBS/xcodebuild" "$STUBS/xcrun" "$STUBS/ios-ci-host"
 
   # Windows (MSYS/Cygwin) cannot exec an extension-less script: Python's
   # subprocess (the timing extractor shells out to `xcrun xcresulttool`) needs
@@ -223,7 +284,7 @@ EOF
   # Windows checkout instead of silently degrading to "extraction failed".
   case "$(uname -s 2>/dev/null)" in
     MINGW*|MSYS*|CYGWIN*)
-      for name in xcodegen xcodebuild xcrun; do
+      for name in xcodegen xcodebuild xcrun ios-ci-host; do
         printf '@bash "%%~dp0%s" %%*\r\n' "$name" > "$STUBS/$name.cmd"
       done
       ;;
@@ -378,13 +439,23 @@ echo "result-bundle extraction exercised here: $([ "$EXTRACTION_SUPPORTED" -eq 1
 
 FIXTURE_HEAD="$(git -C "$WORK/repo" rev-parse HEAD)"
 export FAKE_CANNED="$WORK/canned.json"
+# The stub holder records its pid here. Exported BEFORE the first gate run so
+# the holder-exit assertions below test the holder that actually served that
+# run - and asserted non-empty, so a stub regression that stops writing the
+# pidfile cannot silently turn the check into a vacuous pass.
+export IOS_CI_HOST_PIDFILE="$WORK/holder.pid"
+rm -f "$IOS_CI_HOST_PIDFILE"
 
 # ---------------------------------------------------------------------------
 echo ""
-echo "--- case: clean run ---"
+echo "--- case: clean run (on the DEFAULT gate root) ---"
+# Deliberately NO --gate-root: the default (repo parent +/conduit-local-gate
+# = $WORK/conduit-local-gate, inside this sandbox) must work - a lease block
+# placed before the GATE_ROOT default would die at mkfifo /host-lease/... .
+# This run doubles as the default-gate-root regression.
 RUN1="$(new_run_dir)"
 CLEAN_EXIT=0
-run_gate --ref HEAD --gate-root "$WORK/gate" --run-dir "$RUN1" \
+run_gate --ref HEAD --run-dir "$RUN1" \
     --repeat-classes AlphaTests --repeat-iterations 2 || CLEAN_EXIT=$?
 if needs_extraction; then
   if [ "$CLEAN_EXIT" -eq 0 ]; then
@@ -439,11 +510,133 @@ assert_contains "human summary names the tested commit" \
   "$(cat "$RUN1/summary.md")" "$FIXTURE_HEAD"
 assert_eq "build metadata moved into the run dir" \
   "$([ -f "$RUN1/build/build.log" ] && echo yes || echo no)" "yes"
-if [ -d "$WORK/gate/worktrees" ] && [ -n "$(ls -A "$WORK/gate/worktrees" 2>/dev/null)" ]; then
-  bad "throwaway worktree was left behind"
+# The clean run uses the DEFAULT gate root, so its worktree-leak check must
+# inspect that root (later explicit-root runs keep their own checks).
+if [ -d "$WORK/conduit-local-gate/worktrees" ] && [ -n "$(ls -A "$WORK/conduit-local-gate/worktrees" 2>/dev/null)" ]; then
+  bad "throwaway worktree was left behind (default root)"
 else
-  ok "throwaway worktree removed"
+  ok "throwaway worktree removed (default root)"
 fi
+
+# ---------------------------------------------------------------------------
+echo ""
+echo "--- case: the host lease is acquired, held, and released ---"
+# IOS_CI_HOST_PIDFILE was exported before the run that produced $RUN1, so
+# this is the holder that actually served that run.
+assert_eq "acquisition evidence lands in the run dir" \
+  "$([ -f "$RUN1/host-lease.json" ] && echo yes || echo no)" "yes"
+assert_contains "lease id recorded" "$(cat "$RUN1/host-lease.json")" "L-stub00000000"
+HOLDER_PID="$(cat "$IOS_CI_HOST_PIDFILE" 2>/dev/null || true)"
+assert_eq "the holder recorded its pid (non-vacuous regression)" \
+  "$([ -n "$HOLDER_PID" ] && echo yes || echo no)" "yes"
+if [ -n "$HOLDER_PID" ] && kill -0 "$HOLDER_PID" 2>/dev/null; then
+  bad "a lease-holder helper survived the gate's exit (pid $HOLDER_PID)"
+else
+  ok "lease-holder helper exited with the gate"
+fi
+
+echo ""
+echo "--- case: HOST BUSY refuses before any work (exit 3) ---"
+BUSY_DIR="$(new_run_dir)"
+BUSY_LOG="$WORK/gate-busy-$RANDOM.log"
+IOS_CI_HOST_MODE=busy PATH="$STUBS:$PATH" XCODEBUILD_POLL_INTERVAL_S=1 \
+  bash "$GATE" --allow-another-run --ref HEAD --gate-root "$WORK/gate-busy" \
+    --run-dir "$BUSY_DIR" >"$BUSY_LOG" 2>&1
+BUSY_EXIT=$?
+assert_eq "busy coordinator refuses with exit 3" "$BUSY_EXIT" "3"
+assert_contains "refusal names the owning project" "$(cat "$BUSY_LOG")" "VitalRoute"
+assert_eq "no gate-result.json for a refused run" \
+  "$([ -f "$BUSY_DIR/gate-result.json" ] && echo yes || echo no)" "no"
+assert_eq "refusal evidence retained under the gate root" \
+  "$([ -s "$WORK/gate-busy/host-lease/attempt.json" ] && echo yes || echo no)" "yes"
+
+echo ""
+echo "--- case: a broken coordinator self-check fails closed (exit 2) ---"
+DOCTOR_LOG="$WORK/gate-doctor-$RANDOM.log"
+IOS_CI_HOST_MODE=doctor-fail PATH="$STUBS:$PATH" XCODEBUILD_POLL_INTERVAL_S=1 \
+  bash "$GATE" --allow-another-run --ref HEAD --gate-root "$WORK/gate-doctor" \
+    --run-dir "$(new_run_dir)" >"$DOCTOR_LOG" 2>&1
+DOCTOR_EXIT=$?
+assert_eq "failed coordinator self-check refuses with exit 2" "$DOCTOR_EXIT" "2"
+assert_contains "the self-check failure is reported" "$(cat "$DOCTOR_LOG")" "self-check"
+
+echo ""
+echo "--- case: a helper that dies without a verdict fails closed (exit 2) ---"
+DEAD_LOG="$WORK/gate-dead-$RANDOM.log"
+IOS_CI_HOST_MODE=dead PATH="$STUBS:$PATH" XCODEBUILD_POLL_INTERVAL_S=1 \
+  bash "$GATE" --allow-another-run --ref HEAD --gate-root "$WORK/gate-dead" \
+    --run-dir "$(new_run_dir)" >"$DEAD_LOG" 2>&1
+DEAD_EXIT=$?
+assert_eq "a verdict-less helper refuses with exit 2" "$DEAD_EXIT" "2"
+assert_contains "the refusal explains the coordinator failure" "$(cat "$DEAD_LOG")" "coordinator failed to grant"
+
+echo ""
+echo "--- case: an ambiguous simulator name fails closed ---"
+DUP_LOG="$WORK/gate-dup-$RANDOM.log"
+FAKE_SIMCTL_DUPLICATE=1 PATH="$STUBS:$PATH" XCODEBUILD_POLL_INTERVAL_S=1 \
+  bash "$GATE" --allow-another-run --ref HEAD --gate-root "$WORK/gate-dup" \
+    --run-dir "$(new_run_dir)" >"$DUP_LOG" 2>&1
+DUP_EXIT=$?
+assert_eq "ambiguous device name fails closed with exit 2" "$DUP_EXIT" "2"
+assert_contains "the refusal names the ambiguity" "$(cat "$DUP_LOG")" "is ambiguous"
+assert_contains "nothing was run against the ambiguous device" "$(cat "$DUP_LOG")" "refusing to run"
+
+echo ""
+echo "--- case: the monitor's invalid-run teardown is not a verdict ---"
+FOREIGN_DIR="$(new_run_dir)"
+FOREIGN_LOG="$WORK/gate-foreign-$RANDOM.log"
+IOS_CI_HOST_MODE=foreign PATH="$STUBS:$PATH" XCODEBUILD_POLL_INTERVAL_S=1 \
+  bash "$GATE" --allow-another-run --ref HEAD --gate-root "$WORK/gate-foreign" \
+    --run-dir "$FOREIGN_DIR" >"$FOREIGN_LOG" 2>&1
+FOREIGN_EXIT=$?
+assert_eq "a monitor teardown exits 143 (SIGTERM)" "$FOREIGN_EXIT" "143"
+assert_eq "a torn-down run produces no gate verdict" \
+  "$([ -f "$FOREIGN_DIR/gate-result.json" ] && echo yes || echo no)" "no"
+assert_eq "the torn-down run had acquired the lease" \
+  "$([ -s "$FOREIGN_DIR/host-lease.json" ] && echo yes || echo no)" "yes"
+
+echo ""
+echo "--- case: SIGKILL of the gate releases the lease via kernel EOF ---"
+KILL_DIR="$(new_run_dir)"
+KILL_LOG="$WORK/gate-kill-$RANDOM.log"
+# A fresh pidfile proves the holder recorded by the assertions below served
+# THIS run, not an earlier one.
+rm -f "$IOS_CI_HOST_PIDFILE"
+PATH="$STUBS:$PATH" XCODEBUILD_POLL_INTERVAL_S=1 \
+  bash "$GATE" --allow-another-run --ref HEAD --gate-root "$WORK/gate-kill" \
+    --run-dir "$KILL_DIR" >"$KILL_LOG" 2>&1 &
+KILL_GATE_PID=$!
+KILL_ACQUIRED=1
+for i in $(seq 1 120); do
+  if [ -s "$KILL_DIR/host-lease.json" ] && [ -s "$IOS_CI_HOST_PIDFILE" ]; then
+    KILL_ACQUIRED=0
+    break
+  fi
+  if ! kill -0 "$KILL_GATE_PID" 2>/dev/null; then break; fi
+  sleep 0.5
+done
+assert_eq "the run acquired the lease before the kill" "$KILL_ACQUIRED" "0"
+kill -9 "$KILL_GATE_PID" 2>/dev/null || true
+wait "$KILL_GATE_PID" 2>/dev/null || true
+KILL_HOLDER_PID="$(cat "$IOS_CI_HOST_PIDFILE" 2>/dev/null || true)"
+assert_eq "the killed run's holder recorded its pid" \
+  "$([ -n "$KILL_HOLDER_PID" ] && echo yes || echo no)" "yes"
+KILL_RELEASED=1
+for i in $(seq 1 40); do
+  if [ -z "$KILL_HOLDER_PID" ] || ! kill -0 "$KILL_HOLDER_PID" 2>/dev/null; then
+    KILL_RELEASED=0
+    break
+  fi
+  sleep 0.5
+done
+assert_eq "kernel EOF released the lease holder without any trap" "$KILL_RELEASED" "0"
+
+# The default gate root is already proven by the CLEAN RUN (it ran without
+# --gate-root, on $WORK/conduit-local-gate); this only re-asserts the lease
+# evidence landed there - a separate full gate run would spend the hosted
+# self-test job's time ceiling for no extra coverage.
+assert_eq "the default root run acquired the host lease" \
+  "$([ -s "$WORK/conduit-local-gate/host-lease/attempt.json" ] && echo yes || echo no)" "yes"
 
 # ---------------------------------------------------------------------------
 echo ""

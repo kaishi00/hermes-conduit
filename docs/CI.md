@@ -577,6 +577,48 @@ The gate prints the full SHA it tested and writes
 `gate-result.json` + `summary.md` under its run directory. Exit status is `0`
 only when the entire gate passed. Run `--help` for every flag.
 
+### Host simulator coordination (`ios-ci-host`)
+
+The Mac is a **shared build host** (Conduit, VitalRoute, SeaBag, agent
+sessions, ordinary development), and two concurrent xcodebuild/Simulator
+chains on one host corrupt each other's state — the launch-wedge class of
+infrastructure failures. The gate therefore holds the host-level
+**`SIMULATOR_TEST`** resource, through the generic coordinator
+`ios-ci-host` (`~/.local/bin/ios-ci-host` on `ios-mac`; source
+`~/projects/ios-ci-host`; integration guide
+`~/projects/ios-ci-host/docs/USING-ios-mac-CI-resources.md`), for its whole
+duration:
+
+- **Fail-closed**: if the coordinator is missing or its self-check fails,
+  the gate refuses to run uncoordinated (exit 2). If another project holds
+  the resource, the gate refuses with the owner's structured lease
+  metadata on stderr (exit 3, `HOST BUSY`). Never an unbounded wait.
+- **Crash-safe holding**: a background helper owns the lease and reads a
+  FIFO whose write end the gate holds (fd 3). On every exit path —
+  including a SIGKILL that runs no trap — the kernel closes the pipe and
+  the lease is released.
+- **Uncoordinated-activity monitor**: while the gate runs, the helper
+  classifies any simulator-testing activity that is not part of this gate
+  as `FOREIGN` (evidence: pid, argv, ancestor chain — never which desktop
+  app spawned it). Per release policy (`--on-foreign terminate`) it tears
+  the run down as **invalid**: the gate dies by SIGTERM (exit 143), the run
+  directory keeps `host-lease.json` + `host-watch.jsonl`, and the result is
+  **not a gate verdict** — it must not be counted as a test failure or as a
+  pass. (A SIGTERM exit before `host-lease.json` appears in the run dir means
+  the acquisition watchdog fired — the coordinator never granted — not
+  foreign activity. After a SIGKILL of the gate — the one death no trap
+  covers — the lease still releases via kernel EOF on the FIFO; the watch
+  log then remains only under `<gate-root>/host-lease/watch.jsonl`.)
+- In automation, simulator lifecycle commands are UDID-scoped only;
+  host-wide `shutdown/erase/delete`-of-everything commands are rejected by
+  the static rule in `scripts/tests/test_simulator_safety.py` (mirroring
+  `ios-ci-host audit`).
+
+The coordinator owns only resource coordination, exclusivity, simulator
+allocation and host-busy evidence. Exact-SHA evidence, gate-result files,
+assertion-vs-infrastructure classification, repeat policy and the release
+verdict remain the gate's own responsibilities.
+
 The device is pinned by name (`--simulator`, default **`Conduit CI Gate`**;
 the environment's `SIMULATOR_OS`/`SIMULATOR_ARCH` are honoured by ci-lib.sh as
 usual), and the SAME device is passed explicitly to every phase (the build, the
