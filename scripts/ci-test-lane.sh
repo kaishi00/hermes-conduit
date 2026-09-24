@@ -717,7 +717,7 @@ fi
 # refuses with the launch wedge (FBSOpenApplicationServiceErrorDomain ...
 # Application failed preflight checks ... Busy). Controlled A/B on the
 # wedge Mac (2026-09-24, frozen release products): every launch on an
-# already-Booted device was clean (0 refusals across 40+ invocations),
+# already-Booted device was clean (0 refusals across 48 invocations),
 # while Shutdown-at-launch refused 40-70% of launches with the documented
 # alternating pattern - this lane-start shutdown was handing xcodebuild
 # exactly that state (cert147 lost batch 1 of every unit lane and 11 of 12

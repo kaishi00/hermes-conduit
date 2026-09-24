@@ -672,8 +672,9 @@ The gate runs on a dedicated simulator device ("Conduit CI Gate", created on
 demand) precisely so it can erase that device freely: on our Mac the host
 app's install/launch is periodically refused (`Simulator device failed to
 launch com.milim.relay … Application failed preflight checks … reason: Busy`),
-and the A/B probe that diagnosed it showed only `simctl erase` clears the
-condition reliably.
+and the A/B evidence that diagnosed it points at the device's state when
+xcodebuild starts (see the "prepare" row above: a Booted-at-launch device
+was clean in every arm, while a Shutdown-at-launch cold boot was refused).
 
 Because the wedge accumulates again over successive launches, a one-time
 pre-run erase is not enough. The gate therefore allows at most one bounded
