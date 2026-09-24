@@ -724,7 +724,9 @@ fi
 # repeat iterations to it; the UI lane, which already settled, was clean).
 # Preparation, never a retry: it re-runs nothing, erases nothing, and is
 # best-effort (erase=0 degrades to a warning, letting xcodebuild boot the
-# destination itself, bounded by ci-lib).
+# destination itself, bounded by ci-lib). reset_and_boot_simulator shuts
+# down again internally; the explicit fail-closed shutdown above is kept
+# for its refusal on an ambiguous UDID (the settle only warns there).
 reset_and_boot_simulator 0
 
 local batch_idx=1 batch_total="${#BATCH_CLASSES_ARR[@]}"

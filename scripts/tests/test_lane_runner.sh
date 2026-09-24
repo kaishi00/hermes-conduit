@@ -515,6 +515,11 @@ assert_eq "settle waits for bootstatus before first xcodebuild" \
 # never erase. Changing either new call site to erase=1 makes these fail.
 assert_eq "lane start settle never erases" \
   "$(grep -cFx "simctl erase" "$SEQ_LOG" 2>/dev/null || true)" "0"
+# ...and must not mark a recovery reset either (RESET_USED/ERASE_USED feed
+# simulator_reset/simulator_erase in the lane result): a future "helpful"
+# RESET_USED=1 at lane start would flip a clean lane's telemetry otherwise.
+assert_eq "lane-start settle is not a recovery reset" \
+  "$(lane_field "['simulator_reset']")$(lane_field "['simulator_erase']")" "FalseFalse"
 assert_eq "attempts" "$(attempts_statuses)" "['passed', 'passed', 'passed']"
 assert_eq "batch statuses" "$(batch_statuses)" "['pass', 'pass', 'pass']"
 assert_eq "batch 1 invoked once" "$(batch_invocations "batch-1-a1")" "1"
