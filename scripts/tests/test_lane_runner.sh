@@ -13,10 +13,10 @@ set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SCRIPTS="$(cd "$HERE/.." && pwd)"
-WORK="$(mktemp -d)"
+WORK="${LR_DEBUG_WORK:-$(mktemp -d)}"
 STUBS="$WORK/stubs"
 mkdir -p "$STUBS"
-trap 'rm -rf "$WORK"' EXIT
+if [ -z "${LR_DEBUG_WORK:-}" ]; then trap 'rm -rf "$WORK"' EXIT; fi
 
 pass_count=0
 fail_count=0
@@ -1063,6 +1063,10 @@ fi
 # --- unit case 12: ambiguous device name fails the lane closed ----------------
 end_case
 begin_case "ambiguous simulator name refused" "$WORK/u12"
+# The UI cases above REPLACE $STUBS/xcodebuild with their own stub; these are
+# unit cases again, so reinstall the unit-batch stub and reset its knobs.
+write_unit_batch_stub_xcodebuild
+reset_unit_stub_vars
 export FAKE_SIMCTL_DUPLICATE=1
 run_lane "AlphaTests" 300 1
 unset FAKE_SIMCTL_DUPLICATE
@@ -1083,11 +1087,14 @@ fi
 # is unique and never recycled, so the lane proceeds without guessing.
 end_case
 begin_case "run-owned UDID pin bypasses ambiguity" "$WORK/u13"
+write_unit_batch_stub_xcodebuild
+reset_unit_stub_vars
 export FAKE_SIMCTL_DUPLICATE=1
 export SIMULATOR_UDID="6D08B063-B890-4D18-893B-D1E89E119919"
 run_lane "AlphaTests" 300 1
 unset FAKE_SIMCTL_DUPLICATE
 unset SIMULATOR_UDID
+cp "$WORKCASE/stdout.log" /c/Users/Micro/.dsh/tmp/u13-stdout.log 2>/dev/null || cp "$WORKCASE/stdout.log" /tmp/u13-stdout.log
 assert_eq "exit code" "$(cat "$WORKCASE/exit-code")" "0"
 if grep -q "is ambiguous" "$WORKCASE/stdout.log"; then
   bad "a pinned UDID must not consult the ambiguous name"
