@@ -313,7 +313,9 @@ cleanup() {
   # orphaned sleep behind. The variable is cleared once reaped so no later
   # signal can reach a reused PID.
   if [ -n "${HOST_LEASE_WATCHDOG:-}" ]; then
-    kill "$HOST_LEASE_WATCHDOG" 2>/dev/null || true
+    if kill -0 "$HOST_LEASE_WATCHDOG" 2>/dev/null; then
+      kill "$HOST_LEASE_WATCHDOG" 2>/dev/null || true
+    fi
     wait "$HOST_LEASE_WATCHDOG" 2>/dev/null || true
     HOST_LEASE_WATCHDOG=""
   fi
@@ -769,15 +771,22 @@ run_bounded 60 "$DEVICES_JSON" "$RUN_DIR" \
 # Ambiguity refusal BEFORE any device is chosen: if the pinned NAME answers
 # to more than one device, this gate cannot know which one it owns, and
 # every downstream UDID-scoped operation (shutdown, erase, boot) would be a
-# guess. Fail closed instead of resolving by newest-runtime silently.
-if command -v jq >/dev/null 2>&1 && [ -s "$DEVICES_JSON" ]; then
-  GATE_SIM_MATCHES="$(jq -r --arg n "$SIMULATOR_NAME" \
-    '[.devices[][]? | select(.name == $n) | .udid] | unique | .[]' "$DEVICES_JSON" 2>/dev/null | grep -v '^$' || true)"
-  if [ "$(printf '%s\n' "$GATE_SIM_MATCHES" | grep -c .)" -gt 1 ]; then
-    echo "local-ci-gate: simulator name '$SIMULATOR_NAME' is ambiguous (matches UDIDs: $(printf '%s ' $GATE_SIM_MATCHES))" >&2
-    echo "local-ci-gate: refusing to run against a device this gate cannot prove it owns; remove the duplicate device or pass --simulator with a unique name" >&2
-    exit 2
-  fi
+# guess. Fail closed - including when uniqueness cannot be PROVEN (no jq,
+# empty inventory): refusing to guess is the whole point.
+if ! command -v jq >/dev/null 2>&1; then
+  echo "local-ci-gate: jq not found - cannot prove simulator-name uniqueness; refusing to guess a device" >&2
+  exit 2
+fi
+if [ ! -s "$DEVICES_JSON" ]; then
+  echo "local-ci-gate: simulator inventory unavailable - cannot prove simulator-name uniqueness; refusing to guess a device" >&2
+  exit 2
+fi
+GATE_SIM_MATCHES="$(jq -r --arg n "$SIMULATOR_NAME" \
+  '[.devices[][]? | select(.name == $n) | .udid] | unique | .[]' "$DEVICES_JSON" 2>/dev/null | grep -v '^$' || true)"
+if [ "$(printf '%s\n' "$GATE_SIM_MATCHES" | grep -c .)" -gt 1 ]; then
+  echo "local-ci-gate: simulator name '$SIMULATOR_NAME' is ambiguous (matches UDIDs: $(printf '%s\n' "$GATE_SIM_MATCHES" | tr '\n' ' '))" >&2
+  echo "local-ci-gate: refusing to run against a device this gate cannot prove it owns; remove the duplicate device or pass --simulator with a unique name" >&2
+  exit 2
 fi
 python3 "$HELPER" simulator --devices "$DEVICES_JSON" \
   --name "$SIMULATOR_NAME" --out "$RUN_DIR/simulator.json" >/dev/null 2>&1 || true

@@ -258,23 +258,39 @@ simulator_udid() {
   return 1
 }
 
+# Resolve the UDID of THIS run's own device: the run-owned pin when the
+# caller provides one (the gate resolves or creates its device before any
+# lane and passes it down; UDIDs are unique and never recycled), otherwise
+# the same deterministic newest-runtime rule the destination uses.
+resolve_own_udid() {
+  if [ -n "${SIMULATOR_UDID:-}" ]; then
+    printf '%s\n' "$SIMULATOR_UDID"
+    return 0
+  fi
+  simulator_udid
+}
+
 # Shut down ONLY this run's own device, and only when exactly one device
 # answers to the pinned identity. Shutting down every simulator on the host
 # in one command is FORBIDDEN in automation (shared build host - see
-# scripts/tests/test_simulator_safety.py), and so is guessing: the UDID is
-# established from `simctl list devices available -j` by exact name, and if
-# that name maps to MORE THAN ONE device (across runtimes) - or to none, or
-# jq/the inventory is unavailable - the helper REFUSES to touch anything
-# and returns 1 so the caller can fail closed instead of shutting down an
-# ambiguous simulator that may belong to another project or developer.
+# scripts/tests/test_simulator_safety.py), and so is guessing. A run-owned
+# SIMULATOR_UDID pin is authoritative. Without a pin, the UDID is
+# established from `simctl list devices available -j` by exact name - OS-
+# scoped when SIMULATOR_OS pins the runtime, exactly like the destination
+# resolution, with no silent fallback - and if the name maps to MORE THAN
+# ONE device in that scope (or to none, or jq/the inventory is unavailable)
+# the helper REFUSES to touch anything and returns 1 so the caller can fail
+# closed instead of shutting down an ambiguous simulator that may belong to
+# another project or developer.
 shutdown_own_simulator() {
-  local json matches
-  # A run-owned pin (the gate resolves or creates its device before any lane
-  # and passes the UDID down) is authoritative: UDIDs are unique and never
-  # recycled, so a pinned shutdown can never reach another project's device.
+  local json qualified matches udid runtime runtime_version
   if [ -n "${SIMULATOR_UDID:-}" ]; then
     bounded_run 60 xcrun simctl shutdown "$SIMULATOR_UDID" || true
     return 0
+  fi
+  if [ -z "${SIMULATOR_NAME:-}" ]; then
+    echo "::error::SIMULATOR_NAME is not set - cannot establish this run's own device; refusing to shut down any simulator"
+    return 1
   fi
   if ! command -v jq >/dev/null 2>&1; then
     echo "::error::jq not found - cannot establish this run's own simulator UDID; refusing to shut down any simulator"
@@ -285,14 +301,25 @@ shutdown_own_simulator() {
     return 1
   fi
   json="$BOUNDED_OUTPUT"
-  matches=$(printf '%s\n' "$json" | jq -r --arg n "$SIMULATOR_NAME" \
-    '[.devices[][]? | select(.name == $n) | .udid] | unique | .[]' | grep -v '^$')
+  qualified="$json"
+  if [ -n "${SIMULATOR_OS:-}" ]; then
+    for runtime in $(printf '%s\n' "$json" | jq -r '.devices | keys[]' 2>/dev/null | grep 'SimRuntime\.iOS'); do
+      if runtime_version="$(simruntime_version "$runtime")" \
+         && os_version_matches "$SIMULATOR_OS" "$runtime_version"; then
+        continue
+      fi
+      qualified="$(printf '%s\n' "$qualified" | jq -c --arg rt "$runtime" 'del(.devices[$rt])' 2>/dev/null)" \
+        || qualified="$json"
+    done
+  fi
+  matches=$(printf '%s\n' "$qualified" | jq -r --arg n "$SIMULATOR_NAME" \
+    '[.devices[][]? | select(.name == $n) | .udid] | unique | .[]' 2>/dev/null | grep -v '^$')
   if [ -z "$matches" ]; then
-    echo "::error::no simulator named '$SIMULATOR_NAME' in the inventory - cannot establish this run's own device; refusing to shut down any simulator"
+    echo "::error::no simulator named '$SIMULATOR_NAME' in scope - cannot establish this run's own device; refusing to shut down any simulator"
     return 1
   fi
   if [ "$(printf '%s\n' "$matches" | grep -c .)" -gt 1 ]; then
-    echo "::error::simulator name '$SIMULATOR_NAME' is ambiguous (matches UDIDs: $(printf '%s ' $matches)) - refusing to shut down a device this run may not own"
+    echo "::error::simulator name '$SIMULATOR_NAME' is ambiguous (matches UDIDs: $(printf '%s\n' "$matches" | tr '\n' ' ')) - refusing to shut down a device this run may not own"
     return 1
   fi
   udid="$matches"
@@ -322,7 +349,7 @@ reset_and_boot_simulator() {
   fi
   if [ "$erase" -eq 1 ]; then
     echo "::warning::erasing simulator before the retry"
-    if ! udid=$(simulator_udid); then
+    if ! udid=$(resolve_own_udid); then
       echo "::error::could not resolve simulator UDID for erase - clean simulator recovery unavailable"
       return 1
     fi
@@ -335,7 +362,7 @@ reset_and_boot_simulator() {
   # integration suite, which scales settling sleeps to 0 - deadlines are
   # wall-clock (`date`), so watchdog budgets never depend on this multiplier.
   sleep $(( 3 * ${GATE_SLEEP_SCALE:-1} ))
-  if ! udid=$(simulator_udid); then
+  if ! udid=$(resolve_own_udid); then
     echo "::warning::could not resolve simulator UDID - letting xcodebuild boot the destination itself"
     [ "$erase" -eq 1 ] && return 1
     return 0
@@ -383,7 +410,10 @@ build_destination() {
     DESTINATION="$DESTINATION,OS=$SIMULATOR_OS"
   fi
   local udid
-  if udid=$(simulator_udid) && [ -n "$udid" ]; then
+  # The run-owned pin (when the caller provides one) is authoritative for
+  # the destination too: xcodebuild must target exactly the device this run
+  # owns, never a newest-runtime name match.
+  if udid=$(resolve_own_udid) && [ -n "$udid" ]; then
     DESTINATION="platform=iOS Simulator,id=$udid,arch=${SIMULATOR_ARCH:-arm64}"
     echo "destination: '$SIMULATOR_NAME' resolved to UDID $udid (arch ${SIMULATOR_ARCH:-arm64})"
   else
@@ -417,7 +447,7 @@ wait_for_destination_device() {
     return 0
   fi
   while :; do
-    if udid=$(simulator_udid) && [ -n "$udid" ]; then
+    if udid=$(resolve_own_udid) && [ -n "$udid" ]; then
       waited=$(( $(date +%s) - started ))
       if [ "$waited" -gt 0 ]; then
         echo "destination device '$SIMULATOR_NAME' became visible after ${waited}s"

@@ -42,8 +42,20 @@ fi
 if [ "$1" = "simctl" ]; then
   # The erase-gated simulator recovery must be able to SUCCEED in tests, so
   # simctl list -j serves one pinned device (matching the default
-  # SIMULATOR_NAME) for ci-lib's jq-based UDID resolution.
+  # SIMULATOR_NAME) for ci-lib's jq-based UDID resolution. FAKE_SIMCTL_DUPLICATE
+  # serves the same name on TWO runtimes: the lane must refuse to guess which
+  # device it owns unless the caller pinned a run-owned UDID.
   if [ "$2 $3 $4 $5" = "list devices available -j" ]; then
+    if [ -n "${FAKE_SIMCTL_DUPLICATE:-}" ]; then
+      cat <<'DEV'
+{"devices" : {"com.apple.CoreSimulator.SimRuntime.iOS-26-0" : [
+  { "udid" : "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE",
+    "name" : "iPhone 17 Pro", "state" : "Shutdown" },
+  { "udid" : "6D08B063-B890-4D18-893B-D1E89E119919",
+    "name" : "iPhone 17 Pro", "state" : "Shutdown" }]}}
+DEV
+      exit 0
+    fi
     cat <<'DEV'
 {"devices" : {"com.apple.CoreSimulator.SimRuntime.iOS-26-0" : [
   { "udid" : "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE",
@@ -1046,6 +1058,41 @@ if grep -q "must be a positive integer" "$WORKCASE/stdout.log"; then
   ok "malformed watchdog value rejected"
 else
   bad "malformed watchdog value must fail immediately"
+fi
+
+# --- unit case 12: ambiguous device name fails the lane closed ----------------
+end_case
+begin_case "ambiguous simulator name refused" "$WORK/u12"
+export FAKE_SIMCTL_DUPLICATE=1
+run_lane "AlphaTests" 300 1
+unset FAKE_SIMCTL_DUPLICATE
+assert_eq "exit code" "$(cat "$WORKCASE/exit-code")" "1"
+if grep -q "is ambiguous" "$WORKCASE/stdout.log"; then
+  ok "ambiguity refused by name"
+else
+  bad "ambiguous name must be refused"
+fi
+if grep -q "refusing to shut down" "$WORKCASE/stdout.log"; then
+  ok "nothing was shut down"
+else
+  bad "ambiguous name must not touch any simulator"
+fi
+
+# --- unit case 13: a run-owned UDID pin is authoritative ------------------------
+# Same duplicate inventory, but the caller pinned this run's UDID: the pin
+# is unique and never recycled, so the lane proceeds without guessing.
+end_case
+begin_case "run-owned UDID pin bypasses ambiguity" "$WORK/u13"
+export FAKE_SIMCTL_DUPLICATE=1
+export SIMULATOR_UDID="6D08B063-B890-4D18-893B-D1E89E119919"
+run_lane "AlphaTests" 300 1
+unset FAKE_SIMCTL_DUPLICATE
+unset SIMULATOR_UDID
+assert_eq "exit code" "$(cat "$WORKCASE/exit-code")" "0"
+if grep -q "is ambiguous" "$WORKCASE/stdout.log"; then
+  bad "a pinned UDID must not consult the ambiguous name"
+else
+  ok "pin was authoritative"
 fi
 
 echo ""
