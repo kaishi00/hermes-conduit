@@ -5816,6 +5816,201 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(harness.appState.turnState, .idle, file: file, line: line)
     }
 
+    // MARK: - Cold-launch owed post-connect bootstrap
+
+    /// Cold launch behind Face ID: `connect(with:)` completes the socket
+    /// handshake while the scene is `.inactive`, so the first
+    /// `transportContinuation` checkpoint after `connectChatResumeClient`
+    /// returns nil and connect returns with its post-connect bootstrap owed —
+    /// no catalog, no profiles, turnState stuck at `.synchronizing`.
+    ///
+    /// The owed marker pins the exact HermesClient instance `connect()` built
+    /// through its private client factory, and `.active`'s retained branch
+    /// gates on that same instance's `client.isConnected`, so a no-op
+    /// `connectClient` seam can never satisfy it: the seam parks on the scene
+    /// transition, then completes the handshake over a fake transport
+    /// installed through the `makeTransport` seam, so the connect-path client
+    /// `connect()` built is the one that reads as connected. Returns once the
+    /// connect task has returned with the scene still inactive; the caller
+    /// owns the activation and its assertions.
+    private func startConnectInterruptedBySceneDeactivation() async -> OwedBootstrapColdLaunchFixture {
+        let scheduler = ControlledReconnectScheduler()
+        let connectGate = ControlledSuspension()
+        let saved = session("stored-saved")
+        let counters = OwedBootstrapCounters()
+        let transport = ClarifyFakeTransport()
+        let socket = ClarifyFakeSocket()
+        transport.nextSocket = { socket }
+        let harness = makeHarness(
+            reconnectScheduler: scheduler.schedule(after:operation:),
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                connectClient: { client in
+                    await connectGate.suspend()
+                    // Opened before the client asks: the fake transport
+                    // delivers the open as soon as the socket is made.
+                    transport.open(socket)
+                    try await client.connect()
+                },
+                loadCatalog: { _, _ in
+                    counters.catalogLoads += 1
+                    return [saved]
+                },
+                openSession: { _, sessionID, _ in
+                    counters.openedSessionIDs.append(sessionID)
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                persistedTranscript: { _, _, _ in
+                    return .payload([
+                        "messages": [
+                            [
+                                "id": "100",
+                                "role": "user",
+                                "content": "Earlier question",
+                                "timestamp": "1"
+                            ],
+                            [
+                                "id": "101",
+                                "role": "assistant",
+                                "content": "Earlier answer",
+                                "timestamp": "2"
+                            ]
+                        ],
+                        "pagination": [
+                            "limit": 120,
+                            "offset": 0,
+                            "order": "latest",
+                            "returned": 2
+                        ]
+                    ])
+                },
+                refreshContext: { _, _ in },
+                pendingApprovals: { _, _ in [] },
+                verifyTransportHealth: { _ in },
+                probeActiveSessions: { _ in
+                    counters.probes += 1
+                    return [LiveSessionStatus(
+                        runtimeSessionId: saved.id,
+                        storedSessionId: saved.id,
+                        status: "idle"
+                    )]
+                },
+                loadProfiles: { counters.profileLoads += 1 },
+                loadBusyInputMode: { _ in },
+                loadProfileDisplayPreferences: {},
+                loadSlashCommands: {},
+                loadBotRoster: { counters.rosterLoads += 1 },
+                botRoster: { _ in BotRosterSnapshot(bots: [], supportsBotProtocol: false) },
+                makeTransport: { transport }
+            )
+        )
+        harness.store.setLastSessionID(saved.id, for: "default")
+        let connection = HermesConnection(
+            baseUrl: "https://one.example",
+            ticket: "ticket"
+        )
+
+        let connect = Task { @MainActor in
+            await harness.appState.connect(with: connection)
+        }
+        await connectGate.waitUntilSuspended()
+        // The Face ID window: the handshake below completes while the scene is
+        // deactivated, which is exactly where the cold-launch bootstrap was
+        // abandoned before this fix.
+        harness.appState.handleScenePhase(.inactive)
+        connectGate.resume()
+        await connect.value
+        addTeardownBlock { harness.appState.client?.disconnect() }
+
+        return OwedBootstrapColdLaunchFixture(
+            harness: harness,
+            saved: saved,
+            counters: counters,
+            scheduler: scheduler
+        )
+    }
+
+    func testConnectInterruptedBySceneDeactivationRunsOwedBootstrapOnActivation() async {
+        let fixture = await startConnectInterruptedBySceneDeactivation()
+        let harness = fixture.harness
+        let counters = fixture.counters
+
+        // Precondition: connect completed its handshake while the scene was
+        // inactive and returned at the continuation checkpoint with the
+        // bootstrap owed — the catalog was never loaded and the transport
+        // flags were never published.
+        XCTAssertEqual(counters.catalogLoads, 0)
+        XCTAssertTrue(harness.appState.sessions.isEmpty)
+        XCTAssertEqual(harness.appState.turnState, .synchronizing)
+        XCTAssertTrue(harness.appState.isConnecting)
+
+        if let activation = harness.appState.handleScenePhase(.active) {
+            await activation.value
+        }
+
+        // The owed branch replaced the observational foreground refresh: no
+        // runtime probe, but the full post-connect bootstrap exactly once.
+        XCTAssertEqual(counters.probes, 0, "An owed bootstrap must not fall through to the observational probe")
+        XCTAssertEqual(counters.catalogLoads, 1, "The owed sync must load the catalog exactly once")
+        XCTAssertGreaterThanOrEqual(counters.profileLoads, 1, "Profiles must load on the owed bootstrap")
+        XCTAssertGreaterThanOrEqual(counters.rosterLoads, 1, "The Bot Mode roster reload must run on the owed bootstrap")
+        XCTAssertEqual(harness.appState.sessions.map(\.id), [fixture.saved.id])
+        XCTAssertEqual(
+            counters.openedSessionIDs, [fixture.saved.id],
+            "The stored session must be resumed exactly once"
+        )
+        XCTAssertEqual(harness.appState.activeSessionId, fixture.saved.id)
+        XCTAssertEqual(harness.appState.turnState, .idle)
+        XCTAssertTrue(harness.appState.isConnected)
+        XCTAssertFalse(harness.appState.isConnecting)
+        XCTAssertEqual(fixture.scheduler.scheduledCount, 0, "A completed owed sync must not schedule a reconnect")
+        XCTAssertFalse(
+            harness.appState.activeChatScrollSessionIdentity.isReconciling,
+            "No reconciliation may remain open after the owed bootstrap"
+        )
+    }
+
+    func testOwedBootstrapIsConsumedOnceThenForegroundStaysObservational() async {
+        let fixture = await startConnectInterruptedBySceneDeactivation()
+        let harness = fixture.harness
+        let counters = fixture.counters
+
+        if let firstActivation = harness.appState.handleScenePhase(.active) {
+            await firstActivation.value
+        }
+        XCTAssertEqual(counters.catalogLoads, 1)
+        XCTAssertEqual(counters.openedSessionIDs, [fixture.saved.id])
+        XCTAssertEqual(harness.appState.turnState, .idle)
+        let profileLoadsAfterOwedBootstrap = counters.profileLoads
+
+        // Second overlay dip: the first activation consumed the owed marker,
+        // so this cycle must stay observational — no second catalog sync, no
+        // second resume, and the idle turn state must stand.
+        harness.appState.handleScenePhase(.inactive)
+        if let secondActivation = harness.appState.handleScenePhase(.active) {
+            await secondActivation.value
+        }
+
+        XCTAssertEqual(
+            counters.probes, 1,
+            "Without an owed marker the foreground falls back to the observational probe"
+        )
+        XCTAssertEqual(counters.catalogLoads, 1, "The consumed owed marker must not re-run the catalog sync")
+        XCTAssertEqual(
+            counters.openedSessionIDs, [fixture.saved.id],
+            "An overlay cycle must not resume the session again"
+        )
+        XCTAssertEqual(
+            counters.profileLoads, profileLoadsAfterOwedBootstrap,
+            "The observational cycle loads no profiles"
+        )
+        XCTAssertEqual(harness.appState.turnState, .idle)
+        XCTAssertFalse(harness.appState.activeChatScrollSessionIdentity.isReconciling)
+    }
+
     private func makeHarness(
         behavior: ChatResumeBehavior = .continueWhereLeftOff,
         configureDefaults: (UserDefaults) -> Void = { _ in },
@@ -5970,6 +6165,31 @@ final class AppStateChatResumeTests: XCTestCase {
             )
         )
     }
+}
+
+/// Seam call counters for the cold-launch owed-bootstrap fixture: one
+/// instance per test, mutated only from the @MainActor lifecycle seams.
+private final class OwedBootstrapCounters {
+    var catalogLoads = 0
+    var profileLoads = 0
+    var rosterLoads = 0
+    var openedSessionIDs: [String] = []
+    var probes = 0
+}
+
+private struct OwedBootstrapColdLaunchFixture {
+    let harness: (
+        appState: AppState,
+        coordinator: ChatResumeCoordinator,
+        store: ChatResumeStore,
+        recoverySequence: ChatResumeRecoverySequence,
+        cacheClearSpy: CacheClearSpy,
+        defaults: UserDefaults,
+        suite: String
+    )
+    let saved: SessionSummary
+    let counters: OwedBootstrapCounters
+    let scheduler: ControlledReconnectScheduler
 }
 
 private enum ControlledLifecycleError: Error {
