@@ -230,10 +230,13 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         let operations = GroupChatLifecycleOperations(
             capabilities: { _ in self.capabilities(supported: true) },
             list: { _ in ([room], nil) },
-            state: { _, roomID in (room, nil) },
+            state: { _, roomID in (self.roomWithLatest(4), nil) },
             log: { _, roomID, sinceSeq in
-                GroupLogPage(events: [], cursor: sinceSeq, latestSeq: 0, hasMore: false,
-                             authorityGatewayID: "gw-a", authorityEpoch: 1)
+                // The authoritative tail the resync reads after the send
+                // landed past unseen events (seq 4 > cursor 0 + 1).
+                let events = sinceSeq == 0 ? [self.memberEvent(roomID: roomID, seq: 4)] : []
+                return GroupLogPage(events: events, cursor: 4, latestSeq: 4, hasMore: false,
+                                    authorityGatewayID: "gw-a", authorityEpoch: 1)
             },
             send: { _, roomID, eventID, _, _ in
                 self.sendResult(roomID: roomID, seq: 4)
