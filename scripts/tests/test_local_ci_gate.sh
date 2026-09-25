@@ -98,6 +98,16 @@ if [ "${1:-}" = "-version" ]; then
   exit 0
 fi
 echo "xcodebuild stub: $*"
+# FAKE_XCODEBUILD_SLEEP makes one invocation long-lived, and records its pid:
+# that is what the tear-down case needs to prove no test chain survives the
+# gate's exit (the stub invocation, like the real xcodebuild, is put in its own
+# process group by ci-lib.sh, so it is the process a naive teardown misses).
+if [ -n "${FAKE_XCODEBUILD_SLEEP:-}" ]; then
+  if [ -n "${FAKE_XCODEBUILD_PIDS:-}" ]; then
+    printf '%s\n' "$$" >> "$FAKE_XCODEBUILD_PIDS"
+  fi
+  sleep "$FAKE_XCODEBUILD_SLEEP"
+fi
 # Per-DEVICE invocation trace, for the cases that must prove only one
 # xcodebuild chain is ever active on one device (the two-worker fan-out, and
 # the --workers 1 serial fallback, where both workers share the primary
@@ -1426,6 +1436,53 @@ if needs_extraction; then
 else
   skip "merge mode with an explicit repeat request"
 fi
+
+# ---------------------------------------------------------------------------
+echo ""
+echo "--- case: a tear-down leaves no live test chain behind ---"
+# The teardown must reach the xcodebuild invocation, which ci-lib.sh puts in
+# its OWN process group (run_with_deadline's `set -m`, the idiom that lets its
+# watchdog kill a whole invocation). Signalling a worker's group alone reaches
+# the worker and the lane runner but NOT that grandchild - the process actually
+# holding the device - so this case asserts the recorded invocation pids are
+# gone after the gate is TERMed.
+export FAKE_XCODEBUILD_SLEEP=120
+export FAKE_XCODEBUILD_PIDS="$WORK/teardown-pids.txt"
+: > "$FAKE_XCODEBUILD_PIDS"
+RUN35="$(new_run_dir)"
+PATH="$STUBS:$PATH" XCODEBUILD_POLL_INTERVAL_S=1 CONDUIT_PERF_TRACE=1 \
+  bash "$GATE" --allow-another-run --unit-batch-max-classes 7 --ref HEAD \
+    --gate-root "$WORK/gate-teardown" --run-dir "$RUN35" \
+    --repeat-classes "" >"$WORK/teardown.log" 2>&1 &
+TEARDOWN_GATE=$!
+_wait=0
+while [ ! -s "$FAKE_XCODEBUILD_PIDS" ] && [ "$_wait" -lt 200 ]; do
+  sleep 0.1
+  _wait=$(( _wait + 1 ))
+done
+if [ -s "$FAKE_XCODEBUILD_PIDS" ]; then
+  ok "a stub invocation was in flight before the tear-down"
+else
+  bad "no stub invocation started; the tear-down case cannot prove anything"
+fi
+kill -TERM "$TEARDOWN_GATE" 2>/dev/null
+wait "$TEARDOWN_GATE" 2>/dev/null
+# Bounded settle, then every recorded invocation pid must be gone.
+_deadline=$(( $(date +%s) + 20 ))
+_alive=1
+while [ "$(date +%s)" -lt "$_deadline" ]; do
+  _alive=0
+  while IFS= read -r _xp; do
+    [ -z "$_xp" ] && continue
+    kill -0 "$_xp" 2>/dev/null && _alive=$(( _alive + 1 ))
+  done < "$FAKE_XCODEBUILD_PIDS"
+  [ "$_alive" -eq 0 ] && break
+  sleep 1
+done
+assert_eq "no xcodebuild invocation survived the tear-down" "$_alive" "0"
+assert_contains "the tear-down reported the surviving process it reaped" \
+  "$(cat "$WORK/teardown.log")" "terminating a surviving run process"
+unset FAKE_XCODEBUILD_SLEEP FAKE_XCODEBUILD_PIDS
 
 echo ""
 echo "=== $pass_count passed, $fail_count failed, $skip_count skipped ==="

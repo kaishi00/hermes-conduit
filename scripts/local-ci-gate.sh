@@ -204,8 +204,10 @@ SIM_PREP=1
 # 1 = erase the destination before booting it (see simulator_prep: the A/B
 # probe on this machine showed erase is what clears the launch-refusal wedge).
 SIM_ERASE="${GATE_SIMULATOR_ERASE:-1}"
-SIM_PREP_CHECKS=()
-SIM_PREP_FAILED=0
+# SIM_PREP_CHECKS/SIM_PREP_FAILED are initialized where the phase document is
+# assembled (after the workers), not here: the shell cannot carry them across a
+# worker subshell, so a second initialization here would only invite a future
+# edit to write into the copy nothing reads.
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -408,6 +410,55 @@ done
 LOCK_DIR="$GATE_ROOT/gate.lock"
 . "$SCRIPT_DIR/ci-gate-lock.sh"
 
+# Reap anything of THIS RUN still alive in its own process group.
+#
+# The worker/static group passes in cleanup() reach the worker and the lane
+# runner, but NOT the xcodebuild invocation: ci-lib.sh's run_with_deadline puts
+# each invocation in a second process group of its own (the same `set -m`
+# idiom, which is what lets the watchdog kill a whole invocation). That
+# grandchild is the process actually holding a device, so it is found here by
+# the run directory embedded in its command line (-xctestrun,
+# -resultBundlePath, --result-dir, the lane runner's own --result-dir) - and
+# ONLY when the command also looks like a test chain, so a process that merely
+# mentions the path (an editor, a log tail, another shell) is never signalled.
+# The gate's own pid is excluded explicitly.
+reap_run_chain() {
+  if [ -z "${RUN_DIR:-}" ] || [ ! -d "$RUN_DIR" ]; then
+    return 0
+  fi
+  command -v pgrep >/dev/null 2>&1 || return 0
+  local _mc_pid _mc_cmd _mc_targets=""
+  for _mc_pid in $(pgrep -f -- "$RUN_DIR" 2>/dev/null || true); do
+    case "$_mc_pid" in ''|*[!0-9]*) continue ;; esac
+    [ "$_mc_pid" = "$$" ] && continue
+    _mc_cmd="$(ps -o command= -p "$_mc_pid" 2>/dev/null || true)"
+    [ -z "$_mc_cmd" ] && continue
+    # The command shape is the fence, not just the path: a process that merely
+    # mentions the run directory (an editor, a tail, another shell) is never
+    # signalled.
+    case "$_mc_cmd" in
+      *xcodebuild*|*ci-test-lane.sh*|*xcrun*|*xcresulttool*) ;;
+      *) continue ;;
+    esac
+    _mc_targets="$_mc_targets $_mc_pid"
+  done
+  [ -z "$_mc_targets" ] && return 0
+  for _mc_pid in $_mc_targets; do
+    printf 'local-ci-gate: terminating a surviving run process: pid %s, group leader of %s\n' \
+      "$_mc_pid" "$(ps -o command= -p "$_mc_pid" 2>/dev/null | cut -c1-90)" >&2
+    kill -TERM -- "-$_mc_pid" 2>/dev/null || kill -TERM "$_mc_pid" 2>/dev/null || true
+  done
+  # TERM, a bounded settle, then KILL for survivors: the lease and the gate
+  # lock are released immediately after this, so nothing may be left to chance.
+  # GATE_SLEEP_SCALE=0 in the stubbed integration suite keeps this instant.
+  sleep $(( 2 * GATE_SLEEP_SCALE ))
+  for _mc_pid in $_mc_targets; do
+    kill -0 "$_mc_pid" 2>/dev/null || continue
+    kill -KILL -- "-$_mc_pid" 2>/dev/null || kill -KILL "$_mc_pid" 2>/dev/null || true
+  done
+  return 0
+}
+
 cleanup() {
   local status=$?
   # Reap the lease-acquisition watchdog first: a TERM landing in the small
@@ -426,13 +477,20 @@ cleanup() {
   # them with it: an orphaned chain would keep driving a device - and keep
   # testing - after this script has released the host lease and the gate lock,
   # which is exactly the uncoordinated state the lease exists to prevent.
-  # Each worker was launched under `set -m`, so it leads its OWN process group
-  # (never this script's, and never its caller's): signaling `-$pid` reaches
-  # the worker AND the lane runner / xcodebuild / simctl chain below it, which
-  # a signal to the worker's pid alone does NOT (bash does not forward a signal
-  # to its foreground child). The pid fallback covers a worker whose group has
-  # already gone. The list is cleared once reaped so no later signal can reach
-  # a reused pid.
+  #
+  # TWO passes, because the chain spans two process-group levels:
+  #   1. each worker was launched under `set -m`, so it leads its OWN group
+  #      (never this script's, and never its caller's): `-$pid` reaches the
+  #      worker and the lane runner below it;
+  #   2. the xcodebuild invocation itself is put in a SECOND, separate group by
+  #      ci-lib.sh's run_with_deadline (the same `set -m` idiom, which is what
+  #      lets its watchdog kill a whole invocation) - so pass 1 does NOT reach
+  #      it. Those processes are found by the run directory in their command
+  #      line (-xctestrun / -resultBundlePath / --result-dir all point inside
+  #      it), and only that shape is signalled: a process that merely mentions
+  #      the path is never touched.
+  # Both passes TERM first, then KILL, and every pid is reaped, so the lease
+  # below is released only once the chain is actually gone.
   if [ -n "${WORKER_PIDS:-}" ]; then
     local _wp
     for _wp in $WORKER_PIDS; do
@@ -445,18 +503,28 @@ cleanup() {
       kill -0 "$_wp" 2>/dev/null || continue
       kill -KILL -- "-$_wp" 2>/dev/null || kill -KILL "$_wp" 2>/dev/null || true
     done
+    for _wp in $WORKER_PIDS; do
+      wait "$_wp" 2>/dev/null || true
+    done
     WORKER_PIDS=""
   fi
   # The overlapped static phase is launched the same way, and its check
   # processes (`unittest`, the l10n checker) are its group's members too.
   if [ -n "${STATIC_PID:-}" ]; then
     kill -TERM -- "-$STATIC_PID" 2>/dev/null || kill -TERM "$STATIC_PID" 2>/dev/null || true
+    kill -TERM -- "-$STATIC_PID" 2>/dev/null || true
     wait "$STATIC_PID" 2>/dev/null || true
-    kill -0 "$STATIC_PID" 2>/dev/null && {
+    if kill -0 "$STATIC_PID" 2>/dev/null; then
       kill -KILL -- "-$STATIC_PID" 2>/dev/null || kill -KILL "$STATIC_PID" 2>/dev/null || true
-    }
+      wait "$STATIC_PID" 2>/dev/null || true
+    fi
     STATIC_PID=""
   fi
+  # Pass 2: whatever of THIS RUN is still alive in its own process group - the
+  # in-flight xcodebuild/simctl invocation, or a lane runner whose worker is
+  # gone. Bounded: the sweep is one pgrep + two kill rounds, and it runs only on
+  # a tear-down or at the end of an already-finished run.
+  reap_run_chain
   # Release the host SIMULATOR_TEST lease FIRST: closing fd 3 EOFs the
   # holder helper's stdin, which releases the lease - and this works even
   # for exit paths that reach nothing else (no LONG-LIVED child keeps the
@@ -666,12 +734,22 @@ GATE_REGISTRY_COVERING_MODE=""
 # the mode rules allow, and where the result is cited from it has to be
 # visible.
 GATE_PRIOR_RUNS=0
-[ -s "$SHA_REGISTRY" ] && GATE_PRIOR_RUNS="$(grep -c . "$SHA_REGISTRY" 2>/dev/null || echo 0)"
+if [ -s "$SHA_REGISTRY" ]; then
+  # awk, not `grep -c ... || echo 0`: grep -c prints "0" AND exits 1 when
+  # nothing matches, so the fallback would append a second line and the value
+  # would reach argparse as "0\n0" - an error far from its cause.
+  GATE_PRIOR_RUNS="$(awk 'END { print NR + 0 }' "$SHA_REGISTRY" 2>/dev/null || echo 0)"
+  case "$GATE_PRIOR_RUNS" in ''|*[!0-9]*) GATE_PRIOR_RUNS=0 ;; esac
+fi
 if [ "$ALLOW_ANOTHER_RUN" -ne 1 ] && registry_covers "$MODE"; then
   echo "local-ci-gate: a full ${GATE_REGISTRY_COVERING_MODE:-$MODE} gate result already exists for $SHA:" >&2
   sed 's/^/  /' "$SHA_REGISTRY" >&2
   echo "local-ci-gate: one authoritative full-gate invocation per requested SHA" >&2
-  echo "local-ci-gate: (and mode) - a release result already covers a merge request for the same SHA." >&2
+  if [ "$(mode_strength "${GATE_REGISTRY_COVERING_MODE:-}")" -gt "$(mode_strength "$MODE")" ]; then
+    echo "local-ci-gate: a ${GATE_REGISTRY_COVERING_MODE} result already covers a $MODE request for the same SHA." >&2
+  else
+    echo "local-ci-gate: (and mode) - one authoritative run per (SHA, mode)." >&2
+  fi
   echo "local-ci-gate: if you really want another full run, request it explicitly with --allow-another-run" >&2
   exit 2
 fi
@@ -1375,8 +1453,14 @@ simulator_prep() { # $1 = label
   # parent DERIVES the phase's failure flag from these records (see the
   # simulation-prep aggregation), so a failure here is never a variable the
   # worker wrote into its own subshell.
-  printf '%s\t%s\t%s\n' "$label" "$status" "$elapsed" \
-    >> "${WORKER_SIM_PREP_FILE:-$RUN_DIR/sim-prep/records.tsv}"
+  #
+  # Outside a worker there is no file the aggregator reads, so a preparation
+  # that ran there must FAIL LOUDLY rather than write a record nobody looks at.
+  if [ -z "${WORKER_SIM_PREP_FILE:-}" ]; then
+    echo "local-ci-gate: simulator_prep ran outside a worker (no WORKER_SIM_PREP_FILE); refusing to record a preparation the phase document would never read" >&2
+    return 1
+  fi
+  printf '%s\t%s\t%s\n' "$label" "$status" "$elapsed" >> "$WORKER_SIM_PREP_FILE"
   return 0
 }
 
@@ -1518,7 +1602,7 @@ else
           now=$(date +%s)
           if [ $(( now - last_heartbeat )) -ge 15 ]; then
             last_heartbeat=$now
-            while IFS=$'\t' read -r name devname devudid wpid started wdir; do
+            while IFS=$'\t' read -r name devname devudid wpid started; do
               [ -z "$name" ] && continue
               kill -0 "$wpid" 2>/dev/null || continue
               echo "... worker $name running ($(( now - started ))s, device '$devname')"
