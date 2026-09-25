@@ -81,7 +81,7 @@ for arm in sorted(glob.glob(os.path.join(sys.argv[1], "arm-*"))):
             log = os.path.join(arm, "batch-%03d.log" % int(batch))
             text = open(log, errors="replace").read() if os.path.exists(log) else ""
             session = max((float(m) for m in SESSION.findall(text)), default=0.0)
-            tests = max((float(v) for _, v in EXECUTED.findall(text)), default=0.0)
+            tests = max((float(v) for _, v, _ in EXECUTED.findall(text)), default=0.0)
             row = {"classes": int(nclasses), "rc": int(rc), "wall": int(wall),
                    "session": session, "tests": tests,
                    "wedge": sum(text.count(sig) for sig in WEDGE)}
@@ -159,7 +159,7 @@ run_shape() { # $1 = class limit (or "full"), $2 = label
   echo ""
   echo "== shape $label: at most $limit class(es) per invocation =="
   wall_start=$(date +%s)
-  while IFS= read -r cls; do
+  while IFS= read -r cls || [ -n "$cls" ]; do
     [ -z "$cls" ] && continue
     group+=("$cls")
     if [ "${#group[@]}" -ge "$limit" ]; then

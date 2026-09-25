@@ -93,12 +93,13 @@ repeating nothing.
 
 The self-test job's timeout hierarchy is load-bearing: each synthetic hang in
 the state-machine suites is watchdog-killed within a 1–6 s test budget < the
-suite's Python wrapper subprocess cap (600 s for the gate integration suite,
-480 s for the lane-runner state machine) < the job's own 16-minute ceiling —
+suite's Python wrapper subprocess cap (1200 s for the gate integration suite,
+480 s for the lane-runner state machine) < the job's own 30-minute ceiling —
 GitHub must never be the first layer to kill a regression suite. (The gate
-suite grew to ~330 s on our Mac when the gate gained its two-worker,
-merge-mode and per-worker-evidence cases; the cap and the ceiling moved with
-it — the coverage is the point.)
+suite grew to ~410 s standalone on our Mac when the gate gained its
+two-worker, merge-mode and per-worker-evidence cases, and ~900 s inside the
+gate's overlapped static phase alongside two live xcodebuild chains; the cap
+and the ceiling moved with it — the coverage is the point.)
 
 Both smoke jobs prepare the destination device the same way the build job and
 the lane runner do, through the shared `scripts/ci-lib.sh`: wait for
@@ -834,9 +835,15 @@ of these):
   group by `ci-lib.sh`'s watchdog (the idiom that lets the watchdog kill a
   whole invocation), which the second pass reaches by selecting, from the
   process table, the processes whose command line embeds this run's directory
-  (`xcodebuild`, the lane runner, `xcresulttool`) or one of this run's device
-  UDIDs (so a UDID-only `xcrun simctl` call is reachable too), fenced to those
-  command shapes so a process that merely mentions a path is never signalled.
+  (`xcodebuild`, the lane runner, `xcresulttool`), fenced to those command
+  shapes so a process that merely mentions a path is never signalled. The run
+  directory is the ONLY selection key, and that narrowing is a safety
+  property: a device UDID is not exclusive to a run — the CI-tooling fixtures
+  reuse this gate's own UDID strings, and a sweep that also matched UDIDs
+  TERMed a concurrent run's live `xcodebuild` (observed 2026-09-25: it killed
+  this gate's own unit batch mid-test). A surviving UDID-only `xcrun simctl`
+  is out of reach by design: those calls are individually deadline-bounded
+  (<=200s) and die with their own budget.
   The selection is a plain substring test and deliberately NOT a regex: an
   earlier revision escaped the path for `pgrep -f`'s ERE, and one misplaced
   backslash turned the pattern into one that matched nothing — a sweep that
