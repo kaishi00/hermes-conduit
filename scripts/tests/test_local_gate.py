@@ -2668,6 +2668,24 @@ class ScriptContractTests(unittest.TestCase):
         self.assertNotIn("shutdown all", self.text)
         self.assertNotIn("erase all", self.text)
 
+    def test_teardown_sweeps_invocations_in_their_own_process_group(self):
+        """The chain spans two process-group levels: the worker's group (which
+        the first pass signals) and the xcodebuild invocation's own group (which
+        only the sweep reaches, by the run directory in its command line)."""
+        self.assertIn("reap_run_chain", self.text)
+        self.assertIn("pgrep -f --", self.text)
+        self.assertIn("set -m", self.text)
+        # The sweep must never signal this process, and only test-chain shapes.
+        self.assertIn('[ "$_mc_pid" = "$$" ]', self.text)
+        self.assertIn("*xcodebuild*|*ci-test-lane.sh*|*xcrun*|*xcresulttool*",
+                      self.text)
+
+    def test_the_lane_runner_disables_xcodes_diagnostics_collection(self):
+        """A 600s internal timeout for a payload nobody reads was measured once
+        (one batch, 611s inside a 620s watchdog): the flag is load-bearing."""
+        lane = (Path(SCRIPTS_DIR) / "ci-test-lane.sh").read_text(encoding="utf-8")
+        self.assertIn("-collect-test-diagnostics never", lane)
+
     def test_a_static_check_that_wrote_no_record_fails_the_phase(self):
         """A phase that quietly certified two of its three checks would be
         exactly the gap this gate exists to refuse: a check killed before it

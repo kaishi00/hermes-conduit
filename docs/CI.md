@@ -552,6 +552,17 @@ ui_class_timeout = max(420s, ceil(estimate x 3.0))   # computed in plan-tests.py
   additionally pays one bounded erase/reboot recovery, and each attempt's
   timing extraction can wedge to the xcresulttool bound, plus setup slack.
 
+**Test diagnostics are off (`-collect-test-diagnostics never`).** Xcode's
+on-failure default makes an invocation gather a sysdiagnose-like payload FROM
+the simulator, and that request carries its own internal 600 s timeout.
+Measured on the 2026-09-25 merge run: one unit batch ran its 906 tests in 8.4 s
+and then spent **611 s** on `Failure collecting diagnostics from simulator:
+Timed out after 600.0 seconds` — i.e. one batch finished 6 s inside its
+watchdog for a payload nobody reads. The lane runner passes `never`, so that
+overhead cannot reappear as a near-timeout. What the gate classifies and
+reports from is unchanged: the console log, the `.xcresult` bundle (kept for
+every failing or retried attempt) and the extraction tokens.
+
 **Finalize grace.** When a watchdog expires but the log already carries
 xcodebuild's terminal result marker (`** TEST EXECUTE SUCCEEDED/FAILED **`),
 the test session has ENDED and the process is only writing its xcresult.
@@ -814,13 +825,18 @@ of these):
   is proven by the lane's evidence, not only by the driver's bookkeeping;
 * the two workers were given two DIFFERENT devices (a run that resolved both to
   one UDID refuses to start);
-* a torn-down run does not leave a live test chain behind: each worker is
-  launched in its OWN process group (`set -m`, the same idiom `run_bounded`
-  uses), so INT/TERM/HUP signals the worker AND the lane-runner/xcodebuild
-  chain below it — bash does not forward a signal to its foreground child, so
-  killing the worker's pid alone would orphan a live chain on a device whose
-  lease this run has just released. The group is signalled before the lease and
-  the gate lock are released, and the static phase is launched the same way.
+* a torn-down run does not leave a live test chain behind. The chain spans two
+  process-group levels, so teardown has two passes: each worker (and the
+  overlapped static phase) is launched in its OWN process group with `set -m`,
+  which the first pass signals — bash does not forward a signal to its
+  foreground child, so the worker's pid alone would leave the lane runner
+  running — and the `xcodebuild` invocation itself is put in a SECOND process
+  group by `ci-lib.sh`'s watchdog (the idiom that lets the watchdog kill a
+  whole invocation), which the second pass reaches by matching the run
+  directory in the command lines of surviving `xcodebuild`/`xcrun`/lane-runner
+  processes. Both passes run before the lease and the gate lock are released,
+  and the integration suite asserts that a stub invocation in flight when the
+  gate is TERMed is gone afterwards.
 
 `log`, `--run-dir`, `--worktree-root` and the gate root are still forced
 outside the repository, and every `simctl` operation remains UDID-scoped (no
