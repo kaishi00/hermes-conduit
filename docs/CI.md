@@ -832,11 +832,16 @@ of these):
   foreground child, so the worker's pid alone would leave the lane runner
   running — and the `xcodebuild` invocation itself is put in a SECOND process
   group by `ci-lib.sh`'s watchdog (the idiom that lets the watchdog kill a
-  whole invocation), which the second pass reaches by matching the run
-  directory in the command line of a surviving `xcodebuild` or lane-runner
-  process. (A bare `simctl` call carries only the UDID, so it is not swept
-  there; those calls are individually deadline-bounded and die with their own
-  budget.) Both passes run before the lease and the gate lock are released,
+  whole invocation), which the second pass reaches by selecting, from the
+  process table, the processes whose command line embeds this run's directory
+  (`xcodebuild`, the lane runner, `xcresulttool`) or one of this run's device
+  UDIDs (so a UDID-only `xcrun simctl` call is reachable too), fenced to those
+  command shapes so a process that merely mentions a path is never signalled.
+  The selection is a plain substring test and deliberately NOT a regex: an
+  earlier revision escaped the path for `pgrep -f`'s ERE, and one misplaced
+  backslash turned the pattern into one that matched nothing — a sweep that
+  finds nothing looks exactly like "nothing survived", which is how a fail-open
+  hides. Both passes run before the lease and the gate lock are released,
   and the integration suite asserts that a stub invocation in flight when the
   gate is TERMed is gone afterwards.
 

@@ -2686,12 +2686,29 @@ class ScriptContractTests(unittest.TestCase):
         the first pass signals) and the xcodebuild invocation's own group (which
         only the sweep reaches, by the run directory in its command line)."""
         self.assertIn("reap_run_chain", self.text)
-        self.assertIn("pgrep -f --", self.text)
         self.assertIn("set -m", self.text)
         # The sweep must never signal this process, and only test-chain shapes.
         self.assertIn('[ "$_mc_pid" = "$$" ]', self.text)
         self.assertIn("*xcodebuild*|*ci-test-lane.sh*|*xcrun*|*xcresulttool*",
                       self.text)
+
+    def test_the_teardown_sweep_matches_by_substring_never_by_regex(self):
+        """A regex selection is a fail-open: escaping a caller-controlled path
+        into a pattern is easy to get subtly wrong (an earlier revision's
+        `sed 's/.../\\&/g'` turned every `.` in the run directory into a
+        literal `&`, so the pattern matched nothing and the sweep silently
+        became a no-op), and a pattern that matches nothing looks exactly like
+        "nothing survived". The sweep therefore matches plain substrings."""
+        sweep = self.text.split("reap_run_chain() {", 1)[-1].split("\n}", 1)[0]
+        self.assertNotIn("pgrep -f", sweep)
+        # No text-munging command runs over the path at all (the substring
+        # "sed " alone would also match the word "reused" in a comment).
+        self.assertNotIn("| sed", sweep)
+        self.assertNotIn("$(sed", sweep)
+        self.assertIn('*"$RUN_DIR"*', sweep)
+        # ...and the run's own devices, so a UDID-only `simctl` call is reachable.
+        self.assertIn("SIMULATOR_UDID", sweep)
+        self.assertIn("SIMULATOR2_UDID", sweep)
 
     def test_the_lane_runner_disables_xcodes_diagnostics_collection(self):
         """A 600s internal timeout for a payload nobody reads was measured once

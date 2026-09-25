@@ -419,55 +419,64 @@ LOCK_DIR="$GATE_ROOT/gate.lock"
 # runner, but NOT the xcodebuild invocation: ci-lib.sh's run_with_deadline puts
 # each invocation in a second process group of its own (the same `set -m`
 # idiom, which is what lets the watchdog kill a whole invocation). That
-# grandchild is the process actually holding a device, so it is found here by
-# the run directory embedded in its command line (-xctestrun,
-# -resultBundlePath, the lane runner's --result-dir) - and ONLY when the command
-# also looks like a test chain, so a process that merely mentions the path (an
-# editor, a log tail, another shell) is never signalled. The gate's own pid is
-# excluded explicitly.
+# grandchild is the process actually holding a device, so it is selected here
+# by its command line. The gate's own pid is excluded explicitly.
 #
-# SCOPE, stated exactly: this reaches processes whose ARGV embeds the run
-# directory - the xcodebuild invocation and the lane runner. A bare `simctl`
-# call carries only the UDID, so a `simctl` orphaned by a dead worker is NOT
-# swept here; those calls are individually `bounded_run`-wrapped (60s) and die
-# with their own budget, which is why the sweep does not need to chase them.
-# The path is escaped before pgrep, which matches it as an ERE: an unescaped
-# `+` (or any other metacharacter) in a custom --run-dir would silently degrade
-# this pass to pass 1 only. Matching is also UNANCHORED, so a hand-picked
-# --run-dir must not be a string prefix of another live run's directory - the
-# defaults (fixed-width <sha12>-<UTC stamp>) cannot be, and the gate lock
-# serializes runs that share a gate root.
+# SELECTION is a plain SUBSTRING test, deliberately - never a regex. The
+# candidates are the processes whose argv embeds this run's directory
+# (-xctestrun / -resultBundlePath / --result-dir) or one of this run's device
+# UDIDs (every `xcrun simctl` call carries only the UDID), and the SHAPE fence
+# (`xcodebuild` / lane runner / `xcrun` / `xcresulttool`) keeps a process that
+# merely mentions a path - an editor, a tail, another shell - from ever being
+# signalled. There is nothing to escape and therefore nothing that can silently
+# fail to match: an earlier revision escaped the path for `pgrep -f`'s ERE, and
+# a single misplaced backslash turned the pattern into one that matched
+# nothing, which would have made this whole pass a silent no-op.
 reap_run_chain() {
   if [ -z "${RUN_DIR:-}" ] || [ ! -d "$RUN_DIR" ]; then
     return 0
   fi
-  command -v pgrep >/dev/null 2>&1 || return 0
-  local _mc_pid _mc_cmd _mc_targets="" _mc_pattern
-  _mc_pattern="$(printf '%s' "$RUN_DIR" | sed 's/[][\\.*^$()+?{}|]/\\&/g')"
-  for _mc_pid in $(pgrep -f -- "$_mc_pattern" 2>/dev/null || true); do
+  if ! command -v ps >/dev/null 2>&1; then
+    echo "local-ci-gate: the teardown sweep needs ps, which is unavailable; a surviving test chain may be left behind" >&2
+    return 0
+  fi
+  local _mc_pid _mc_cmd _mc_targets=""
+  while read -r _mc_pid _mc_cmd; do
     case "$_mc_pid" in ''|*[!0-9]*) continue ;; esac
     [ "$_mc_pid" = "$$" ] && continue
-    _mc_cmd="$(ps -o command= -p "$_mc_pid" 2>/dev/null || true)"
     [ -z "$_mc_cmd" ] && continue
-    # The command shape is the fence, not just the path: a process that merely
-    # mentions the run directory (an editor, a tail, another shell) is never
-    # signalled.
+    case "$_mc_cmd" in
+      *"$RUN_DIR"*) ;;
+      *) case "${SIMULATOR_UDID:-}${SIMULATOR2_UDID:-}" in
+           '') continue ;;
+           *) case "$_mc_cmd" in
+                *"${SIMULATOR_UDID:-}"*) ;;
+                *"${SIMULATOR2_UDID:-}"*) ;;
+                *) continue ;;
+              esac ;;
+         esac ;;
+    esac
+    # The command shape is the fence: only a test chain is ever signalled.
     case "$_mc_cmd" in
       *xcodebuild*|*ci-test-lane.sh*|*xcrun*|*xcresulttool*) ;;
       *) continue ;;
     esac
     _mc_targets="$_mc_targets $_mc_pid"
-  done
+  done <<EOF
+$(ps -eo pid=,command= 2>/dev/null)
+EOF
   [ -z "$_mc_targets" ] && return 0
   for _mc_pid in $_mc_targets; do
     printf 'local-ci-gate: terminating a surviving run process: pid %s, group leader of %s\n' \
       "$_mc_pid" "$(ps -o command= -p "$_mc_pid" 2>/dev/null | cut -c1-90)" >&2
     kill -TERM -- "-$_mc_pid" 2>/dev/null || kill -TERM "$_mc_pid" 2>/dev/null || true
   done
-  # TERM, a bounded settle, then KILL for survivors: the lease and the gate
-  # lock are released immediately after this, so nothing may be left to chance.
-  # GATE_SLEEP_SCALE=0 in the stubbed integration suite keeps this instant.
-  sleep $(( 2 * GATE_SLEEP_SCALE ))
+  # TERM, a bounded settle for the process to drain (xcodebuild writes its
+  # xcresult and releases the simulator), then KILL for survivors: the lease
+  # and the gate lock are released immediately after this, so nothing may be
+  # left to chance. The settle is a wedge-mitigation sleep, so the stubbed
+  # integration suite scales it to 0 and gets the KILL path immediately.
+  sleep $(( ${GATE_TEARDOWN_GRACE_S:-10} * GATE_SLEEP_SCALE ))
   local _mc_member
   for _mc_pid in $_mc_targets; do
     if kill -0 "$_mc_pid" 2>/dev/null; then
