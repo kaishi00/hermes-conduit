@@ -289,6 +289,16 @@ fi
 # specify -test-iterations with more than 1 iteration"), so isolation runs
 # and every UI class invocation (iters=1) omit them - UI flake retry is the
 # runner's single targeted class retry, not a native multi-iteration run.
+#
+# -collect-test-diagnostics never: Xcode's on-failure default makes the
+# invocation gather a sysdiagnose-like payload FROM the simulator, and that
+# request has an internal 600s timeout of its own. Measured 2026-09-25 on the
+# Mac gate: a unit batch whose 906 tests passed in 8.4s then spent 611s
+# waiting on `Failure collecting diagnostics from simulator: Timed out after
+# 600.0 seconds` - i.e. one batch came within 6s of its watchdog for a payload
+# nobody reads. The lane's diagnosis does not depend on it: the console log,
+# the .xcresult bundle (kept for every failing or retried attempt) and the
+# extraction tokens are what the gate classifies and reports from.
 xcodebuild_test() {
   local budget="$1" log="$2" bundle="$3" iters="$4"
   shift 4
@@ -305,6 +315,7 @@ xcodebuild_test() {
     -resultBundlePath "$bundle" \
     $retry_args \
     -parallel-testing-enabled NO \
+    -collect-test-diagnostics never \
     "$@"
 }
 
@@ -549,6 +560,8 @@ finish_lane() { # $1=status $2=attempts_json $3=batches_json $4=exit_code
     --status "$1" \
     --predicted-s "$PREDICTED_S" --timeout-s "$TIMEOUT_S" --actual-s "$ACTUAL_S" \
     --started-at "$STARTED_AT" \
+    --simulator-name "${SIMULATOR_NAME:-}" \
+    --simulator-udid "${SIMULATOR_UDID:-}" \
     --attempts-json "$2" \
     --batches-json "$3" \
     --retried-classes "$(retried_classes_csv)" \

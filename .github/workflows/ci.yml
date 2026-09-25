@@ -119,22 +119,38 @@ jobs:
     # selection, so they start immediately and run CONCURRENTLY with the macOS
     # build instead of serially delaying it.
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    # Raised from 12 to 16 minutes when the gate's two-worker, merge-mode and
+    # per-worker-evidence cases grew the gate integration suite, and again to 30
+    # when its cap moved to 1200s: the same suite also runs inside the gate's
+    # overlapped static phase, alongside two live xcodebuild chains, where it
+    # measured ~900s on our Mac against ~410s standalone. The hierarchy still
+    # holds with room to spare - every suite's own subprocess cap (1200s for the
+    # gate suite, 480s for the lane runner) < this ceiling - so a suite always
+    # reports its own failure before GitHub kills the job.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 
       - name: Run CI tooling regression suites
         # Full discovery INCLUDING the bash state-machine suites. The timeout
-        # layering must hold: per-case synthetic-hang watchdogs (<= 6s) < the
-        # wrapper's subprocess cap (480s) < this job ceiling (12m) - GitHub must
-        # never be the first layer to kill a regression suite.
+        # layering must hold: per-case synthetic-hang watchdogs (<= 6s) < each
+        # wrapper's subprocess cap (1200s for the gate integration suite, 480s
+        # for the lane-runner state machine) < this job ceiling (30m) - GitHub
+        # must never be the first layer to kill a regression suite.
         run: |
           set -euo pipefail
           python3 -m unittest discover -s scripts/tests -p 'test_*.py' -v
 
   build:
     name: Build test products
-    needs: plan
+    # NO `needs: plan`: this job compiles the tree and audits the .xctestrun,
+    # and consumes nothing the plan job produces. Waiting for it put a serial
+    # 1m45s in front of every run (measured on the 2026-09-24 runs). The plan
+    # job still gates the VERDICT - `ci-gate` requires it - and both smoke jobs
+    # still require BOTH, so a broken selection cannot produce a green gate.
+    # The only cost of the overlap is that a run whose inventory is broken
+    # spends its ~3 macOS build minutes before the plan job fails, which is the
+    # cheap direction to be wrong in.
     runs-on: macos-26
     timeout-minutes: 30
     steps:

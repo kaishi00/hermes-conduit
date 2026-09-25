@@ -249,6 +249,15 @@ def lane_result(args) -> int:
         "batches": [],
         "hung_batch": args.hung_batch if args.hung_batch else None,
     }
+    # The device this lane actually ran on, taken from the lane runner's own
+    # environment (the UDID the destination was pinned to). A run that fans out
+    # over more than one project-owned device can then prove, from the lane's
+    # OWN artifact rather than from its driver's bookkeeping, that each lane
+    # used the device it was assigned.
+    sim_name = getattr(args, "simulator_name", "") or ""
+    sim_udid = getattr(args, "simulator_udid", "") or ""
+    if sim_name or sim_udid:
+        result["simulator"] = {"name": sim_name, "udid": sim_udid}
     # Every external input is best-effort: this script assembles the canonical
     # lane result, so malformed side data must never crash a green lane.
     for field, raw in (("attempts", args.attempts_json),
@@ -854,6 +863,10 @@ def main(argv=None) -> int:
     p.add_argument("--timeout-s", type=float, default=None)
     p.add_argument("--actual-s", type=float, default=None)
     p.add_argument("--started-at", default=None)
+    p.add_argument("--simulator-name", default="",
+                   help="device name this lane ran on (evidence)")
+    p.add_argument("--simulator-udid", default="",
+                   help="device UDID this lane ran on (evidence)")
     p.add_argument("--attempts-json", default="")
     p.add_argument("--isolation-json", default="")
     p.add_argument("--batches-json", default="")

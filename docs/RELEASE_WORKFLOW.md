@@ -54,6 +54,23 @@ complete unit and UI suites, the timing/dormancy repeats, and bounded
 infrastructure recovery. Hosted-green on a different SHA certifies nothing, and
 neither does a gate run from before a rebase.
 
+Run it in **release mode** — that is the mode whose coverage the release needs
+(it is also the default, so the flag only has to be explicit when you are *not*
+certifying a release):
+
+```bash
+ssh ios-mac 'bash ~/projects/conduit-gate-tooling/scripts/local-ci-gate.sh \
+  --mode release --ref <exact-release-head-sha>'
+```
+
+Check `gate-result.json` for `"mode": "release"`, `"verdict": "PASS"`,
+`"tested_sha"` equal to the head being shipped, and `"partial": false`. A
+`--mode merge` result is complete for a PR merge but is **not** a release
+certificate: it deliberately omits the repeat/stress policy, which the release
+needs. The SHA registry keeps one authoritative run per `(SHA, mode)`, so a
+merge run earlier in the process does not block the release run for the same
+commit.
+
 If testing finds a bug:
 
 1. Open a normal fix PR against `main`.
