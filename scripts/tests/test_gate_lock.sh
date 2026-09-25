@@ -268,6 +268,15 @@ while [ "$_racers" -lt 4 ]; do
   _racers=$(( _racers + 1 ))
 done
 wait
+# Diagnosis first: this is the suite's only genuine RACE, and a failure here
+# has been seen once on a loaded hosted runner (never locally, and not in the
+# same commit's self-test job). If it ever goes red again, the shape of the
+# failure - was the lock left behind, was an aside left behind, is the winner
+# file present but empty - is what says which contender went wrong.
+if [ "$(ls "$LOCK11.winner" 2>/dev/null | wc -l | tr -d ' ')" != "1" ]; then
+  echo "  (race diagnosis: $(ls -ld "$LOCK11" "$LOCK11".stale.* "$LOCK11.winner" 2>&1 | tr '\n' '|'))"
+  echo "  (lock pid: $(cat "$LOCK11/pid" 2>/dev/null || echo none))"
+fi
 assert_eq "exactly one contender wins the race"   "$(ls "$LOCK11.winner" 2>/dev/null | wc -l | tr -d ' ')" "1"
 assert_eq "and the lock carries the winner's pid"   "$(cat "$LOCK11/pid")" "$(cat "$LOCK11.winner" 2>/dev/null)"
 rm -rf "$LOCK11" "$LOCK11.winner"
