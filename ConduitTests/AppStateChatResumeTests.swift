@@ -5853,6 +5853,10 @@ final class AppStateChatResumeTests: XCTestCase {
                 },
                 loadCatalog: { _, _ in
                     counters.catalogLoads += 1
+                    if let onCatalogLoad = counters.onCatalogLoad {
+                        counters.onCatalogLoad = nil
+                        try onCatalogLoad()
+                    }
                     return [saved]
                 },
                 openSession: { _, sessionID, _ in
@@ -6008,6 +6012,78 @@ final class AppStateChatResumeTests: XCTestCase {
         )
         XCTAssertEqual(harness.appState.turnState, .idle)
         XCTAssertFalse(harness.appState.activeChatScrollSessionIdentity.isReconciling)
+    }
+
+    func testOwedBootstrapInvalidatedByComposerEditIsNotReplayedOnNextForeground() async {
+        let fixture = await startConnectInterruptedBySceneDeactivation()
+        let harness = fixture.harness
+        let counters = fixture.counters
+        // The user starts typing while the owed catalog sync is in flight:
+        // explicit ownership invalidates the automatic return mid-sync.
+        counters.onCatalogLoad = { [weak appState = harness.appState] in
+            appState?.noteComposerUserEdit()
+        }
+
+        if let firstActivation = harness.appState.handleScenePhase(.active) {
+            await firstActivation.value
+        }
+        XCTAssertNil(counters.onCatalogLoad, "The owed sync must have loaded the catalog")
+        XCTAssertGreaterThanOrEqual(
+            counters.catalogLoads, 2,
+            "An overridden automatic return falls back to a .preserveCurrent sync, like connect"
+        )
+        let openedAfterOwedBootstrap = counters.openedSessionIDs
+        let profileLoadsAfterOwedBootstrap = counters.profileLoads
+
+        // The owed sync ran, so the marker is retired even though the user
+        // invalidated it: the next foreground must not replay the bootstrap
+        // (and with it a fresh `.automaticReturn`).
+        harness.appState.handleScenePhase(.inactive)
+        if let secondActivation = harness.appState.handleScenePhase(.active) {
+            await secondActivation.value
+        }
+
+        XCTAssertEqual(
+            counters.profileLoads, profileLoadsAfterOwedBootstrap,
+            "An invalidated owed bootstrap must not be replayed on the next foreground"
+        )
+        XCTAssertEqual(
+            counters.openedSessionIDs, openedAfterOwedBootstrap,
+            "The next foreground must not run a fresh automatic return"
+        )
+        XCTAssertFalse(harness.appState.activeChatScrollSessionIdentity.isReconciling)
+    }
+
+    func testOwedBootstrapSurvivesFailedCatalogLoadAndRetriesOnNextForeground() async {
+        let fixture = await startConnectInterruptedBySceneDeactivation()
+        let harness = fixture.harness
+        let counters = fixture.counters
+        counters.onCatalogLoad = { throw ControlledLifecycleError.failed }
+
+        if let firstActivation = harness.appState.handleScenePhase(.active) {
+            await firstActivation.value
+        }
+        XCTAssertEqual(counters.catalogLoads, 1)
+        XCTAssertEqual(harness.appState.turnState, .reconnecting)
+        XCTAssertTrue(counters.openedSessionIDs.isEmpty)
+        let profileLoadsAfterFailedBootstrap = counters.profileLoads
+
+        // The catalog never loaded, so the bootstrap is still owed: the next
+        // healthy foreground runs it again instead of only probing.
+        harness.appState.handleScenePhase(.inactive)
+        if let secondActivation = harness.appState.handleScenePhase(.active) {
+            await secondActivation.value
+        }
+
+        XCTAssertEqual(counters.probes, 0, "A still-owed bootstrap must not fall through to the observational probe")
+        XCTAssertGreaterThan(
+            counters.profileLoads, profileLoadsAfterFailedBootstrap,
+            "The retried owed bootstrap must reload profiles"
+        )
+        XCTAssertEqual(counters.catalogLoads, 2, "The retried owed sync must load the catalog again")
+        XCTAssertEqual(counters.openedSessionIDs, [fixture.saved.id])
+        XCTAssertEqual(harness.appState.activeSessionId, fixture.saved.id)
+        XCTAssertEqual(harness.appState.turnState, .idle)
     }
 
     private func makeHarness(
@@ -6174,6 +6250,8 @@ private final class OwedBootstrapCounters {
     var rosterLoads = 0
     var openedSessionIDs: [String] = []
     var probes = 0
+    /// Runs once, inside the next catalog load, then clears itself.
+    var onCatalogLoad: (@MainActor () throws -> Void)?
 }
 
 private struct OwedBootstrapColdLaunchFixture {

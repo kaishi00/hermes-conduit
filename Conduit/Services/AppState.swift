@@ -7572,15 +7572,37 @@ final class AppState: ObservableObject {
             settleReconciliation(token)
             return
         }
+        let viewportTransitionGeneration = chatViewportTransitionGeneration
         let outcome = await performSyncSession(
             purpose: owed.purpose,
             using: token,
             automaticWorkToken: owed.purpose == .automaticReturn ? automaticWorkToken : nil
         )
-        if outcome == .completed, owedPostConnectBootstrap?.client === client {
+        // Retire the marker once the sync actually ran, exactly like the
+        // connect path — including when the user took ownership mid-sync
+        // (`.automaticIntentInvalidated`): a surviving marker would replay
+        // `.automaticReturn` on the next `.active` and override that choice.
+        // A failed catalog load (`.reconnecting`) keeps it, so the next
+        // healthy foreground retries the bootstrap instead of only probing.
+        let syncRan = (outcome == .completed && turnState != .reconnecting)
+            || outcome == .automaticIntentInvalidated
+        if syncRan, owedPostConnectBootstrap?.client === client {
             owedPostConnectBootstrap = nil
         }
         guard stillOwns() else { return }
+        // Mirror `synchronizeTransportContinuation`: an automatic return the
+        // user overrode still repairs around the visible conversation.
+        if outcome == .automaticIntentInvalidated,
+           owed.purpose == .automaticReturn,
+           chatViewportTransition == nil,
+           chatViewportTransitionGeneration == viewportTransitionGeneration {
+            _ = await performSyncSession(
+                purpose: .preserveCurrent,
+                using: nil,
+                automaticWorkToken: nil
+            )
+            guard stillOwns() else { return }
+        }
         await loadChatResumeBusyInputMode(using: client)
         guard stillOwns() else { return }
         await loadChatResumeProfileDisplayPreferences()
