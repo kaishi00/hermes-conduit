@@ -833,8 +833,10 @@ of these):
   running — and the `xcodebuild` invocation itself is put in a SECOND process
   group by `ci-lib.sh`'s watchdog (the idiom that lets the watchdog kill a
   whole invocation), which the second pass reaches by matching the run
-  directory in the command lines of surviving `xcodebuild`/`xcrun`/lane-runner
-  processes. Both passes run before the lease and the gate lock are released,
+  directory in the command line of a surviving `xcodebuild` or lane-runner
+  process. (A bare `simctl` call carries only the UDID, so it is not swept
+  there; those calls are individually deadline-bounded and die with their own
+  budget.) Both passes run before the lease and the gate lock are released,
   and the integration suite asserts that a stub invocation in flight when the
   gate is TERMed is gone afterwards.
 

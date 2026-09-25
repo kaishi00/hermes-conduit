@@ -13,12 +13,15 @@
 #   2. create a detached worktree for that SHA outside the developer's tree;
 #   3. xcodegen generate (the generated .xcodeproj is never committed);
 #   4. cheap static checks (planner inventory validation, CI-tooling
-#      regression suites, localization coverage);
+#      regression suites, localization coverage), run CONCURRENTLY with
+#      everything below unless --static-serial asks for the old order;
 #   5. build-for-testing ONCE into a gate-specific DerivedData directory;
-#   6. the COMPLETE ConduitTests unit suite (planner-batched, sequential);
-#   7. the COMPLETE ConduitUITests suite (one batched UI shard);
+#   6-7. the COMPLETE ConduitTests and ConduitUITests suites, as two WORKERS
+#      on two project-owned devices (--workers 1 serializes them on the unit
+#      device), each with its own bounded recovery round;
 #   8. the explicit repeat policy for timing/performance-sensitive classes:
-#      K unconditional repetitions, every one of which must pass;
+#      K unconditional repetitions, every one of which must pass - inside the
+#      unit worker, and only in release mode;
 #   9. a machine-readable gate-result.json + summary.md, and exit 0 only if
 #      the whole gate passed.
 #
@@ -418,17 +421,27 @@ LOCK_DIR="$GATE_ROOT/gate.lock"
 # idiom, which is what lets the watchdog kill a whole invocation). That
 # grandchild is the process actually holding a device, so it is found here by
 # the run directory embedded in its command line (-xctestrun,
-# -resultBundlePath, --result-dir, the lane runner's own --result-dir) - and
-# ONLY when the command also looks like a test chain, so a process that merely
-# mentions the path (an editor, a log tail, another shell) is never signalled.
-# The gate's own pid is excluded explicitly.
+# -resultBundlePath, the lane runner's --result-dir) - and ONLY when the command
+# also looks like a test chain, so a process that merely mentions the path (an
+# editor, a log tail, another shell) is never signalled. The gate's own pid is
+# excluded explicitly.
+#
+# SCOPE, stated exactly: this reaches processes whose ARGV embeds the run
+# directory - the xcodebuild invocation and the lane runner. A bare `simctl`
+# call carries only the UDID, so a `simctl` orphaned by a dead worker is NOT
+# swept here; those calls are individually `bounded_run`-wrapped (60s) and die
+# with their own budget, which is why the sweep does not need to chase them.
+# The path is escaped before pgrep, which matches it as an ERE: an unescaped
+# `+` (or any other metacharacter) in a custom --run-dir would silently degrade
+# this pass to pass 1 only.
 reap_run_chain() {
   if [ -z "${RUN_DIR:-}" ] || [ ! -d "$RUN_DIR" ]; then
     return 0
   fi
   command -v pgrep >/dev/null 2>&1 || return 0
-  local _mc_pid _mc_cmd _mc_targets=""
-  for _mc_pid in $(pgrep -f -- "$RUN_DIR" 2>/dev/null || true); do
+  local _mc_pid _mc_cmd _mc_targets="" _mc_pattern
+  _mc_pattern="$(printf '%s' "$RUN_DIR" | sed 's/[][\\.*^$()+?{}|]/\\&/g')"
+  for _mc_pid in $(pgrep -f -- "$_mc_pattern" 2>/dev/null || true); do
     case "$_mc_pid" in ''|*[!0-9]*) continue ;; esac
     [ "$_mc_pid" = "$$" ] && continue
     _mc_cmd="$(ps -o command= -p "$_mc_pid" 2>/dev/null || true)"
@@ -512,7 +525,6 @@ cleanup() {
   # processes (`unittest`, the l10n checker) are its group's members too.
   if [ -n "${STATIC_PID:-}" ]; then
     kill -TERM -- "-$STATIC_PID" 2>/dev/null || kill -TERM "$STATIC_PID" 2>/dev/null || true
-    kill -TERM -- "-$STATIC_PID" 2>/dev/null || true
     wait "$STATIC_PID" 2>/dev/null || true
     if kill -0 "$STATIC_PID" 2>/dev/null; then
       kill -KILL -- "-$STATIC_PID" 2>/dev/null || kill -KILL "$STATIC_PID" 2>/dev/null || true
