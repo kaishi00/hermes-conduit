@@ -331,7 +331,7 @@ struct GroupChatBubble<Content: View>: View {
         // Cached (non-generic enum: generic types cannot store static
         // properties): a fresh DateFormatter per bubble per render is
         // brutally expensive across a 200-event LazyVStack.
-        GroupBubbleTimeFormatter.shared.string(from: date)
+        return GroupBubbleTimeFormatter.shared.string(from: date)
     }
 }
 
