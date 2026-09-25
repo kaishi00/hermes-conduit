@@ -10,9 +10,12 @@ Measured cost: minutes, not seconds - ~28 stubbed gate runs, each paying git
 worktree and subprocess overhead even with GATE_SLEEP_SCALE=0 (the suite sets
 it, so the gate's wedge-mitigation sleeps collapse; the synthetic hang cases
 use Python time.sleep inside a fake script and are unaffected). It grew from
-~200s to ~330s on our Mac when the gate gained its two-worker, mode and
+~200s to ~410s on our Mac when the gate gained its two-worker, mode and
 per-worker-evidence cases - the coverage is the point, so the cap and the job
-ceiling moved rather than the cases. The suite honours
+ceiling moved rather than the cases. The cap is sized for the WORST case, not
+the standalone one: the same suite runs INSIDE the gate's overlapped static
+phase, alongside two live xcodebuild chains, where it measured ~900s (nearly
+three times the standalone 410s) and blew a 600s cap once. The suite honours
 CONDUIT_CI_SKIP_BASH_WRAPPER_TESTS (the plan job sets it: this suite must never
 delay planning or risk the plan job's 10-minute ceiling) and runs in the
 dedicated self-test job instead.
@@ -41,7 +44,7 @@ SCRIPT = os.path.join(SCRIPTS_DIR, "tests", "test_local_ci_gate.sh")
 class LocalGateScriptTests(unittest.TestCase):
     def test_local_gate_integration_suite(self):
         proc = subprocess.run(["bash", SCRIPT], capture_output=True,
-                              text=True, timeout=600)
+                              text=True, timeout=1200)
         if proc.returncode != 0:
             self.fail("local-gate integration suite failed:\n"
                       + proc.stdout[-6000:] + proc.stderr[-2000:])

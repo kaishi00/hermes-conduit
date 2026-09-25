@@ -2706,9 +2706,12 @@ class ScriptContractTests(unittest.TestCase):
         self.assertNotIn("| sed", sweep)
         self.assertNotIn("$(sed", sweep)
         self.assertIn('*"$RUN_DIR"*', sweep)
-        # ...and the run's own devices, so a UDID-only `simctl` call is reachable.
-        self.assertIn("SIMULATOR_UDID", sweep)
-        self.assertIn("SIMULATOR2_UDID", sweep)
+        # ...and the run directory is the ONLY key. A device UDID is not
+        # exclusive to a run (the CI-tooling fixtures reuse this gate's own UDID
+        # strings), so matching on one makes a stubbed gate inside the static
+        # phase kill a CONCURRENT run's live xcodebuild.
+        self.assertNotIn("SIMULATOR_UDID", sweep)
+        self.assertNotIn("SIMULATOR2_UDID", sweep)
 
     def test_the_lane_runner_disables_xcodes_diagnostics_collection(self):
         """A 600s internal timeout for a payload nobody reads was measured once

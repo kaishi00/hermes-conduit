@@ -423,15 +423,23 @@ LOCK_DIR="$GATE_ROOT/gate.lock"
 # by its command line. The gate's own pid is excluded explicitly.
 #
 # SELECTION is a plain SUBSTRING test, deliberately - never a regex. The
-# candidates are the processes whose argv embeds this run's directory
-# (-xctestrun / -resultBundlePath / --result-dir) or one of this run's device
-# UDIDs (every `xcrun simctl` call carries only the UDID), and the SHAPE fence
-# (`xcodebuild` / lane runner / `xcrun` / `xcresulttool`) keeps a process that
-# merely mentions a path - an editor, a tail, another shell - from ever being
-# signalled. There is nothing to escape and therefore nothing that can silently
-# fail to match: an earlier revision escaped the path for `pgrep -f`'s ERE, and
-# a single misplaced backslash turned the pattern into one that matched
-# nothing, which would have made this whole pass a silent no-op.
+# candidates are the processes whose command line embeds THIS RUN's directory
+# (-xctestrun / -resultBundlePath / --result-dir), fenced to the test-chain
+# command shapes (`xcodebuild` / lane runner / `xcrun` / `xcresulttool`) so a
+# process that merely mentions a path - an editor, a tail, another shell - is
+# never signalled.
+#
+# The run directory is the ONLY key, and that is a safety property rather than
+# a shortcut: a device UDID is NOT exclusive to a run. The CI-tooling fixtures
+# use the same UDID strings as this gate's own device, and a stubbed gate run
+# inside `scripts/tests/` therefore shares them - so a sweep that also matched
+# on "one of my device UDIDs" would TERM a CONCURRENT run's live xcodebuild
+# (observed on 2026-09-25: it killed this gate's own unit batch mid-test, with
+# "** BUILD INTERRUPTED **" in the batch log and an unreadable result bundle).
+# A run's own directory, by contrast, is unique to that run, and a process that
+# names it can only be that run's. A surviving `xcrun simctl` (UDID-only argv,
+# no path) is out of reach here by design: those calls are individually
+# deadline-bounded (<=200s) and die with their own budget.
 reap_run_chain() {
   if [ -z "${RUN_DIR:-}" ] || [ ! -d "$RUN_DIR" ]; then
     return 0
@@ -447,14 +455,7 @@ reap_run_chain() {
     [ -z "$_mc_cmd" ] && continue
     case "$_mc_cmd" in
       *"$RUN_DIR"*) ;;
-      *) case "${SIMULATOR_UDID:-}${SIMULATOR2_UDID:-}" in
-           '') continue ;;
-           *) case "$_mc_cmd" in
-                *"${SIMULATOR_UDID:-}"*) ;;
-                *"${SIMULATOR2_UDID:-}"*) ;;
-                *) continue ;;
-              esac ;;
-         esac ;;
+      *) continue ;;
     esac
     # The command shape is the fence: only a test chain is ever signalled.
     case "$_mc_cmd" in
@@ -1268,6 +1269,11 @@ run_static_phase() {
     return 0
   fi
   echo "== static checks (planner inventory, CI tooling, localization) =="
+  # The checks run NICE'd: they are throughput work running alongside two live
+  # xcodebuild chains, and the lanes (whose wall clock is the run's wall clock)
+  # keep priority. Under that load the tooling suite measured ~900s against
+  # ~410s standalone, which is why its own wrapper cap is sized for the loaded
+  # case rather than the standalone one.
   local started ok=1 checks=() f name status elapsed
   local check_pids="" check_pid
   started=$(date +%s)
@@ -1278,11 +1284,11 @@ run_static_phase() {
   # foreground (--static-serial) path includes the long-lived ios-ci-host lease
   # holder - a process that cannot exit until this run does. That is an
   # indefinite hang, and it is invisible to any test that only greps the flag.
-  run_static_check plan-validate python3 scripts/plan-tests.py validate --repo-root . &
+  run_static_check plan-validate nice -n 10 python3 scripts/plan-tests.py validate --repo-root . &
   check_pids="$check_pids $!"
-  run_static_check ci-tooling-regression python3 -m unittest discover -s scripts/tests -p 'test_*.py' &
+  run_static_check ci-tooling-regression nice -n 10 python3 -m unittest discover -s scripts/tests -p 'test_*.py' &
   check_pids="$check_pids $!"
-  run_static_check localization-coverage python3 scripts/check-l10n-coverage.py --repo-root . &
+  run_static_check localization-coverage nice -n 10 python3 scripts/check-l10n-coverage.py --repo-root . &
   check_pids="$check_pids $!"
   for check_pid in $check_pids; do
     wait "$check_pid" 2>/dev/null || true
