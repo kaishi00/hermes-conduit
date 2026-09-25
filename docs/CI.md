@@ -47,6 +47,10 @@ one authoritative run per mode, and a **release** record covers a merge request
 for the same SHA (a release result is strictly stronger evidence for the same
 tree). The normal merge-then-release flow for one SHA therefore still works,
 while neither mode can be run twice on its own without `--allow-another-run`.
+An explicit `--repeat-classes`/`--repeat-iterations` always wins over the mode
+default — naming repeat classes with `--mode merge` runs the repeat layer with
+the release defaults for whatever was left unsaid, rather than silently
+repeating nothing.
 
 
 ## Hosted gate architecture
@@ -772,7 +776,13 @@ host lease: SIMULATOR_TEST            (one lease, fail-closed, held for the whol
 
 Pairing the unit work against the UI suite — rather than sharding one suite
 across both devices — is what actually shortens the run: the UI suite is the
-longest single pole. Each worker owns exactly one UDID, boots and settles that
+longest single pole. **Exactly one xcodebuild chain may drive a device at a
+time**, and both directions are proven by the integration suite, which records
+every stub invocation's `(device, start, end)` and asserts that no two overlap
+on one device. That assertion is mutation-tested: restoring the "start both
+workers, then wait once" shape in the serial branch makes the recorded trace
+report `overlaps=['<udid>: ...']` for that case, so the suite fails on exactly
+the defect it is there to catch. Each worker owns exactly one UDID, boots and settles that
 device itself, and never touches the other's, so the two xcodebuild chains
 cannot corrupt each other's Simulator state (the failure class the host lease
 exists for). The lease is exclusive against OTHER projects and workflows, not
@@ -804,10 +814,13 @@ of these):
   is proven by the lane's evidence, not only by the driver's bookkeeping;
 * the two workers were given two DIFFERENT devices (a run that resolved both to
   one UDID refuses to start);
-* a torn-down run does not leave a live test chain behind: INT/TERM/HUP reaps
-  the worker processes before the lease and gate lock are released, so a
-  wedged environment cannot be certified and no worker keeps orchestrating
-  lanes on a released host.
+* a torn-down run does not leave a live test chain behind: each worker is
+  launched in its OWN process group (`set -m`, the same idiom `run_bounded`
+  uses), so INT/TERM/HUP signals the worker AND the lane-runner/xcodebuild
+  chain below it — bash does not forward a signal to its foreground child, so
+  killing the worker's pid alone would orphan a live chain on a device whose
+  lease this run has just released. The group is signalled before the lease and
+  the gate lock are released, and the static phase is launched the same way.
 
 `log`, `--run-dir`, `--worktree-root` and the gate root are still forced
 outside the repository, and every `simctl` operation remains UDID-scoped (no
@@ -1014,7 +1027,14 @@ makes a fast run checkable rather than merely fast:
 * `timing.lanes` / `timing.repeats` — per lane and per repetition: status, wall
   clock, predicted time, class count, the device it ran on, and
   `xcodebuild_invocations` (counted from the lane's own invocation logs);
-  `timing.xcodebuild_invocations` is the run's total.
+  `timing.xcodebuild_invocations` is the run's total. Repeat entries are keyed
+  `<class>/iter-<n>`, so two classes' third iterations cannot collapse onto one
+  key.
+
+An earlier record for the same SHA is a **caveat** on the result
+(`prior_runs`): the mode rules allow exactly one escalation — a release run
+after a merge run — and where a result is cited from, it has to say that it was
+not the first attempt for its commit.
 
 A run is `partial` when the operator deliberately narrowed it **within its
 mode** (`--skip-static`, or a disabled repeat policy in `release` mode): a

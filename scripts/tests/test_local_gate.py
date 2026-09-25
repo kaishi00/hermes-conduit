@@ -1911,6 +1911,73 @@ class SummarizeTests(unittest.TestCase):
         self.assertEqual(doc["timing"]["lanes"]["unit"]["simulator"]["udid"], "U")
         self.assertIn("static", doc["timing"]["phases"])
 
+    def test_repeat_timings_are_keyed_per_class_and_iteration(self):
+        """Every class repeats as iter-1..iter-N, so keying the repeat timings
+        by directory basename would collapse them onto three keys and report a
+        fraction of the run's real invocation count."""
+        self._layout(repeat_classes=("AlphaTests", "BetaTests"), iterations=2,
+                     unit_batches=2)
+        for klass in ("AlphaTests", "BetaTests"):
+            self._repeat_artifacts(klass, 2)
+            for i in (1, 2):
+                logs = self.run_dir / "repeats" / klass / "iter-{0}".format(i) / "logs"
+                logs.mkdir(parents=True, exist_ok=True)
+                (logs / "batch-1-a1.log").write_text("x", encoding="utf-8")
+        # The two primary lanes' own invocations, so the total is the run's.
+        for lane, names in (("unit", ("batch-1-a1.log", "batch-2-a1.log")),
+                            ("ui", ("batch-a1.log",))):
+            logs = self.run_dir / "lanes" / lane / "logs"
+            logs.mkdir(parents=True, exist_ok=True)
+            for name in names:
+                (logs / name).write_text("x", encoding="utf-8")
+        code, doc, _ = self._summarize()
+        self.assertEqual(code, 0, doc.get("problems"))
+        self.assertEqual(sorted(doc["timing"]["repeats"]),
+                         ["AlphaTests/iter-1", "AlphaTests/iter-2",
+                          "BetaTests/iter-1", "BetaTests/iter-2"])
+        # 2 unit batches + 1 UI invocation + 4 repetitions.
+        self.assertEqual(doc["timing"]["xcodebuild_invocations"], 7)
+
+    def test_a_repetition_on_the_wrong_device_fails_the_gate(self):
+        """Repetitions are unit-worker work: their device is checked like any
+        other lane's, or one could run elsewhere and still certify."""
+        self._layout(repeat_classes=("AlphaTests",), iterations=2, unit_batches=2)
+        self._repeat_artifacts("AlphaTests", 2,
+                               simulator=("iPhone 17 Pro 2", "U2"))
+        code, doc, _ = self._summarize()
+        self.assertEqual(doc["verdict"], "FAIL")
+        self.assertTrue(any("iter-1: the lane ran on device" in p
+                            for p in doc["problems"]), doc["problems"])
+
+    def test_an_unknown_worker_name_is_recorded_but_not_required(self):
+        """A future gate may add a worker; the summarizer must not fail a run
+        for evidence it does not yet model, but it must still verify the
+        workers it DOES require."""
+        self._layout(workers=2, repeat_classes=(), unit_batches=2)
+        write_workers(self.run_dir, [
+            {"name": "unit", "device_name": "iPhone 17 Pro", "udid": "U"},
+            {"name": "ui", "device_name": "iPhone 17 Pro 2", "udid": "U2"},
+            {"name": "extra", "device_name": "iPhone 17 Pro 3", "udid": "U3"},
+        ])
+        code, doc, _ = self._summarize()
+        self.assertEqual(code, 0, doc.get("problems"))
+        self.assertEqual(sorted(w["name"] for w in doc["workers"]),
+                         ["extra", "ui", "unit"])
+
+    def test_a_prior_run_for_the_same_sha_is_a_caveat(self):
+        """The (SHA, mode) registry allows exactly one escalation; a result
+        that is not the first attempt for its SHA has to say so where it is
+        cited from."""
+        self._layout(repeat_classes=(), unit_batches=2)
+        meta_path = self.run_dir / "meta.json"
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        meta["prior_runs"] = 1
+        meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+        code, doc, _ = self._summarize()
+        self.assertEqual(code, 0, doc.get("problems"))
+        self.assertTrue(any("not the first attempt" in c for c in doc["caveats"]),
+                        doc["caveats"])
+
     def test_assertion_failure_is_reported_as_assertion(self):
         self._layout(repeat_classes=())
         self._lane(self.run_dir / "lanes" / "unit",

@@ -204,9 +204,17 @@ run_batch() { # $1=dir $2=batch-number, rest=classes
 }
 
 IFS=',' read -r -a SHAPES <<< "$SIZES"
-for shape in "${SHAPES[@]}"; do
+if [ "${#SHAPES[@]}" -eq 0 ]; then
+  echo "bench-unit-batches: --sizes must be a non-empty comma-separated list (e.g. 7,14,28,full)" >&2
+  exit 2
+fi
+for shape in ${SHAPES[@]+"${SHAPES[@]}"}; do
   case "$shape" in
     full) total=$(grep -c . "$CLASSES_FILE"); run_shape "$total" "full" ;;
+    ''|*[!0-9]*|0)
+      echo "bench-unit-batches: bad --sizes entry '$shape' (expected a positive integer or 'full')" >&2
+      exit 2
+      ;;
     *) run_shape "$shape" "$shape" ;;
   esac
 done

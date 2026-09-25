@@ -98,6 +98,27 @@ if [ "${1:-}" = "-version" ]; then
   exit 0
 fi
 echo "xcodebuild stub: $*"
+# Per-DEVICE invocation trace, for the cases that must prove only one
+# xcodebuild chain is ever active on one device (the two-worker fan-out, and
+# the --workers 1 serial fallback, where both workers share the primary
+# device). The destination carries the UDID, and the stub holds it briefly so
+# that two chains which ARE concurrent overlap in the recorded interval
+# instead of racing past each other within the same second.
+if [ -n "${FAKE_DEVICE_TRACE:-}" ]; then
+  trace_device=""
+  for a in "$@"; do
+    case "$a" in
+      *"Simulator,id="*) rest="${a#*id=}"; trace_device="${rest%%,*}" ;;
+    esac
+  done
+  if [ -n "$trace_device" ]; then
+    trace_start=$(date +%s)
+    dwell="${FAKE_DEVICE_DWELL:-0}"
+    [ "$dwell" -gt 0 ] && sleep "$dwell"
+    printf '%s\t%s\t%s\n' "$trace_device" "$trace_start" "$(date +%s)" \
+      >> "$FAKE_DEVICE_TRACE"
+  fi
+fi
 bundle=""
 target="ConduitTests"
 classes=""
@@ -1291,6 +1312,119 @@ if needs_extraction; then
     "$(json_get "$RUN30/gate-result.json" 'doc["simulator2"]')" "None"
 else
   skip "the one-worker run's verdict"
+fi
+
+# ---------------------------------------------------------------------------
+echo ""
+echo "--- case: only one xcodebuild chain is ever active on one device ---"
+# The whole point of the worker split is that two test chains never drive one
+# device. The stub records (device, start, end) per invocation and holds the
+# device briefly, so an OVERLAP is visible instead of two instant invocations
+# racing past each other inside one second. Both directions are checked: two
+# workers on two devices (allowed, and each device must still be serial) and
+# one worker pair on ONE device (must be strictly serial).
+overlap_report() { # $1 = trace file, $2 = label
+  python3 - "$1" "$2" <<'PY'
+import collections, sys
+rows = []
+with open(sys.argv[1], encoding="utf-8") as fh:
+    for line in fh:
+        parts = line.rstrip("\n").split("\t")
+        if len(parts) == 3:
+            rows.append((parts[0], int(parts[1]), int(parts[2])))
+by_device = collections.defaultdict(list)
+for device, start, end in rows:
+    by_device[device].append((start, end))
+problems = []
+for device, spans in by_device.items():
+    spans.sort()
+    # Strictly inside counts as an overlap: with whole-second stamps a
+    # serialized pair can TOUCH (next start == previous end) and must not be
+    # reported, while two invocations that started in the same second (or
+    # between each other's start and end) are genuinely concurrent.
+    for (s1, e1), (s2, e2) in zip(spans, spans[1:]):
+        if s2 < e1:
+            problems.append("{0}: {1}-{2} overlaps {3}-{4}".format(device, s1, e1, s2, e2))
+devices = sorted(by_device)
+print("{0}\t{1}\t{2}\t{3}".format(
+    sys.argv[2], len(rows), len(devices), "; ".join(problems)))
+PY
+}
+
+FAKE_DEVICE_TRACE="$WORK/device-trace-2.tsv"
+export FAKE_DEVICE_TRACE FAKE_DEVICE_DWELL=2
+: > "$FAKE_DEVICE_TRACE"
+RUN31="$(new_run_dir)"
+run_gate --ref HEAD --gate-root "$WORK/gate-workers" --run-dir "$RUN31" \
+    --repeat-classes "" >/dev/null 2>&1 || true
+TRACE2="$(overlap_report "$FAKE_DEVICE_TRACE" "two-workers")"
+assert_eq "the two-worker run overlapped no device" \
+  "$(printf '%s' "$TRACE2" | cut -f4)" ""
+assert_eq "and it used both devices" "$(printf '%s' "$TRACE2" | cut -f3)" "2"
+unset FAKE_DEVICE_TRACE FAKE_DEVICE_DWELL
+
+FAKE_DEVICE_TRACE="$WORK/device-trace-1.tsv"
+export FAKE_DEVICE_TRACE FAKE_DEVICE_DWELL=2
+: > "$FAKE_DEVICE_TRACE"
+RUN32="$(new_run_dir)"
+run_gate --workers 1 --ref HEAD --gate-root "$WORK/gate-workers" \
+    --run-dir "$RUN32" --repeat-classes "" >/dev/null 2>&1 || true
+TRACE1="$(overlap_report "$FAKE_DEVICE_TRACE" "one-worker")"
+assert_eq "the serial fallback overlapped no device either" \
+  "$(printf '%s' "$TRACE1" | cut -f4)" ""
+assert_eq "and used exactly one device" "$(printf '%s' "$TRACE1" | cut -f3)" "1"
+unset FAKE_DEVICE_TRACE FAKE_DEVICE_DWELL
+if needs_extraction; then
+  assert_eq "the serial fallback still covered the whole unit suite" \
+    "$(json_get "$RUN32/gate-result.json" 'doc["unit"]["classes_observed"]')" "15"
+else
+  skip "the serial fallback's coverage"
+fi
+
+# ---------------------------------------------------------------------------
+echo ""
+echo "--- case: --static-serial still runs (and does not wait on the lease holder) ---"
+# The static phase joins its three checks EXPLICITLY. A bare `wait` would also
+# join the long-lived ios-ci-host lease holder in the foreground path - a
+# process that cannot exit until the gate does - so this case hangs forever
+# instead of failing.
+RUN33="$(new_run_dir)"
+SERIAL_EXIT=0
+if run_gate --static-serial --ref HEAD --gate-root "$WORK/gate-workers" \
+    --run-dir "$RUN33" --repeat-classes "" >/dev/null 2>&1; then
+  SERIAL_EXIT=0
+else
+  SERIAL_EXIT=$?
+fi
+if needs_extraction; then
+  assert_eq "--static-serial completes and passes" "$SERIAL_EXIT" "0"
+  assert_eq "its static checks all ran" \
+    "$(json_get "$RUN33/gate-result.json" 'len(doc["static_checks"])')" "3"
+  assert_eq "and the phase records that it was NOT overlapped" \
+    "$(json_get "$RUN33/static/phase.json" 'doc["details"]["overlapped_with_lanes"]')" "false"
+else
+  skip "--static-serial's verdict"
+fi
+
+# ---------------------------------------------------------------------------
+echo ""
+echo "--- case: merge mode accepts an explicit repeat request with release defaults ---"
+# Naming repeat classes with --mode merge asks for the repeat layer; the mode
+# must not silently turn it into zero iterations just because the iteration
+# COUNT was left at its default.
+RUN34="$(new_run_dir)"
+MERGE_REPEAT_DEFAULT_EXIT=0
+run_gate --mode merge --ref HEAD --gate-root "$WORK/gate-mode" \
+    --run-dir "$RUN34" --repeat-classes AlphaTests >/dev/null 2>&1 \
+    || MERGE_REPEAT_DEFAULT_EXIT=$?
+if needs_extraction; then
+  assert_eq "merge + explicit classes passes" "$MERGE_REPEAT_DEFAULT_EXIT" "0"
+  assert_eq "the repetitions used the release default (3)" \
+    "$(json_get "$RUN34/gate-result.json" 'doc["focused_repeats"]["iterations_per_class"]')" "3"
+  assert_eq "and all three ran" \
+    "$(json_get "$RUN34/gate-result.json" 'doc["focused_repeats"]["executions"]')" "3"
+else
+  skip "merge mode with an explicit repeat request"
 fi
 
 echo ""

@@ -130,9 +130,10 @@ jobs:
 
       - name: Run CI tooling regression suites
         # Full discovery INCLUDING the bash state-machine suites. The timeout
-        # layering must hold: per-case synthetic-hang watchdogs (<= 6s) < the
-        # wrapper's subprocess cap (480s) < this job ceiling (12m) - GitHub must
-        # never be the first layer to kill a regression suite.
+        # layering must hold: per-case synthetic-hang watchdogs (<= 6s) < each
+        # wrapper's subprocess cap (600s for the gate integration suite, 480s
+        # for the lane-runner state machine) < this job ceiling (16m) - GitHub
+        # must never be the first layer to kill a regression suite.
         run: |
           set -euo pipefail
           python3 -m unittest discover -s scripts/tests -p 'test_*.py' -v

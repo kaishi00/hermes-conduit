@@ -607,6 +607,10 @@ def cmd_meta(args) -> int:
         "mode": args.mode or "release",
         "workers": args.workers if args.workers is not None else 1,
         "unit_batch_max_classes": args.unit_batch_max_classes or 0,
+        # Earlier records for this SHA, if any. The (SHA, mode) registry allows
+        # exactly one escalation (a release run after a merge run), so a result
+        # that is not the first attempt for its SHA must say so.
+        "prior_runs": args.prior_runs or 0,
         "started_at": args.started_at or "",
         "finished_at": args.finished_at or "",
         "wall_s": args.wall_s,
@@ -1651,13 +1655,36 @@ def _invocation_count(lane_dir: str) -> int:
     return count
 
 
-def _lane_timings(dirs) -> dict:
+def _repeat_dirs(run_dir: str) -> list:
+    """Every repetition's lane directory: repeats/<class>/iter-<n>."""
+    root = os.path.join(run_dir, "repeats")
+    if not os.path.isdir(root):
+        return []
+    out = []
+    for klass in sorted(os.listdir(root)):
+        klass_dir = os.path.join(root, klass)
+        if not os.path.isdir(klass_dir):
+            continue
+        for iteration in sorted(os.listdir(klass_dir)):
+            lane_dir = os.path.join(klass_dir, iteration)
+            if os.path.isdir(lane_dir):
+                out.append(lane_dir)
+    return out
+
+
+def _lane_timings(dirs, key=None) -> dict:
+    """Per-lane timing/evidence keyed by the lane's identity.
+
+    `key` matters for repeats: their directories are `repeats/<class>/iter-N`,
+    so basenames collide across classes (every class has an `iter-1`) and a
+    dict keyed that way would silently keep only the LAST class's iterations.
+    """
     out = {}
     for lane_dir in dirs:
         doc = load_json(os.path.join(lane_dir, "lane-result.json"))
         if not isinstance(doc, dict):
             continue
-        out[os.path.basename(lane_dir)] = {
+        out[key(lane_dir) if key else os.path.basename(lane_dir)] = {
             "status": doc.get("status"),
             "wall_s": doc.get("actual_s"),
             "predicted_s": doc.get("predicted_s"),
@@ -1939,9 +1966,13 @@ def cmd_summarize(args) -> int:
         "ui": second_udid if workers_declared > 1 else primary_udid,
     }
     if worker_records:
+        # Repeat lanes are included: they run inside the UNIT worker, on the
+        # unit device, so a repetition that ran elsewhere would otherwise be
+        # certified without ever being attributed.
         gate_problems.extend(
             _lane_device_problems(
-                list(unit_passes) + list(ui_passes), expect_device,
+                list(unit_passes) + list(ui_passes) + _repeat_dirs(run_dir),
+                expect_device,
                 require_named=workers_declared > 1))
 
     # --- repeats ----------------------------------------------------------
@@ -2156,6 +2187,11 @@ def cmd_summarize(args) -> int:
                             or unaccounted):
         caveats.append("--allow-recovered-infrastructure downgraded recovered "
                        "infrastructure from FAIL to this verdict")
+    if _int_or_zero(meta.get("prior_runs")) > 0:
+        caveats.append(
+            "an earlier gate result already exists for this SHA ({0} record(s) "
+            "before this run); this is not the first attempt for the "
+            "commit".format(meta.get("prior_runs")))
     sim_record = meta.get("simulator") or {}
     if (not meta.get("xcode_version") or not sim_record.get("runtime")
             or not sim_record.get("udid")):
@@ -2213,12 +2249,9 @@ def cmd_summarize(args) -> int:
     # account of where its wall clock went (a green summary that needed 20
     # xcodebuild invocations to run 3 minutes of tests is visible here).
     lane_timings = _lane_timings(list(unit_passes) + list(ui_passes))
-    repeat_timings = _lane_timings(sorted(
-        os.path.join(repeats_dir, cls, it)
-        for cls in (os.listdir(repeats_dir) if os.path.isdir(repeats_dir) else [])
-        for it in (os.listdir(os.path.join(repeats_dir, cls))
-                   if os.path.isdir(os.path.join(repeats_dir, cls)) else [])
-        if os.path.isdir(os.path.join(repeats_dir, cls, it))))
+    repeat_timings = _lane_timings(
+        _repeat_dirs(run_dir),
+        key=lambda d: os.path.relpath(d, repeats_dir).replace(os.sep, "/"))
 
     result = {
         "schema_version": SCHEMA_VERSION,
@@ -2591,6 +2624,7 @@ def main(argv=None) -> int:
     p.add_argument("--mode", default="release")
     p.add_argument("--workers", type=int, default=1)
     p.add_argument("--unit-batch-max-classes", type=int, default=0)
+    p.add_argument("--prior-runs", type=int, default=0)
     p.add_argument("--started-at", default="")
     p.add_argument("--finished-at", default="")
     p.add_argument("--wall-s", type=int, default=0)

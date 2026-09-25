@@ -252,11 +252,15 @@ esac
 #             the unit suite, which merge mode runs in full).
 #   release - merge coverage PLUS the repeat policy below.
 # An explicit --repeat-classes/--repeat-iterations always wins: the mode only
-# decides the DEFAULT.
+# decides the DEFAULT. So merge mode turns the layer off only when the caller
+# asked for nothing - naming repeat classes (or a repetition count) with
+# --mode merge runs them, using the release defaults for whatever was left
+# unsaid, rather than silently producing a run whose artifact says merge and
+# which repeats nothing.
 if [ "$MODE" = "merge" ]; then
-  if [ "$REPEAT_ITERATIONS_SET" -eq 0 ]; then REPEAT_ITERATIONS=0; fi
   if [ "$REPEAT_CLASSES_SET" -eq 0 ] && [ "$REPEAT_ITERATIONS_SET" -eq 0 ]; then
     REPEAT_CLASSES=""
+    REPEAT_ITERATIONS=0
   fi
 fi
 
@@ -419,28 +423,38 @@ cleanup() {
   fi
   # Live workers hold xcodebuild/test chains against this run's devices. A
   # tear-down (INT/TERM from the host monitor, a closed SSH session) must take
-  # them with it: an orphaned worker would keep a device busy - and keep
+  # them with it: an orphaned chain would keep driving a device - and keep
   # testing - after this script has released the host lease and the gate lock,
-  # which is exactly the uncoordinated state the lease exists to prevent. The
-  # pid list is cleared as it is reaped so no later signal reaches a reused
-  # pid. Each worker is killed by its OWN pid (never by process group: this
-  # script may share a group with its caller).
+  # which is exactly the uncoordinated state the lease exists to prevent.
+  # Each worker was launched under `set -m`, so it leads its OWN process group
+  # (never this script's, and never its caller's): signaling `-$pid` reaches
+  # the worker AND the lane runner / xcodebuild / simctl chain below it, which
+  # a signal to the worker's pid alone does NOT (bash does not forward a signal
+  # to its foreground child). The pid fallback covers a worker whose group has
+  # already gone. The list is cleared once reaped so no later signal can reach
+  # a reused pid.
   if [ -n "${WORKER_PIDS:-}" ]; then
     local _wp
     for _wp in $WORKER_PIDS; do
-      kill -0 "$_wp" 2>/dev/null && kill -TERM "$_wp" 2>/dev/null || true
+      kill -TERM -- "-$_wp" 2>/dev/null || kill -TERM "$_wp" 2>/dev/null || true
     done
     for _wp in $WORKER_PIDS; do
       wait "$_wp" 2>/dev/null || true
     done
     for _wp in $WORKER_PIDS; do
-      kill -0 "$_wp" 2>/dev/null && kill -KILL "$_wp" 2>/dev/null || true
+      kill -0 "$_wp" 2>/dev/null || continue
+      kill -KILL -- "-$_wp" 2>/dev/null || kill -KILL "$_wp" 2>/dev/null || true
     done
     WORKER_PIDS=""
   fi
+  # The overlapped static phase is launched the same way, and its check
+  # processes (`unittest`, the l10n checker) are its group's members too.
   if [ -n "${STATIC_PID:-}" ]; then
-    kill -0 "$STATIC_PID" 2>/dev/null && kill -TERM "$STATIC_PID" 2>/dev/null || true
+    kill -TERM -- "-$STATIC_PID" 2>/dev/null || kill -TERM "$STATIC_PID" 2>/dev/null || true
     wait "$STATIC_PID" 2>/dev/null || true
+    kill -0 "$STATIC_PID" 2>/dev/null && {
+      kill -KILL -- "-$STATIC_PID" 2>/dev/null || kill -KILL "$STATIC_PID" 2>/dev/null || true
+    }
     STATIC_PID=""
   fi
   # Release the host SIMULATOR_TEST lease FIRST: closing fd 3 EOFs the
@@ -636,12 +650,25 @@ registry_covers() { # $1 = requested mode -> 0 when an existing record covers it
     # all release runs, which is exactly what an empty field must mean.
     rec_mode="$(printf '%s\n' "$line" | awk -F'\t' '{print $5}')"
     [ -z "$rec_mode" ] && rec_mode="release"
-    [ "$(mode_strength "$rec_mode")" -ge "$want" ] && return 0
+    if [ "$(mode_strength "$rec_mode")" -ge "$want" ]; then
+      # Recorded so the refusal can name WHICH mode already covers the SHA: a
+      # release record blocking a merge request and a merge record blocking
+      # another merge are different sentences.
+      GATE_REGISTRY_COVERING_MODE="$rec_mode"
+      return 0
+    fi
   done < "$SHA_REGISTRY"
   return 1
 }
+GATE_REGISTRY_COVERING_MODE=""
+# How many earlier records this SHA already has: a passing release run that
+# follows a red merge run for the same SHA is the one bounded second attempt
+# the mode rules allow, and where the result is cited from it has to be
+# visible.
+GATE_PRIOR_RUNS=0
+[ -s "$SHA_REGISTRY" ] && GATE_PRIOR_RUNS="$(grep -c . "$SHA_REGISTRY" 2>/dev/null || echo 0)"
 if [ "$ALLOW_ANOTHER_RUN" -ne 1 ] && registry_covers "$MODE"; then
-  echo "local-ci-gate: a full $MODE gate result already exists for $SHA:" >&2
+  echo "local-ci-gate: a full ${GATE_REGISTRY_COVERING_MODE:-$MODE} gate result already exists for $SHA:" >&2
   sed 's/^/  /' "$SHA_REGISTRY" >&2
   echo "local-ci-gate: one authoritative full-gate invocation per requested SHA" >&2
   echo "local-ci-gate: (and mode) - a release result already covers a merge request for the same SHA." >&2
@@ -906,6 +933,7 @@ write_meta() { # $1 = finished_at, $2 = wall_s
     --mode "$MODE" \
     --workers "$WORKERS" \
     --unit-batch-max-classes "$UNIT_BATCH_MAX_CLASSES" \
+    --prior-runs "${GATE_PRIOR_RUNS:-0}" \
     --started-at "$GATE_STARTED_AT" --finished-at "$1" --wall-s "$2" \
     --unit-classes "${GATE_UNIT_CLASS_COUNT:-0}" \
     --unit-batches "${GATE_UNIT_BATCH_COUNT:-0}" \
@@ -918,7 +946,6 @@ write_meta() { # $1 = finished_at, $2 = wall_s
     $([ "$SKIP_STATIC" -eq 1 ] && printf '%s' '--skip-static')
 }
 
-GATE_STATIC_STATUS="skipped"
 GATE_BUILD_STATUS="not_run"
 
 # --- phase: generate ---------------------------------------------------------
@@ -1125,13 +1152,24 @@ run_static_phase() {
   fi
   echo "== static checks (planner inventory, CI tooling, localization) =="
   local started ok=1 checks=() f name status elapsed
+  local check_pids="" check_pid
   started=$(date +%s)
   mkdir -p "$RUN_DIR/static"
   rm -f "$RUN_DIR"/static/*.check 2>/dev/null || true
+  # Each check's pid is collected and joined EXPLICITLY, never with a bare
+  # `wait`: a bare wait joins every child of this shell, which in the
+  # foreground (--static-serial) path includes the long-lived ios-ci-host lease
+  # holder - a process that cannot exit until this run does. That is an
+  # indefinite hang, and it is invisible to any test that only greps the flag.
   run_static_check plan-validate python3 scripts/plan-tests.py validate --repo-root . &
+  check_pids="$check_pids $!"
   run_static_check ci-tooling-regression python3 -m unittest discover -s scripts/tests -p 'test_*.py' &
+  check_pids="$check_pids $!"
   run_static_check localization-coverage python3 scripts/check-l10n-coverage.py --repo-root . &
-  wait
+  check_pids="$check_pids $!"
+  for check_pid in $check_pids; do
+    wait "$check_pid" 2>/dev/null || true
+  done
   # plan-validate first, then the rest alphabetically: the document keeps the
   # order an operator reads the checks in, not the glob's. A check that wrote
   # NO record (killed, crashed before its file landed) is a FAILURE, never a
@@ -1225,8 +1263,13 @@ if [ "$STATIC_OVERLAP" -eq 1 ]; then
   # be absent from the run ("static phase: missing", which the summarizer
   # reports as a gate defect).
   mkdir -p "$RUN_DIR/static"
+  # `set -m` like the workers: the phase and the check processes it spawns form
+  # their own process group, so teardown can take the whole group down instead
+  # of leaving a check running against a worktree that is being removed.
+  set -m
   ( run_static_phase ) >"$RUN_DIR/static/static.log" 2>&1 3>&- &
   STATIC_PID=$!
+  set +m
 fi
 
 # --- phase: plan -------------------------------------------------------------
@@ -1328,12 +1371,12 @@ simulator_prep() { # $1 = label
   #
   # The record goes to the WORKER's own file, and the phase document is
   # assembled by the parent from all of them: two workers prepare their own
-  # devices concurrently, so no worker can append to the parent's state.
+  # devices concurrently, so no worker can append to the parent's state. The
+  # parent DERIVES the phase's failure flag from these records (see the
+  # simulation-prep aggregation), so a failure here is never a variable the
+  # worker wrote into its own subshell.
   printf '%s\t%s\t%s\n' "$label" "$status" "$elapsed" \
     >> "${WORKER_SIM_PREP_FILE:-$RUN_DIR/sim-prep/records.tsv}"
-  if [ "$status" -ne 0 ]; then
-    WORKER_SIM_PREP_FAILED=1
-  fi
   return 0
 }
 
@@ -1399,7 +1442,6 @@ else
       worker_meta() { # $1=name $2=device name $3=device udid $4=pid $5=started epoch
         local wdir="$WORKERS_DIR/$1"
         mkdir -p "$wdir"
-        : > "$wdir/sim-prep.tsv"
         printf '%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" "$5" > "$wdir/meta.tsv"
       }
 
@@ -1407,31 +1449,44 @@ else
         local name="$1" devname="$2" devudid="$3" fn="$4"
         local started pid wdir="$WORKERS_DIR/$1"
         started=$(date +%s)
-        # The directory must exist BEFORE the subshell's redirection: a
-        # redirect into a missing directory fails the launch outright, which
-        # silently turns the worker into "never ran" (the summarizer reports
-        # that as a gate defect, but the run is already wasted).
+        # The directory (and the sim-prep record file) must exist BEFORE the
+        # subshell's redirection and before the worker can append to it: a
+        # redirect into a missing directory fails the launch outright, and a
+        # truncation that happens after the worker started can discard its
+        # first record.
         mkdir -p "$wdir"
+        : > "$wdir/sim-prep.tsv"
         # A subshell per worker: a subshell cannot write the parent's
         # variables, so every per-worker record travels as a FILE (the
-        # sim-prep records, the exit code) and the parent assembles the
-        # documents from them. fd 3 is closed in the worker on purpose: it is
-        # the host lease's write end, which must die with THIS process.
+        # sim-prep records, the exit code, the finish stamp) and the parent
+        # assembles the documents from them. fd 3 is closed in the worker on
+        # purpose: it is the host lease's write end, which must die with THIS
+        # process.
+        #
+        # `set -m` puts the worker in its OWN process group (the same idiom
+        # run_bounded and ci-lib.sh use) so teardown can signal the worker AND
+        # the xcodebuild/lane chain below it: bash does not forward a signal to
+        # its foreground child, so killing the worker's pid alone would orphan
+        # a live test chain on a device whose lease this run has just released.
+        # It does not put the worker in the CALLER's group - the child becomes
+        # its own leader.
+        set -m
         (
           WORKER_NAME="$name"
           WORKER_DIR="$wdir"
           WORKER_SIM_PREP_FILE="$wdir/sim-prep.tsv"
-          WORKER_SIM_PREP_FAILED=0
           SIMULATOR_NAME="$devname"
           SIMULATOR_UDID="$devudid"
           export SIMULATOR_NAME SIMULATOR_UDID
           export XCODEBUILD_POLL_INTERVAL_S="$LANE_POLL_SECONDS"
           "$fn"
           _worker_status=$?
+          date +%s > "$wdir/finished"
           printf '%s\n' "$_worker_status" > "$wdir/exit-code"
           exit "$_worker_status"
         ) >"$wdir/worker.log" 2>&1 3>&- &
         pid=$!
+        set +m
         WORKER_PIDS="$WORKER_PIDS $pid"
         worker_meta "$name" "$devname" "$devudid" "$pid" "$started"
         echo "worker $name: started on '$devname' ($devudid); log $wdir/worker.log"
@@ -1442,7 +1497,7 @@ else
       # where it can be recorded (the pid list is cleared as it is reaped so no
       # later signal can reach a reused pid).
       wait_for_workers() {
-        local remaining="$WORKER_PIDS" alive pid name devname devudid wpid started wdir now
+        local remaining="$WORKER_PIDS" alive pid name devname devudid wpid started now
         local last_heartbeat=0
         # Liveness is polled every second but the HEARTBEAT prints every 15:
         # the poll interval is the gate's own exit latency (a worker that
@@ -1490,12 +1545,22 @@ else
           [ -d "$wdir" ] || continue
           [ -s "$wdir/meta.tsv" ] || continue
           IFS=$'\t' read -r name devname devudid wpid started < "$wdir/meta.tsv" || continue
-          local exit_code="" wall_s=0 completed=0 sim_prep_failed=0 plabel pstatus psecs
+          local exit_code="" wall_s=0 completed=0 sim_prep_failed=0 plabel pstatus psecs finished
           if [ -s "$wdir/exit-code" ]; then
             exit_code="$(tr -d '[:space:]' < "$wdir/exit-code")"
             [ "$exit_code" = "0" ] && completed=1
           fi
-          wall_s=$(( $(date +%s) - started ))
+          # The worker's OWN finish stamp, not "now": in the serial fallback the
+          # ui worker is launched after the unit worker was reaped, but its
+          # start stamp would otherwise be taken at launch time in some paths,
+          # and a wall clock measured at record time would credit it with the
+          # whole serial run. Without a stamp (a worker that never returned) the
+          # measurement is the launch-to-now span and `completed` is 0.
+          finished="$(tr -d '[:space:]' < "$wdir/finished" 2>/dev/null || true)"
+          case "$finished" in
+            ''|*[!0-9]*) wall_s=$(( $(date +%s) - started )) ;;
+            *) wall_s=$(( finished - started )) ;;
+          esac
           if [ -s "$wdir/sim-prep.tsv" ]; then
             while IFS=$'\t' read -r plabel pstatus psecs; do
               [ -z "$plabel" ] && continue
@@ -1713,10 +1778,14 @@ else
         start_worker ui "$SIMULATOR_NAME2" "$SIMULATOR2_UDID" worker_ui
         wait_for_workers
       else
-        # One worker at a time, same code path: the run's evidence then looks
-        # like a serial gate's (one device, lanes in order) instead of being
-        # spread over two devices.
+        # One worker at a time, same code path. The SECOND start waits for the
+        # first to be reaped: both own the SAME UDID, and two concurrent
+        # xcodebuild chains (or two concurrent shutdown/erase/boot preparations)
+        # on one device is exactly the corruption the worker split exists to
+        # avoid. Starting both and waiting once at the end would run them
+        # side by side.
         start_worker unit "$SIMULATOR_NAME" "$SIMULATOR_UDID" worker_unit
+        wait_for_workers
         start_worker ui "$SIMULATOR_NAME" "$SIMULATOR_UDID" worker_ui
         wait_for_workers
       fi
@@ -1775,20 +1844,24 @@ fi
 # The preparation records come from the WORKERS (each prepared its own device,
 # concurrently): the phase document is assembled here from their per-worker
 # files, so a preparation that failed on either device lands on the result.
+# A glob, never `$(ls ...)`: a --run-dir containing a space would word-split
+# into nonexistent paths and the phase would then read PASS WITH NO CHECKS,
+# silently dropping a failed preparation from the result.
 SIM_PREP_CHECKS=()
 SIM_PREP_FAILED=0
-for _prep_file in $(ls "$RUN_DIR"/workers/*/sim-prep.tsv 2>/dev/null); do
+for _prep_file in "$RUN_DIR"/workers/*/sim-prep.tsv; do
+  [ -f "$_prep_file" ] || continue
   _prep_worker="$(basename "$(dirname "$_prep_file")")"
   while IFS=$'\t' read -r _plabel _pstatus _psecs; do
     [ -z "$_plabel" ] && continue
-    _ptoken="$_plabel"
+    # Worker-qualified: the same label ("ui", "unit") is prepared by whichever
+    # worker owns that device, and the record has to say which one it was.
+    _ptoken="$_prep_worker/$_plabel"
     if [ "$_pstatus" != "0" ]; then
       SIM_PREP_FAILED=1
-    fi
-    if [ "$_pstatus" = "0" ]; then
-      SIM_PREP_CHECKS+=(--check "$_ptoken:pass:$_psecs")
-    else
       SIM_PREP_CHECKS+=(--check "$_ptoken:fail:$_psecs")
+    else
+      SIM_PREP_CHECKS+=(--check "$_ptoken:pass:$_psecs")
     fi
   done < "$_prep_file"
 done
