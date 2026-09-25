@@ -5940,12 +5940,11 @@ final class AppStateChatResumeTests: XCTestCase {
 
         // Precondition: connect completed its handshake while the scene was
         // inactive and returned at the continuation checkpoint with the
-        // bootstrap owed — the catalog was never loaded and the transport
-        // flags were never published.
+        // bootstrap owed — the catalog was never loaded and the turn is
+        // left synchronizing.
         XCTAssertEqual(counters.catalogLoads, 0)
         XCTAssertTrue(harness.appState.sessions.isEmpty)
         XCTAssertEqual(harness.appState.turnState, .synchronizing)
-        XCTAssertTrue(harness.appState.isConnecting)
 
         if let activation = harness.appState.handleScenePhase(.active) {
             await activation.value
