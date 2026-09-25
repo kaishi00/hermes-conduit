@@ -105,6 +105,24 @@ struct BotRosterView: View {
             } header: {
                 Text(AppLocalization.string("Group Chats"))
             }
+        } else if case .failed(let message) = appState.groupChatPhase {
+            // A probe failure must explain itself — an absent section is
+            // indistinguishable from "this gateway has no groups".
+            Section {
+                BotModeNoticeRow(
+                    icon: "exclamationmark.triangle",
+                    message: message
+                )
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .conduitGlassSurface(cornerRadius: 18, tint: .yellow.opacity(0.10))
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets(top: 3, leading: 0, bottom: 3, trailing: 0))
+            } header: {
+                Text(AppLocalization.string("Group Chats"))
+            }
         }
     }
 

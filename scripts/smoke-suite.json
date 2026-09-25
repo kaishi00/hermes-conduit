@@ -34,7 +34,8 @@
     "HermesClientTests",
     "ComposerDraftStoreTests",
     "MarkdownLargeDocumentTests",
-    "NotificationDashboardOwnershipTests"
+    "NotificationDashboardOwnershipTests",
+    "GroupChatModelsTests"
   ],
   "ui": [
     "ConnectionSetupUITests",

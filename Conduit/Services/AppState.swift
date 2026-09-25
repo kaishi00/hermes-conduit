@@ -243,7 +243,7 @@ struct GroupChatLifecycleOperations {
     var state: (@MainActor (HermesClient, String) async throws -> (GroupRoom, GroupDriverStatus?))?
     var log: (@MainActor (HermesClient, String, Int) async throws -> GroupLogPage)?
     var send: (@MainActor (HermesClient, String, String, String, String) async throws -> GroupSendResult)?
-    var create: (@MainActor (HermesClient, String, [[String: Any]]) async throws -> GroupRoom)?
+    var create: (@MainActor (HermesClient, String, String, [[String: Any]]) async throws -> GroupRoom)?
     var stop: (@MainActor (HermesClient, String) async throws -> Int)?
     var disband: (@MainActor (HermesClient, String) async throws -> Void)?
 
@@ -2922,10 +2922,10 @@ final class AppState: ObservableObject {
         return try await client.groupsSend(roomID: roomID, eventID: eventID, text: text, threadID: threadID)
     }
 
-    private func groupsCreate(_ client: HermesClient, name: String, members: [[String: Any]])
+    private func groupsCreate(_ client: HermesClient, roomID: String, name: String, members: [[String: Any]])
         async throws -> GroupRoom {
-        if let operation = groupChatOperations.create { return try await operation(client, name, members) }
-        return try await client.groupsCreate(name: name, members: members)
+        if let operation = groupChatOperations.create { return try await operation(client, roomID, name, members) }
+        return try await client.groupsCreate(roomID: roomID, name: name, members: members)
     }
 
     private func groupsStop(_ client: HermesClient, roomID: String) async throws -> Int {
@@ -2964,14 +2964,19 @@ final class AppState: ObservableObject {
     /// Probe `groups.capabilities` and, when the foundation methods are
     /// advertised, refresh the room list. Called alongside the bot roster
     /// refresh; a gateway that lacks the method is a supported outcome, not
-    /// an error.
+    /// an error. The response is epoch- AND dashboard-fenced: an in-flight
+    /// probe must never resurrect the outgoing server's phase on the new
+    /// dashboard's surface.
     func refreshGroupChatSupport() async {
         guard let client, isConnected else {
             groupChatPhase = .idle
             return
         }
+        let epoch = groupRoomEpoch
+        let dashboard = activeDashboardID
         do {
             let capabilities = try await groupsCapabilities(client)
+            guard groupRoomEpoch == epoch, activeDashboardID == dashboard else { return }
             groupCapabilities = capabilities
             guard capabilities.foundationSupported else {
                 groupChatPhase = .gatewayUnsupported
@@ -2983,7 +2988,7 @@ final class AppState: ObservableObject {
         } catch is CancellationError {
             return
         } catch {
-            guard !Task.isCancelled else { return }
+            guard groupRoomEpoch == epoch, activeDashboardID == dashboard, !Task.isCancelled else { return }
             if HermesClient.isMissingRPCMethod(error) {
                 groupCapabilities = nil
                 groupChatPhase = .gatewayUnsupported
@@ -3090,7 +3095,8 @@ final class AppState: ObservableObject {
     private func pollActiveRoomOnce(epoch: Int) async {
         guard let client, isConnected,
               let surface = activeRoomSurface,
-              groupRoomEpoch == epoch else { return }
+              groupRoomEpoch == epoch,
+              surface.dashboardID == activeDashboardID else { return }
         do {
             let page = try await groupsLog(
                 client,
@@ -3104,15 +3110,21 @@ final class AppState: ObservableObject {
                 || fresh.contains(where: { $0.seq > activeRoomReplay.cursor + 1 }) {
                 // Gap detected (the replay's own flag, or a poll event that
                 // jumped past unseen events): resync from the room's
-                // authoritative cursor instead of rendering a hole.
+                // authoritative cursor instead of rendering a hole. The
+                // resync refreshes driver status itself.
                 await resyncActiveRoom(epoch: epoch)
-            } else if !fresh.isEmpty {
+                return
+            }
+            if !fresh.isEmpty {
                 activeRoomReplay.adopt(page: page)
-                if activeRoomReplay.cursor >= page.latestSeq {
-                    let (_, driver) = try await groupsState(client, roomID: surface.room.roomID)
-                    guard groupRoomEpoch == epoch else { return }
-                    activeRoomDriverStatus = driver
-                }
+            }
+            // Driver status tracks the DRIVER, not the log: refresh even on
+            // an eventless tick, or a settled room keeps offering Stop and
+            // showing "working…" until the next unrelated event.
+            if activeRoomReplay.cursor >= page.latestSeq || fresh.isEmpty {
+                let (_, driver) = try await groupsState(client, roomID: surface.room.roomID)
+                guard groupRoomEpoch == epoch else { return }
+                activeRoomDriverStatus = driver
             }
         } catch is CancellationError {
             return
@@ -3184,7 +3196,7 @@ final class AppState: ObservableObject {
             guard groupRoomEpoch == epoch else { return }
             // Ambiguous outcome: KEEP pendingRoomMessage (same event id) so
             // the user's retry deduplicates server-side.
-            errorMessage = AppLocalization.string("Could not send to this group chat: %@")
+            errorMessage = AppLocalization.string("Could not send to this group chat: \(error.localizedDescription)")
         }
     }
 
@@ -3230,7 +3242,7 @@ final class AppState: ObservableObject {
         } catch {
             guard groupRoomEpoch == epoch else { return }
             // Surface without closing: stop is advisory to the driver.
-            errorMessage = AppLocalization.string("Could not stop this group chat's work: %@")
+            errorMessage = AppLocalization.string("Could not stop this group chat's work: \(error.localizedDescription)")
         }
     }
 
@@ -3244,7 +3256,7 @@ final class AppState: ObservableObject {
             guard groupRoomEpoch == epoch else { return }
         } catch {
             guard groupRoomEpoch == epoch else { return }
-            errorMessage = AppLocalization.string("Could not disband this group chat: %@")
+            errorMessage = AppLocalization.string("Could not disband this group chat: \(error.localizedDescription)")
             return
         }
         closeRoomSurface()
@@ -3293,7 +3305,11 @@ final class AppState: ObservableObject {
             ])
         }
         do {
-            let room = try await groupsCreate(client, name: trimmedName, members: members)
+            // The room id is the CLIENT-minted identity and idempotency
+            // key (a contract-required field): minting it here means a retry
+            // of a failed create deduplicates instead of forking the room.
+            let roomID = "conduit-\(UUID().uuidString.lowercased())"
+            let room = try await groupsCreate(client, roomID: roomID, name: trimmedName, members: members)
             await refreshGroupRooms()
             await openGroupRoom(room)
             return true

@@ -1670,14 +1670,17 @@ final class HermesClient: ObservableObject {
         return (rows.compactMap { GroupDecoders.room($0) }, object["next_offset"]?.intValue)
     }
 
-    /// Create a hosted room on the current gateway. `members` carries this
-    /// client's proposed roster rows (`member_id`/`profile`/`handle`/
-    /// `display_name` for local bots); the gateway re-validates the frozen
-    /// 2–6 roster and refuses ambiguous, duplicated, or reserved handles.
-    func groupsCreate(name: String, members: [[String: Any]]) async throws -> GroupRoom {
+    /// Create a hosted room on the current gateway. `roomID` is the CLIENT-
+    /// MINTED room identity AND idempotency key (the contract's mandatory
+    /// field; the gateway's validator accepts ^[A-Za-z0-9][A-Za-z0-9._:-]*$
+    /// up to 128 chars — a UUID fits). `members` carries this client's
+    /// proposed roster rows (`member_id`/`profile`/`handle`/`display_name`
+    /// for local bots); the gateway re-validates the frozen 2–6 roster and
+    /// refuses ambiguous, duplicated, or reserved handles.
+    func groupsCreate(roomID: String, name: String, members: [[String: Any]]) async throws -> GroupRoom {
         let result = try await rpc(
             "groups.create",
-            params: ["name": name, "members": members],
+            params: ["room_id": roomID, "name": name, "members": members],
             scoped: false
         )
         guard let room = GroupDecoders.room(result.objectValue?["room"]) else {

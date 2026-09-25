@@ -352,6 +352,80 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         appState.closeGroupRoom()
     }
 
+    /// `groups.create` REQUIRES a client-minted `room_id` (it is the room's
+    /// identity and its create idempotency key). Assert the outgoing params
+    /// carry a non-empty, validator-legal one — the injected seam sees the
+    /// exact payload the production path builds.
+    func testCreateMintsAValidatorLegalRoomIDAndMemberRows() async {
+        let room = self.room()
+        final class CreateRecorder {
+            var roomIDs: [String] = []
+            var name: String?
+            var members: [[String: Any]] = []
+        }
+        let recorder = CreateRecorder()
+        let operations = GroupChatLifecycleOperations(
+            capabilities: { _ in self.capabilities(supported: true) },
+            list: { _ in ([room], nil) },
+            state: { _, roomID in (self.roomWithLatest(0), nil) },
+            log: { _, roomID, sinceSeq in
+                GroupLogPage(events: [], cursor: sinceSeq, latestSeq: 0, hasMore: false,
+                             authorityGatewayID: "gw-a", authorityEpoch: 1)
+            },
+            create: { _, roomID, name, members in
+                recorder.roomIDs.append(roomID)
+                recorder.name = name
+                recorder.members = members
+                return room
+            }
+        )
+        let appState = makeAppState(operations: operations)
+        connect(appState)
+        await appState.refreshGroupChatSupport()
+        let bots = [Self.makeBot("alpha"), Self.makeBot("beta")]
+        let created = await appState.createGroupRoom(name: "Planning", bots: bots)
+        XCTAssertEqual(created, true)
+
+        XCTAssertEqual(recorder.roomIDs.count, 1)
+        let roomID = recorder.roomIDs[0]
+        // Gateway validator: ^[A-Za-z0-9][A-Za-z0-9._:-]*$, <=128 chars.
+        XCTAssertFalse(roomID.isEmpty)
+        XCTAssertLessThanOrEqual(roomID.count, 128)
+        XCTAssertTrue(roomID.allSatisfy {
+            $0.isLetter || $0.isNumber || $0 == "." || $0 == "_" || $0 == ":" || $0 == "-"
+        })
+        XCTAssertEqual(recorder.name, "Planning")
+        XCTAssertEqual(recorder.members.count, 2)
+        for member in recorder.members {
+            XCTAssertNotNil(member["member_id"])
+            XCTAssertNotNil(member["profile"])
+            XCTAssertNotNil(member["handle"])
+            XCTAssertNotNil(member["display_name"])
+        }
+        // Creation opens the fresh room; closing leaves session state alone.
+        XCTAssertEqual(appState.activeRoomSurface?.room.roomID, "room-1")
+        appState.closeGroupRoom()
+        XCTAssertEqual(appState.activeSessionId, nil)
+    }
+
+    private static func makeBot(_ name: String) -> BotProfile {
+        BotProfile(
+            name: name,
+            botTitle: nil,
+            displayName: "",
+            profileDescription: "",
+            model: nil,
+            provider: nil,
+            hasAvatar: false,
+            isPinned: false,
+            isHiddenByMeta: false,
+            appearanceColor: nil,
+            canonicalSession: nil,
+            lastActive: nil,
+            lastPreview: nil
+        )
+    }
+
     private func roomWithLatest(_ latest: Int) -> GroupRoom {
         GroupRoom(
             roomID: "room-1",

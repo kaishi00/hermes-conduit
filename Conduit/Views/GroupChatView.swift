@@ -9,7 +9,6 @@ struct GroupChatView: View {
     @ObservedObject private var appLanguage = AppLanguageStore.shared
     @State private var draft = ""
     @State private var showingDisbandConfirmation = false
-    @FocusState private var composerFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -41,10 +40,8 @@ struct GroupChatView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 10) {
-                    let events = appState.activeRoomReplay.events
-                    ForEach(events) { event in
+                    ForEach(appState.activeRoomReplay.events) { event in
                         GroupEventRow(event: event, members: surface?.room.members ?? [])
-                            .id(event.id)
                     }
                     if let pending = appState.pendingRoomMessage {
                         GroupChatBubble(
@@ -130,7 +127,6 @@ struct GroupChatView: View {
                 .padding(.vertical, 8)
                 .background(Color.primary.opacity(0.05),
                             in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .focused($composerFocused)
                 .submitLabel(.send)
                 .onSubmit { sendDraft() }
 
@@ -171,6 +167,15 @@ struct GroupChatView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            Button {
+                appState.closeGroupRoom()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 15, weight: .semibold))
+            }
+            .accessibilityLabel(Text(AppLocalization.string("Leave this group chat")))
+        }
         ToolbarItem(placement: .principal) {
             VStack(spacing: 1) {
                 Text(surface?.room.name ?? "")

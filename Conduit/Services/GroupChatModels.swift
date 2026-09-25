@@ -426,15 +426,14 @@ struct GroupRoomOutbox: Equatable {
 
 /// Semantic @mention classification for room transcripts and the room
 /// composer, mirroring upstream `group-rounds.parseGroupChatMentions` +
-/// `group-mention-text.tsx`: a token is STYLED exactly when routing would
-/// honor it — unknown handles, e-mail addresses, and Matrix-style ids stay
-/// plain prose. Recognized mentions render as inline accent text, never
-/// pills.
+/// `group-mention-text.tsx`: a token is STYLED exactly when upstream would
+/// style it — unknown handles and e-mail addresses stay plain prose.
+/// Recognized mentions render as inline accent text, never pills.
 enum GroupRoomMentions {
-    /// Upstream's transcript scan charset (`[a-z0-9][a-z0-9._:-]*`). The
-    /// wider set (dots/colons) is what makes e-mails and `@user:matrix.id`
-    /// classify as UNKNOWN (their token never equals a member handle)
-    /// instead of splitting into a false mention.
+    /// Upstream's transcript scan charset (`[a-z0-9][a-z0-9._-]*`), taken
+    /// one character WIDER here (`:` included, matching the gateway driver's
+    /// own `_MENTION_RE` so a Matrix-style id survives as ONE unknown token
+    /// instead of splitting into a false mention).
     static let mentionScanRegex = try? NSRegularExpression(
         pattern: "@([a-z0-9][a-z0-9._:-]*)",
         options: [.caseInsensitive]
@@ -448,16 +447,43 @@ enum GroupRoomMentions {
 
     /// What a lone `@token` means in this room, or nil when routing ignores
     /// it. Room routing belongs to the gateway driver; this is presentation
-    /// only.
+    /// only. Like upstream's styling parser, membership is recognized by
+    /// EVERY resolvable form of a member — the exact ids/handle/display
+    /// name, their slug/collapsed reductions, and the separator-stripped
+    /// collapsed form.
     static func classify(token: String, members: [GroupMember]) -> Kind? {
         let handle = token.lowercased()
         if handle == "user" { return .human }
         if handle == "all" || handle == "everyone" { return .broadcast }
-        if members.contains(where: { member in
-            [member.handle, member.memberID, member.profile]
+        let collapsed = handle
+            .replacingOccurrences(of: ".", with: "")
+            .replacingOccurrences(of: "-", with: "")
+            .replacingOccurrences(of: "_", with: "")
+        for member in members {
+            let candidates = [member.handle, member.memberID, member.profile, member.displayName]
                 .compactMap { $0 }
-                .contains(where: { $0.caseInsensitiveCompare(handle) == .orderedSame })
-        }) { return .agent }
+            for candidate in candidates {
+                let lowered = candidate.lowercased()
+                if lowered == handle || lowered == collapsed { return .agent }
+                if BotMentions.mentionNameForms(candidate).contains(handle) { return .agent }
+            }
+            let stripped = candidateCollapsedForm(candidates)
+            if !stripped.isEmpty, stripped == collapsed { return .agent }
+        }
         return nil
+    }
+
+    /// The separator-stripped form of the member's most identity-bearing
+    /// name (handle → profile → id), upstream's collapsed fallback.
+    private static func candidateCollapsedForm(_ candidates: [String]) -> String {
+        for candidate in candidates {
+            let stripped = candidate
+                .replacingOccurrences(of: ".", with: "")
+                .replacingOccurrences(of: "-", with: "")
+                .replacingOccurrences(of: "_", with: "")
+                .lowercased()
+            if !stripped.isEmpty { return stripped }
+        }
+        return ""
     }
 }
