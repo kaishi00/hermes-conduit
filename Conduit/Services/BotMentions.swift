@@ -70,12 +70,16 @@ enum BotMentions {
         var mentioned: [BotProfile] = []
         var seen = Set<String>()
         for match in regex.matches(in: prose, range: fullRange) {
-            // Capture group 2 is the tag body. Group 3 (a `@connection`
-            // qualifier) never resolves against Conduit's single-gateway
-            // roster, so a qualified tag stays plain text — matching how
-            // upstream pins qualified tags to a connection Conduit lacks.
+            // Capture group 2 is the tag body. A `@tag@connection` qualifier
+            // (group 3) resolves ONLY against a roster row from that exact
+            // connection upstream; Conduit's single-gateway roster has no
+            // connection identities, so a qualified tag never resolves here
+            // and stays plain text.
             guard match.numberOfRanges > 2,
                   let tokenRange = Range(match.range(at: 2), in: prose) else { continue }
+            if match.numberOfRanges > 3, match.range(at: 3).location != NSNotFound {
+                continue
+            }
             let token = prose[tokenRange].lowercased()
             guard case .some(.bot(let bot)) = formOwners[token] else { continue }
             if seen.insert(bot.name).inserted {
@@ -103,20 +107,24 @@ enum BotMentions {
     }
 
     /// Taggable forms of a friendly name: the slug ("Research Buddy" →
-    /// "research-buddy"; runs of non-token characters collapse to one
-    /// hyphen) and the collapsed form ("research-buddy" → "researchbuddy";
-    /// hyphens and underscores survive). Reserved tokens and anything
-    /// outside the mention charset are dropped.
+    /// "research-buddy") and the collapsed form ("research-buddy" →
+    /// "researchbuddy"). Faithful to upstream's two regexes: runs of
+    /// non-token characters each collapse to ONE hyphen (literal hyphens and
+    /// underscores are token characters and stay verbatim in both forms).
+    /// Reserved tokens and anything outside the mention charset are dropped.
     static func mentionNameForms(_ value: String?) -> [String] {
         let name = (value ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !name.isEmpty else { return [] }
 
         var slugChars: [Character] = []
+        var inReplacedRun = false
         for char in name {
             if isTokenCharacter(char) {
                 slugChars.append(char)
-            } else if slugChars.last != "-" {
+                inReplacedRun = false
+            } else if !inReplacedRun {
                 slugChars.append("-")
+                inReplacedRun = true
             }
         }
         var slug = String(slugChars)

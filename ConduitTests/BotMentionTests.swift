@@ -56,7 +56,12 @@ final class BotMentionTests: XCTestCase {
 
     func testPrimaryProfileAnswersToHermes() {
         let roster = [bot("default"), bot("researcher")]
-        XCTAssertEqual(names("@hermes do the thing", roster: roster), ["default"])
+        // Upstream excludes the FOCUSED conversation's profile from mention
+        // resolution — in a default-profile chat the primary bot IS the
+        // listener, so @hermes annotates only when focused elsewhere.
+        XCTAssertEqual(names("@hermes do the thing", roster: roster, active: "researcher"), ["default"])
+        XCTAssertEqual(names("@hermes do the thing", roster: roster, active: nil), ["default"])
+        XCTAssertEqual(names("@hermes do the thing", roster: roster, active: "default"), [])
     }
 
     func testUnknownTokenStaysUnresolved() {
@@ -231,7 +236,11 @@ final class BotMentionTests: XCTestCase {
         XCTAssertEqual(BotMentions.mentionNameForms("   "), [])
         XCTAssertEqual(
             BotMentions.mentionNameForms("Research -- Buddy (v2)"),
-            ["research-buddy-v2", "researchbuddyv2"]
+            ["research----buddy-v2", "research--buddyv2"]
+        )
+        XCTAssertEqual(
+            BotMentions.mentionNameForms("Research Buddy"),
+            ["research-buddy", "researchbuddy"]
         )
     }
 }
