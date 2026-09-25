@@ -1596,6 +1596,20 @@ final class HermesClient: ObservableObject {
         return message.lowercased().contains("session not found")
     }
 
+    /// Whether `error` means the hosted room is gone/tombstoned: `groups.*`
+    /// answers the room-error envelope (4112 "room not found" / 4114) unless
+    /// the caller opted into disbanded rooms. The room's driver keeps
+    /// running server-side; a client surface showing the room must close.
+    static func isRoomNotFoundError(_ error: Error) -> Bool {
+        if let rpcError = error as? RpcError {
+            if rpcError.code == 4112 || rpcError.code == 4114 { return true }
+            return rpcError.message.lowercased().contains("hosted room not found")
+        }
+        let message = (error as? LocalizedError)?.errorDescription
+            ?? String(describing: error)
+        return message.lowercased().contains("hosted room not found")
+    }
+
     // MARK: - Attachments
 
     func attachImage(_ sessionId: String, base64: String, filename: String) async throws -> String? {
@@ -1690,7 +1704,11 @@ final class HermesClient: ObservableObject {
     }
 
     /// One room's replay cursor, authority state, and live driver status.
-    func groupsState(roomID: String, includeDisbanded: Bool = false)
+    /// Tombstoned rooms are OPTED INTO by default: a poller must be able to
+    /// OBSERVE a disband (`disbanded_at` set) to close its surface — with
+    /// the default `false` the gateway answers "room not found" instead of
+    /// the tombstone.
+    func groupsState(roomID: String, includeDisbanded: Bool = true)
         async throws -> (room: GroupRoom, driverStatus: GroupDriverStatus?) {
         let result = try await rpc(
             "groups.state",

@@ -372,4 +372,27 @@ final class GroupChatModelsTests: XCTestCase {
         // driver's routing which also ignores them.
         XCTAssertNil(GroupRoomMentions.classify(token: "example.com", members: members))
     }
+
+    func testRoomMentionClassificationCoversRenamedAndTitleFirstWordForms() {
+        let renamed = GroupDecoders.member(any([
+            "member_id": "researcher",
+            "profile": "researcher",
+            "handle": "researcher",
+            "display_name": "Research Buddy",
+            "previous_names": ["scout"],
+        ]))!
+        XCTAssertEqual(GroupRoomMentions.classify(token: "scout", members: [renamed]), .agent)
+
+        // The title's first word styles upstream ("Research Buddy" → @research).
+        XCTAssertEqual(GroupRoomMentions.classify(token: "research", members: [renamed]), .agent)
+
+        // But reserved tokens are never shadowed by a member's names: a bot
+        // titled "User Guide" cannot claim @user (the human handoff).
+        let titled = GroupDecoders.member(any([
+            "member_id": "guide", "profile": "guide",
+            "handle": "guide", "display_name": "User Guide",
+        ]))!
+        XCTAssertEqual(GroupRoomMentions.classify(token: "user", members: [titled]), .human)
+        XCTAssertEqual(GroupRoomMentions.classify(token: "user-guide", members: [titled]), .agent)
+    }
 }

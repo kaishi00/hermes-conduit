@@ -1478,6 +1478,12 @@ final class AppState: ObservableObject {
     private let reconnectExecutor: ChatResumeReconnectExecutor?
     private let chatResumeLifecycleOperations: ChatResumeLifecycleOperations
     private let groupChatOperations: GroupChatLifecycleOperations
+    /// The session-composer draft store. Lives ABOVE the room/session
+    /// viewport swap (RootView replaces ChatView wholesale while a room is
+    /// open), so a typed draft survives navigating to a room and back — a
+    /// per-view store would be destroyed by the very navigation the save
+    /// is meant to survive.
+    let composerDraftStore = ComposerDraftStore()
     /// Coalesces presentation-cache flushes during streaming so we
     /// don't serialize and write UserDefaults on every WebSocket frame.
     private var presentationCacheFlushTask: Task<Void, Never>?
@@ -2911,7 +2917,7 @@ final class AppState: ObservableObject {
     private func groupsLog(_ client: HermesClient, roomID: String, sinceSeq: Int, limit: Int? = nil)
         async throws -> GroupLogPage {
         if let operation = groupChatOperations.log { return try await operation(client, roomID, sinceSeq) }
-        return try await client.groupsLog(roomID: roomID, sinceSeq: sinceSeq, limit: limit)
+        return try await client.groupsLog(roomID: roomID, sinceSeq: sinceSeq, limit: limit, includeDisbanded: true)
     }
 
     private func groupsSend(_ client: HermesClient, roomID: String, eventID: String, text: String, threadID: String)
@@ -3071,6 +3077,13 @@ final class AppState: ObservableObject {
             return
         } catch {
             guard groupRoomEpoch == epoch else { return }
+            if HermesClient.isRoomNotFoundError(error) {
+                // The room vanished between the roster and the open: no
+                // poller, no haunted surface — back to the roster.
+                closeRoomSurface()
+                await refreshGroupRooms()
+                return
+            }
             // Leave the room open with whatever loaded (possibly nothing) and
             // surface the failure; the poller starts anyway so a transient
             // blip self-heals on the next tick.
@@ -3139,6 +3152,15 @@ final class AppState: ObservableObject {
         } catch is CancellationError {
             return
         } catch {
+            guard groupRoomEpoch == epoch else { return }
+            if HermesClient.isRoomNotFoundError(error) {
+                // The room was tombstoned while we polled (a not-found
+                // answer when the tombstone was not opted into): no further
+                // events will ever arrive, so keep spinning would be a lie.
+                closeRoomSurface()
+                await refreshGroupRooms()
+                return
+            }
             // Transient poll failure: keep the surface and retry next tick.
         }
     }
@@ -3227,10 +3249,10 @@ final class AppState: ObservableObject {
             activeRoomSurface = GroupRoomSurface(dashboardID: surface.dashboardID, room: state)
             activeRoomDriverStatus = driver
             var fresh = GroupRoomReplay(roomID: state.roomID)
-            let start = max(0, (state.latestSeq ?? 0) - 200)
+            let window = min(200, groupCapabilities?.maxLogLimit ?? 500)
+            let start = max(0, (state.latestSeq ?? 0) - window)
             let tail = try await groupsLog(
-                client, roomID: state.roomID, sinceSeq: start,
-                limit: min(200, groupCapabilities?.maxLogLimit ?? 500))
+                client, roomID: state.roomID, sinceSeq: start, limit: window)
             guard groupRoomEpoch == epoch else { return }
             fresh.adoptInitialTail(page: tail)
             activeRoomReplay = fresh

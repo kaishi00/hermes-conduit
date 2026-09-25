@@ -204,7 +204,7 @@ struct GroupSendResult: Equatable {
 enum GroupDecoders {
     static func member(_ value: AnyCodable?) -> GroupMember? {
         guard let object = value?.objectValue else { return nil }
-        let knownKeys: Set<String> = ["member_id", "profile", "handle", "display_name", "target"]
+        let knownKeys: Set<String> = ["member_id", "profile", "handle", "display_name", "target", "previous_names"]
         var extra: [String: AnyCodable] = [:]
         for (key, field) in object where !knownKeys.contains(key) {
             extra[key] = field

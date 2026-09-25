@@ -414,6 +414,27 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         XCTAssertEqual(appState.activeSessionId, nil)
     }
 
+    /// The real tombstone signal on the wire is an ERROR: `groups.state`
+    /// with the tombstone not opted into answers "hosted room not found"
+    /// (4114/4112) instead of a disbanded room. The surface must close on
+    /// that answer, not spin forever.
+    func testRoomNotFoundAnswerClosesTheSurface() async {
+        struct RoomGoneError: LocalizedError {
+            var errorDescription: String? { "hosted room not found" }
+        }
+        let operations = GroupChatLifecycleOperations(
+            capabilities: { _ in self.capabilities(supported: true) },
+            list: { _ in ([self.room()], nil) },
+            state: { _, _ in throw RoomGoneError() }
+        )
+        let appState = makeAppState(operations: operations)
+        connect(appState)
+        await appState.refreshGroupChatSupport()
+        await appState.openGroupRoom(self.room())
+        XCTAssertEqual(appState.activeRoomSurface, nil)
+        XCTAssertEqual(appState.activeSessionId, nil)
+    }
+
     private static func makeBot(_ name: String) -> BotProfile {
         BotProfile(
             name: name,
