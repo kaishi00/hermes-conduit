@@ -1978,6 +1978,19 @@ class SummarizeTests(unittest.TestCase):
         self.assertTrue(any("not the first attempt" in c for c in doc["caveats"]),
                         doc["caveats"])
 
+    def test_a_first_run_for_a_sha_carries_no_prior_run_caveat(self):
+        """...and a genuinely FIRST run must not carry it: a caveat that is
+        always emitted stops meaning anything. (This fixture writes no
+        sim-prep/recovery phase documents, so the only thing asserted here is
+        the absence of the PRIOR-RUN caveat.)"""
+        self._layout(repeat_classes=(), unit_batches=2)
+        code, doc, _ = self._summarize()
+        self.assertEqual(code, 0, doc.get("problems"))
+        self.assertFalse(
+            [c for c in doc["caveats"]
+             if "not the first attempt" in c or "earlier gate result" in c],
+            doc["caveats"])
+
     def test_assertion_failure_is_reported_as_assertion(self):
         self._layout(repeat_classes=())
         self._lane(self.run_dir / "lanes" / "unit",
