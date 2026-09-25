@@ -205,10 +205,6 @@ enum BotMentions {
         var forms = Set<String>()
         forms.insert(handle(for: bot).lowercased())
         forms.insert(bot.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
-        if let alias = bot.handle?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !alias.isEmpty {
-            forms.insert(alias.lowercased())
-        }
         for friendly in friendlyNames(of: bot) {
             for form in mentionNameForms(friendly) {
                 forms.insert(form)

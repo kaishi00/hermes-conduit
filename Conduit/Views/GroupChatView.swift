@@ -356,25 +356,7 @@ struct GroupCreateSheet: View {
                 }
                 Section {
                     ForEach(visibleBots) { bot in
-                        Button {
-                            toggle(bot.name)
-                        } label: {
-                            HStack(spacing: 12) {
-                                BotMonogramView(bot: bot)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(bot.displayLabel)
-                                        .font(.body)
-                                        .foregroundStyle(.primary)
-                                    Text(bot.name)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer(minLength: 0)
-                                Image(systemName: selected.contains(bot.name) ? "checkmark.circle.fill" : "circle")
-                                    .foregroundStyle(selected.contains(bot.name) ? Color.conduitAccent : Color.secondary)
-                            }
-                        }
-                        .buttonStyle(.plain)
+                        memberToggleRow(bot)
                     }
                 } header: {
                     Text(AppLocalization.string("Members (2–6)"))
@@ -401,6 +383,40 @@ struct GroupCreateSheet: View {
                     }
                     .disabled(!canCreate)
                 }
+            }
+        }
+    }
+
+    private func memberToggleRow(_ bot: BotProfile) -> some View {
+        let isSelected = selected.contains(bot.name)
+        return Button {
+            toggle(bot.name)
+        } label: {
+            HStack(spacing: 12) {
+                BotMonogramView(bot: bot)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(bot.displayLabel)
+                        .font(.body)
+                        .foregroundStyle(.primary)
+                    Text(bot.name)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+                selectionGlyph(isSelected: isSelected)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func selectionGlyph(isSelected: Bool) -> some View {
+        Group {
+            if isSelected {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(Color.conduitAccent)
+            } else {
+                Image(systemName: "circle")
+                    .foregroundStyle(Color.secondary)
             }
         }
     }

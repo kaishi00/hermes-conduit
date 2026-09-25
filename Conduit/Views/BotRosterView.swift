@@ -191,41 +191,7 @@ struct GroupRosterRow: View {
             appState.dismissSidebarDrawer()
             Task { await appState.openGroupRoom(room) }
         } label: {
-            HStack(spacing: 12) {
-                ZStack {
-                    Circle()
-                        .fill(Color.conduitAccent.opacity(0.16))
-                    Image(systemName: "person.3")
-                        .font(.caption)
-                        .foregroundStyle(.conduitAccent)
-                }
-                .frame(width: 36, height: 36)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(room.name)
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                    subtitleText
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(
-                Color.primary.opacity(0.045),
-                in: RoundedRectangle(cornerRadius: 18, style: .continuous)
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
-            }
-            .contentShape(Rectangle())
+            rowCard
         }
         .buttonStyle(.plain)
         .listRowBackground(Color.clear)
@@ -233,6 +199,52 @@ struct GroupRosterRow: View {
         .listRowInsets(EdgeInsets(top: 3, leading: 0, bottom: 3, trailing: 0))
         .accessibilityLabel(Text(room.name))
         .accessibilityHint(Text(AppLocalization.string("Opens this group chat.")))
+    }
+
+    private var rowCard: some View {
+        HStack(spacing: 12) {
+            roomGlyph
+            VStack(alignment: .leading, spacing: 3) {
+                Text(room.name)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Text(subtitleText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(cardBackground)
+        .overlay(cardBorder)
+        .contentShape(Rectangle())
+    }
+
+    private var roomGlyph: some View {
+        ZStack {
+            Circle()
+                .fill(Color.conduitAccent.opacity(0.16))
+            Image(systemName: "person.3")
+                .font(.caption)
+                .foregroundStyle(.conduitAccent)
+        }
+        .frame(width: 36, height: 36)
+    }
+
+    private var cardBackground: some View {
+        Color.primary.opacity(0.045)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
+    private var cardBorder: some View {
+        RoundedRectangle(cornerRadius: 18, style: .continuous)
+            .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
     }
 
     private var subtitleText: String {
