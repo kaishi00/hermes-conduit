@@ -20,6 +20,35 @@ same" tree — invalidates the result. A release head needs BOTH: the hosted
 smoke gate (green on the PR) and the Mac exhaustive gate (green on that exact
 SHA). Neither substitutes for the other.
 
+### The local gate has two modes
+
+Both modes are exact-SHA, host-coordinated, and cover the **complete** unit and
+UI suites plus the static checks and bounded recovery. They differ in exactly
+one thing — whether the repeat/stress policy is part of the run:
+
+| Mode | Coverage | Use it for |
+|---|---|---|
+| `--mode merge` | complete unit + complete UI + static checks + bounded recovery | a trusted PR about to be merged |
+| `--mode release` (**default**) | that, plus the [repeat policy](#repeat-policy) for the timing/dormancy families | a release head, before archiving |
+
+`--mode release` is the default, so an invocation that asks for nothing in
+particular gets the strongest policy rather than a silently narrowed one. The
+result document records which mode ran (`mode`, plus a `coverage` block):
+**a release head requires `"mode": "release"` on its exact SHA**, which is then
+checkable from the artifact instead of from someone's memory of the command
+line. `--mode merge` is not a smoke test — it is the same complete-suite gate,
+and the classes the repeat policy stresses are themselves part of the unit
+suite it runs in full. It is deliberately **not** reported as `partial`: it is
+complete for what it claims to be, and the mode field is what says which
+certificate it is.
+
+The per-SHA registry that keeps the gate single-shot is keyed on `(SHA, mode)`:
+one authoritative run per mode, and a **release** record covers a merge request
+for the same SHA (a release result is strictly stronger evidence for the same
+tree). The normal merge-then-release flow for one SHA therefore still works,
+while neither mode can be run twice on its own without `--allow-another-run`.
+
+
 ## Hosted gate architecture
 
 ```
@@ -74,6 +103,37 @@ report a misleading destination error — while the boot is best-effort with its
 own deadline: a boot hiccup leaves the destination UDID-pinned and lets
 `xcodebuild` boot the device itself. Only an unresolvable UDID falls back to the
 name-based destination.
+
+### Where the hosted wall clock goes
+
+Measured on the 2026-09-24 main run (20m52s wall, critical path
+`plan` → `build` → `ui-smoke` → `ci-gate`):
+
+| Job | Wall | Notes |
+|---|---|---|
+| `plan` (`Plan & validate`) | 1m45s | Linux; the build job no longer waits for it |
+| `build` (`Build test products`) | 2m29s | compile everything once |
+| `unit-smoke` | 8m34s | 7m of it is one invocation of 7 curated classes |
+| `ui-smoke` | **16m15s** | ~2m22s device boot, ~2m50s of xcodebuild pre-test startup/finalization, **8m42s of UI tests** |
+| `ci-gate` | 5s | the required check |
+| `self-test` | 9m19s | Linux, concurrent with the build — never on the critical path |
+
+The UI smoke job is the gate's critical path, and almost all of it is work that
+cannot be moved: a fresh hosted runner has to boot a simulator (~2m22s) and
+Xcode has to install/launch the test host before the first test (~2m50s), after
+which the two curated UI classes genuinely take 8m42s on a shared runner (the
+same classes take ~3 minutes total on our Mac). At this size the curated
+selection is one invocation, so the numbers ARE the floor: shrinking the
+selection further would mean dropping coverage, and splitting it across two
+runners would save ~1.5 minutes of wall clock for roughly +8 macOS minutes.
+
+`build` deliberately does **not** depend on `plan`: it consumes nothing the plan
+job produces, and waiting for it put a serial 1m45s in front of every run. The
+plan job still gates the verdict (`ci-gate` requires it) and both smoke jobs
+still require both, so a broken selection cannot produce a green gate; the cost
+of the overlap is that a run with a broken inventory spends its ~3 macOS build
+minutes before the plan job fails.
+
 
 ### The smoke selection
 
@@ -576,6 +636,23 @@ fetch `origin` first, which makes the whole thing one command:
 ssh ios-mac 'bash ~/projects/conduit-gate-tooling/scripts/local-ci-gate.sh --ref origin/main --fetch'
 ```
 
+The two certifications:
+
+```
+# a trusted PR about to be merged: complete unit + UI coverage, no repeat layer
+ssh ios-mac 'bash ~/projects/conduit-gate-tooling/scripts/local-ci-gate.sh --mode merge --ref <sha>'
+
+# a release head (the DEFAULT mode): that, plus the repeat/stress policy
+ssh ios-mac 'bash ~/projects/conduit-gate-tooling/scripts/local-ci-gate.sh --mode release --ref <sha>'
+```
+
+Both modes need the host's `SIMULATOR_TEST` lease and take the gate's own two
+devices; for the busy-host policy see
+[Host simulator coordination](#host-simulator-coordination-ios-ci-host) and for
+`--workers`, `--second-simulator`, `--unit-batch-max-classes` and
+`--static-serial` see [Workers](#workers-two-project-owned-devices-one-host-lease)
+and [unit batch size](#unit-batch-size-28-classes-measured).
+
 The gate prints the full SHA it tested and writes
 `gate-result.json` + `summary.md` under its run directory. Exit status is `0`
 only when the entire gate passed. Run `--help` for every flag.
@@ -654,17 +731,120 @@ inherited `SIMULATOR_NAME` is deliberately ignored.
 
 ### What it does
 
+The order below is the order things START; the static checks and the build run
+concurrently with nothing in front of them, and the two workers below run at
+the same time as each other.
+
 | Phase | What runs | Notes |
 |---|---|---|
 | resolve + worktree | `git worktree add --detach <sha>` outside the invoking checkout | HEAD is verified to equal the requested SHA; the worktree is removed afterwards and all diagnostics live in the run directory |
 | generate | `xcodegen generate` | The generated `.xcodeproj` is never committed |
-| static | `plan-tests.py validate`, `python3 -m unittest discover -s scripts/tests`, `check-l10n-coverage.py` | `--skip-static` exists for developer loops and marks the result **partial** |
+| devices | resolve/create BOTH project-owned devices (`--simulator`, and `--second-simulator` when `--workers 2`) | Each name must be unambiguous in the inventory (fail closed otherwise); the two must resolve to different UDIDs |
 | build | `ci-build-for-testing.sh` once, into a gate-specific DerivedData | The same build-once contract as hosted CI, without the artifact round trip |
-| prepare | before each lane: ci-lib.sh's own bounded shutdown/**erase**/boot/wait-for-boot | Environment preparation, never a retry — it re-runs nothing and a lane that fails afterwards still fails. Without it, the host app's install/launch is refused (`Simulator device failed to launch com.milim.relay … Application failed preflight checks … reason: Busy`) and the batch is lost. An early A/B probe on our Mac (one sample per arm) suggested the erase was the part that matters; the controlled A/B of 2026-09-24 (88 invocations across four arms, frozen release products) superseded it: what decides the refusal is the device's state when xcodebuild starts - Shutdown-at-launch (xcodebuild cold-boots the device itself) refused 40% and 70% of launches with and without a preceding erase (8/20, 14/20), while Booted-at-launch was clean either way (0/24, 0/24). The prepare sequence remains a **partial** mitigation: it leaves the device Booted for the next launch, but on a full run the lane runner's own shutdown used to re-arm the cold boot, so the refusal returned a batch or two into a lane. Costs ~40 s per lane. `--no-simulator-erase` keeps the cheaper mode for observing the raw behavior; `--no-simulator-prep` skips preparation entirely. |
+| static | `plan-tests.py validate`, `python3 -m unittest discover -s scripts/tests`, `check-l10n-coverage.py` — concurrently, in the background | Starts once the build has moved its `ci-lane/build` diagnostics out of the worktree, and finishes underneath the lanes; the run WAITS for it and fails on its verdict, so overlapping changes when the checks run, never whether they count. `--static-serial` restores the old foreground order; `--skip-static` marks the result **partial** |
+| prepare | before each lane: ci-lib.sh's own bounded shutdown/**erase**/boot/wait-for-boot, on that WORKER's device | Environment preparation, never a retry — it re-runs nothing and a lane that fails afterwards still fails. Without it, the host app's install/launch is refused (`Simulator device failed to launch com.milim.relay … Application failed preflight checks … reason: Busy`) and the batch is lost. An early A/B probe on our Mac (one sample per arm) suggested the erase was the part that matters; the controlled A/B of 2026-09-24 (88 invocations across four arms, frozen release products) superseded it: what decides the refusal is the device's state when xcodebuild starts - Shutdown-at-launch (xcodebuild cold-boots the device itself) refused 40% and 70% of launches with and without a preceding erase (8/20, 14/20), while Booted-at-launch was clean either way (0/24, 0/24). The prepare sequence remains a **partial** mitigation: it leaves the device Booted for the next launch, but on a full run the lane runner's own shutdown used to re-arm the cold boot, so the refusal returned a batch or two into a lane. Costs ~40 s per lane. `--no-simulator-erase` keeps the cheaper mode for observing the raw behavior; `--no-simulator-prep` skips preparation entirely. |
 
-| unit | the **complete** `ConduitTests` suite | One exhaustive lane: the planner is forced to `--min-lanes 1 --max-lanes 1` so it still owns the sequential batches and every per-batch watchdog |
-| ui | the **complete** `ConduitUITests` suite | One batched invocation over every UI class, with the planner's per-class watchdogs |
-| repeats | the repeat policy below | Runs even when the unit or UI lane failed, so one red lane cannot hide the rest; skipped when the build failed (no test products), and left failing when the plan could not be produced (there is nothing to project the repeat tasks from) |
+| unit worker | the **complete** `ConduitTests` suite, its continuation pass, its bounded recovery round, and (release mode) the whole repeat policy | One exhaustive lane: the planner is forced to `--min-lanes 1 --max-lanes 1` so it still owns the sequential batches and every per-batch watchdog |
+| ui worker | the **complete** `ConduitUITests` suite and its bounded recovery round | One batched invocation over every UI class, with the planner's per-class watchdogs |
+| repeats | the repeat policy below (release mode) | Part of the unit worker, so it runs even when the unit or UI lane failed and one red lane cannot hide the rest; skipped when the build failed (no test products), and left failing when the plan could not be produced (there is nothing to project the repeat tasks from) |
+
+### Workers: two project-owned devices, one host lease
+
+The unit work (`~4-8 min`) and the UI work (`~11 min`) are independent suites
+that were being run one after the other. The gate now runs them as two
+**workers** — separate processes, each with its own device, its own log, and
+its own slice of the run directory:
+
+```
+host lease: SIMULATOR_TEST            (one lease, fail-closed, held for the whole run)
+        +------------------------------+------------------------------+
+        | unit worker                  | ui worker                    |
+        | device: --simulator          | device: --second-simulator   |
+        | unit lane + continuation     | ui lane                      |
+        | unit recovery round          | ui recovery round            |
+        | repeat policy (release mode) |                              |
+        +------------------------------+------------------------------+
+```
+
+Pairing the unit work against the UI suite — rather than sharding one suite
+across both devices — is what actually shortens the run: the UI suite is the
+longest single pole. Each worker owns exactly one UDID, boots and settles that
+device itself, and never touches the other's, so the two xcodebuild chains
+cannot corrupt each other's Simulator state (the failure class the host lease
+exists for). The lease is exclusive against OTHER projects and workflows, not
+against this run's own second device. `--workers 1` runs the same two workers
+one after the other on the primary device, which is the way to fall back if
+parallel execution ever proves unstable on a loaded host (a merge gate of ~8
+minutes is not worth instability).
+
+The naming is the gate's own (`--simulator` and `--second-simulator`, the
+latter defaulting to `"<simulator> 2"`) and both devices are created on demand,
+which is what makes it safe for the gate to erase them: neither is ever a
+developer's device. Generic multi-device allocation per lease is the natural
+home for this in `ios-ci-host` (`simulator get` currently allocates one device
+per project) — tracked as a follow-up, not a blocker: the lease is what
+provides cross-project exclusion, and the gate's own devices are already
+UDID-scoped and project-owned.
+
+**What the result must prove, and does** (a fanned-out run fails closed on any
+of these):
+
+* every worker ran to completion — `workers.tsv` carries each worker's exit
+  code, wall clock and log path, and the summarizer fails the gate on a worker
+  that did not finish, has no record, or whose log is missing;
+* every worker used the device the run assigned it (`workers.tsv` vs
+  `meta.json`);
+* every lane's OWN artifact names the device it ran on (`lane-result.json`
+  `simulator`, written by the lane runner from the UDID its destination was
+  pinned to) and that device belongs to the lane's worker — so the attribution
+  is proven by the lane's evidence, not only by the driver's bookkeeping;
+* the two workers were given two DIFFERENT devices (a run that resolved both to
+  one UDID refuses to start);
+* a torn-down run does not leave a live test chain behind: INT/TERM/HUP reaps
+  the worker processes before the lease and gate lock are released, so a
+  wedged environment cannot be certified and no worker keeps orchestrating
+  lanes on a released host.
+
+`log`, `--run-dir`, `--worktree-root` and the gate root are still forced
+outside the repository, and every `simctl` operation remains UDID-scoped (no
+host-wide shutdown/erase anywhere — see `scripts/tests/test_simulator_safety.py`
+and `ios-ci-host audit`).
+
+### Unit batch size: 28 classes (measured)
+
+The planner's 7-class batch cap came from stall diagnostics on **shared GitHub
+runners** (PRs #178-#183). On our own Mac the same trade-off measures
+completely differently — the fixed cost is ~4 s of
+xcodebuild/CoreSimulator/test-host startup per invocation, and it dominates
+nothing but itself. Measured 2026-09-24 with frozen release products, one
+Booted+settled project-owned device, `-parallel-testing-enabled NO`, nothing
+rebuilt between shapes (`scripts/bench-unit-batches.sh`):
+
+| Classes per invocation | Invocations | Wall | XCTest time | xcodebuild pre-test startup | wedge signatures |
+|---|---|---|---|---|---|
+| 7 (the planner's cap) | 20 | 292s | 176.5s | 80.6s | 0 |
+| 14 | 10 | 247s | 173.6s | 53.5s | 0 |
+| **28 (the gate's default)** | **5** | **218s** | 172.5s | 36.3s | 0 |
+| 137 (whole suite, one invocation) | 1 | 187s | 171.6s | 13.5s | 0 |
+
+XCTest execution is flat (as it must be — the same tests run); what changes is
+how many times the fixed cost is paid. The gate passes
+`--unit-batch-max-classes 28`: one invocation of the whole suite was fastest and
+showed no stall, but a single invocation has no per-batch watchdog boundary and
+no continuation pass, so a stall would cost the entire suite (and the report
+would lose the per-batch evidence structure). Five invocations keeps a
+per-invocation watchdog, a bounded blast radius and a meaningful continuation
+pass for ~31s more than the single-invocation extreme, and ~105s less than the
+hosted-derived cap. **The planner still owns the batch layout and every
+watchdog budget** — the gate only moves the chunk size
+(`--unit-batch-max-classes 0` restores the planner's own cap), and the hosted
+policy is untouched.
+
+The gate also lowers `XCODEBUILD_POLL_INTERVAL_S` to 3 for its lanes (the
+hosted default stays 15): the watchdog poll cadence is detection latency, not a
+budget, and at 15 s every invocation shorter than 15 s was rounded up to the
+next poll tick.
+
 
 ### The bounded recovery round (and the wedge it is for)
 
@@ -818,9 +998,26 @@ which is one batched invocation rather than a batch layout), per-phase
 flags a run was given), `problems[]`, and the final `verdict`
 (`PASS`/`FAIL`). The human `summary.md` next to it carries the same numbers.
 
-A run is `partial` when the operator deliberately narrowed it
-(`--skip-static`, or a disabled repeat policy): a partial run can pass, but it
-must never be cited as the exhaustive result for a release head.
+It also carries the run's own account of how it was executed, which is what
+makes a fast run checkable rather than merely fast:
+
+* `mode` (`merge`/`release`) and a `coverage` block — whether the complete
+  suites, the static checks, the bounded-recovery path and the repeat policy
+  were part of this run, and how many workers ran it;
+* `workers[]` — per worker: name, `device` (`name`, `udid`), `exit_code`,
+  `wall_s`, `completed`, whether any of its Simulator preparations failed, and
+  its log path; `simulator2` is `null` for a one-worker run;
+* `timing.lanes` / `timing.repeats` — per lane and per repetition: status, wall
+  clock, predicted time, class count, the device it ran on, and
+  `xcodebuild_invocations` (counted from the lane's own invocation logs);
+  `timing.xcodebuild_invocations` is the run's total.
+
+A run is `partial` when the operator deliberately narrowed it **within its
+mode** (`--skip-static`, or a disabled repeat policy in `release` mode): a
+partial run can pass, but it must never be cited as the exhaustive result for a
+release head. A `merge` run is not partial — its coverage is exactly what
+`merge` promises, and `mode` is what says a release head still needs a
+`release` run on that SHA.
 
 Both artifacts, every phase log, every per-iteration log and the `.xcresult`
 bundles live under the run directory (default

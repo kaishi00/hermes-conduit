@@ -134,7 +134,14 @@ jobs:
 
   build:
     name: Build test products
-    needs: plan
+    # NO `needs: plan`: this job compiles the tree and audits the .xctestrun,
+    # and consumes nothing the plan job produces. Waiting for it put a serial
+    # 1m45s in front of every run (measured on the 2026-09-24 runs). The plan
+    # job still gates the VERDICT - `ci-gate` requires it - and both smoke jobs
+    # still require BOTH, so a broken selection cannot produce a green gate.
+    # The only cost of the overlap is that a run whose inventory is broken
+    # spends its ~3 macOS build minutes before the plan job fails, which is the
+    # cheap direction to be wrong in.
     runs-on: macos-26
     timeout-minutes: 30
     steps:

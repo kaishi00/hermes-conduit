@@ -173,6 +173,50 @@ class LaneResultTests(unittest.TestCase):
                              ["passed", "test-failures", "passed"])
 
 
+    def test_lane_result_records_the_device_it_ran_on(self):
+        """A lane's own artifact names its device, so a run that fans out over
+        two project-owned simulators can attribute each lane to its worker."""
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "lane-result.json"
+            args = SimpleNamespace(
+                lane="unit", kind="unit", target="ConduitTests",
+                classes="AlphaTests", status="pass",
+                predicted_s=10.0, timeout_s=600, actual_s=12.0,
+                started_at="2026-09-24T00:00:00Z",
+                simulator_name="Conduit CI Gate",
+                simulator_udid="6D08B063-B890-4D18-893B-D1E89E119919",
+                attempts_json="", isolation_json="", batches_json="",
+                simulator_reset=False, simulator_erase=False,
+                hung_class="", hung_batch=0, retried_classes="",
+                persistent_infra_classes="", infra_recovered_classes="",
+                observations="", detail="", out=str(out))
+            rc = ext.lane_result(args)
+            self.assertEqual(rc, ext.EXIT_OK)
+            doc = json.loads(out.read_text(encoding="utf-8"))
+            self.assertEqual(doc["simulator"], {
+                "name": "Conduit CI Gate",
+                "udid": "6D08B063-B890-4D18-893B-D1E89E119919"})
+
+    def test_lane_result_omits_the_device_when_none_was_given(self):
+        """Older callers (and the fixtures) pass no device: the field must be
+        absent rather than a record full of empty strings."""
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "lane-result.json"
+            args = SimpleNamespace(
+                lane="unit", kind="unit", target="ConduitTests",
+                classes="AlphaTests", status="pass",
+                predicted_s=10.0, timeout_s=600, actual_s=12.0,
+                started_at="2026-09-24T00:00:00Z",
+                attempts_json="", isolation_json="", batches_json="",
+                simulator_reset=False, simulator_erase=False,
+                hung_class="", hung_batch=0, retried_classes="",
+                persistent_infra_classes="", infra_recovered_classes="",
+                observations="", detail="", out=str(out))
+            rc = ext.lane_result(args)
+            self.assertEqual(rc, ext.EXIT_OK)
+            doc = json.loads(out.read_text(encoding="utf-8"))
+            self.assertNotIn("simulator", doc)
+
     def test_lane_result_records_batches_and_hung_batch(self):
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / "lane-result.json"

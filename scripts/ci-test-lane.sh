@@ -549,6 +549,8 @@ finish_lane() { # $1=status $2=attempts_json $3=batches_json $4=exit_code
     --status "$1" \
     --predicted-s "$PREDICTED_S" --timeout-s "$TIMEOUT_S" --actual-s "$ACTUAL_S" \
     --started-at "$STARTED_AT" \
+    --simulator-name "${SIMULATOR_NAME:-}" \
+    --simulator-udid "${SIMULATOR_UDID:-}" \
     --attempts-json "$2" \
     --batches-json "$3" \
     --retried-classes "$(retried_classes_csv)" \

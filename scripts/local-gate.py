@@ -591,8 +591,8 @@ def cmd_meta(args) -> int:
         "requested_ref": args.ref,
         "tested_sha": args.sha,
         # The gate tooling's own commit (orchestrator + this assembler come
-        # from the invoking checkout, not the tested tree): two results for
-        # the same tested SHA produced by different gate tooling are then
+        # from the invoking checkout, not the tested tree): two results for the
+        # same tested SHA produced by different gate tooling are then
         # distinguishable in release evidence.
         "tooling_sha": args.tooling_sha or "",
         "xcode_version": args.xcode,
@@ -601,6 +601,12 @@ def cmd_meta(args) -> int:
             "runtime": args.runtime or "",
             "udid": args.simulator_udid or "",
         },
+        # Which certification this run is, and how it was executed. Both are
+        # recorded here because the result document, not the command line, is
+        # what a result is cited from.
+        "mode": args.mode or "release",
+        "workers": args.workers if args.workers is not None else 1,
+        "unit_batch_max_classes": args.unit_batch_max_classes or 0,
         "started_at": args.started_at or "",
         "finished_at": args.finished_at or "",
         "wall_s": args.wall_s,
@@ -620,8 +626,18 @@ def cmd_meta(args) -> int:
             "repeat_iterations": args.repeat_iterations,
         },
     }
+    # The second project-owned device, only when the run fanned out. Omitted
+    # entirely for a one-worker run so a reader cannot mistake the primary
+    # device for a second one.
+    if (args.simulator2 or "").strip():
+        doc["simulator2"] = {
+            "name": args.simulator2,
+            "runtime": args.simulator2_runtime or "",
+            "udid": args.simulator2_udid or "",
+        }
     write_json(args.out, doc)
     return 0
+
 
 
 def cmd_phase(args) -> int:
@@ -1617,12 +1633,172 @@ def _repeat_problems(entry, iterations: int):
     return problems
 
 
+def _invocation_count(lane_dir: str) -> int:
+    """xcodebuild invocations a lane actually paid for.
+
+    The lane runner writes one log per invocation (`batch-<n>-a<m>.log` for
+    unit batches, `class-<name>-a<m>.log` for UI and diagnosis invocations);
+    counting them is the honest measure of how many times Xcode/CoreSimulator
+    startup was paid, which is what the wall-clock work is about."""
+    logs = os.path.join(lane_dir, "logs")
+    if not os.path.isdir(logs):
+        return 0
+    count = 0
+    for name in os.listdir(logs):
+        if name.endswith(".log") and (name.startswith("batch-")
+                                      or name.startswith("class-")):
+            count += 1
+    return count
+
+
+def _lane_timings(dirs) -> dict:
+    out = {}
+    for lane_dir in dirs:
+        doc = load_json(os.path.join(lane_dir, "lane-result.json"))
+        if not isinstance(doc, dict):
+            continue
+        out[os.path.basename(lane_dir)] = {
+            "status": doc.get("status"),
+            "wall_s": doc.get("actual_s"),
+            "predicted_s": doc.get("predicted_s"),
+            "classes": len(doc.get("classes") or []),
+            "xcodebuild_invocations": _invocation_count(lane_dir),
+            "simulator": doc.get("simulator"),
+        }
+    return out
+
+
+# workers.tsv columns, in order: name, device name, device UDID, exit code,
+# wall seconds, completed, sim-prep failed, log path (relative to the run dir).
+WORKER_FIELDS = 8
+
+
+def _read_workers(run_dir: str, meta: dict, build_passed: bool):
+    """Read the run's worker evidence: (records, problems).
+
+    A fanned-out gate run executes the unit work and the UI work as separate
+    processes on separate devices. The result document has to prove, on its
+    own, that every worker ran to completion on the device the run assigned
+    it - a worker that died, or silently ran on the other device, must fail
+    the gate rather than leave a shorter run looking complete."""
+    records = []
+    problems = []
+    workers_declared = _int_or_zero(meta.get("workers")) or 1
+    path = os.path.join(run_dir, "workers.tsv")
+    if not os.path.exists(path):
+        if build_passed:
+            problems.append(
+                "the run declared {0} worker(s) but wrote no worker evidence "
+                "(workers.tsv)".format(workers_declared))
+        return records, problems
+    with open(path, encoding="utf-8") as fh:
+        for raw in fh:
+            fields = raw.rstrip("\n").split("\t")
+            if len(fields) < WORKER_FIELDS or not fields[0]:
+                continue
+            (name, device_name, device_udid, exit_code, wall_s, completed,
+             sim_prep_failed, log_path) = fields[:WORKER_FIELDS]
+            records.append({
+                "name": name,
+                "device": {"name": device_name, "udid": device_udid},
+                "exit_code": exit_code,
+                "wall_s": _num_or_zero(wall_s),
+                "completed": completed == "1",
+                "sim_prep_failed": sim_prep_failed == "1",
+                "log": log_path,
+            })
+    if not records:
+        problems.append("the run's worker evidence (workers.tsv) lists no worker")
+        return records, problems
+
+    # The unit worker always exists; the UI worker exists whenever the plan
+    # carries UI classes (with one worker it is the same device, run after the
+    # unit work).
+    expected_names = ["unit"]
+    if _int_or_zero((meta.get("expected") or {}).get("ui_classes")) > 0:
+        expected_names.append("ui")
+    seen = {rec["name"]: rec for rec in records}
+    for name in expected_names:
+        rec = seen.get(name)
+        if rec is None:
+            problems.append(
+                "worker '{0}' has no record: the run cannot prove what it ran "
+                "or where".format(name))
+            continue
+        if not rec["completed"]:
+            problems.append(
+                "worker '{0}' did not run to completion (exit {1}); its work is "
+                "not certified".format(name, rec["exit_code"]))
+        log_path = os.path.join(run_dir, rec["log"])
+        if not os.path.exists(log_path):
+            problems.append(
+                "worker '{0}' recorded its log at {1}, which is missing from "
+                "the run directory".format(name, rec["log"]))
+    # Device identity: unit work on the primary device, UI work on the second
+    # device when the run fanned out (otherwise both are the primary).
+    primary = (meta.get("simulator") or {}).get("udid") or ""
+    second = (meta.get("simulator2") or {}).get("udid") or ""
+    if workers_declared > 1 and second and second == primary:
+        problems.append("the run's two workers were assigned the SAME device "
+                        "({0}); a fanned-out run must use two".format(primary))
+    expect_device = {"unit": primary}
+    expect_device["ui"] = second if workers_declared > 1 else primary
+    for name, rec in seen.items():
+        want = expect_device.get(name)
+        if want and rec["device"].get("udid") != want:
+            problems.append(
+                "worker '{0}' ran on device {1} but the run assigned it {2}".format(
+                    name, rec["device"].get("udid") or "?", want))
+    return records, problems
+
+
+def _lane_device_problems(passes, expect_device, require_named=False) -> list:
+    """Every lane's OWN artifact must name the device of its worker.
+
+    `require_named` is what makes this a PROOF rather than a formality: a
+    fanned-out run has two devices in play, so a lane that does not say which
+    one it used cannot be attributed to a worker at all. A one-worker run has
+    a single device (every invocation was pinned to it), so a lane record
+    without the field is merely tolerated there - and a lane that names a
+    DIFFERENT device still fails in either case.
+    """
+    problems = []
+    for lane_dir in passes:
+        doc = load_json(os.path.join(lane_dir, "lane-result.json"))
+        if not isinstance(doc, dict):
+            continue
+        name = os.path.basename(lane_dir)
+        kind = "ui" if name.startswith("ui") else "unit"
+        want = expect_device.get(kind) or ""
+        if not want:
+            continue
+        record = doc.get("simulator")
+        if not isinstance(record, dict) or not record.get("udid"):
+            if require_named:
+                problems.append(
+                    "{0}: the lane result does not name the device it ran on, so "
+                    "the run cannot prove which worker ran it".format(name))
+            continue
+        if record.get("udid") != want:
+            problems.append(
+                "{0}: the lane ran on device {1} but its worker owns {2}".format(
+                    name, record.get("udid"), want))
+    return problems
+
+
 def cmd_summarize(args) -> int:
     run_dir = os.path.abspath(args.run_dir)
     meta = load_json(os.path.join(run_dir, "meta.json"))
     if not isinstance(meta, dict):
         fail("meta.json not readable under {0}".format(run_dir))
         return 3
+
+    # Which certification this run is. A meta.json written before modes existed
+    # describes a release run (the only kind there was), which is also the
+    # strictest reading of it.
+    mode = str(meta.get("mode") or "release")
+    if mode not in ("merge", "release"):
+        mode = "release"
 
     expected = meta.get("expected") or {}
     iterations = _int_or_zero(expected.get("repeat_iterations")) or 0
@@ -1710,6 +1886,7 @@ def cmd_summarize(args) -> int:
                 "again; no further recovery is attempted")
 
     ui_expected, ui_expect_problems = _expected_classes(run_dir, "ui", expected)
+    ui_passes = []
     if ui_expected:
         gate_problems.extend(ui_expect_problems)
         ui_passes = _lane_pass_dirs(lanes_root, "ui", None, "ui-recovery")
@@ -1739,6 +1916,26 @@ def cmd_summarize(args) -> int:
         ui_summary = {"status": "skipped", "executions": 0, "failures": 0,
                       "classes_expected": 0, "classes_observed": 0,
                       "problems": []}
+
+    # --- workers ----------------------------------------------------------
+    # Who ran what, on which device. A worker that did not complete, that is
+    # missing from the record, or whose lanes name another device means the run
+    # cannot certify its own coverage.
+    build_passed = str(phases.get("build", {}).get("status")) == "pass"
+    worker_records, worker_problems = _read_workers(run_dir, meta, build_passed)
+    gate_problems.extend(worker_problems)
+    workers_declared = _int_or_zero(meta.get("workers")) or 1
+    primary_udid = (meta.get("simulator") or {}).get("udid") or ""
+    second_udid = (meta.get("simulator2") or {}).get("udid") or ""
+    expect_device = {
+        "unit": primary_udid,
+        "ui": second_udid if workers_declared > 1 else primary_udid,
+    }
+    if worker_records:
+        gate_problems.extend(
+            _lane_device_problems(
+                list(unit_passes) + list(ui_passes), expect_device,
+                require_named=workers_declared > 1))
 
     # --- repeats ----------------------------------------------------------
     repeats_dir = os.path.join(run_dir, "repeats")
@@ -1932,7 +2129,11 @@ def cmd_summarize(args) -> int:
     partial_reasons = []
     if not meta.get("static_checks_enabled"):
         partial_reasons.append("static checks skipped (--skip-static)")
-    if not meta.get("repeat_policy_enabled"):
+    # Repeat coverage is part of the RELEASE mode's documented coverage, so its
+    # absence only narrows a release run. A merge run is complete for what it
+    # claims to be (see `mode`/`coverage` below) - marking it partial would
+    # misdescribe a deliberate, documented certification as a degraded one.
+    if not meta.get("repeat_policy_enabled") and mode == "release":
         partial_reasons.append(
             "repeat policy disabled (no repeat classes or zero iterations)")
     # Operating flags that weaken a run must be visible in the artifact the
@@ -2001,22 +2202,57 @@ def cmd_summarize(args) -> int:
             "in the aggregate, but no pass should have re-run them".format(
                 _csv(reread)))
 
+    # Per-lane / per-repeat wall clock and invocation counts: the run's own
+    # account of where its wall clock went (a green summary that needed 20
+    # xcodebuild invocations to run 3 minutes of tests is visible here).
+    lane_timings = _lane_timings(list(unit_passes) + list(ui_passes))
+    repeat_timings = _lane_timings(sorted(
+        os.path.join(repeats_dir, cls, it)
+        for cls in (os.listdir(repeats_dir) if os.path.isdir(repeats_dir) else [])
+        for it in (os.listdir(os.path.join(repeats_dir, cls))
+                   if os.path.isdir(os.path.join(repeats_dir, cls)) else [])
+        if os.path.isdir(os.path.join(repeats_dir, cls, it))))
+
     result = {
         "schema_version": SCHEMA_VERSION,
         "gate": "conduit-local-ci-gate",
         "verdict": verdict,
+        # WHICH certification this is. Both modes cover the complete unit and
+        # UI suites; they differ only in whether the repeat/stress policy is
+        # part of the run. A release head requires mode=release on its exact
+        # SHA (docs/CI.md) - this field is what makes that checkable from the
+        # artifact rather than from the command line someone remembers.
+        "mode": mode,
+        "coverage": {
+            "unit_suite": "complete",
+            "ui_suite": "complete",
+            "static_checks": bool(meta.get("static_checks_enabled")),
+            "bounded_recovery": True,
+            "repeat_policy": bool(meta.get("repeat_policy_enabled")),
+            "workers": workers_declared,
+        },
         "requested_ref": meta.get("requested_ref"),
         "tested_sha": tested_sha,
         "tooling_sha": meta.get("tooling_sha") or "",
         "tested_sha_short": tested_sha[:12],
         "xcode_version": meta.get("xcode_version"),
         "simulator": meta.get("simulator"),
+        # The second project-owned device when the run fanned out; null for a
+        # one-worker run.
+        "simulator2": meta.get("simulator2") or None,
+        "workers": worker_records,
         "timing": {
             "started_at": meta.get("started_at"),
             "finished_at": meta.get("finished_at"),
             "wall_s": meta.get("wall_s"),
             "phases": {name: doc.get("duration_s")
                        for name, doc in sorted(phases.items())},
+            "lanes": lane_timings,
+            "repeats": repeat_timings,
+            "xcodebuild_invocations": (sum(
+                entry.get("xcodebuild_invocations") or 0
+                for entry in list(lane_timings.values()) +
+                list(repeat_timings.values()))),
         },
         "static_checks": phases.get("static", {}).get("checks", []),
         "build": {
@@ -2167,6 +2403,27 @@ def _write_markdown(path: str, result: dict) -> None:
     lines.append("Tested commit: `{0}` (requested `{1}`)".format(
         result["tested_sha"], result["requested_ref"]))
     lines.append("")
+    coverage = result.get("coverage") or {}
+    lines.append(
+        "- Mode: **{0}** ({1})".format(
+            result.get("mode") or "release",
+            "complete unit + UI coverage, static checks, bounded recovery, and "
+            "the repeat/stress policy" if (result.get("mode") or "release") == "release"
+            else "complete unit + UI coverage, static checks, bounded recovery - "
+                 "NO repeat/stress policy, so this is not on its own a release "
+                 "certificate"))
+    workers = result.get("workers") or []
+    if workers:
+        lines.append("- Workers: {0}".format(", ".join(
+            "{0} on {1} ({2})".format(
+                w.get("name"), (w.get("device") or {}).get("name") or "?",
+                (w.get("device") or {}).get("udid") or "?")
+            for w in workers)))
+    sim2 = result.get("simulator2") or {}
+    if sim2:
+        lines.append("- Second device: {0} / {1} ({2})".format(
+            sim2.get("name") or "?", sim2.get("runtime") or "?",
+            sim2.get("udid") or "?"))
     lines.append("- Xcode: {0}".format(
         (result.get("xcode_version") or "").strip() or "unknown"))
     sim = result.get("simulator") or {}
@@ -2237,6 +2494,15 @@ def _print_human(result: dict) -> None:
     print("=== Conduit local gate ===")
     print("tested SHA : {0}  (requested {1})".format(
         result["tested_sha"], result["requested_ref"]))
+    print("mode       : {0}{1}".format(
+        result.get("mode") or "release",
+        "" if (result.get("mode") or "release") == "release"
+        else "  (complete coverage, no repeat/stress policy)"))
+    for worker in result.get("workers") or []:
+        print("worker     : {0} on {1} ({2}) - exit {3}, {4}s, completed={5}".format(
+            worker.get("name"), (worker.get("device") or {}).get("name"),
+            (worker.get("device") or {}).get("udid"), worker.get("exit_code"),
+            worker.get("wall_s"), worker.get("completed")))
     print("xcode      : {0}".format(
         (result.get("xcode_version") or "").strip() or "unknown"))
     sim = result.get("simulator") or {}
@@ -2312,6 +2578,12 @@ def main(argv=None) -> int:
     p.add_argument("--simulator", default="")
     p.add_argument("--runtime", default="")
     p.add_argument("--simulator-udid", default="")
+    p.add_argument("--simulator2", default="")
+    p.add_argument("--simulator2-runtime", default="")
+    p.add_argument("--simulator2-udid", default="")
+    p.add_argument("--mode", default="release")
+    p.add_argument("--workers", type=int, default=1)
+    p.add_argument("--unit-batch-max-classes", type=int, default=0)
     p.add_argument("--started-at", default="")
     p.add_argument("--finished-at", default="")
     p.add_argument("--wall-s", type=int, default=0)

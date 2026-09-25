@@ -67,6 +67,14 @@ Required:
                              is only valid for that SHA.
 
 Options:
+  --mode MODE                Which certification this run is: "merge"
+                             (trusted-PR merge: complete unit + UI coverage,
+                             static checks, bounded recovery) or "release"
+                             (that, plus the repeat/stress policy). Both modes
+                             are exact-SHA and host-coordinated; the mode is
+                             recorded in gate-result.json. Default: release, so
+                             an invocation that does not ask for anything
+                             weaker gets the strongest policy.
   --fetch                    Fetch --remote before resolving --ref.
   --remote NAME              Remote for --fetch (default: origin).
   --gate-root DIR            Root for runs + worktrees.
@@ -75,15 +83,37 @@ Options:
                              Default: <gate-root>/runs/<sha12>-<UTC stamp>
   --worktree-root DIR        Parent directory for the throwaway worktree.
                              Default: <gate-root>/worktrees
-  --simulator NAME           Simulator device the gate runs on (default:
-                             $GATE_SIMULATOR_NAME or "Conduit CI Gate" - the
-                             gate's OWN device, created if it does not exist,
-                             which is what makes erasing it safe).
+  --simulator NAME           Simulator device the gate's unit worker runs on
+                             (default: $GATE_SIMULATOR_NAME or "Conduit CI
+                             Gate" - the gate's OWN device, created if it does
+                             not exist, which is what makes erasing it safe).
+  --second-simulator NAME    Device the UI worker runs on when --workers 2
+                             (default: "<--simulator> 2", created on demand).
+                             Also the gate's own device: two project-owned
+                             devices, one host lease, disjoint UDIDs.
+  --workers N                1 = run the unit work and the UI work one after
+                             the other on the unit device; 2 = run them
+                             CONCURRENTLY, the unit worker on --simulator and
+                             the UI worker on --second-simulator (default).
+                             Each worker owns exactly one UDID and never
+                             touches the other's device.
+  --unit-batch-max-classes N Classes per unit xcodebuild invocation (default:
+                             28 - measured: 5 invocations cost ~31s more than
+                             one invocation of the whole suite and ~105s less
+                             than the planner's hosted-derived cap of 7, while
+                             keeping a per-invocation watchdog and a bounded
+                             blast radius). 0 restores the planner's own cap.
+                             The planner still owns the batch layout and every
+                             watchdog; this only moves its chunk size.
+  --static-serial            Run the static checks in the foreground before the
+                             build, as older revisions did, instead of
+                             overlapping them with the test lanes. Diagnostic
+                             only: the checks are the same either way.
   --allow-another-run        Explicitly request ANOTHER full gate run for a
                              SHA that already has a result. Without this the
                              gate refuses: one authoritative invocation per
-                             requested SHA, and the gate never restarts
-                             itself after a verdict.
+                             (SHA, mode), and the gate never restarts itself
+                             after a verdict.
   --no-simulator-prep        Skip the bounded Simulator preparation (shutdown,
                              erase, boot, wait for boot) that runs before each
                              lane. Preparation only: it never re-runs
@@ -136,6 +166,7 @@ GATE_ROOT=""; RUN_DIR=""; WORKTREE_ROOT=""
 # naming a device the gate is free to erase is exactly what must never happen
 # to a developer's simulator.
 SIMULATOR_NAME="${GATE_SIMULATOR_NAME:-Conduit CI Gate}"
+SIMULATOR_NAME2="${GATE_SIMULATOR_NAME2:-}"
 REPEAT_CLASSES="$DEFAULT_REPEAT_CLASSES"
 REPEAT_ITERATIONS=3
 REPEAT_TIMEOUT_CAP=900
@@ -143,6 +174,27 @@ ALLOW_RECOVERED_INFRA=0
 KEEP_WORKTREE=0
 SKIP_STATIC=0
 USE_LOCK=1
+# Which certification this is. `release` is the default so that a caller who
+# asks for nothing in particular gets the strongest policy, never a silently
+# narrowed one; `merge` is the explicit trusted-PR mode.
+MODE="release"
+WORKERS=2
+# Classes per unit xcodebuild invocation. 0 = the planner's own cap (7, the
+# hosted-derived stall-avoidance policy). The gate measured on our Mac (same
+# frozen products, same Booted+settled device, 2026-09-24) 292s/20 invocations
+# at 7 classes, 247s/10 at 14, 218s/5 at 28 and 187s/1 at the whole suite -
+# with ZERO launch-refusal or stall signatures in all 36 invocations, i.e. the
+# sweep is dominated by ~4s of xcodebuild/CoreSimulator startup per invocation
+# (80s of it at 7 classes, 13s for the whole suite). The gate therefore pays
+# for 5 invocations instead of 20: it keeps a per-invocation watchdog and a
+# bounded blast radius (and a meaningful continuation pass) while removing
+# three quarters of the startup overhead. See docs/CI.md for the measurement.
+UNIT_BATCH_MAX_CLASSES=28
+STATIC_OVERLAP=1
+# Set to 1 only when the caller passed the flag, so `--mode merge` (repeats
+# off) can still be overridden explicitly without guessing from the value.
+REPEAT_ITERATIONS_SET=0
+REPEAT_CLASSES_SET=0
 
 # One authoritative full-gate invocation per requested SHA: another full run
 # must be an EXPLICIT caller request, never an automatic restart. The gate is
@@ -158,6 +210,11 @@ SIM_PREP_FAILED=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --ref) REF="$2"; shift 2 ;;
+    --mode) MODE="$2"; shift 2 ;;
+    --workers) WORKERS="$2"; shift 2 ;;
+    --unit-batch-max-classes) UNIT_BATCH_MAX_CLASSES="$2"; shift 2 ;;
+    --second-simulator) SIMULATOR_NAME2="$2"; shift 2 ;;
+    --static-serial) STATIC_OVERLAP=0; shift ;;
     --fetch) DO_FETCH=1; shift ;;
     --remote) REMOTE="$2"; shift 2 ;;
     --gate-root) GATE_ROOT="$2"; shift 2 ;;
@@ -167,8 +224,8 @@ while [ $# -gt 0 ]; do
     --allow-another-run) ALLOW_ANOTHER_RUN=1; shift ;;
     --no-simulator-prep) SIM_PREP=0; shift ;;
     --no-simulator-erase) SIM_ERASE=0; shift ;;
-    --repeat-classes) REPEAT_CLASSES="$2"; shift 2 ;;
-    --repeat-iterations) REPEAT_ITERATIONS="$2"; shift 2 ;;
+    --repeat-classes) REPEAT_CLASSES="$2"; REPEAT_CLASSES_SET=1; shift 2 ;;
+    --repeat-iterations) REPEAT_ITERATIONS="$2"; REPEAT_ITERATIONS_SET=1; shift 2 ;;
     --repeat-timeout-cap) REPEAT_TIMEOUT_CAP="$2"; shift 2 ;;
     --allow-recovered-infrastructure) ALLOW_RECOVERED_INFRA=1; shift ;;
     --keep-worktree) KEEP_WORKTREE=1; shift ;;
@@ -178,6 +235,47 @@ while [ $# -gt 0 ]; do
     *) echo "local-ci-gate: unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac
 done
+
+case "$MODE" in
+  merge) ;;
+  release) ;;
+  *) echo "local-ci-gate: --mode must be 'merge' or 'release', got '$MODE'" >&2
+     exit 2 ;;
+esac
+
+# The mode's coverage policy, in ONE place so the result document and the run
+# cannot drift apart:
+#   merge   - complete unit + UI coverage, static checks, bounded recovery. No
+#             repeat/stress layer: GitHub already runs the broad smoke gate on
+#             every PR, and the repeat families are stress evidence, not unique
+#             functional coverage (the repeat classes are themselves part of
+#             the unit suite, which merge mode runs in full).
+#   release - merge coverage PLUS the repeat policy below.
+# An explicit --repeat-classes/--repeat-iterations always wins: the mode only
+# decides the DEFAULT.
+if [ "$MODE" = "merge" ]; then
+  if [ "$REPEAT_ITERATIONS_SET" -eq 0 ]; then REPEAT_ITERATIONS=0; fi
+  if [ "$REPEAT_CLASSES_SET" -eq 0 ] && [ "$REPEAT_ITERATIONS_SET" -eq 0 ]; then
+    REPEAT_CLASSES=""
+  fi
+fi
+
+case "$WORKERS" in
+  1|2) ;;
+  *) echo "local-ci-gate: --workers must be 1 or 2, got '$WORKERS'" >&2
+     exit 2 ;;
+esac
+if [ -z "$SIMULATOR_NAME2" ]; then
+  SIMULATOR_NAME2="$SIMULATOR_NAME 2"
+fi
+if [ "$WORKERS" -eq 2 ] && [ "$SIMULATOR_NAME2" = "$SIMULATOR_NAME" ]; then
+  echo "local-ci-gate: --second-simulator must differ from --simulator (two workers need two devices)" >&2
+  exit 2
+fi
+case "$UNIT_BATCH_MAX_CLASSES" in
+  ''|*[!0-9]*) echo "local-ci-gate: --unit-batch-max-classes must be a non-negative integer, got '$UNIT_BATCH_MAX_CLASSES'" >&2
+               exit 2 ;;
+esac
 
 if [ -z "$REF" ]; then
   echo "local-ci-gate: --ref is required (the exact ref or SHA to certify)" >&2
@@ -308,8 +406,8 @@ LOCK_DIR="$GATE_ROOT/gate.lock"
 
 cleanup() {
   local status=$?
-  # Reap the acquisition watchdog first: a TERM landing in the small window
-  # between its spawn and the post-exec kill would otherwise leave a 60s
+  # Reap the lease-acquisition watchdog first: a TERM landing in the small
+  # window between its spawn and the post-exec kill would otherwise leave a 60s
   # orphaned sleep behind. The variable is cleared once reaped so no later
   # signal can reach a reused PID.
   if [ -n "${HOST_LEASE_WATCHDOG:-}" ]; then
@@ -318,6 +416,32 @@ cleanup() {
     fi
     wait "$HOST_LEASE_WATCHDOG" 2>/dev/null || true
     HOST_LEASE_WATCHDOG=""
+  fi
+  # Live workers hold xcodebuild/test chains against this run's devices. A
+  # tear-down (INT/TERM from the host monitor, a closed SSH session) must take
+  # them with it: an orphaned worker would keep a device busy - and keep
+  # testing - after this script has released the host lease and the gate lock,
+  # which is exactly the uncoordinated state the lease exists to prevent. The
+  # pid list is cleared as it is reaped so no later signal reaches a reused
+  # pid. Each worker is killed by its OWN pid (never by process group: this
+  # script may share a group with its caller).
+  if [ -n "${WORKER_PIDS:-}" ]; then
+    local _wp
+    for _wp in $WORKER_PIDS; do
+      kill -0 "$_wp" 2>/dev/null && kill -TERM "$_wp" 2>/dev/null || true
+    done
+    for _wp in $WORKER_PIDS; do
+      wait "$_wp" 2>/dev/null || true
+    done
+    for _wp in $WORKER_PIDS; do
+      kill -0 "$_wp" 2>/dev/null && kill -KILL "$_wp" 2>/dev/null || true
+    done
+    WORKER_PIDS=""
+  fi
+  if [ -n "${STATIC_PID:-}" ]; then
+    kill -0 "$STATIC_PID" 2>/dev/null && kill -TERM "$STATIC_PID" 2>/dev/null || true
+    wait "$STATIC_PID" 2>/dev/null || true
+    STATIC_PID=""
   fi
   # Release the host SIMULATOR_TEST lease FIRST: closing fd 3 EOFs the
   # holder helper's stdin, which releases the lease - and this works even
@@ -483,17 +607,44 @@ mkdir -p "$WORKTREE_ROOT"
 # A reused run directory would let a previous run's plan projection or lane
 # artifacts be read back as this run's evidence. Refuse it instead of
 # producing a result assembled from two different runs.
-# One authoritative full-gate invocation per requested SHA. A second full run
-# is a caller decision, never an automatic restart: the gate itself is
+# One authoritative full-gate invocation per requested (SHA, mode). A second
+# full run is a caller decision, never an automatic restart: the gate itself is
 # single-shot and must not be looped into "until green" by whatever drives it.
 # The record lives under the gate ROOT (not the run dir), so it holds however
 # the run's artifacts were laid out (--run-dir included).
+#
+# A record covers the requested run when its mode is AT LEAST as strong:
+# release covers release and merge (a release result is strictly stronger
+# evidence for the same tree), merge covers merge only - so the normal
+# merge-then-release flow for one SHA stays possible, while neither mode can be
+# re-run on its own without --allow-another-run.
 SHA_REGISTRY_DIR="$GATE_ROOT/sha-results"
 SHA_REGISTRY="$SHA_REGISTRY_DIR/$SHA.log"
-if [ -s "$SHA_REGISTRY" ] && [ "$ALLOW_ANOTHER_RUN" -ne 1 ]; then
-  echo "local-ci-gate: a full gate result already exists for $SHA:" >&2
+mode_strength() { # $1 = mode -> 1 (merge) / 2 (release); unknown = 2
+  case "${1:-}" in
+    merge) echo 1 ;;
+    *) echo 2 ;;
+  esac
+}
+registry_covers() { # $1 = requested mode -> 0 when an existing record covers it
+  [ -s "$SHA_REGISTRY" ] || return 1
+  local want line rec_mode
+  want="$(mode_strength "$1")"
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    # 5th field is the mode; records written before the field existed were
+    # all release runs, which is exactly what an empty field must mean.
+    rec_mode="$(printf '%s\n' "$line" | awk -F'\t' '{print $5}')"
+    [ -z "$rec_mode" ] && rec_mode="release"
+    [ "$(mode_strength "$rec_mode")" -ge "$want" ] && return 0
+  done < "$SHA_REGISTRY"
+  return 1
+}
+if [ "$ALLOW_ANOTHER_RUN" -ne 1 ] && registry_covers "$MODE"; then
+  echo "local-ci-gate: a full $MODE gate result already exists for $SHA:" >&2
   sed 's/^/  /' "$SHA_REGISTRY" >&2
-  echo "local-ci-gate: one authoritative full-gate invocation per requested SHA." >&2
+  echo "local-ci-gate: one authoritative full-gate invocation per requested SHA" >&2
+  echo "local-ci-gate: (and mode) - a release result already covers a merge request for the same SHA." >&2
   echo "local-ci-gate: if you really want another full run, request it explicitly with --allow-another-run" >&2
   exit 2
 fi
@@ -514,9 +665,15 @@ GATE_START_EPOCH=$(date +%s)
 echo "== Conduit local gate =="
 echo "repo root : $REPO_ROOT"
 echo "tested ref: $REF -> $SHA"
+echo "mode      : $MODE ($([ "$MODE" = release ] && echo 'complete coverage + repeat/stress policy' || echo 'complete coverage, no repeat/stress policy'))"
 echo "run dir   : $RUN_DIR"
 echo "worktree  : $WT"
 echo "simulator : $SIMULATOR_NAME"
+if [ "$WORKERS" -eq 2 ]; then
+  echo "workers   : 2 (unit work on '$SIMULATOR_NAME', UI work on '$SIMULATOR_NAME2', one host lease)"
+else
+  echo "workers   : 1 (both suites on '$SIMULATOR_NAME', one after the other)"
+fi
 
 # --- host-level SIMULATOR_TEST lease (ios-ci-host) ---------------------------
 # The per-checkout gate lock above only excludes other GATES on the same
@@ -723,6 +880,10 @@ XCODE_VERSION="$(xcodebuild -version 2>/dev/null | tr '\n' ' ' | sed 's/  */ /g;
 TOOLING_SHA="$(git -C "$SCRIPT_DIR" rev-parse HEAD 2>/dev/null || echo unknown)"
 
 write_meta() { # $1 = finished_at, $2 = wall_s
+  # The second device is recorded ONLY when this run actually used one: a
+  # one-worker run that named a second device in its metadata would invite a
+  # reader (or the summarizer) to look for evidence that was never meant to
+  # exist.
   python3 "$HELPER" meta \
     --out "$RUN_DIR/meta.json" \
     --ref "$REF" --sha "$SHA" \
@@ -731,6 +892,13 @@ write_meta() { # $1 = finished_at, $2 = wall_s
     --simulator "$SIMULATOR_NAME" \
     --runtime "${SIMULATOR_RUNTIME:-}" \
     --simulator-udid "${SIMULATOR_UDID:-}" \
+    $([ "$WORKERS" -eq 2 ] && printf '%s %s %s %s %s %s' \
+        '--simulator2' "$SIMULATOR_NAME2" \
+        '--simulator2-runtime' "${SIMULATOR2_RUNTIME:-}" \
+        '--simulator2-udid' "${SIMULATOR2_UDID:-}") \
+    --mode "$MODE" \
+    --workers "$WORKERS" \
+    --unit-batch-max-classes "$UNIT_BATCH_MAX_CLASSES" \
     --started-at "$GATE_STARTED_AT" --finished-at "$1" --wall-s "$2" \
     --unit-classes "${GATE_UNIT_CLASS_COUNT:-0}" \
     --unit-batches "${GATE_UNIT_BATCH_COUNT:-0}" \
@@ -759,7 +927,7 @@ else
   exit 2
 fi
 
-# --- the device the run will actually use (recorded in the result) ----------
+# --- the devices the run will actually use (recorded in the result) --------
 # `simctl list` talks to CoreSimulatorService, which ci-lib.sh bounds
 # everywhere else for exactly this reason; bound it here too.
 DEVICES_JSON="$RUN_DIR/simctl-devices.json"
@@ -768,11 +936,13 @@ DEVICES_JSON="$RUN_DIR/simctl-devices.json"
 run_bounded 60 "$DEVICES_JSON" "$RUN_DIR" \
   sh -c 'xcrun simctl list devices available -j 2>/dev/null' || \
   echo "local-ci-gate: could not list simulator devices within its budget; the recorded device may be incomplete" >&2
-# Ambiguity refusal BEFORE any device is chosen: if the pinned NAME answers
-# to more than one device, this gate cannot know which one it owns, and
-# every downstream UDID-scoped operation (shutdown, erase, boot) would be a
-# guess. Fail closed - including when uniqueness cannot be PROVEN (no jq,
-# empty inventory): refusing to guess is the whole point.
+# Ambiguity refusal BEFORE any device is chosen: if a pinned NAME answers to
+# more than one device, this gate cannot know which one it owns, and every
+# downstream UDID-scoped operation (shutdown, erase, boot) would be a guess.
+# Fail closed - including when uniqueness cannot be PROVEN (no jq, empty
+# inventory): refusing to guess is the whole point. Every device this run
+# touches is checked, so a duplicate UI-worker device fails the gate the same
+# way a duplicate unit-worker device does.
 if ! command -v jq >/dev/null 2>&1; then
   echo "local-ci-gate: jq not found - cannot prove simulator-name uniqueness; refusing to guess a device" >&2
   exit 2
@@ -781,130 +951,207 @@ if [ ! -s "$DEVICES_JSON" ]; then
   echo "local-ci-gate: simulator inventory unavailable - cannot prove simulator-name uniqueness; refusing to guess a device" >&2
   exit 2
 fi
-GATE_SIM_MATCHES="$(jq -r --arg n "$SIMULATOR_NAME" \
-  '[.devices[][]? | select(.name == $n) | .udid] | unique | .[]' "$DEVICES_JSON" 2>/dev/null | grep -v '^$' || true)"
-if [ "$(printf '%s\n' "$GATE_SIM_MATCHES" | grep -c .)" -gt 1 ]; then
-  echo "local-ci-gate: simulator name '$SIMULATOR_NAME' is ambiguous (matches UDIDs: $(printf '%s\n' "$GATE_SIM_MATCHES" | tr '\n' ' '))" >&2
-  echo "local-ci-gate: refusing to run against a device this gate cannot prove it owns; remove the duplicate device or pass --simulator with a unique name" >&2
-  exit 2
+# Refuse an ambiguous name for EVERY device this run will touch (a duplicate
+# UI-worker device is as unusable as a duplicate unit-worker one). The names
+# are checked one at a time on purpose: a device name contains spaces, so
+# iterating a concatenated list would split it into words and check nothing.
+check_device_name_unique() { # $1 = device name
+  local name="$1" matches
+  matches="$(jq -r --arg n "$name" \
+    '[.devices[][]? | select(.name == $n) | .udid] | unique | .[]' "$DEVICES_JSON" 2>/dev/null | grep -v '^$' || true)"
+  if [ "$(printf '%s\n' "$matches" | grep -c .)" -gt 1 ]; then
+    echo "local-ci-gate: simulator name '$name' is ambiguous (matches UDIDs: $(printf '%s\n' "$matches" | tr '\n' ' '))" >&2
+    echo "local-ci-gate: refusing to run against a device this gate cannot prove it owns; remove the duplicate device or pass --simulator/--second-simulator with a unique name" >&2
+    return 1
+  fi
+  return 0
+}
+check_device_name_unique "$SIMULATOR_NAME" || exit 2
+if [ "$WORKERS" -eq 2 ]; then
+  check_device_name_unique "$SIMULATOR_NAME2" || exit 2
 fi
-python3 "$HELPER" simulator --devices "$DEVICES_JSON" \
-  --name "$SIMULATOR_NAME" --out "$RUN_DIR/simulator.json" >/dev/null 2>&1 || true
-SIMULATOR_RUNTIME="$(python3 -c '
-import json, sys
-try:
-    print(json.load(open(sys.argv[1])).get("runtime", ""))
-except Exception:
-    print("")
-' "$RUN_DIR/simulator.json" 2>/dev/null || true)"
-SIMULATOR_UDID="$(python3 -c '
-import json, sys
-try:
-    print(json.load(open(sys.argv[1])).get("udid", ""))
-except Exception:
-    print("")
-' "$RUN_DIR/simulator.json" 2>/dev/null || true)"
 
-# The gate's own device: resolve it (newest iOS runtime carrying the name), and
-# create it when it does not exist yet, so erasing it - both in the preparation
-# and in the bounded recovery round - is always safe for a developer's devices.
+read_device_json() { # $1 = device json path, $2 = key
+  python3 -c '
+import json, sys
+try:
+    print(json.load(open(sys.argv[1])).get(sys.argv[2], ""))
+except Exception:
+    print("")
+' "$1" "$2" 2>/dev/null || true
+}
+
+# The gate's own devices: resolve each (newest iOS runtime carrying the name),
+# and create it when it does not exist yet, so erasing them - both in the
+# preparation and in the bounded recovery round - is always safe for a
+# developer's devices.
+#
+# $1 = device name, $2 = json output path, $3 = create log path.
+# Prints the resolved/created UDID on stdout (empty on failure).
 ensure_gate_simulator() {
-  if [ -n "$SIMULATOR_UDID" ]; then
+  local name="$1" out_json="$2" create_log="$3"
+  local udid runtime created=""
+  python3 "$HELPER" simulator --devices "$DEVICES_JSON" \
+    --name "$name" --out "$out_json" >/dev/null 2>&1 || true
+  udid="$(read_device_json "$out_json" udid)"
+  if [ -n "$udid" ]; then
+    printf '%s\n' "$udid"
     return 0
   fi
-  echo "gate simulator '$SIMULATOR_NAME' does not exist yet - creating it"
+  echo "gate simulator '$name' does not exist yet - creating it" >&2
   # Created from the newest available iPhone device type on the newest runtime,
-  # so the gate's device targets the same iOS versions the tests do.
+  # so the gate's devices target the same iOS versions the tests do.
   # run_bounded captures the command's output into a log file, so the new
   # device's UDID is read back from there. `simctl create` also prints a
   # "No runtime specified..." notice before the UDID, so the UDID is matched
   # as a UUID token rather than taken as the whole output.
-  local created=""
-  run_bounded 180 "$RUN_DIR/simctl-create.log" "$RUN_DIR" \
-    sh -c 'xcrun simctl create "$1" "iPhone 17 Pro" 2>&1' _ "$SIMULATOR_NAME" || true
-  if [ -s "$RUN_DIR/simctl-create.log" ]; then
+  run_bounded 180 "$create_log" "$RUN_DIR" \
+    sh -c 'xcrun simctl create "$1" "iPhone 17 Pro" 2>&1' _ "$name" || true
+  if [ -s "$create_log" ]; then
     created="$(grep -o -E '[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}' \
-      "$RUN_DIR/simctl-create.log" | head -n 1)"
+      "$create_log" | head -n 1)"
   fi
   # A UDID is a 36-character hyphenated form; anything else (an error message,
   # empty output) is a failure to create.
   case "$created" in
     ????????-????-????-????-????????????)
-      SIMULATOR_UDID="$created"
       # Re-list so the recorded device/runtime reflects the new device (and so
       # a second run resolves it instead of creating a twin).
       run_bounded 60 "$DEVICES_JSON" "$RUN_DIR" \
         sh -c 'xcrun simctl list devices available -j 2>/dev/null' || true
       python3 "$HELPER" simulator --devices "$DEVICES_JSON" \
-        --name "$SIMULATOR_NAME" --udid "$SIMULATOR_UDID" \
-        --out "$RUN_DIR/simulator.json" >/dev/null 2>&1 || true
-      SIMULATOR_RUNTIME="$(python3 -c '
-import json, sys
-try:
-    print(json.load(open(sys.argv[1])).get("runtime", ""))
-except Exception:
-    print("")
-' "$RUN_DIR/simulator.json" 2>/dev/null || true)"
-      echo "gate simulator '$SIMULATOR_NAME' created: $SIMULATOR_UDID"
+        --name "$name" --udid "$created" --out "$out_json" >/dev/null 2>&1 || true
+      echo "gate simulator '$name' created: $created" >&2
+      printf '%s\n' "$created"
       return 0
       ;;
     *) ;;
   esac
-  echo "local-ci-gate: could not create the gate simulator '$SIMULATOR_NAME'; see $RUN_DIR/simctl-create.log" >&2
-  cat "$RUN_DIR/simctl-create.log" >&2 || true
+  echo "local-ci-gate: could not create the gate simulator '$name'; see $create_log" >&2
+  cat "$create_log" >&2 || true
   return 1
 }
 
-if ! ensure_gate_simulator; then
+SIMULATOR_UDID="$(ensure_gate_simulator "$SIMULATOR_NAME" \
+  "$RUN_DIR/simulator.json" "$RUN_DIR/simctl-create.log")" || {
+  remove_worktree
+  exit 2
+}
+if [ -z "$SIMULATOR_UDID" ]; then
   remove_worktree
   exit 2
 fi
+SIMULATOR_RUNTIME="$(read_device_json "$RUN_DIR/simulator.json" runtime)"
+
+# The second worker's device (only when this run uses two workers): resolved
+# and created the same way, recorded separately, and never touched by the
+# other worker. Its absence is fatal: a run that silently fell back to one
+# device would run both suites on one simulator - concurrent chains on one
+# device is precisely the state corruption the workers exist to avoid.
+SIMULATOR2_UDID=""
+SIMULATOR2_RUNTIME=""
+if [ "$WORKERS" -eq 2 ]; then
+  SIMULATOR2_UDID="$(ensure_gate_simulator "$SIMULATOR_NAME2" \
+    "$RUN_DIR/simulator-2.json" "$RUN_DIR/simctl-create-2.log")" || {
+    remove_worktree
+    exit 2
+  }
+  if [ -z "$SIMULATOR2_UDID" ]; then
+    remove_worktree
+    exit 2
+  fi
+  if [ "$SIMULATOR2_UDID" = "$SIMULATOR_UDID" ]; then
+    echo "local-ci-gate: the two worker devices resolved to the same UDID ($SIMULATOR_UDID); refusing to run two workers on one device" >&2
+    remove_worktree
+    exit 2
+  fi
+  SIMULATOR2_RUNTIME="$(read_device_json "$RUN_DIR/simulator-2.json" runtime)"
+  echo "ui worker device: '$SIMULATOR_NAME2' -> $SIMULATOR2_UDID"
+fi
 
 # --- phase: static checks ----------------------------------------------------
-if [ "$SKIP_STATIC" -eq 1 ]; then
-  echo ""
-  echo "== static checks SKIPPED (--skip-static) =="
-  python3 "$HELPER" phase --out "$RUN_DIR/static/phase.json" \
-    --phase static --status skipped --duration 0 --exit-code 0 \
-    --note "static checks disabled with --skip-static (partial run)"
-else
-  echo ""
-  echo "== static checks (planner inventory, CI tooling, localization) =="
-  STATIC_START=$(date +%s)
-  STATIC_OK=1
-  # "${arr[@]}" on an EMPTY array is a fatal unbound-variable error under
-  # Bash 3.2 + set -u (macOS /bin/bash), so every expansion below uses the
-  # `${arr[@]+"${arr[@]}"}` form instead.
-  STATIC_CHECKS=()
-  run_static_check() { # $1=name, rest=command
-    local name="$1"; shift
-    local log="$RUN_DIR/static/$name.log"
-    mkdir -p "$RUN_DIR/static"
-    local start elapsed status
-    start=$(date +%s)
-    if ( cd "$WT" && "$@" ) >"$log" 2>&1 3>&-; then
-      status="pass"
-    else
-      status="fail"
-      STATIC_OK=0
-      echo "  $name: FAIL (see $log)"
-      tail -n 30 "$log" || true
-    fi
-    elapsed=$(( $(date +%s) - start ))
-    [ "$status" = "pass" ] && echo "  $name: pass (${elapsed}s)"
-    STATIC_CHECKS+=(--check "$name:$status:$elapsed")
-  }
-  run_static_check plan-validate python3 scripts/plan-tests.py validate --repo-root .
-  run_static_check ci-tooling-regression python3 -m unittest discover -s scripts/tests -p 'test_*.py'
-  run_static_check localization-coverage python3 scripts/check-l10n-coverage.py --repo-root .
+# Three independent checks, each its own process writing its own log: they run
+# CONCURRENTLY (they are cheap in CPU - the bash suites spend their time
+# waiting on their own watchdogs - but together they were ~9 minutes run
+# serially) and, unless --static-serial is given, the whole phase runs in the
+# BACKGROUND while the build and the test lanes proceed.
+#
+# Overlapping is safe by construction: the checks read the tested worktree and
+# write nothing into it that any lane reads, and the run directory keeps their
+# logs and the phase document either way. It starts AFTER the build phase has
+# moved `ci-lane/build` out of the worktree, because the CI-tooling suite's own
+# fixture runs a smoke step with the worktree as its cwd and would otherwise
+# race the build's log directory.
+#
+# "${arr[@]}" on an EMPTY array is a fatal unbound-variable error under Bash
+# 3.2 + set -u (macOS /bin/bash), so every expansion below uses the
+# `${arr[@]+"${arr[@]}"}` form instead.
+run_static_check() { # $1=name, rest=command
+  local name="$1"; shift
+  local log="$RUN_DIR/static/$name.log"
+  mkdir -p "$RUN_DIR/static"
+  local start elapsed status
+  start=$(date +%s)
+  if ( cd "$WT" && "$@" ) >"$log" 2>&1 3>&-; then
+    status="pass"
+  else
+    status="fail"
+    echo "  $name: FAIL (see $log)"
+    tail -n 30 "$log" || true
+  fi
+  elapsed=$(( $(date +%s) - start ))
+  [ "$status" = "pass" ] && echo "  $name: pass (${elapsed}s)"
+  # One line per check, so the phase document is assembled from files: the
+  # checks run as background processes whose variables the parent never sees.
+  printf '%s\t%s\t%s\n' "$name" "$status" "$elapsed" \
+    > "$RUN_DIR/static/$name.check"
+  return 0
+}
 
-  if [ "$STATIC_OK" -eq 1 ]; then GATE_STATIC_STATUS="pass"; else GATE_STATIC_STATUS="fail"; fi
+run_static_phase() {
+  if [ "$SKIP_STATIC" -eq 1 ]; then
+    echo "== static checks SKIPPED (--skip-static) =="
+    python3 "$HELPER" phase --out "$RUN_DIR/static/phase.json" \
+      --phase static --status skipped --duration 0 --exit-code 0 \
+      --note "static checks disabled with --skip-static (partial run)"
+    return 0
+  fi
+  echo "== static checks (planner inventory, CI tooling, localization) =="
+  local started ok=1 checks=() f name status elapsed
+  started=$(date +%s)
+  mkdir -p "$RUN_DIR/static"
+  rm -f "$RUN_DIR"/static/*.check 2>/dev/null || true
+  run_static_check plan-validate python3 scripts/plan-tests.py validate --repo-root . &
+  run_static_check ci-tooling-regression python3 -m unittest discover -s scripts/tests -p 'test_*.py' &
+  run_static_check localization-coverage python3 scripts/check-l10n-coverage.py --repo-root . &
+  wait
+  # plan-validate first, then the rest alphabetically: the document keeps the
+  # order an operator reads the checks in, not the glob's.
+  for name in plan-validate ci-tooling-regression localization-coverage; do
+    f="$RUN_DIR/static/$name.check"
+    [ -s "$f" ] || continue
+    IFS=$'\t' read -r name status elapsed < "$f"
+    checks+=(--check "$name:$status:$elapsed")
+    [ "$status" = "pass" ] || ok=0
+  done
   python3 "$HELPER" phase --out "$RUN_DIR/static/phase.json" \
-    --phase static --status "$GATE_STATIC_STATUS" \
-    --duration "$(( $(date +%s) - STATIC_START ))" \
-    --exit-code "$([ "$STATIC_OK" -eq 1 ] && echo 0 || echo 1)" \
+    --phase static --status "$([ "$ok" -eq 1 ] && echo pass || echo fail)" \
+    --duration "$(( $(date +%s) - started ))" \
+    --exit-code "$([ "$ok" -eq 1 ] && echo 0 || echo 1)" \
     --note "planner inventory + CI-tooling regression suites + localization coverage" \
-    "${STATIC_CHECKS[@]+"${STATIC_CHECKS[@]}"}"
+    --detail "overlapped_with_lanes=$([ "$STATIC_OVERLAP" -eq 1 ] && echo true || echo false)" \
+    "${checks[@]+"${checks[@]}"}"
+  return 0
+}
+
+STATIC_PID=""
+if [ "$STATIC_OVERLAP" -eq 1 ]; then
+  echo ""
+  echo "== static checks will run concurrently with the build and the test lanes =="
+else
+  # Historical order (and the same evidence): the checks finish before the
+  # build starts.
+  run_static_phase
 fi
 
 # --- phase: build-for-testing (exactly once) ---------------------------------
@@ -951,6 +1198,22 @@ python3 "$HELPER" phase --out "$RUN_DIR/build/phase.json" \
   --duration "$BUILD_ELAPSED" --exit-code "$([ "$GATE_BUILD_STATUS" = pass ] && echo 0 || echo 1)" \
   --note "$([ -n "$XCTESTRUN" ] && echo "build-for-testing products" || echo "no .xctestrun produced")" \
   --detail "xctestrun=$XCTESTRUN"
+
+# --- static checks, overlapped ------------------------------------------------
+# Started here (not before the build) so the CI-tooling suite cannot race the
+# build's own `ci-lane/build` diagnostics, and left running while the plan and
+# the lanes proceed. The gate WAITS for it below and fails on its verdict, so
+# overlapping changes when the checks run, never whether they count.
+if [ "$STATIC_OVERLAP" -eq 1 ]; then
+  STATIC_STARTED=$(date +%s)
+  # The log directory must exist before the subshell's redirection: a redirect
+  # into a missing directory fails the launch, and the phase would then simply
+  # be absent from the run ("static phase: missing", which the summarizer
+  # reports as a gate defect).
+  mkdir -p "$RUN_DIR/static"
+  ( run_static_phase ) >"$RUN_DIR/static/static.log" 2>&1 3>&- &
+  STATIC_PID=$!
+fi
 
 # --- phase: plan -------------------------------------------------------------
 # One lane per kind: the gate is exhaustive, not sharded, so it forces the
@@ -1048,10 +1311,16 @@ simulator_prep() { # $1 = label
   fi
   # Recorded even when it succeeded: a wedged environment is a caveat on the
   # result, and the summarizer only knows what the run directory says.
-  SIM_PREP_CHECKS+=(--check "$label:$( [ "$status" -eq 0 ] && echo pass || echo fail ):$elapsed")
+  #
+  # The record goes to the WORKER's own file, and the phase document is
+  # assembled by the parent from all of them: two workers prepare their own
+  # devices concurrently, so no worker can append to the parent's state.
+  printf '%s\t%s\t%s\n' "$label" "$status" "$elapsed" \
+    >> "${WORKER_SIM_PREP_FILE:-$RUN_DIR/sim-prep/records.tsv}"
   if [ "$status" -ne 0 ]; then
-    SIM_PREP_FAILED=1
+    WORKER_SIM_PREP_FAILED=1
   fi
+  return 0
 }
 
 if [ "$GATE_BUILD_STATUS" != "pass" ]; then
@@ -1067,6 +1336,8 @@ else
       --baseline scripts/test-timings.json \
       --min-lanes 1 --max-lanes 1 --unit-max-batches-per-job 1000 \
       --ui-min-lanes 1 --ui-max-lanes 1 \
+      $([ "$UNIT_BATCH_MAX_CLASSES" -gt 0 ] && \
+        printf '%s %s' '--unit-batch-max-classes' "$UNIT_BATCH_MAX_CLASSES") \
       --out "$RUN_DIR/plan/plan.json" \
       --summary-out "$RUN_DIR/plan/plan-summary.md" \
       >"$RUN_DIR/plan/plan.log" 2>&1; then
@@ -1084,100 +1355,299 @@ else
       # shellcheck disable=SC1090
       . "$LANES_ENV"
 
-      # --- complete unit suite -------------------------------------------
-      simulator_prep unit
-      if run_lane unit "$GATE_UNIT_LANE" "$GATE_UNIT_TARGET" "$GATE_UNIT_CLASSES" \
-          "$GATE_UNIT_PREDICTED" "$GATE_UNIT_TIMEOUT" "$RUN_DIR/lanes/unit" \
-          --batches-json "$GATE_UNIT_BATCHES_JSON"; then
-        echo "unit lane: the complete ConduitTests suite ran"
-      else
-        # The lane stopped at the batch that failed, so the rest of the suite
-        # has no result yet. Run the batches it never reached as a
-        # CONTINUATION pass (a diagnostic continuation, never a retry of
-        # anything that already ran) so one failure cannot hide the other
-        # classes' status from the report.
-        CONT_ENV="$RUN_DIR/unit-continuation.env"
-        if python3 "$HELPER" not-run-batches \
-            --plan "$RUN_DIR/plan/plan.json" \
-            --lane-result "$RUN_DIR/lanes/unit/lane-result.json" \
-            --out "$CONT_ENV"; then
-          # shellcheck disable=SC1090
-          . "$CONT_ENV"
-          if [ "${GATE_CONT_PRESENT:-0}" -eq 1 ]; then
-            echo ""
-            echo "== unit continuation: re-running the ${GATE_CONT_BATCH_COUNT} batch(es) the lane never reached (batches ${GATE_CONT_BATCH_INDICES}) =="
-            # The lane it continues stopped mid-invocation, so the Simulator is
-            # prepared again before the continuation starts.
-            simulator_prep unit-continuation
-            if run_lane unit "$GATE_UNIT_LANE-continuation" "$GATE_UNIT_TARGET" \
-                "$GATE_CONT_CLASSES" "$GATE_CONT_PREDICTED" "$GATE_CONT_TIMEOUT" \
-                "$RUN_DIR/lanes/unit-continuation" \
-                --batches-json "$GATE_CONT_BATCHES_JSON"; then
-              echo "unit continuation: the never-reached batches ran clean"
+      # --- workers -------------------------------------------------------
+      # A WORKER is one process that owns one device (its UDID is pinned in
+      # its environment) and the plan work assigned to it:
+      #
+      #   unit worker  the complete unit lane, its continuation pass, its
+      #                bounded recovery round, and the repeat policy
+      #   ui worker    the complete UI lane and its bounded recovery round
+      #
+      # With --workers 2 both run CONCURRENTLY on two different project-owned
+      # devices under the ONE host-level SIMULATOR_TEST lease this run holds
+      # (a lease is exclusive against other projects and workflows, not against
+      # this run's own second device); with --workers 1 they run one after the
+      # other on the unit device. Either way each worker owns exactly one UDID
+      # and never touches the other's device, so the two xcodebuild chains can
+      # never corrupt each other's Simulator state.
+      #
+      # Which side runs in parallel is deliberate: the UI suite is the longest
+      # single pole (~11 min on our Mac against ~4-8 for the unit suite), so
+      # pairing unit work against it - rather than sharding one suite across
+      # both devices - is what actually shortens the run. Repeats stay with the
+      # unit worker because they run on the unit device's already-prepared
+      # state and must not interleave with the unit lane on that device.
+      WORKERS_DIR="$RUN_DIR/workers"
+      mkdir -p "$WORKERS_DIR"
+      WORKER_PIDS=""
+      LANE_POLL_SECONDS="${GATE_LANE_POLL_INTERVAL_S:-3}"
+
+      worker_meta() { # $1=name $2=device name $3=device udid $4=pid $5=started epoch
+        local wdir="$WORKERS_DIR/$1"
+        mkdir -p "$wdir"
+        : > "$wdir/sim-prep.tsv"
+        printf '%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" "$5" > "$wdir/meta.tsv"
+      }
+
+      start_worker() { # $1=name $2=device name $3=device udid $4=worker function
+        local name="$1" devname="$2" devudid="$3" fn="$4"
+        local started pid wdir="$WORKERS_DIR/$1"
+        started=$(date +%s)
+        # The directory must exist BEFORE the subshell's redirection: a
+        # redirect into a missing directory fails the launch outright, which
+        # silently turns the worker into "never ran" (the summarizer reports
+        # that as a gate defect, but the run is already wasted).
+        mkdir -p "$wdir"
+        # A subshell per worker: a subshell cannot write the parent's
+        # variables, so every per-worker record travels as a FILE (the
+        # sim-prep records, the exit code) and the parent assembles the
+        # documents from them. fd 3 is closed in the worker on purpose: it is
+        # the host lease's write end, which must die with THIS process.
+        (
+          WORKER_NAME="$name"
+          WORKER_DIR="$wdir"
+          WORKER_SIM_PREP_FILE="$wdir/sim-prep.tsv"
+          WORKER_SIM_PREP_FAILED=0
+          SIMULATOR_NAME="$devname"
+          SIMULATOR_UDID="$devudid"
+          export SIMULATOR_NAME SIMULATOR_UDID
+          export XCODEBUILD_POLL_INTERVAL_S="$LANE_POLL_SECONDS"
+          "$fn"
+          _worker_status=$?
+          printf '%s\n' "$_worker_status" > "$wdir/exit-code"
+          exit "$_worker_status"
+        ) >"$wdir/worker.log" 2>&1 3>&- &
+        pid=$!
+        WORKER_PIDS="$WORKER_PIDS $pid"
+        worker_meta "$name" "$devname" "$devudid" "$pid" "$started"
+        echo "worker $name: started on '$devname' ($devudid); log $wdir/worker.log"
+      }
+
+      # Heart-beat + reap loop: an operator on a long SSH session gets
+      # progress from BOTH workers, and each worker's exit status is collected
+      # where it can be recorded (the pid list is cleared as it is reaped so no
+      # later signal can reach a reused pid).
+      wait_for_workers() {
+        local remaining="$WORKER_PIDS" alive pid name devname devudid wpid started wdir now
+        while [ -n "$remaining" ]; do
+          alive=""
+          for pid in $remaining; do
+            if kill -0 "$pid" 2>/dev/null; then
+              alive="$alive $pid"
             else
-              echo "unit continuation: the never-reached batches produced their own failures (reported below)"
+              wait "$pid" 2>/dev/null || true
+            fi
+          done
+          remaining="$alive"
+          [ -z "$remaining" ] && break
+          now=$(date +%s)
+          while IFS=$'\t' read -r name devname devudid wpid started wdir; do
+            [ -z "$name" ] && continue
+            kill -0 "$wpid" 2>/dev/null || continue
+            echo "... worker $name running ($(( now - started ))s, device '$devname')"
+          done < <(cat "$WORKERS_DIR"/*/meta.tsv 2>/dev/null)
+          sleep 15
+        done
+        # Every worker is reaped here, so the pid list is cleared: a later
+        # signal (the cleanup path) must never reach a pid that has since been
+        # reused by an unrelated process on this shared host.
+        WORKER_PIDS=""
+      }
+
+      # Reads back what the workers recorded, as one authoritative document:
+      # name, device, UDID, exit code, wall clock, whether the worker script
+      # ran to completion, and whether any of its Simulator preparations
+      # failed. The summarizer fails the gate when a worker is missing from
+      # this file, did not complete, or reports a device the run did not
+      # assign it.
+      record_workers() {
+        local tsv="$RUN_DIR/workers.tsv" name devname devudid wpid started wdir
+        : > "$tsv"
+        for wdir in "$WORKERS_DIR"/*; do
+          [ -d "$wdir" ] || continue
+          [ -s "$wdir/meta.tsv" ] || continue
+          IFS=$'\t' read -r name devname devudid wpid started < "$wdir/meta.tsv" || continue
+          local exit_code="" wall_s=0 completed=0 sim_prep_failed=0 plabel pstatus psecs
+          if [ -s "$wdir/exit-code" ]; then
+            exit_code="$(tr -d '[:space:]' < "$wdir/exit-code")"
+            [ "$exit_code" = "0" ] && completed=1
+          fi
+          wall_s=$(( $(date +%s) - started ))
+          if [ -s "$wdir/sim-prep.tsv" ]; then
+            while IFS=$'\t' read -r plabel pstatus psecs; do
+              [ -z "$plabel" ] && continue
+              [ "$pstatus" = "0" ] || sim_prep_failed=1
+            done < "$wdir/sim-prep.tsv"
+          fi
+          printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+            "$name" "$devname" "$devudid" "${exit_code:-none}" "$wall_s" \
+            "$completed" "$sim_prep_failed" "workers/$name/worker.log" >> "$tsv"
+        done
+      }
+
+      # --- worker: unit ----------------------------------------------------
+      worker_unit() {
+        # --- complete unit suite -------------------------------------------
+        simulator_prep unit
+        if run_lane unit "$GATE_UNIT_LANE" "$GATE_UNIT_TARGET" "$GATE_UNIT_CLASSES" \
+            "$GATE_UNIT_PREDICTED" "$GATE_UNIT_TIMEOUT" "$RUN_DIR/lanes/unit" \
+            --batches-json "$GATE_UNIT_BATCHES_JSON"; then
+          echo "unit lane: the complete ConduitTests suite ran"
+        else
+          # The lane stopped at the batch that failed, so the rest of the suite
+          # has no result yet. Run the batches it never reached as a
+          # CONTINUATION pass (a diagnostic continuation, never a retry of
+          # anything that already ran) so one failure cannot hide the other
+          # classes' status from the report.
+          CONT_ENV="$RUN_DIR/unit-continuation.env"
+          if python3 "$HELPER" not-run-batches \
+              --plan "$RUN_DIR/plan/plan.json" \
+              --lane-result "$RUN_DIR/lanes/unit/lane-result.json" \
+              --out "$CONT_ENV"; then
+            # shellcheck disable=SC1090
+            . "$CONT_ENV"
+            if [ "${GATE_CONT_PRESENT:-0}" -eq 1 ]; then
+              echo ""
+              echo "== unit continuation: re-running the ${GATE_CONT_BATCH_COUNT} batch(es) the lane never reached (batches ${GATE_CONT_BATCH_INDICES}) =="
+              # The lane it continues stopped mid-invocation, so the Simulator is
+              # prepared again before the continuation starts.
+              simulator_prep unit-continuation
+              if run_lane unit "$GATE_UNIT_LANE-continuation" "$GATE_UNIT_TARGET" \
+                  "$GATE_CONT_CLASSES" "$GATE_CONT_PREDICTED" "$GATE_CONT_TIMEOUT" \
+                  "$RUN_DIR/lanes/unit-continuation" \
+                  --batches-json "$GATE_CONT_BATCHES_JSON"; then
+                echo "unit continuation: the never-reached batches ran clean"
+              else
+                echo "unit continuation: the never-reached batches produced their own failures (reported below)"
+              fi
+            else
+              echo "unit continuation: no batch was left unexecuted"
             fi
           else
-            echo "unit continuation: no batch was left unexecuted"
+            echo "local-ci-gate: could not project the unit continuation pass" >&2
+          fi
+        fi
+
+        # --- ONE bounded recovery round ------------------------------------
+        # Allowed for exactly one infrastructure class: the simulator/host-app
+        # launch refusal (XCTest's synthetic "System Failures" entry, and/or the
+        # verified Busy signature in the lane log). A genuine assertion anywhere
+        # disqualifies the round - the helper refuses to project it, because a
+        # product failure is never retried around.
+        echo ""
+        echo "== bounded recovery round check =="
+        if python3 "$HELPER" recovery-spec --plan "$RUN_DIR/plan/plan.json" \
+            --lane "$RUN_DIR/lanes/unit,$RUN_DIR/lanes/unit-continuation" \
+            --timeout-cap "$REPEAT_TIMEOUT_CAP" \
+            --out "$RUN_DIR/recovery.env" --tsv-out "$RUN_DIR/recovery.tsv"; then
+          # shellcheck disable=SC1090
+          . "$RUN_DIR/recovery.env"
+          if [ "${GATE_RECOVERY_PRESENT:-0}" -eq 1 ] && [ -s "$RUN_DIR/recovery.tsv" ]; then
+            echo "== recovery round 1 of 1: erasing the gate simulator and retrying ${GATE_RECOVERY_CLASS_COUNT} class(es) once =="
+            # ONE erase, then ONE invocation for the whole retry set in a single
+            # batch: the wedge alternates across app launches, so one launch
+            # gives the round its single chance (see cmd_recovery_spec, which
+            # emits exactly one row). A refusal of that launch fails the gate as
+            # infrastructure with no third attempt.
+            while IFS=$'\t' read -r rcls rclasses rbatches rpredicted rtimeout; do
+              [ -z "$rcls" ] && continue
+              rtimeout="${rtimeout%$'\r'}"
+              rpredicted="${rpredicted%$'\r'}"
+              rbatches="${rbatches%$'\r'}"
+              # A freshly erased device for the retry set: the wedge is STICKY
+              # across launches (only an erase clears it - see the A/B probe in
+              # simulator_prep), and the set is still retried exactly once.
+              simulator_prep "recovery-$rcls"
+              simulator_prime "recovery-$rcls"
+              if run_lane unit "$GATE_UNIT_LANE-recovery-$rcls" "$GATE_UNIT_TARGET" \
+                  "$rclasses" "$rpredicted" "$rtimeout" \
+                  "$RUN_DIR/lanes/unit-recovery-$rcls" \
+                  --batches-json "$rbatches"; then
+                echo "  recovery $rcls: recovered"
+              else
+                echo "  recovery $rcls: still failing (reported in the result document)"
+              fi
+            done < "$RUN_DIR/recovery.tsv"
+            # No third attempt: whether the round worked - and whether the same
+            # infrastructure class came back - is decided by the summarizer from
+            # these passes' evidence.
+          else
+            echo "== recovery round: nothing to retry (no launch-refusal evidence, or nothing incomplete) =="
           fi
         else
-          echo "local-ci-gate: could not project the unit continuation pass" >&2
+          echo "local-ci-gate: the bounded recovery round refused to project"
+          echo "local-ci-gate: correct when a genuine test failure is present - assertions are never retried"
         fi
-      fi
 
-      # --- ONE bounded recovery round ------------------------------------
-      # Allowed for exactly one infrastructure class: the simulator/host-app
-      # launch refusal (XCTest's synthetic "System Failures" entry, and/or the
-      # verified Busy signature in the lane log). A genuine assertion anywhere
-      # disqualifies the round - the helper refuses to project it, because a
-      # product failure is never retried around.
-      echo ""
-      echo "== bounded recovery round check =="
-      if python3 "$HELPER" recovery-spec --plan "$RUN_DIR/plan/plan.json" \
-          --lane "$RUN_DIR/lanes/unit,$RUN_DIR/lanes/unit-continuation" \
-          --timeout-cap "$REPEAT_TIMEOUT_CAP" \
-          --out "$RUN_DIR/recovery.env" --tsv-out "$RUN_DIR/recovery.tsv"; then
-        # shellcheck disable=SC1090
-        . "$RUN_DIR/recovery.env"
-        if [ "${GATE_RECOVERY_PRESENT:-0}" -eq 1 ] && [ -s "$RUN_DIR/recovery.tsv" ]; then
-          echo "== recovery round 1 of 1: erasing the gate simulator and retrying ${GATE_RECOVERY_CLASS_COUNT} class(es) once =="
-          # ONE erase, then ONE invocation for the whole retry set in a single
-          # batch: the wedge alternates across app launches, so one launch
-          # gives the round its single chance (see cmd_recovery_spec, which
-          # emits exactly one row). A refusal of that launch fails the gate as
-          # infrastructure with no third attempt.
-          while IFS=$'\t' read -r rcls rclasses rbatches rpredicted rtimeout; do
-            [ -z "$rcls" ] && continue
-            rtimeout="${rtimeout%$'\r'}"
-            rpredicted="${rpredicted%$'\r'}"
-            rbatches="${rbatches%$'\r'}"
-            # A freshly erased device for the retry set: the wedge is STICKY
-            # across launches (only an erase clears it - see the A/B probe in
-            # simulator_prep), and the set is still retried exactly once.
-            simulator_prep "recovery-$rcls"
-            simulator_prime "recovery-$rcls"
-            if run_lane unit "$GATE_UNIT_LANE-recovery-$rcls" "$GATE_UNIT_TARGET" \
-                "$rclasses" "$rpredicted" "$rtimeout" \
-                "$RUN_DIR/lanes/unit-recovery-$rcls" \
-                --batches-json "$rbatches"; then
-              echo "  recovery $rcls: recovered"
-            else
-              echo "  recovery $rcls: still failing (reported in the result document)"
-            fi
-          done < "$RUN_DIR/recovery.tsv"
-          # No third attempt: whether the round worked - and whether the same
-          # infrastructure class came back - is decided by the summarizer from
-          # these passes' evidence.
+        # --- explicit repeat policy ----------------------------------------
+        if [ -z "$REPEAT_CLASSES" ] || [ "$REPEAT_ITERATIONS" -le 0 ]; then
+          echo ""
+          echo "== repeat policy disabled ($MODE mode) =="
         else
-          echo "== recovery round: nothing to retry (no launch-refusal evidence, or nothing incomplete) =="
+          REPEAT_JSON="$RUN_DIR/repeats.json"
+          REPEAT_TSV="$RUN_DIR/repeats.tsv"
+          if ! python3 "$HELPER" repeat-spec --plan "$RUN_DIR/plan/plan.json" \
+              --classes "$REPEAT_CLASSES" --iterations "$REPEAT_ITERATIONS" \
+              --timeout-cap "$REPEAT_TIMEOUT_CAP" \
+              --out "$REPEAT_JSON" --tsv-out "$REPEAT_TSV"; then
+            echo "local-ci-gate: repeat policy could not be projected" >&2
+          else
+            echo ""
+            echo "== repeat policy: $REPEAT_ITERATIONS unconditional iterations per class =="
+            # A projection that produced no tasks would silently satisfy the
+            # summarizer with "no repeats expected"; the policy must actually
+            # have tasks in it.
+            if [ ! -s "$REPEAT_TSV" ]; then
+              echo "local-ci-gate: the repeat policy projected no tasks" >&2
+            fi
+            while IFS=$'\t' read -r rcls rbatches rpredicted rtimeout; do
+              [ -z "$rcls" ] && continue
+              rtimeout="${rtimeout%$'\r'}"
+              rpredicted="${rpredicted%$'\r'}"
+              rbatches="${rbatches%$'\r'}"
+              iteration=1
+              while [ "$iteration" -le "$REPEAT_ITERATIONS" ]; do
+                # Primed like the recovery round's retry: the wedge alternates
+                # across app launches, and the prime keeps a repetition from
+                # being lost to the launcher rather than to the test.
+                simulator_prime "$rcls-$iteration"
+                if run_lane unit "repeat-$rcls-$iteration" "$GATE_UNIT_TARGET" \
+                    "$rcls" "$rpredicted" "$rtimeout" \
+                    "$RUN_DIR/repeats/$rcls/iter-$iteration" \
+                    --batches-json "$rbatches"; then
+                  echo "  $rcls iteration $iteration: pass"
+                else
+                  echo "  $rcls iteration $iteration: FAIL"
+                  # One bounded retry for a repetition the launcher ate:
+                  # only when the evidence is infrastructure. A genuine
+                  # failing test is final and is never re-run.
+                  if python3 "$HELPER" is-infra-only \
+                      --lane-dir "$RUN_DIR/repeats/$rcls/iter-$iteration"; then
+                    simulator_prime "$rcls-$iteration-retry"
+                    if run_lane unit "repeat-$rcls-$iteration-retry" \
+                        "$GATE_UNIT_TARGET" "$rcls" "$rpredicted" "$rtimeout" \
+                        "$RUN_DIR/repeats/$rcls/iter-$iteration-retry" \
+                        --batches-json "$rbatches"; then
+                      echo "  $rcls iteration $iteration: recovered on its one retry"
+                    else
+                      echo "  $rcls iteration $iteration: its one retry also failed"
+                    fi
+                  fi
+                fi
+                iteration=$(( iteration + 1 ))
+              done
+            done < "$REPEAT_TSV"
+          fi
         fi
-      else
-        echo "local-ci-gate: the bounded recovery round refused to project"
-        echo "local-ci-gate: correct when a genuine test failure is present - assertions are never retried"
-      fi
+        return 0
+      }
 
-      # --- complete UI suite ---------------------------------------------
-      if [ "${GATE_UI_PRESENT:-0}" -eq 1 ]; then
+      # --- worker: ui -------------------------------------------------------
+      worker_ui() {
+        if [ "${GATE_UI_PRESENT:-0}" -ne 1 ]; then
+          echo "ui lane: the plan carries no UI classes - nothing for this worker to do"
+          return 0
+        fi
         simulator_prep ui
         if run_lane ui "$GATE_UI_LANE" "$GATE_UI_TARGET" "$GATE_UI_CLASSES" \
             "$GATE_UI_PREDICTED" "$GATE_UI_TIMEOUT" "$RUN_DIR/lanes/ui" \
@@ -1187,7 +1657,7 @@ else
           echo "ui lane: the shard reported failures (classified in the result)"
         fi
         # The same bounded recovery round, for the UI lane: one erase of the
-        # gate simulator and one retry of the UI classes that never completed.
+        # worker's device and one retry of the UI classes that never completed.
         if python3 "$HELPER" recovery-spec --plan "$RUN_DIR/plan/plan.json" \
             --kind ui \
             --lane "$RUN_DIR/lanes/ui" \
@@ -1212,84 +1682,99 @@ else
         else
           echo "ui recovery round: refused to project (correct when a genuine UI failure is present)"
         fi
+        return 0
+      }
+
+      if [ "$WORKERS" -eq 2 ]; then
+        start_worker unit "$SIMULATOR_NAME" "$SIMULATOR_UDID" worker_unit
+        start_worker ui "$SIMULATOR_NAME2" "$SIMULATOR2_UDID" worker_ui
+        wait_for_workers
       else
-        echo "ui lane: the plan carries no UI classes"
+        # One worker at a time, same code path: the run's evidence then looks
+        # like a serial gate's (one device, lanes in order) instead of being
+        # spread over two devices.
+        start_worker unit "$SIMULATOR_NAME" "$SIMULATOR_UDID" worker_unit
+        start_worker ui "$SIMULATOR_NAME" "$SIMULATOR_UDID" worker_ui
+        wait_for_workers
       fi
-      # --- explicit repeat policy ----------------------------------------
-      if [ -z "$REPEAT_CLASSES" ] || [ "$REPEAT_ITERATIONS" -le 0 ]; then
-        echo ""
-        echo "== repeat policy disabled =="
-      else
-        REPEAT_JSON="$RUN_DIR/repeats.json"
-        REPEAT_TSV="$RUN_DIR/repeats.tsv"
-        if ! python3 "$HELPER" repeat-spec --plan "$RUN_DIR/plan/plan.json" \
-            --classes "$REPEAT_CLASSES" --iterations "$REPEAT_ITERATIONS" \
-            --timeout-cap "$REPEAT_TIMEOUT_CAP" \
-            --out "$REPEAT_JSON" --tsv-out "$REPEAT_TSV"; then
-          echo "local-ci-gate: repeat policy could not be projected" >&2
-        else
-          echo ""
-          echo "== repeat policy: $REPEAT_ITERATIONS unconditional iterations per class =="
-          # A projection that produced no tasks would silently satisfy the
-          # summarizer with "no repeats expected"; the policy must actually
-          # have tasks in it.
-          if [ ! -s "$REPEAT_TSV" ]; then
-            echo "local-ci-gate: the repeat policy projected no tasks" >&2
-          fi
-          while IFS=$'\t' read -r rcls rbatches rpredicted rtimeout; do
-            [ -z "$rcls" ] && continue
-            rtimeout="${rtimeout%$'\r'}"
-            rpredicted="${rpredicted%$'\r'}"
-            rbatches="${rbatches%$'\r'}"
-            iteration=1
-            while [ "$iteration" -le "$REPEAT_ITERATIONS" ]; do
-              # Primed like the recovery round's retry: the wedge alternates
-              # across app launches, and the prime keeps a repetition from
-              # being lost to the launcher rather than to the test.
-              simulator_prime "$rcls-$iteration"
-              if run_lane unit "repeat-$rcls-$iteration" "$GATE_UNIT_TARGET" \
-                  "$rcls" "$rpredicted" "$rtimeout" \
-                  "$RUN_DIR/repeats/$rcls/iter-$iteration" \
-                  --batches-json "$rbatches"; then
-                echo "  $rcls iteration $iteration: pass"
-              else
-                echo "  $rcls iteration $iteration: FAIL"
-                # One bounded retry for a repetition the launcher ate:
-                # only when the evidence is infrastructure. A genuine
-                # failing test is final and is never re-run.
-                if python3 "$HELPER" is-infra-only \
-                    --lane-dir "$RUN_DIR/repeats/$rcls/iter-$iteration"; then
-                  simulator_prime "$rcls-$iteration-retry"
-                  if run_lane unit "repeat-$rcls-$iteration-retry" \
-                      "$GATE_UNIT_TARGET" "$rcls" "$rpredicted" "$rtimeout" \
-                      "$RUN_DIR/repeats/$rcls/iter-$iteration-retry" \
-                      --batches-json "$rbatches"; then
-                    echo "  $rcls iteration $iteration: recovered on its one retry"
-                  else
-                    echo "  $rcls iteration $iteration: its one retry also failed"
-                  fi
-                fi
-              fi
-              iteration=$(( iteration + 1 ))
-            done
-          done < "$REPEAT_TSV"
+      record_workers
+      echo ""
+      echo "== workers =="
+      while IFS=$'\t' read -r wname wdev wudid wexit wwall wdone wprepfail wlog; do
+        [ -z "$wname" ] && continue
+        echo "worker $wname: device '$wdev' ($wudid), exit ${wexit}, ${wwall}s, completed=${wdone}, sim_prep_failed=${wprepfail}"
+      done < "$RUN_DIR/workers.tsv"
+      # A worker that did not complete is a gate defect the operator must see
+      # in the console too, not only in the result document.
+      while IFS=$'\t' read -r wname wdev wudid wexit wwall wdone wprepfail wlog; do
+        [ -z "$wname" ] && continue
+        if [ "$wdone" != "1" ]; then
+          echo "local-ci-gate: worker '$wname' did not run to completion (exit ${wexit}); tail of $wlog:"
+          tail -n 20 "$RUN_DIR/$wlog" 2>/dev/null | sed 's/^/  /'
         fi
-      fi
+      done < "$RUN_DIR/workers.tsv"
     fi
   fi
 fi
 
 # --- summarize ---------------------------------------------------------------
+# The overlapped static phase is joined here, before anything reads its phase
+# document: the gate's verdict must include it, so the run waits for it (it
+# usually finished long before the lanes did).
+if [ -n "${STATIC_PID:-}" ]; then
+  wait "$STATIC_PID" 2>/dev/null || true
+  STATIC_PID=""
+  echo ""
+  echo "== static checks (overlapped with the build and the test lanes) =="
+  _static_phase="$RUN_DIR/static/phase.json"
+  if [ -s "$_static_phase" ]; then
+    python3 - "$_static_phase" "$(( $(date +%s) - STATIC_STARTED ))" <<'PY' 2>/dev/null || true
+import json, sys
+doc = json.load(open(sys.argv[1], encoding="utf-8"))
+print("  status: {0}; {1}s of check work, finished {2}s into the run".format(
+    doc.get("status"), doc.get("duration_s"), sys.argv[2]))
+for check in doc.get("checks") or []:
+    print("  {0}: {1} ({2}s)".format(
+        check.get("name"), check.get("status"), check.get("duration_s")))
+PY
+  else
+    echo "local-ci-gate: the overlapped static phase wrote no phase document" >&2
+    tail -n 20 "$RUN_DIR/static/static.log" 2>/dev/null | sed 's/^/  /' >&2 || true
+  fi
+fi
+
 # The recovery round and the preparation checks are written before the summary
 # so a degraded environment shows up as a caveat on the result rather than only
 # in the log. The recovery round is recorded whether it ran or not (status
 # skipped), so the result can distinguish "no recovery needed" from "silently
 # missing".
+#
+# The preparation records come from the WORKERS (each prepared its own device,
+# concurrently): the phase document is assembled here from their per-worker
+# files, so a preparation that failed on either device lands on the result.
+SIM_PREP_CHECKS=()
+SIM_PREP_FAILED=0
+for _prep_file in $(ls "$RUN_DIR"/workers/*/sim-prep.tsv 2>/dev/null); do
+  _prep_worker="$(basename "$(dirname "$_prep_file")")"
+  while IFS=$'\t' read -r _plabel _pstatus _psecs; do
+    [ -z "$_plabel" ] && continue
+    _ptoken="$_plabel"
+    if [ "$_pstatus" != "0" ]; then
+      SIM_PREP_FAILED=1
+    fi
+    if [ "$_pstatus" = "0" ]; then
+      SIM_PREP_CHECKS+=(--check "$_ptoken:pass:$_psecs")
+    else
+      SIM_PREP_CHECKS+=(--check "$_ptoken:fail:$_psecs")
+    fi
+  done < "$_prep_file"
+done
 python3 "$HELPER" phase --out "$RUN_DIR/sim-prep/phase.json" \
   --phase sim-prep \
   --status "$([ "$SIM_PREP_FAILED" -eq 1 ] && echo fail || echo pass)" \
   --duration 0 --exit-code "$SIM_PREP_FAILED" \
   --note "bounded shutdown/erase/boot/wait-for-boot before each lane" \
+  --detail "workers=$([ "$WORKERS" -eq 2 ] && echo 2 || echo 1)" \
   "${SIM_PREP_CHECKS[@]+"${SIM_PREP_CHECKS[@]}"}" >/dev/null 2>&1 || true
 
 # Record whether ANY recovery pass exists - unit or UI, per-class
@@ -1321,15 +1806,18 @@ if python3 "$HELPER" summarize --run-dir "$RUN_DIR" \
   VERDICT=0
 fi
 
-# Record the result in the per-SHA registry (exit 2 is how a later run is
-# refused unless it was explicitly requested); a failed append must not be
-# silent, because it re-arms the SHA for another full run.
-printf '%s\t%s\t%s\t%s\n' "$(now_iso)" "$RUN_DIR" "${VERDICT}" "$SHA" \
+# Record the result in the per-SHA registry (exit 2 is how a later run of the
+# same mode is refused unless it was explicitly requested); a failed append
+# must not be silent, because it re-arms the SHA for another full run. The mode
+# is part of the record: "a release result already exists for this SHA" and
+# "a merge result already exists for this SHA" are different statements.
+printf '%s\t%s\t%s\t%s\t%s\n' "$(now_iso)" "$RUN_DIR" "${VERDICT}" "$SHA" "$MODE" \
   >> "$SHA_REGISTRY" 2>/dev/null \
   || echo "local-ci-gate: warning: could not record the result for $SHA in the SHA registry; it lives at $RUN_DIR/gate-result.json" >&2
 
 echo ""
 echo "tested SHA : $SHA"
+echo "mode       : $MODE"
 echo "run dir    : $RUN_DIR"
 echo "result json: $RUN_DIR/gate-result.json"
 echo "summary    : $RUN_DIR/summary.md"

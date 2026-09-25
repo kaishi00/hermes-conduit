@@ -86,6 +86,27 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertNotIn("-retry-tests-on-failure", unit)
         self.assertNotIn("targeted retry", unit)
 
+    def test_the_build_job_does_not_serialize_behind_the_plan_job(self):
+        """Wall clock is a budget the gate spends on every PR.
+
+        The build job compiles the tree and audits the .xctestrun; it consumes
+        NOTHING the plan job produces, and making it wait put a serial 1m45s in
+        front of every run. The verdict is still gated on the plan job -
+        `ci-gate` requires it and both smoke jobs require both - so a broken
+        selection still cannot produce a green gate.
+        """
+        build = self._job_text("build")
+        for line in build.splitlines():
+            self.assertFalse(line.lstrip().startswith("needs:"),
+                             "the build job must not wait for the plan job")
+        plan = self._job_text("plan")
+        self.assertIn("plan-tests.py smoke", plan,
+                      "the plan job still owns the smoke selection")
+        for job in ("unit-smoke", "ui-smoke"):
+            self.assertIn("needs: [plan, build]", self._job_text(job),
+                          "{0} must still need the selection AND the products"
+                          .format(job))
+
     def test_ui_smoke_job_runs_the_curated_classes(self):
         ui = self._job_text("ui-smoke")
         self.assertIn("needs: [plan, build]", ui)

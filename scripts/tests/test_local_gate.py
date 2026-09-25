@@ -73,11 +73,42 @@ def write_json(path, doc):
     path.write_text(json.dumps(doc, indent=2), encoding="utf-8")
 
 
+def write_workers(run_dir, records):
+    """Write the run's worker evidence exactly as local-ci-gate.sh does.
+
+    workers.tsv columns: name, device name, device UDID, exit code, wall
+    seconds, completed, sim-prep failed, log path (relative to the run dir).
+    The per-worker log files are written too: the summarizer requires the
+    evidence it points at to exist.
+    """
+    run_dir = Path(run_dir)
+    lines = []
+    for rec in records:
+        lines.append("\t".join([
+            rec["name"],
+            rec["device_name"],
+            rec["udid"],
+            rec.get("exit_code", "0"),
+            str(rec.get("wall_s", 60)),
+            "1" if rec.get("completed", True) else "0",
+            "1" if rec.get("sim_prep_failed") else "0",
+            rec.get("log", "workers/{0}/worker.log".format(rec["name"])),
+        ]))
+    path = run_dir / "workers.tsv"
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    for rec in records:
+        if rec.get("write_log", True):
+            log = run_dir / rec.get("log", "workers/{0}/worker.log".format(rec["name"]))
+            log.parent.mkdir(parents=True, exist_ok=True)
+            log.write_text("worker log\n", encoding="utf-8")
+    return path
+
+
 def lane_artifacts(lane_dir, *, status="pass", classes=("AlphaTests",),
                    cases=4, failures=(), attempts=None, batches=None,
                    retried=(), infra_recovered=(), persistent_infra=(),
                    observations=True, detail=True, lane_result=True,
-                   lane_classes=None):
+                   lane_classes=None, simulator=None):
     """Write the three artifacts ci-test-lane.sh leaves behind.
 
     An artifact that the caller disabled is DELETED, not left over from an
@@ -126,6 +157,8 @@ def lane_artifacts(lane_dir, *, status="pass", classes=("AlphaTests",),
             "retried_classes": list(retried),
             "infra_recovered_classes": list(infra_recovered),
             "persistent_infra_classes": list(persistent_infra),
+            "simulator": ({"name": simulator[0], "udid": simulator[1]}
+                          if simulator else None),
         })
     if observations:
         write_json(lane_dir / "observations.json", {
@@ -392,8 +425,15 @@ class RecoveryVerdictTests(unittest.TestCase):
         write_json(self.run_dir / "build" / "phase.json", {
             "schema_version": 1, "phase": "build", "status": "pass",
             "duration_s": 60, "details": {"xctestrun": "/tmp/x.xctestrun"}})
+        write_workers(self.run_dir, [
+            {"name": "unit", "device_name": "Conduit CI Gate",
+             "udid": "GATE-DEVICE"},
+            {"name": "ui", "device_name": "Conduit CI Gate",
+             "udid": "GATE-DEVICE"},
+        ])
         lane_artifacts(self.run_dir / "lanes" / "ui", status="pass",
-                      classes=("LaunchUITests",), cases=3)
+                       classes=("LaunchUITests",), cases=3,
+                       simulator=("Conduit CI Gate", "GATE-DEVICE"))
 
     def _wedge_log(self, lane_dir):
         logs = lane_dir / "logs"
@@ -1130,10 +1170,18 @@ class UIRecoveryVerdictTests(unittest.TestCase):
         write_json(self.run_dir / "build" / "phase.json", {
             "schema_version": 1, "phase": "build", "status": "pass",
             "duration_s": 30, "details": {"xctestrun": "/tmp/x.xctestrun"}})
+        write_workers(self.run_dir, [
+            {"name": "unit", "device_name": "Conduit CI Gate",
+             "udid": "6D08B063-B890-4D18-893B-D1E89E119919"},
+            {"name": "ui", "device_name": "Conduit CI Gate",
+             "udid": "6D08B063-B890-4D18-893B-D1E89E119919"},
+        ])
         # A clean unit lane so only the UI suite decides the verdict.
         lane_artifacts(self.run_dir / "lanes" / "unit",
                        classes=("AlphaTests", "BetaTests", "GammaTests"),
-                       cases=3, batches=[{"batch": 1,
+                       cases=3, simulator=("Conduit CI Gate",
+                                           "6D08B063-B890-4D18-893B-D1E89E119919"),
+                       batches=[{"batch": 1,
                                           "classes": ["AlphaTests", "BetaTests",
                                                       "GammaTests"],
                                           "timeout_s": 600, "status": "pass",
@@ -1589,19 +1637,23 @@ class SummarizeTests(unittest.TestCase):
 
     def _layout(self, *, repeat_classes=("AlphaTests",), iterations=3,
                 unit_classes=3, ui_classes=1, allow_recovered=False,
-                static=True, unit_batches=1):
+                static=True, unit_batches=1, mode="release", workers=2,
+                unit_udid="U", ui_udid="U2", worker_overrides=None,
+                lane_simulator="__default__"):
         write_json(self.run_dir / "lanes.json", {
             "schema_version": 1,
             "unit": {"classes": ["AlphaTests", "BetaTests", "GammaTests"]},
             "ui": ({"classes": ["LaunchUITests"]} if ui_classes else None),
         })
-        write_json(self.run_dir / "meta.json", {
+        meta = {
             "schema_version": 1,
             "requested_ref": "origin/main",
             "tested_sha": self.SHA,
             "xcode_version": "Xcode 27.0 Build version 27A1",
+            "mode": mode,
+            "workers": workers,
             "simulator": {"name": "iPhone 17 Pro", "runtime": "iOS 26.0",
-                          "udid": "U"},
+                          "udid": unit_udid},
             "started_at": "2026-09-21T00:00:00Z",
             "finished_at": "2026-09-21T01:00:00Z",
             "wall_s": 3600,
@@ -1615,7 +1667,25 @@ class SummarizeTests(unittest.TestCase):
                 "repeat_classes": list(repeat_classes),
                 "repeat_iterations": iterations,
             },
-        })
+        }
+        # A fanned-out run records its second project-owned device; a
+        # one-worker run records none.
+        if workers > 1:
+            meta["simulator2"] = {"name": "iPhone 17 Pro 2",
+                                  "runtime": "iOS 26.0", "udid": ui_udid}
+        write_json(self.run_dir / "meta.json", meta)
+        worker_records = [
+            {"name": "unit", "device_name": "iPhone 17 Pro", "udid": unit_udid},
+        ]
+        if ui_classes:
+            worker_records.append({
+                "name": "ui", "device_name": "iPhone 17 Pro 2" if workers > 1 else "iPhone 17 Pro",
+                "udid": ui_udid if workers > 1 else unit_udid})
+        for override in (worker_overrides or []):
+            for rec in worker_records:
+                if rec["name"] == override.get("name"):
+                    rec.update(override)
+        write_workers(self.run_dir, worker_records)
         write_json(self.run_dir / "static" / "phase.json", {
             "schema_version": 1, "phase": "static", "status": "pass",
             "duration_s": 30, "checks": [
@@ -1627,9 +1697,12 @@ class SummarizeTests(unittest.TestCase):
             "schema_version": 1, "phase": "build", "status": "pass",
             "duration_s": 300,
             "details": {"xctestrun": "/tmp/derived-data/Conduit.xctestrun"}})
-        lane_artifacts(self.run_dir / "lanes" / "unit",
+        self._lane(self.run_dir / "lanes" / "unit",
                        classes=("AlphaTests", "BetaTests", "GammaTests"),
                        cases=11,
+                       simulator=(("iPhone 17 Pro", unit_udid)
+                                  if lane_simulator == "__default__"
+                                  else lane_simulator),
                        batches=[
                            {"batch": 1, "classes": ["AlphaTests", "BetaTests"],
                             "timeout_s": 600, "status": "pass",
@@ -1641,13 +1714,34 @@ class SummarizeTests(unittest.TestCase):
                                           "seconds": 1.0, "failures": 0}]},
                        ])
         if ui_classes:
-            lane_artifacts(self.run_dir / "lanes" / "ui",
-                           classes=("LaunchUITests",), cases=3)
+            self._lane(self.run_dir / "lanes" / "ui",
+                           classes=("LaunchUITests",), cases=3,
+                           simulator=((
+                               "iPhone 17 Pro 2" if workers > 1 else "iPhone 17 Pro",
+                               ui_udid if workers > 1 else unit_udid)
+                               if lane_simulator == "__default__"
+                               else lane_simulator))
+
+    def _lane(self, lane_dir, **kwargs):
+        """lane_artifacts with THIS fixture's devices filled in.
+
+        Cases that rewrite a lane after _layout() must carry the same device
+        evidence the layout wrote: the summarizer requires a fanned-out run's
+        lanes to say which device they used, so a fixture that dropped it would
+        be modelling an artifact the gate cannot produce.
+        """
+        lane_dir = Path(lane_dir)
+        if "simulator" not in kwargs:
+            if lane_dir.name.startswith("ui"):
+                kwargs["simulator"] = ("iPhone 17 Pro 2", "U2")
+            else:
+                kwargs["simulator"] = ("iPhone 17 Pro", "U")
+        return lane_artifacts(lane_dir, **kwargs)
 
     def _repeat_artifacts(self, klass, iterations, status="pass", cases=2,
                           **kwargs):
         for i in range(1, iterations + 1):
-            lane_artifacts(self.run_dir / "repeats" / klass / "iter-{0}".format(i),
+            self._lane(self.run_dir / "repeats" / klass / "iter-{0}".format(i),
                            status=status, classes=(klass,), cases=cases, **kwargs)
 
     def _summarize(self):
@@ -1684,9 +1778,129 @@ class SummarizeTests(unittest.TestCase):
         self.assertIn(self.SHA, self.human_output)
         self.assertIn(self.SHA, markdown.read_text(encoding="utf-8"))
 
+    def test_mode_merge_is_complete_coverage_without_the_repeat_policy(self):
+        """A merge run is not a degraded run - it is a different one.
+
+        Its documented coverage is the complete unit + UI suites + static
+        checks + bounded recovery; the repeat/stress layer belongs to the
+        release mode. The artifact has to say which one it was, because a
+        release head requires mode=release on its exact SHA.
+        """
+        self._layout(mode="merge", repeat_classes=(), iterations=0,
+                     unit_batches=2)
+        code, doc, markdown = self._summarize()
+        self.assertEqual(code, 0, doc.get("problems"))
+        self.assertEqual(doc["verdict"], "PASS")
+        self.assertEqual(doc["mode"], "merge")
+        # Complete coverage, and explicitly no repeat layer.
+        self.assertEqual(doc["coverage"]["unit_suite"], "complete")
+        self.assertEqual(doc["coverage"]["ui_suite"], "complete")
+        self.assertTrue(doc["coverage"]["static_checks"])
+        self.assertFalse(doc["coverage"]["repeat_policy"])
+        self.assertEqual(doc["unit"]["classes_observed"], 3)
+        self.assertEqual(doc["ui"]["classes_observed"], 1)
+        # The absent repeat layer is the MODE's coverage, not a narrowing of
+        # the run: marking it partial would misdescribe it as a run that was
+        # cut short, and hide the real reason a release head still needs a
+        # release run.
+        self.assertFalse(doc["partial"])
+        self.assertIn("merge", markdown.read_text(encoding="utf-8"))
+
+    def test_disabled_repeat_policy_in_release_mode_is_still_partial(self):
+        """The release mode's coverage includes the repeats: losing them there
+        is a narrowing, and must be reported as one."""
+        self._layout(mode="release", repeat_classes=(), iterations=0,
+                     unit_batches=2)
+        code, doc, _ = self._summarize()
+        self.assertEqual(code, 0, doc.get("problems"))
+        self.assertTrue(doc["partial"])
+        self.assertIn("repeat policy disabled", " ".join(doc["partial_reasons"]))
+
+    def test_a_missing_worker_record_fails_the_gate(self):
+        """A fanned-out run must prove every worker ran to completion."""
+        self._layout(workers=2)
+        write_workers(self.run_dir, [
+            {"name": "unit", "device_name": "iPhone 17 Pro", "udid": "U"},
+        ])
+        code, doc, _ = self._summarize()
+        self.assertEqual(doc["verdict"], "FAIL")
+        self.assertTrue(any("worker 'ui' has no record" in p
+                            for p in doc["problems"]), doc["problems"])
+
+    def test_a_worker_that_did_not_complete_fails_the_gate(self):
+        self._layout(workers=2, worker_overrides=[
+            {"name": "ui", "completed": False, "exit_code": "143"}])
+        code, doc, _ = self._summarize()
+        self.assertEqual(doc["verdict"], "FAIL")
+        self.assertTrue(any("worker 'ui' did not run to completion" in p
+                            for p in doc["problems"]), doc["problems"])
+
+    def test_a_worker_on_the_wrong_device_fails_the_gate(self):
+        """The unit worker must hold the device the run assigned it; a worker
+        that ran somewhere else means the run cannot certify what it tested."""
+        self._layout(workers=2, worker_overrides=[
+            {"name": "unit", "udid": "SOMEONE-ELSES-DEVICE"}])
+        code, doc, _ = self._summarize()
+        self.assertEqual(doc["verdict"], "FAIL")
+        self.assertTrue(any("worker 'unit' ran on device" in p
+                            for p in doc["problems"]), doc["problems"])
+
+    def test_a_lane_that_names_another_device_fails_the_gate(self):
+        """The lane's OWN artifact has to agree with its worker's device."""
+        self._layout(workers=2, lane_simulator=("iPhone 17 Pro", "NOT-THE-WORKER"))
+        code, doc, _ = self._summarize()
+        self.assertEqual(doc["verdict"], "FAIL")
+        self.assertTrue(any("the lane ran on device" in p
+                            for p in doc["problems"]), doc["problems"])
+
+    def test_a_lane_without_device_evidence_fails_the_gate(self):
+        self._layout(workers=2, lane_simulator=None, unit_batches=2)
+        code, doc, _ = self._summarize()
+        self.assertEqual(doc["verdict"], "FAIL")
+        self.assertTrue(any("does not name the device it ran on" in p
+                            for p in doc["problems"]), doc["problems"])
+
+    def test_two_workers_may_not_share_one_device(self):
+        self._layout(workers=2, unit_udid="SAME", ui_udid="SAME")
+        code, doc, _ = self._summarize()
+        self.assertEqual(doc["verdict"], "FAIL")
+        self.assertTrue(any("SAME device" in p for p in doc["problems"]),
+                        doc["problems"])
+
+    def test_one_worker_runs_both_suites_on_the_primary_device(self):
+        """--workers 1 keeps the complete coverage on ONE device."""
+        self._layout(workers=1, repeat_classes=(), unit_batches=2)
+        code, doc, _ = self._summarize()
+        self.assertEqual(code, 0, doc.get("problems"))
+        self.assertEqual(doc["verdict"], "PASS")
+        self.assertEqual(doc["coverage"]["workers"], 1)
+        self.assertIsNone(doc["simulator2"])
+        self.assertEqual([w["name"] for w in doc["workers"]], ["unit", "ui"])
+        self.assertEqual({w["device"]["udid"] for w in doc["workers"]}, {"U"})
+
+    def test_result_records_per_lane_timings_and_invocation_counts(self):
+        """Where the wall clock went has to survive into the artifact: a green
+        run that paid 20 xcodebuild invocations to execute 2 minutes of tests
+        must be visible as such."""
+        self._layout(unit_batches=2, repeat_classes=())
+        # Two unit invocations (the fixture's batch logs) + one UI invocation.
+        for lane, names in (("unit", ("batch-1-a1.log", "batch-2-a1.log")),
+                            ("ui", ("batch-a1.log",))):
+            logs = self.run_dir / "lanes" / lane / "logs"
+            logs.mkdir(parents=True, exist_ok=True)
+            for name in names:
+                (logs / name).write_text("x", encoding="utf-8")
+        code, doc, _ = self._summarize()
+        self.assertEqual(code, 0, doc.get("problems"))
+        self.assertEqual(doc["timing"]["lanes"]["unit"]["xcodebuild_invocations"], 2)
+        self.assertEqual(doc["timing"]["lanes"]["ui"]["xcodebuild_invocations"], 1)
+        self.assertEqual(doc["timing"]["xcodebuild_invocations"], 3)
+        self.assertEqual(doc["timing"]["lanes"]["unit"]["simulator"]["udid"], "U")
+        self.assertIn("static", doc["timing"]["phases"])
+
     def test_assertion_failure_is_reported_as_assertion(self):
         self._layout(repeat_classes=())
-        lane_artifacts(self.run_dir / "lanes" / "unit",
+        self._lane(self.run_dir / "lanes" / "unit",
                        status="fail",
                        classes=("AlphaTests", "BetaTests", "GammaTests"),
                        cases=11,
@@ -1709,7 +1923,7 @@ class SummarizeTests(unittest.TestCase):
 
     def test_infrastructure_failure_is_reported_as_infrastructure(self):
         self._layout(repeat_classes=())
-        lane_artifacts(self.run_dir / "lanes" / "unit", status="fail",
+        self._lane(self.run_dir / "lanes" / "unit", status="fail",
                        classes=("AlphaTests", "BetaTests", "GammaTests"),
                        cases=11, failures=[],
                        attempts=[{"mode": "batch", "n": 1, "class": "all",
@@ -1729,7 +1943,7 @@ class SummarizeTests(unittest.TestCase):
         """A recovered wedge means the run is not trustworthy evidence; the
         operator reruns it. Only the explicit opt-in downgrades it."""
         self._layout(repeat_classes=())
-        lane_artifacts(self.run_dir / "lanes" / "unit", status="pass",
+        self._lane(self.run_dir / "lanes" / "unit", status="pass",
                        classes=("AlphaTests", "BetaTests", "GammaTests"),
                        cases=11, retried=("BetaTests",),
                        infra_recovered=("BetaTests",),
@@ -1755,7 +1969,7 @@ class SummarizeTests(unittest.TestCase):
 
     def test_recovered_infrastructure_may_be_allowed_explicitly(self):
         self._layout(repeat_classes=(), allow_recovered=True)
-        lane_artifacts(self.run_dir / "lanes" / "unit", status="pass",
+        self._lane(self.run_dir / "lanes" / "unit", status="pass",
                        classes=("AlphaTests", "BetaTests", "GammaTests"),
                        cases=11, infra_recovered=("BetaTests",),
                        retried=("BetaTests",),
@@ -1778,7 +1992,7 @@ class SummarizeTests(unittest.TestCase):
 
     def test_assertion_retried_until_green_always_fails(self):
         self._layout(repeat_classes=(), allow_recovered=True)
-        lane_artifacts(self.run_dir / "lanes" / "unit", status="pass",
+        self._lane(self.run_dir / "lanes" / "unit", status="pass",
                        classes=("AlphaTests", "BetaTests", "GammaTests"),
                        cases=11,
                        failures=[{"class": "BetaTests", "test": "testFlimsy",
@@ -1808,7 +2022,7 @@ class SummarizeTests(unittest.TestCase):
         test host. The result bundle's only "failure" was XCTest's synthetic
         System Failures entry, which reports the RUN, not a test."""
         self._layout(repeat_classes=())
-        lane_artifacts(self.run_dir / "lanes" / "unit", status="fail",
+        self._lane(self.run_dir / "lanes" / "unit", status="fail",
                        classes=("AlphaTests", "BetaTests", "GammaTests"),
                        cases=11,
                        failures=[{"class": "System Failures",
@@ -1855,7 +2069,7 @@ class SummarizeTests(unittest.TestCase):
         # The merged detail document is the UNION of the per-invocation parts
         # (that is what the runner's merge-parts produces), so it carries both
         # entries while the parts attribute each one to its invocation.
-        lane_artifacts(self.run_dir / "lanes" / "unit", status="fail",
+        self._lane(self.run_dir / "lanes" / "unit", status="fail",
                        classes=("AlphaTests", "BetaTests", "GammaTests"),
                        cases=11,
                        failures=[{"class": "BetaTests", "test": "testBoom",
@@ -1886,7 +2100,7 @@ class SummarizeTests(unittest.TestCase):
         # The failing batch reports the classes it DID run (observations),
         # which is what makes the aggregate coverage check meaningful: the
         # never-reached class is the one in the batch the lane stopped before.
-        lane_artifacts(self.run_dir / "lanes" / "unit", status="fail",
+        self._lane(self.run_dir / "lanes" / "unit", status="fail",
                        classes=("AlphaTests", "BetaTests"),
                        cases=4,
                        failures=[{"class": "AlphaTests", "test": "testBoom",
@@ -1903,7 +2117,7 @@ class SummarizeTests(unittest.TestCase):
                            {"batch": 2, "classes": ["GammaTests"],
                             "timeout_s": 500, "status": "not_run", "attempts": []},
                        ])
-        lane_artifacts(self.run_dir / "lanes" / "unit-continuation",
+        self._lane(self.run_dir / "lanes" / "unit-continuation",
                        status="pass", classes=("GammaTests",), cases=3)
         code, doc, _ = self._summarize()
         # Still a FAIL (a real assertion failed), but now complete: every
@@ -1924,7 +2138,7 @@ class SummarizeTests(unittest.TestCase):
         """The opt-in is about recovered anomalies; a persistent one is
         never acceptable evidence."""
         self._layout(repeat_classes=(), allow_recovered=True)
-        lane_artifacts(self.run_dir / "lanes" / "unit", status="fail",
+        self._lane(self.run_dir / "lanes" / "unit", status="fail",
                        classes=("AlphaTests", "BetaTests", "GammaTests"),
                        cases=11, failures=[], persistent_infra=("BetaTests",),
                        attempts=[{"mode": "batch", "n": 1, "class": "all",
@@ -1948,7 +2162,7 @@ class SummarizeTests(unittest.TestCase):
         attempt evidence means the record is incomplete - that is not a
         clean run."""
         self._layout(repeat_classes=())
-        lane_artifacts(self.run_dir / "lanes" / "unit", status="pass",
+        self._lane(self.run_dir / "lanes" / "unit", status="pass",
                        classes=("AlphaTests", "BetaTests", "GammaTests"),
                        cases=11, infra_recovered=("GammaTests",))
         code, doc, _ = self._summarize()
@@ -1957,7 +2171,7 @@ class SummarizeTests(unittest.TestCase):
 
     def test_missing_classes_fail_completeness(self):
         self._layout(repeat_classes=())
-        lane_artifacts(self.run_dir / "lanes" / "unit",
+        self._lane(self.run_dir / "lanes" / "unit",
                        classes=("AlphaTests", "BetaTests"), cases=7)
         code, doc, _ = self._summarize()
         self.assertEqual(code, 1)
@@ -1968,7 +2182,7 @@ class SummarizeTests(unittest.TestCase):
         """No observations.json means the execution count cannot be
         certified; a green lane verdict alone is not enough."""
         self._layout(repeat_classes=())
-        lane_artifacts(self.run_dir / "lanes" / "unit",
+        self._lane(self.run_dir / "lanes" / "unit",
                        classes=("AlphaTests", "BetaTests", "GammaTests"),
                        cases=11, observations=False)
         code, doc, _ = self._summarize()
@@ -1977,7 +2191,7 @@ class SummarizeTests(unittest.TestCase):
 
     def test_missing_lane_result_fails_closed(self):
         self._layout(repeat_classes=())
-        lane_artifacts(self.run_dir / "lanes" / "unit",
+        self._lane(self.run_dir / "lanes" / "unit",
                        classes=("AlphaTests", "BetaTests", "GammaTests"),
                        cases=11, lane_result=False)
         code, doc, _ = self._summarize()
@@ -1989,7 +2203,7 @@ class SummarizeTests(unittest.TestCase):
         meta = json.loads((self.run_dir / "meta.json").read_text(encoding="utf-8"))
         meta["tested_sha"] = "deadbee"
         write_json(self.run_dir / "meta.json", meta)
-        lane_artifacts(self.run_dir / "lanes" / "unit",
+        self._lane(self.run_dir / "lanes" / "unit",
                        classes=("AlphaTests", "BetaTests", "GammaTests"), cases=11)
         code, doc, _ = self._summarize()
         self.assertEqual(code, 1)
@@ -2005,7 +2219,7 @@ class SummarizeTests(unittest.TestCase):
     def test_repeat_assertion_failure_fails(self):
         self._layout()
         self._repeat_artifacts("AlphaTests", 3)
-        lane_artifacts(self.run_dir / "repeats" / "AlphaTests" / "iter-2",
+        self._lane(self.run_dir / "repeats" / "AlphaTests" / "iter-2",
                        status="fail", classes=("AlphaTests",), cases=2,
                        failures=[{"class": "AlphaTests", "test": "testFlake",
                                   "attempts": []}],
@@ -2022,7 +2236,7 @@ class SummarizeTests(unittest.TestCase):
             "duration_s": 30, "checks": [
                 {"name": "localization-coverage", "status": "fail",
                  "duration_s": 2}]})
-        lane_artifacts(self.run_dir / "lanes" / "unit",
+        self._lane(self.run_dir / "lanes" / "unit",
                        classes=("AlphaTests", "BetaTests", "GammaTests"), cases=11)
         code, doc, _ = self._summarize()
         self.assertEqual(code, 1)
@@ -2030,7 +2244,7 @@ class SummarizeTests(unittest.TestCase):
 
     def test_skipped_static_marks_the_run_partial(self):
         self._layout(repeat_classes=(), static=False)
-        lane_artifacts(self.run_dir / "lanes" / "unit",
+        self._lane(self.run_dir / "lanes" / "unit",
                        classes=("AlphaTests", "BetaTests", "GammaTests"), cases=11)
         code, doc, _ = self._summarize()
         self.assertEqual(code, 0)
@@ -2042,7 +2256,7 @@ class SummarizeTests(unittest.TestCase):
         """Explicitly narrowing the gate is allowed; pretending the narrowed
         run was the exhaustive one is not."""
         self._layout(repeat_classes=(), iterations=0)
-        lane_artifacts(self.run_dir / "lanes" / "unit",
+        self._lane(self.run_dir / "lanes" / "unit",
                        classes=("AlphaTests", "BetaTests", "GammaTests"), cases=11)
         code, doc, _ = self._summarize()
         self.assertEqual(code, 0)
@@ -2057,7 +2271,7 @@ class SummarizeTests(unittest.TestCase):
         gate cannot check coverage, and it must say so rather than crash or
         wave the run through."""
         self._layout(repeat_classes=())
-        lane_artifacts(self.run_dir / "lanes" / "unit",
+        self._lane(self.run_dir / "lanes" / "unit",
                        classes=("AlphaTests", "BetaTests", "GammaTests"), cases=11)
         (self.run_dir / "lanes.json").unlink()
         code, doc, _ = self._summarize()
@@ -2067,7 +2281,7 @@ class SummarizeTests(unittest.TestCase):
 
     def test_projection_count_mismatch_is_a_problem(self):
         self._layout(repeat_classes=())
-        lane_artifacts(self.run_dir / "lanes" / "unit",
+        self._lane(self.run_dir / "lanes" / "unit",
                        classes=("AlphaTests", "BetaTests", "GammaTests"), cases=11)
         write_json(self.run_dir / "lanes.json", {
             "schema_version": 1,
@@ -2084,7 +2298,7 @@ class SummarizeTests(unittest.TestCase):
         """A planner regression that dropped the UI lane must not read as a
         clean 'ui: skipped' pass when UI classes were expected."""
         self._layout(repeat_classes=(), ui_classes=1)
-        lane_artifacts(self.run_dir / "lanes" / "unit",
+        self._lane(self.run_dir / "lanes" / "unit",
                        classes=("AlphaTests", "BetaTests", "GammaTests"), cases=11)
         write_json(self.run_dir / "lanes.json", {
             "schema_version": 1,
@@ -2099,7 +2313,7 @@ class SummarizeTests(unittest.TestCase):
         """The runner's own verdict is evidence in its own right: green-looking
         event classification must not be able to contradict it."""
         self._layout(repeat_classes=())
-        lane_artifacts(self.run_dir / "lanes" / "unit", status="fail",
+        self._lane(self.run_dir / "lanes" / "unit", status="fail",
                        classes=("AlphaTests", "BetaTests", "GammaTests"),
                        cases=11)
         code, doc, _ = self._summarize()
@@ -2113,7 +2327,7 @@ class SummarizeTests(unittest.TestCase):
         shard that ALSO has a real failure would be mislabeled as an
         assertion."""
         self._layout(repeat_classes=())
-        lane_artifacts(self.run_dir / "lanes" / "ui", status="fail",
+        self._lane(self.run_dir / "lanes" / "ui", status="fail",
                        classes=("LaunchUITests",), cases=2,
                        failures=[{"class": "System Failures",
                                   "test": "Conduit encountered an error",
@@ -2128,7 +2342,7 @@ class SummarizeTests(unittest.TestCase):
                        {"class": "System Failures",
                         "test": "Conduit encountered an error", "attempts": []}]})
         # The unit lane is metric-neutral for this test: make it clean.
-        lane_artifacts(self.run_dir / "lanes" / "unit",
+        self._lane(self.run_dir / "lanes" / "unit",
                        classes=("AlphaTests", "BetaTests", "GammaTests"), cases=11)
         code, doc, _ = self._summarize()
         self.assertEqual(code, 1)
@@ -2142,7 +2356,7 @@ class SummarizeTests(unittest.TestCase):
         batch-retry with n=2: the two must be read as the same work item, or
         "failed an assertion then passed" is reported as a plain assertion."""
         self._layout(repeat_classes=())
-        lane_artifacts(self.run_dir / "lanes" / "ui", status="pass",
+        self._lane(self.run_dir / "lanes" / "ui", status="pass",
                        classes=("LaunchUITests",), cases=2,
                        failures=[{"class": "LaunchUITests",
                                   "test": "testSomething", "attempts": []}],
@@ -2152,7 +2366,7 @@ class SummarizeTests(unittest.TestCase):
                            {"mode": "batch-retry", "n": 2, "class": "all",
                             "status": "passed"}],
                        batches=[])
-        lane_artifacts(self.run_dir / "lanes" / "unit",
+        self._lane(self.run_dir / "lanes" / "unit",
                        classes=("AlphaTests", "BetaTests", "GammaTests"), cases=11)
         code, doc, _ = self._summarize()
         self.assertEqual(code, 1)
@@ -2165,7 +2379,7 @@ class SummarizeTests(unittest.TestCase):
         """After the continuation runs the never-reached batches, the report
         must not still claim that work was not executed."""
         self._layout(repeat_classes=(), unit_batches=2)
-        lane_artifacts(self.run_dir / "lanes" / "unit", status="fail",
+        self._lane(self.run_dir / "lanes" / "unit", status="fail",
                        classes=("AlphaTests", "BetaTests"), cases=4,
                        failures=[{"class": "AlphaTests", "test": "testBoom",
                                   "attempts": []}],
@@ -2181,7 +2395,7 @@ class SummarizeTests(unittest.TestCase):
                            {"batch": 2, "classes": ["GammaTests"],
                             "timeout_s": 500, "status": "not_run", "attempts": []},
                        ])
-        lane_artifacts(self.run_dir / "lanes" / "unit-continuation",
+        self._lane(self.run_dir / "lanes" / "unit-continuation",
                        status="pass", classes=("GammaTests",), cases=3)
         code, doc, _ = self._summarize()
         self.assertEqual(code, 1)
@@ -2195,7 +2409,7 @@ class SummarizeTests(unittest.TestCase):
         meta = json.loads((self.run_dir / "meta.json").read_text(encoding="utf-8"))
         meta["run_flags"] = {"lock_used": False, "simulator_prep": False}
         write_json(self.run_dir / "meta.json", meta)
-        lane_artifacts(self.run_dir / "lanes" / "unit", status="pass",
+        self._lane(self.run_dir / "lanes" / "unit", status="pass",
                        classes=("AlphaTests", "BetaTests", "GammaTests"),
                        cases=11, infra_recovered=("BetaTests",))
         code, doc, markdown = self._summarize()
@@ -2212,7 +2426,7 @@ class SummarizeTests(unittest.TestCase):
             "schema_version": 1, "phase": "sim-prep", "status": "fail",
             "duration_s": 0, "checks": [
                 {"name": "unit", "status": "fail", "duration_s": 12}]})
-        lane_artifacts(self.run_dir / "lanes" / "unit",
+        self._lane(self.run_dir / "lanes" / "unit",
                        classes=("AlphaTests", "BetaTests", "GammaTests"), cases=11)
         code, doc, _ = self._summarize()
         self.assertEqual(code, 0, doc["problems"])
@@ -2224,7 +2438,7 @@ class SummarizeTests(unittest.TestCase):
         write_json(self.run_dir / "build" / "phase.json", {
             "schema_version": 1, "phase": "build", "status": "fail",
             "duration_s": 60, "note": "no .xctestrun produced"})
-        lane_artifacts(self.run_dir / "lanes" / "unit",
+        self._lane(self.run_dir / "lanes" / "unit",
                        classes=("AlphaTests", "BetaTests", "GammaTests"), cases=11)
         code, doc, _ = self._summarize()
         self.assertEqual(code, 1)
@@ -2318,6 +2532,61 @@ class ScriptContractTests(unittest.TestCase):
 
     def test_requires_an_exact_ref(self):
         self.assertIn("--ref is required", self.text)
+
+    def test_modes_are_explicit_and_default_to_the_strongest(self):
+        """Both certificates are exact-SHA and host-coordinated; only their
+        coverage differs, and the artifact says which one ran."""
+        self.assertIn("--mode", self.text)
+        self.assertIn('MODE="release"', self.text)
+        self.assertIn("--mode must be 'merge' or 'release'", self.text)
+        # The mode decides the repeat DEFAULT only - an explicit request wins.
+        self.assertIn("REPEAT_ITERATIONS_SET", self.text)
+        self.assertIn("REPEAT_CLASSES_SET", self.text)
+
+    def test_mode_is_recorded_in_meta_and_the_sha_registry(self):
+        """One authoritative run per (SHA, mode): a merge result must not block
+        the release run for the same SHA, and neither may be re-run."""
+        self.assertIn("registry_covers", self.text)
+        self.assertIn("mode_strength", self.text)
+        self.assertIn('--mode "$MODE"', self.text)
+        self.assertIn('"$SHA" "$MODE"', self.text)
+
+    def test_fans_out_over_two_project_owned_devices(self):
+        """Two workers, one host lease, two UDIDs: the unit work and the UI
+        work run concurrently, each on its own device."""
+        self.assertIn("--second-simulator", self.text)
+        self.assertIn('SIMULATOR_NAME2="$SIMULATOR_NAME 2"', self.text)
+        self.assertIn("WORKERS=2", self.text)
+        self.assertIn("start_worker unit", self.text)
+        self.assertIn("start_worker ui", self.text)
+        # The two devices must be distinct and both UDID-pinned.
+        self.assertIn("--second-simulator must differ from --simulator", self.text)
+        self.assertIn("refusing to run two workers on one device", self.text)
+        self.assertIn("SIMULATOR2_UDID", self.text)
+
+    def test_workers_are_reaped_and_recorded(self):
+        """A torn-down run must not leave a live test chain behind, and the
+        run directory must carry the per-worker evidence."""
+        self.assertIn("WORKER_PIDS", self.text)
+        self.assertIn("record_workers", self.text)
+        self.assertIn("workers.tsv", self.text)
+        self.assertIn("XCODEBUILD_POLL_INTERVAL_S", self.text)
+
+    def test_static_checks_overlap_by_default_and_can_be_forced_serial(self):
+        self.assertIn("--static-serial", self.text)
+        self.assertIn("STATIC_OVERLAP=1", self.text)
+        self.assertIn("overlapped_with_lanes", self.text)
+
+    def test_unit_batch_size_is_passed_to_the_planner(self):
+        """The batch layout stays the planner's policy; the gate only moves the
+        chunk size it was measured at."""
+        self.assertIn("--unit-batch-max-classes", self.text)
+        self.assertIn("UNIT_BATCH_MAX_CLASSES=28", self.text)
+
+    def test_no_global_simulator_shutdown_anywhere(self):
+        """Automation never shuts down every device on the shared host."""
+        self.assertNotIn("shutdown all", self.text)
+        self.assertNotIn("erase all", self.text)
 
 
 class PythonCompatibilityTests(unittest.TestCase):

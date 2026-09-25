@@ -60,14 +60,29 @@ LOCK2="$WORK/lock-2"
 # A real child process, not a subshell: `$$` inside a subshell is its
 # parent's pid in bash (which would make the two-contenders test compare one
 # number against itself), and $BASHPID does not exist under /bin/bash 3.2.
-bash -c '
-  . "$1"
-  trap '"'"'gate_lock_release'"'"' EXIT INT TERM
-  acquire_gate_lock "$2" || exit 9
-  printf "%s
-" "$$" > "$3"
-  sleep 60
-' _ "$MOD" "$LOCK2" "$WORK/holder" &
+#
+# The holder's "hold" is a background sleep this script `wait`s on, and its
+# trap EXITS as well as releasing. Both matter for wall clock, not semantics:
+# bash defers a trapped signal until the running FOREGROUND child finishes, so
+# a foreground `sleep 60` would hold the TERM sent at the end of this case for
+# the full minute - 60s of wall clock the suite paid for nothing, since the
+# only thing this case needs is a LIVE owner while the refusal is checked.
+write_holder_script() {
+  cat > "$WORK/holder-script.sh" <<'HOLDER_EOF'
+#!/usr/bin/env bash
+# $1 = lock module, $2 = lock dir, $3 = path to write this process's pid
+set -u
+. "$1"
+SLEEP_PID=""
+trap 'gate_lock_release; [ -n "$SLEEP_PID" ] && kill "$SLEEP_PID" 2>/dev/null; exit 0' EXIT INT TERM
+acquire_gate_lock "$2" || exit 9
+printf '%s\n' "$$" > "$3"
+sleep 60 & SLEEP_PID=$!
+wait "$SLEEP_PID"
+HOLDER_EOF
+}
+write_holder_script
+bash "$WORK/holder-script.sh" "$MOD" "$LOCK2" "$WORK/holder" &
 HOLDER_BG=$!
 # Bounded wait: if the holder never starts, fail instead of spinning forever.
 _wait=0
@@ -175,10 +190,17 @@ LOCK7="$WORK/lock-7"
 INFLIGHT="$LOCK7.new.4321"
 mkdir -p "$INFLIGHT"
 printf '%s\n' "$$" > "$INFLIGHT/pid"
+# The long sleep runs as a BACKGROUND job with `wait`, not as a foreground
+# child: bash defers a trapped signal until the running foreground command
+# finishes, so `sleep 30` in the foreground would hold the TERM below for the
+# full 30s. `wait` is interruptible - the trap runs immediately, which is the
+# behavior this case is actually about - and the trap kills the sleep so no
+# orphan outlives the case.
 ( . "$MOD"
   GATE_LOCK_TEMP="$INFLIGHT"
-  trap 'gate_lock_release; exit 143' INT TERM
-  sleep 30 ) &
+  sleep 30 & SLEEP_PID=$!
+  trap 'gate_lock_release; kill "$SLEEP_PID" 2>/dev/null; exit 143' INT TERM
+  wait "$SLEEP_PID" ) &
 INTERRUPTED=$!
 sleep 0.3
 kill -TERM "$INTERRUPTED" 2>/dev/null
