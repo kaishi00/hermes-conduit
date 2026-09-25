@@ -344,6 +344,16 @@ final class GroupChatModelsTests: XCTestCase {
 
     // MARK: - Room mention classification
 
+    func testLeadingPunctuationTokensAreRejectedByTheMentionCharset() {
+        // Upstream's charset is ^[a-z0-9][a-z0-9_-]*$ — a handle can never
+        // start with - or _ (the gateway's roster validator would refuse or
+        // route it differently).
+        XCTAssertFalse(BotMentions.isValidMentionToken("-x"))
+        XCTAssertFalse(BotMentions.isValidMentionToken("_admin"))
+        XCTAssertEqual(BotMentions.mentionNameForms("_admin"), [])
+        XCTAssertTrue(BotMentions.isValidMentionToken("a_b-c9"))
+    }
+
     func testRoomMentionClassification() {
         let researcher = GroupDecoders.member(any([
             "member_id": "researcher", "profile": "researcher",

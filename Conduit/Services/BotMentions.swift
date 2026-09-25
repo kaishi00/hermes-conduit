@@ -140,9 +140,14 @@ enum BotMentions {
         return forms
     }
 
-    /// `^[a-z0-9][a-z0-9_-]*$` — the upstream mention charset.
+    /// `^[a-z0-9][a-z0-9_-]*$` — the upstream mention charset. The FIRST
+    /// character must be a letter or digit: leading `-`/`_` is rejected so a
+    /// friendly name can never mint a handle the gateway's roster validator
+    /// would treat differently.
     static func isValidMentionToken(_ value: String) -> Bool {
-        guard let first = value.first, isTokenCharacter(first) else { return false }
+        guard let first = value.first else { return false }
+        guard first != "_" && first != "-" else { return false }
+        guard isTokenCharacter(first) else { return false }
         return value.dropFirst().allSatisfy(isTokenCharacter)
     }
 

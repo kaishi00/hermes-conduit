@@ -384,8 +384,11 @@ struct GroupRoomReplay: Equatable {
 
 /// The room composer's retry-key keeper. `groups.send` is idempotent by the
 /// CLIENT event id, so one logical message keeps its id until an ACCEPTED
-/// send replaces it: a retry after an ambiguous failure reuses the same id
-/// and the gateway deduplicates instead of posting a twin message.
+/// send replaces it: a retry of the SAME text after an ambiguous failure
+/// reuses the id and the gateway deduplicates instead of posting a twin.
+/// A DIFFERENT text is a new logical message and is refused while one is
+/// pending — the caller surfaces the pending row for an explicit retry, so
+/// no text is ever silently swallowed or silently replaced.
 struct GroupRoomOutbox: Equatable {
     struct Pending: Equatable {
         let text: String
@@ -394,8 +397,16 @@ struct GroupRoomOutbox: Equatable {
 
     private(set) var pending: Pending?
 
-    /// Begin (or re-begin) a send. A fresh text mints a fresh id; a retry of
-    /// the still-pending message returns the SAME pending row untouched.
+    /// Whether `text` may be sent right now: yes when nothing is pending or
+    /// when it IS the pending text (a retry).
+    func accepts(text: String) -> Bool {
+        guard let pending else { return true }
+        return pending.text == text
+    }
+
+    /// Begin (or re-begin) a send of `text`. A retry of the still-pending
+    /// message returns the SAME pending row untouched; a fresh text mints a
+    /// fresh id.
     mutating func beginSend(text: String, mintEventID: () -> String) -> Pending {
         if let pending { return pending }
         let created = Pending(text: text, eventID: mintEventID())

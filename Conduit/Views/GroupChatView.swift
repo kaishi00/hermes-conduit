@@ -31,7 +31,6 @@ struct GroupChatView: View {
                 "The room, its history, and every member's session end permanently. This cannot be undone."
             ))
         }
-        .onAppear { composerFocused = false }
     }
 
     private var surface: AppState.GroupRoomSurface? { appState.activeRoomSurface }
@@ -60,6 +59,21 @@ struct GroupChatView: View {
                                 Text(AppLocalization.string("Sending…"))
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
+                            } else {
+                                // Ambiguous outcome: the message may or may
+                                // not have landed. Retry reuses the SAME
+                                // event id, so the gateway deduplicates —
+                                // never a twin message.
+                                Button {
+                                    Task { await appState.sendGroupRoomMessage(pending.text) }
+                                } label: {
+                                    Label(
+                                        AppLocalization.string("Not delivered — retry"),
+                                        systemImage: "arrow.clockwise"
+                                    )
+                                    .font(.caption.weight(.semibold))
+                                }
+                                .buttonStyle(.plain)
                             }
                         }
                         .id("pending-row")
@@ -93,38 +107,55 @@ struct GroupChatView: View {
     // MARK: - Composer
 
     private var composer: some View {
-        HStack(alignment: .bottom, spacing: 10) {
-            TextField(
-                AppLocalization.string("Message the room"),
-                text: $draft,
-                axis: .vertical
-            )
-            .lineLimit(1...5)
+        VStack(spacing: 6) {
+            if let error = appState.errorMessage, !error.isEmpty {
+                // The session surface's error banner lives inside ChatView,
+                // which this room surface replaces — room errors must render
+                // HERE, or every failure below is invisible.
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 14)
+            }
+            HStack(alignment: .bottom, spacing: 10) {
+                TextField(
+                    AppLocalization.string("Message the room"),
+                    text: $draft,
+                    axis: .vertical
+                )
+                .lineLimit(1...5)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color.primary.opacity(0.05),
+                            in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .focused($composerFocused)
+                .submitLabel(.send)
+                .onSubmit { sendDraft() }
+
+                Button {
+                    sendDraft()
+                } label: {
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.system(size: 28))
+                        .foregroundStyle(canSend ? Color.conduitAccent : Color.secondary.opacity(0.4))
+                }
+                .disabled(!canSend)
+                .accessibilityLabel(Text(AppLocalization.string("Send")))
+            }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .background(Color.primary.opacity(0.05),
-                        in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .focused($composerFocused)
-            .submitLabel(.send)
-            .onSubmit { sendDraft() }
-
-            Button {
-                sendDraft()
-            } label: {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.system(size: 28))
-                    .foregroundStyle(canSend ? Color.conduitAccent : Color.secondary.opacity(0.4))
-            }
-            .disabled(!canSend)
-            .accessibilityLabel(Text(AppLocalization.string("Send")))
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
     }
 
     private var canSend: Bool {
         !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !appState.activeRoomSendInFlight
+            // An ambiguous-outcome pending message owns the composer: retry
+            // it explicitly (same event id) or it stays visible — a NEW
+            // message typed meanwhile would be silently swallowed.
+            && appState.pendingRoomMessage == nil
             && surface?.room.isDisbanded == false
     }
 
@@ -251,7 +282,7 @@ struct GroupSystemEventCaption: View {
         case "turn.failed": return AppLocalization.string("A member's turn failed.")
         case "turn.cancelled": return AppLocalization.string("Work was stopped.")
         case "member.unavailable": return AppLocalization.string("A member is unavailable.")
-        default: return event.kind
+        default: return AppLocalization.string("Room updated.")
         }
     }
 }
@@ -292,10 +323,17 @@ struct GroupChatBubble<Content: View>: View {
 
     static func timestampText(_ value: Double) -> String {
         let date = Date(timeIntervalSince1970: value)
+        // Cached: a fresh DateFormatter per bubble per render is brutally
+        // expensive across a 200-event LazyVStack; view code is MainActor,
+        // so a static formatter is safe.
+        formatter.string(from: date)
+    }
+
+    private static let formatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.timeStyle = .short
-        return formatter.string(from: date)
-    }
+        return formatter
+    }()
 }
 
 // MARK: - Mention text rendering
@@ -350,6 +388,15 @@ struct GroupCreateSheet: View {
     var body: some View {
         NavigationStack {
             List {
+                if let error = appState.errorMessage, !error.isEmpty {
+                    // Create failures (handle collision, RPC refusal) must
+                    // surface INSIDE the sheet — the room surface's notice
+                    // is behind the dismissal.
+                    Text(error)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                        .listRowBackground(Color.clear)
+                }
                 Section(AppLocalization.string("Name")) {
                     TextField(AppLocalization.string("Group name"), text: $name)
                         .submitLabel(.done)

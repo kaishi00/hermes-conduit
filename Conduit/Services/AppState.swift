@@ -2826,11 +2826,11 @@ final class AppState: ObservableObject {
     /// bot's canonical chat would fork the relationship into a scratch
     /// session — the one thing Bot Mode promises never happens. Returns
     /// "/compact" (fresh working context, SAME conversation) ONLY when the
-    /// active session is positively that bot's canonical chat: the roster's
-    /// canonical registry names it, or — while the roster cannot confirm —
-    /// this process opened it AS a bot chat (Phase 1 opens only canonical
-    /// chats). Ordinary sessions, and unresolved ones, keep full `/new`
-    /// freedom (upstream fails open identically).
+    /// active session is positively that bot's canonical chat by ROSTER
+    /// evidence (the canonical registry names it, or names the lineage tip a
+    /// compaction moved it to). No roster evidence, no reroute — upstream's
+    /// `isCanonicalChatOnScreen` fails closed identically, and ordinary
+    /// sessions keep full `/new` freedom.
     private func canonicalForeverChatRerouteText(for text: String) -> String? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed == "/new" || trimmed == "/reset" else { return nil }
@@ -2839,10 +2839,10 @@ final class AppState: ObservableObject {
         let canonicalIDs = [bot.canonicalSession?.id, bot.canonicalSession?.resolvedID]
             .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
-        let rosterNamesCanonical = canonicalIDs.contains(sessionId)
-        let registryNamesBotChat = botChatSessionProfiles[sessionId] != nil
-        let isCanonical = rosterNamesCanonical || (registryNamesBotChat && canonicalIDs.isEmpty)
-        return BotMentions.foreverChatRerouteText(for: text, isCanonicalBotChat: isCanonical)
+        return BotMentions.foreverChatRerouteText(
+            for: text,
+            isCanonicalBotChat: canonicalIDs.contains(sessionId)
+        )
     }
 
     /// Presentation state for one open hosted room. A room is NOT a session:
@@ -2939,16 +2939,20 @@ final class AppState: ObservableObject {
     }
 
     private func invalidateGroupChatState() {
-        groupRoomEpoch &+= 1
-        groupRoomPollTask?.cancel()
-        groupRoomPollTask = nil
         groupChatPhase = .idle
         groupCapabilities = nil
         groupRooms = []
         closeRoomSurface()
     }
 
+    /// Drop the room surface AND stop its poller. The complete teardown —
+    /// every path that closes a room (navigation, disband, poll-detected
+    /// disband, server-identity invalidation) funnels here, so a closed room
+    /// can never leave a polling task spinning behind it.
     private func closeRoomSurface() {
+        groupRoomEpoch &+= 1
+        groupRoomPollTask?.cancel()
+        groupRoomPollTask = nil
         activeRoomSurface = nil
         activeRoomReplay = GroupRoomReplay(roomID: "")
         activeRoomDriverStatus = nil
@@ -3095,33 +3099,20 @@ final class AppState: ObservableObject {
             )
             guard groupRoomEpoch == epoch, let surface = activeRoomSurface,
                   surface.room.roomID == page.events.first?.roomID || page.events.isEmpty else { return }
-            if page.events.contains(where: { $0.seq > activeRoomReplay.cursor + 1 }) {
-                // Gap detected: resync from the room's authoritative cursor
-                // instead of rendering a truncated transcript.
-                let (state, driver) = try await groupsState(client, roomID: surface.room.roomID)
-                guard groupRoomEpoch == epoch else { return }
-                if state.isDisbanded {
-                    closeRoomSurface()
-                    await refreshGroupRooms()
-                    return
-                }
-                activeRoomSurface = GroupRoomSurface(dashboardID: surface.dashboardID, room: state)
-                activeRoomDriverStatus = driver
-                var fresh = GroupRoomReplay(roomID: state.roomID)
-                let start = max(0, (state.latestSeq ?? 0) - 200)
-                let tail = try await groupsLog(
-                    client, roomID: state.roomID, sinceSeq: start,
-                    limit: min(200, groupCapabilities?.maxLogLimit ?? 500))
-                guard groupRoomEpoch == epoch else { return }
-                fresh.adoptInitialTail(page: tail)
-                activeRoomReplay = fresh
-            } else if !page.events.isEmpty {
+            let fresh = page.events.filter { $0.roomID == surface.room.roomID && $0.seq > activeRoomReplay.cursor }
+            if activeRoomReplay.hasGap
+                || fresh.contains(where: { $0.seq > activeRoomReplay.cursor + 1 }) {
+                // Gap detected (the replay's own flag, or a poll event that
+                // jumped past unseen events): resync from the room's
+                // authoritative cursor instead of rendering a hole.
+                await resyncActiveRoom(epoch: epoch)
+            } else if !fresh.isEmpty {
                 activeRoomReplay.adopt(page: page)
-            }
-            if activeRoomReplay.cursor >= page.latestSeq {
-                let (_, driver) = try await groupsState(client, roomID: surface.room.roomID)
-                guard groupRoomEpoch == epoch else { return }
-                activeRoomDriverStatus = driver
+                if activeRoomReplay.cursor >= page.latestSeq {
+                    let (_, driver) = try await groupsState(client, roomID: surface.room.roomID)
+                    guard groupRoomEpoch == epoch else { return }
+                    activeRoomDriverStatus = driver
+                }
             }
         } catch is CancellationError {
             return
@@ -3136,13 +3127,23 @@ final class AppState: ObservableObject {
     /// the mapped server-side id). The optimistic row comes from
     /// `pendingRoomMessage`; the accepted event reconciles it.
     func sendGroupRoomMessage(_ rawText: String) async {
-        guard !rawText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
         guard let surface = activeRoomSurface, let client, isConnected,
               groupCapabilities?.supports("groups.send") == true,
               !activeRoomSendInFlight else { return }
         guard surface.room.isDisbanded == false else { return }
+        // A pending (ambiguous-outcome) message owns the composer: the SAME
+        // text retries with the same event id; DIFFERENT text is refused so
+        // no message is ever silently swallowed or silently replaced.
+        guard groupRoomOutbox.accepts(text: text) else {
+            errorMessage = AppLocalization.string(
+                "Your previous message is still pending. Retry it from the room, or wait for it to deliver."
+            )
+            return
+        }
         let epoch = groupRoomEpoch
-        let logical = groupRoomOutbox.beginSend(text: rawText) {
+        let logical = groupRoomOutbox.beginSend(text: text) {
             "conduit-\(UUID().uuidString.lowercased())"
         }
         pendingRoomMessage = groupRoomOutbox.pending
@@ -3159,6 +3160,7 @@ final class AppState: ObservableObject {
             guard groupRoomEpoch == epoch, activeRoomSurface?.room.roomID == surface.room.roomID else {
                 return
             }
+            let cursorBefore = activeRoomReplay.cursor
             activeRoomReplay.adopt(page: GroupLogPage(
                 events: [result.event],
                 cursor: result.event.seq,
@@ -3169,6 +3171,12 @@ final class AppState: ObservableObject {
             ))
             groupRoomOutbox.accept(eventID: logical.eventID)
             pendingRoomMessage = groupRoomOutbox.pending
+            if result.event.seq > cursorBefore + 1 {
+                // The accepted event jumped past events this client has not
+                // seen (a busy room between polls): resync from the room's
+                // authoritative cursor instead of rendering a hole.
+                await resyncActiveRoom(epoch: epoch)
+            }
             await refreshGroupRooms()
         } catch is CancellationError {
             return
@@ -3176,13 +3184,43 @@ final class AppState: ObservableObject {
             guard groupRoomEpoch == epoch else { return }
             // Ambiguous outcome: KEEP pendingRoomMessage (same event id) so
             // the user's retry deduplicates server-side.
-            errorMessage = AppLocalization.string("Could not send to this group chat: \(error.localizedDescription)")
+            errorMessage = AppLocalization.string("Could not send to this group chat: %@")
+        }
+    }
+
+    /// Rebuild the open room's transcript from the room's authoritative
+    /// cursor (groups.state + a bounded fresh tail). Used after a detected
+    /// gap, and after a send whose accepted event skipped unseen events.
+    private func resyncActiveRoom(epoch: Int) async {
+        guard let client, let surface = activeRoomSurface, groupRoomEpoch == epoch else { return }
+        do {
+            let (state, driver) = try await groupsState(client, roomID: surface.room.roomID)
+            guard groupRoomEpoch == epoch, let surface = activeRoomSurface,
+                  surface.room.roomID == state.roomID else { return }
+            if state.isDisbanded {
+                closeRoomSurface()
+                await refreshGroupRooms()
+                return
+            }
+            activeRoomSurface = GroupRoomSurface(dashboardID: surface.dashboardID, room: state)
+            activeRoomDriverStatus = driver
+            var fresh = GroupRoomReplay(roomID: state.roomID)
+            let start = max(0, (state.latestSeq ?? 0) - 200)
+            let tail = try await groupsLog(
+                client, roomID: state.roomID, sinceSeq: start,
+                limit: min(200, groupCapabilities?.maxLogLimit ?? 500))
+            guard groupRoomEpoch == epoch else { return }
+            fresh.adoptInitialTail(page: tail)
+            activeRoomReplay = fresh
+        } catch {
+            // A failed resync keeps the current transcript; the next poll's
+            // gap flag retries.
         }
     }
 
     /// Stop the open room's queued or running work (`groups.stop`).
     func stopActiveRoomWork() async {
-        guard let surface = activeRoomSurface, let client,
+        guard let surface = activeRoomSurface, let client, isConnected,
               groupCapabilities?.supports("groups.stop") == true else { return }
         let epoch = groupRoomEpoch
         do {
@@ -3190,14 +3228,15 @@ final class AppState: ObservableObject {
             guard groupRoomEpoch == epoch else { return }
             await pollActiveRoomOnce(epoch: epoch)
         } catch {
+            guard groupRoomEpoch == epoch else { return }
             // Surface without closing: stop is advisory to the driver.
-            errorMessage = AppLocalization.string("Could not stop this group chat's work: \(error.localizedDescription)")
+            errorMessage = AppLocalization.string("Could not stop this group chat's work: %@")
         }
     }
 
     /// Permanently disband the open room (destructive; the view confirms).
     func disbandActiveRoom() async {
-        guard let surface = activeRoomSurface, let client,
+        guard let surface = activeRoomSurface, let client, isConnected,
               groupCapabilities?.supports("groups.disband") == true else { return }
         let epoch = groupRoomEpoch
         do {
@@ -3205,7 +3244,7 @@ final class AppState: ObservableObject {
             guard groupRoomEpoch == epoch else { return }
         } catch {
             guard groupRoomEpoch == epoch else { return }
-            errorMessage = AppLocalization.string("Could not disband this group chat: \(error.localizedDescription)")
+            errorMessage = AppLocalization.string("Could not disband this group chat: %@")
             return
         }
         closeRoomSurface()
@@ -3215,9 +3254,6 @@ final class AppState: ObservableObject {
     /// Leave the room view WITHOUT touching session state — the next session
     /// open, or this call's inverse, owns the viewport transition.
     func closeGroupRoom() {
-        groupRoomEpoch &+= 1
-        groupRoomPollTask?.cancel()
-        groupRoomPollTask = nil
         closeRoomSurface()
         Task { await self.refreshGroupRooms() }
     }
@@ -9906,9 +9942,6 @@ final class AppState: ObservableObject {
         // here cannot disturb the conversation being opened; the room stays
         // in the roster, resumable with one tap.
         if activeRoomSurface != nil {
-            groupRoomEpoch &+= 1
-            groupRoomPollTask?.cancel()
-            groupRoomPollTask = nil
             closeRoomSurface()
         }
         let previousTurnState = turnState

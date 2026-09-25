@@ -2,6 +2,39 @@
   "sourceLanguage" : "en",
   "strings" : {
 
+    "Not delivered — retry" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未送达——重试"
+          }
+        }
+      }
+    },
+
+    "Your previous message is still pending. Retry it from the room, or wait for it to deliver." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "您上一条消息仍在等待送达。请在群聊中重试，或等待其送达。"
+          }
+        }
+      }
+    },
+
+    "Room updated." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "群聊已更新。"
+          }
+        }
+      }
+    },
+
     "Group chats run on this gateway. The gateway drives each member's turn — closing Conduit never stops a room." : {
       "localizations" : {
         "zh-Hans" : {
