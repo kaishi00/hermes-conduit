@@ -152,6 +152,7 @@ struct GroupChatView: View {
             // it explicitly (same event id) or it stays visible — a NEW
             // message typed meanwhile would be silently swallowed.
             && appState.pendingRoomMessage == nil
+            && appState.groupCapabilities?.supports("groups.send") == true
             && surface?.room.isDisbanded == false
     }
 
@@ -383,6 +384,11 @@ struct GroupCreateSheet: View {
     @ObservedObject private var appLanguage = AppLanguageStore.shared
     @State private var name = ""
     @State private var selected = Set<String>()
+    /// The room id is minted ONCE per logical room (per sheet): a retry of
+    /// an ambiguous create reuses the SAME id, so the gateway's create
+    /// idempotency deduplicates instead of forking a twin room.
+    @State private var roomID = "conduit-\(UUID().uuidString.lowercased())"
+    @State private var isCreating = false
 
     private var visibleBots: [BotProfile] {
         appState.botRoster.filter { !$0.isHiddenByMeta }
@@ -391,6 +397,7 @@ struct GroupCreateSheet: View {
     private var canCreate: Bool {
         !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && selected.count >= 2 && selected.count <= 6
+            && !isCreating
     }
 
     var body: some View {
@@ -429,10 +436,18 @@ struct GroupCreateSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(AppLocalization.string("Create")) {
+                        // Double-tap protection: two taps mint two ids and
+                        // the gateway would host two real rooms.
+                        guard !isCreating else { return }
+                        isCreating = true
                         let bots = visibleBots.filter { selected.contains($0.name) }
                         let roomName = name
+                        let pendingRoomID = roomID
                         Task {
-                            let created = await appState.createGroupRoom(name: roomName, bots: bots)
+                            let created = await appState.createGroupRoom(
+                                name: roomName, bots: bots, roomID: pendingRoomID
+                            )
+                            isCreating = false
                             if created { dismiss() }
                         }
                     }

@@ -140,15 +140,19 @@ enum BotMentions {
         return forms
     }
 
-    /// `^[a-z0-9][a-z0-9_-]*$` — the upstream mention charset. The FIRST
-    /// character must be a letter or digit: leading `-`/`_` is rejected so a
-    /// friendly name can never mint a handle the gateway's roster validator
-    /// would treat differently.
+    /// `^[a-z0-9][a-z0-9_-]*$` — the upstream mention charset, matched
+    /// CASE-INSENSITIVELY (handles reach this lowercased from the resolver
+    /// but can arrive with profile case from the create sheet; the gateway's
+    /// identifier check folds case too). The FIRST character must be a
+    /// letter or digit: leading `-`/`_` is rejected so a friendly name can
+    /// never mint a handle the gateway's roster validator would treat
+    /// differently.
     static func isValidMentionToken(_ value: String) -> Bool {
-        guard let first = value.first else { return false }
+        let lowered = value.lowercased()
+        guard let first = lowered.first else { return false }
         guard first != "_" && first != "-" else { return false }
         guard isTokenCharacter(first) else { return false }
-        return value.dropFirst().allSatisfy(isTokenCharacter)
+        return lowered.dropFirst().allSatisfy(isTokenCharacter)
     }
 
     /// Friendly names a roster row carries, in upstream precedence order:

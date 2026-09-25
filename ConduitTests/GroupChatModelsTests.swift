@@ -352,6 +352,8 @@ final class GroupChatModelsTests: XCTestCase {
         XCTAssertFalse(BotMentions.isValidMentionToken("_admin"))
         XCTAssertEqual(BotMentions.mentionNameForms("_admin"), [])
         XCTAssertTrue(BotMentions.isValidMentionToken("a_b-c9"))
+        // Case folds: a profile-cased fallback handle is still legal.
+        XCTAssertTrue(BotMentions.isValidMentionToken("Researcher"))
     }
 
     func testRoomMentionClassification() {

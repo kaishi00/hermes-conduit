@@ -72,6 +72,9 @@ struct GroupMember: Equatable {
     /// cross-gateway parity needs no model migration.
     let target: [String: AnyCodable]?
     let extra: [String: AnyCodable]
+    /// `previous_names` when the gateway supplies them — renamed members'
+    /// old tags keep styling as mentions (presentation gap-fill only).
+    var previousNames: [String] = []
 
     /// Stable display identity: the member id when present, else the
     /// profile, else the handle. Display names are NEVER identity — two
@@ -206,7 +209,7 @@ enum GroupDecoders {
         for (key, field) in object where !knownKeys.contains(key) {
             extra[key] = field
         }
-        return GroupMember(
+        var member = GroupMember(
             memberID: object["member_id"]?.stringValue,
             profile: object["profile"]?.stringValue,
             handle: object["handle"]?.stringValue,
@@ -214,6 +217,10 @@ enum GroupDecoders {
             target: object["target"]?.objectValue,
             extra: extra
         )
+        member.previousNames = (object["previous_names"]?.arrayValue ?? [])
+            .compactMap { $0.stringValue }
+            .filter { !$0.isEmpty }
+        return member
     }
 
     static func actor(_ value: AnyCodable?) -> GroupActor {
@@ -405,10 +412,14 @@ struct GroupRoomOutbox: Equatable {
     }
 
     /// Begin (or re-begin) a send of `text`. A retry of the still-pending
-    /// message returns the SAME pending row untouched; a fresh text mints a
-    /// fresh id.
+    /// message returns the SAME pending row untouched; the caller MUST have
+    /// consulted `accepts(text:)` first — a different text is a new logical
+    /// message and is refused there, never silently replaced here.
     mutating func beginSend(text: String, mintEventID: () -> String) -> Pending {
-        if let pending { return pending }
+        if let pending {
+            assert(pending.text == text, "Different text while a send is pending — refuse via accepts(text:), never replace")
+            return pending
+        }
         let created = Pending(text: text, eventID: mintEventID())
         pending = created
         return created
@@ -430,10 +441,11 @@ struct GroupRoomOutbox: Equatable {
 /// style it — unknown handles and e-mail addresses stay plain prose.
 /// Recognized mentions render as inline accent text, never pills.
 enum GroupRoomMentions {
-    /// Upstream's transcript scan charset (`[a-z0-9][a-z0-9._-]*`), taken
-    /// one character WIDER here (`:` included, matching the gateway driver's
-    /// own `_MENTION_RE` so a Matrix-style id survives as ONE unknown token
-    /// instead of splitting into a false mention).
+    /// Upstream's styling regex is `[a-z0-9][a-z0-9._-]*`; this client also
+    /// accepts `:`, matching the gateway driver's own `_MENTION_RE`. The
+    /// result is one unknown token for a Matrix-style id (never a false
+    /// mention split), at the cost of not styling the `@user` prefix of
+    /// `@user:matrix.id` the way upstream's presentation-only path does.
     static let mentionScanRegex = try? NSRegularExpression(
         pattern: "@([a-z0-9][a-z0-9._:-]*)",
         options: [.caseInsensitive]
@@ -449,8 +461,8 @@ enum GroupRoomMentions {
     /// it. Room routing belongs to the gateway driver; this is presentation
     /// only. Like upstream's styling parser, membership is recognized by
     /// EVERY resolvable form of a member — the exact ids/handle/display
-    /// name, their slug/collapsed reductions, and the separator-stripped
-    /// collapsed form.
+    /// name, their slug/collapsed reductions, the title's FIRST WORD
+    /// ("Research Buddy" → @research), and `previous_names` gap-fill.
     static func classify(token: String, members: [GroupMember]) -> Kind? {
         let handle = token.lowercased()
         if handle == "user" { return .human }
@@ -461,11 +473,14 @@ enum GroupRoomMentions {
             .replacingOccurrences(of: "_", with: "")
         for member in members {
             let candidates = [member.handle, member.memberID, member.profile, member.displayName]
-                .compactMap { $0 }
+                .compactMap { $0 } + member.previousNames
             for candidate in candidates {
                 let lowered = candidate.lowercased()
                 if lowered == handle || lowered == collapsed { return .agent }
                 if BotMentions.mentionNameForms(candidate).contains(handle) { return .agent }
+                // Upstream styles the title's first word too.
+                if let firstWord = lowered.split(separator: " ").first,
+                   String(firstWord) == handle { return .agent }
             }
             let stripped = candidateCollapsedForm(candidates)
             if !stripped.isEmpty, stripped == collapsed { return .agent }

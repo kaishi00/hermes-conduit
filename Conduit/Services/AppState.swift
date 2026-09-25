@@ -3041,8 +3041,10 @@ final class AppState: ObservableObject {
         do {
             // Bounded tail: the room's replay cursor tells us where the log
             // ends; fetch only the last WINDOW events instead of the whole
-            // history (upstream keeps 200 — GROUP_CHAT_HISTORY_LIMIT).
-            let window = 200
+            // history (upstream keeps 200 — GROUP_CHAT_HISTORY_LIMIT). The
+            // window never exceeds the gateway's advertised page limit, so
+            // the since_seq and the page limit always agree.
+            let window = min(200, groupCapabilities?.maxLogLimit ?? 500)
             let (state, driver) = try await groupsState(client, roomID: room.roomID)
             guard groupRoomEpoch == epoch else { return }
             if state.isDisbanded {
@@ -3058,7 +3060,7 @@ final class AppState: ObservableObject {
                 client,
                 roomID: room.roomID,
                 sinceSeq: start,
-                limit: min(window, groupCapabilities?.maxLogLimit ?? 500)
+                limit: window
             )
             guard groupRoomEpoch == epoch else { return }
             var replay = GroupRoomReplay(roomID: room.roomID)
@@ -3122,8 +3124,16 @@ final class AppState: ObservableObject {
             // an eventless tick, or a settled room keeps offering Stop and
             // showing "working…" until the next unrelated event.
             if activeRoomReplay.cursor >= page.latestSeq || fresh.isEmpty {
-                let (_, driver) = try await groupsState(client, roomID: surface.room.roomID)
+                let (room, driver) = try await groupsState(client, roomID: surface.room.roomID)
                 guard groupRoomEpoch == epoch else { return }
+                if room.isDisbanded {
+                    // A room tombstoned without new log events must still
+                    // close the surface — otherwise the poller spins and
+                    // sends fail against the tombstone forever.
+                    closeRoomSurface()
+                    await refreshGroupRooms()
+                    return
+                }
                 activeRoomDriverStatus = driver
             }
         } catch is CancellationError {
@@ -3276,7 +3286,11 @@ final class AppState: ObservableObject {
     /// falling back to the profile handle) — the gateway re-validates the
     /// frozen 2–6 roster and refuses duplicated or reserved handles, and the
     /// client refuses first when two picks would claim one tag.
-    func createGroupRoom(name: String, bots: [BotProfile]) async -> Bool {
+    /// `roomID` is the CLIENT-minted identity and create idempotency key:
+    /// the CALLER owns its lifetime (the create sheet holds one per logical
+    /// room) so a retry of an ambiguous create reuses the SAME id and the
+    /// gateway deduplicates instead of forking a twin room.
+    func createGroupRoom(name: String, bots: [BotProfile], roomID: String) async -> Bool {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let client, isConnected,
               groupCapabilities?.foundationSupported == true else { return false }
@@ -3305,10 +3319,6 @@ final class AppState: ObservableObject {
             ])
         }
         do {
-            // The room id is the CLIENT-minted identity and idempotency
-            // key (a contract-required field): minting it here means a retry
-            // of a failed create deduplicates instead of forking the room.
-            let roomID = "conduit-\(UUID().uuidString.lowercased())"
             let room = try await groupsCreate(client, roomID: roomID, name: trimmedName, members: members)
             await refreshGroupRooms()
             await openGroupRoom(room)

@@ -386,11 +386,14 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         connect(appState)
         await appState.refreshGroupChatSupport()
         let bots = [Self.makeBot("alpha"), Self.makeBot("beta")]
-        let created = await appState.createGroupRoom(name: "Planning", bots: bots)
+        let created = await appState.createGroupRoom(
+            name: "Planning", bots: bots, roomID: "conduit-test-room-001"
+        )
         XCTAssertEqual(created, true)
 
         XCTAssertEqual(recorder.roomIDs.count, 1)
         let roomID = recorder.roomIDs[0]
+        XCTAssertEqual(roomID, "conduit-test-room-001")
         // Gateway validator: ^[A-Za-z0-9][A-Za-z0-9._:-]*$, <=128 chars.
         XCTAssertFalse(roomID.isEmpty)
         XCTAssertLessThanOrEqual(roomID.count, 128)
@@ -426,6 +429,44 @@ final class GroupChatSessionSafetyTests: XCTestCase {
             canonicalSession: nil,
             lastActive: nil,
             lastPreview: nil
+        )
+    }
+
+    /// A room the gateway reports as tombstoned (even with zero new log
+    /// events) closes the surface instead of leaving a poller spinning
+    /// against the tombstone.
+    func testQuietlyDisbandedRoomClosesTheSurfaceOnTheNextStatusTick() async {
+        let operations = GroupChatLifecycleOperations(
+            capabilities: { _ in self.capabilities(supported: true) },
+            list: { _ in ([self.room()], nil) },
+            state: { _, roomID in (self.disbandedRoom(roomID: roomID), nil) },
+            log: { _, roomID, sinceSeq in
+                GroupLogPage(events: [], cursor: sinceSeq, latestSeq: 0, hasMore: false,
+                             authorityGatewayID: "gw-a", authorityEpoch: 1)
+            }
+        )
+        let appState = makeAppState(operations: operations)
+        connect(appState)
+        await appState.refreshGroupChatSupport()
+        // groups.state answers a TOMBSTONED room for an open attempt…
+        await appState.openGroupRoom(self.room())
+        // …so the surface closes instead of haunting a disbanded room.
+        XCTAssertEqual(appState.activeRoomSurface, nil)
+        XCTAssertEqual(appState.activeSessionId, nil)
+    }
+
+    private func disbandedRoom(roomID: String) -> GroupRoom {
+        GroupRoom(
+            roomID: roomID,
+            name: "Planning",
+            members: [],
+            authorityGatewayID: "gw-a",
+            authorityEpoch: 1,
+            revision: 2,
+            createdAt: 0,
+            updatedAt: 0,
+            disbandedAt: 99,
+            latestSeq: 0
         )
     }
 

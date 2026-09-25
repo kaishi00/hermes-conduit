@@ -285,6 +285,14 @@ struct ComposerBar: View {
         .onChange(of: activeDraftKey) { _, newKey in
             handoffComposer(to: newKey)
         }
+        .onChange(of: appState.activeRoomSurface != nil) { _, roomActive in
+            // The room surface unmounts this composer's subtree. Persist the
+            // typed draft BEFORE it goes, so returning to the session
+            // restores exactly what the user had typed.
+            if roomActive {
+                saveDraft(for: activeDraftKey)
+            }
+        }
         // A session resume can complete before the gateway has refreshed its
         // context accounting. Recheck once the active composer is on screen,
         // rather than making the user open the context sheet to populate it.
