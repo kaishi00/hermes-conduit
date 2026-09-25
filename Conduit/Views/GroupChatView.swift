@@ -75,7 +75,7 @@ struct GroupChatView: View {
                         }
                         .id("pending-row")
                     }
-                    if events.isEmpty && appState.pendingRoomMessage == nil {
+                    if appState.activeRoomReplay.events.isEmpty && appState.pendingRoomMessage == nil {
                         Text(AppLocalization.string("No messages yet. Say something to the room."))
                             .font(.footnote)
                             .foregroundStyle(.secondary)
