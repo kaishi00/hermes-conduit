@@ -20,6 +20,7 @@ struct BotRosterView: View {
         }
         .task(id: rosterRefreshKey) {
             await appState.refreshBotRoster()
+            await appState.refreshGroupChatSupport()
         }
     }
 
@@ -60,11 +61,50 @@ struct BotRosterView: View {
                     BotRosterRow(bot: bot)
                 }
             }
+            groupSection
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .refreshable {
             await appState.refreshBotRoster()
+            await appState.refreshGroupChatSupport()
+        }
+        .sheet(isPresented: $showingGroupCreateSheet) {
+            GroupCreateSheet()
+        }
+    }
+
+    /// Hosted Group Chat rows, below the Bots section. Presented only when
+    /// the gateway advertised the foundation `groups.*` methods; an
+    /// unsupported gateway hides the section entirely (graceful degradation,
+    /// never a dead control).
+    @State private var showingGroupCreateSheet = false
+
+    @ViewBuilder
+    private var groupSection: some View {
+        if appState.groupChatPhase == .available {
+            Section {
+                ForEach(appState.groupRooms) { room in
+                    GroupRosterRow(room: room)
+                }
+                if visibleBots.count >= 2 {
+                    Button {
+                        Haptics.light()
+                        showingGroupCreateSheet = true
+                    } label: {
+                        Label(
+                            AppLocalization.string("New Group Chat"),
+                            systemImage: "plus.circle.fill"
+                        )
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.conduitAccent)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Text(AppLocalization.string("New Group Chat")))
+                }
+            } header: {
+                Text(AppLocalization.string("Group Chats"))
+            }
         }
     }
 
@@ -135,6 +175,71 @@ struct BotRosterView: View {
                 }
             }
         }
+    }
+}
+
+/// One hosted-room row: name, member count, and the latest chat-message
+/// preview. Identity is the durable `room_id` (never the display name — a
+/// same-name recreate is a genuinely fresh room upstream).
+struct GroupRosterRow: View {
+    let room: GroupRoom
+    @EnvironmentObject private var appState: AppState
+
+    var body: some View {
+        Button {
+            Haptics.light()
+            appState.dismissSidebarDrawer()
+            Task { await appState.openGroupRoom(room) }
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(Color.conduitAccent.opacity(0.16))
+                    Image(systemName: "person.3")
+                        .font(.caption)
+                        .foregroundStyle(.conduitAccent)
+                }
+                .frame(width: 36, height: 36)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(room.name)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    subtitleText
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(
+                Color.primary.opacity(0.045),
+                in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+        .listRowInsets(EdgeInsets(top: 3, leading: 0, bottom: 3, trailing: 0))
+        .accessibilityLabel(Text(room.name))
+        .accessibilityHint(Text(AppLocalization.string("Opens this group chat.")))
+    }
+
+    private var subtitleText: String {
+        // `groups.list` rooms carry no log preview (the log is the room's
+        // own replay surface); the member count is the row's metadata until
+        // the next parity slice adds activity previews.
+        AppLocalization.string("\(room.members.count) members")
     }
 }
 

@@ -233,6 +233,23 @@ struct ChatResumeLifecycleOperations {
     static let live = ChatResumeLifecycleOperations()
 }
 
+/// Group Chat RPC seams, same contract as `ChatResumeLifecycleOperations`:
+/// production runs the client's `groups.*` calls; tests substitute canned
+/// outcomes so a harness never reaches the network. A nil closure falls
+/// through to the production call.
+struct GroupChatLifecycleOperations {
+    var capabilities: (@MainActor (HermesClient) async throws -> GroupCapabilities)?
+    var list: (@MainActor (HermesClient) async throws -> ([GroupRoom], Int?))?
+    var state: (@MainActor (HermesClient, String) async throws -> (GroupRoom, GroupDriverStatus?))?
+    var log: (@MainActor (HermesClient, String, Int) async throws -> GroupLogPage)?
+    var send: (@MainActor (HermesClient, String, String, String, String) async throws -> GroupSendResult)?
+    var create: (@MainActor (HermesClient, String, [[String: Any]]) async throws -> GroupRoom)?
+    var stop: (@MainActor (HermesClient, String) async throws -> Int)?
+    var disband: (@MainActor (HermesClient, String) async throws -> Void)?
+
+    static let live = GroupChatLifecycleOperations()
+}
+
 /// Raw result of fetching a session's persisted history — the dashboard
 /// messages endpoint's JSON payload exactly as returned, still to be parsed
 /// by AppState's production normalizer path.
@@ -1460,6 +1477,7 @@ final class AppState: ObservableObject {
     private let reconnectScheduler: ChatResumeReconnectScheduler
     private let reconnectExecutor: ChatResumeReconnectExecutor?
     private let chatResumeLifecycleOperations: ChatResumeLifecycleOperations
+    private let groupChatOperations: GroupChatLifecycleOperations
     /// Coalesces presentation-cache flushes during streaming so we
     /// don't serialize and write UserDefaults on every WebSocket frame.
     private var presentationCacheFlushTask: Task<Void, Never>?
@@ -1805,6 +1823,7 @@ final class AppState: ObservableObject {
         reconnectScheduler: ChatResumeReconnectScheduler? = nil,
         reconnectExecutor: ChatResumeReconnectExecutor? = nil,
         chatResumeLifecycleOperations: ChatResumeLifecycleOperations = .live,
+        groupChatOperations: GroupChatLifecycleOperations = .live,
         sessionPresentationCache: SessionPresentationCache = .shared,
         sessionYoloStore: SessionYoloStore? = nil,
         conversationIdentityIndex: ConversationIdentityIndex? = nil,
@@ -1831,6 +1850,7 @@ final class AppState: ObservableObject {
         self.reconnectScheduler = reconnectScheduler ?? scheduleChatResumeReconnectTask
         self.reconnectExecutor = reconnectExecutor
         self.chatResumeLifecycleOperations = chatResumeLifecycleOperations
+        self.groupChatOperations = groupChatOperations
         self.initialChatResumeServerIdentity = defaults
             .string(forKey: Self.chatResumeServerIdentityKey)
             .flatMap(Self.normalizedStoredChatResumeIdentity)
@@ -2783,7 +2803,470 @@ final class AppState: ObservableObject {
         botRosterRefreshFlight = nil
         isRefreshingBotRoster = false
         botModePhase = .idle
+        invalidateGroupChatState()
     }
+
+    // MARK: - Group Chats (hosted rooms)
+
+    /// The profile the FOCUSED conversation runs on: the bot's own profile
+    /// inside a Bot Chat, else the workspace profile. The mention middleware
+    /// excludes that bot — it is the listener, never a mention target
+    /// (upstream `focusedMentionProfile`).
+    private var activeConversationProfileScope: String {
+        if let sessionId = activeSessionId,
+           let botProfile = botChatSessionProfiles[sessionId]?
+               .trimmingCharacters(in: .whitespacesAndNewlines),
+           !botProfile.isEmpty {
+            return botProfile
+        }
+        return activeProfile
+    }
+
+    /// Upstream's canonical-forever-chat guard: `/new` or `/reset` inside a
+    /// bot's canonical chat would fork the relationship into a scratch
+    /// session — the one thing Bot Mode promises never happens. Returns
+    /// "/compact" (fresh working context, SAME conversation) ONLY when the
+    /// active session is positively that bot's canonical chat: the roster's
+    /// canonical registry names it, or — while the roster cannot confirm —
+    /// this process opened it AS a bot chat (Phase 1 opens only canonical
+    /// chats). Ordinary sessions, and unresolved ones, keep full `/new`
+    /// freedom (upstream fails open identically).
+    private func canonicalForeverChatRerouteText(for text: String) -> String? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed == "/new" || trimmed == "/reset" else { return nil }
+        guard let sessionId = activeSessionId else { return nil }
+        guard let bot = botOwnership.bot(owningAny: [sessionId]) else { return nil }
+        let canonicalIDs = [bot.canonicalSession?.id, bot.canonicalSession?.resolvedID]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        let rosterNamesCanonical = canonicalIDs.contains(sessionId)
+        let registryNamesBotChat = botChatSessionProfiles[sessionId] != nil
+        let isCanonical = rosterNamesCanonical || (registryNamesBotChat && canonicalIDs.isEmpty)
+        return BotMentions.foreverChatRerouteText(for: text, isCanonicalBotChat: isCanonical)
+    }
+
+    /// Presentation state for one open hosted room. A room is NOT a session:
+    /// it never touches `activeSessionId`, the transcript cache, or the saved
+    /// `SessionReference`, and it is deliberately NOT persisted — cold launch
+    /// restores the remembered session, never a room. Session isolation is
+    /// structural, not behavioral.
+    struct GroupRoomSurface: Equatable {
+        /// The dashboard this room belongs to; a stale dashboard's surface is
+        /// fenced out at the server boundary.
+        let dashboardID: UUID
+        let room: GroupRoom
+
+        /// The room-composer thread id. The wire contract requires
+        /// `thread_id` on every `message.user` payload; the main composer is
+        /// one stable thread (thread replies are a later parity slice).
+        static let mainThreadID = "main"
+    }
+
+    /// Lifecycle of the Group Chat capability probe.
+    enum GroupChatPhase: Equatable {
+        case idle
+        case loading
+        case available
+        case gatewayUnsupported
+        case failed(message: String)
+    }
+
+    @Published private(set) var groupChatPhase: GroupChatPhase = .idle
+    @Published private(set) var groupCapabilities: GroupCapabilities?
+    @Published private(set) var groupRooms: [GroupRoom] = []
+    @Published private(set) var activeRoomSurface: GroupRoomSurface?
+    @Published private(set) var activeRoomReplay = GroupRoomReplay(roomID: "")
+    @Published private(set) var activeRoomDriverStatus: GroupDriverStatus?
+    @Published private(set) var activeRoomSendInFlight = false
+    /// A send whose outcome is unknown keeps its retry key (via the outbox):
+    /// the retry reuses the SAME client event id, and the gateway's
+    /// idempotent send turns the repeat into a no-op instead of a twin.
+    @Published private(set) var pendingRoomMessage: GroupRoomOutbox.Pending?
+    private var groupRoomOutbox = GroupRoomOutbox()
+
+    /// Fences every in-flight room response and stops the poller. Runs at
+    /// the server-identity boundary (with the rest of Bot Mode teardown), on
+    /// a dashboard switch, and when a session open takes the viewport back.
+    private var groupRoomEpoch = 0
+    private var groupRoomPollTask: Task<Void, Never>?
+
+    // Group Chat RPC routing: the injectable seam first (tests), then the
+    // production client call.
+    private func groupsCapabilities(_ client: HermesClient) async throws -> GroupCapabilities {
+        if let operation = groupChatOperations.capabilities { return try await operation(client) }
+        return try await client.groupsCapabilities()
+    }
+
+    private func groupsList(_ client: HermesClient) async throws -> ([GroupRoom], Int?) {
+        if let operation = groupChatOperations.list { return try await operation(client) }
+        return try await client.groupsList()
+    }
+
+    private func groupsState(_ client: HermesClient, roomID: String)
+        async throws -> (GroupRoom, GroupDriverStatus?) {
+        if let operation = groupChatOperations.state { return try await operation(client, roomID) }
+        return try await client.groupsState(roomID: roomID)
+    }
+
+    private func groupsLog(_ client: HermesClient, roomID: String, sinceSeq: Int, limit: Int? = nil)
+        async throws -> GroupLogPage {
+        if let operation = groupChatOperations.log { return try await operation(client, roomID, sinceSeq) }
+        return try await client.groupsLog(roomID: roomID, sinceSeq: sinceSeq, limit: limit)
+    }
+
+    private func groupsSend(_ client: HermesClient, roomID: String, eventID: String, text: String, threadID: String)
+        async throws -> GroupSendResult {
+        if let operation = groupChatOperations.send {
+            return try await operation(client, roomID, eventID, text, threadID)
+        }
+        return try await client.groupsSend(roomID: roomID, eventID: eventID, text: text, threadID: threadID)
+    }
+
+    private func groupsCreate(_ client: HermesClient, name: String, members: [[String: Any]])
+        async throws -> GroupRoom {
+        if let operation = groupChatOperations.create { return try await operation(client, name, members) }
+        return try await client.groupsCreate(name: name, members: members)
+    }
+
+    private func groupsStop(_ client: HermesClient, roomID: String) async throws -> Int {
+        if let operation = groupChatOperations.stop { return try await operation(client, roomID) }
+        return try await client.groupsStop(roomID: roomID)
+    }
+
+    private func groupsDisband(_ client: HermesClient, roomID: String) async throws {
+        if let operation = groupChatOperations.disband { return try await operation(client, roomID) }
+        return try await client.groupsDisband(roomID: roomID)
+    }
+
+    private func invalidateGroupChatState() {
+        groupRoomEpoch &+= 1
+        groupRoomPollTask?.cancel()
+        groupRoomPollTask = nil
+        groupChatPhase = .idle
+        groupCapabilities = nil
+        groupRooms = []
+        closeRoomSurface()
+    }
+
+    private func closeRoomSurface() {
+        activeRoomSurface = nil
+        activeRoomReplay = GroupRoomReplay(roomID: "")
+        activeRoomDriverStatus = nil
+        activeRoomSendInFlight = false
+        groupRoomOutbox.discard()
+        pendingRoomMessage = nil
+    }
+
+    /// Probe `groups.capabilities` and, when the foundation methods are
+    /// advertised, refresh the room list. Called alongside the bot roster
+    /// refresh; a gateway that lacks the method is a supported outcome, not
+    /// an error.
+    func refreshGroupChatSupport() async {
+        guard let client, isConnected else {
+            groupChatPhase = .idle
+            return
+        }
+        do {
+            let capabilities = try await groupsCapabilities(client)
+            groupCapabilities = capabilities
+            guard capabilities.foundationSupported else {
+                groupChatPhase = .gatewayUnsupported
+                groupRooms = []
+                return
+            }
+            groupChatPhase = .available
+            await refreshGroupRooms()
+        } catch is CancellationError {
+            return
+        } catch {
+            guard !Task.isCancelled else { return }
+            if HermesClient.isMissingRPCMethod(error) {
+                groupCapabilities = nil
+                groupChatPhase = .gatewayUnsupported
+                groupRooms = []
+            } else if groupChatPhase != .available {
+                groupChatPhase = .failed(message: error.localizedDescription)
+            }
+            // A transient failure while already .available keeps the last
+            // known rooms and phase — same contract as the roster notice.
+        }
+    }
+
+    func refreshGroupRooms() async {
+        guard groupChatPhase == .available, let client, isConnected else { return }
+        let epoch = groupRoomEpoch
+        do {
+            let (rooms, _) = try await groupsList(client)
+            guard groupRoomEpoch == epoch else { return }
+            groupRooms = rooms.filter { !$0.isDisbanded }
+        } catch is CancellationError {
+            return
+        } catch {
+            // Keep the last known room list; the roster surfaces the probe
+            // failure path, and a stale room row is safer than an empty one.
+        }
+    }
+
+    /// Open a hosted room. Loads the room's authoritative state, replays a
+    /// bounded tail of the log, and starts incremental polling. The CURRENT
+    /// session selection is left untouched: opening a room takes the
+    /// viewport, and the next session open takes it back.
+    func openGroupRoom(_ room: GroupRoom) async {
+        guard let client, isConnected else {
+            errorMessage = AppLocalization.string("Connect to Hermes to open group chats.")
+            return
+        }
+        guard let dashboardID = activeDashboardID else { return }
+        guard groupCapabilities?.foundationSupported == true else { return }
+        guard room.isDisbanded == false else { return }
+
+        groupRoomEpoch &+= 1
+        let epoch = groupRoomEpoch
+        groupRoomPollTask?.cancel()
+        activeRoomSurface = GroupRoomSurface(dashboardID: dashboardID, room: room)
+        activeRoomReplay = GroupRoomReplay(roomID: room.roomID)
+        activeRoomDriverStatus = nil
+        groupRoomOutbox.discard()
+        pendingRoomMessage = nil
+
+        do {
+            // Bounded tail: the room's replay cursor tells us where the log
+            // ends; fetch only the last WINDOW events instead of the whole
+            // history (upstream keeps 200 — GROUP_CHAT_HISTORY_LIMIT).
+            let window = 200
+            let (state, driver) = try await groupsState(client, roomID: room.roomID)
+            guard groupRoomEpoch == epoch else { return }
+            if state.isDisbanded {
+                closeRoomSurface()
+                await refreshGroupRooms()
+                return
+            }
+            activeRoomSurface = GroupRoomSurface(dashboardID: dashboardID, room: state)
+            activeRoomDriverStatus = driver
+            let latest = state.latestSeq ?? 0
+            let start = max(0, latest - window)
+            let page = try await groupsLog(
+                client,
+                roomID: room.roomID,
+                sinceSeq: start,
+                limit: min(window, groupCapabilities?.maxLogLimit ?? 500)
+            )
+            guard groupRoomEpoch == epoch else { return }
+            var replay = GroupRoomReplay(roomID: room.roomID)
+            replay.adopt(page: page)
+            activeRoomReplay = replay
+            startRoomPolling()
+        } catch is CancellationError {
+            return
+        } catch {
+            guard groupRoomEpoch == epoch else { return }
+            // Leave the room open with whatever loaded (possibly nothing) and
+            // surface the failure; the poller starts anyway so a transient
+            // blip self-heals on the next tick.
+            errorMessage = AppLocalization.string("Could not load this group chat: \(error.localizedDescription)")
+            startRoomPolling()
+        }
+    }
+
+    /// Incremental room updates: bounded `groups.log` deltas by `since_seq`
+    /// (the least-wasteful upstream-supported mechanism — there is no client
+    /// stream for room logs), plus a driver-status refresh each tick.
+    private func startRoomPolling() {
+        groupRoomPollTask?.cancel()
+        let epoch = groupRoomEpoch
+        groupRoomPollTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                guard !Task.isCancelled, let self, self.groupRoomEpoch == epoch else { return }
+                await self.pollActiveRoomOnce(epoch: epoch)
+            }
+        }
+    }
+
+    private func pollActiveRoomOnce(epoch: Int) async {
+        guard let client, isConnected,
+              let surface = activeRoomSurface,
+              groupRoomEpoch == epoch else { return }
+        do {
+            let page = try await groupsLog(
+                client,
+                roomID: surface.room.roomID,
+                sinceSeq: activeRoomReplay.sinceSeq
+            )
+            guard groupRoomEpoch == epoch, let surface = activeRoomSurface,
+                  surface.room.roomID == page.events.first?.roomID || page.events.isEmpty else { return }
+            if page.events.contains(where: { $0.seq > activeRoomReplay.cursor + 1 }) {
+                // Gap detected: resync from the room's authoritative cursor
+                // instead of rendering a truncated transcript.
+                let (state, driver) = try await groupsState(client, roomID: surface.room.roomID)
+                guard groupRoomEpoch == epoch else { return }
+                if state.isDisbanded {
+                    closeRoomSurface()
+                    await refreshGroupRooms()
+                    return
+                }
+                activeRoomSurface = GroupRoomSurface(dashboardID: surface.dashboardID, room: state)
+                activeRoomDriverStatus = driver
+                var fresh = GroupRoomReplay(roomID: state.roomID)
+                let start = max(0, (state.latestSeq ?? 0) - 200)
+                let tail = try await groupsLog(
+                    client, roomID: state.roomID, sinceSeq: start,
+                    limit: min(200, groupCapabilities?.maxLogLimit ?? 500))
+                guard groupRoomEpoch == epoch else { return }
+                fresh.adopt(page: tail)
+                activeRoomReplay = fresh
+            } else if !page.events.isEmpty {
+                activeRoomReplay.adopt(page: page)
+            }
+            if activeRoomReplay.cursor >= page.latestSeq {
+                let (_, driver) = try await groupsState(client, roomID: surface.room.roomID)
+                guard groupRoomEpoch == epoch else { return }
+                activeRoomDriverStatus = driver
+            }
+        } catch is CancellationError {
+            return
+        } catch {
+            // Transient poll failure: keep the surface and retry next tick.
+        }
+    }
+
+    /// Send one user message to the open room via `groups.send`. The event
+    /// id is minted once per logical message and REUSED on retry, so an
+    /// ambiguous failure can never double-send (the gateway deduplicates on
+    /// the mapped server-side id). The optimistic row comes from
+    /// `pendingRoomMessage`; the accepted event reconciles it.
+    func sendGroupRoomMessage(_ rawText: String) async {
+        guard !rawText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        guard let surface = activeRoomSurface, let client, isConnected,
+              groupCapabilities?.supports("groups.send") == true,
+              !activeRoomSendInFlight else { return }
+        guard surface.room.isDisbanded == false else { return }
+        let epoch = groupRoomEpoch
+        let logical = groupRoomOutbox.beginSend(text: rawText) {
+            "conduit-\(UUID().uuidString.lowercased())"
+        }
+        pendingRoomMessage = groupRoomOutbox.pending
+        activeRoomSendInFlight = true
+        defer { activeRoomSendInFlight = false }
+        do {
+            let result = try await groupsSend(
+                client,
+                roomID: surface.room.roomID,
+                eventID: logical.eventID,
+                text: logical.text,
+                threadID: GroupRoomSurface.mainThreadID
+            )
+            guard groupRoomEpoch == epoch, activeRoomSurface?.room.roomID == surface.room.roomID else {
+                return
+            }
+            activeRoomReplay.adopt(page: GroupLogPage(
+                events: [result.event],
+                cursor: result.event.seq,
+                latestSeq: max(result.event.seq, activeRoomReplay.cursor),
+                hasMore: false,
+                authorityGatewayID: activeRoomReplay.authorityGatewayID,
+                authorityEpoch: activeRoomReplay.authorityEpoch
+            ))
+            groupRoomOutbox.accept(eventID: logical.eventID)
+            pendingRoomMessage = groupRoomOutbox.pending
+            await refreshGroupRooms()
+        } catch is CancellationError {
+            return
+        } catch {
+            guard groupRoomEpoch == epoch else { return }
+            // Ambiguous outcome: KEEP pendingRoomMessage (same event id) so
+            // the user's retry deduplicates server-side.
+            errorMessage = AppLocalization.string("Could not send to this group chat: \(error.localizedDescription)")
+        }
+    }
+
+    /// Stop the open room's queued or running work (`groups.stop`).
+    func stopActiveRoomWork() async {
+        guard let surface = activeRoomSurface, let client,
+              groupCapabilities?.supports("groups.stop") == true else { return }
+        let epoch = groupRoomEpoch
+        do {
+            _ = try await groupsStop(client, roomID: surface.room.roomID)
+            guard groupRoomEpoch == epoch else { return }
+            await pollActiveRoomOnce(epoch: epoch)
+        } catch {
+            // Surface without closing: stop is advisory to the driver.
+            errorMessage = AppLocalization.string("Could not stop this group chat's work: \(error.localizedDescription)")
+        }
+    }
+
+    /// Permanently disband the open room (destructive; the view confirms).
+    func disbandActiveRoom() async {
+        guard let surface = activeRoomSurface, let client,
+              groupCapabilities?.supports("groups.disband") == true else { return }
+        let epoch = groupRoomEpoch
+        do {
+            try await groupsDisband(client, roomID: surface.room.roomID)
+            guard groupRoomEpoch == epoch else { return }
+        } catch {
+            guard groupRoomEpoch == epoch else { return }
+            errorMessage = AppLocalization.string("Could not disband this group chat: \(error.localizedDescription)")
+            return
+        }
+        closeRoomSurface()
+        await refreshGroupRooms()
+    }
+
+    /// Leave the room view WITHOUT touching session state — the next session
+    /// open, or this call's inverse, owns the viewport transition.
+    func closeGroupRoom() {
+        groupRoomEpoch &+= 1
+        groupRoomPollTask?.cancel()
+        groupRoomPollTask = nil
+        closeRoomSurface()
+        Task { await self.refreshGroupRooms() }
+    }
+
+    /// Create a hosted room from bots on the CURRENT gateway. Member rows
+    /// carry `{member_id, profile, handle, display_name}`: identity is the
+    /// profile name, the handle is the resolvable room tag (the mention tag,
+    /// falling back to the profile handle) — the gateway re-validates the
+    /// frozen 2–6 roster and refuses duplicated or reserved handles, and the
+    /// client refuses first when two picks would claim one tag.
+    func createGroupRoom(name: String, bots: [BotProfile]) async -> Bool {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let client, isConnected,
+              groupCapabilities?.foundationSupported == true else { return false }
+        guard bots.count >= 2, bots.count <= 6 else { return false }
+        guard !trimmedName.isEmpty else { return false }
+        var usedHandles = Set<String>(["all", "everyone"])
+        var members: [[String: Any]] = []
+        for bot in bots {
+            var handle = BotMentions.mentionTag(for: bot)
+            if usedHandles.contains(handle.lowercased()) {
+                handle = BotMentions.handle(for: bot)
+            }
+            guard BotMentions.isValidMentionToken(handle),
+                  !usedHandles.contains(handle.lowercased()) else {
+                errorMessage = AppLocalization.string(
+                    "Two of these bots would claim the same @handle. Rename one bot's title, then try again."
+                )
+                return false
+            }
+            usedHandles.insert(handle.lowercased())
+            members.append([
+                "member_id": bot.name,
+                "profile": bot.name,
+                "handle": handle,
+                "display_name": bot.displayLabel,
+            ])
+        }
+        do {
+            let room = try await groupsCreate(client, name: trimmedName, members: members)
+            await refreshGroupRooms()
+            await openGroupRoom(room)
+            return true
+        } catch {
+            errorMessage = AppLocalization.string("Could not create the group chat: \(error.localizedDescription)")
+            return false
+        }
+    }
+
 
     /// Runtime-only speech retirement at the server-replacement boundary.
     ///
@@ -9418,6 +9901,16 @@ final class AppState: ObservableObject {
         preferredTitle: String? = nil
     ) async -> SessionOpenOutcome {
         guard let client else { return .failed }
+        // A session open takes the viewport back from any open room. A room
+        // surface is presentation-only (never session state), so closing it
+        // here cannot disturb the conversation being opened; the room stays
+        // in the roster, resumable with one tap.
+        if activeRoomSurface != nil {
+            groupRoomEpoch &+= 1
+            groupRoomPollTask?.cancel()
+            groupRoomPollTask = nil
+            closeRoomSurface()
+        }
         let previousTurnState = turnState
         // The catalog-ownership guard protects ORDINARY opens from another
         // dashboard profile's rows. A bot open carries the conversation's
@@ -10756,6 +11249,32 @@ final class AppState: ObservableObject {
         guard let client, let sessionId = activeSessionId else { return false }
         cancelChatResumeRestoration()
         resetResponseHapticTurn()
+        // Bot Mode composer middleware (upstream `mention-middleware`): the
+        // canonical-forever-chat guard first, then @mention identification.
+        // The OUTBOUND text carries the transformation; the optimistic bubble
+        // and the durable gateway row stay identical, so hydration never
+        // rewrites what the user already saw.
+        var outboundText = text
+        if let rerouted = canonicalForeverChatRerouteText(for: text) {
+            outboundText = rerouted
+            messages.append(ChatMessage(
+                id: "local-notice-\(Date().timeIntervalSince1970)",
+                role: .system,
+                content: AppLocalization.string(
+                    "This chat never resets — compacting instead. Bot chats are one continuous conversation; for a throwaway session with this bot, use Sessions mode."
+                ),
+                rawContent: nil,
+                timestamp: Self.localTimestamp(),
+                author: nil,
+                attachments: nil
+            ))
+        } else if let annotated = BotMentions.middlewareAnnotation(
+            text: text,
+            roster: botRoster,
+            activeProfileName: activeConversationProfileScope
+        ) {
+            outboundText = annotated
+        }
         // Durable before/after identity for ambiguous-delivery recovery:
         // positively-proven persisted row ids (from the latest accepted
         // hydration) plus whether the conversation holds rows whose persisted
@@ -10779,7 +11298,7 @@ final class AppState: ObservableObject {
         let userMessage = ChatMessage(
             id: "local-\(Date().timeIntervalSince1970)",
             role: .user,
-            content: text,
+            content: outboundText,
             rawContent: nil,
             timestamp: Self.localTimestamp(),
             author: nil,
@@ -10824,9 +11343,9 @@ final class AppState: ObservableObject {
         do {
             let outcome: PromptSubmissionOutcome
             if let sendPrompt = chatResumeLifecycleOperations.sendPrompt {
-                outcome = try await sendPrompt(client, sessionId, text)
+                outcome = try await sendPrompt(client, sessionId, outboundText)
             } else {
-                outcome = try await client.sendPrompt(sessionId, text: text)
+                outcome = try await client.sendPrompt(sessionId, text: outboundText)
             }
             // The gateway accepted the prompt. A session handoff may have
             // happened while the RPC was suspended, but that does not turn a

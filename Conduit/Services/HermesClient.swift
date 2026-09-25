@@ -1638,6 +1638,127 @@ final class HermesClient: ObservableObject {
         return arr.compactMap { try? JSONDecoder().decode(CronRun.self, from: JSONSerialization.data(withJSONObject: $0.anyValue)) }
     }
 
+    // MARK: - Group Chats
+
+    /// THE Group Chat capability call (`groups.capabilities`). A gateway old
+    /// enough to lack the method has no hosted rooms; callers classify the
+    /// thrown error with `isMissingRPCMethod`. Like the bot roster, rooms are
+    /// gateway-wide, so every `groups.*` call below is sent UNSCOPED — the
+    /// contract's optional `profile` param is multiplexed-gateway routing,
+    /// and the dashboard profile context must never shrink the room catalog.
+    func groupsCapabilities() async throws -> GroupCapabilities {
+        let result = try await rpc("groups.capabilities", params: nil, scoped: false)
+        guard let capabilities = GroupCapabilitiesDecoder.decode(result) else {
+            throw HermesError.invalidResponse
+        }
+        return capabilities
+    }
+
+    /// Rooms hosted by the current gateway, most recently changed first.
+    func groupsList(
+        includeDisbanded: Bool = false,
+        limit: Int? = nil,
+        offset: Int? = nil
+    ) async throws -> (rooms: [GroupRoom], nextOffset: Int?) {
+        var params: [String: Any] = ["include_disbanded": includeDisbanded]
+        if let limit { params["limit"] = limit }
+        if let offset { params["offset"] = offset }
+        let result = try await rpc("groups.list", params: params, scoped: false)
+        guard let object = result.objectValue, let rows = object["rooms"]?.arrayValue else {
+            throw HermesError.invalidResponse
+        }
+        return (rows.compactMap { GroupDecoders.room($0) }, object["next_offset"]?.intValue)
+    }
+
+    /// Create a hosted room on the current gateway. `members` carries this
+    /// client's proposed roster rows (`member_id`/`profile`/`handle`/
+    /// `display_name` for local bots); the gateway re-validates the frozen
+    /// 2–6 roster and refuses ambiguous, duplicated, or reserved handles.
+    func groupsCreate(name: String, members: [[String: Any]]) async throws -> GroupRoom {
+        let result = try await rpc(
+            "groups.create",
+            params: ["name": name, "members": members],
+            scoped: false
+        )
+        guard let room = GroupDecoders.room(result.objectValue?["room"]) else {
+            throw HermesError.invalidResponse
+        }
+        return room
+    }
+
+    /// One room's replay cursor, authority state, and live driver status.
+    func groupsState(roomID: String, includeDisbanded: Bool = false)
+        async throws -> (room: GroupRoom, driverStatus: GroupDriverStatus?) {
+        let result = try await rpc(
+            "groups.state",
+            params: ["room_id": roomID, "include_disbanded": includeDisbanded],
+            scoped: false
+        )
+        guard let room = GroupDecoders.room(result.objectValue?["room"]) else {
+            throw HermesError.invalidResponse
+        }
+        return (room, GroupDecoders.driverStatus(result.objectValue?["driver_status"]))
+    }
+
+    /// Append one inert `message.user` event. IDEMPOTENT: `eventID` is the
+    /// client retry key — a retry after an ambiguous failure MUST reuse the
+    /// same id; the gateway maps it to the server-owned `user:<sha256>` id,
+    /// so the second send deduplicates instead of posting a twin. The actor
+    /// is server-owned; the payload is exactly `{text, thread_id}`.
+    func groupsSend(roomID: String, eventID: String, text: String, threadID: String)
+        async throws -> GroupSendResult {
+        let result = try await rpc(
+            "groups.send",
+            params: [
+                "room_id": roomID,
+                "event_id": eventID,
+                "payload": ["text": text, "thread_id": threadID],
+            ],
+            scoped: false
+        )
+        guard let object = result.objectValue,
+              let event = GroupDecoders.event(object["event"]) else {
+            throw HermesError.invalidResponse
+        }
+        return GroupSendResult(
+            event: event,
+            accepted: object["accepted"]?.boolValue ?? true,
+            driverStarted: object["driver_started"]?.boolValue ?? false
+        )
+    }
+
+    /// One monotonic room-log delta after `sinceSeq`, bounded by the page
+    /// limit (the gateway's own `max_log_limit` is the hard ceiling).
+    func groupsLog(
+        roomID: String,
+        sinceSeq: Int,
+        limit: Int? = nil,
+        includeDisbanded: Bool = false
+    ) async throws -> GroupLogPage {
+        var params: [String: Any] = [
+            "room_id": roomID,
+            "since_seq": sinceSeq,
+            "include_disbanded": includeDisbanded,
+        ]
+        if let limit { params["limit"] = limit }
+        let result = try await rpc("groups.log", params: params, scoped: false)
+        guard let page = GroupDecoders.logPage(result) else { throw HermesError.invalidResponse }
+        return page
+    }
+
+    /// Permanently tombstone a hosted room. The gateway stops the room's
+    /// work and revokes peer routes before writing the tombstone.
+    func groupsDisband(roomID: String) async throws {
+        _ = try await rpc("groups.disband", params: ["room_id": roomID], scoped: false)
+    }
+
+    /// Durably cancel queued or running work for one room. Only offered
+    /// when `groupsCapabilities` advertised the method.
+    func groupsStop(roomID: String) async throws -> Int {
+        let result = try await rpc("groups.stop", params: ["room_id": roomID], scoped: false)
+        return result.objectValue?["cancelled"]?.intValue ?? 0
+    }
+
     // delegateAgentActivity moved to StreamEventParser
 }
 

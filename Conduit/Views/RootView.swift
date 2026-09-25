@@ -195,12 +195,19 @@ struct MainView: View {
     /// The existing chat shell, shared by both sidebar layouts so the drawer
     /// and the persistent column render the identical conversation surface.
     /// Only the drawer affordances (hamburger and left-edge swipe) hide while
-    /// the persistent sidebar is visible.
+    /// the persistent sidebar is visible. An open Group Chat room replaces
+    /// the conversation surface wholesale: a room is NOT a session, so this
+    /// swap is the entire viewport integration — `ChatView`'s session state
+    /// (and the saved `SessionReference`) is untouched by room navigation.
     private var chatNavigationContent: some View {
         NavigationStack {
             ZStack {
                 ConduitBackdrop()
-                ChatView()
+                if appState.activeRoomSurface != nil {
+                    GroupChatView()
+                } else {
+                    ChatView()
+                }
             }
             .overlay(alignment: .leading) {
                 if !isPersistentSidebarActive {
