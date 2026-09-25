@@ -284,6 +284,21 @@ final class GroupChatModelsTests: XCTestCase {
         XCTAssertEqual(replay.cursor, 2)
     }
 
+    func testInitialTailAdoptionDoesNotFlagTheWindowTruncationAsAGap() {
+        // A room with 500 events opens on a bounded last-200 tail: events
+        // 301...500. The truncation is by design — never a gap.
+        var replay = GroupRoomReplay(roomID: "room-1")
+        let events = (301...500).map { seq in
+            eventJSON(seq: seq, kind: "message.user", payload: ["text": "m\(seq)", "thread_id": "main"])
+        }
+        replay.adoptInitialTail(page: logPage(events, latest: 500))
+        XCTAssertEqual(replay.hasGap, false)
+        XCTAssertEqual(replay.events.count, 200)
+        XCTAssertEqual(replay.events.first?.seq, 301)
+        XCTAssertEqual(replay.cursor, 500)
+        XCTAssertEqual(replay.sinceSeq, 500)
+    }
+
     func testSendResultAdoptionAdvancesCursorExactlyOnce() {
         // The accepted `groups.send` event rides the same engine: the poll
         // that later returns it must not duplicate it.

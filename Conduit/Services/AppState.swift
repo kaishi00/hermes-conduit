@@ -3053,7 +3053,7 @@ final class AppState: ObservableObject {
             )
             guard groupRoomEpoch == epoch else { return }
             var replay = GroupRoomReplay(roomID: room.roomID)
-            replay.adopt(page: page)
+            replay.adoptInitialTail(page: page)
             activeRoomReplay = replay
             startRoomPolling()
         } catch is CancellationError {
@@ -3113,7 +3113,7 @@ final class AppState: ObservableObject {
                     client, roomID: state.roomID, sinceSeq: start,
                     limit: min(200, groupCapabilities?.maxLogLimit ?? 500))
                 guard groupRoomEpoch == epoch else { return }
-                fresh.adopt(page: tail)
+                fresh.adoptInitialTail(page: tail)
                 activeRoomReplay = fresh
             } else if !page.events.isEmpty {
                 activeRoomReplay.adopt(page: page)

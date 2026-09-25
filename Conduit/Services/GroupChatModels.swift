@@ -332,7 +332,25 @@ struct GroupRoomReplay: Equatable {
         self.roomID = roomID
     }
 
-    /// Adopt one page. An empty page (fresh room, or nothing new) is a no-op.
+    /// Adopt the INITIAL bounded tail (the room open path). The window's
+    /// truncation point is by design, not a gap: the cursor jumps straight
+    /// to the page's last accepted event and `hasGap` stays false no matter
+    /// how much older history exists above the window.
+    mutating func adoptInitialTail(page: GroupLogPage) {
+        let incoming = page.events
+            .filter { $0.roomID == roomID }
+            .sorted { $0.seq < $1.seq }
+        events = incoming
+        cursor = incoming.last?.seq ?? 0
+        hasGap = false
+        if !page.authorityGatewayID.isEmpty {
+            authorityGatewayID = page.authorityGatewayID
+            authorityEpoch = page.authorityEpoch
+        }
+    }
+
+    /// Adopt one incremental page. An empty page (fresh room, or nothing
+    /// new) is a no-op.
     mutating func adopt(page: GroupLogPage) {
         let incoming = page.events
             .filter { $0.roomID == roomID && $0.seq > cursor }
