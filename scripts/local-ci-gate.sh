@@ -433,7 +433,10 @@ LOCK_DIR="$GATE_ROOT/gate.lock"
 # with their own budget, which is why the sweep does not need to chase them.
 # The path is escaped before pgrep, which matches it as an ERE: an unescaped
 # `+` (or any other metacharacter) in a custom --run-dir would silently degrade
-# this pass to pass 1 only.
+# this pass to pass 1 only. Matching is also UNANCHORED, so a hand-picked
+# --run-dir must not be a string prefix of another live run's directory - the
+# defaults (fixed-width <sha12>-<UTC stamp>) cannot be, and the gate lock
+# serializes runs that share a gate root.
 reap_run_chain() {
   if [ -z "${RUN_DIR:-}" ] || [ ! -d "$RUN_DIR" ]; then
     return 0
@@ -465,9 +468,24 @@ reap_run_chain() {
   # lock are released immediately after this, so nothing may be left to chance.
   # GATE_SLEEP_SCALE=0 in the stubbed integration suite keeps this instant.
   sleep $(( 2 * GATE_SLEEP_SCALE ))
+  local _mc_member
   for _mc_pid in $_mc_targets; do
-    kill -0 "$_mc_pid" 2>/dev/null || continue
-    kill -KILL -- "-$_mc_pid" 2>/dev/null || kill -KILL "$_mc_pid" 2>/dev/null || true
+    if kill -0 "$_mc_pid" 2>/dev/null; then
+      kill -KILL -- "-$_mc_pid" 2>/dev/null || kill -KILL "$_mc_pid" 2>/dev/null || true
+      continue
+    fi
+    # The leader is gone, but a process group outlives its leader: a member
+    # that ignored the TERM (a wedged simulator helper) keeps the device. The
+    # group is escalated only while a member still looks like THIS run's chain,
+    # so a pid that has since been reused cannot draw a signal.
+    for _mc_member in $(pgrep -g "$_mc_pid" 2>/dev/null || true); do
+      case "$(ps -o command= -p "$_mc_member" 2>/dev/null || true)" in
+        *xcodebuild*|*ci-test-lane.sh*|*xcrun*|*xcresulttool*)
+          kill -KILL -- "-$_mc_pid" 2>/dev/null || true
+          break
+          ;;
+      esac
+    done
   done
   return 0
 }
