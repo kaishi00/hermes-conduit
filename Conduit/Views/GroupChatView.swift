@@ -323,13 +323,16 @@ struct GroupChatBubble<Content: View>: View {
 
     static func timestampText(_ value: Double) -> String {
         let date = Date(timeIntervalSince1970: value)
-        // Cached: a fresh DateFormatter per bubble per render is brutally
-        // expensive across a 200-event LazyVStack; view code is MainActor,
-        // so a static formatter is safe.
-        formatter.string(from: date)
+        // Cached (non-generic enum: generic types cannot store static
+        // properties): a fresh DateFormatter per bubble per render is
+        // brutally expensive across a 200-event LazyVStack.
+        GroupBubbleTimeFormatter.shared.string(from: date)
     }
+}
 
-    private static let formatter: DateFormatter = {
+/// MainActor-confined view code, so the shared formatter is safe.
+private enum GroupBubbleTimeFormatter {
+    static let shared: DateFormatter = {
         let formatter = DateFormatter()
         formatter.timeStyle = .short
         return formatter
