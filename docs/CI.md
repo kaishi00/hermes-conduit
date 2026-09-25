@@ -88,9 +88,13 @@ while neither mode can be run twice on its own without `--allow-another-run`.
 | `ci-gate` | ubuntu | The single stable branch-protection verdict (`CI Gate`), aggregating the jobs above via `scripts/ci-gate.py`. |
 
 The self-test job's timeout hierarchy is load-bearing: each synthetic hang in
-the state-machine suite is watchdog-killed within a 1–6 s test budget < the
-suite's Python wrapper subprocess cap (480 s) < the job's own 12-minute ceiling
-— GitHub must never be the first layer to kill a regression suite.
+the state-machine suites is watchdog-killed within a 1–6 s test budget < the
+suite's Python wrapper subprocess cap (600 s for the gate integration suite,
+480 s for the lane-runner state machine) < the job's own 16-minute ceiling —
+GitHub must never be the first layer to kill a regression suite. (The gate
+suite grew to ~330 s on our Mac when the gate gained its two-worker,
+merge-mode and per-worker-evidence cases; the cap and the ceiling moved with
+it — the coverage is the point.)
 
 Both smoke jobs prepare the destination device the same way the build job and
 the lane runner do, through the shared `scripts/ci-lib.sh`: wait for

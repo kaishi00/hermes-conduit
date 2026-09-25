@@ -119,7 +119,12 @@ jobs:
     # selection, so they start immediately and run CONCURRENTLY with the macOS
     # build instead of serially delaying it.
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    # Raised from 12 to 16 minutes when the gate's two-worker, merge-mode and
+    # per-worker-evidence cases grew the gate integration suite (~330s on our
+    # Mac against ~200s before). Still strictly above every suite's own
+    # subprocess cap (600s for the gate suite, 480s for the lane runner), so a
+    # suite always reports its own failure before GitHub kills the job.
+    timeout-minutes: 16
     steps:
       - uses: actions/checkout@v7
 

@@ -884,6 +884,16 @@ write_meta() { # $1 = finished_at, $2 = wall_s
   # one-worker run that named a second device in its metadata would invite a
   # reader (or the summarizer) to look for evidence that was never meant to
   # exist.
+  #
+  # Those flags travel as an ARRAY, never as a command substitution: a device
+  # name contains spaces ("Conduit CI Gate 2"), and an unquoted substitution
+  # would split it into several arguments.
+  local -a second_device=()
+  if [ "$WORKERS" -eq 2 ]; then
+    second_device=(--simulator2 "$SIMULATOR_NAME2"
+                   --simulator2-runtime "${SIMULATOR2_RUNTIME:-}"
+                   --simulator2-udid "${SIMULATOR2_UDID:-}")
+  fi
   python3 "$HELPER" meta \
     --out "$RUN_DIR/meta.json" \
     --ref "$REF" --sha "$SHA" \
@@ -892,10 +902,7 @@ write_meta() { # $1 = finished_at, $2 = wall_s
     --simulator "$SIMULATOR_NAME" \
     --runtime "${SIMULATOR_RUNTIME:-}" \
     --simulator-udid "${SIMULATOR_UDID:-}" \
-    $([ "$WORKERS" -eq 2 ] && printf '%s %s %s %s %s %s' \
-        '--simulator2' "$SIMULATOR_NAME2" \
-        '--simulator2-runtime' "${SIMULATOR2_RUNTIME:-}" \
-        '--simulator2-udid' "${SIMULATOR2_UDID:-}") \
+    ${second_device[@]+"${second_device[@]}"} \
     --mode "$MODE" \
     --workers "$WORKERS" \
     --unit-batch-max-classes "$UNIT_BATCH_MAX_CLASSES" \
@@ -1126,10 +1133,17 @@ run_static_phase() {
   run_static_check localization-coverage python3 scripts/check-l10n-coverage.py --repo-root . &
   wait
   # plan-validate first, then the rest alphabetically: the document keeps the
-  # order an operator reads the checks in, not the glob's.
+  # order an operator reads the checks in, not the glob's. A check that wrote
+  # NO record (killed, crashed before its file landed) is a FAILURE, never a
+  # silent omission: a phase that quietly certified two of its three checks
+  # would be exactly the kind of gap this gate exists to refuse.
   for name in plan-validate ci-tooling-regression localization-coverage; do
     f="$RUN_DIR/static/$name.check"
-    [ -s "$f" ] || continue
+    if [ ! -s "$f" ]; then
+      checks+=(--check "$name:missing:0")
+      ok=0
+      continue
+    fi
     IFS=$'\t' read -r name status elapsed < "$f"
     checks+=(--check "$name:$status:$elapsed")
     [ "$status" = "pass" ] || ok=0
@@ -1429,6 +1443,12 @@ else
       # later signal can reach a reused pid).
       wait_for_workers() {
         local remaining="$WORKER_PIDS" alive pid name devname devudid wpid started wdir now
+        local last_heartbeat=0
+        # Liveness is polled every second but the HEARTBEAT prints every 15:
+        # the poll interval is the gate's own exit latency (a worker that
+        # finished must not cost the run the rest of a sleep), while the
+        # heartbeat only has to be frequent enough to show progress on an SSH
+        # session. `sleep 15` here would add up to 15s to EVERY run.
         while [ -n "$remaining" ]; do
           alive=""
           for pid in $remaining; do
@@ -1441,12 +1461,15 @@ else
           remaining="$alive"
           [ -z "$remaining" ] && break
           now=$(date +%s)
-          while IFS=$'\t' read -r name devname devudid wpid started wdir; do
-            [ -z "$name" ] && continue
-            kill -0 "$wpid" 2>/dev/null || continue
-            echo "... worker $name running ($(( now - started ))s, device '$devname')"
-          done < <(cat "$WORKERS_DIR"/*/meta.tsv 2>/dev/null)
-          sleep 15
+          if [ $(( now - last_heartbeat )) -ge 15 ]; then
+            last_heartbeat=$now
+            while IFS=$'\t' read -r name devname devudid wpid started wdir; do
+              [ -z "$name" ] && continue
+              kill -0 "$wpid" 2>/dev/null || continue
+              echo "... worker $name running ($(( now - started ))s, device '$devname')"
+            done < <(cat "$WORKERS_DIR"/*/meta.tsv 2>/dev/null)
+          fi
+          sleep 1
         done
         # Every worker is reaped here, so the pid list is cleared: a later
         # signal (the cleanup path) must never reach a pid that has since been

@@ -1860,6 +1860,19 @@ class SummarizeTests(unittest.TestCase):
         self.assertTrue(any("does not name the device it ran on" in p
                             for p in doc["problems"]), doc["problems"])
 
+    def test_a_run_that_never_reached_the_lanes_is_not_asked_for_workers(self):
+        """When the plan never got that far, the missing worker evidence is a
+        symptom, not the finding: the report must name the real problem."""
+        self._layout(workers=2, repeat_classes=(), unit_batches=2)
+        (self.run_dir / "workers.tsv").unlink()
+        shutil.rmtree(self.run_dir / "lanes")
+        code, doc, _ = self._summarize()
+        self.assertEqual(doc["verdict"], "FAIL")
+        self.assertTrue(any("unit lane results are missing" in p
+                            for p in doc["problems"]), doc["problems"])
+        self.assertFalse(any("worker evidence" in p for p in doc["problems"]),
+                         doc["problems"])
+
     def test_two_workers_may_not_share_one_device(self):
         self._layout(workers=2, unit_udid="SAME", ui_udid="SAME")
         code, doc, _ = self._summarize()
@@ -2587,6 +2600,12 @@ class ScriptContractTests(unittest.TestCase):
         """Automation never shuts down every device on the shared host."""
         self.assertNotIn("shutdown all", self.text)
         self.assertNotIn("erase all", self.text)
+
+    def test_a_static_check_that_wrote_no_record_fails_the_phase(self):
+        """A phase that quietly certified two of its three checks would be
+        exactly the gap this gate exists to refuse: a check killed before it
+        wrote its record must read as a failure, not as an omission."""
+        self.assertIn("$name:missing:0", self.text)
 
 
 class PythonCompatibilityTests(unittest.TestCase):

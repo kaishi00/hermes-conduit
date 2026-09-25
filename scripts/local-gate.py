@@ -1921,8 +1921,15 @@ def cmd_summarize(args) -> int:
     # Who ran what, on which device. A worker that did not complete, that is
     # missing from the record, or whose lanes name another device means the run
     # cannot certify its own coverage.
+    #
+    # The requirement is scoped to a run that REACHED the lanes: a run whose
+    # plan failed never started a worker, so demanding worker evidence there
+    # would misdescribe the failure (the plan is the problem) rather than add
+    # anything.
     build_passed = str(phases.get("build", {}).get("status")) == "pass"
-    worker_records, worker_problems = _read_workers(run_dir, meta, build_passed)
+    lanes_started = os.path.isdir(os.path.join(run_dir, "lanes"))
+    worker_records, worker_problems = _read_workers(
+        run_dir, meta, build_passed and lanes_started)
     gate_problems.extend(worker_problems)
     workers_declared = _int_or_zero(meta.get("workers")) or 1
     primary_udid = (meta.get("simulator") or {}).get("udid") or ""
