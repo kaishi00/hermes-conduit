@@ -53,7 +53,7 @@ extension VoiceAudioSessionCoordinatorTests {
             VoiceAudioEngineRecovery.tapFormat(nodeOutput: live, hardware: hardware),
             "a matching node keeps the unchanged nil-format tap"
         )
-        let unpopulated = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 0, channels: 1))
+        let unpopulated = AVAudioFormat()
         XCTAssertNil(
             VoiceAudioEngineRecovery.tapFormat(nodeOutput: unpopulated, hardware: hardware),
             "an unpopulated node output is not treated as a stale-rate mismatch"
