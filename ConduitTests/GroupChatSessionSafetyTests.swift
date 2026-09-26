@@ -1,3 +1,4 @@
+import CryptoKit
 import XCTest
 
 @testable import Conduit
@@ -105,7 +106,7 @@ final class GroupChatSessionSafetyTests: XCTestCase {
             capabilities: { _ in self.capabilities(supported: true) },
             list: { _ in ([room], nil) },
             state: { _, _ in (room, nil) },
-            log: { _, roomID, sinceSeq in
+            log: { _, roomID, sinceSeq, _ in
                 logBox.calls.append(sinceSeq)
                 return GroupLogPage(events: [], cursor: sinceSeq, latestSeq: 0, hasMore: false,
                                     authorityGatewayID: "gw-a", authorityEpoch: 1)
@@ -140,7 +141,7 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         let operations = GroupChatLifecycleOperations(
             capabilities: { _ in self.capabilities(supported: false) },
             state: { _, _ in (room, nil) },
-            log: { _, _, sinceSeq in
+            log: { _, _, sinceSeq, _ in
                 GroupLogPage(events: [], cursor: sinceSeq, latestSeq: 0, hasMore: false,
                              authorityGatewayID: "gw-a", authorityEpoch: 1)
             }
@@ -184,7 +185,7 @@ final class GroupChatSessionSafetyTests: XCTestCase {
             capabilities: { _ in self.capabilities(supported: true) },
             list: { _ in ([room], nil) },
             state: { _, roomID in (room, nil) },
-            log: { _, roomID, sinceSeq in
+            log: { _, roomID, sinceSeq, _ in
                 GroupLogPage(events: [], cursor: sinceSeq, latestSeq: 0, hasMore: false,
                              authorityGatewayID: "gw-a", authorityEpoch: 1)
             },
@@ -225,13 +226,298 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         appState.closeGroupRoom()
     }
 
+    /// An ambiguous send that DID land settles when the next poll brings its
+    /// server-side twin: no stale "Not delivered" row beside the real one.
+    func testAmbiguousSendThatLandedSettlesFromThePoll() async {
+        final class RoomBox {
+            var landed: GroupEvent?
+            var limits: [Int?] = []
+        }
+        let box = RoomBox()
+        let room = self.room()
+        let operations = GroupChatLifecycleOperations(
+            capabilities: { _ in self.capabilities(supported: true) },
+            list: { _ in ([room], nil) },
+            state: { _, _ in (self.roomWithLatest(box.landed == nil ? 0 : 1), nil) },
+            log: { _, _, sinceSeq, limit in
+                box.limits.append(limit)
+                let events = [box.landed].compactMap { $0 }.filter { $0.seq > sinceSeq }
+                return GroupLogPage(events: events, cursor: events.last?.seq ?? sinceSeq,
+                                    latestSeq: box.landed?.seq ?? 0, hasMore: false,
+                                    authorityGatewayID: "gw-a", authorityEpoch: 1)
+            },
+            send: { _, roomID, eventID, text, _ in
+                // The gateway stored it; only the response was lost.
+                box.landed = GroupEvent(
+                    roomID: roomID,
+                    seq: 1,
+                    // Computed here, not via the code under test: upstream
+                    // `user_event_id` is "user:" + sha256 hex of the id.
+                    eventID: "user:" + SHA256.hash(data: Data(eventID.utf8))
+                        .map { String(format: "%02x", $0) }.joined(),
+                    kind: "message.user",
+                    actor: GroupActor(kind: "user", id: "human", profile: nil,
+                                      displayName: nil, connectionID: nil),
+                    authorityEpoch: nil,
+                    payload: ["text": .string(text), "thread_id": .string("main")],
+                    createdAt: 0
+                )
+                throw TestError()
+            },
+            stop: { _, _ in 0 }
+        )
+        let appState = makeAppState(operations: operations)
+        connect(appState)
+        await appState.refreshGroupChatSupport()
+        await appState.openGroupRoom(room)
+        // The opening tail is bounded by the upstream 200-event window.
+        XCTAssertEqual(box.limits, [200])
+
+        await appState.sendGroupRoomMessage("hello room")
+        XCTAssertNotNil(appState.pendingRoomMessage)
+        XCTAssertNotNil(appState.errorMessage)
+
+        await appState.stopActiveRoomWork()  // runs one poll tick
+        XCTAssertNil(appState.pendingRoomMessage, "the polled twin settles the pending send")
+        XCTAssertNil(appState.errorMessage)
+        XCTAssertEqual(appState.activeRoomReplay.events.map(\.seq), [1])
+
+        appState.closeGroupRoom()
+    }
+
+    /// Leaving a room with an unsettled send parks its retry key; reopening
+    /// restores the SAME pending row, so the text survives and a retry still
+    /// deduplicates. The room's composer draft survives the same way.
+    func testLeavingParksThePendingSendAndDraftForTheReopen() async {
+        let room = self.room()
+        let operations = GroupChatLifecycleOperations(
+            capabilities: { _ in self.capabilities(supported: true) },
+            list: { _ in ([room], nil) },
+            state: { _, _ in (room, nil) },
+            log: { _, _, sinceSeq, _ in
+                GroupLogPage(events: [], cursor: sinceSeq, latestSeq: 0, hasMore: false,
+                             authorityGatewayID: "gw-a", authorityEpoch: 1)
+            },
+            send: { _, _, _, _, _ in throw TestError() }
+        )
+        let appState = makeAppState(operations: operations)
+        connect(appState)
+        await appState.refreshGroupChatSupport()
+        await appState.openGroupRoom(room)
+        await appState.sendGroupRoomMessage("still pending")
+        let pending = appState.pendingRoomMessage
+        XCTAssertNotNil(pending)
+        appState.saveActiveRoomDraft("half a thought")
+
+        appState.closeGroupRoom()
+        XCTAssertNil(appState.pendingRoomMessage)
+
+        await appState.openGroupRoom(room)
+        XCTAssertEqual(appState.pendingRoomMessage, pending)
+        XCTAssertEqual(appState.activeRoomDraft(), "half a thought")
+
+        appState.closeGroupRoom()
+    }
+
+    /// A send still in flight when the user leaves: the response settles the
+    /// retry key wherever it now lives — the reopened room's active outbox
+    /// (leave then reopen before the answer) or the parked copy.
+    func testSendAcceptedAfterLeavingSettlesTheReopenedAndTheParkedCopy() async {
+        final class SendGate: @unchecked Sendable {
+            var started = 0
+            var released = 0
+        }
+        let gate = SendGate()
+        let room = self.room()
+        let operations = GroupChatLifecycleOperations(
+            capabilities: { _ in self.capabilities(supported: true) },
+            list: { _ in ([room], nil) },
+            state: { _, _ in (room, nil) },
+            log: { _, _, sinceSeq, _ in
+                GroupLogPage(events: [], cursor: sinceSeq, latestSeq: 0, hasMore: false,
+                             authorityGatewayID: "gw-a", authorityEpoch: 1)
+            },
+            send: { _, roomID, _, _, _ in
+                gate.started += 1
+                let mine = gate.started
+                while gate.released < mine {
+                    try? await Task.sleep(nanoseconds: 10_000_000)
+                }
+                return self.sendResult(roomID: roomID, seq: 1)
+            }
+        )
+        let appState = makeAppState(operations: operations)
+        connect(appState)
+        await appState.refreshGroupChatSupport()
+        await appState.openGroupRoom(room)
+
+        func waitForSend(_ count: Int) async {
+            for _ in 0..<500 where gate.started < count {
+                try? await Task.sleep(nanoseconds: 10_000_000)
+            }
+            XCTAssertEqual(gate.started, count)
+        }
+
+        // Leave, reopen, THEN the response lands: the active copy settles.
+        let first = Task { @MainActor in await appState.sendGroupRoomMessage("hello room") }
+        await waitForSend(1)
+        appState.closeGroupRoom()
+        await appState.openGroupRoom(room)
+        XCTAssertNotNil(appState.pendingRoomMessage, "the parked send came back with the room")
+        XCTAssertTrue(appState.activeRoomSendInFlight, "still sending, so no retry is offered yet")
+        gate.released = 1
+        _ = await first.value
+        XCTAssertNil(appState.pendingRoomMessage, "the delivered send never offers a retry")
+        XCTAssertFalse(appState.activeRoomSendInFlight)
+
+        // Leave, the response lands, THEN reopen: the parked copy settled.
+        let second = Task { @MainActor in await appState.sendGroupRoomMessage("second note") }
+        await waitForSend(2)
+        appState.closeGroupRoom()
+        gate.released = 2
+        _ = await second.value
+        await appState.openGroupRoom(room)
+        XCTAssertNil(appState.pendingRoomMessage)
+        XCTAssertFalse(appState.activeRoomSendInFlight)
+
+        appState.closeGroupRoom()
+    }
+
+    /// A room that leaves the room list (disbanded elsewhere) drops its
+    /// parked send and draft.
+    func testRoomLeavingTheListDropsItsParkedSendAndDraft() async {
+        final class ListBox {
+            var rooms: [GroupRoom] = []
+        }
+        let box = ListBox()
+        let room = self.room()
+        box.rooms = [room]
+        let operations = GroupChatLifecycleOperations(
+            capabilities: { _ in self.capabilities(supported: true) },
+            list: { _ in (box.rooms, nil) },
+            state: { _, _ in (room, nil) },
+            log: { _, _, sinceSeq, _ in
+                GroupLogPage(events: [], cursor: sinceSeq, latestSeq: 0, hasMore: false,
+                             authorityGatewayID: "gw-a", authorityEpoch: 1)
+            },
+            send: { _, _, _, _, _ in throw TestError() }
+        )
+        let appState = makeAppState(operations: operations)
+        connect(appState)
+        await appState.refreshGroupChatSupport()
+        await appState.openGroupRoom(room)
+        await appState.sendGroupRoomMessage("still pending")
+        appState.saveActiveRoomDraft("half a thought")
+        appState.closeGroupRoom()
+
+        box.rooms = []
+        await appState.refreshGroupRooms()
+
+        await appState.openGroupRoom(room)
+        XCTAssertNil(appState.pendingRoomMessage)
+        XCTAssertEqual(appState.activeRoomDraft(), "")
+        appState.closeGroupRoom()
+    }
+
+    /// A partial room-list page (next_offset set) does not prove a room is
+    /// gone, so the room keeps its parked send.
+    func testPartialRoomListKeepsAMissingRoomsParkedSend() async {
+        final class ListBox {
+            var page: ([GroupRoom], Int?) = ([], nil)
+        }
+        let box = ListBox()
+        let room = self.room()
+        box.page = ([room], nil)
+        let operations = GroupChatLifecycleOperations(
+            capabilities: { _ in self.capabilities(supported: true) },
+            list: { _ in box.page },
+            state: { _, _ in (room, nil) },
+            log: { _, _, sinceSeq, _ in
+                GroupLogPage(events: [], cursor: sinceSeq, latestSeq: 0, hasMore: false,
+                             authorityGatewayID: "gw-a", authorityEpoch: 1)
+            },
+            send: { _, _, _, _, _ in throw TestError() }
+        )
+        let appState = makeAppState(operations: operations)
+        connect(appState)
+        await appState.refreshGroupChatSupport()
+        await appState.openGroupRoom(room)
+        await appState.sendGroupRoomMessage("still pending")
+        appState.closeGroupRoom()
+
+        box.page = ([], 50)
+        await appState.refreshGroupRooms()
+
+        await appState.openGroupRoom(room)
+        XCTAssertEqual(appState.pendingRoomMessage?.text, "still pending")
+        appState.closeGroupRoom()
+    }
+
+    /// A send that outlives an identity teardown must not unlock a newer
+    /// send to the same room when its answer finally lands.
+    func testLateSendAfterTeardownKeepsTheNewerSendInFlight() async {
+        final class SendGate: @unchecked Sendable {
+            var started = 0
+            var released = 0
+        }
+        let gate = SendGate()
+        let room = self.room()
+        let operations = GroupChatLifecycleOperations(
+            capabilities: { _ in self.capabilities(supported: true) },
+            list: { _ in ([room], nil) },
+            state: { _, _ in (room, nil) },
+            log: { _, _, sinceSeq, _ in
+                GroupLogPage(events: [], cursor: sinceSeq, latestSeq: 0, hasMore: false,
+                             authorityGatewayID: "gw-a", authorityEpoch: 1)
+            },
+            send: { _, roomID, _, _, _ in
+                gate.started += 1
+                let mine = gate.started
+                while gate.released < mine {
+                    try? await Task.sleep(nanoseconds: 10_000_000)
+                }
+                return self.sendResult(roomID: roomID, seq: 1)
+            }
+        )
+        let appState = makeAppState(operations: operations)
+        connect(appState)
+        await appState.refreshGroupChatSupport()
+        await appState.openGroupRoom(room)
+
+        func waitForSend(_ count: Int) async {
+            for _ in 0..<500 where gate.started < count {
+                try? await Task.sleep(nanoseconds: 10_000_000)
+            }
+            XCTAssertEqual(gate.started, count)
+        }
+
+        let old = Task { @MainActor in await appState.sendGroupRoomMessage("before sign-out") }
+        await waitForSend(1)
+        appState.disconnect()
+        connect(appState)
+        await appState.refreshGroupChatSupport()
+        await appState.openGroupRoom(room)
+        let newer = Task { @MainActor in await appState.sendGroupRoomMessage("after sign-in") }
+        await waitForSend(2)
+        XCTAssertTrue(appState.activeRoomSendInFlight)
+
+        gate.released = 1
+        _ = await old.value
+        XCTAssertTrue(appState.activeRoomSendInFlight, "the late answer must not unlock the newer send")
+
+        gate.released = 2
+        _ = await newer.value
+        XCTAssertFalse(appState.activeRoomSendInFlight)
+        appState.closeGroupRoom()
+    }
+
     func testSuccessfulSendClearsThePendingRow() async {
         let room = self.room()
         let operations = GroupChatLifecycleOperations(
             capabilities: { _ in self.capabilities(supported: true) },
             list: { _ in ([room], nil) },
             state: { _, roomID in (self.roomWithLatest(4), nil) },
-            log: { _, roomID, sinceSeq in
+            log: { _, roomID, sinceSeq, _ in
                 // The authoritative tail the resync reads after the send
                 // landed past unseen events (seq 4 > cursor 0 + 1).
                 let events = sinceSeq == 0 ? [self.memberEvent(roomID: roomID, seq: 4)] : []
@@ -269,7 +555,7 @@ final class GroupChatSessionSafetyTests: XCTestCase {
             capabilities: { _ in self.capabilities(supported: true) },
             list: { _ in ([room], nil) },
             state: { _, roomID in (room, nil) },
-            log: { _, roomID, sinceSeq in
+            log: { _, roomID, sinceSeq, _ in
                 GroupLogPage(events: [], cursor: sinceSeq, latestSeq: 0, hasMore: false,
                              authorityGatewayID: "gw-a", authorityEpoch: 1)
             },
@@ -325,7 +611,7 @@ final class GroupChatSessionSafetyTests: XCTestCase {
             state: { _, roomID in
                 (self.roomWithLatest(box.latestSeq), nil)
             },
-            log: { _, roomID, sinceSeq in
+            log: { _, roomID, sinceSeq, _ in
                 let first = max(1, sinceSeq)
                 let events: [GroupEvent] = box.latestSeq >= first
                     ? (first...box.latestSeq).map { self.memberEvent(roomID: roomID, seq: $0) }
@@ -368,7 +654,7 @@ final class GroupChatSessionSafetyTests: XCTestCase {
             capabilities: { _ in self.capabilities(supported: true) },
             list: { _ in ([room], nil) },
             state: { _, _ in (self.roomWithLatest(box.latestSeq), nil) },
-            log: { _, roomID, sinceSeq in
+            log: { _, roomID, sinceSeq, _ in
                 box.logCalls.append(sinceSeq)
                 let first = sinceSeq + 1
                 let events: [GroupEvent] = box.latestSeq >= first
@@ -413,7 +699,7 @@ final class GroupChatSessionSafetyTests: XCTestCase {
             capabilities: { _ in self.capabilities(supported: true) },
             list: { _ in ([room], nil) },
             state: { _, roomID in (self.roomWithLatest(0), nil) },
-            log: { _, roomID, sinceSeq in
+            log: { _, roomID, sinceSeq, _ in
                 GroupLogPage(events: [], cursor: sinceSeq, latestSeq: 0, hasMore: false,
                              authorityGatewayID: "gw-a", authorityEpoch: 1)
             },
@@ -501,7 +787,7 @@ final class GroupChatSessionSafetyTests: XCTestCase {
             capabilities: { _ in self.capabilities(supported: true) },
             list: { _ in ([self.room()], nil) },
             state: { _, roomID in (self.disbandedRoom(roomID: roomID), nil) },
-            log: { _, roomID, sinceSeq in
+            log: { _, roomID, sinceSeq, _ in
                 GroupLogPage(events: [], cursor: sinceSeq, latestSeq: 0, hasMore: false,
                              authorityGatewayID: "gw-a", authorityEpoch: 1)
             }
@@ -529,7 +815,7 @@ final class GroupChatSessionSafetyTests: XCTestCase {
             capabilities: { _ in self.capabilities(supported: true) },
             list: { _ in ([room], nil) },
             state: { _, _ in (room, nil) },
-            log: { _, _, sinceSeq in
+            log: { _, _, sinceSeq, _ in
                 GroupLogPage(events: [], cursor: sinceSeq, latestSeq: 0, hasMore: false,
                              authorityGatewayID: "gw-a", authorityEpoch: 1)
             },
@@ -568,7 +854,7 @@ final class GroupChatSessionSafetyTests: XCTestCase {
             capabilities: { _ in self.capabilities(supported: true) },
             list: { _ in ([room], nil) },
             state: { _, _ in (room, nil) },
-            log: { _, _, sinceSeq in
+            log: { _, _, sinceSeq, _ in
                 GroupLogPage(events: [], cursor: sinceSeq, latestSeq: 0, hasMore: false,
                              authorityGatewayID: "gw-a", authorityEpoch: 1)
             },

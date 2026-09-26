@@ -514,6 +514,26 @@ final class GroupChatModelsTests: XCTestCase {
         XCTAssertEqual(next.eventID, "conduit-def")
     }
 
+    func testOutboxSettlesFromTheGatewaysServerSideEventID() {
+        // Upstream `user_event_id`: "user:" + sha256 hex of the client id.
+        XCTAssertEqual(
+            GroupRoomOutbox.serverEventID(forClientEventID: "conduit-abc"),
+            "user:af2b48a15035625368f5e79d8610b31e83a85c6d853a55440f3b636d26698de6"
+        )
+        var outbox = GroupRoomOutbox()
+        _ = outbox.beginSend(text: "hello") { "conduit-abc" }
+        let other = logPage([eventJSON(seq: 1, kind: "message.user", payload: ["text": "hello"],
+                                       eventID: "user:someone-else")])
+        XCTAssertFalse(outbox.settle(from: other.events))
+        XCTAssertNotNil(outbox.pending)
+        let landed = logPage([eventJSON(
+            seq: 2, kind: "message.user", payload: ["text": "hello"],
+            eventID: GroupRoomOutbox.serverEventID(forClientEventID: "conduit-abc")
+        )])
+        XCTAssertTrue(outbox.settle(from: landed.events))
+        XCTAssertNil(outbox.pending)
+    }
+
     // MARK: - Room mention classification
 
     func testLeadingPunctuationTokensAreRejectedByTheMentionCharset() {
