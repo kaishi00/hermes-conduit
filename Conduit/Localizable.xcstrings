@@ -156,6 +156,127 @@
       }
     },
 
+    "Stop requested." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已请求停止。"
+          }
+        }
+      }
+    },
+
+    "The conversation reached its turn limit." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "对话已达到回合上限。"
+          }
+        }
+      }
+    },
+
+    "A member passed." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有成员选择不发言。"
+          }
+        }
+      }
+    },
+
+    "%@ passed." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 选择不发言。"
+          }
+        }
+      }
+    },
+
+    "%@'s turn failed." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 的回合失败了。"
+          }
+        }
+      }
+    },
+
+    "%@'s turn was stopped." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 的回合已停止。"
+          }
+        }
+      }
+    },
+
+    "%@ is unavailable." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 暂不可用。"
+          }
+        }
+      }
+    },
+
+    "%@ is responding…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 正在回复…"
+          }
+        }
+      }
+    },
+
+    "Everyone" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所有人"
+          }
+        }
+      }
+    },
+
+    "Inserts this mention." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "插入此提及。"
+          }
+        }
+      }
+    },
+
+    "A member" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "某成员"
+          }
+        }
+      }
+    },
+
     "The room settled." : {
       "localizations" : {
         "zh-Hans" : {

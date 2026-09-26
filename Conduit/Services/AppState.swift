@@ -2959,6 +2959,13 @@ final class AppState: ObservableObject {
         ) ?? text
     }
 
+    /// What the composer's @ picker offers: the Bot Mode roster minus the
+    /// bot this conversation already talks to, tagged exactly as the
+    /// middleware above resolves them. Empty without Bot Mode.
+    var composerMentionCandidates: [MentionAutocomplete.Candidate] {
+        MentionAutocomplete.botCandidates(botRoster, activeProfileName: activeConversationProfileScope)
+    }
+
     /// Presentation state for one open hosted room. A room is NOT a session:
     /// it never touches `activeSessionId`, the transcript cache, or the saved
     /// `SessionReference`, and it is deliberately NOT persisted — cold launch
@@ -2995,6 +3002,25 @@ final class AppState: ObservableObject {
     @Published private(set) var activeRoomSurface: GroupRoomSurface?
     @Published private(set) var activeRoomReplay = GroupRoomReplay(roomID: "")
     @Published private(set) var activeRoomDriverStatus: GroupDriverStatus?
+
+    /// The last `activeRoomResponder` answer, keyed on what it reads, so a
+    /// render that asks several times replays the log once.
+    private var roomResponderCache: (key: String, member: GroupMember?)?
+
+    /// The member whose turn the open room is running. A driver that reports
+    /// idle or blocked names nobody; with no driver status yet (first load,
+    /// or a gateway without one) the log alone decides.
+    var activeRoomResponder: GroupMember? {
+        if let driver = activeRoomDriverStatus, !driver.working || driver.blocked { return nil }
+        let room = activeRoomSurface?.room
+        let key = "\(activeRoomReplay.roomID)|\(activeRoomReplay.cursor)|\(room?.revision ?? -1)"
+        if let cached = roomResponderCache, cached.key == key { return cached.member }
+        let member = GroupRoomTurns.pendingResponder(
+            events: activeRoomReplay.events, members: room?.members ?? []
+        )
+        roomResponderCache = (key, member)
+        return member
+    }
     @Published private(set) var activeRoomSendInFlight = false
     /// A send whose outcome is unknown keeps its retry key (via the outbox):
     /// the retry reuses the SAME client event id, and the gateway's
@@ -3514,6 +3540,18 @@ final class AppState: ObservableObject {
             ))
             groupRoomOutbox.accept(eventID: logical.eventID)
             pendingRoomMessage = groupRoomOutbox.pending
+            if result.driverStarted {
+                // The driver took the message on: show it working now rather
+                // than waiting for the next poll's status, which corrects it.
+                let previous = activeRoomDriverStatus
+                activeRoomDriverStatus = GroupDriverStatus(
+                    running: true,
+                    working: true,
+                    blocked: previous?.blocked ?? false,
+                    counts: previous?.counts ?? [:],
+                    pendingActions: previous?.pendingActions ?? []
+                )
+            }
             // A delivered message retires the failure banner of its earlier
             // ambiguous attempt.
             clearRoomSendError()

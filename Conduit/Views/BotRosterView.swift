@@ -141,20 +141,51 @@ struct BotRosterView: View {
                         appState.errorMessage = nil
                         showingGroupCreateSheet = true
                     } label: {
-                        Label(
-                            AppLocalization.string("New Group Chat"),
-                            systemImage: "plus.circle.fill"
-                        )
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(.conduitAccent)
+                        newGroupCard
                     }
                     .buttonStyle(.plain)
+                    // Same row chrome as the room cards above: a plain List
+                    // otherwise paints its own opaque, sharp-edged slab.
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 3, leading: 0, bottom: 3, trailing: 0))
                     .accessibilityLabel(Text(AppLocalization.string("New Group Chat")))
                 }
             } header: {
                 Text(AppLocalization.string("Group Chats"))
             }
         }
+    }
+
+    /// The create action as a roster card: the room rows' glyph, padding,
+    /// fill and border, with the accent carrying the "new" affordance.
+    private var newGroupCard: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(Color.conduitAccent.opacity(0.16))
+                Image(systemName: "plus")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.conduitAccent)
+            }
+            .frame(width: 36, height: 36)
+            Text(AppLocalization.string("New Group Chat"))
+                .font(.body.weight(.semibold))
+                .foregroundStyle(.conduitAccent)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            Color.primary.opacity(0.045),
+            in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+        }
+        .contentShape(Rectangle())
     }
 
     @ViewBuilder

@@ -186,6 +186,12 @@ struct ComposerBar: View {
         }
     }
 
+    /// Roster bots matching a trailing `@query`, while the editor has focus.
+    private var mentionCandidates: [MentionAutocomplete.Candidate] {
+        guard isFocused, let query = MentionAutocomplete.activeQuery(in: text) else { return [] }
+        return MentionAutocomplete.filter(appState.composerMentionCandidates, query: query)
+    }
+
     private var action: ComposerAction {
         appState.composerAction(hasText: hasText, hasAttachments: !attachments.isEmpty)
     }
@@ -354,6 +360,15 @@ struct ComposerBar: View {
                         isShowingSlashSuggestions = false
                     }
                 )
+                .padding(.horizontal, 10)
+                .padding(.bottom, 4)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+
+            if !isShowingSlashSuggestions && !mentionCandidates.isEmpty {
+                MentionSuggestionList(candidates: mentionCandidates) { candidate in
+                    replaceComposerText(MentionAutocomplete.completing(text, with: candidate))
+                }
                 .padding(.horizontal, 10)
                 .padding(.bottom, 4)
                 .transition(.move(edge: .bottom).combined(with: .opacity))

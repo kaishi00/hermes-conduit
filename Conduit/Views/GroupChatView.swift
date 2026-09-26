@@ -9,6 +9,7 @@ struct GroupChatView: View {
     @ObservedObject private var appLanguage = AppLanguageStore.shared
     @State private var draft = ""
     @State private var showingDisbandConfirmation = false
+    @FocusState private var composerFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -38,14 +39,33 @@ struct GroupChatView: View {
 
     private var surface: AppState.GroupRoomSurface? { appState.activeRoomSurface }
 
+    private var members: [GroupMember] { surface?.room.members ?? [] }
+
+    /// Log events that earn a row: a member turn that posted settles
+    /// silently, since its bubble already says so.
+    private var visibleEvents: [GroupEvent] {
+        appState.activeRoomReplay.events.filter(GroupRoomTurns.isVisible)
+    }
+
+    /// The member whose turn is running (memoized by AppState).
+    private var respondingMember: GroupMember? { appState.activeRoomResponder }
+
+    private var mentionQuery: String? { MentionAutocomplete.activeQuery(in: draft) }
+
+    private var mentionCandidates: [MentionAutocomplete.Candidate] {
+        guard composerFocused, let query = mentionQuery else { return [] }
+        return MentionAutocomplete.filter(MentionAutocomplete.roomCandidates(members), query: query)
+    }
+
     // MARK: - Transcript
 
     private var transcript: some View {
         ScrollViewReader { proxy in
             ScrollView {
+                let rendered = self.visibleEvents
                 LazyVStack(spacing: 10) {
-                    ForEach(appState.activeRoomReplay.events) { event in
-                        GroupEventRow(event: event, members: surface?.room.members ?? [])
+                    ForEach(rendered) { event in
+                        GroupEventRow(event: event, members: members)
                     }
                     if let pending = appState.pendingRoomMessage {
                         GroupChatBubble(
@@ -81,7 +101,11 @@ struct GroupChatView: View {
                         }
                         .id("pending-row")
                     }
-                    if appState.activeRoomReplay.events.isEmpty && appState.pendingRoomMessage == nil {
+                    if let responder = respondingMember {
+                        GroupRespondingRow(name: GroupRoomTurns.displayName(of: responder))
+                            .id("responding-row")
+                    }
+                    if rendered.isEmpty && appState.pendingRoomMessage == nil && respondingMember == nil {
                         Text(AppLocalization.string("No messages yet. Say something to the room."))
                             .font(.footnote)
                             .foregroundStyle(.secondary)
@@ -92,19 +116,26 @@ struct GroupChatView: View {
                 .padding(.vertical, 12)
             }
             .onChange(of: appState.activeRoomReplay.cursor) { _, _ in
-                if let last = appState.activeRoomReplay.events.last {
-                    withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(last.id, anchor: .bottom) }
-                } else {
-                    proxy.scrollTo("pending-row", anchor: .bottom)
-                }
+                withAnimation(.easeOut(duration: 0.2)) { scrollToBottom(proxy) }
             }
-            .onAppear {
-                if let last = appState.activeRoomReplay.events.last {
-                    proxy.scrollTo(last.id, anchor: .bottom)
-                }
+            .onChange(of: respondingMember?.identityKey) { _, _ in
+                withAnimation(.easeOut(duration: 0.2)) { scrollToBottom(proxy) }
             }
+            .onAppear { scrollToBottom(proxy) }
         }
         .background(Color.clear)
+    }
+
+    /// The bottom-most row: the responding member, else the pending send,
+    /// else the last visible event.
+    private func scrollToBottom(_ proxy: ScrollViewProxy) {
+        if respondingMember != nil {
+            proxy.scrollTo("responding-row", anchor: .bottom)
+        } else if appState.pendingRoomMessage != nil {
+            proxy.scrollTo("pending-row", anchor: .bottom)
+        } else if let last = visibleEvents.last {
+            proxy.scrollTo(last.id, anchor: .bottom)
+        }
     }
 
     // MARK: - Composer
@@ -143,6 +174,13 @@ struct GroupChatView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 14)
             }
+            if !mentionCandidates.isEmpty {
+                MentionSuggestionList(candidates: mentionCandidates) { candidate in
+                    draft = MentionAutocomplete.completing(draft, with: candidate)
+                }
+                .padding(.horizontal, 12)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
             HStack(alignment: .bottom, spacing: 10) {
                 TextField(
                     AppLocalization.string("Message the room"),
@@ -150,6 +188,7 @@ struct GroupChatView: View {
                     axis: .vertical
                 )
                 .lineLimit(1...5)
+                .focused($composerFocused)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
                 .background(Color.primary.opacity(0.05),
@@ -249,6 +288,9 @@ struct GroupChatView: View {
 
     private var memberSummary: String {
         let count = surface?.room.members.count ?? 0
+        if let responder = respondingMember {
+            return AppLocalization.string("\(GroupRoomTurns.displayName(of: responder)) is responding…")
+        }
         if let driver = appState.activeRoomDriverStatus, driver.working {
             return AppLocalization.string("\(count) members · working…")
         }
@@ -285,7 +327,7 @@ struct GroupEventRow: View {
                 mentionText
             }
         } else {
-            GroupSystemEventCaption(event: event)
+            GroupSystemEventCaption(event: event, members: members)
         }
     }
 
@@ -305,6 +347,7 @@ struct GroupEventRow: View {
 /// Compact caption for gateway/system/unknown room events.
 struct GroupSystemEventCaption: View {
     let event: GroupEvent
+    let members: [GroupMember]
 
     var body: some View {
         Text(caption)
@@ -314,18 +357,119 @@ struct GroupSystemEventCaption: View {
             .padding(.vertical, 2)
     }
 
+    /// `turn.*` events are one member's turn, never the whole room: they
+    /// name the member. Only `room.activity` speaks for the room.
     private var caption: String {
+        let name = GroupRoomTurns.member(for: event, members: members).map { GroupRoomTurns.displayName(of: $0) } ?? ""
         switch event.kind {
         case "room.renamed": return AppLocalization.string("The room was renamed.")
         case "room.members_changed": return AppLocalization.string("The room's members changed.")
         case "room.disbanded": return AppLocalization.string("This room was disbanded.")
-        case "turn.started": return AppLocalization.string("A member started working…")
-        case "turn.settled": return AppLocalization.string("The room settled.")
-        case "turn.failed": return AppLocalization.string("A member's turn failed.")
-        case "turn.cancelled": return AppLocalization.string("Work was stopped.")
-        case "member.unavailable": return AppLocalization.string("A member is unavailable.")
+        case "room.stop_requested": return AppLocalization.string("Stop requested.")
+        case "room.activity":
+            switch GroupRoomTurns.roomActivityOutcome(event) {
+            case .settled: return AppLocalization.string("The room settled.")
+            case .bounded: return AppLocalization.string("The conversation reached its turn limit.")
+            case .other: return AppLocalization.string("Room updated.")
+            }
+        case "turn.settled":
+            return name.isEmpty
+                ? AppLocalization.string("A member passed.")
+                : AppLocalization.string("\(name) passed.")
+        case "turn.failed":
+            return name.isEmpty
+                ? AppLocalization.string("A member's turn failed.")
+                : AppLocalization.string("\(name)'s turn failed.")
+        case "turn.cancelled":
+            return name.isEmpty
+                ? AppLocalization.string("Work was stopped.")
+                : AppLocalization.string("\(name)'s turn was stopped.")
+        case "member.unavailable":
+            return name.isEmpty
+                ? AppLocalization.string("A member is unavailable.")
+                : AppLocalization.string("\(name) is unavailable.")
         default: return AppLocalization.string("Room updated.")
         }
+    }
+}
+
+/// The member whose turn is running, as a placeholder bubble where their
+/// reply will land.
+struct GroupRespondingRow: View {
+    let name: String
+
+    var body: some View {
+        GroupChatBubble(
+            alignment: .leading,
+            speaker: name,
+            timestamp: nil,
+            tint: Color.primary.opacity(0.05)
+        ) {
+            HStack(spacing: 6) {
+                ProgressView()
+                    .controlSize(.mini)
+                Text(AppLocalization.string("Responding…"))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(AppLocalization.string("\(name) is responding…")))
+        .accessibilityAddTraits(.updatesFrequently)
+    }
+}
+
+/// The @mention picker shown above a composer while a trailing `@query`
+/// is being typed. Tapping a row completes the tag.
+struct MentionSuggestionList: View {
+    let candidates: [MentionAutocomplete.Candidate]
+    let onSelected: (MentionAutocomplete.Candidate) -> Void
+    @ScaledMetric(relativeTo: .subheadline) private var rowHeight: CGFloat = 44
+
+    /// The hairlines between the visible rows (at most five).
+    private var dividerAllowance: CGFloat { CGFloat(max(0, min(candidates.count, 5) - 1)) }
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 0) {
+                ForEach(Array(candidates.enumerated()), id: \.element.id) { index, candidate in
+                    Button {
+                        Haptics.selection()
+                        onSelected(candidate)
+                    } label: {
+                        HStack(spacing: 10) {
+                            Text(candidate.title)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+                            Text(verbatim: "@\(candidate.tag)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint(Text(AppLocalization.string("Inserts this mention.")))
+                    if index < candidates.count - 1 {
+                        Divider().opacity(0.3)
+                    }
+                }
+            }
+        }
+        // Sized to its rows (a bare max height would stretch two rows to
+        // the cap), scrolling past five; the row height follows Dynamic Type.
+        .frame(height: min(rowHeight * 5, CGFloat(candidates.count) * rowHeight) + dividerAllowance)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 }
 
