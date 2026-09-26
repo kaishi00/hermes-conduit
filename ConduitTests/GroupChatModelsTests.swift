@@ -706,6 +706,9 @@ final class GroupChatModelsTests: XCTestCase {
         XCTAssertNil(MentionAutocomplete.activeQuery(in: "no tag"))
         XCTAssertNil(MentionAutocomplete.activeQuery(in: "hey @钟离"))
         XCTAssertNil(MentionAutocomplete.activeQuery(in: "hey @zé"))
+        XCTAssertNil(MentionAutocomplete.activeQuery(in: "hey @.foo"))
+        XCTAssertNil(MentionAutocomplete.activeQuery(in: "@-x"))
+        XCTAssertEqual(MentionAutocomplete.activeQuery(in: "@zhong.li"), "zhong.li")
     }
 
     func testMentionCompletionReplacesOnlyTheTrailingTag() {

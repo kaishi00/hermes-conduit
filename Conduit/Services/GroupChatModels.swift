@@ -794,6 +794,11 @@ enum MentionAutocomplete {
         var id: String { tag }
     }
 
+    private static let asciiAlphanumerics = CharacterSet(
+        charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    )
+    private static let asciiTagScalars = asciiAlphanumerics.union(CharacterSet(charactersIn: "._:-"))
+
     /// The partial tag after a trailing `@` that starts the draft or follows
     /// whitespace, lowercased; nil when the draft does not end in one. A bare
     /// `@` yields "".
@@ -804,9 +809,11 @@ enum MentionAutocomplete {
             guard before.isWhitespace else { return nil }
         }
         let query = text[text.index(after: at)...]
-        // ASCII only, matching the gateway's mention pattern.
-        let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._:-")
-        guard query.unicodeScalars.allSatisfy({ allowed.contains($0) }) else { return nil }
+        // Same shape as the gateway's mention pattern: ASCII, leading alphanumeric.
+        if let first = query.unicodeScalars.first {
+            guard asciiAlphanumerics.contains(first) else { return nil }
+        }
+        guard query.unicodeScalars.allSatisfy({ asciiTagScalars.contains($0) }) else { return nil }
         return query.lowercased()
     }
 
