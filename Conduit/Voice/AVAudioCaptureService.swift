@@ -21,7 +21,8 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
     /// Rebuilt at the start of every rendering lifetime (see
     /// `VoiceAudioEngineRecovery`): an engine kept across session
     /// reconfigurations starts against stale input formats (-10868).
-    private var engine = AVAudioEngine()
+    private var engine: VoiceCaptureEngine
+    private let makeEngine: () -> VoiceCaptureEngine
     private let session = AVAudioSession.sharedInstance()
     private let coordinator: VoiceAudioSessionCoordinator
     /// AVAudioEngine and AVAudioConverter use deinterleaved Float32 as their
@@ -76,8 +77,16 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
     /// Optional injection instead of a default `.shared` argument: default
     /// parameter values are evaluated in a nonisolated context, which cannot
     /// read the MainActor-isolated singleton.
-    init(coordinator: VoiceAudioSessionCoordinator? = nil) {
+    /// `makeEngine` is the test seam for the capture graph: production uses
+    /// a real `AVAudioEngine`; ConduitTests inject fakes to drive the
+    /// rebuild, tap-format, and retry paths without audio hardware.
+    init(
+        coordinator: VoiceAudioSessionCoordinator? = nil,
+        makeEngine: @escaping () -> VoiceCaptureEngine = { SystemVoiceCaptureEngine() }
+    ) {
         self.coordinator = coordinator ?? .shared
+        self.makeEngine = makeEngine
+        self.engine = makeEngine()
         var capturedContinuation: AsyncStream<VoiceCaptureEvent>.Continuation?
         events = AsyncStream { capturedContinuation = $0 }
         continuation = capturedContinuation
@@ -219,7 +228,7 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
 
     private func rebuildEngine() {
         teardownRendering()
-        engine = AVAudioEngine()
+        engine = makeEngine()
     }
 
     private func handleStartupFailure(_ error: Error, stage: String) {
@@ -229,7 +238,7 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
 
     private func logStartupFailure(_ error: Error, stage: String) {
         let nsError = error as NSError
-        let inputFormat = engine.inputNode.inputFormat(forBus: 0)
+        let inputFormat = engine.hardwareInputFormat
         let inputPorts = session.currentRoute.inputs
             .map { $0.portType.rawValue }
             .joined(separator: ",")
@@ -239,8 +248,7 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
     }
 
     private func startEngine() throws {
-        let input = engine.inputNode
-        let hardwareFormat = input.inputFormat(forBus: 0)
+        let hardwareFormat = engine.hardwareInputFormat
         guard hardwareFormat.sampleRate > 0, hardwareFormat.channelCount > 0 else {
             // Recoverable: a fresh input node can report an empty format
             // until the session settles after a route change.
@@ -251,7 +259,7 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
         // exception (an app crash), so tap at the validated hardware format
         // instead. The normal path keeps the nil-format tap unchanged.
         let tapFormat = VoiceAudioEngineRecovery.tapFormat(
-            nodeOutput: input.outputFormat(forBus: 0),
+            nodeOutput: engine.inputNodeOutputFormat,
             hardware: hardwareFormat
         )
         if tapFormat != nil {
@@ -265,7 +273,7 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
         // 0 even though the engine is not running. Removing first keeps the
         // reinstall from stacking a second tap; removeTap is a no-op when
         // none exists.
-        input.removeTap(onBus: 0)
+        engine.removeInputTap()
         // A freshly installed tap begins a new rendering generation: frames
         // it produces are stamped with this identity, and any teardown
         // invalidates it so queued frames from the old tap are recognized
@@ -273,7 +281,7 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
         captureGeneration &+= 1
         publishGenerationForInterruptionObservers()
         let frameGeneration = captureGeneration
-        input.installTap(onBus: 0, bufferSize: 1_024, format: tapFormat) { [weak self] buffer, _ in
+        engine.installInputTap(bufferSize: 1_024, format: tapFormat) { [weak self] buffer, _ in
             // AVAudioEngine owns and reuses tap buffers as soon as this block
             // returns. Copy the frame bytes before crossing onto MainActor so
             // conversion never reads a recycled hardware buffer.
@@ -309,8 +317,7 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
     }
 
     private func teardownRendering() {
-        let input = engine.inputNode
-        input.removeTap(onBus: 0)
+        engine.removeInputTap()
         engine.stop()
         converter = nil
     }
@@ -509,4 +516,38 @@ private extension FixedWidthInteger {
         var value = self.littleEndian
         return Data(bytes: &value, count: MemoryLayout<Self>.size)
     }
+}
+
+/// The slice of `AVAudioEngine` capture drives: the input node's formats and
+/// tap, plus the engine lifecycle. A seam so ConduitTests can exercise the
+/// rebuild/retry/tap-format paths without an `AVAudioInputNode`, which
+/// cannot be constructed or faked.
+protocol VoiceCaptureEngine: AnyObject {
+    var isRunning: Bool { get }
+    /// The live hardware input format (`inputNode.inputFormat(forBus: 0)`).
+    var hardwareInputFormat: AVAudioFormat { get }
+    /// What a nil-format tap would use (`inputNode.outputFormat(forBus: 0)`).
+    var inputNodeOutputFormat: AVAudioFormat { get }
+    func installInputTap(bufferSize: AVAudioFrameCount, format: AVAudioFormat?, block: @escaping AVAudioNodeTapBlock)
+    func removeInputTap()
+    func prepare()
+    func start() throws
+    func stop()
+}
+
+final class SystemVoiceCaptureEngine: VoiceCaptureEngine {
+    private let engine = AVAudioEngine()
+
+    var isRunning: Bool { engine.isRunning }
+    var hardwareInputFormat: AVAudioFormat { engine.inputNode.inputFormat(forBus: 0) }
+    var inputNodeOutputFormat: AVAudioFormat { engine.inputNode.outputFormat(forBus: 0) }
+
+    func installInputTap(bufferSize: AVAudioFrameCount, format: AVAudioFormat?, block: @escaping AVAudioNodeTapBlock) {
+        engine.inputNode.installTap(onBus: 0, bufferSize: bufferSize, format: format, block: block)
+    }
+
+    func removeInputTap() { engine.inputNode.removeTap(onBus: 0) }
+    func prepare() { engine.prepare() }
+    func start() throws { try engine.start() }
+    func stop() { engine.stop() }
 }

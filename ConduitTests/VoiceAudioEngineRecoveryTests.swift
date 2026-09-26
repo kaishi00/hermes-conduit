@@ -191,6 +191,106 @@ extension VoiceAudioSessionCoordinatorTests {
         XCTAssertEqual(factory.startAttempts, 4)
     }
 
+    // MARK: - Capture engine recovery (fake capture graph)
+
+    private func makeCaptureService(_ factory: FakeCaptureEngineFactory) -> AVAudioCaptureService {
+        AVAudioCaptureService(
+            coordinator: VoiceAudioSessionCoordinator(session: InertVoiceAudioSession()),
+            makeEngine: { factory.make() }
+        )
+    }
+
+    func testCaptureBuildsAFreshEngineForEveryStart() throws {
+        let factory = FakeCaptureEngineFactory()
+        let service = makeCaptureService(factory)
+        XCTAssertEqual(factory.engines.count, 1, "init builds the placeholder engine")
+
+        try service.startListening()
+        XCTAssertEqual(factory.engines.count, 2)
+        XCTAssertTrue(factory.engines[1].isRunning)
+
+        service.pause()
+        try service.resume()
+        XCTAssertEqual(factory.engines.count, 3, "resume starts a new rendering lifetime on a new engine")
+        XCTAssertFalse(factory.engines[1].isRunning, "the previous engine was stopped")
+        XCTAssertTrue(factory.engines[2].isRunning)
+        service.stop()
+    }
+
+    func testCaptureTapsAtTheHardwareFormatWhenTheNodeRateIsStale() throws {
+        let factory = FakeCaptureEngineFactory()
+        factory.hardware = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1))
+        factory.nodeOutput = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1))
+        let service = makeCaptureService(factory)
+
+        try service.startListening()
+
+        let engine = try XCTUnwrap(factory.engines.last)
+        XCTAssertEqual(engine.installedTapFormats.count, 1)
+        XCTAssertEqual(engine.installedTapFormats.first ?? nil, factory.hardware)
+        service.stop()
+    }
+
+    func testCaptureKeepsTheNilFormatTapWhenRatesMatch() throws {
+        let factory = FakeCaptureEngineFactory()
+        let service = makeCaptureService(factory)
+
+        try service.startListening()
+
+        let engine = try XCTUnwrap(factory.engines.last)
+        XCTAssertEqual(engine.installedTapFormats.count, 1)
+        XCTAssertNil(engine.installedTapFormats.first ?? nil)
+        service.stop()
+    }
+
+    func testCaptureRetriesAGraphFailureOnceOnAFreshEngine() throws {
+        let factory = FakeCaptureEngineFactory()
+        factory.startFailures = [formatNotSupported]
+        let service = makeCaptureService(factory)
+
+        try service.startListening()
+
+        XCTAssertEqual(factory.engines.count, 3, "init, the failed attempt, and the retry")
+        XCTAssertFalse(factory.engines[1].isRunning)
+        XCTAssertTrue(factory.engines[2].isRunning)
+        XCTAssertTrue(service.shouldKeepEngineRunning)
+        service.stop()
+    }
+
+    func testCaptureFailsCleanlyWhenTheRetryAlsoFails() {
+        let factory = FakeCaptureEngineFactory()
+        factory.startFailures = [formatNotSupported, formatNotSupported]
+        let service = makeCaptureService(factory)
+
+        XCTAssertThrowsError(try service.startListening()) { error in
+            XCTAssertEqual((error as NSError).code, VoiceAudioEngineRecovery.formatNotSupported)
+        }
+        XCTAssertEqual(factory.engines.count, 3, "exactly one retry")
+        XCTAssertFalse(service.shouldKeepEngineRunning)
+        XCTAssertTrue(factory.engines.allSatisfy { !$0.isRunning && !$0.hasTap })
+    }
+
+    func testCaptureRetriesAnEmptyHardwareFormatThenReportsUnavailable() {
+        let factory = FakeCaptureEngineFactory()
+        factory.hardware = AVAudioFormat()
+        let service = makeCaptureService(factory)
+
+        XCTAssertThrowsError(try service.startListening()) { error in
+            XCTAssertTrue(error is VoiceAudioInputFormatUnavailable)
+        }
+        XCTAssertEqual(factory.engines.count, 3, "an empty format gets one retry on a fresh engine")
+        XCTAssertTrue(factory.engines.allSatisfy { $0.installedTapFormats.isEmpty }, "no tap is installed without a hardware format")
+    }
+
+    func testCaptureDoesNotRetryANonGraphFailure() {
+        let factory = FakeCaptureEngineFactory()
+        factory.startFailures = [URLError(.unknown)]
+        let service = makeCaptureService(factory)
+
+        XCTAssertThrowsError(try service.startListening())
+        XCTAssertEqual(factory.engines.count, 2)
+    }
+
     // MARK: - Playback drain fence
 
     func testStaleBufferCompletionCannotDrainTheNextStream() {
@@ -248,4 +348,51 @@ private final class FormatRejectingEngine: AVAudioEngine {
             code: VoiceAudioEngineRecovery.formatNotSupported
         )
     }
+}
+
+/// Builds fake capture graphs that share one configuration, and records every
+/// engine it built so tests can inspect each rendering lifetime.
+private final class FakeCaptureEngineFactory {
+    var hardware = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1)!
+    var nodeOutput: AVAudioFormat?
+    /// Errors thrown by successive start() calls across all engines.
+    var startFailures: [Error] = []
+    private(set) var engines: [FakeCaptureEngine] = []
+
+    func make() -> VoiceCaptureEngine {
+        let engine = FakeCaptureEngine(factory: self)
+        engines.append(engine)
+        return engine
+    }
+
+    fileprivate func nextStartFailure() -> Error? {
+        startFailures.isEmpty ? nil : startFailures.removeFirst()
+    }
+}
+
+private final class FakeCaptureEngine: VoiceCaptureEngine {
+    private unowned let factory: FakeCaptureEngineFactory
+    private(set) var isRunning = false
+    private(set) var hasTap = false
+    private(set) var installedTapFormats: [AVAudioFormat?] = []
+
+    init(factory: FakeCaptureEngineFactory) { self.factory = factory }
+
+    var hardwareInputFormat: AVAudioFormat { factory.hardware }
+    var inputNodeOutputFormat: AVAudioFormat { factory.nodeOutput ?? factory.hardware }
+
+    func installInputTap(bufferSize: AVAudioFrameCount, format: AVAudioFormat?, block: @escaping AVAudioNodeTapBlock) {
+        installedTapFormats.append(format)
+        hasTap = true
+    }
+
+    func removeInputTap() { hasTap = false }
+    func prepare() {}
+
+    func start() throws {
+        if let failure = factory.nextStartFailure() { throw failure }
+        isRunning = true
+    }
+
+    func stop() { isRunning = false }
 }
