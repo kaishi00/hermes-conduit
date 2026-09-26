@@ -137,7 +137,7 @@ struct ChatResumeLifecycleOperations {
     /// `setSessionTitle` seam used by ordinary (dashboard-profile) renames.
     var titleBotChat: (@MainActor (HermesClient, String, String, String) async throws -> Void)?
     /// Test seam: the WebSocket transport for clients built by makeClient; nil = URLSession.
-    var makeTransport: (() -> any HermesWebSocketTransport)?
+    var makeTransport: (@MainActor () -> any HermesWebSocketTransport)?
 
     init(
         connectClient: (@MainActor (HermesClient) async throws -> Void)? = nil,
@@ -196,7 +196,7 @@ struct ChatResumeLifecycleOperations {
         findBotChat: (@MainActor (HermesClient, String) async throws -> [BotChatLookupRow])? = nil,
         createBotChat: (@MainActor (HermesClient, String) async throws -> (sessionId: String, storedSessionId: String?))? = nil,
         titleBotChat: (@MainActor (HermesClient, String, String, String) async throws -> Void)? = nil,
-        makeTransport: (() -> any HermesWebSocketTransport)? = nil
+        makeTransport: (@MainActor () -> any HermesWebSocketTransport)? = nil
     ) {
         self.connectClient = connectClient
         self.loadCatalog = loadCatalog
@@ -4017,7 +4017,7 @@ final class AppState: ObservableObject {
     }
 
     private func makeClient(connection: HermesConnection, profile: String) -> HermesClient {
-        let transportFactory: () -> any HermesWebSocketTransport = chatResumeLifecycleOperations.makeTransport ?? { URLSessionWebSocketTransport() }
+        let transportFactory: @MainActor () -> any HermesWebSocketTransport = chatResumeLifecycleOperations.makeTransport ?? { URLSessionWebSocketTransport() }
         let client = HermesClient(
             connection: connection,
             profile: profile,

@@ -591,7 +591,7 @@ final class HermesClient: ObservableObject {
     // Non-published internal state
     private var socket: (any HermesWebSocket)?
     private var transport: (any HermesWebSocketTransport)?
-    private let transportFactory: () -> any HermesWebSocketTransport
+    private let transportFactory: @MainActor () -> any HermesWebSocketTransport
     private var requestId = 0
     private var pending = [Int: PendingRequest]()
     private var closedIntentionally = false
@@ -660,7 +660,7 @@ final class HermesClient: ObservableObject {
         connection: HermesConnection,
         profile: String? = nil,
         cloudflareAccess: CloudflareAccessCredentials? = nil,
-        transportFactory: @escaping () -> any HermesWebSocketTransport = { URLSessionWebSocketTransport() }
+        transportFactory: @escaping @MainActor () -> any HermesWebSocketTransport = { URLSessionWebSocketTransport() }
     ) {
         self.connection = connection
         self.profile = profile
