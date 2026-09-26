@@ -5858,9 +5858,9 @@ final class AppStateChatResumeTests: XCTestCase {
                 },
                 loadCatalog: { _, _ in
                     counters.catalogLoads += 1
-                    if let onCatalogLoad = counters.onCatalogLoad {
-                        counters.onCatalogLoad = nil
-                        try onCatalogLoad()
+                    if !counters.catalogLoadHooks.isEmpty {
+                        let hook = counters.catalogLoadHooks.removeFirst()
+                        try hook()
                     }
                     return counters.leadingCatalogRows + [saved]
                 },
@@ -5901,11 +5901,13 @@ final class AppStateChatResumeTests: XCTestCase {
                 verifyTransportHealth: { _ in },
                 probeActiveSessions: { _ in
                     counters.probes += 1
-                    return [LiveSessionStatus(
-                        runtimeSessionId: saved.id,
-                        storedSessionId: saved.id,
-                        status: "idle"
-                    )]
+                    return (counters.leadingCatalogRows + [saved]).map {
+                        LiveSessionStatus(
+                            runtimeSessionId: $0.id,
+                            storedSessionId: $0.id,
+                            status: "idle"
+                        )
+                    }
                 },
                 loadProfiles: { counters.profileLoads += 1 },
                 loadBusyInputMode: { _ in },
@@ -6028,14 +6030,14 @@ final class AppStateChatResumeTests: XCTestCase {
         let counters = fixture.counters
         // The user starts typing while the owed catalog sync is in flight:
         // explicit ownership invalidates the automatic return mid-sync.
-        counters.onCatalogLoad = { [weak appState = harness.appState] in
+        counters.catalogLoadHooks = [{ [weak appState = harness.appState] in
             appState?.noteComposerUserEdit()
-        }
+        }]
 
         if let firstActivation = harness.appState.handleScenePhase(.active) {
             await firstActivation.value
         }
-        XCTAssertNil(counters.onCatalogLoad, "The owed sync must have loaded the catalog")
+        XCTAssertTrue(counters.catalogLoadHooks.isEmpty, "The owed sync must have loaded the catalog")
         XCTAssertGreaterThanOrEqual(
             counters.catalogLoads, 2,
             "An overridden automatic return falls back to a .preserveCurrent sync, like connect"
@@ -6066,7 +6068,7 @@ final class AppStateChatResumeTests: XCTestCase {
         let fixture = await startConnectInterruptedBySceneDeactivation()
         let harness = fixture.harness
         let counters = fixture.counters
-        counters.onCatalogLoad = { throw ControlledLifecycleError.failed }
+        counters.catalogLoadHooks = [{ throw ControlledLifecycleError.failed }]
 
         if let firstActivation = harness.appState.handleScenePhase(.active) {
             await firstActivation.value
@@ -6105,16 +6107,16 @@ final class AppStateChatResumeTests: XCTestCase {
             deactivatingBeforeHandshake: false
         ) { counters in
             counters.leadingCatalogRows = [newest]
-            counters.onCatalogLoad = {
+            counters.catalogLoadHooks = [{
                 appStateBox.value?.noteComposerUserEdit()
                 appStateBox.value?.handleScenePhase(.inactive)
-            }
+            }]
         } onHarness: { appState in
             appStateBox.value = appState
         }
         let harness = fixture.harness
         let counters = fixture.counters
-        XCTAssertNil(counters.onCatalogLoad, "The connect's own sync must have reached the catalog")
+        XCTAssertTrue(counters.catalogLoadHooks.isEmpty, "The connect's own sync must have reached the catalog")
         XCTAssertTrue(counters.openedSessionIDs.isEmpty)
 
         if let activation = harness.appState.handleScenePhase(.active) {
@@ -6129,6 +6131,76 @@ final class AppStateChatResumeTests: XCTestCase {
             "An owed bootstrap must not replay .automaticReturn after the user took ownership"
         )
         XCTAssertEqual(counters.openedSessionIDs, [newest.id])
+    }
+
+    func testConnectSyncThatPublishedTheCatalogIsNotReplayedAfterDeactivation() async {
+        let newest = session("newest-other")
+        let appStateBox = WeakAppStateReference()
+        // The user types during the connect's automatic sync, so connect
+        // falls back to a .preserveCurrent sync; the scene deactivates while
+        // that sync loads the catalog. The sync still completes (a
+        // .preserveCurrent sync owns no automatic operation to cancel), but
+        // the connect's post-sync checkpoint fails on the inactive scene.
+        let fixture = await startConnectInterruptedBySceneDeactivation(
+            deactivatingBeforeHandshake: false
+        ) { counters in
+            counters.leadingCatalogRows = [newest]
+            counters.catalogLoadHooks = [
+                { appStateBox.value?.noteComposerUserEdit() },
+                { appStateBox.value?.handleScenePhase(.inactive) }
+            ]
+        } onHarness: { appState in
+            appStateBox.value = appState
+        }
+        let harness = fixture.harness
+        let counters = fixture.counters
+        XCTAssertTrue(counters.catalogLoadHooks.isEmpty)
+        XCTAssertEqual(counters.catalogLoads, 2, "The automatic sync and its .preserveCurrent fallback")
+        let profileLoadsAfterConnect = counters.profileLoads
+        let openedAfterConnect = counters.openedSessionIDs
+
+        if let activation = harness.appState.handleScenePhase(.active) {
+            await activation.value
+        }
+
+        // The fallback published the catalog, so the bootstrap is done: the
+        // activation stays observational instead of repeating the catalog
+        // load and session.resume.
+        XCTAssertEqual(counters.catalogLoads, 2, "A sync that published the catalog must not be replayed")
+        XCTAssertEqual(counters.profileLoads, profileLoadsAfterConnect, "No owed bootstrap may run")
+        XCTAssertEqual(counters.openedSessionIDs, openedAfterConnect, "No second session.resume")
+    }
+
+    func testOwedPreserveCurrentFallbackRetriesAfterItsCatalogLoadFails() async {
+        let fixture = await startConnectInterruptedBySceneDeactivation()
+        let harness = fixture.harness
+        let counters = fixture.counters
+        // The owed automatic sync is overridden by a composer edit, and the
+        // .preserveCurrent fallback that follows cannot load the catalog.
+        counters.catalogLoadHooks = [
+            { [weak appState = harness.appState] in appState?.noteComposerUserEdit() },
+            { throw ControlledLifecycleError.failed }
+        ]
+
+        if let firstActivation = harness.appState.handleScenePhase(.active) {
+            await firstActivation.value
+        }
+        XCTAssertTrue(counters.catalogLoadHooks.isEmpty)
+        XCTAssertEqual(counters.catalogLoads, 2)
+        XCTAssertTrue(counters.openedSessionIDs.isEmpty)
+        let profileLoadsAfterFailedFallback = counters.profileLoads
+
+        // The catalog never loaded, so the bootstrap is still owed and the
+        // next healthy foreground retries it instead of only probing.
+        harness.appState.handleScenePhase(.inactive)
+        if let secondActivation = harness.appState.handleScenePhase(.active) {
+            await secondActivation.value
+        }
+
+        XCTAssertEqual(counters.probes, 0, "A still-owed bootstrap must not fall through to the observational probe")
+        XCTAssertGreaterThan(counters.profileLoads, profileLoadsAfterFailedFallback)
+        XCTAssertEqual(counters.catalogLoads, 3, "The retried owed sync must load the catalog again")
+        XCTAssertEqual(harness.appState.turnState, .idle)
     }
 
     private func makeHarness(
@@ -6295,8 +6367,8 @@ private final class OwedBootstrapCounters {
     var rosterLoads = 0
     var openedSessionIDs: [String] = []
     var probes = 0
-    /// Runs once, inside the next catalog load, then clears itself.
-    var onCatalogLoad: (@MainActor () throws -> Void)?
+    /// Run in order, one inside each catalog load, until exhausted.
+    var catalogLoadHooks: [@MainActor () throws -> Void] = []
     /// Catalog rows listed ahead of the saved session (the newest-first
     /// fallback a `.preserveCurrent` sync with no visible chat picks).
     var leadingCatalogRows: [SessionSummary] = []

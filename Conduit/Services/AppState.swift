@@ -2511,9 +2511,18 @@ final class AppState: ObservableObject {
               activeClient === client,
               activeProfile == profile else { return nil }
         let viewportTransitionGeneration = chatViewportTransitionGeneration
+        var publishedCatalog = false
         let outcome = await performSyncSession(
             purpose: purpose,
             using: nil,
+            automaticWorkToken: automaticWorkToken,
+            onCatalogPublished: { publishedCatalog = true }
+        )
+        // Before the checkpoint below: a sync that published the catalog has
+        // done the bootstrap's work even if the scene deactivates right after.
+        settleOwedPostConnectBootstrap(
+            for: client,
+            publishedCatalog: publishedCatalog,
             automaticWorkToken: automaticWorkToken
         )
         guard let continuation = transportContinuation(
@@ -2532,9 +2541,16 @@ final class AppState: ObservableObject {
             return continuation
         }
 
+        var preservedPublishedCatalog = false
         _ = await performSyncSession(
             purpose: .preserveCurrent,
             using: nil,
+            automaticWorkToken: nil,
+            onCatalogPublished: { preservedPublishedCatalog = true }
+        )
+        settleOwedPostConnectBootstrap(
+            for: client,
+            publishedCatalog: preservedPublishedCatalog,
             automaticWorkToken: nil
         )
         guard let preservedContinuation = transportContinuation(
@@ -2561,6 +2577,29 @@ final class AppState: ObservableObject {
         guard purpose == .preserveCurrent,
               owedPostConnectBootstrap?.client === client else { return }
         owedPostConnectBootstrap?.purpose = .preserveCurrent
+    }
+
+    /// Settles the owed bootstrap of `client` after a sync attempt made on
+    /// its behalf. The bootstrap is done once a sync has published the
+    /// catalog — whatever outcome it then reported, and even if a later
+    /// continuation checkpoint fails — so the next `.active` never repeats
+    /// the catalog load and `session.resume`. Until then it stays owed, but
+    /// once the automatic intent it carried is gone (the user took
+    /// ownership, a notification destination won) it is owed as
+    /// `.preserveCurrent`, never as a replayed `.automaticReturn`.
+    private func settleOwedPostConnectBootstrap(
+        for client: HermesClient,
+        publishedCatalog: Bool,
+        automaticWorkToken: ChatResumeAutomaticWorkToken?
+    ) {
+        guard owedPostConnectBootstrap?.client === client else { return }
+        if publishedCatalog {
+            owedPostConnectBootstrap = nil
+        } else if owedPostConnectBootstrap?.purpose == .automaticReturn,
+                  let automaticWorkToken,
+                  !chatResumeCoordinator.isCurrent(automaticWorkToken) {
+            owedPostConnectBootstrap?.purpose = .preserveCurrent
+        }
     }
 
     func cancelChatResumeRestoration() {
@@ -3419,9 +3458,6 @@ final class AppState: ObservableObject {
             continuationAutomaticWorkToken = continuation.automaticWorkToken
             handedOffAutomaticIntent = handedOffAutomaticIntent
                 || continuation.handedOffAutomaticIntent
-            if owedPostConnectBootstrap?.client === client {
-                owedPostConnectBootstrap = nil
-            }
             await loadChatResumeBusyInputMode(using: client)
             guard let continuation = transportContinuation(
                     purpose: continuationPurpose,
@@ -4231,6 +4267,7 @@ final class AppState: ObservableObject {
         cancelSecondaryProfileTitleRecovery()
         client?.disconnect()
         client = nil
+        owedPostConnectBootstrap = nil
         isConnected = false
         isConnecting = false
         connectedAt = nil
@@ -4299,7 +4336,8 @@ final class AppState: ObservableObject {
         using existingReconciliationToken: UUID?,
         automaticWorkToken existingAutomaticWorkToken: ChatResumeAutomaticWorkToken?,
         requiredViewportTransitionGeneration: UInt64? = nil,
-        historySourceUnavailable: Bool = false
+        historySourceUnavailable: Bool = false,
+        onCatalogPublished: () -> Void = {}
     ) async -> ChatResumeSyncExecutionOutcome {
         guard chatViewportTransitionIsCurrent(
             requiredViewportTransitionGeneration
@@ -4412,6 +4450,10 @@ final class AppState: ObservableObject {
             }
             sessions = allSessions.filter { $0.source != .cron }
             cronSessions = allSessions.filter { $0.source == .cron }
+            // Reported per call: whether THIS sync reached the catalog is
+            // independent of its outcome, which is also `.completed` for a
+            // failed catalog load and `.superseded` after a published one.
+            onCatalogPublished()
             // Labeled rows are positive identity evidence; commit them so
             // notification routing survives a later catalog omission.
             conversationIdentityIndex.recordCatalogIdentity(allSessions, profile: profile)
@@ -7060,9 +7102,6 @@ final class AppState: ObservableObject {
             continuationAutomaticWorkToken = continuation.automaticWorkToken
             handedOffAutomaticIntent = handedOffAutomaticIntent
                 || continuation.handedOffAutomaticIntent
-            if owedPostConnectBootstrap?.client === client {
-                owedPostConnectBootstrap = nil
-            }
             await loadChatResumeBusyInputMode(using: client)
             guard refreshTransportContinuation(),
                   let activeClient = self.client, activeClient === client else { return }
@@ -7613,22 +7652,23 @@ final class AppState: ObservableObject {
             return
         }
         let viewportTransitionGeneration = chatViewportTransitionGeneration
+        let ownedAutomaticWorkToken = owed.purpose == .automaticReturn ? automaticWorkToken : nil
+        var publishedCatalog = false
         let outcome = await performSyncSession(
             purpose: owed.purpose,
             using: token,
-            automaticWorkToken: owed.purpose == .automaticReturn ? automaticWorkToken : nil
+            automaticWorkToken: ownedAutomaticWorkToken,
+            onCatalogPublished: { publishedCatalog = true }
         )
-        // Retire the marker once the sync actually ran, exactly like the
-        // connect path — including when the user took ownership mid-sync
-        // (`.automaticIntentInvalidated`): a surviving marker would replay
-        // `.automaticReturn` on the next `.active` and override that choice.
-        // A failed catalog load (`.reconnecting`) keeps it, so the next
-        // healthy foreground retries the bootstrap instead of only probing.
-        let syncRan = (outcome == .completed && turnState != .reconnecting)
-            || outcome == .automaticIntentInvalidated
-        if syncRan, owedPostConnectBootstrap?.client === client {
-            owedPostConnectBootstrap = nil
-        }
+        // Same rule as the connect path: retired once the catalog was
+        // published; otherwise still owed (a failed catalog load retries on
+        // the next healthy foreground), as `.preserveCurrent` if the user
+        // took ownership mid-sync.
+        settleOwedPostConnectBootstrap(
+            for: client,
+            publishedCatalog: publishedCatalog,
+            automaticWorkToken: ownedAutomaticWorkToken
+        )
         guard stillOwns() else { return }
         // Mirror `synchronizeTransportContinuation`: an automatic return the
         // user overrode still repairs around the visible conversation.
@@ -7636,9 +7676,16 @@ final class AppState: ObservableObject {
            owed.purpose == .automaticReturn,
            chatViewportTransition == nil,
            chatViewportTransitionGeneration == viewportTransitionGeneration {
+            var preservedPublishedCatalog = false
             _ = await performSyncSession(
                 purpose: .preserveCurrent,
                 using: nil,
+                automaticWorkToken: nil,
+                onCatalogPublished: { preservedPublishedCatalog = true }
+            )
+            settleOwedPostConnectBootstrap(
+                for: client,
+                publishedCatalog: preservedPublishedCatalog,
                 automaticWorkToken: nil
             )
             guard stillOwns() else { return }
