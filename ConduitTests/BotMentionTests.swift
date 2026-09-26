@@ -132,6 +132,14 @@ final class BotMentionTests: XCTestCase {
         XCTAssertEqual(names("@alpha hello", roster: roster), ["alpha"])
     }
 
+    func testSharedPreviousNameResolvesForNeitherBot() {
+        let roster = [
+            bot("researcher", previousNames: ["scout"]),
+            bot("writer", previousNames: ["scout"]),
+        ]
+        XCTAssertEqual(names("@scout where were you", roster: roster), [])
+    }
+
     func testConnectionQualifiedTagStaysPlainInSingleGatewayRoster() {
         let roster = [bot("researcher")]
         XCTAssertEqual(names("@researcher@remote go", roster: roster), [])

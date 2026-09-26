@@ -16,6 +16,10 @@ struct GroupChatView: View {
             composer
         }
         .toolbar { toolbarContent }
+        // The view is keyed by room, so appear/change bracket exactly one
+        // room: the draft comes back on reopen and is kept as it changes.
+        .onAppear { draft = appState.activeRoomDraft() }
+        .onChange(of: draft) { _, text in appState.saveActiveRoomDraft(text) }
         .confirmationDialog(
             AppLocalization.string("Disband this group chat?"),
             isPresented: $showingDisbandConfirmation,
@@ -50,7 +54,9 @@ struct GroupChatView: View {
                             timestamp: nil,
                             tint: .conduitAccent.opacity(0.14)
                         ) {
-                            Text(pending.text)
+                            // Same renderer as a delivered event, so the
+                            // mentions do not restyle when it lands.
+                            GroupMentionTextRenderer.render(pending.text, members: surface?.room.members ?? [])
                                 .foregroundStyle(.primary)
                             if appState.activeRoomSendInFlight {
                                 Text(AppLocalization.string("Sending…"))

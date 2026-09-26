@@ -58,11 +58,13 @@ enum BotMentions {
 
         // Previous profile names fill gaps only: a bot renamed after the tag
         // was typed still resolves, but a live name outranks another bot's
-        // rename history (upstream `previous_names`).
+        // rename history (upstream `previous_names`). Two bots sharing a
+        // previous name resolve for neither: ambiguity fails closed here too.
+        let liveForms = Set(formOwners.keys)
         for bot in roster where !isActiveRosterBot(bot, activeProfileName: active) {
             for previous in bot.previousNames {
-                for form in mentionNameForms(previous) where formOwners[form] == nil {
-                    formOwners[form] = .bot(bot)
+                for form in mentionNameForms(previous) where !liveForms.contains(form) {
+                    claim(form: form, for: bot, into: &formOwners)
                 }
             }
         }

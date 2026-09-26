@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// Wire models for the hosted Group Chat JSON-RPC contract
@@ -439,6 +440,27 @@ struct GroupRoomOutbox: Equatable {
     /// The gateway accepted the event: the logical message is settled.
     mutating func accept(eventID: String) {
         if pending?.eventID == eventID { pending = nil }
+    }
+
+    /// The id the gateway files a user message under: `user:` plus the
+    /// SHA-256 hex of the (trimmed) client event id — upstream
+    /// `gateway.hosted_rooms.user_event_id`. It lets a polled or replayed
+    /// event settle a send whose own response never arrived.
+    static func serverEventID(forClientEventID clientEventID: String) -> String {
+        let trimmed = clientEventID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let digest = SHA256.hash(data: Data(trimmed.utf8))
+        return "user:" + digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Settle the pending send when `events` carry its server-side twin (an
+    /// ambiguous send that did land). Returns whether it settled.
+    @discardableResult
+    mutating func settle(from events: [GroupEvent]) -> Bool {
+        guard let pending else { return false }
+        let serverID = Self.serverEventID(forClientEventID: pending.eventID)
+        guard events.contains(where: { $0.eventID == serverID }) else { return false }
+        self.pending = nil
+        return true
     }
 
     mutating func discard() { pending = nil }
