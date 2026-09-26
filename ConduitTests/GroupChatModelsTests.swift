@@ -714,4 +714,46 @@ final class GroupChatModelsTests: XCTestCase {
         XCTAssertEqual(MentionAutocomplete.completing("@furina and @zh", with: matches[0]), "@furina and @zhongli ")
         XCTAssertEqual(MentionAutocomplete.filter(candidates, query: "").count, 3)
     }
+
+    func testRoomActivityOnlySettlesOnSettledStatus() {
+        func activity(_ status: String) -> GroupEvent {
+            turnEvent(eventJSON(seq: 9, kind: "room.activity", actor: ["kind": "gateway", "id": "gw-a"],
+                                payload: ["status": status]))
+        }
+        XCTAssertEqual(GroupRoomTurns.roomActivityOutcome(activity("settled")), .settled)
+        XCTAssertEqual(GroupRoomTurns.roomActivityOutcome(activity("bounded")), .bounded)
+        XCTAssertEqual(GroupRoomTurns.roomActivityOutcome(activity("resumed")), .other)
+    }
+
+    func testRoutingMentionsMatchTheGatewayWithoutABoundary() {
+        // The gateway's _MENTION_RE has no leading-boundary rule, so a@all
+        // still broadcasts there even though it renders as prose.
+        let members = roomMembers()
+        let routed = GroupRoomTurns.resolveMentions(in: ["a@zhongli"], members: members, defaultAll: false)
+        XCTAssertEqual(routed.map(\.memberID), ["zhongli"])
+    }
+
+    func testRoomCandidatesNeverDuplicateTheBroadcastTag() {
+        let shadow = GroupDecoders.member(any([
+            "member_id": "all", "profile": "all", "handle": "all", "display_name": "All",
+        ]))!
+        let tags = MentionAutocomplete.roomCandidates(roomMembers() + [shadow]).map(\.tag)
+        XCTAssertEqual(tags, ["furina", "zhongli", "all"])
+    }
+
+    func testBotCandidatesSkipTheListenerAndHiddenBots() {
+        func bot(_ name: String, title: String? = nil, hidden: Bool = false) -> BotProfile {
+            BotProfile(
+                name: name, botTitle: title, displayName: "", profileDescription: "",
+                model: nil, provider: nil, hasAvatar: false, isPinned: false,
+                isHiddenByMeta: hidden, appearanceColor: nil, canonicalSession: nil,
+                lastActive: nil, lastPreview: nil
+            )
+        }
+        let roster = [bot("furina", title: "Furina"), bot("zhongli", title: "Zhongli"), bot("ghost", hidden: true)]
+        let candidates = MentionAutocomplete.botCandidates(roster, activeProfileName: "Furina")
+        XCTAssertEqual(candidates.map(\.tag), ["zhongli"])
+        XCTAssertEqual(candidates.first?.title, "Zhongli")
+        XCTAssertEqual(MentionAutocomplete.botCandidates(roster, activeProfileName: nil).count, 2)
+    }
 }

@@ -586,6 +586,8 @@ enum GroupRoomTurns {
     static let terminalKinds: Set<String> = ["turn.settled", "turn.failed", "turn.cancelled", "turn.deferred"]
 
     /// The gateway's `_MENTION_RE`: no leading-whitespace rule, exact handle.
+    /// Deliberately looser than the styling regex: `a@all` routes as a
+    /// broadcast upstream even though it renders as prose.
     private static let routingMentionRegex = try? NSRegularExpression(
         pattern: "@([A-Za-z0-9][A-Za-z0-9._:-]*)",
         options: [.caseInsensitive]
@@ -602,6 +604,23 @@ enum GroupRoomTurns {
             return false
         default:
             return true
+        }
+    }
+
+    enum RoomActivityOutcome: Equatable {
+        case settled
+        case bounded
+        /// A status this client predates: neutral, never "settled".
+        case other
+    }
+
+    /// What a `room.activity` event says about the room. Only `settled` and
+    /// `bounded` end a Discussion upstream.
+    static func roomActivityOutcome(_ event: GroupEvent) -> RoomActivityOutcome {
+        switch event.payload["status"]?.stringValue {
+        case "settled": return .settled
+        case "bounded": return .bounded
+        default: return .other
         }
     }
 
@@ -800,7 +819,8 @@ enum MentionAutocomplete {
     /// Room members, then `@all`. Members without a handle cannot be routed
     /// and are left out.
     static func roomCandidates(_ members: [GroupMember]) -> [Candidate] {
-        var seen = Set<String>()
+        // A member handle can never shadow the broadcast tags.
+        var seen: Set<String> = ["all", "everyone"]
         var result: [Candidate] = []
         for member in members {
             guard let handle = member.handle?.trimmingCharacters(in: .whitespacesAndNewlines),

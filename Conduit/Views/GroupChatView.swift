@@ -46,12 +46,8 @@ struct GroupChatView: View {
         appState.activeRoomReplay.events.filter(GroupRoomTurns.isVisible)
     }
 
-    /// The member whose turn is running, while the driver reports work.
-    /// Nil when idle, blocked, or the log names no pending turn.
-    private var respondingMember: GroupMember? {
-        guard let driver = appState.activeRoomDriverStatus, driver.working, !driver.blocked else { return nil }
-        return GroupRoomTurns.pendingResponder(events: appState.activeRoomReplay.events, members: members)
-    }
+    /// The member whose turn is running (memoized by AppState).
+    private var respondingMember: GroupMember? { appState.activeRoomResponder }
 
     private var mentionQuery: String? { MentionAutocomplete.activeQuery(in: draft) }
 
@@ -65,8 +61,9 @@ struct GroupChatView: View {
     private var transcript: some View {
         ScrollViewReader { proxy in
             ScrollView {
+                let rendered = self.visibleEvents
                 LazyVStack(spacing: 10) {
-                    ForEach(visibleEvents) { event in
+                    ForEach(rendered) { event in
                         GroupEventRow(event: event, members: members)
                     }
                     if let pending = appState.pendingRoomMessage {
@@ -107,7 +104,7 @@ struct GroupChatView: View {
                         GroupRespondingRow(name: GroupRoomTurns.displayName(of: responder))
                             .id("responding-row")
                     }
-                    if appState.activeRoomReplay.events.isEmpty && appState.pendingRoomMessage == nil {
+                    if rendered.isEmpty && appState.pendingRoomMessage == nil && respondingMember == nil {
                         Text(AppLocalization.string("No messages yet. Say something to the room."))
                             .font(.footnote)
                             .foregroundStyle(.secondary)
@@ -368,10 +365,11 @@ struct GroupSystemEventCaption: View {
         case "room.disbanded": return AppLocalization.string("This room was disbanded.")
         case "room.stop_requested": return AppLocalization.string("Stop requested.")
         case "room.activity":
-            if event.payload["status"]?.stringValue == "bounded" {
-                return AppLocalization.string("The conversation reached its turn limit.")
+            switch GroupRoomTurns.roomActivityOutcome(event) {
+            case .settled: return AppLocalization.string("The room settled.")
+            case .bounded: return AppLocalization.string("The conversation reached its turn limit.")
+            case .other: return AppLocalization.string("Room updated.")
             }
-            return AppLocalization.string("The room settled.")
         case "turn.settled":
             return name.isEmpty
                 ? AppLocalization.string("A member passed.")
@@ -422,6 +420,7 @@ struct GroupRespondingRow: View {
 struct MentionSuggestionList: View {
     let candidates: [MentionAutocomplete.Candidate]
     let onSelected: (MentionAutocomplete.Candidate) -> Void
+    @ScaledMetric(relativeTo: .subheadline) private var rowHeight: CGFloat = 44
 
     var body: some View {
         ScrollView {
@@ -455,8 +454,8 @@ struct MentionSuggestionList: View {
             }
         }
         // Sized to its rows (a bare max height would stretch two rows to
-        // the cap), scrolling past five.
-        .frame(height: min(220, CGFloat(candidates.count) * 44))
+        // the cap), scrolling past five; the row height follows Dynamic Type.
+        .frame(height: min(rowHeight * 5, CGFloat(candidates.count) * rowHeight))
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
