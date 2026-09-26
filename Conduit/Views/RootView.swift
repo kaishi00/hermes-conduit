@@ -204,7 +204,9 @@ struct MainView: View {
             ZStack {
                 ConduitBackdrop()
                 if appState.activeRoomSurface != nil {
+                    // Keyed by room: another room starts with its own draft.
                     GroupChatView()
+                        .id(appState.activeRoomSurface?.room.roomID)
                 } else {
                     ChatView()
                 }

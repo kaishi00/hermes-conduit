@@ -400,6 +400,29 @@ final class GroupChatModelsTests: XCTestCase {
         XCTAssertEqual(replay.cursor, 5)
     }
 
+    func testContiguousMultiEventDeltaIsNotAGap() {
+        var replay = GroupRoomReplay(roomID: "room-1")
+        replay.adopt(page: logPage([eventJSON(seq: 1, kind: "message.user", payload: ["text": "a"])]))
+        let delta = logPage([
+            eventJSON(seq: 1, kind: "message.user", payload: ["text": "a"]),
+            eventJSON(seq: 3, kind: "message.user", payload: ["text": "c"]),
+            eventJSON(seq: 2, kind: "message.user", payload: ["text": "b"]),
+        ])
+        XCTAssertFalse(replay.pageSkipsAhead(delta))
+        XCTAssertFalse(replay.pageSkipsAhead(logPage([])))
+        XCTAssertTrue(replay.pageSkipsAhead(logPage([
+            eventJSON(seq: 3, kind: "message.user", payload: ["text": "c"]),
+        ])))
+        XCTAssertTrue(replay.pageSkipsAhead(logPage([
+            eventJSON(seq: 2, kind: "message.user", payload: ["text": "b"]),
+            eventJSON(seq: 4, kind: "message.user", payload: ["text": "d"]),
+        ])))
+        // Another room's events never count toward this room's sequence.
+        XCTAssertFalse(replay.pageSkipsAhead(logPage([
+            eventJSON(roomID: "room-2", seq: 9, kind: "message.user", payload: ["text": "x"]),
+        ])))
+    }
+
     func testReplayRefusesForeignRoomEvents() {
         var replay = GroupRoomReplay(roomID: "room-1")
         replay.adopt(page: logPage([

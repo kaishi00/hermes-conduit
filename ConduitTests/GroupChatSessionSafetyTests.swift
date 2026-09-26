@@ -355,6 +355,48 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         appState.closeGroupRoom()
     }
 
+    /// A poll that returns several new, contiguous events adopts them as a
+    /// delta: no `groups.state` + bounded-tail resync on a busy tick.
+    func testContiguousMultiEventPollAdoptsWithoutResync() async {
+        final class RoomBox {
+            var latestSeq = 1
+            var logCalls: [Int] = []
+        }
+        let box = RoomBox()
+        let room = self.room()
+        let operations = GroupChatLifecycleOperations(
+            capabilities: { _ in self.capabilities(supported: true) },
+            list: { _ in ([room], nil) },
+            state: { _, _ in (self.roomWithLatest(box.latestSeq), nil) },
+            log: { _, roomID, sinceSeq in
+                box.logCalls.append(sinceSeq)
+                let first = sinceSeq + 1
+                let events: [GroupEvent] = box.latestSeq >= first
+                    ? (first...box.latestSeq).map { self.memberEvent(roomID: roomID, seq: $0) }
+                    : []
+                return GroupLogPage(events: events, cursor: box.latestSeq,
+                                    latestSeq: box.latestSeq, hasMore: false,
+                                    authorityGatewayID: "gw-a", authorityEpoch: 1)
+            },
+            stop: { _, _ in 0 }
+        )
+        let appState = makeAppState(operations: operations)
+        connect(appState)
+        await appState.refreshGroupChatSupport()
+        await appState.openGroupRoom(room)
+        XCTAssertEqual(appState.activeRoomReplay.events.map(\.seq), [1])
+
+        // Three members answer between ticks; stop runs one poll tick.
+        box.latestSeq = 4
+        box.logCalls.removeAll()
+        await appState.stopActiveRoomWork()
+        XCTAssertEqual(box.logCalls, [1], "one incremental groups.log, no resync tail")
+        XCTAssertEqual(appState.activeRoomReplay.events.map(\.seq), [1, 2, 3, 4])
+        XCTAssertEqual(appState.activeRoomReplay.hasGap, false)
+
+        appState.closeGroupRoom()
+    }
+
     /// `groups.create` REQUIRES a client-minted `room_id` (it is the room's
     /// identity and its create idempotency key). Assert the outgoing params
     /// carry a non-empty, validator-legal one — the injected seam sees the

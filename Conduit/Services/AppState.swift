@@ -2953,14 +2953,22 @@ final class AppState: ObservableObject {
         groupCapabilities = nil
         groupRooms = []
         desktopGroupChats = []
-        closeRoomSurface()
+        // Identity/sign-out teardown: the caller owns `errorMessage` (it may
+        // have just set a connection error), so the room must not wipe it.
+        closeRoomSurface(clearingRoomError: false)
     }
 
     /// Drop the room surface AND stop its poller. The complete teardown —
     /// every path that closes a room (navigation, disband, poll-detected
     /// disband, server-identity invalidation) funnels here, so a closed room
     /// can never leave a polling task spinning behind it.
-    private func closeRoomSurface() {
+    ///
+    /// Clears `errorMessage` by default: a room's error must not outlive the
+    /// room and surface over the session composer.
+    private func closeRoomSurface(clearingRoomError: Bool = true) {
+        if clearingRoomError, activeRoomSurface != nil {
+            errorMessage = nil
+        }
         groupRoomEpoch &+= 1
         groupRoomPollTask?.cancel()
         groupRoomPollTask = nil
@@ -3130,11 +3138,11 @@ final class AppState: ObservableObject {
                 roomID: surface.room.roomID,
                 sinceSeq: activeRoomReplay.sinceSeq
             )
-            guard groupRoomEpoch == epoch, let surface = activeRoomSurface,
-                  surface.room.roomID == page.events.first?.roomID || page.events.isEmpty else { return }
+            guard groupRoomEpoch == epoch, let surface = activeRoomSurface else { return }
+            let pageIsThisRoom = page.events.first.map { $0.roomID == surface.room.roomID } ?? true
+            guard pageIsThisRoom else { return }
             let fresh = page.events.filter { $0.roomID == surface.room.roomID && $0.seq > activeRoomReplay.cursor }
-            if activeRoomReplay.hasGap
-                || fresh.contains(where: { $0.seq > activeRoomReplay.cursor + 1 }) {
+            if activeRoomReplay.hasGap || activeRoomReplay.pageSkipsAhead(page) {
                 // Gap detected (the replay's own flag, or a poll event that
                 // jumped past unseen events): resync from the room's
                 // authoritative cursor instead of rendering a hole. The
@@ -3326,8 +3334,6 @@ final class AppState: ObservableObject {
     /// Leave the room view WITHOUT touching session state — the next session
     /// open, or this call's inverse, owns the viewport transition.
     func closeGroupRoom() {
-        // A room's error must not outlive the room the user just left.
-        errorMessage = nil
         closeRoomSurface()
         Task { await self.refreshGroupRooms() }
     }
@@ -10841,6 +10847,14 @@ final class AppState: ObservableObject {
         if attachments.isEmpty && Self.parseSlashCommand(text) != nil {
             await executeSlashCommand(text, context: submissionContext)
             return true
+        }
+        // The canonical-chat `/new` reroute is a compaction, which carries no
+        // attachments; refuse rather than submit a literal `/compact` turn.
+        if !attachments.isEmpty, canonicalForeverChatRerouteText(for: text) != nil {
+            errorMessage = AppLocalization.string(
+                "This bot chat never resets. Remove the attachments to compact it instead."
+            )
+            return false
         }
 
         if isBusy {

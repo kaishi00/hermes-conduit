@@ -356,6 +356,19 @@ struct GroupRoomReplay: Equatable {
         }
     }
 
+    /// Whether adopting `page` would skip unseen events: this room's events
+    /// past the cursor must run contiguously from `cursor + 1`. A contiguous
+    /// multi-event delta is an ordinary poll, not a gap.
+    func pageSkipsAhead(_ page: GroupLogPage) -> Bool {
+        let seqs = Set(page.events.filter { $0.roomID == roomID && $0.seq > cursor }.map(\.seq))
+        var expected = cursor + 1
+        for seq in seqs.sorted() {
+            if seq != expected { return true }
+            expected += 1
+        }
+        return false
+    }
+
     /// Adopt one incremental page. An empty page (fresh room, or nothing
     /// new) is a no-op.
     mutating func adopt(page: GroupLogPage) {

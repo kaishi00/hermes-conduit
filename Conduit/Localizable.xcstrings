@@ -211,6 +211,17 @@
       }
     },
 
+    "This bot chat never resets. Remove the attachments to compact it instead." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 Bot 对话永不重置。请移除附件，改为压缩对话。"
+          }
+        }
+      }
+    },
+
     "Connect to Hermes to open group chats." : {
       "localizations" : {
         "zh-Hans" : {
