@@ -245,13 +245,16 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
             throw VoiceAudioError.unavailable(AppLocalization.string("The selected microphone is unavailable."))
         }
         // A nil-format tap uses the node's output format. If that disagrees
-        // with the live hardware, installTap raises an Objective-C exception
-        // (an app crash), so fail with a recoverable error instead.
-        let tapFormat = input.outputFormat(forBus: 0)
-        guard VoiceAudioEngineRecovery.tapFormat(tapFormat, matchesHardware: hardwareFormat) else {
-            throw VoiceAudioInputFormatMismatch(
-                hardwareSampleRate: hardwareFormat.sampleRate,
-                tapSampleRate: tapFormat.sampleRate
+        // with the live hardware rate, installTap raises an Objective-C
+        // exception (an app crash), so tap at the validated hardware format
+        // instead. The normal path keeps the nil-format tap unchanged.
+        let tapFormat = VoiceAudioEngineRecovery.tapFormat(
+            nodeOutput: input.outputFormat(forBus: 0),
+            hardware: hardwareFormat
+        )
+        if tapFormat != nil {
+            voiceAudioLogger.notice(
+                "Input node output format disagrees with hardware rate \(hardwareFormat.sampleRate, privacy: .public); tapping at the hardware format"
             )
         }
         converter = nil
@@ -268,7 +271,7 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
         captureGeneration &+= 1
         publishGenerationForInterruptionObservers()
         let frameGeneration = captureGeneration
-        input.installTap(onBus: 0, bufferSize: 1_024, format: nil) { [weak self] buffer, _ in
+        input.installTap(onBus: 0, bufferSize: 1_024, format: tapFormat) { [weak self] buffer, _ in
             // AVAudioEngine owns and reuses tap buffers as soon as this block
             // returns. Copy the frame bytes before crossing onto MainActor so
             // conversion never reads a recycled hardware buffer.

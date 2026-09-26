@@ -102,6 +102,10 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
     }
 
     func enqueuePCM16(_ data: Data, sampleRate: Double) throws -> Int {
+        // A configuration change stops the engine before its deferred
+        // settle runs; buffers scheduled onto a stopped player never
+        // complete. Treat that as a stream boundary and restart now.
+        if format != nil, !engine.isRunning { stop() }
         if format == nil { try start(sampleRate: sampleRate) }
         guard let format, abs(format.sampleRate - sampleRate) < 1 else {
             // A stream that changes sample rates can never render; settle

@@ -22,18 +22,6 @@ import OSLog
 
 private let engineRecoveryLogger = Logger(subsystem: "com.milim.relay", category: "VoiceAudio")
 
-/// The capture input node reported a tap (output) format that disagrees
-/// with the live hardware format. Installing a tap in that state raises an
-/// Objective-C exception, so it is surfaced as a recoverable error instead.
-struct VoiceAudioInputFormatMismatch: LocalizedError, Equatable {
-    let hardwareSampleRate: Double
-    let tapSampleRate: Double
-
-    var errorDescription: String? {
-        AppLocalization.string("The selected microphone is unavailable.")
-    }
-}
-
 enum VoiceAudioEngineRecovery {
     /// kAudioUnitErr_FormatNotSupported.
     static let formatNotSupported = -10868
@@ -59,8 +47,6 @@ enum VoiceAudioEngineRecovery {
     /// re-applied session can recover from. Permission, missing-microphone,
     /// and app-level errors are not retried.
     static func isRecoverable(_ error: Error) -> Bool {
-        if error is VoiceAudioInputFormatMismatch { return true }
-        if error is VoiceAudioError { return false }
         // A wrapping framework error may carry the Core Audio status as its
         // underlying error, so walk the chain (bounded against cycles).
         var current: NSError? = error as NSError
@@ -75,12 +61,14 @@ enum VoiceAudioEngineRecovery {
         return false
     }
 
-    /// Whether a tap installed with the node's own output format would match
-    /// the live hardware input. Sample rate is the condition AVAudioEngine
-    /// asserts on when installing an input tap; channel layout is left to the
-    /// converter. A zero-rate hardware format is not a match (no microphone).
-    static func tapFormat(_ tap: AVAudioFormat, matchesHardware hardware: AVAudioFormat) -> Bool {
-        hardware.sampleRate > 0 && abs(tap.sampleRate - hardware.sampleRate) < 0.5
+    /// The explicit format to install the capture tap with, or nil to keep
+    /// the node's own output format. Sample rate is the condition
+    /// AVAudioEngine asserts on when installing an input tap, so a node whose
+    /// output rate disagrees with the (already validated) hardware is tapped
+    /// at the hardware format instead of raising. Channel layout is left to
+    /// the converter.
+    static func tapFormat(nodeOutput: AVAudioFormat, hardware: AVAudioFormat) -> AVAudioFormat? {
+        abs(nodeOutput.sampleRate - hardware.sampleRate) < 0.5 ? nil : hardware
     }
 
     /// Starts one rendering lifetime on a freshly rebuilt engine. On a

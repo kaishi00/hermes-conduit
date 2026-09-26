@@ -24,11 +24,6 @@ final class VoiceAudioEngineRecoveryTests: XCTestCase {
         ))
     }
 
-    func testInputFormatMismatchIsRecoverable() {
-        let mismatch = VoiceAudioInputFormatMismatch(hardwareSampleRate: 16_000, tapSampleRate: 48_000)
-        XCTAssertTrue(VoiceAudioEngineRecovery.isRecoverable(mismatch))
-    }
-
     func testAppLevelAndUnrelatedErrorsAreNotRetried() {
         XCTAssertFalse(VoiceAudioEngineRecovery.isRecoverable(VoiceAudioError.microphonePermissionDenied))
         XCTAssertFalse(VoiceAudioEngineRecovery.isRecoverable(
@@ -39,16 +34,24 @@ final class VoiceAudioEngineRecoveryTests: XCTestCase {
 
     // MARK: - Tap format guard
 
-    func testTapFormatMustMatchHardwareSampleRate() throws {
+    func testStaleNodeOutputRateTapsAtTheHardwareFormat() throws {
         let hardware = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1))
         let stale = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1))
         let live = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1))
 
-        XCTAssertFalse(
-            VoiceAudioEngineRecovery.tapFormat(stale, matchesHardware: hardware),
-            "a tap format left over from a previous route must be rejected before installTap raises"
+        XCTAssertEqual(
+            VoiceAudioEngineRecovery.tapFormat(nodeOutput: stale, hardware: hardware),
+            hardware,
+            "a node output rate left over from a previous route must not reach installTap"
         )
-        XCTAssertTrue(VoiceAudioEngineRecovery.tapFormat(live, matchesHardware: hardware))
+        XCTAssertNil(
+            VoiceAudioEngineRecovery.tapFormat(nodeOutput: live, hardware: hardware),
+            "a matching node keeps the unchanged nil-format tap"
+        )
+    }
+
+    func testVoiceAudioErrorIsNotRetried() {
+        XCTAssertFalse(VoiceAudioEngineRecovery.isRecoverable(VoiceAudioError.noAudioCaptured))
     }
 
     // MARK: - Fresh-start sequencing
