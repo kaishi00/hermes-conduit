@@ -17439,7 +17439,7 @@ final class AppState: ObservableObject {
     /// re-arm capture. No-op while the phone scene is active.
     func handleCarPlayVoiceSurfaceActivated() {
         reassertVoiceSurfaceGate()
-        recoverTransportForCarPlayIfNeeded()
+        recoverTransportForCarPlayIfNeeded(immediately: true)
     }
 
     /// CarPlay can connect while the phone is locked with a transport that
@@ -17449,13 +17449,18 @@ final class AppState: ObservableObject {
     /// flight owns the flow and is left alone.
     /// While the phone scene is active its own foreground recovery owns the
     /// transport, so CarPlay never arms a competing cycle then.
-    func recoverTransportForCarPlayIfNeeded() {
+    ///
+    /// Only the CarPlay connect itself retries immediately. Every other
+    /// re-arm (scene dips, a deferred Voice prepare, a failed restore) goes
+    /// through the normal backoff, so a drive with frequent phone-scene
+    /// transitions cannot keep a dead gateway on a fixed 0.1s retry.
+    func recoverTransportForCarPlayIfNeeded(immediately: Bool = false) {
         guard isCarPlayVoiceSurfaceActive,
               !isSceneActive,
               connection != nil,
               !isConnected,
               !isConnecting else { return }
-        scheduleReconnect(immediately: true, purpose: chatResumePurposeForDisconnect())
+        scheduleReconnect(immediately: immediately, purpose: chatResumePurposeForDisconnect())
     }
 
     /// Called by the CarPlay coordinator when the CarPlay Voice surface goes
