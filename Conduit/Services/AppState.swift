@@ -3364,9 +3364,17 @@ final class AppState: ObservableObject {
     /// gateway deduplicates instead of forking a twin room.
     func createGroupRoom(name: String, bots: [BotProfile], roomID: String) async -> Bool {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Each refusal explains itself: the sheet's own gate cannot see a
+        // dropped connection or a roster that changed under the selection.
         guard let client, isConnected,
-              groupCapabilities?.foundationSupported == true else { return false }
-        guard bots.count >= 2, bots.count <= 6 else { return false }
+              groupCapabilities?.foundationSupported == true else {
+            errorMessage = AppLocalization.string("Connect to Hermes to create a group chat.")
+            return false
+        }
+        guard bots.count >= 2, bots.count <= 6 else {
+            errorMessage = AppLocalization.string("Pick 2 to 6 bots for a group chat.")
+            return false
+        }
         guard !trimmedName.isEmpty else { return false }
         // The create sheet renders the shared errorMessage: clear the last
         // attempt's (or an unrelated surface's) failure before this one.

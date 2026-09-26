@@ -222,6 +222,28 @@
       }
     },
 
+    "Connect to Hermes to create a group chat." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接到 Hermes 以创建群聊。"
+          }
+        }
+      }
+    },
+
+    "Pick 2 to 6 bots for a group chat." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请为群聊选择 2 到 6 个 Bot。"
+          }
+        }
+      }
+    },
+
     "Connect to Hermes to open group chats." : {
       "localizations" : {
         "zh-Hans" : {
