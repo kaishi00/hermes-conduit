@@ -136,6 +136,8 @@ struct ChatResumeLifecycleOperations {
     /// pin the addressing, and must never be forwarded to the 3-argument
     /// `setSessionTitle` seam used by ordinary (dashboard-profile) renames.
     var titleBotChat: (@MainActor (HermesClient, String, String, String) async throws -> Void)?
+    /// Test seam: the WebSocket transport for clients built by makeClient; nil = URLSession.
+    var makeTransport: (@MainActor () -> any HermesWebSocketTransport)?
 
     init(
         connectClient: (@MainActor (HermesClient) async throws -> Void)? = nil,
@@ -193,7 +195,8 @@ struct ChatResumeLifecycleOperations {
         botRoster: (@MainActor (HermesClient) async throws -> BotRosterSnapshot)? = nil,
         findBotChat: (@MainActor (HermesClient, String) async throws -> [BotChatLookupRow])? = nil,
         createBotChat: (@MainActor (HermesClient, String) async throws -> (sessionId: String, storedSessionId: String?))? = nil,
-        titleBotChat: (@MainActor (HermesClient, String, String, String) async throws -> Void)? = nil
+        titleBotChat: (@MainActor (HermesClient, String, String, String) async throws -> Void)? = nil,
+        makeTransport: (@MainActor () -> any HermesWebSocketTransport)? = nil
     ) {
         self.connectClient = connectClient
         self.loadCatalog = loadCatalog
@@ -228,6 +231,7 @@ struct ChatResumeLifecycleOperations {
         self.findBotChat = findBotChat
         self.createBotChat = createBotChat
         self.titleBotChat = titleBotChat
+        self.makeTransport = makeTransport
     }
 
     static let live = ChatResumeLifecycleOperations()
@@ -1515,6 +1519,24 @@ final class AppState: ObservableObject {
     /// immediately precedes backgrounding on home-press, and a socket that
     /// dies under a system overlay is recovered by the `.active` scene task.
     private var isSceneActive = true
+    /// A transport whose handshake completed but whose post-connect bootstrap
+    /// (profiles, Bot Mode roster, catalog sync + resume) was abandoned
+    /// because the scene went inactive mid-connect — e.g. the Face ID
+    /// success animation of a saved-credential restore outlives the
+    /// handshake. The next `.active` on the SAME healthy client owes that
+    /// bootstrap; the observational foreground probe alone never loads the
+    /// catalog.
+    ///
+    /// The purpose follows the interrupted connect's own continuation: once
+    /// the user takes ownership (the connect's automatic intent is cancelled
+    /// or handed off), the owed sync is `.preserveCurrent`, never a replayed
+    /// `.automaticReturn`.
+    private struct OwedPostConnectBootstrap {
+        let client: HermesClient
+        var purpose: ChatResumeSyncPurpose
+        let automaticWorkToken: ChatResumeAutomaticWorkToken?
+    }
+    private var owedPostConnectBootstrap: OwedPostConnectBootstrap?
     private var connectedAt: Date?
     private var sessionCatalogCache = SessionCatalogCache()
     private var projectsRequestGeneration = 0
@@ -2530,7 +2552,28 @@ final class AppState: ObservableObject {
         )
     }
 
+    /// Tracks a continuation handoff (`.automaticReturn` → `.preserveCurrent`)
+    /// on the owed bootstrap of the same client; never upgrades.
+    private func followOwedPostConnectBootstrapPurpose(
+        _ purpose: ChatResumeSyncPurpose,
+        for client: HermesClient
+    ) {
+        guard purpose == .preserveCurrent,
+              owedPostConnectBootstrap?.client === client else { return }
+        owedPostConnectBootstrap?.purpose = .preserveCurrent
+    }
+
     func cancelChatResumeRestoration() {
+        // Cancelling the automatic intent an interrupted connect was carrying
+        // is the same handoff that connect's own continuation would have
+        // observed: the owed bootstrap then preserves the visible
+        // conversation instead of replaying the automatic return.
+        if let owed = owedPostConnectBootstrap,
+           owed.purpose == .automaticReturn,
+           let token = owed.automaticWorkToken,
+           chatResumeCoordinator.isCurrent(token) {
+            owedPostConnectBootstrap?.purpose = .preserveCurrent
+        }
         chatResumeCoordinator.cancelViewportRestoration(
             keepViewportFrozen: chatViewportTransition != nil
         )
@@ -2718,6 +2761,7 @@ final class AppState: ObservableObject {
         guard let previousIdentity, previousIdentity != identity else { return false }
 
         retireSpeechOperationsForServerReplacement(previousIdentity: previousIdentity, identity: identity)
+        owedPostConnectBootstrap = nil
         chatResumeCoordinator.clearResumeState()
         cancelOwnedAutomaticOperations()
         activeAutomaticChatResumeWork = nil
@@ -3318,6 +3362,13 @@ final class AppState: ObservableObject {
 
         do {
             try await connectChatResumeClient(client)
+            if self.client === client {
+                owedPostConnectBootstrap = OwedPostConnectBootstrap(
+                    client: client,
+                    purpose: syncPurpose,
+                    automaticWorkToken: automaticWorkToken
+                )
+            }
             guard let continuation = transportContinuation(
                     purpose: syncPurpose,
                     automaticWorkToken: automaticWorkToken,
@@ -3327,6 +3378,7 @@ final class AppState: ObservableObject {
             var continuationPurpose = continuation.purpose
             var continuationAutomaticWorkToken = continuation.automaticWorkToken
             handedOffAutomaticIntent = continuation.handedOffAutomaticIntent
+            followOwedPostConnectBootstrapPurpose(continuationPurpose, for: client)
             isConnected = true
             isConnecting = false
             // A fresh healthy session never inherits an older banner error.
@@ -3355,6 +3407,7 @@ final class AppState: ObservableObject {
             continuationAutomaticWorkToken = continuation.automaticWorkToken
             handedOffAutomaticIntent = handedOffAutomaticIntent
                 || continuation.handedOffAutomaticIntent
+            followOwedPostConnectBootstrapPurpose(continuationPurpose, for: client)
             guard let continuation = await synchronizeTransportContinuation(
                 purpose: continuationPurpose,
                 automaticWorkToken: continuationAutomaticWorkToken,
@@ -3366,6 +3419,9 @@ final class AppState: ObservableObject {
             continuationAutomaticWorkToken = continuation.automaticWorkToken
             handedOffAutomaticIntent = handedOffAutomaticIntent
                 || continuation.handedOffAutomaticIntent
+            if owedPostConnectBootstrap?.client === client {
+                owedPostConnectBootstrap = nil
+            }
             await loadChatResumeBusyInputMode(using: client)
             guard let continuation = transportContinuation(
                     purpose: continuationPurpose,
@@ -3675,6 +3731,7 @@ final class AppState: ObservableObject {
         invalidateReconciliation()
         invalidateServerCompactionState()
         cancelScenePhaseAttempt()
+        owedPostConnectBootstrap = nil
         lastConnectionFailure = nil
         client?.disconnect()
         isConnected = false
@@ -3902,6 +3959,7 @@ final class AppState: ObservableObject {
         cancelChatResumeTransportRecovery()
         cancelScenePhaseAttempt()
         cancelScheduledReconnect()
+        owedPostConnectBootstrap = nil
         lastConnectionFailure = nil
         pendingLoginFailure = nil
         errorMessage = nil
@@ -3992,7 +4050,13 @@ final class AppState: ObservableObject {
     }
 
     private func makeClient(connection: HermesConnection, profile: String) -> HermesClient {
-        let client = HermesClient(connection: connection, profile: profile, cloudflareAccess: dashboardScopedCloudflareAccess(for: connection.baseUrl))
+        let transportFactory: @MainActor () -> any HermesWebSocketTransport = chatResumeLifecycleOperations.makeTransport ?? { URLSessionWebSocketTransport() }
+        let client = HermesClient(
+            connection: connection,
+            profile: profile,
+            cloudflareAccess: dashboardScopedCloudflareAccess(for: connection.baseUrl),
+            transportFactory: transportFactory
+        )
         let epoch = UUID()
         activeClientEpoch = epoch
         client.onEvent = { [weak self] event in
@@ -6835,6 +6899,9 @@ final class AppState: ObservableObject {
             continuationAutomaticWorkToken = continuation.automaticWorkToken
             handedOffAutomaticIntent = handedOffAutomaticIntent
                 || continuation.handedOffAutomaticIntent
+            if let client = self.client {
+                followOwedPostConnectBootstrapPurpose(continuationPurpose, for: client)
+            }
             return true
         }
         defer {
@@ -6955,6 +7022,13 @@ final class AppState: ObservableObject {
 
         do {
             try await connectChatResumeClient(client)
+            if self.client === client {
+                owedPostConnectBootstrap = OwedPostConnectBootstrap(
+                    client: client,
+                    purpose: continuationPurpose,
+                    automaticWorkToken: continuationAutomaticWorkToken
+                )
+            }
             guard refreshTransportContinuation(),
                   let activeClient = self.client, activeClient === client else { return }
             isConnected = true
@@ -6986,6 +7060,9 @@ final class AppState: ObservableObject {
             continuationAutomaticWorkToken = continuation.automaticWorkToken
             handedOffAutomaticIntent = handedOffAutomaticIntent
                 || continuation.handedOffAutomaticIntent
+            if owedPostConnectBootstrap?.client === client {
+                owedPostConnectBootstrap = nil
+            }
             await loadChatResumeBusyInputMode(using: client)
             guard refreshTransportContinuation(),
                   let activeClient = self.client, activeClient === client else { return }
@@ -7167,12 +7244,24 @@ final class AppState: ObservableObject {
                             self.settleReconciliation(token)
                             return
                         }
-                        await self.refreshForegroundOnHealthyTransport(
-                            using: client,
-                            freshnessCheckArmed: freshnessCheckArmed,
-                            reconciliationToken: token,
-                            automaticWorkToken: automaticWorkToken
-                        )
+                        if let owed = self.owedPostConnectBootstrap, owed.client === client {
+                            lifecycleLog.notice(
+                                "Foreground refresh: post-connect bootstrap owed (connect interrupted by scene deactivation) → full sync"
+                            )
+                            await self.runOwedPostConnectBootstrap(
+                                owed,
+                                reconciliationToken: token,
+                                automaticWorkToken: automaticWorkToken,
+                                isCurrent: { self.scenePhaseAttemptIsCurrent(sceneAttemptID) }
+                            )
+                        } else {
+                            await self.refreshForegroundOnHealthyTransport(
+                                using: client,
+                                freshnessCheckArmed: freshnessCheckArmed,
+                                reconciliationToken: token,
+                                automaticWorkToken: automaticWorkToken
+                            )
+                        }
                     } catch {
                         guard self.scenePhaseAttemptIsCurrent(sceneAttemptID) else {
                             self.settleReconciliation(token)
@@ -7498,6 +7587,67 @@ final class AppState: ObservableObject {
             return .automaticReturn
         }
         return .preserveCurrent
+    }
+
+    /// Completes the bootstrap an interrupted connect abandoned (see
+    /// `owedPostConnectBootstrap`), on the retained healthy client: the same
+    /// profiles + roster evidence, then the connect's own catalog sync and
+    /// resume decision, then the ancillary loads.
+    private func runOwedPostConnectBootstrap(
+        _ owed: OwedPostConnectBootstrap,
+        reconciliationToken token: UUID,
+        automaticWorkToken: ChatResumeAutomaticWorkToken?,
+        isCurrent: @MainActor () -> Bool
+    ) async {
+        let client = owed.client
+        let profile = activeProfile
+        func stillOwns() -> Bool {
+            isCurrent() && self.client === client && activeProfile == profile
+        }
+        botRosterVerifiedForCurrentConnection = false
+        async let profilesLoad: Void = loadChatResumeProfiles()
+        async let rosterLoad: Void = loadChatResumeBotRoster()
+        _ = await (profilesLoad, rosterLoad)
+        guard stillOwns() else {
+            settleReconciliation(token)
+            return
+        }
+        let viewportTransitionGeneration = chatViewportTransitionGeneration
+        let outcome = await performSyncSession(
+            purpose: owed.purpose,
+            using: token,
+            automaticWorkToken: owed.purpose == .automaticReturn ? automaticWorkToken : nil
+        )
+        // Retire the marker once the sync actually ran, exactly like the
+        // connect path — including when the user took ownership mid-sync
+        // (`.automaticIntentInvalidated`): a surviving marker would replay
+        // `.automaticReturn` on the next `.active` and override that choice.
+        // A failed catalog load (`.reconnecting`) keeps it, so the next
+        // healthy foreground retries the bootstrap instead of only probing.
+        let syncRan = (outcome == .completed && turnState != .reconnecting)
+            || outcome == .automaticIntentInvalidated
+        if syncRan, owedPostConnectBootstrap?.client === client {
+            owedPostConnectBootstrap = nil
+        }
+        guard stillOwns() else { return }
+        // Mirror `synchronizeTransportContinuation`: an automatic return the
+        // user overrode still repairs around the visible conversation.
+        if outcome == .automaticIntentInvalidated,
+           owed.purpose == .automaticReturn,
+           chatViewportTransition == nil,
+           chatViewportTransitionGeneration == viewportTransitionGeneration {
+            _ = await performSyncSession(
+                purpose: .preserveCurrent,
+                using: nil,
+                automaticWorkToken: nil
+            )
+            guard stillOwns() else { return }
+        }
+        await loadChatResumeBusyInputMode(using: client)
+        guard stillOwns() else { return }
+        await loadChatResumeProfileDisplayPreferences()
+        guard stillOwns() else { return }
+        Task { await loadChatResumeSlashCommands() }
     }
 
     /// A healthy foreground transition must be observational, not a session
@@ -14053,6 +14203,11 @@ final class AppState: ObservableObject {
             // Keep the previous socket alive until the new profile has
             // actually connected, so a failed switch has a recovery path.
             previousClient?.disconnect()
+            // An owed bootstrap belongs to the outgoing client; it can never
+            // match the new one, so retire it rather than pin a dead socket.
+            if let previousClient, owedPostConnectBootstrap?.client === previousClient {
+                owedPostConnectBootstrap = nil
+            }
             isConnected = true
             connectedAt = Date()
             if let dashboardID = activeDashboardID {
