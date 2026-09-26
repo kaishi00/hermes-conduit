@@ -335,25 +335,24 @@ final class CarPlayVoiceCoordinator {
     }
 
     /// Resolves true as soon as `appState.isConnected` is true, or false once
-    /// `timeout` elapses first. An in-flight restore that fails while the
-    /// driver waits (`isConnecting` falls with no connection) hands off to
-    /// CarPlay's own backoff recovery instead of leaving nothing armed for
+    /// `timeout` elapses first. Whenever the app is neither connected nor
+    /// connecting during the wait (an in-flight restore failed), it hands off
+    /// to CarPlay's own backoff recovery instead of leaving nothing armed for
     /// the rest of the wait.
     static func awaitConnection(of appState: AppState, timeout: Duration) async -> Bool {
         if appState.isConnected { return true }
         return await withTaskGroup(of: Bool.self) { group in
             group.addTask { @MainActor in
-                var wasConnecting = appState.isConnecting
                 let states = appState.$isConnected.combineLatest(appState.$isConnecting).values
                 for await (connected, connecting) in states {
                     if connected { return true }
-                    if wasConnecting, !connecting {
-                        // @Published emits before the stored value changes;
-                        // let the write land before the recovery guard reads it.
-                        await Task.yield()
+                    // Neither connected nor connecting — including on the
+                    // first emission, so a restore that failed before this
+                    // watcher subscribed is not missed. The recovery guard
+                    // and planReconnect never double-arm an armed cycle.
+                    if !connecting {
                         appState.recoverTransportForCarPlayIfNeeded()
                     }
-                    wasConnecting = connecting
                 }
                 return false
             }

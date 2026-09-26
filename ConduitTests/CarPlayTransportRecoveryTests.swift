@@ -143,8 +143,8 @@ final class CarPlayTransportRecoveryTests: XCTestCase {
         let wait = Task { @MainActor in
             await CarPlayVoiceCoordinator.awaitConnection(of: appState, timeout: .milliseconds(500))
         }
-        for _ in 0..<20 { await Task.yield() }
-        // The restore fails: still disconnected, no longer connecting.
+        // The restore fails: still disconnected, no longer connecting. The
+        // watcher may or may not have subscribed yet; either order hands off.
         appState.isConnecting = false
         for _ in 0..<500 where recorder.scheduledDelays.isEmpty { await Task.yield() }
 
