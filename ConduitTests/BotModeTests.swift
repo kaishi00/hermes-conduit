@@ -2952,7 +2952,8 @@ final class BotModeTests: XCTestCase {
                     ],
                     supportsBotProtocol: false
                 )
-            }
+            },
+            findBotChat: { _, _ in [] }
         ))
         let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
         harness.appState.client = HermesClient(connection: connection, profile: "default")
@@ -3022,6 +3023,53 @@ final class BotModeTests: XCTestCase {
             harness.appState.errorMessage,
             "Could not verify that workspace for this notification. Reconnect and try again."
         )
+    }
+
+    /// The same compaction gap on the profile already on screen: the Bot
+    /// Chat's tip is hidden from the session catalog, so only the canonical
+    /// lookup can name it, and the push is refused instead of opened.
+    func testSameProfilePushForCompactedBotChatIsRefused() async {
+        var resumedIDs: [String] = []
+        let harness = makeBotHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            loadCatalog: { _, _ in [self.makeSessionSummary(id: "ordinary-1", title: "Design review")] },
+            openSession: { _, id, _ in
+                resumedIDs.append(id)
+                return SessionResumeResult(
+                    sessionId: id,
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            refreshContext: { _, _ in },
+            botRoster: { _ in
+                BotRosterSnapshot(
+                    bots: [self.makeBot(name: "default", canonicalID: "default-bot-chat")],
+                    supportsBotProtocol: false
+                )
+            },
+            findBotChat: { _, _ in
+                [BotChatLookupRow(
+                    id: "default-bot-chat",
+                    resolvedID: "default-tip",
+                    title: BotMode.canonicalChatTitle
+                )]
+            }
+        ))
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        harness.appState.client = HermesClient(connection: connection, profile: "default")
+        harness.appState.connection = connection
+        await harness.appState.refreshBotRoster()
+
+        let routed = await harness.appState.openNotificationTarget(
+            ConduitNotificationTarget(profile: "default", sessionId: "default-tip", type: "response")
+        )
+
+        XCTAssertFalse(routed)
+        XCTAssertEqual(
+            harness.appState.errorMessage,
+            "This decision belongs to a Bot Chat. Open Bots to answer it."
+        )
+        XCTAssertTrue(resumedIDs.isEmpty)
     }
 
     /// A Bot Chat that compacted after the roster was read is known to the

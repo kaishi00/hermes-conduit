@@ -987,6 +987,30 @@ final class AppState: ObservableObject {
         return !ids.isDisjoint(with: botOwnedSessionIDs)
     }
 
+    /// Asks `profile` for its canonical Bot Chat (exact-title lookup, which
+    /// the gateway resolves to the lineage tip) and reports whether the push
+    /// names it. Throws when the lookup cannot be made or fails.
+    private func notificationTargetIsCanonicalChat(
+        _ target: ConduitNotificationTarget,
+        of profile: String
+    ) async throws -> Bool {
+        guard let client else { throw HermesError.invalidResponse }
+        let rows: [BotChatLookupRow]
+        if let findBotChat = chatResumeLifecycleOperations.findBotChat {
+            rows = try await findBotChat(client, profile)
+        } else {
+            rows = try await client.findBotChatSession(profile: profile)
+        }
+        let pushIDs = Set([target.sessionId, target.durableSessionID].compactMap {
+            ChatScrollIdentityNormalization.sessionID($0)
+        })
+        return rows.contains { row in
+            row.isCanonicalTitle() && !Set([row.id, row.resolvedID].compactMap {
+                ChatScrollIdentityNormalization.sessionID($0)
+            }).isDisjoint(with: pushIDs)
+        }
+    }
+
     /// What the client can PROVE about a profile a decision wants to switch the
     /// dashboard to. A profile name alone proves nothing: bots are ordinary
     /// Hermes profiles, so only bot evidence (or its verified absence)
@@ -1864,8 +1888,15 @@ final class AppState: ObservableObject {
         var merged = history
         // Dedup by record id, not by activity: with Hermes' default
         // `display.memory_notifications: on` every review reads the same
-        // generic "Memory updated", and each one is its own event.
-        for record in records where !merged.contains(where: { $0.id == record.id }) {
+        // generic "Memory updated", and each one is its own event. A review
+        // the TRANSCRIPT already carries (older gateways persisted the
+        // "💾 Self-improvement review:" line) is the same event, so a cached
+        // record repeating one of those is skipped.
+        let transcriptReviews = history.compactMap { message in
+            message.id.hasPrefix("review-summary-") ? nil : message.review
+        }
+        for record in records where !merged.contains(where: { $0.id == record.id })
+            && !transcriptReviews.contains(record.activity) {
             merged.append(ChatMessage(
                 id: record.id,
                 role: .system,
@@ -10734,14 +10765,12 @@ final class AppState: ObservableObject {
             // server-side, so a Bot Chat that compacted since the roster was
             // read is still recognized here, BEFORE the switch rather than
             // after it. A failed lookup proves nothing and fails closed.
-            guard let client else { return false }
-            let canonicalRows: [BotChatLookupRow]
+            let pushesCanonicalChat: Bool
             do {
-                if let findBotChat = chatResumeLifecycleOperations.findBotChat {
-                    canonicalRows = try await findBotChat(client, targetProfile)
-                } else {
-                    canonicalRows = try await client.findBotChatSession(profile: targetProfile)
-                }
+                pushesCanonicalChat = try await notificationTargetIsCanonicalChat(
+                    target,
+                    of: targetProfile
+                )
             } catch {
                 guard notificationOpenAttemptIsCurrent(
                     id: notificationAttemptID,
@@ -10756,14 +10785,28 @@ final class AppState: ObservableObject {
                 id: notificationAttemptID,
                 transitionGeneration: transitionGeneration
             ) else { return false }
-            let pushIDs = Set([target.sessionId, target.durableSessionID].compactMap {
-                ChatScrollIdentityNormalization.sessionID($0)
-            })
-            if canonicalRows.contains(where: { row in
-                row.isCanonicalTitle() && !Set([row.id, row.resolvedID].compactMap {
-                    ChatScrollIdentityNormalization.sessionID($0)
-                }).isDisjoint(with: pushIDs)
-            }) {
+            if pushesCanonicalChat {
+                refuseBotOwnedRouting(for: notified)
+                return false
+            }
+        }
+        if let notified = target.profile, let targetProfile,
+           targetProfile == activeProfile,
+           botModePhase != .gatewayUnsupported {
+            // Same lookup for a push on the profile already on screen: a Bot
+            // Chat that compacted since the roster was read is hidden from
+            // the session catalog, so only the canonical lookup can name its
+            // tip. No profile is adopted here, so a failed lookup does not
+            // block the push; the catalog check below still applies.
+            let pushesCanonicalChat = (try? await notificationTargetIsCanonicalChat(
+                target,
+                of: targetProfile
+            )) ?? false
+            guard notificationOpenAttemptIsCurrent(
+                id: notificationAttemptID,
+                transitionGeneration: transitionGeneration
+            ) else { return false }
+            if pushesCanonicalChat {
                 refuseBotOwnedRouting(for: notified)
                 return false
             }
@@ -17067,7 +17110,9 @@ final class AppState: ObservableObject {
             // Each review is its own event even when the text repeats (the
             // default mode always reads "Memory updated"); only an immediate
             // repeat with nothing in between is treated as a duplicate
-            // delivery. The event carries no server sequence to dedupe on,
+            // delivery. Known limit: two genuine reviews with identical
+            // text and nothing between them collapse into one row. The event
+            // carries no server sequence to dedupe on,
             // and Conduit does not replay session events on reconnect
             // (`session.events.since` is used for rooms only), so a
             // non-adjacent replay is not a path this has to absorb.
