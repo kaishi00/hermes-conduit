@@ -2880,6 +2880,10 @@ final class AppState: ObservableObject {
     @Published private(set) var groupChatPhase: GroupChatPhase = .idle
     @Published private(set) var groupCapabilities: GroupCapabilities?
     @Published private(set) var groupRooms: [GroupRoom] = []
+    /// Hermes Desktop's group chats, read from its ui_meta projection on the
+    /// `default` profile (refreshed with the bot roster). Read-only here:
+    /// Desktop drives their rounds, and `groups.*` cannot address them.
+    @Published private(set) var desktopGroupChats: [DesktopGroupChat] = []
     @Published private(set) var activeRoomSurface: GroupRoomSurface?
     @Published private(set) var activeRoomReplay = GroupRoomReplay(roomID: "")
     @Published private(set) var activeRoomDriverStatus: GroupDriverStatus?
@@ -2948,6 +2952,7 @@ final class AppState: ObservableObject {
         groupChatPhase = .idle
         groupCapabilities = nil
         groupRooms = []
+        desktopGroupChats = []
         closeRoomSurface()
     }
 
@@ -3170,13 +3175,18 @@ final class AppState: ObservableObject {
     /// ambiguous failure can never double-send (the gateway deduplicates on
     /// the mapped server-side id). The optimistic row comes from
     /// `pendingRoomMessage`; the accepted event reconciles it.
-    func sendGroupRoomMessage(_ rawText: String) async {
+    ///
+    /// Returns whether the send was REGISTERED — the pending row (and its
+    /// retry key) now owns the text. `false` means the guards declined it
+    /// and nothing holds the text, so the composer must keep its draft.
+    @discardableResult
+    func sendGroupRoomMessage(_ rawText: String) async -> Bool {
         let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
+        guard !text.isEmpty else { return false }
         guard let surface = activeRoomSurface, let client, isConnected,
               groupCapabilities?.supports("groups.send") == true,
-              !activeRoomSendInFlight else { return }
-        guard surface.room.isDisbanded == false else { return }
+              !activeRoomSendInFlight else { return false }
+        guard surface.room.isDisbanded == false else { return false }
         // A pending (ambiguous-outcome) message owns the composer: the SAME
         // text retries with the same event id; DIFFERENT text is refused so
         // no message is ever silently swallowed or silently replaced.
@@ -3184,7 +3194,7 @@ final class AppState: ObservableObject {
             errorMessage = AppLocalization.string(
                 "Your previous message is still pending. Retry it from the room, or wait for it to deliver."
             )
-            return
+            return false
         }
         let epoch = groupRoomEpoch
         let logical = groupRoomOutbox.beginSend(text: text) {
@@ -3202,7 +3212,7 @@ final class AppState: ObservableObject {
                 threadID: GroupRoomSurface.mainThreadID
             )
             guard groupRoomEpoch == epoch, activeRoomSurface?.room.roomID == surface.room.roomID else {
-                return
+                return true
             }
             let cursorBefore = activeRoomReplay.cursor
             activeRoomReplay.adopt(page: GroupLogPage(
@@ -3222,13 +3232,15 @@ final class AppState: ObservableObject {
                 await resyncActiveRoom(epoch: epoch)
             }
             await refreshGroupRooms()
+            return true
         } catch is CancellationError {
-            return
+            return true
         } catch {
-            guard groupRoomEpoch == epoch else { return }
+            guard groupRoomEpoch == epoch else { return true }
             // Ambiguous outcome: KEEP pendingRoomMessage (same event id) so
             // the user's retry deduplicates server-side.
             errorMessage = AppLocalization.string("Could not send to this group chat: \(error.localizedDescription)")
+            return true
         }
     }
 
@@ -4241,6 +4253,11 @@ final class AppState: ObservableObject {
         chatResumeRestorationRequest = nil
         invalidateReconciliation()
         invalidateServerCompactionState()
+        // Sign-out ends the room surface too: its poller, transcript, and
+        // pending outbox belong to the outgoing session. A same-dashboard
+        // sign-in never crosses the server-identity boundary, so without
+        // this the previous session's room would be restored as it was.
+        invalidateGroupChatState()
         cancelScenePhaseAttempt()
         lastConnectionFailure = nil
         client?.disconnect()
@@ -4731,6 +4748,7 @@ final class AppState: ObservableObject {
     private func performSignInRequired(pendingFailure: ConnectionFailurePresentation) {
         cancelChatResumeTransportRecovery()
         invalidateReconciliation()
+        invalidateGroupChatState()
         cancelSecondaryProfileTitleRecovery()
         client?.disconnect()
         client = nil
@@ -9564,6 +9582,7 @@ final class AppState: ObservableObject {
             // bot's canonical registry (including meta-hidden bots), while
             // the roster VIEW hides meta-hidden rows for display only.
             botRoster = BotProfile.displayOrder(snapshot.bots)
+            desktopGroupChats = snapshot.desktopGroups
             botModePhase = .available
             botRosterVerifiedForCurrentConnection = true
         } catch {
@@ -11523,7 +11542,10 @@ final class AppState: ObservableObject {
                     requestedSessionID: sessionId,
                     acceptedSessionIDs: submissionSessionIDs,
                     baseline: submissionBaseline,
-                    submittedText: text,
+                    // The OUTBOUND text: it is what prompt.submit sent and what
+                    // the persisted user row holds (a mention annotation or
+                    // the forever-chat reroute changes it).
+                    submittedText: outboundText,
                     submissionContext: submissionContext
                 )
                 // Ordering guard for the recovery STATE stamps: the recovery
@@ -12361,6 +12383,27 @@ final class AppState: ObservableObject {
                 if isProfileSwitching || isConnecting {
                     errorMessage = AppLocalization.string("Wait for the workspace switch to finish before starting a conversation.")
                 }
+                return
+            }
+            // The canonical-forever-chat guard for ordinary composer input:
+            // attachment-free slash commands arrive HERE, never through
+            // sendMessage's reroute, so a bot's canonical chat compacts
+            // instead of forking into a scratch session.
+            if canonicalForeverChatRerouteText(for: text) != nil {
+                cancelChatResumeRestoration()
+                appendSlashOutput(
+                    AppLocalization.string(
+                        "This chat never resets — compacting instead. Bot chats are one continuous conversation; for a throwaway session with this bot, use Sessions mode."
+                    ),
+                    context: submissionContext
+                )
+                await compressActiveSession(
+                    focusTopic: "",
+                    legacyCommand: "compact",
+                    client: client,
+                    sessionID: sessionId,
+                    context: submissionContext
+                )
                 return
             }
             cancelChatResumeRestoration()

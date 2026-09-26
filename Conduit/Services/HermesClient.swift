@@ -1681,7 +1681,7 @@ final class HermesClient: ObservableObject {
         guard let object = result.objectValue, let rows = object["rooms"]?.arrayValue else {
             throw HermesError.invalidResponse
         }
-        return (rows.compactMap { GroupDecoders.room($0) }, object["next_offset"]?.intValue)
+        return (rows.compactMap { GroupDecoders.room($0) }, Self.exactIntValue(object["next_offset"]))
     }
 
     /// Create a hosted room on the current gateway. `roomID` is the CLIENT-
@@ -1777,7 +1777,7 @@ final class HermesClient: ObservableObject {
     /// when `groupsCapabilities` advertised the method.
     func groupsStop(roomID: String) async throws -> Int {
         let result = try await rpc("groups.stop", params: ["room_id": roomID], scoped: false)
-        return result.objectValue?["cancelled"]?.intValue ?? 0
+        return Self.exactIntValue(result.objectValue?["cancelled"]) ?? 0
     }
 
     // delegateAgentActivity moved to StreamEventParser

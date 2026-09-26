@@ -233,39 +233,45 @@ struct MainView: View {
                         .accessibilityLabel("Open sessions")
                     }
                 }
-                ToolbarItem(placement: .principal) {
-                    Button {
-                        appState.requestChatScrollToTop()
-                    } label: {
-                        Text(appState.activeSessionTitle)
-                            .font(.subheadline.weight(.semibold))
-                            .lineLimit(1)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 7)
-                            .conduitGlassSurface(cornerRadius: 16, tint: .conduitAccent.opacity(0.06))
+                // Session-only controls: an open room owns the title and
+                // actions (GroupChatView's toolbar), so the session's title,
+                // scroll-to-top, and refresh must not act on the hidden
+                // conversation behind it.
+                if appState.activeRoomSurface == nil {
+                    ToolbarItem(placement: .principal) {
+                        Button {
+                            appState.requestChatScrollToTop()
+                        } label: {
+                            Text(appState.activeSessionTitle)
+                                .font(.subheadline.weight(.semibold))
+                                .lineLimit(1)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 7)
+                                .conduitGlassSurface(cornerRadius: 16, tint: .conduitAccent.opacity(0.06))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(appState.activeSessionTitle)
+                        .accessibilityHint("Scroll to top of conversation")
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(appState.activeSessionTitle)
-                    .accessibilityHint("Scroll to top of conversation")
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        Task { await appState.refreshActiveSession() }
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 15, weight: .semibold))
-                            .rotationEffect(.degrees(appState.isChatRefreshing ? 360 : 0))
-                            .animation(
-                                appState.isChatRefreshing
-                                    ? .linear(duration: 0.75).repeatForever(autoreverses: false)
-                                    : .default,
-                                value: appState.isChatRefreshing
-                            )
-                            .frame(width: 40, height: 40)
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            Task { await appState.refreshActiveSession() }
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 15, weight: .semibold))
+                                .rotationEffect(.degrees(appState.isChatRefreshing ? 360 : 0))
+                                .animation(
+                                    appState.isChatRefreshing
+                                        ? .linear(duration: 0.75).repeatForever(autoreverses: false)
+                                        : .default,
+                                    value: appState.isChatRefreshing
+                                )
+                                .frame(width: 40, height: 40)
+                        }
+                        .conduitGlassControl(cornerRadius: 20, tint: .conduitAccent.opacity(0.10))
+                        .disabled(!appState.isConnected || appState.isChatRefreshing)
+                        .accessibilityLabel("Refresh conversation")
                     }
-                    .conduitGlassControl(cornerRadius: 20, tint: .conduitAccent.opacity(0.10))
-                    .disabled(!appState.isConnected || appState.isChatRefreshing)
-                    .accessibilityLabel("Refresh conversation")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     ConnectionStatusIndicator()

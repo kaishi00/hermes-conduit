@@ -50,12 +50,12 @@ enum GroupCapabilitiesDecoder {
         let methods = Set((object["methods"]?.arrayValue ?? []).compactMap { $0.stringValue })
         guard !methods.isEmpty else { return nil }
         return GroupCapabilities(
-            protocolVersion: object["protocol_version"]?.intValue ?? 0,
+            protocolVersion: HermesClient.exactIntValue(object["protocol_version"]) ?? 0,
             driverReady: object["driver"]?.boolValue ?? false,
             authorityGatewayID: object["authority_gateway_id"]?.stringValue ?? "",
             features: (object["features"]?.arrayValue ?? []).compactMap { $0.stringValue },
             methods: methods,
-            maxLogLimit: object["max_log_limit"]?.intValue ?? 500
+            maxLogLimit: HermesClient.exactIntValue(object["max_log_limit"]) ?? 500
         )
     }
 }
@@ -237,14 +237,14 @@ enum GroupDecoders {
     static func event(_ value: AnyCodable?) -> GroupEvent? {
         guard let object = value?.objectValue,
               let roomID = object["room_id"]?.stringValue,
-              let seq = object["seq"]?.intValue, seq >= 1 else { return nil }
+              let seq = HermesClient.exactIntValue(object["seq"]), seq >= 1 else { return nil }
         return GroupEvent(
             roomID: roomID,
             seq: seq,
             eventID: object["event_id"]?.stringValue ?? "",
             kind: object["kind"]?.stringValue ?? "unknown",
             actor: actor(object["actor"]),
-            authorityEpoch: object["authority_epoch"]?.intValue,
+            authorityEpoch: HermesClient.exactIntValue(object["authority_epoch"]),
             payload: object["payload"]?.objectValue ?? [:],
             createdAt: object["created_at"]?.doubleValue ?? 0
         )
@@ -260,12 +260,12 @@ enum GroupDecoders {
             name: object["name"]?.stringValue ?? roomID,
             members: (object["members"]?.arrayValue ?? []).compactMap(member),
             authorityGatewayID: object["authority_gateway_id"]?.stringValue ?? "",
-            authorityEpoch: object["authority_epoch"]?.intValue ?? 1,
-            revision: object["revision"]?.intValue ?? 0,
+            authorityEpoch: HermesClient.exactIntValue(object["authority_epoch"]) ?? 1,
+            revision: HermesClient.exactIntValue(object["revision"]) ?? 0,
             createdAt: object["created_at"]?.doubleValue ?? 0,
             updatedAt: object["updated_at"]?.doubleValue ?? 0,
             disbandedAt: object["disbanded_at"]?.doubleValue,
-            latestSeq: object["latest_seq"]?.intValue
+            latestSeq: HermesClient.exactIntValue(object["latest_seq"])
         )
     }
 
@@ -273,7 +273,7 @@ enum GroupDecoders {
         guard let object = value?.objectValue else { return nil }
         var counts: [String: Int] = [:]
         for (key, count) in object["counts"]?.objectValue ?? [:] {
-            if let number = count.intValue { counts[key] = number }
+            if let number = HermesClient.exactIntValue(count) { counts[key] = number }
         }
         let pending = (object["pending_actions"]?.arrayValue ?? []).compactMap { $0.objectValue }
         return GroupDriverStatus(
@@ -287,16 +287,16 @@ enum GroupDecoders {
 
     static func logPage(_ result: AnyCodable?) -> GroupLogPage? {
         guard let object = result?.objectValue,
-              let latest = object["latest_seq"]?.intValue else { return nil }
+              let latest = HermesClient.exactIntValue(object["latest_seq"]) else { return nil }
         let events = (object["events"]?.arrayValue ?? []).compactMap(event)
         let authority = object["authority"]?.objectValue ?? [:]
         return GroupLogPage(
             events: events,
-            cursor: object["cursor"]?.intValue ?? events.last?.seq ?? 0,
+            cursor: HermesClient.exactIntValue(object["cursor"]) ?? events.last?.seq ?? 0,
             latestSeq: latest,
             hasMore: object["has_more"]?.boolValue ?? false,
             authorityGatewayID: authority["gateway_id"]?.stringValue ?? "",
-            authorityEpoch: authority["epoch"]?.intValue ?? 0
+            authorityEpoch: HermesClient.exactIntValue(authority["epoch"]) ?? 0
         )
     }
 }
@@ -433,6 +433,30 @@ struct GroupRoomOutbox: Equatable {
     mutating func discard() { pending = nil }
 }
 
+// MARK: - Create idempotency
+
+/// The create sheet's room-id keeper. `groups.create` deduplicates on the
+/// client-minted `room_id`, so one id belongs to exactly one set of inputs:
+/// a retry of an ambiguous create with the SAME name and roster reuses it
+/// (the gateway returns the room it may already have made), while edited
+/// inputs are a different room and get a fresh id — reusing the old one
+/// would recover the first attempt's room or be refused.
+enum GroupCreateAttempt {
+    struct Inputs: Equatable {
+        let name: String
+        let members: Set<String>
+    }
+
+    static func mintRoomID() -> String {
+        "conduit-\(UUID().uuidString.lowercased())"
+    }
+
+    static func roomID(for inputs: Inputs, current: String, attempted: Inputs?) -> String {
+        guard let attempted, attempted != inputs else { return current }
+        return mintRoomID()
+    }
+}
+
 // MARK: - Room mention presentation
 
 /// Semantic @mention classification for room transcripts and the room
@@ -500,5 +524,134 @@ enum GroupRoomMentions {
             if !stripped.isEmpty { return stripped }
         }
         return ""
+    }
+}
+
+// MARK: - Desktop-synced group chats
+
+/// A Group Chat created in Hermes Desktop. Desktop rooms are NOT hosted
+/// rooms: Desktop orchestrates every round client-side and never calls
+/// `groups.create`, so `groups.list` cannot see them. What reaches the
+/// gateway is Desktop's bounded cross-client projection, stored under the
+/// `default` profile's `ui_meta['hermes-bots-groups']` (upstream
+/// `apps/desktop/src/plugins/hermes-bots/group-chat.ts`,
+/// `groupChatSyncSnapshot`). The projection carries the room identity,
+/// members, and the latest compacted messages — enough to list and read the
+/// room, not to drive its rounds, so this client presents it read-only.
+struct DesktopGroupChat: Equatable, Identifiable {
+    struct Member: Equatable {
+        let name: String
+        let handle: String?
+    }
+
+    struct Message: Equatable, Identifiable {
+        let id: String
+        /// `from.kind == "member"`; everything else is the human.
+        let isMember: Bool
+        let speaker: String
+        let text: String
+        /// Seconds since 1970 (the projection stores milliseconds).
+        let timestamp: Double?
+        /// The projection cut `text` to its sync budget.
+        let truncated: Bool
+    }
+
+    /// The projection's durable room key: `id:<roomId>` for current rooms,
+    /// `name:<name>` for legacy ones.
+    let key: String
+    let name: String
+    let members: [Member]
+    let messages: [Message]
+    /// At least this many earlier entries exist that the projection omits.
+    let omitted: Int
+
+    var id: String { key }
+    var lastActivity: Double { messages.last?.timestamp ?? 0 }
+}
+
+enum DesktopGroupChatDecoder {
+    /// The `ui_meta` key Desktop publishes the projection under.
+    static let metaKey = "hermes-bots-groups"
+    /// Desktop publishes to (and reads from) the `default` profile only.
+    static let profileName = "default"
+
+    /// The projection from a `profiles.list` answer's rows. Absent, empty,
+    /// or malformed projections decode to no rooms — never an error.
+    static func decode(profileRows rows: [AnyCodable]) -> [DesktopGroupChat] {
+        let row = rows.first { $0.objectValue?["name"]?.stringValue == profileName }
+        return decode(snapshot: row?.objectValue?["ui_meta"]?.objectValue?[metaKey])
+    }
+
+    /// Normalizes every historical envelope (v1 wall-clock tombstones, v2
+    /// name-keyed rooms, v3 room-keyed rooms) the way upstream's
+    /// `normalizeGroupChatSyncSnapshot` does, then applies its tombstone
+    /// rules: an `id:` tombstone is final; a `name:` tombstone hides the room
+    /// only while its revision is at least the room's.
+    static func decode(snapshot: AnyCodable?) -> [DesktopGroupChat] {
+        guard let object = snapshot?.objectValue else { return [] }
+        let version = object["version"]?.doubleValue ?? 0
+        let rawRooms = object["rooms"]?.objectValue ?? [:]
+        let rawDeleted = object["deleted"]?.objectValue ?? [:]
+
+        var deleted: [String: Double] = [:]
+        for (key, value) in rawDeleted {
+            let revision = max(0, value.doubleValue ?? 0)
+            if version >= 3 {
+                deleted[key] = revision
+            } else {
+                // v1 tombstones carried wall-clock ms, never a revision.
+                deleted["name:\(key)"] = version >= 2 ? revision : 0
+            }
+        }
+
+        var rooms: [DesktopGroupChat] = []
+        for (rawKey, value) in rawRooms {
+            guard let room = value.objectValue,
+                  let log = room["log"]?.arrayValue else { continue }
+            let key = version >= 3 ? rawKey : "name:\(rawKey)"
+            let roomID = room["roomId"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let idKey = roomID.isEmpty ? (key.hasPrefix("id:") ? key : nil) : "id:\(roomID)"
+            if let idKey, deleted[idKey] != nil { continue }
+            if key.hasPrefix("name:"), let tombstone = deleted[key],
+               tombstone >= max(0, room["revision"]?.doubleValue ?? 0) { continue }
+
+            let fallbackName: String = {
+                if key.hasPrefix("name:") { return String(key.dropFirst(5)) }
+                return key
+            }()
+            let rawName = room["name"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let members = (room["members"]?.arrayValue ?? []).compactMap { member -> DesktopGroupChat.Member? in
+                guard let fields = member.objectValue,
+                      let name = fields["name"]?.stringValue, !name.isEmpty else { return nil }
+                return DesktopGroupChat.Member(name: name, handle: fields["handle"]?.stringValue)
+            }
+            let messages = log.enumerated().compactMap { index, entry -> DesktopGroupChat.Message? in
+                guard let fields = entry.objectValue else { return nil }
+                let from = fields["from"]?.objectValue ?? [:]
+                let isMember = from["kind"]?.stringValue == "member"
+                let speaker = from["name"]?.stringValue ?? ""
+                let at = fields["at"]?.doubleValue ?? 0
+                return DesktopGroupChat.Message(
+                    id: fields["id"]?.stringValue ?? "entry-\(index)",
+                    isMember: isMember,
+                    speaker: speaker,
+                    text: fields["text"]?.stringValue ?? "",
+                    timestamp: at > 0 ? at / 1000 : nil,
+                    truncated: fields["truncated"]?.boolValue ?? false
+                )
+            }
+            rooms.append(DesktopGroupChat(
+                key: key,
+                name: rawName.isEmpty ? fallbackName : rawName,
+                members: members,
+                messages: messages,
+                omitted: max(0, HermesClient.exactIntValue(room["omitted"]) ?? 0)
+            ))
+        }
+        // Most recently active first; the key breaks ties deterministically.
+        return rooms.sorted { lhs, rhs in
+            if lhs.lastActivity != rhs.lastActivity { return lhs.lastActivity > rhs.lastActivity }
+            return lhs.key < rhs.key
+        }
     }
 }

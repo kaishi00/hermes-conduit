@@ -161,7 +161,16 @@ struct GroupChatView: View {
         let text = draft
         draft = ""
         Haptics.light()
-        Task { await appState.sendGroupRoomMessage(text) }
+        Task {
+            // The pending row owns the text only once AppState REGISTERS
+            // the send. A declined send (connection or room changed before
+            // the guards ran) hands the text back to the composer, unless
+            // the user already started typing something new.
+            let registered = await appState.sendGroupRoomMessage(text)
+            if !registered && draft.isEmpty {
+                draft = text
+            }
+        }
     }
 
     // MARK: - Toolbar
@@ -387,7 +396,12 @@ struct GroupCreateSheet: View {
     /// The room id is minted ONCE per logical room (per sheet): a retry of
     /// an ambiguous create reuses the SAME id, so the gateway's create
     /// idempotency deduplicates instead of forking a twin room.
-    @State private var roomID = "conduit-\(UUID().uuidString.lowercased())"
+    @State private var roomID = GroupCreateAttempt.mintRoomID()
+    /// The inputs the CURRENT `roomID` was first sent with. The id is the
+    /// gateway's dedup key for exactly those inputs: a retry with an edited
+    /// name or roster is a different room, so it gets a fresh id instead of
+    /// recovering (or being refused as) the first attempt.
+    @State private var attemptedInputs: GroupCreateAttempt.Inputs?
     @State private var isCreating = false
 
     private var visibleBots: [BotProfile] {
@@ -442,6 +456,14 @@ struct GroupCreateSheet: View {
                         isCreating = true
                         let bots = visibleBots.filter { selected.contains($0.name) }
                         let roomName = name
+                        let inputs = GroupCreateAttempt.Inputs(
+                            name: roomName.trimmingCharacters(in: .whitespacesAndNewlines),
+                            members: selected
+                        )
+                        roomID = GroupCreateAttempt.roomID(
+                            for: inputs, current: roomID, attempted: attemptedInputs
+                        )
+                        attemptedInputs = inputs
                         let pendingRoomID = roomID
                         Task {
                             let created = await appState.createGroupRoom(
@@ -497,6 +519,178 @@ struct GroupCreateSheet: View {
             selected.remove(botName)
         } else {
             selected.insert(botName)
+        }
+    }
+}
+
+// MARK: - Desktop-synced group chats
+
+/// A roster row for a group chat Hermes Desktop created. Same card as a
+/// hosted room, with the latest mirrored message as its preview.
+struct DesktopGroupRosterRow: View {
+    let group: DesktopGroupChat
+    let onOpen: () -> Void
+
+    var body: some View {
+        Button {
+            Haptics.light()
+            onOpen()
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(Color.conduitAccent.opacity(0.16))
+                    Image(systemName: "person.3")
+                        .font(.caption)
+                        .foregroundStyle(.conduitAccent)
+                }
+                .frame(width: 36, height: 36)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(group.name)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Text(subtitleText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "desktopcomputer")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(
+                Color.primary.opacity(0.045),
+                in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+        .listRowInsets(EdgeInsets(top: 3, leading: 0, bottom: 3, trailing: 0))
+        .accessibilityLabel(Text(group.name))
+        .accessibilityHint(Text(AppLocalization.string("Shows this Hermes Desktop group chat.")))
+    }
+
+    private var subtitleText: String {
+        if let last = group.messages.last {
+            let text = last.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !text.isEmpty { return text }
+        }
+        return AppLocalization.string("\(group.members.count) members")
+    }
+}
+
+/// Read-only transcript of a Desktop group chat: the latest messages Desktop
+/// mirrored to the gateway. Desktop runs the rounds for these rooms, so
+/// there is no composer here — sending would need Desktop's orchestrator.
+struct DesktopGroupChatView: View {
+    let group: DesktopGroupChat
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var appLanguage = AppLanguageStore.shared
+
+    /// Mention styling reuses the hosted-room classifier: the projection's
+    /// members carry a display name and, on current Desktop builds, the
+    /// room handle.
+    private var mentionMembers: [GroupMember] {
+        group.members.map {
+            GroupMember(
+                memberID: nil,
+                profile: nil,
+                handle: $0.handle,
+                displayName: $0.name,
+                target: nil,
+                extra: [:]
+            )
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: 10) {
+                        Text(AppLocalization.string(
+                            "Created in Hermes Desktop. Desktop runs this group's conversation, so reply from there; this shows the latest synced messages."
+                        ))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity)
+                        .padding(.bottom, 4)
+                        if group.omitted > 0 {
+                            Text(AppLocalization.string("Earlier messages are only in Hermes Desktop."))
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                                .frame(maxWidth: .infinity)
+                        }
+                        ForEach(group.messages) { message in
+                            messageRow(message)
+                                .id(message.id)
+                        }
+                        if group.messages.isEmpty {
+                            Text(AppLocalization.string("No messages yet."))
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                                .padding(.top, 32)
+                        }
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                }
+                .onAppear {
+                    if let last = group.messages.last {
+                        proxy.scrollTo(last.id, anchor: .bottom)
+                    }
+                }
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    VStack(spacing: 1) {
+                        Text(group.name)
+                            .font(.subheadline.weight(.semibold))
+                            .lineLimit(1)
+                        Text(AppLocalization.string("\(group.members.count) members"))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(AppLocalization.string("Done")) { dismiss() }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func messageRow(_ message: DesktopGroupChat.Message) -> some View {
+        let speaker = message.speaker.trimmingCharacters(in: .whitespacesAndNewlines)
+        GroupChatBubble(
+            alignment: message.isMember ? .leading : .trailing,
+            speaker: message.isMember
+                ? (speaker.isEmpty ? AppLocalization.string("Member") : speaker)
+                : AppLocalization.string("You"),
+            timestamp: message.timestamp,
+            tint: message.isMember ? Color.primary.opacity(0.05) : .conduitAccent.opacity(0.14)
+        ) {
+            GroupMentionTextRenderer.render(message.text, members: mentionMembers)
+            if message.truncated {
+                Text(AppLocalization.string("Shortened — the full message is in Hermes Desktop."))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 }

@@ -179,6 +179,145 @@ final class GroupChatModelsTests: XCTestCase {
         XCTAssertNil(GroupDecoders.event(any(eventJSON(roomID: "room-1", seq: 0, kind: "message.user"))))
     }
 
+    /// Gateway numbers go through the exact-integer reader: an out-of-range
+    /// value must never trap the app, and a fractional one is refused
+    /// instead of being truncated into a different seq.
+    func testOutOfRangeOrFractionalNumbersNeverDecodeAsIntegers() {
+        XCTAssertNil(GroupDecoders.event(any([
+            "room_id": "room-1", "seq": 1e20, "kind": "message.user",
+        ])))
+        XCTAssertNil(GroupDecoders.event(any([
+            "room_id": "room-1", "seq": 2.7, "kind": "message.user",
+        ])))
+        let room = GroupDecoders.room(any([
+            "room_id": "room-1", "revision": 1e30, "latest_seq": 3.5, "authority_epoch": -1e25,
+        ]))
+        XCTAssertEqual(room?.revision, 0)
+        XCTAssertNil(room?.latestSeq)
+        XCTAssertEqual(room?.authorityEpoch, 1)
+        XCTAssertNil(GroupDecoders.logPage(any(["latest_seq": 1e20, "events": []])))
+        let status = GroupDecoders.driverStatus(any(["counts": ["queued": 2, "huge": 1e40]]))
+        XCTAssertEqual(status?.counts, ["queued": 2])
+    }
+
+    // MARK: - Create idempotency
+
+    func testCreateRetryKeepsTheRoomIDOnlyForUnchangedInputs() {
+        let first = GroupCreateAttempt.Inputs(name: "Planning", members: ["a", "b"])
+        // First attempt: nothing attempted yet, the minted id is kept.
+        XCTAssertEqual(GroupCreateAttempt.roomID(for: first, current: "room-x", attempted: nil), "room-x")
+        // Retry of the same inputs after an ambiguous failure: same id.
+        XCTAssertEqual(GroupCreateAttempt.roomID(for: first, current: "room-x", attempted: first), "room-x")
+        // Edited name or roster: a different room, so a fresh id.
+        let renamed = GroupCreateAttempt.Inputs(name: "Planning 2", members: ["a", "b"])
+        let reseated = GroupCreateAttempt.Inputs(name: "Planning", members: ["a", "c"])
+        let renamedID = GroupCreateAttempt.roomID(for: renamed, current: "room-x", attempted: first)
+        let reseatedID = GroupCreateAttempt.roomID(for: reseated, current: "room-x", attempted: first)
+        XCTAssertNotEqual(renamedID, "room-x")
+        XCTAssertNotEqual(reseatedID, "room-x")
+        XCTAssertTrue(renamedID.hasPrefix("conduit-"))
+    }
+
+    // MARK: - Desktop-synced group chats
+
+    private func desktopRoom(
+        name: String,
+        roomId: String? = nil,
+        revision: Int = 1,
+        messages: [[String: Any]] = []
+    ) -> [String: Any] {
+        var room: [String: Any] = [
+            "name": name,
+            "log": messages,
+            "revision": revision,
+            "members": [
+                ["name": "Research Buddy", "handle": "research"],
+                ["name": "Writer"],
+            ],
+        ]
+        if let roomId { room["roomId"] = roomId }
+        return room
+    }
+
+    func testDesktopProjectionDecodesRoomsNewestFirst() {
+        let snapshot: [String: Any] = [
+            "version": 3,
+            "rooms": [
+                "id:r-old": desktopRoom(name: "Old", roomId: "r-old", messages: [
+                    ["id": "m1", "from": ["kind": "user", "name": "You"], "text": "hi", "at": 1_000_000.0],
+                ]),
+                "id:r-new": desktopRoom(name: "New", roomId: "r-new", messages: [
+                    ["id": "m2", "from": ["kind": "user", "name": "You"], "text": "hey @research", "at": 2_000_000.0],
+                    ["from": ["kind": "member", "name": "Research Buddy"], "text": "on it",
+                     "at": 3_000_000.0, "truncated": true],
+                ]),
+                "id:broken": ["name": "No log"],
+            ],
+        ]
+        let groups = DesktopGroupChatDecoder.decode(snapshot: any(snapshot))
+        XCTAssertEqual(groups.map(\.name), ["New", "Old"])
+        let newest = groups[0]
+        XCTAssertEqual(newest.key, "id:r-new")
+        XCTAssertEqual(newest.members.map(\.name), ["Research Buddy", "Writer"])
+        XCTAssertEqual(newest.members.first?.handle, "research")
+        XCTAssertEqual(newest.messages.count, 2)
+        XCTAssertEqual(newest.messages[0].isMember, false)
+        XCTAssertEqual(newest.messages[1].isMember, true)
+        XCTAssertEqual(newest.messages[1].speaker, "Research Buddy")
+        XCTAssertEqual(newest.messages[1].truncated, true)
+        // Milliseconds on the wire, seconds in the model.
+        XCTAssertEqual(newest.messages[1].timestamp, 3_000)
+        XCTAssertEqual(newest.messages[1].id, "entry-1")
+    }
+
+    func testDesktopProjectionHonorsTombstones() {
+        let snapshot: [String: Any] = [
+            "version": 3,
+            "rooms": [
+                "id:gone": desktopRoom(name: "Gone", roomId: "gone", revision: 9),
+                "name:Legacy": desktopRoom(name: "Legacy", revision: 5),
+                "name:Recreated": desktopRoom(name: "Recreated", revision: 7),
+            ],
+            // id: tombstones are final, whatever the revision; a name:
+            // tombstone only hides a room at or below its revision.
+            "deleted": ["id:gone": 1, "name:Legacy": 5, "name:Recreated": 6],
+        ]
+        let groups = DesktopGroupChatDecoder.decode(snapshot: any(snapshot))
+        XCTAssertEqual(groups.map(\.name), ["Recreated"])
+    }
+
+    func testDesktopProjectionLiftsOlderNameKeyedEnvelopes() {
+        let snapshot: [String: Any] = [
+            "version": 2,
+            "rooms": ["Weekly": desktopRoom(name: "Weekly", revision: 3)],
+            "deleted": ["Retired": 1],
+        ]
+        let groups = DesktopGroupChatDecoder.decode(snapshot: any(snapshot))
+        XCTAssertEqual(groups.map(\.key), ["name:Weekly"])
+        XCTAssertTrue(DesktopGroupChatDecoder.decode(snapshot: nil).isEmpty)
+        XCTAssertTrue(DesktopGroupChatDecoder.decode(snapshot: any(["version": 3])).isEmpty)
+    }
+
+    /// The roster answer carries the projection on the `default` profile
+    /// only — the same row Desktop publishes to and reads from.
+    func testRosterDecodeReadsDesktopGroupsFromTheDefaultProfile() {
+        let projection: [String: Any] = [
+            "version": 3,
+            "rooms": ["id:r1": desktopRoom(name: "From Desktop", roomId: "r1")],
+        ]
+        let result = any([
+            "profiles": [
+                ["name": "default", "ui_meta": ["hermes-bots-groups": projection]],
+                ["name": "writer", "ui_meta": ["hermes-bots-groups": [
+                    "version": 3, "rooms": ["id:x": desktopRoom(name: "Wrong profile", roomId: "x")],
+                ]]],
+            ],
+        ])
+        let snapshot = BotRosterDecoder.decode(result)
+        XCTAssertEqual(snapshot?.desktopGroups.map(\.name), ["From Desktop"])
+        XCTAssertEqual(snapshot?.bots.count, 2)
+    }
+
     func testActorDisplayLabelRoutesByIdentityNeverByBareName() {
         let members = GroupDecoders.room(any(roomPayload()))?.members ?? []
         // actor.id matches member_id → its display label.

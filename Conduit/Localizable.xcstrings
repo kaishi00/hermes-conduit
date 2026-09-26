@@ -2,6 +2,61 @@
   "sourceLanguage" : "en",
   "strings" : {
 
+    "Created in Hermes Desktop. Desktop runs this group's conversation, so reply from there; this shows the latest synced messages." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此群聊创建于 Hermes Desktop。群聊对话由 Desktop 运行，请在 Desktop 中回复；这里显示最近同步的消息。"
+          }
+        }
+      }
+    },
+
+    "Earlier messages are only in Hermes Desktop." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更早的消息仅保存在 Hermes Desktop 中。"
+          }
+        }
+      }
+    },
+
+    "No messages yet." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暂无消息。"
+          }
+        }
+      }
+    },
+
+    "Shortened — the full message is in Hermes Desktop." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已截断 — 完整消息请在 Hermes Desktop 中查看。"
+          }
+        }
+      }
+    },
+
+    "Shows this Hermes Desktop group chat." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示此 Hermes Desktop 群聊。"
+          }
+        }
+      }
+    },
+
     "Leave this group chat" : {
       "localizations" : {
         "zh-Hans" : {

@@ -106,6 +106,10 @@ struct BotRosterSnapshot: Equatable {
     /// Informational in Phase 1 — Conduit renders `message_agent` calls
     /// through its ordinary tool machinery.
     var supportsBotProtocol: Bool
+    /// Group chats Hermes Desktop created and mirrored into the `default`
+    /// profile's ui_meta — invisible to `groups.list` (see
+    /// `DesktopGroupChat`).
+    var desktopGroups: [DesktopGroupChat] = []
 }
 
 enum BotRosterDecoder {
@@ -120,7 +124,8 @@ enum BotRosterDecoder {
         }
         return BotRosterSnapshot(
             bots: bots,
-            supportsBotProtocol: result.objectValue?["bot_mode_protocol"]?.boolValue ?? false
+            supportsBotProtocol: result.objectValue?["bot_mode_protocol"]?.boolValue ?? false,
+            desktopGroups: DesktopGroupChatDecoder.decode(profileRows: rows)
         )
     }
 

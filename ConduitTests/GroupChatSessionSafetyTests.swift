@@ -453,10 +453,8 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         )
     }
 
-    /// A room the gateway reports as tombstoned (even with zero new log
-    /// events) closes the surface instead of leaving a poller spinning
-    /// against the tombstone.
-    func testQuietlyDisbandedRoomClosesTheSurfaceOnTheNextStatusTick() async {
+    /// A room reported as tombstoned during open closes the surface.
+    func testDisbandedRoomClosesTheSurfaceDuringOpen() async {
         let operations = GroupChatLifecycleOperations(
             capabilities: { _ in self.capabilities(supported: true) },
             list: { _ in ([self.room()], nil) },
@@ -474,6 +472,73 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         // …so the surface closes instead of haunting a disbanded room.
         XCTAssertEqual(appState.activeRoomSurface, nil)
         XCTAssertEqual(appState.activeSessionId, nil)
+    }
+
+    /// Sign-out ends the room surface: its poller, transcript, and pending
+    /// outbox belong to the outgoing session. A same-dashboard sign-in never
+    /// crosses the server-identity boundary, so disconnect itself must tear
+    /// the room down.
+    func testDisconnectTearsDownTheRoomSurfaceAndGroupState() async {
+        let backend = InMemoryKeychainBackend()
+        KeychainHelper.useBackendForTesting(backend)
+        defer { KeychainHelper.useBackendForTesting(KeychainHelper.SystemKeychainBackend()) }
+        let room = self.room()
+        let operations = GroupChatLifecycleOperations(
+            capabilities: { _ in self.capabilities(supported: true) },
+            list: { _ in ([room], nil) },
+            state: { _, _ in (room, nil) },
+            log: { _, _, sinceSeq in
+                GroupLogPage(events: [], cursor: sinceSeq, latestSeq: 0, hasMore: false,
+                             authorityGatewayID: "gw-a", authorityEpoch: 1)
+            },
+            send: { _, _, _, _, _ in throw TestError() }
+        )
+        let appState = makeAppState(operations: operations)
+        connect(appState)
+        await appState.refreshGroupChatSupport()
+        await appState.openGroupRoom(room)
+        await appState.sendGroupRoomMessage("still pending")
+        XCTAssertNotNil(appState.activeRoomSurface)
+        XCTAssertNotNil(appState.pendingRoomMessage)
+
+        appState.disconnect()
+
+        XCTAssertEqual(appState.activeRoomSurface, nil)
+        XCTAssertEqual(appState.pendingRoomMessage, nil)
+        XCTAssertTrue(appState.activeRoomReplay.events.isEmpty)
+        XCTAssertEqual(appState.groupChatPhase, .idle)
+        XCTAssertTrue(appState.groupRooms.isEmpty)
+    }
+
+    /// A send the guards decline (no open room) reports that nothing holds
+    /// the text, so the composer keeps its draft; a registered send reports
+    /// true even when its outcome is ambiguous (the pending row owns it).
+    func testSendReportsWhetherThePendingRowOwnsTheText() async {
+        let room = self.room()
+        let operations = GroupChatLifecycleOperations(
+            capabilities: { _ in self.capabilities(supported: true) },
+            list: { _ in ([room], nil) },
+            state: { _, _ in (room, nil) },
+            log: { _, _, sinceSeq in
+                GroupLogPage(events: [], cursor: sinceSeq, latestSeq: 0, hasMore: false,
+                             authorityGatewayID: "gw-a", authorityEpoch: 1)
+            },
+            send: { _, _, _, _, _ in throw TestError() }
+        )
+        let appState = makeAppState(operations: operations)
+        connect(appState)
+        await appState.refreshGroupChatSupport()
+
+        let declined = await appState.sendGroupRoomMessage("no room open")
+        XCTAssertFalse(declined)
+        XCTAssertEqual(appState.pendingRoomMessage, nil)
+
+        await appState.openGroupRoom(room)
+        let registered = await appState.sendGroupRoomMessage("ambiguous")
+        XCTAssertTrue(registered)
+        XCTAssertEqual(appState.pendingRoomMessage?.text, "ambiguous")
+
+        appState.closeGroupRoom()
     }
 
     private func disbandedRoom(roomID: String) -> GroupRoom {

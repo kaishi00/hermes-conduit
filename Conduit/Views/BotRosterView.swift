@@ -9,14 +9,20 @@ struct BotRosterView: View {
     /// Language changes must re-render localized strings immediately while
     /// the Bots tab stays selected (same contract as SessionList/CronList).
     @ObservedObject private var appLanguage = AppLanguageStore.shared
+    @State private var presentedDesktopGroup: DesktopGroupChat?
 
     var body: some View {
         Group {
-            if visibleBots.isEmpty {
+            // Group rows keep the list up even with no visible bot: a room
+            // whose bots are all meta-hidden must stay reachable.
+            if visibleBots.isEmpty && !hasGroupRows {
                 emptyState
             } else {
                 rosterList
             }
+        }
+        .sheet(item: $presentedDesktopGroup) { group in
+            DesktopGroupChatView(group: group)
         }
         .task(id: rosterRefreshKey) {
             await appState.refreshBotRoster()
@@ -35,8 +41,24 @@ struct BotRosterView: View {
     /// the selected dashboard profile. Keying on `activeProfile` made every
     /// profile switch cancel the in-flight refresh and re-fire a
     /// replacement that could only race the single-flight claim.
+    /// Connection is part of the key: sign-out tears the group state down,
+    /// and a same-dashboard sign-in must probe it again.
     private var rosterRefreshKey: String {
-        appState.activeDashboardID?.uuidString ?? "-"
+        "\(appState.activeDashboardID?.uuidString ?? "-")|\(appState.isConnected)"
+    }
+
+    private var hostedGroupsAvailable: Bool {
+        appState.groupChatPhase == .available
+    }
+
+    private var hasGroupRows: Bool {
+        (hostedGroupsAvailable && !appState.groupRooms.isEmpty)
+            || !appState.desktopGroupChats.isEmpty
+    }
+
+    private var groupProbeFailure: String? {
+        if case .failed(let message) = appState.groupChatPhase { return message }
+        return nil
     }
 
     private var rosterList: some View {
@@ -56,9 +78,11 @@ struct BotRosterView: View {
                     .listRowInsets(EdgeInsets(top: 3, leading: 0, bottom: 3, trailing: 0))
                 }
             }
-            Section(AppLocalization.string("Bots")) {
-                ForEach(visibleBots) { bot in
-                    BotRosterRow(bot: bot)
+            if !visibleBots.isEmpty {
+                Section(AppLocalization.string("Bots")) {
+                    ForEach(visibleBots) { bot in
+                        BotRosterRow(bot: bot)
+                    }
                 }
             }
             groupSection
@@ -74,20 +98,42 @@ struct BotRosterView: View {
         }
     }
 
-    /// Hosted Group Chat rows, below the Bots section. Presented only when
-    /// the gateway advertised the foundation `groups.*` methods; an
-    /// unsupported gateway hides the section entirely (graceful degradation,
-    /// never a dead control).
+    /// Group Chat rows, below the Bots section: hosted rooms (only when the
+    /// gateway advertised the foundation `groups.*` methods — an unsupported
+    /// gateway never shows a dead control) plus the group chats Hermes
+    /// Desktop mirrored to the gateway, which need no `groups.*` support.
     @State private var showingGroupCreateSheet = false
 
     @ViewBuilder
     private var groupSection: some View {
-        if appState.groupChatPhase == .available {
+        if hostedGroupsAvailable || !appState.desktopGroupChats.isEmpty || groupProbeFailure != nil {
             Section {
-                ForEach(appState.groupRooms) { room in
-                    GroupRosterRow(room: room)
+                if let message = groupProbeFailure {
+                    // A probe failure must explain itself — an absent section
+                    // is indistinguishable from "this gateway has no groups".
+                    BotModeNoticeRow(
+                        icon: "exclamationmark.triangle",
+                        message: message
+                    )
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .conduitGlassSurface(cornerRadius: 18, tint: .yellow.opacity(0.10))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 3, leading: 0, bottom: 3, trailing: 0))
                 }
-                if visibleBots.count >= 2 {
+                if hostedGroupsAvailable {
+                    ForEach(appState.groupRooms) { room in
+                        GroupRosterRow(room: room)
+                    }
+                }
+                ForEach(appState.desktopGroupChats) { group in
+                    DesktopGroupRosterRow(group: group) {
+                        presentedDesktopGroup = group
+                    }
+                }
+                if hostedGroupsAvailable && visibleBots.count >= 2 {
                     Button {
                         Haptics.light()
                         showingGroupCreateSheet = true
@@ -102,24 +148,6 @@ struct BotRosterView: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel(Text(AppLocalization.string("New Group Chat")))
                 }
-            } header: {
-                Text(AppLocalization.string("Group Chats"))
-            }
-        } else if case .failed(let message) = appState.groupChatPhase {
-            // A probe failure must explain itself — an absent section is
-            // indistinguishable from "this gateway has no groups".
-            Section {
-                BotModeNoticeRow(
-                    icon: "exclamationmark.triangle",
-                    message: message
-                )
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .conduitGlassSurface(cornerRadius: 18, tint: .yellow.opacity(0.10))
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
-                .listRowInsets(EdgeInsets(top: 3, leading: 0, bottom: 3, trailing: 0))
             } header: {
                 Text(AppLocalization.string("Group Chats"))
             }
