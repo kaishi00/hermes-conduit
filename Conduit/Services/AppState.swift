@@ -2787,6 +2787,9 @@ final class AppState: ObservableObject {
         // gateway. The next connection re-probes them before it decides which
         // conversation this workspace was in.
         invalidateBotModeState()
+        // Drafts are keyed by (profile, session id) only: they must not
+        // leak into another server whose strings collide.
+        composerDraftStore.removeAll()
         return true
     }
 
@@ -4296,6 +4299,9 @@ final class AppState: ObservableObject {
         // sign-in never crosses the server-identity boundary, so without
         // this the previous session's room would be restored as it was.
         invalidateGroupChatState()
+        // Unsent drafts belong to the signed-out user; AppState owns the
+        // store (it outlives the composer view), so sign-out must clear it.
+        composerDraftStore.removeAll()
         cancelScenePhaseAttempt()
         lastConnectionFailure = nil
         client?.disconnect()

@@ -542,9 +542,16 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         await appState.sendGroupRoomMessage("still pending")
         XCTAssertNotNil(appState.activeRoomSurface)
         XCTAssertNotNil(appState.pendingRoomMessage)
+        let draftKey = ComposerDraftKey(profile: "default", sessionID: "stored-1")
+        appState.composerDraftStore.save(
+            ComposerDraft(text: "unsent words", attachments: []),
+            for: draftKey
+        )
 
         appState.disconnect()
 
+        XCTAssertTrue(appState.composerDraftStore.draft(for: draftKey).isEmpty,
+                      "sign-out clears the signed-out user's drafts")
         XCTAssertEqual(appState.activeRoomSurface, nil)
         XCTAssertEqual(appState.pendingRoomMessage, nil)
         XCTAssertTrue(appState.activeRoomReplay.events.isEmpty)

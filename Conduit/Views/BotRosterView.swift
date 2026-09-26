@@ -137,6 +137,8 @@ struct BotRosterView: View {
                 if hostedGroupsAvailable && visibleBots.count >= 2 {
                     Button {
                         Haptics.light()
+                        // The sheet renders the shared error; start clean.
+                        appState.errorMessage = nil
                         showingGroupCreateSheet = true
                     } label: {
                         Label(
