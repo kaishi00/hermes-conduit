@@ -42,6 +42,13 @@ enum VoiceAudioEngineRecovery {
     /// kAudioUnitErr_CannotDoInCurrentContext.
     static let cannotDoInCurrentContext = -10863
 
+    /// Domains Core Audio graph failures arrive in. Codes are namespaced, so
+    /// a matching number in any other domain is not a graph failure.
+    private static let coreAudioDomains: Set<String> = [
+        "com.apple.coreaudio.avfaudio",
+        NSOSStatusErrorDomain,
+    ]
+
     private static let recoverableCodes: Set<Int> = [
         formatNotSupported,
         failedInitialization,
@@ -54,7 +61,8 @@ enum VoiceAudioEngineRecovery {
     static func isRecoverable(_ error: Error) -> Bool {
         if error is VoiceAudioInputFormatMismatch { return true }
         if error is VoiceAudioError { return false }
-        return recoverableCodes.contains((error as NSError).code)
+        let nsError = error as NSError
+        return coreAudioDomains.contains(nsError.domain) && recoverableCodes.contains(nsError.code)
     }
 
     /// Whether a tap installed with the node's own output format would match

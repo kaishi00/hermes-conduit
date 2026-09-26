@@ -134,6 +134,37 @@ final class VoiceAudioEngineRecoveryTests: XCTestCase {
         XCTAssertEqual(starts, 1)
     }
 
+    func testCoreAudioCodeInAnotherDomainIsNotRetried() {
+        XCTAssertFalse(VoiceAudioEngineRecovery.isRecoverable(
+            NSError(domain: "com.example.unrelated", code: VoiceAudioEngineRecovery.formatNotSupported)
+        ))
+    }
+
+    // MARK: - Playback start recovery
+
+    /// Service-level: engine.start is replaced by a -10868 failure, so this
+    /// exercises the real rebuild/retry/settle path without rendering audio.
+    func testPlaybackStartRetriesOnAFreshEngineThenSettlesCleanly() {
+        let factory = CountingEngineFactory()
+        let service = AVSpeechPlaybackService(
+            coordinator: VoiceAudioSessionCoordinator(session: InertVoiceAudioSession()),
+            makeEngine: { factory.make() }
+        )
+        XCTAssertEqual(factory.built, 1)
+
+        XCTAssertThrowsError(try service.start(sampleRate: 24_000)) { error in
+            XCTAssertEqual((error as NSError).code, VoiceAudioEngineRecovery.formatNotSupported)
+        }
+        XCTAssertEqual(factory.built, 3, "each attempt runs on its own freshly built engine")
+        XCTAssertEqual(factory.startAttempts, 2, "a recoverable failure is retried exactly once")
+        XCTAssertFalse(service.isPlaying)
+
+        // The failed start left no format behind: the next chunk starts a new
+        // stream instead of scheduling onto the dead player.
+        XCTAssertThrowsError(try service.enqueuePCM16(Data([0, 0]), sampleRate: 24_000))
+        XCTAssertEqual(factory.startAttempts, 4)
+    }
+
     // MARK: - Playback drain fence
 
     func testStaleBufferCompletionCannotDrainTheNextStream() {
@@ -163,4 +194,32 @@ private final class InertVoiceAudioSession: VoiceAudioSessionControlling {
     ) throws {}
 
     func setActive(_ active: Bool, options: AVAudioSession.SetActiveOptions) throws {}
+}
+
+private final class CountingEngineFactory {
+    private(set) var built = 0
+    private(set) var startAttempts = 0
+
+    func make() -> AVAudioEngine {
+        built += 1
+        return FormatRejectingEngine { [weak self] in self?.startAttempts += 1 }
+    }
+}
+
+/// An engine whose start fails the way a stale graph does (-10868).
+private final class FormatRejectingEngine: AVAudioEngine {
+    private let onStart: () -> Void
+
+    init(onStart: @escaping () -> Void) {
+        self.onStart = onStart
+        super.init()
+    }
+
+    override func start() throws {
+        onStart()
+        throw NSError(
+            domain: "com.apple.coreaudio.avfaudio",
+            code: VoiceAudioEngineRecovery.formatNotSupported
+        )
+    }
 }

@@ -21,8 +21,7 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
     /// Rebuilt at the start of every rendering lifetime (see
     /// `VoiceAudioEngineRecovery`): an engine kept across session
     /// reconfigurations starts against stale input formats (-10868).
-    private var engine: AVAudioEngine
-    private let makeEngine: () -> AVAudioEngine
+    private var engine = AVAudioEngine()
     private let session = AVAudioSession.sharedInstance()
     private let coordinator: VoiceAudioSessionCoordinator
     /// AVAudioEngine and AVAudioConverter use deinterleaved Float32 as their
@@ -77,13 +76,8 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
     /// Optional injection instead of a default `.shared` argument: default
     /// parameter values are evaluated in a nonisolated context, which cannot
     /// read the MainActor-isolated singleton.
-    init(
-        coordinator: VoiceAudioSessionCoordinator? = nil,
-        makeEngine: @escaping () -> AVAudioEngine = { AVAudioEngine() }
-    ) {
+    init(coordinator: VoiceAudioSessionCoordinator? = nil) {
         self.coordinator = coordinator ?? .shared
-        self.makeEngine = makeEngine
-        self.engine = makeEngine()
         var capturedContinuation: AsyncStream<VoiceCaptureEvent>.Continuation?
         events = AsyncStream { capturedContinuation = $0 }
         continuation = capturedContinuation
@@ -225,7 +219,7 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
 
     private func rebuildEngine() {
         teardownRendering()
-        engine = makeEngine()
+        engine = AVAudioEngine()
     }
 
     private func handleStartupFailure(_ error: Error, stage: String) {

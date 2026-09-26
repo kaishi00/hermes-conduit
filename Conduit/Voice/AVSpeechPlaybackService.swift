@@ -91,7 +91,10 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
                 }
             )
         } catch {
-            releaseOwnership()
+            // Full settle, not just ownership: a failed start must not leave
+            // `format` set on a graph that never started, or later chunks
+            // would schedule onto a dead player and drain would never fire.
+            stop()
             throw error
         }
         player.play()
@@ -225,7 +228,9 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
 
     @objc private func handleEngineConfigurationChange(_ notification: Notification) {
         guard let changedEngine = notification.object as? AVAudioEngine else { return }
-        let changedEngineID = ObjectIdentifier(changedEngine)
+        // Weak, not an address: a replaced engine that has since been freed
+        // reads back nil and can never alias the live engine.
+        let changed = WeakAudioEngineReference(changedEngine)
         Task { @MainActor [weak self] in
             // A route change can stop the rendering engine under a live lease
             // (AirPods disconnect, dock/undock). Settle instead of leaving
@@ -235,7 +240,8 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
             // Changes from replaced engines (or the capture service's engine)
             // are not this stream's.
             guard let self,
-                  ObjectIdentifier(self.engine) == changedEngineID,
+                  let changedEngine = changed.engine,
+                  changedEngine === self.engine,
                   self.lease != nil,
                   !self.engine.isRunning else { return }
             self.stop()
@@ -276,4 +282,11 @@ extension AVSpeechPlaybackService: AVAudioPlayerDelegate {
             self.stop()
         }
     }
+}
+
+/// Carries a configuration-change notification's engine across the MainActor
+/// hop without retaining it or comparing raw addresses.
+private final class WeakAudioEngineReference: @unchecked Sendable {
+    weak var engine: AVAudioEngine?
+    init(_ engine: AVAudioEngine) { self.engine = engine }
 }
