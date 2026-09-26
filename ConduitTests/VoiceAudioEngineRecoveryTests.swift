@@ -291,6 +291,21 @@ extension VoiceAudioSessionCoordinatorTests {
         XCTAssertEqual(factory.engines.count, 2)
     }
 
+    // MARK: - Playback drain watchdog
+
+    func testDrainSettlesWhenRenderingDiesWithoutANotification() async {
+        let service = AVSpeechPlaybackService(coordinator: VoiceAudioSessionCoordinator(session: InertVoiceAudioSession()))
+        // A buffer is outstanding but its completion will never fire: the
+        // engine stopped without posting anything the service observes.
+        service.pendingBuffers = 1
+        service.drainWatchdogGrace = 0.05
+
+        await service.drain()
+
+        XCTAssertEqual(service.pendingBuffers, 0, "the watchdog settled the stream through stop()")
+        XCTAssertFalse(service.isPlaying)
+    }
+
     // MARK: - Playback drain fence
 
     func testStaleBufferCompletionCannotDrainTheNextStream() {

@@ -22,6 +22,12 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
     /// hardware; production code mutates it only through scheduling,
     /// draining, and stop().
     var pendingBuffers = 0
+    /// Total audio scheduled on the current stream: an upper bound on what is
+    /// still left to render when a drain begins.
+    private var scheduledSeconds: TimeInterval = 0
+    /// Slack past the scheduled audio before a drain concludes the engine is
+    /// dead. Internal so ConduitTests can shorten it.
+    var drainWatchdogGrace: TimeInterval = 10
     /// Identity of the current playback lifetime. Bumped by every stop(), so
     /// completion callbacks from buffers of a stopped (or replaced) player —
     /// AVAudioPlayerNode fires them for unplayed buffers when stopped — can
@@ -136,6 +142,7 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
             destination[0].assign(from: base.assumingMemoryBound(to: Int16.self), count: Int(frames))
         }
         pendingBuffers += 1
+        scheduledSeconds += Double(frames) / format.sampleRate
         let generation = playbackGeneration
         player.scheduleBuffer(
             buffer,
@@ -179,9 +186,23 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
             if isFinishing { stop() }
             return
         }
+        // Watchdog: every waiter is normally resumed by a buffer completion
+        // or stop(). If rendering died without any observed notification,
+        // nothing would ever resume it, so settle once all scheduled audio
+        // could have played plus a grace period. Only a dead engine gets here.
+        let generation = playbackGeneration
+        let budget = scheduledSeconds + (encodedPlayer?.duration ?? 0) + drainWatchdogGrace
+        let watchdog = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(max(0, budget) * 1_000_000_000))
+            guard !Task.isCancelled, let self,
+                  self.playbackGeneration == generation,
+                  !self.drainWaiters.isEmpty else { return }
+            self.stop()
+        }
         await withCheckedContinuation { continuation in
             drainWaiters.append(continuation)
         }
+        watchdog.cancel()
     }
 
     func stop() {
@@ -194,6 +215,7 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
         format = nil
         remainder.removeAll(keepingCapacity: true)
         pendingBuffers = 0
+        scheduledSeconds = 0
         isPlaying = false
         let waiters = drainWaiters
         drainWaiters.removeAll()
