@@ -79,6 +79,16 @@ final class CarPlayVoiceCoordinator {
         $0.activateVoiceControlState(withIdentifier: $1.identifier)
     }
 
+    /// How long a CarPlay open waits for Hermes to (re)connect before it
+    /// settles into the error state. In a car the phone is usually locked,
+    /// so the connection is often still being restored or re-established
+    /// when CarPlay connects; failing on the first `.deferred` reported
+    /// Voice unavailable for a connection that was seconds away.
+    var connectionWaitTimeout: Duration = .seconds(20)
+    /// Test seam over the connection wait. nil (production) observes the
+    /// bound AppState's `isConnected` for up to `connectionWaitTimeout`.
+    var connectionWaiter: (@MainActor (AppState) async -> Bool)?
+
     private var stateObservation: AnyCancellable?
 
     internal init() {}
@@ -240,10 +250,7 @@ final class CarPlayVoiceCoordinator {
                 return
             }
         } else {
-            outcome = await appState.prepareVoiceConversation(
-                profile: nil,
-                startsFreshConversation: false
-            )
+            outcome = await prepareWaitingForConnection(appState: appState, generation: generation)
         }
         await completeListenTurn(generation: generation, outcome: outcome)
     }
@@ -273,11 +280,61 @@ final class CarPlayVoiceCoordinator {
             }
             return
         }
+        let outcome = await prepareWaitingForConnection(appState: appState, generation: generation)
+        await completeVoiceEstablishment(generation: generation, outcome: outcome)
+    }
+
+    /// Runs the shared prepare path; when it defers because Hermes is not
+    /// connected yet, waits (bounded) for the connection and prepares once
+    /// more. A connection that never arrives keeps `.deferred`, which the
+    /// callers settle into the error state.
+    func prepareWaitingForConnection(
+        appState: AppState,
+        generation: UInt64
+    ) async -> AppState.VoiceConversationPrepareOutcome {
         let outcome = await appState.prepareVoiceConversation(
             profile: nil,
             startsFreshConversation: false
         )
-        await completeVoiceEstablishment(generation: generation, outcome: outcome)
+        guard outcome == .deferred else { return outcome }
+        carPlayLogger.notice("voice prepare deferred: waiting for Hermes to connect")
+        // A lost transport is re-established by the CarPlay surface itself
+        // while the phone is locked; make sure a cycle is armed.
+        appState.recoverTransportForCarPlayIfNeeded()
+        let connected: Bool
+        if let connectionWaiter {
+            connected = await connectionWaiter(appState)
+        } else {
+            connected = await Self.awaitConnection(of: appState, timeout: connectionWaitTimeout)
+        }
+        guard connected, isCurrent(generation), isConnected else {
+            return .deferred
+        }
+        return await appState.prepareVoiceConversation(
+            profile: nil,
+            startsFreshConversation: false
+        )
+    }
+
+    /// Resolves true as soon as `appState.isConnected` is true, or false once
+    /// `timeout` elapses first.
+    static func awaitConnection(of appState: AppState, timeout: Duration) async -> Bool {
+        if appState.isConnected { return true }
+        return await withTaskGroup(of: Bool.self) { group in
+            group.addTask { @MainActor in
+                for await connected in appState.$isConnected.values where connected {
+                    return true
+                }
+                return false
+            }
+            group.addTask {
+                try? await Task.sleep(for: timeout)
+                return false
+            }
+            let connected = await group.next() ?? false
+            group.cancelAll()
+            return connected
+        }
     }
 
     /// Post-prepare continuation of connect-time establishment, split out so
