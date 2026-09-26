@@ -61,8 +61,18 @@ enum VoiceAudioEngineRecovery {
     static func isRecoverable(_ error: Error) -> Bool {
         if error is VoiceAudioInputFormatMismatch { return true }
         if error is VoiceAudioError { return false }
-        let nsError = error as NSError
-        return coreAudioDomains.contains(nsError.domain) && recoverableCodes.contains(nsError.code)
+        // A wrapping framework error may carry the Core Audio status as its
+        // underlying error, so walk the chain (bounded against cycles).
+        var current: NSError? = error as NSError
+        var depth = 0
+        while let nsError = current, depth < 8 {
+            if coreAudioDomains.contains(nsError.domain) && recoverableCodes.contains(nsError.code) {
+                return true
+            }
+            current = nsError.userInfo[NSUnderlyingErrorKey] as? NSError
+            depth += 1
+        }
+        return false
     }
 
     /// Whether a tap installed with the node's own output format would match

@@ -140,6 +140,15 @@ final class VoiceAudioEngineRecoveryTests: XCTestCase {
         ))
     }
 
+    func testWrappedCoreAudioFailureIsRecoverable() {
+        let wrapped = NSError(
+            domain: "AVFoundationErrorDomain",
+            code: -11800,
+            userInfo: [NSUnderlyingErrorKey: formatNotSupported]
+        )
+        XCTAssertTrue(VoiceAudioEngineRecovery.isRecoverable(wrapped))
+    }
+
     // MARK: - Playback start recovery
 
     /// Service-level: engine.start is replaced by a -10868 failure, so this
