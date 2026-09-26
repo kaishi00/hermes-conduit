@@ -3011,6 +3011,10 @@ final class AppState: ObservableObject {
     /// The send-failure text currently shown in `errorMessage`, if any, so
     /// a settled send retires its own banner and nothing else.
     private var roomSendErrorMessage: String?
+    /// Rooms (keyed like `parkedRoomOutboxes`) with a `groups.send` still
+    /// awaiting its answer. A room left and reopened mid-send shows its row
+    /// as "Sending…", not "Not delivered", until that attempt resolves.
+    private var inFlightRoomSendKeys: Set<String> = []
 
     /// Fences every in-flight room response and stops the poller. Runs at
     /// the server-identity boundary (with the rest of Bot Mode teardown), on
@@ -3094,6 +3098,18 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Drop parked sends and drafts of this dashboard's rooms that left the
+    /// room list (disbanded elsewhere): they can never be reopened.
+    private func pruneRoomStores(liveRoomIDs: Set<String>) {
+        guard let dashboardID = activeDashboardID else { return }
+        let prefix = "\(dashboardID.uuidString)|"
+        func isGone(_ key: String) -> Bool {
+            key.hasPrefix(prefix) && !liveRoomIDs.contains(String(key.dropFirst(prefix.count)))
+        }
+        parkedRoomOutboxes = parkedRoomOutboxes.filter { !isGone($0.key) }
+        groupRoomDrafts = groupRoomDrafts.filter { !isGone($0.key) }
+    }
+
     /// Close a room that no longer exists (disbanded or not found): nothing
     /// is parked for it, and its draft goes too — it can never be reopened.
     private func closeGoneRoomSurface() {
@@ -3171,6 +3187,7 @@ final class AppState: ObservableObject {
         activeRoomSendInFlight = false
         groupRoomOutbox.discard()
         pendingRoomMessage = nil
+        roomSendErrorMessage = nil
     }
 
     /// Probe `groups.capabilities` and, when the foundation methods are
@@ -3220,6 +3237,7 @@ final class AppState: ObservableObject {
             let (rooms, _) = try await groupsList(client)
             guard groupRoomEpoch == epoch else { return }
             groupRooms = rooms.filter { !$0.isDisbanded }
+            pruneRoomStores(liveRoomIDs: Set(groupRooms.map(\.roomID)))
         } catch is CancellationError {
             return
         } catch {
@@ -3247,10 +3265,12 @@ final class AppState: ObservableObject {
         // The room banner renders the shared errorMessage: a stale session
         // error must not greet the user inside the room.
         errorMessage = nil
-        // Switching straight from another room parks that room's send; its
-        // in-flight flag belongs to that room, not this one.
+        // Switching straight from another room parks that room's send; the
+        // in-flight flag follows the room being opened.
         parkActiveRoomSend()
-        activeRoomSendInFlight = false
+        activeRoomSendInFlight = inFlightRoomSendKeys.contains(
+            Self.roomKey(dashboardID: dashboardID, roomID: room.roomID)
+        )
         activeRoomSurface = GroupRoomSurface(dashboardID: dashboardID, room: room)
         activeRoomReplay = GroupRoomReplay(roomID: room.roomID)
         activeRoomDriverStatus = nil
@@ -3419,11 +3439,17 @@ final class AppState: ObservableObject {
             "conduit-\(UUID().uuidString.lowercased())"
         }
         pendingRoomMessage = groupRoomOutbox.pending
+        let sendKey = Self.roomKey(dashboardID: surface.dashboardID, roomID: surface.room.roomID)
         activeRoomSendInFlight = true
-        // Fenced: a send from a room already left must not unlock the
-        // composer of a send running in the room opened since.
+        inFlightRoomSendKeys.insert(sendKey)
+        // Per room: this send's end unlocks only its own room's composer,
+        // whether that room is still open, reopened, or not open at all.
         defer {
-            if groupRoomEpoch == epoch { activeRoomSendInFlight = false }
+            inFlightRoomSendKeys.remove(sendKey)
+            if let open = activeRoomSurface,
+               Self.roomKey(dashboardID: open.dashboardID, roomID: open.room.roomID) == sendKey {
+                activeRoomSendInFlight = false
+            }
         }
         do {
             let result = try await groupsSend(
@@ -3433,6 +3459,9 @@ final class AppState: ObservableObject {
                 text: logical.text,
                 threadID: GroupRoomSurface.mainThreadID
             )
+            // A non-throwing groups.send is a delivered event: upstream
+            // `methods_groups.py` answers `accepted: true` for a fresh or an
+            // idempotently replayed append, and a refusal is an RPC error.
             guard groupRoomEpoch == epoch, activeRoomSurface?.room.roomID == surface.room.roomID else {
                 // The room was left (or replaced) mid-send. The gateway
                 // accepted it, so settle whichever copy holds the retry key:

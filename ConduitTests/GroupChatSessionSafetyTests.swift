@@ -364,10 +364,11 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         appState.closeGroupRoom()
         await appState.openGroupRoom(room)
         XCTAssertNotNil(appState.pendingRoomMessage, "the parked send came back with the room")
-        XCTAssertFalse(appState.activeRoomSendInFlight)
+        XCTAssertTrue(appState.activeRoomSendInFlight, "still sending, so no retry is offered yet")
         gate.released = 1
         _ = await first.value
         XCTAssertNil(appState.pendingRoomMessage, "the delivered send never offers a retry")
+        XCTAssertFalse(appState.activeRoomSendInFlight)
 
         // Leave, the response lands, THEN reopen: the parked copy settled.
         let second = Task { @MainActor in await appState.sendGroupRoomMessage("second note") }
@@ -377,7 +378,44 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         _ = await second.value
         await appState.openGroupRoom(room)
         XCTAssertNil(appState.pendingRoomMessage)
+        XCTAssertFalse(appState.activeRoomSendInFlight)
 
+        appState.closeGroupRoom()
+    }
+
+    /// A room that leaves the room list (disbanded elsewhere) drops its
+    /// parked send and draft.
+    func testRoomLeavingTheListDropsItsParkedSendAndDraft() async {
+        final class ListBox {
+            var rooms: [GroupRoom] = []
+        }
+        let box = ListBox()
+        let room = self.room()
+        box.rooms = [room]
+        let operations = GroupChatLifecycleOperations(
+            capabilities: { _ in self.capabilities(supported: true) },
+            list: { _ in (box.rooms, nil) },
+            state: { _, _ in (room, nil) },
+            log: { _, _, sinceSeq, _ in
+                GroupLogPage(events: [], cursor: sinceSeq, latestSeq: 0, hasMore: false,
+                             authorityGatewayID: "gw-a", authorityEpoch: 1)
+            },
+            send: { _, _, _, _, _ in throw TestError() }
+        )
+        let appState = makeAppState(operations: operations)
+        connect(appState)
+        await appState.refreshGroupChatSupport()
+        await appState.openGroupRoom(room)
+        await appState.sendGroupRoomMessage("still pending")
+        appState.saveActiveRoomDraft("half a thought")
+        appState.closeGroupRoom()
+
+        box.rooms = []
+        await appState.refreshGroupRooms()
+
+        await appState.openGroupRoom(room)
+        XCTAssertNil(appState.pendingRoomMessage)
+        XCTAssertEqual(appState.activeRoomDraft(), "")
         appState.closeGroupRoom()
     }
 
