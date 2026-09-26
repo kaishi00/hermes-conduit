@@ -824,4 +824,16 @@ final class GroupChatModelsTests: XCTestCase {
         let nameless = GroupDecoders.member(any(["target": ["kind": "local"]]))!
         XCTAssertFalse(GroupRoomTurns.displayName(of: nameless).isEmpty)
     }
+
+    func testDeferredMemberIsStillTheResponder() {
+        let members = roomMembers()
+        let deferred = turnEvent(eventJSON(
+            seq: 2, kind: "turn.deferred", actor: ["kind": "gateway", "id": "gw-a"],
+            payload: ["thread_id": "main", "discussion_event_id": "user:d1", "member_id": "furina",
+                      "round_index": 0, "execution_generation": 1, "reason": "busy"]
+        ))
+        let log = [userMessage(seq: 1, text: "hi"), deferred]
+        XCTAssertEqual(GroupRoomTurns.pendingResponder(events: log, members: members)?.memberID, "furina")
+        XCTAssertFalse(GroupRoomTurns.isVisible(deferred))
+    }
 }

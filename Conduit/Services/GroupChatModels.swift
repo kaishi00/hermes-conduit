@@ -583,7 +583,12 @@ enum GroupRoomTurns {
     static let maxRounds = 3
     static let maxMessages = 10
 
-    static let terminalKinds: Set<String> = ["turn.settled", "turn.failed", "turn.cancelled", "turn.deferred"]
+    /// Kinds that end a member's turn for this presentation. Upstream's
+    /// policy also counts `turn.deferred`, but a deferred task stays in the
+    /// driver's queue and runs again under a later execution generation
+    /// (`_derive_member_watermarks` allows a later terminal for it), so the
+    /// deferred member is still the one the room is waiting on.
+    static let terminalKinds: Set<String> = ["turn.settled", "turn.failed", "turn.cancelled"]
 
     /// The gateway's `_MENTION_RE`: no leading-whitespace rule, exact handle.
     /// Deliberately looser than the styling regex: `a@all` routes as a
