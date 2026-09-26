@@ -8,11 +8,31 @@ import Foundation
 
 @MainActor
 final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
-    private let engine = AVAudioEngine()
-    private let player = AVAudioPlayerNode()
+    /// Engine and player are rebuilt for every PCM stream (see
+    /// `VoiceAudioEngineRecovery`): an engine kept across session
+    /// reconfigurations — capture pausing for speaker-safe playback, Read
+    /// Aloud's `.playback` policy, route changes — starts against a stale
+    /// output format and fails with -10868 as the assistant begins to speak.
+    private var engine: AVAudioEngine
+    private var player: AVAudioPlayerNode
+    private let makeEngine: () -> AVAudioEngine
     private var format: AVAudioFormat?
     private var remainder = Data()
-    private var pendingBuffers = 0
+    /// Internal so ConduitTests can drive the drain fence without audio
+    /// hardware; production code mutates it only through scheduling,
+    /// draining, and stop().
+    var pendingBuffers = 0
+    /// Total audio scheduled on the current stream: an upper bound on what is
+    /// still left to render when a drain begins.
+    private var scheduledSeconds: TimeInterval = 0
+    /// Slack past the scheduled audio before a drain concludes the engine is
+    /// dead. Internal so ConduitTests can shorten it.
+    var drainWatchdogGrace: TimeInterval = 10
+    /// Identity of the current playback lifetime. Bumped by every stop(), so
+    /// completion callbacks from buffers of a stopped (or replaced) player —
+    /// AVAudioPlayerNode fires them for unplayed buffers when stopped — can
+    /// never drain the next stream's counters.
+    private(set) var playbackGeneration: UInt64 = 0
     private var drainWaiters: [CheckedContinuation<Void, Never>] = []
     private var encodedPlayer: AVAudioPlayer?
     /// Set once `finish()` is requested: when the last scheduled buffer (or
@@ -31,8 +51,14 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
     /// Optional injection instead of a default `.shared` argument: default
     /// parameter values are evaluated in a nonisolated context, which cannot
     /// read the MainActor-isolated singleton.
-    init(coordinator: VoiceAudioSessionCoordinator? = nil) {
+    init(
+        coordinator: VoiceAudioSessionCoordinator? = nil,
+        makeEngine: @escaping () -> AVAudioEngine = { AVAudioEngine() }
+    ) {
         self.coordinator = coordinator ?? .shared
+        self.makeEngine = makeEngine
+        self.engine = makeEngine()
+        self.player = AVAudioPlayerNode()
         super.init()
         engine.attach(player)
         NotificationCenter.default.addObserver(
@@ -41,11 +67,21 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
             name: AVAudioSession.interruptionNotification,
             object: AVAudioSession.sharedInstance()
         )
+        // A media-services reset kills every engine without a configuration
+        // change; settle like an interruption so drain waiters never hang.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleMediaServicesReset(_:)),
+            name: AVAudioSession.mediaServicesWereResetNotification,
+            object: AVAudioSession.sharedInstance()
+        )
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleEngineConfigurationChange(_:)),
             name: .AVAudioEngineConfigurationChange,
-            object: engine
+            // Engines are replaced per stream, so observe every engine and
+            // filter to the live one in the handler.
+            object: nil
         )
     }
 
@@ -59,11 +95,20 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
         lease = try coordinator.acquire(ownershipIntent)
         do {
             self.format = format
-            engine.connect(player, to: engine.mainMixerNode, format: format)
-            engine.prepare()
-            try engine.start()
+            try VoiceAudioEngineRecovery.startFresh(
+                rebuild: { rebuildEngine() },
+                reassert: { try coordinator.reassert() },
+                start: {
+                    engine.connect(player, to: engine.mainMixerNode, format: format)
+                    engine.prepare()
+                    try engine.start()
+                }
+            )
         } catch {
-            releaseOwnership()
+            // Full settle, not just ownership: a failed start must not leave
+            // `format` set on a graph that never started, or later chunks
+            // would schedule onto a dead player and drain would never fire.
+            stop()
             throw error
         }
         player.play()
@@ -71,6 +116,10 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
     }
 
     func enqueuePCM16(_ data: Data, sampleRate: Double) throws -> Int {
+        // A configuration change stops the engine before its deferred
+        // settle runs; buffers scheduled onto a stopped player never
+        // complete. Treat that as a stream boundary and restart now.
+        if format != nil, !engine.isRunning { stop() }
         if format == nil { try start(sampleRate: sampleRate) }
         guard let format, abs(format.sampleRate - sampleRate) < 1 else {
             // A stream that changes sample rates can never render; settle
@@ -93,13 +142,15 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
             destination[0].assign(from: base.assumingMemoryBound(to: Int16.self), count: Int(frames))
         }
         pendingBuffers += 1
+        scheduledSeconds += Double(frames) / format.sampleRate
+        let generation = playbackGeneration
         player.scheduleBuffer(
             buffer,
             at: nil,
             options: [],
             completionCallbackType: .dataPlayedBack
         ) { [weak self] _ in
-            Task { @MainActor in self?.bufferDidDrain() }
+            Task { @MainActor in self?.bufferDidDrain(generation: generation) }
         }
         return alignedBytes
     }
@@ -135,12 +186,27 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
             if isFinishing { stop() }
             return
         }
+        // Watchdog: every waiter is normally resumed by a buffer completion
+        // or stop(). If rendering died without any observed notification,
+        // nothing would ever resume it, so settle once all scheduled audio
+        // could have played plus a grace period. Only a dead engine gets here.
+        let generation = playbackGeneration
+        let budget = scheduledSeconds + (encodedPlayer?.duration ?? 0) + drainWatchdogGrace
+        let watchdog = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(max(0, budget) * 1_000_000_000))
+            guard !Task.isCancelled, let self,
+                  self.playbackGeneration == generation,
+                  !self.drainWaiters.isEmpty else { return }
+            self.stop()
+        }
         await withCheckedContinuation { continuation in
             drainWaiters.append(continuation)
         }
+        watchdog.cancel()
     }
 
     func stop() {
+        playbackGeneration &+= 1
         isFinishing = false
         player.stop()
         encodedPlayer?.stop()
@@ -149,11 +215,22 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
         format = nil
         remainder.removeAll(keepingCapacity: true)
         pendingBuffers = 0
+        scheduledSeconds = 0
         isPlaying = false
         let waiters = drainWaiters
         drainWaiters.removeAll()
         waiters.forEach { $0.resume() }
         releaseOwnership()
+    }
+
+    /// Replaces the engine and player with fresh instances so the new graph
+    /// is built against the session's current hardware format.
+    private func rebuildEngine() {
+        player.stop()
+        engine.stop()
+        engine = makeEngine()
+        player = AVAudioPlayerNode()
+        engine.attach(player)
     }
 
     /// Ownership is released only after the engine stopped rendering, so the
@@ -183,20 +260,35 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
         }
     }
 
+    @objc private func handleMediaServicesReset(_ notification: Notification) {
+        Task { @MainActor [weak self] in self?.stop() }
+    }
+
     @objc private func handleEngineConfigurationChange(_ notification: Notification) {
+        guard let changedEngine = notification.object as? AVAudioEngine else { return }
+        // Weak, not an address: a replaced engine that has since been freed
+        // reads back nil and can never alias the live engine.
+        let changed = WeakAudioEngineReference(changedEngine)
         Task { @MainActor [weak self] in
             // A route change can stop the rendering engine under a live lease
             // (AirPods disconnect, dock/undock). Settle instead of leaving
             // buffers undrained and ownership claimed by audio that can never
             // play. A conversation drain self-heals: the next PCM buffer
-            // reacquires ownership and restarts the engine on the new route.
-            guard let self, self.lease != nil, !self.engine.isRunning else { return }
+            // reacquires ownership and restarts the engine on a fresh graph.
+            // Changes from replaced engines (or the capture service's engine)
+            // are not this stream's.
+            guard let self,
+                  let changedEngine = changed.engine,
+                  changedEngine === self.engine,
+                  self.lease != nil,
+                  !self.engine.isRunning else { return }
             self.stop()
         }
     }
 
-    private func bufferDidDrain() {
-        guard pendingBuffers > 0 else { return }
+    /// Internal for tests: the drain-fence regression drives this directly.
+    func bufferDidDrain(generation: UInt64) {
+        guard generation == playbackGeneration, pendingBuffers > 0 else { return }
         pendingBuffers -= 1
         guard pendingBuffers == 0 else { return }
         if isFinishing {
@@ -228,4 +320,11 @@ extension AVSpeechPlaybackService: AVAudioPlayerDelegate {
             self.stop()
         }
     }
+}
+
+/// Carries a configuration-change notification's engine across the MainActor
+/// hop without retaining it or comparing raw addresses.
+private final class WeakAudioEngineReference: @unchecked Sendable {
+    weak var engine: AVAudioEngine?
+    init(_ engine: AVAudioEngine) { self.engine = engine }
 }
