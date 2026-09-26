@@ -3234,6 +3234,32 @@ extension ChatViewportControllerTests {
         XCTAssertEqual(scrollCommands(controller.followCorrectionDue(token)).count, 1)
     }
 
+    /// A correction the view had to drop (an animated bottom command still
+    /// in flight) is rechecked later, and the recheck can re-arm the same
+    /// overshoot even though its geometry has not changed.
+    func testDeferredOvershootCorrectionIsRecheckedAtSameGeometry() throws {
+        var controller = makeController(following: keyA)
+        let token = try XCTUnwrap(scheduledCorrection(in: controller.layoutMetricsChanged(
+            facts: layoutFacts(
+                bottomMarkerMaxY: 600, viewportMaxY: 800,
+                scope: controller.renderedScrollScope
+            )
+        )))
+        let deferred = controller.followCorrectionDeferred(token, recheckAfter: 0.2)
+        XCTAssertEqual(deferred, [.scheduleFollowRecheck(after: 0.2)])
+        XCTAssertNil(controller.pendingFollowCorrection)
+
+        let recheck = controller.followRecheckDue(facts: layoutFacts(
+            bottomMarkerMaxY: 600, viewportMaxY: 800,
+            scope: controller.renderedScrollScope
+        ))
+        let again = try XCTUnwrap(scheduledCorrection(in: recheck))
+        XCTAssertEqual(scrollCommands(controller.followCorrectionDue(again)).count, 1)
+
+        // A stale token defers nothing.
+        XCTAssertTrue(controller.followCorrectionDeferred(token, recheckAfter: 0.2).isEmpty)
+    }
+
     /// A recheck disarmed by a reset (here: the view disappearing) must not
     /// mint a correction token that no live observer would drain.
     func testRecheckAfterViewDisappearedIsIgnored() throws {

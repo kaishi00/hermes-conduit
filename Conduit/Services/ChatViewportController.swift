@@ -629,6 +629,24 @@ struct ChatViewportController: Equatable {
         return .scheduleFollowCorrection(token)
     }
 
+    /// The view dropped a due correction because an animated bottom
+    /// command is still in flight. That command normally lands at the same
+    /// bottom, but a drag can invalidate it mid-flight; recheck after it
+    /// would have landed instead of trusting it. Nothing was executed, so no
+    /// execution stamp is recorded, and the overshoot geometry is forgotten
+    /// so the recheck can re-arm at the same spot.
+    mutating func followCorrectionDeferred(
+        _ token: ChatFollowCorrectionToken,
+        recheckAfter seconds: TimeInterval
+    ) -> [ChatViewportEffect] {
+        guard pendingFollowCorrection == token else { return [] }
+        pendingFollowCorrection = nil
+        followCorrectionOvershootFacts = nil
+        guard !followRecheckArmed else { return [] }
+        followRecheckArmed = true
+        return [.scheduleFollowRecheck(after: seconds)]
+    }
+
     /// The deferred recheck armed by .scheduleFollowRecheck: re-runs the
     /// ordinary layout decision against the view's current facts, so every
     /// ownership, pending-token and geometry guard still applies.
