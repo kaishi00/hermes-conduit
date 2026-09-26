@@ -64,6 +64,10 @@ struct BotProfile: Identifiable, Equatable {
     /// `last_session.last_active` — the freshest human conversation.
     let lastActive: Double?
     let lastPreview: String?
+    /// `profiles.list` `previous_names` — profile names this bot answered to
+    /// before renames. Mention resolution gap-fill only: a live name always
+    /// outranks another bot's rename history (upstream `previous_names`).
+    var previousNames: [String] = []
 
     var id: String { name }
 
@@ -102,6 +106,10 @@ struct BotRosterSnapshot: Equatable {
     /// Informational in Phase 1 — Conduit renders `message_agent` calls
     /// through its ordinary tool machinery.
     var supportsBotProtocol: Bool
+    /// Group chats Hermes Desktop created and mirrored into the `default`
+    /// profile's ui_meta — invisible to `groups.list` (see
+    /// `DesktopGroupChat`).
+    var desktopGroups: [DesktopGroupChat] = []
 }
 
 enum BotRosterDecoder {
@@ -116,7 +124,8 @@ enum BotRosterDecoder {
         }
         return BotRosterSnapshot(
             bots: bots,
-            supportsBotProtocol: result.objectValue?["bot_mode_protocol"]?.boolValue ?? false
+            supportsBotProtocol: result.objectValue?["bot_mode_protocol"]?.boolValue ?? false,
+            desktopGroups: DesktopGroupChatDecoder.decode(profileRows: rows)
         )
     }
 
@@ -124,7 +133,7 @@ enum BotRosterDecoder {
         guard let name = object["name"]?.stringValue?
             .trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else { return nil }
         let meta = object["ui_meta"]?.objectValue?["hermes-bots"]?.objectValue
-        return BotProfile(
+        var bot = BotProfile(
             name: name,
             botTitle: meta?["title"]?.stringValue,
             displayName: object["display_name"]?.stringValue ?? "",
@@ -139,6 +148,10 @@ enum BotRosterDecoder {
             lastActive: object["last_session"]?.objectValue?["last_active"]?.doubleValue,
             lastPreview: object["last_session"]?.objectValue?["preview"]?.stringValue
         )
+        bot.previousNames = (object["previous_names"]?.arrayValue ?? [])
+            .compactMap { $0.stringValue }
+            .filter { !$0.isEmpty }
+        return bot
     }
 
     private static func decodeCanonicalSession(_ value: AnyCodable?) -> BotCanonicalSession? {

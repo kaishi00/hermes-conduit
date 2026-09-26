@@ -1,6 +1,512 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+
+    "Created in Hermes Desktop. Desktop runs this group's conversation, so reply from there; this shows the latest synced messages." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此群聊创建于 Hermes Desktop。群聊对话由 Desktop 运行，请在 Desktop 中回复；这里显示最近同步的消息。"
+          }
+        }
+      }
+    },
+
+    "Earlier messages are only in Hermes Desktop." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更早的消息仅保存在 Hermes Desktop 中。"
+          }
+        }
+      }
+    },
+
+    "No messages yet." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暂无消息。"
+          }
+        }
+      }
+    },
+
+    "Shortened — the full message is in Hermes Desktop." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已截断 — 完整消息请在 Hermes Desktop 中查看。"
+          }
+        }
+      }
+    },
+
+    "Shows this Hermes Desktop group chat." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示此 Hermes Desktop 群聊。"
+          }
+        }
+      }
+    },
+
+    "Leave this group chat" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "离开该群聊"
+          }
+        }
+      }
+    },
+
+    "Not delivered — retry" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未送达——重试"
+          }
+        }
+      }
+    },
+
+    "Your previous message is still pending. Retry it from the room, or wait for it to deliver." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "您上一条消息仍在等待送达。请在群聊中重试，或等待其送达。"
+          }
+        }
+      }
+    },
+
+    "Room updated." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "群聊已更新。"
+          }
+        }
+      }
+    },
+
+    "Group chats run on this gateway. The gateway drives each member's turn — closing Conduit never stops a room." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "群聊运行在此网关上。每个成员的回合由网关驱动——关闭 Conduit 不会停止群聊。"
+          }
+        }
+      }
+    },
+
+    "The room was renamed." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "群聊已重命名。"
+          }
+        }
+      }
+    },
+
+    "The room's members changed." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "群聊成员已变更。"
+          }
+        }
+      }
+    },
+
+    "This room was disbanded." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "该群聊已解散。"
+          }
+        }
+      }
+    },
+
+    "A member started working…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有成员开始工作…"
+          }
+        }
+      }
+    },
+
+    "The room settled." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "群聊已平息。"
+          }
+        }
+      }
+    },
+
+    "A member's turn failed." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "某成员的回合失败了。"
+          }
+        }
+      }
+    },
+
+    "Work was stopped." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "工作已停止。"
+          }
+        }
+      }
+    },
+
+    "A member is unavailable." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "某成员当前不可用。"
+          }
+        }
+      }
+    },
+
+    "This chat never resets — compacting instead. Bot chats are one continuous conversation; for a throwaway session with this bot, use Sessions mode." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此对话永不重置——改为压缩。Bot 对话是一条连续的对话；如需与该 Bot 的临时会话，请使用“会话”模式。"
+          }
+        }
+      }
+    },
+
+    "This bot chat never resets. Remove the attachments to compact it instead." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 Bot 对话永不重置。请移除附件，改为压缩对话。"
+          }
+        }
+      }
+    },
+
+    "Connect to Hermes to create a group chat." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接到 Hermes 以创建群聊。"
+          }
+        }
+      }
+    },
+
+    "Pick 2 to 6 bots for a group chat." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请为群聊选择 2 到 6 个 Bot。"
+          }
+        }
+      }
+    },
+
+    "Connect to Hermes to open group chats." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接到 Hermes 后才能打开群聊。"
+          }
+        }
+      }
+    },
+
+    "Could not load this group chat: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法加载该群聊：%@"
+          }
+        }
+      }
+    },
+
+    "Could not send to this group chat: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法发送到该群聊：%@"
+          }
+        }
+      }
+    },
+
+    "Could not stop this group chat's work: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法停止该群聊的工作：%@"
+          }
+        }
+      }
+    },
+
+    "Could not disband this group chat: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法解散该群聊：%@"
+          }
+        }
+      }
+    },
+
+    "Could not create the group chat: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法创建群聊：%@"
+          }
+        }
+      }
+    },
+
+    "Two of these bots would claim the same @handle. Rename one bot's title, then try again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "其中两个 Bot 会占用同一个 @handle。请先重命名其中一个 Bot 的标题，再试一次。"
+          }
+        }
+      }
+    },
+
+    "Message the room" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在群里发言"
+          }
+        }
+      }
+    },
+
+    "Sending…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "发送中…"
+          }
+        }
+      }
+    },
+
+    "Member" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "成员"
+          }
+        }
+      }
+    },
+
+    "No messages yet. Say something to the room." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "还没有消息。向群里说点什么吧。"
+          }
+        }
+      }
+    },
+
+    "Disband this group chat?" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "解散该群聊？"
+          }
+        }
+      }
+    },
+
+    "Disband" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "解散"
+          }
+        }
+      }
+    },
+
+    "The room, its history, and every member's session end permanently. This cannot be undone." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "群聊、其历史记录以及每个成员的会话将永久结束。此操作无法撤销。"
+          }
+        }
+      }
+    },
+
+    "Stop" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "停止"
+          }
+        }
+      }
+    },
+
+    "Disband Group" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "解散群聊"
+          }
+        }
+      }
+    },
+
+    "Group chat actions" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "群聊操作"
+          }
+        }
+      }
+    },
+
+    "%lld members" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 名成员"
+          }
+        }
+      }
+    },
+
+    "%lld members · working…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 名成员 · 工作中…"
+          }
+        }
+      }
+    },
+
+    "New Group Chat" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新建群聊"
+          }
+        }
+      }
+    },
+
+    "Opens this group chat." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开该群聊。"
+          }
+        }
+      }
+    },
+
+    "Group Chats" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "群聊"
+          }
+        }
+      }
+    },
+
+    "Members (2–6)" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "成员（2–6）"
+          }
+        }
+      }
+    },
+
+    "Group name" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "群聊名称"
+          }
+        }
+      }
+    },
     "Could not save this dashboard." : {
       "localizations" : {
         "zh-Hans" : {

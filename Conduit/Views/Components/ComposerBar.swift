@@ -25,7 +25,10 @@ struct ComposerBar: View {
     @State private var isFocused = false
     @State private var isShowingSlashSuggestions = false
     @State private var composerErrorMessage: String?
-    @State private var draftStore = ComposerDraftStore()
+    /// NOT view state: the store is owned by AppState because it must
+    /// outlive this view's unmount (the room surface swap destroys the
+    /// subtree — a `@State` store here would die with the draft it holds).
+    private var draftStore: ComposerDraftStore { appState.composerDraftStore }
     @State private var editorIdentity = UUID()
     /// Generation of intentional composer text replacements. Every program
     /// path that replaces the composer content routes through
@@ -284,6 +287,22 @@ struct ComposerBar: View {
         }
         .onChange(of: activeDraftKey) { _, newKey in
             handoffComposer(to: newKey)
+        }
+        .onChange(of: appState.activeRoomSurface != nil) { _, roomActive in
+            // The room surface unmounts this composer's subtree. Persist the
+            // typed draft BEFORE it goes, so returning to the session
+            // restores exactly what the user had typed.
+            if roomActive {
+                saveDraft(for: activeDraftKey)
+            }
+        }
+        .onDisappear {
+            // Dependable second hook: whether this view leaves for a room,
+            // a session switch, or teardown, the typed text lands in the
+            // app-lifetime store first.
+            if appState.activeRoomSurface != nil {
+                saveDraft(for: activeDraftKey)
+            }
         }
         // A session resume can complete before the gateway has refreshed its
         // context accounting. Recheck once the active composer is on screen,

@@ -3470,6 +3470,66 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         XCTAssertFalse(harness.appState.turnStateIsStale)
     }
 
+    /// A mention typed while the bot is busy routes through steer; the
+    /// steered text carries the same @mention identification note a new
+    /// turn would.
+    func testBusySteerCarriesTheMentionAnnotation() async {
+        let sessionA = session("stored-a")
+        let researcher = BotProfile(
+            name: "researcher",
+            botTitle: nil,
+            displayName: "",
+            profileDescription: "",
+            model: nil,
+            provider: nil,
+            hasAvatar: false,
+            isPinned: false,
+            isHiddenByMeta: false,
+            appearanceColor: nil,
+            canonicalSession: nil,
+            lastActive: nil,
+            lastPreview: nil
+        )
+        var steeredTexts: [String] = []
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                sendPrompt: { _, _, _ in .accepted },
+                probeActiveSessions: { _ in
+                    [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: "working"
+                    )]
+                },
+                steer: { _, _, text in steeredTexts.append(text) },
+                botRoster: { _ in
+                    BotRosterSnapshot(bots: [researcher], supportsBotProtocol: true)
+                }
+            )
+        )
+        installDisconnectedClient(into: harness)
+        harness.appState.isConnected = true
+        await harness.appState.refreshBotRoster()
+        harness.appState.isConnected = false
+        XCTAssertEqual(harness.appState.botRoster.map(\.name), ["researcher"])
+
+        harness.appState.sessions = [sessionA]
+        harness.appState.activeSessionId = sessionA.id
+        harness.appState.handleScenePhase(.background)
+
+        let text = "@researcher check the numbers"
+        let submitted = await harness.appState.submitComposer(text: text)
+
+        XCTAssertTrue(submitted)
+        let expected = BotMentions.middlewareAnnotation(
+            text: text,
+            roster: [researcher],
+            activeProfileName: "default"
+        )
+        XCTAssertNotNil(expected)
+        XCTAssertEqual(steeredTexts, [expected ?? ""])
+    }
+
     /// A prompt outcome returned after the user switched sessions must not
     /// adopt running state or clear staleness for the new session.
     func testPromptOutcomeHandoffDoesNotMutateNewSessionState() async {

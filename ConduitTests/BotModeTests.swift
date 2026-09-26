@@ -661,9 +661,18 @@ final class BotModeTests: XCTestCase {
         // Boxes the two seam invocations can poll from the test body.
         final class Gate: @unchecked Sendable {
             var open = false
+            var calls = 0
         }
         let releaseFirst = Gate()
-        var calls = 0
+        // Bounded wait on the seam's call count: a fixed sleep races a slow
+        // runner, and a first refresh that starts only AFTER the server
+        // switch belongs to the new identity (the second then joins it).
+        func waitForRosterCall(_ count: Int) async {
+            for _ in 0..<500 where releaseFirst.calls < count {
+                try? await Task.sleep(nanoseconds: 10_000_000)
+            }
+            XCTAssertEqual(releaseFirst.calls, count, "roster call \(count) never started")
+        }
         let rosterBot = makeBot(name: "atlas")
         let staleBot = makeBot(name: "stale-bot")
         let harness = makeBotHarness(
@@ -675,8 +684,8 @@ final class BotModeTests: XCTestCase {
             },
             lifecycleOperations: ChatResumeLifecycleOperations(
                 botRoster: { _ in
-                    calls += 1
-                    if calls == 1 {
+                    releaseFirst.calls += 1
+                    if releaseFirst.calls == 1 {
                         while !releaseFirst.open {
                             try? await Task.sleep(nanoseconds: 10_000_000)
                         }
@@ -697,7 +706,7 @@ final class BotModeTests: XCTestCase {
         let first = Task { @MainActor [weak harnessState = harness.appState] in
             await harnessState?.refreshBotRoster()
         }
-        try? await Task.sleep(nanoseconds: 60_000_000)
+        await waitForRosterCall(1)
         // Server switch: bumps the epoch and resets the single-flight flag.
         _ = harness.appState.prepareChatResumeForConnection(
             to: "https://elsewhere.example",
@@ -706,7 +715,7 @@ final class BotModeTests: XCTestCase {
         let second = Task { @MainActor [weak harnessState = harness.appState] in
             await harnessState?.refreshBotRoster()
         }
-        try? await Task.sleep(nanoseconds: 60_000_000)
+        await waitForRosterCall(2)
         XCTAssertTrue(
             harness.appState.isRefreshingBotRoster,
             "the newer refresh owns the single-flight claim"
