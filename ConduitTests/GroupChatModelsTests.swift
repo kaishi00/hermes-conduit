@@ -756,4 +756,33 @@ final class GroupChatModelsTests: XCTestCase {
         XCTAssertEqual(candidates.first?.title, "Zhongli")
         XCTAssertEqual(MentionAutocomplete.botCandidates(roster, activeProfileName: nil).count, 2)
     }
+
+    func testPendingResponderRotatesThreeMembersAndStopsAtTheMessageCap() {
+        let members = roomMembers() + [GroupDecoders.member(any([
+            "member_id": "nahida", "profile": "nahida", "handle": "nahida", "display_name": "Nahida",
+        ]))!]
+        var log = [userMessage(seq: 1, text: "@all hello")]
+        XCTAssertEqual(GroupRoomTurns.pendingResponder(events: log, members: members)?.memberID, "furina")
+        log += [memberMessage(seq: 2, member: "furina", round: 0, text: "hi"),
+                settled(seq: 3, member: "furina", round: 0, messageSeq: 2)]
+        XCTAssertEqual(GroupRoomTurns.pendingResponder(events: log, members: members)?.memberID, "zhongli")
+
+        // Ten committed member messages bound the Discussion: nobody is next.
+        var capped = [userMessage(seq: 1, text: "@all hello")]
+        var seq = 2
+        for index in 0..<GroupRoomTurns.maxMessages {
+            let member = ["furina", "zhongli", "nahida"][index % 3]
+            capped += [memberMessage(seq: seq, member: member, round: 0, text: "@all again"),
+                       settled(seq: seq + 1, member: member, round: 0, messageSeq: seq)]
+            seq += 2
+        }
+        XCTAssertNil(GroupRoomTurns.pendingResponder(events: capped, members: members))
+    }
+
+    func testRoomCandidatesReserveTheHumanHandoff() {
+        let shadow = GroupDecoders.member(any([
+            "member_id": "user", "profile": "user", "handle": "user", "display_name": "User",
+        ]))!
+        XCTAssertFalse(MentionAutocomplete.roomCandidates([shadow]).map(\.tag).contains("user"))
+    }
 }

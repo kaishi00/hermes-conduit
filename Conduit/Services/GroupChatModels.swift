@@ -666,7 +666,7 @@ enum GroupRoomTurns {
             && event.payload["discussion_event_id"]?.stringValue == discussion.eventID {
             if let round = HermesClient.exactIntValue(event.payload["round_index"]),
                let memberID = event.payload["member_id"]?.stringValue {
-                terminals.insert("\(round)|\(memberID)")
+                terminals.insert("\(round)|\(memberID.lowercased())")
             }
         }
 
@@ -675,7 +675,7 @@ enum GroupRoomTurns {
                 ? resolveMentions(in: [discussion.payload["text"]?.stringValue ?? ""], members: members, defaultAll: true)
                 : unaddressedMentions(discussionMessages, members: members)
             for member in rotate(responders, by: round)
-            where !terminals.contains("\(round)|\(routingID(of: member))") {
+            where !terminals.contains("\(round)|\(routingID(of: member).lowercased())") {
                 return member
             }
             let spokeThisRound = memberMessages.contains {
@@ -819,8 +819,9 @@ enum MentionAutocomplete {
     /// Room members, then `@all`. Members without a handle cannot be routed
     /// and are left out.
     static func roomCandidates(_ members: [GroupMember]) -> [Candidate] {
-        // A member handle can never shadow the broadcast tags.
-        var seen: Set<String> = ["all", "everyone"]
+        // A member handle can never shadow the broadcast tags or the human
+        // handoff (the create path reserves the same set).
+        var seen: Set<String> = ["all", "everyone", "user"]
         var result: [Candidate] = []
         for member in members {
             guard let handle = member.handle?.trimmingCharacters(in: .whitespacesAndNewlines),

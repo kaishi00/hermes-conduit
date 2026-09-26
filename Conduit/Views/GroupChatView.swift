@@ -9,6 +9,7 @@ struct GroupChatView: View {
     @ObservedObject private var appLanguage = AppLanguageStore.shared
     @State private var draft = ""
     @State private var showingDisbandConfirmation = false
+    @FocusState private var composerFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -52,7 +53,7 @@ struct GroupChatView: View {
     private var mentionQuery: String? { MentionAutocomplete.activeQuery(in: draft) }
 
     private var mentionCandidates: [MentionAutocomplete.Candidate] {
-        guard let query = mentionQuery else { return [] }
+        guard composerFocused, let query = mentionQuery else { return [] }
         return MentionAutocomplete.filter(MentionAutocomplete.roomCandidates(members), query: query)
     }
 
@@ -187,6 +188,7 @@ struct GroupChatView: View {
                     axis: .vertical
                 )
                 .lineLimit(1...5)
+                .focused($composerFocused)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
                 .background(Color.primary.opacity(0.05),
@@ -422,6 +424,9 @@ struct MentionSuggestionList: View {
     let onSelected: (MentionAutocomplete.Candidate) -> Void
     @ScaledMetric(relativeTo: .subheadline) private var rowHeight: CGFloat = 44
 
+    /// The hairlines between the visible rows (at most five).
+    private var dividerAllowance: CGFloat { CGFloat(max(0, min(candidates.count, 5) - 1)) }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
@@ -455,7 +460,7 @@ struct MentionSuggestionList: View {
         }
         // Sized to its rows (a bare max height would stretch two rows to
         // the cap), scrolling past five; the row height follows Dynamic Type.
-        .frame(height: min(rowHeight * 5, CGFloat(candidates.count) * rowHeight))
+        .frame(height: min(rowHeight * 5, CGFloat(candidates.count) * rowHeight) + dividerAllowance)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
