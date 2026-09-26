@@ -55,6 +55,10 @@ extension VoiceAudioSessionCoordinatorTests {
         )
     }
 
+    func testEmptyInputFormatIsRecoverable() {
+        XCTAssertTrue(VoiceAudioEngineRecovery.isRecoverable(VoiceAudioInputFormatUnavailable()))
+    }
+
     func testVoiceAudioErrorIsNotRetried() {
         XCTAssertFalse(VoiceAudioEngineRecovery.isRecoverable(VoiceAudioError.noAudioCaptured))
     }

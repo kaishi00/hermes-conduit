@@ -242,7 +242,9 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
         let input = engine.inputNode
         let hardwareFormat = input.inputFormat(forBus: 0)
         guard hardwareFormat.sampleRate > 0, hardwareFormat.channelCount > 0 else {
-            throw VoiceAudioError.unavailable(AppLocalization.string("The selected microphone is unavailable."))
+            // Recoverable: a fresh input node can report an empty format
+            // until the session settles after a route change.
+            throw VoiceAudioInputFormatUnavailable()
         }
         // A nil-format tap uses the node's output format. If that disagrees
         // with the live hardware rate, installTap raises an Objective-C

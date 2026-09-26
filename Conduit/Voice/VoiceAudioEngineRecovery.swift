@@ -22,6 +22,15 @@ import OSLog
 
 private let engineRecoveryLogger = Logger(subsystem: "com.milim.relay", category: "VoiceAudio")
 
+/// The input node reported no usable hardware format. Retried once after the
+/// session policy is re-applied; surfaced to the user as an unavailable
+/// microphone if it persists.
+struct VoiceAudioInputFormatUnavailable: LocalizedError, Equatable {
+    var errorDescription: String? {
+        AppLocalization.string("The selected microphone is unavailable.")
+    }
+}
+
 enum VoiceAudioEngineRecovery {
     /// kAudioUnitErr_FormatNotSupported.
     static let formatNotSupported = -10868
@@ -47,6 +56,7 @@ enum VoiceAudioEngineRecovery {
     /// re-applied session can recover from. Permission, missing-microphone,
     /// and app-level errors are not retried.
     static func isRecoverable(_ error: Error) -> Bool {
+        if error is VoiceAudioInputFormatUnavailable { return true }
         // A wrapping framework error may carry the Core Audio status as its
         // underlying error, so walk the chain (bounded against cycles).
         var current: NSError? = error as NSError
