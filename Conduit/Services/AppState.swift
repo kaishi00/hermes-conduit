@@ -136,6 +136,8 @@ struct ChatResumeLifecycleOperations {
     /// pin the addressing, and must never be forwarded to the 3-argument
     /// `setSessionTitle` seam used by ordinary (dashboard-profile) renames.
     var titleBotChat: (@MainActor (HermesClient, String, String, String) async throws -> Void)?
+    /// Test seam: the WebSocket transport for clients built by makeClient; nil = URLSession.
+    var makeTransport: (@MainActor () -> any HermesWebSocketTransport)?
 
     init(
         connectClient: (@MainActor (HermesClient) async throws -> Void)? = nil,
@@ -193,7 +195,8 @@ struct ChatResumeLifecycleOperations {
         botRoster: (@MainActor (HermesClient) async throws -> BotRosterSnapshot)? = nil,
         findBotChat: (@MainActor (HermesClient, String) async throws -> [BotChatLookupRow])? = nil,
         createBotChat: (@MainActor (HermesClient, String) async throws -> (sessionId: String, storedSessionId: String?))? = nil,
-        titleBotChat: (@MainActor (HermesClient, String, String, String) async throws -> Void)? = nil
+        titleBotChat: (@MainActor (HermesClient, String, String, String) async throws -> Void)? = nil,
+        makeTransport: (@MainActor () -> any HermesWebSocketTransport)? = nil
     ) {
         self.connectClient = connectClient
         self.loadCatalog = loadCatalog
@@ -228,6 +231,7 @@ struct ChatResumeLifecycleOperations {
         self.findBotChat = findBotChat
         self.createBotChat = createBotChat
         self.titleBotChat = titleBotChat
+        self.makeTransport = makeTransport
     }
 
     static let live = ChatResumeLifecycleOperations()
@@ -1539,6 +1543,33 @@ final class AppState: ObservableObject {
     /// immediately precedes backgrounding on home-press, and a socket that
     /// dies under a system overlay is recovered by the `.active` scene task.
     private var isSceneActive = true
+    /// Whether transport recovery (reconnect cycles and the post-connect
+    /// sync they drive) may run. The phone scene being active is one such
+    /// surface; a connected CarPlay Voice surface is another. In a car the
+    /// phone is usually locked, so gating recovery on the phone scene alone
+    /// left a socket lost during suspension dead for the whole drive and
+    /// CarPlay reporting Voice unavailable.
+    private var canRunTransportRecovery: Bool {
+        isSceneActive || isCarPlayVoiceSurfaceActive
+    }
+    /// A transport whose handshake completed but whose post-connect bootstrap
+    /// (profiles, Bot Mode roster, catalog sync + resume) was abandoned
+    /// because the scene went inactive mid-connect — e.g. the Face ID
+    /// success animation of a saved-credential restore outlives the
+    /// handshake. The next `.active` on the SAME healthy client owes that
+    /// bootstrap; the observational foreground probe alone never loads the
+    /// catalog.
+    ///
+    /// The purpose follows the interrupted connect's own continuation: once
+    /// the user takes ownership (the connect's automatic intent is cancelled
+    /// or handed off), the owed sync is `.preserveCurrent`, never a replayed
+    /// `.automaticReturn`.
+    private struct OwedPostConnectBootstrap {
+        let client: HermesClient
+        var purpose: ChatResumeSyncPurpose
+        let automaticWorkToken: ChatResumeAutomaticWorkToken?
+    }
+    private var owedPostConnectBootstrap: OwedPostConnectBootstrap?
     private var connectedAt: Date?
     private var sessionCatalogCache = SessionCatalogCache()
     private var projectsRequestGeneration = 0
@@ -2483,8 +2514,10 @@ final class AppState: ObservableObject {
         // transport-wide, not reconnect-only: any chat-resume work that goes
         // inactive/backgrounded mid-flight must not keep publishing state
         // (watchdog: 0x8BADF00D). handleScenePhase(.active) re-establishes
-        // the transport and syncs the session catalog on return.
-        guard !Task.isCancelled, isSceneActive else { return nil }
+        // the transport and syncs the session catalog on return. A connected
+        // CarPlay Voice surface keeps the process foreground and admits the
+        // work as well (see canRunTransportRecovery).
+        guard !Task.isCancelled, canRunTransportRecovery else { return nil }
         if let automaticReconnectOperationID,
            activeAutomaticReconnectOperation?.id != automaticReconnectOperationID {
             return nil
@@ -2515,9 +2548,18 @@ final class AppState: ObservableObject {
               activeClient === client,
               activeProfile == profile else { return nil }
         let viewportTransitionGeneration = chatViewportTransitionGeneration
+        var publishedCatalog = false
         let outcome = await performSyncSession(
             purpose: purpose,
             using: nil,
+            automaticWorkToken: automaticWorkToken,
+            onCatalogPublished: { publishedCatalog = true }
+        )
+        // Before the checkpoint below: a sync that published the catalog has
+        // done the bootstrap's work even if the scene deactivates right after.
+        settleOwedPostConnectBootstrap(
+            for: client,
+            publishedCatalog: publishedCatalog,
             automaticWorkToken: automaticWorkToken
         )
         guard let continuation = transportContinuation(
@@ -2536,9 +2578,16 @@ final class AppState: ObservableObject {
             return continuation
         }
 
+        var preservedPublishedCatalog = false
         _ = await performSyncSession(
             purpose: .preserveCurrent,
             using: nil,
+            automaticWorkToken: nil,
+            onCatalogPublished: { preservedPublishedCatalog = true }
+        )
+        settleOwedPostConnectBootstrap(
+            for: client,
+            publishedCatalog: preservedPublishedCatalog,
             automaticWorkToken: nil
         )
         guard let preservedContinuation = transportContinuation(
@@ -2556,7 +2605,51 @@ final class AppState: ObservableObject {
         )
     }
 
+    /// Tracks a continuation handoff (`.automaticReturn` → `.preserveCurrent`)
+    /// on the owed bootstrap of the same client; never upgrades.
+    private func followOwedPostConnectBootstrapPurpose(
+        _ purpose: ChatResumeSyncPurpose,
+        for client: HermesClient
+    ) {
+        guard purpose == .preserveCurrent,
+              owedPostConnectBootstrap?.client === client else { return }
+        owedPostConnectBootstrap?.purpose = .preserveCurrent
+    }
+
+    /// Settles the owed bootstrap of `client` after a sync attempt made on
+    /// its behalf. The bootstrap is done once a sync has published the
+    /// catalog — whatever outcome it then reported, and even if a later
+    /// continuation checkpoint fails — so the next `.active` never repeats
+    /// the catalog load and `session.resume`. Until then it stays owed, but
+    /// once the automatic intent it carried is gone (the user took
+    /// ownership, a notification destination won) it is owed as
+    /// `.preserveCurrent`, never as a replayed `.automaticReturn`.
+    private func settleOwedPostConnectBootstrap(
+        for client: HermesClient,
+        publishedCatalog: Bool,
+        automaticWorkToken: ChatResumeAutomaticWorkToken?
+    ) {
+        guard owedPostConnectBootstrap?.client === client else { return }
+        if publishedCatalog {
+            owedPostConnectBootstrap = nil
+        } else if owedPostConnectBootstrap?.purpose == .automaticReturn,
+                  let automaticWorkToken,
+                  !chatResumeCoordinator.isCurrent(automaticWorkToken) {
+            owedPostConnectBootstrap?.purpose = .preserveCurrent
+        }
+    }
+
     func cancelChatResumeRestoration() {
+        // Cancelling the automatic intent an interrupted connect was carrying
+        // is the same handoff that connect's own continuation would have
+        // observed: the owed bootstrap then preserves the visible
+        // conversation instead of replaying the automatic return.
+        if let owed = owedPostConnectBootstrap,
+           owed.purpose == .automaticReturn,
+           let token = owed.automaticWorkToken,
+           chatResumeCoordinator.isCurrent(token) {
+            owedPostConnectBootstrap?.purpose = .preserveCurrent
+        }
         chatResumeCoordinator.cancelViewportRestoration(
             keepViewportFrozen: chatViewportTransition != nil
         )
@@ -2744,6 +2837,7 @@ final class AppState: ObservableObject {
         guard let previousIdentity, previousIdentity != identity else { return false }
 
         retireSpeechOperationsForServerReplacement(previousIdentity: previousIdentity, identity: identity)
+        owedPostConnectBootstrap = nil
         chatResumeCoordinator.clearResumeState()
         cancelOwnedAutomaticOperations()
         activeAutomaticChatResumeWork = nil
@@ -4068,6 +4162,13 @@ final class AppState: ObservableObject {
 
         do {
             try await connectChatResumeClient(client)
+            if self.client === client {
+                owedPostConnectBootstrap = OwedPostConnectBootstrap(
+                    client: client,
+                    purpose: syncPurpose,
+                    automaticWorkToken: automaticWorkToken
+                )
+            }
             guard let continuation = transportContinuation(
                     purpose: syncPurpose,
                     automaticWorkToken: automaticWorkToken,
@@ -4077,6 +4178,7 @@ final class AppState: ObservableObject {
             var continuationPurpose = continuation.purpose
             var continuationAutomaticWorkToken = continuation.automaticWorkToken
             handedOffAutomaticIntent = continuation.handedOffAutomaticIntent
+            followOwedPostConnectBootstrapPurpose(continuationPurpose, for: client)
             isConnected = true
             isConnecting = false
             // A fresh healthy session never inherits an older banner error.
@@ -4105,6 +4207,7 @@ final class AppState: ObservableObject {
             continuationAutomaticWorkToken = continuation.automaticWorkToken
             handedOffAutomaticIntent = handedOffAutomaticIntent
                 || continuation.handedOffAutomaticIntent
+            followOwedPostConnectBootstrapPurpose(continuationPurpose, for: client)
             guard let continuation = await synchronizeTransportContinuation(
                 purpose: continuationPurpose,
                 automaticWorkToken: continuationAutomaticWorkToken,
@@ -4433,6 +4536,7 @@ final class AppState: ObservableObject {
         // store (it outlives the composer view), so sign-out must clear it.
         composerDraftStore.removeAll()
         cancelScenePhaseAttempt()
+        owedPostConnectBootstrap = nil
         lastConnectionFailure = nil
         client?.disconnect()
         isConnected = false
@@ -4660,6 +4764,7 @@ final class AppState: ObservableObject {
         cancelChatResumeTransportRecovery()
         cancelScenePhaseAttempt()
         cancelScheduledReconnect()
+        owedPostConnectBootstrap = nil
         lastConnectionFailure = nil
         pendingLoginFailure = nil
         errorMessage = nil
@@ -4750,7 +4855,13 @@ final class AppState: ObservableObject {
     }
 
     private func makeClient(connection: HermesConnection, profile: String) -> HermesClient {
-        let client = HermesClient(connection: connection, profile: profile, cloudflareAccess: dashboardScopedCloudflareAccess(for: connection.baseUrl))
+        let transportFactory: @MainActor () -> any HermesWebSocketTransport = chatResumeLifecycleOperations.makeTransport ?? { URLSessionWebSocketTransport() }
+        let client = HermesClient(
+            connection: connection,
+            profile: profile,
+            cloudflareAccess: dashboardScopedCloudflareAccess(for: connection.baseUrl),
+            transportFactory: transportFactory
+        )
         let epoch = UUID()
         activeClientEpoch = epoch
         client.onEvent = { [weak self] event in
@@ -4926,6 +5037,7 @@ final class AppState: ObservableObject {
         cancelSecondaryProfileTitleRecovery()
         client?.disconnect()
         client = nil
+        owedPostConnectBootstrap = nil
         isConnected = false
         isConnecting = false
         connectedAt = nil
@@ -4994,7 +5106,8 @@ final class AppState: ObservableObject {
         using existingReconciliationToken: UUID?,
         automaticWorkToken existingAutomaticWorkToken: ChatResumeAutomaticWorkToken?,
         requiredViewportTransitionGeneration: UInt64? = nil,
-        historySourceUnavailable: Bool = false
+        historySourceUnavailable: Bool = false,
+        onCatalogPublished: () -> Void = {}
     ) async -> ChatResumeSyncExecutionOutcome {
         guard chatViewportTransitionIsCurrent(
             requiredViewportTransitionGeneration
@@ -5107,6 +5220,10 @@ final class AppState: ObservableObject {
             }
             sessions = allSessions.filter { $0.source != .cron }
             cronSessions = allSessions.filter { $0.source == .cron }
+            // Reported per call: whether THIS sync reached the catalog is
+            // independent of its outcome, which is also `.completed` for a
+            // failed catalog load and `.superseded` after a published one.
+            onCatalogPublished()
             // Labeled rows are positive identity evidence; commit them so
             // notification routing survives a later catalog omission.
             conversationIdentityIndex.recordCatalogIdentity(allSessions, profile: profile)
@@ -7489,8 +7606,9 @@ final class AppState: ObservableObject {
         // the app returns: if a visible conversation identity exists, foreground
         // recovery repairs that same conversation using .preserveCurrent;
         // .automaticReturn is used only when there is no current visible session
-        // identity to preserve.
-        guard isSceneActive else { return }
+        // identity to preserve. A connected CarPlay Voice surface keeps the
+        // app on screen while the phone is locked, so it admits recovery too.
+        guard canRunTransportRecovery else { return }
         if reconnectTask == nil {
             recoverySequence.clearQueuedReconnect()
         }
@@ -7517,7 +7635,7 @@ final class AppState: ObservableObject {
             self.reconnectTask = nil
             let purpose = self.recoverySequence.takeQueuedReconnectPurpose()
                 ?? .preserveCurrent
-            guard self.isSceneActive else { return }
+            guard self.canRunTransportRecovery else { return }
             if incrementsBackoff { self.reconnectAttempts += 1 }
             await self.executeReconnect(purpose: purpose)
         }
@@ -7550,7 +7668,9 @@ final class AppState: ObservableObject {
         // handleScenePhase(.active) re-establishes the transport on return.
         // This also makes the public reconnect() a no-op while the scene is
         // inactive/backgrounded — the retry is picked up on the next .active.
-        guard isSceneActive else { return }
+        // A connected CarPlay Voice surface is a foreground surface of its
+        // own (the phone is usually locked in a car), so it admits the cycle.
+        guard canRunTransportRecovery else { return }
         if let reconnectExecutor {
             await reconnectExecutor(purpose)
         } else {
@@ -7594,6 +7714,9 @@ final class AppState: ObservableObject {
             continuationAutomaticWorkToken = continuation.automaticWorkToken
             handedOffAutomaticIntent = handedOffAutomaticIntent
                 || continuation.handedOffAutomaticIntent
+            if let client = self.client {
+                followOwedPostConnectBootstrapPurpose(continuationPurpose, for: client)
+            }
             return true
         }
         defer {
@@ -7714,6 +7837,13 @@ final class AppState: ObservableObject {
 
         do {
             try await connectChatResumeClient(client)
+            if self.client === client {
+                owedPostConnectBootstrap = OwedPostConnectBootstrap(
+                    client: client,
+                    purpose: continuationPurpose,
+                    automaticWorkToken: continuationAutomaticWorkToken
+                )
+            }
             guard refreshTransportContinuation(),
                   let activeClient = self.client, activeClient === client else { return }
             isConnected = true
@@ -7926,12 +8056,24 @@ final class AppState: ObservableObject {
                             self.settleReconciliation(token)
                             return
                         }
-                        await self.refreshForegroundOnHealthyTransport(
-                            using: client,
-                            freshnessCheckArmed: freshnessCheckArmed,
-                            reconciliationToken: token,
-                            automaticWorkToken: automaticWorkToken
-                        )
+                        if let owed = self.owedPostConnectBootstrap, owed.client === client {
+                            lifecycleLog.notice(
+                                "Foreground refresh: post-connect bootstrap owed (connect interrupted by scene deactivation) → full sync"
+                            )
+                            await self.runOwedPostConnectBootstrap(
+                                owed,
+                                reconciliationToken: token,
+                                automaticWorkToken: automaticWorkToken,
+                                isCurrent: { self.scenePhaseAttemptIsCurrent(sceneAttemptID) }
+                            )
+                        } else {
+                            await self.refreshForegroundOnHealthyTransport(
+                                using: client,
+                                freshnessCheckArmed: freshnessCheckArmed,
+                                reconciliationToken: token,
+                                automaticWorkToken: automaticWorkToken
+                            )
+                        }
                     } catch {
                         guard self.scenePhaseAttemptIsCurrent(sceneAttemptID) else {
                             self.settleReconciliation(token)
@@ -8041,6 +8183,9 @@ final class AppState: ObservableObject {
             // at their next transportContinuation checkpoint, and foreground
             // activation re-establishes the transport.
             cancelScheduledReconnect()
+            // Unless CarPlay still presents Voice: then the driver is relying
+            // on the transport right now, so a dropped cycle is re-armed.
+            recoverTransportForCarPlayIfNeeded()
             // Flush any pending coalesced cache writes before the app
             // suspends — iOS may kill the process before the debounce fires.
             flushPendingPresentationCache()
@@ -8066,8 +8211,11 @@ final class AppState: ObservableObject {
             // timer would only fire to be discarded. Drop it here; a socket
             // that dies under a system overlay (incoming call, control
             // center) is recovered by the .active scene task — the same
-            // moment the user can see the transcript again.
+            // moment the user can see the transcript again. The exception is
+            // a connected CarPlay Voice surface, which admits recovery on its
+            // own: re-arm for it, exactly as the .background branch does.
             cancelScheduledReconnect()
+            recoverTransportForCarPlayIfNeeded()
             // The scene treats .inactive like .background for reconnect
             // purposes; formally abort the in-flight scene attempt at the
             // transition too, rather than at its next checkpoint.
@@ -8257,6 +8405,75 @@ final class AppState: ObservableObject {
             return .automaticReturn
         }
         return .preserveCurrent
+    }
+
+    /// Completes the bootstrap an interrupted connect abandoned (see
+    /// `owedPostConnectBootstrap`), on the retained healthy client: the same
+    /// profiles + roster evidence, then the connect's own catalog sync and
+    /// resume decision, then the ancillary loads.
+    private func runOwedPostConnectBootstrap(
+        _ owed: OwedPostConnectBootstrap,
+        reconciliationToken token: UUID,
+        automaticWorkToken: ChatResumeAutomaticWorkToken?,
+        isCurrent: @MainActor () -> Bool
+    ) async {
+        let client = owed.client
+        let profile = activeProfile
+        func stillOwns() -> Bool {
+            isCurrent() && self.client === client && activeProfile == profile
+        }
+        botRosterVerifiedForCurrentConnection = false
+        async let profilesLoad: Void = loadChatResumeProfiles()
+        async let rosterLoad: Void = loadChatResumeBotRoster()
+        _ = await (profilesLoad, rosterLoad)
+        guard stillOwns() else {
+            settleReconciliation(token)
+            return
+        }
+        let viewportTransitionGeneration = chatViewportTransitionGeneration
+        let ownedAutomaticWorkToken = owed.purpose == .automaticReturn ? automaticWorkToken : nil
+        var publishedCatalog = false
+        let outcome = await performSyncSession(
+            purpose: owed.purpose,
+            using: token,
+            automaticWorkToken: ownedAutomaticWorkToken,
+            onCatalogPublished: { publishedCatalog = true }
+        )
+        // Same rule as the connect path: retired once the catalog was
+        // published; otherwise still owed (a failed catalog load retries on
+        // the next healthy foreground), as `.preserveCurrent` if the user
+        // took ownership mid-sync.
+        settleOwedPostConnectBootstrap(
+            for: client,
+            publishedCatalog: publishedCatalog,
+            automaticWorkToken: ownedAutomaticWorkToken
+        )
+        guard stillOwns() else { return }
+        // Mirror `synchronizeTransportContinuation`: an automatic return the
+        // user overrode still repairs around the visible conversation.
+        if outcome == .automaticIntentInvalidated,
+           owed.purpose == .automaticReturn,
+           chatViewportTransition == nil,
+           chatViewportTransitionGeneration == viewportTransitionGeneration {
+            var preservedPublishedCatalog = false
+            _ = await performSyncSession(
+                purpose: .preserveCurrent,
+                using: nil,
+                automaticWorkToken: nil,
+                onCatalogPublished: { preservedPublishedCatalog = true }
+            )
+            settleOwedPostConnectBootstrap(
+                for: client,
+                publishedCatalog: preservedPublishedCatalog,
+                automaticWorkToken: nil
+            )
+            guard stillOwns() else { return }
+        }
+        await loadChatResumeBusyInputMode(using: client)
+        guard stillOwns() else { return }
+        await loadChatResumeProfileDisplayPreferences()
+        guard stillOwns() else { return }
+        Task { await loadChatResumeSlashCommands() }
     }
 
     /// A healthy foreground transition must be observational, not a session
@@ -14869,6 +15086,11 @@ final class AppState: ObservableObject {
             // Keep the previous socket alive until the new profile has
             // actually connected, so a failed switch has a recovery path.
             previousClient?.disconnect()
+            // An owed bootstrap belongs to the outgoing client; it can never
+            // match the new one, so retire it rather than pin a dead socket.
+            if let previousClient, owedPostConnectBootstrap?.client === previousClient {
+                owedPostConnectBootstrap = nil
+            }
             isConnected = true
             connectedAt = Date()
             if let dashboardID = activeDashboardID {
@@ -18033,6 +18255,23 @@ final class AppState: ObservableObject {
     /// re-arm capture. No-op while the phone scene is active.
     func handleCarPlayVoiceSurfaceActivated() {
         reassertVoiceSurfaceGate()
+        recoverTransportForCarPlayIfNeeded()
+    }
+
+    /// CarPlay can connect while the phone is locked with a transport that
+    /// died during an earlier background suspension. No scene-phase event
+    /// will re-establish it until the phone is unlocked, so the CarPlay
+    /// surface starts the reconnect itself. A restore or connect already in
+    /// flight owns the flow and is left alone.
+    /// While the phone scene is active its own foreground recovery owns the
+    /// transport, so CarPlay never arms a competing cycle then.
+    func recoverTransportForCarPlayIfNeeded() {
+        guard isCarPlayVoiceSurfaceActive,
+              !isSceneActive,
+              connection != nil,
+              !isConnected,
+              !isConnecting else { return }
+        scheduleReconnect(immediately: true, purpose: chatResumePurposeForDisconnect())
     }
 
     /// Called by the CarPlay coordinator when the CarPlay Voice surface goes
