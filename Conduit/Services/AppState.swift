@@ -2914,6 +2914,9 @@ final class AppState: ObservableObject {
     private var parkedRoomOutboxes: [String: GroupRoomOutbox] = [:]
     /// Unsent room composer text, keyed like `parkedRoomOutboxes`.
     private var groupRoomDrafts: [String: String] = [:]
+    /// The send-failure text currently shown in `errorMessage`, if any, so
+    /// a settled send retires its own banner and nothing else.
+    private var roomSendErrorMessage: String?
 
     /// Fences every in-flight room response and stops the poller. Runs at
     /// the server-identity boundary (with the rest of Bot Mode teardown), on
@@ -2997,14 +3000,38 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Close a room that no longer exists (disbanded or not found): nothing
+    /// is parked for it, and its draft goes too — it can never be reopened.
+    private func closeGoneRoomSurface() {
+        if let surface = activeRoomSurface {
+            let key = Self.roomKey(dashboardID: surface.dashboardID, roomID: surface.room.roomID)
+            parkedRoomOutboxes.removeValue(forKey: key)
+            groupRoomDrafts.removeValue(forKey: key)
+        }
+        closeRoomSurface(parkingPendingSend: false)
+    }
+
     /// Settle the open room's pending send when `events` carry its
     /// server-side twin: an ambiguous send that landed, seen by a poll, a
     /// resync, or a reopen's tail.
     private func settlePendingRoomSend(from events: [GroupEvent]) {
         guard groupRoomOutbox.settle(from: events) else { return }
         pendingRoomMessage = groupRoomOutbox.pending
-        // The failure banner described the send that just proved delivered.
-        errorMessage = nil
+        clearRoomSendError()
+    }
+
+    /// Retire the send-failure banner, and only that banner: an unrelated
+    /// room error (a failed stop or disband) stays up.
+    private func clearRoomSendError() {
+        if let sendError = roomSendErrorMessage, errorMessage == sendError {
+            errorMessage = nil
+        }
+        roomSendErrorMessage = nil
+    }
+
+    private func showRoomSendError(_ message: String) {
+        errorMessage = message
+        roomSendErrorMessage = message
     }
 
     /// The open room's unsent composer text.
@@ -3126,8 +3153,10 @@ final class AppState: ObservableObject {
         // The room banner renders the shared errorMessage: a stale session
         // error must not greet the user inside the room.
         errorMessage = nil
-        // Switching straight from another room parks that room's send.
+        // Switching straight from another room parks that room's send; its
+        // in-flight flag belongs to that room, not this one.
         parkActiveRoomSend()
+        activeRoomSendInFlight = false
         activeRoomSurface = GroupRoomSurface(dashboardID: dashboardID, room: room)
         activeRoomReplay = GroupRoomReplay(roomID: room.roomID)
         activeRoomDriverStatus = nil
@@ -3148,7 +3177,7 @@ final class AppState: ObservableObject {
             let (state, driver) = try await groupsState(client, roomID: room.roomID)
             guard groupRoomEpoch == epoch else { return }
             if state.isDisbanded {
-                closeRoomSurface()
+                closeGoneRoomSurface()
                 await refreshGroupRooms()
                 return
             }
@@ -3175,7 +3204,7 @@ final class AppState: ObservableObject {
             if HermesClient.isRoomNotFoundError(error) {
                 // The room vanished between the roster and the open: no
                 // poller, no haunted surface — back to the roster.
-                closeRoomSurface()
+                closeGoneRoomSurface()
                 await refreshGroupRooms()
                 return
             }
@@ -3243,7 +3272,7 @@ final class AppState: ObservableObject {
                     // A room tombstoned without new log events must still
                     // close the surface — otherwise the poller spins and
                     // sends fail against the tombstone forever.
-                    closeRoomSurface()
+                    closeGoneRoomSurface()
                     await refreshGroupRooms()
                     return
                 }
@@ -3257,7 +3286,7 @@ final class AppState: ObservableObject {
                 // The room was tombstoned while we polled (a not-found
                 // answer when the tombstone was not opted into): no further
                 // events will ever arrive, so keep spinning would be a lie.
-                closeRoomSurface()
+                closeGoneRoomSurface()
                 await refreshGroupRooms()
                 return
             }
@@ -3286,9 +3315,9 @@ final class AppState: ObservableObject {
         // text retries with the same event id; DIFFERENT text is refused so
         // no message is ever silently swallowed or silently replaced.
         guard groupRoomOutbox.accepts(text: text) else {
-            errorMessage = AppLocalization.string(
+            showRoomSendError(AppLocalization.string(
                 "Your previous message is still pending. Retry it from the room, or wait for it to deliver."
-            )
+            ))
             return false
         }
         let epoch = groupRoomEpoch
@@ -3297,7 +3326,11 @@ final class AppState: ObservableObject {
         }
         pendingRoomMessage = groupRoomOutbox.pending
         activeRoomSendInFlight = true
-        defer { activeRoomSendInFlight = false }
+        // Fenced: a send from a room already left must not unlock the
+        // composer of a send running in the room opened since.
+        defer {
+            if groupRoomEpoch == epoch { activeRoomSendInFlight = false }
+        }
         do {
             let result = try await groupsSend(
                 client,
@@ -3307,14 +3340,21 @@ final class AppState: ObservableObject {
                 threadID: GroupRoomSurface.mainThreadID
             )
             guard groupRoomEpoch == epoch, activeRoomSurface?.room.roomID == surface.room.roomID else {
-                // The room was left (or replaced) mid-send; its pending row
-                // was parked. The gateway accepted it, so settle the parked
-                // copy — a reopen must not offer a retry of a delivered send.
+                // The room was left (or replaced) mid-send. The gateway
+                // accepted it, so settle whichever copy holds the retry key:
+                // the active outbox when the SAME room was already reopened,
+                // else the parked one — a delivered send never offers retry.
                 if result.event.roomID == surface.room.roomID {
-                    let key = Self.roomKey(dashboardID: surface.dashboardID, roomID: surface.room.roomID)
-                    parkedRoomOutboxes[key]?.accept(eventID: logical.eventID)
-                    if parkedRoomOutboxes[key]?.pending == nil {
-                        parkedRoomOutboxes.removeValue(forKey: key)
+                    if activeRoomSurface?.room.roomID == surface.room.roomID,
+                       activeRoomSurface?.dashboardID == surface.dashboardID {
+                        groupRoomOutbox.accept(eventID: logical.eventID)
+                        pendingRoomMessage = groupRoomOutbox.pending
+                    } else {
+                        let key = Self.roomKey(dashboardID: surface.dashboardID, roomID: surface.room.roomID)
+                        parkedRoomOutboxes[key]?.accept(eventID: logical.eventID)
+                        if parkedRoomOutboxes[key]?.pending == nil {
+                            parkedRoomOutboxes.removeValue(forKey: key)
+                        }
                     }
                 }
                 return true
@@ -3322,7 +3362,7 @@ final class AppState: ObservableObject {
             guard result.event.roomID == surface.room.roomID else {
                 // An answer naming another room settles nothing: keep the
                 // pending row (same event id) for an explicit retry.
-                errorMessage = AppLocalization.string("Could not send to this group chat: \(HermesError.invalidResponse.localizedDescription)")
+                showRoomSendError(AppLocalization.string("Could not send to this group chat: \(HermesError.invalidResponse.localizedDescription)"))
                 return true
             }
             let cursorBefore = activeRoomReplay.cursor
@@ -3338,7 +3378,7 @@ final class AppState: ObservableObject {
             pendingRoomMessage = groupRoomOutbox.pending
             // A delivered message retires the failure banner of its earlier
             // ambiguous attempt.
-            errorMessage = nil
+            clearRoomSendError()
             if result.event.seq > cursorBefore + 1 {
                 // The accepted event jumped past events this client has not
                 // seen (a busy room between polls): resync from the room's
@@ -3356,7 +3396,7 @@ final class AppState: ObservableObject {
             guard groupRoomOutbox.pending?.eventID == logical.eventID else { return true }
             // Ambiguous outcome: KEEP pendingRoomMessage (same event id) so
             // the user's retry deduplicates server-side.
-            errorMessage = AppLocalization.string("Could not send to this group chat: \(error.localizedDescription)")
+            showRoomSendError(AppLocalization.string("Could not send to this group chat: \(error.localizedDescription)"))
             return true
         }
     }
@@ -3371,7 +3411,7 @@ final class AppState: ObservableObject {
             guard groupRoomEpoch == epoch, let surface = activeRoomSurface,
                   surface.room.roomID == state.roomID else { return }
             if state.isDisbanded {
-                closeRoomSurface()
+                closeGoneRoomSurface()
                 await refreshGroupRooms()
                 return
             }
@@ -3421,7 +3461,7 @@ final class AppState: ObservableObject {
             errorMessage = AppLocalization.string("Could not disband this group chat: \(error.localizedDescription)")
             return
         }
-        closeRoomSurface()
+        closeGoneRoomSurface()
         await refreshGroupRooms()
     }
 

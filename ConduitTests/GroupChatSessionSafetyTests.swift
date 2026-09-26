@@ -1,3 +1,4 @@
+import CryptoKit
 import XCTest
 
 @testable import Conduit
@@ -250,7 +251,10 @@ final class GroupChatSessionSafetyTests: XCTestCase {
                 box.landed = GroupEvent(
                     roomID: roomID,
                     seq: 1,
-                    eventID: GroupRoomOutbox.serverEventID(forClientEventID: eventID),
+                    // Computed here, not via the code under test: upstream
+                    // `user_event_id` is "user:" + sha256 hex of the id.
+                    eventID: "user:" + SHA256.hash(data: Data(eventID.utf8))
+                        .map { String(format: "%02x", $0) }.joined(),
                     kind: "message.user",
                     actor: GroupActor(kind: "user", id: "human", profile: nil,
                                       displayName: nil, connectionID: nil),
@@ -311,6 +315,68 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         await appState.openGroupRoom(room)
         XCTAssertEqual(appState.pendingRoomMessage, pending)
         XCTAssertEqual(appState.activeRoomDraft(), "half a thought")
+
+        appState.closeGroupRoom()
+    }
+
+    /// A send still in flight when the user leaves: the response settles the
+    /// retry key wherever it now lives — the reopened room's active outbox
+    /// (leave then reopen before the answer) or the parked copy.
+    func testSendAcceptedAfterLeavingSettlesTheReopenedAndTheParkedCopy() async {
+        final class SendGate: @unchecked Sendable {
+            var started = 0
+            var released = 0
+        }
+        let gate = SendGate()
+        let room = self.room()
+        let operations = GroupChatLifecycleOperations(
+            capabilities: { _ in self.capabilities(supported: true) },
+            list: { _ in ([room], nil) },
+            state: { _, _ in (room, nil) },
+            log: { _, _, sinceSeq, _ in
+                GroupLogPage(events: [], cursor: sinceSeq, latestSeq: 0, hasMore: false,
+                             authorityGatewayID: "gw-a", authorityEpoch: 1)
+            },
+            send: { _, roomID, _, _, _ in
+                gate.started += 1
+                let mine = gate.started
+                while gate.released < mine {
+                    try? await Task.sleep(nanoseconds: 10_000_000)
+                }
+                return self.sendResult(roomID: roomID, seq: 1)
+            }
+        )
+        let appState = makeAppState(operations: operations)
+        connect(appState)
+        await appState.refreshGroupChatSupport()
+        await appState.openGroupRoom(room)
+
+        func waitForSend(_ count: Int) async {
+            for _ in 0..<500 where gate.started < count {
+                try? await Task.sleep(nanoseconds: 10_000_000)
+            }
+            XCTAssertEqual(gate.started, count)
+        }
+
+        // Leave, reopen, THEN the response lands: the active copy settles.
+        let first = Task { @MainActor in await appState.sendGroupRoomMessage("hello room") }
+        await waitForSend(1)
+        appState.closeGroupRoom()
+        await appState.openGroupRoom(room)
+        XCTAssertNotNil(appState.pendingRoomMessage, "the parked send came back with the room")
+        XCTAssertFalse(appState.activeRoomSendInFlight)
+        gate.released = 1
+        _ = await first.value
+        XCTAssertNil(appState.pendingRoomMessage, "the delivered send never offers a retry")
+
+        // Leave, the response lands, THEN reopen: the parked copy settled.
+        let second = Task { @MainActor in await appState.sendGroupRoomMessage("second note") }
+        await waitForSend(2)
+        appState.closeGroupRoom()
+        gate.released = 2
+        _ = await second.value
+        await appState.openGroupRoom(room)
+        XCTAssertNil(appState.pendingRoomMessage)
 
         appState.closeGroupRoom()
     }

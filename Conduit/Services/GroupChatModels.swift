@@ -443,8 +443,9 @@ struct GroupRoomOutbox: Equatable {
     }
 
     /// The id the gateway files a user message under: `user:` plus the
-    /// SHA-256 hex of the (trimmed) client event id — upstream
-    /// `gateway.hosted_rooms.user_event_id`. It lets a polled or replayed
+    /// SHA-256 hex of the client event id — upstream
+    /// `gateway.hosted_rooms.user_event_id`. The id is trimmed first because
+    /// the gateway's `identifier()` validator strips it before hashing. It lets a polled or replayed
     /// event settle a send whose own response never arrived.
     static func serverEventID(forClientEventID clientEventID: String) -> String {
         let trimmed = clientEventID.trimmingCharacters(in: .whitespacesAndNewlines)
