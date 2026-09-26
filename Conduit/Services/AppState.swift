@@ -2851,6 +2851,17 @@ final class AppState: ObservableObject {
         )
     }
 
+    /// The composer's @mention middleware, shared by every routing path (a
+    /// new turn, a busy steer, a redirect) so a mention typed while the bot
+    /// is streaming is identified exactly like one sent at idle.
+    private func mentionAnnotatedOutboundText(_ text: String) -> String {
+        BotMentions.middlewareAnnotation(
+            text: text,
+            roster: botRoster,
+            activeProfileName: activeConversationProfileScope
+        ) ?? text
+    }
+
     /// Presentation state for one open hosted room. A room is NOT a session:
     /// it never touches `activeSessionId`, the transcript cache, or the saved
     /// `SessionReference`, and it is deliberately NOT persisted — cold launch
@@ -11390,32 +11401,13 @@ final class AppState: ObservableObject {
         guard let client, let sessionId = activeSessionId else { return false }
         cancelChatResumeRestoration()
         resetResponseHapticTurn()
-        // Bot Mode composer middleware (upstream `mention-middleware`): the
-        // canonical-forever-chat guard first, then @mention identification.
-        // The OUTBOUND text carries the transformation; the optimistic bubble
-        // and the durable gateway row stay identical, so hydration never
-        // rewrites what the user already saw.
-        var outboundText = text
-        if let rerouted = canonicalForeverChatRerouteText(for: text) {
-            outboundText = rerouted
-            messages.append(ChatMessage(
-                id: "local-notice-\(Date().timeIntervalSince1970)",
-                role: .system,
-                content: AppLocalization.string(
-                    "This chat never resets — compacting instead. Bot chats are one continuous conversation; for a throwaway session with this bot, use Sessions mode."
-                ),
-                rawContent: nil,
-                timestamp: Self.localTimestamp(),
-                author: nil,
-                attachments: nil
-            ))
-        } else if let annotated = BotMentions.middlewareAnnotation(
-            text: text,
-            roster: botRoster,
-            activeProfileName: activeConversationProfileScope
-        ) {
-            outboundText = annotated
-        }
+        // Bot Mode composer middleware (upstream `mention-middleware`):
+        // @mention identification. The canonical-forever-chat `/new` guard
+        // runs in `executeSlashCommand`, which `submitComposer` reaches
+        // first. The OUTBOUND text carries the transformation; the optimistic
+        // bubble and the durable gateway row stay identical, so hydration
+        // never rewrites what the user already saw.
+        let outboundText = mentionAnnotatedOutboundText(text)
         // Durable before/after identity for ambiguous-delivery recovery:
         // positively-proven persisted row ids (from the latest accepted
         // hydration) plus whether the conversation holds rows whose persisted
@@ -13268,11 +13260,12 @@ final class AppState: ObservableObject {
         guard isCurrentComposerSubmission(submissionContext) else { return false }
         guard let client, let sessionId = activeSessionId else { return false }
         cancelChatResumeRestoration()
+        let outboundText = mentionAnnotatedOutboundText(text)
         do {
             if let steer = chatResumeLifecycleOperations.steer {
-                try await steer(client, sessionId, text)
+                try await steer(client, sessionId, outboundText)
             } else {
-                try await client.steer(sessionId, text: text)
+                try await client.steer(sessionId, text: outboundText)
             }
             // A successful steer proves Hermes applied the session's busy
             // policy — the session was RUNNING when the steer landed. That is
@@ -13320,18 +13313,21 @@ final class AppState: ObservableObject {
         guard isCurrentComposerSubmission(submissionContext) else { return false }
         guard let client, let sessionId = activeSessionId else { return false }
         cancelChatResumeRestoration()
+        // Fallbacks below re-enter `sendMessage` with the RAW text, which
+        // annotates on its own; only the redirect itself sends this copy.
+        let outboundText = mentionAnnotatedOutboundText(text)
 
         do {
             let outcome: SessionRedirectOutcome
             if let redirect = chatResumeLifecycleOperations.redirect {
-                outcome = try await redirect(client, sessionId, text)
+                outcome = try await redirect(client, sessionId, outboundText)
             } else {
-                outcome = try await client.redirect(sessionId, text: text)
+                outcome = try await client.redirect(sessionId, text: outboundText)
             }
             switch outcome {
             case .redirected, .queued:
                 if isCurrentOrAliasedComposerSubmission(submissionContext) {
-                    appendLocalUserMessage(text)
+                    appendLocalUserMessage(outboundText)
                 }
                 return true
             case .rejected:

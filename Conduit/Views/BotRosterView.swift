@@ -14,8 +14,9 @@ struct BotRosterView: View {
     var body: some View {
         Group {
             // Group rows keep the list up even with no visible bot: a room
-            // whose bots are all meta-hidden must stay reachable.
-            if visibleBots.isEmpty && !hasGroupRows {
+            // whose bots are all meta-hidden must stay reachable, and so
+            // must the group probe's failure notice.
+            if visibleBots.isEmpty && !hasGroupRows && groupProbeFailure == nil {
                 emptyState
             } else {
                 rosterList

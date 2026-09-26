@@ -383,8 +383,8 @@ enum GroupMentionTextRenderer {
                   let attrRange = Range(fullRange, in: attributed) else { continue }
             let token = String(text[tokenRange])
             guard let kind = GroupRoomMentions.classify(token: token, members: members) else { continue }
+            // Color only: the enclosing Text keeps its own font and size.
             attributed[attrRange].foregroundColor = .conduitAccent
-            attributed[attrRange].font = .body.weight(.semibold)
             switch kind {
             case .agent: attributed[attrRange].backgroundColor = .conduitAccent.opacity(0.10)
             case .broadcast: attributed[attrRange].backgroundColor = .orange.opacity(0.10)
