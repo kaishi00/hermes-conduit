@@ -3103,3 +3103,165 @@ extension ChatViewportControllerTests {
         )
     }
 }
+
+// MARK: - Overshoot past the transcript end (#193)
+
+/// The viewport can end up scrolled PAST the last message — the transcript
+/// end above the viewport bottom, empty space under it — when the viewport
+/// grows (keyboard dismissal, return from background) or the content
+/// shrinks under a pinned bottom (streaming bubble settling, lazy rows
+/// realizing shorter). While following, that must be pulled back to the
+/// real bottom, exactly once per distinct geometry.
+extension ChatViewportControllerTests {
+
+    func testViewportGrowthPastContentEndWhileFollowingSchedulesCorrection() throws {
+        var controller = makeController(following: keyA)
+        // Pinned flush with the keyboard up.
+        _ = controller.layoutMetricsChanged(facts: layoutFacts(
+            bottomMarkerMaxY: 500, viewportMaxY: 500,
+            scope: controller.renderedScrollScope
+        ))
+        XCTAssertNil(controller.pendingFollowCorrection)
+
+        // Keyboard dismissed: the viewport grows 300pt, the offset stays,
+        // the last message now sits 300pt above the viewport bottom.
+        let effects = controller.layoutMetricsChanged(facts: layoutFacts(
+            bottomMarkerMaxY: 500, viewportMaxY: 800,
+            scope: controller.renderedScrollScope
+        ))
+        XCTAssertTrue(scrollCommands(effects).isEmpty, "no synchronous scroll from a geometry tick")
+        let token = try XCTUnwrap(
+            scheduledCorrection(in: effects),
+            "an overshoot while following must schedule a correction"
+        )
+        let commands = scrollCommands(controller.followCorrectionDue(token))
+        XCTAssertEqual(commands.count, 1)
+        XCTAssertEqual(commands[0].destination, .bottom(anchorID: "chat-latest-p-session-a"))
+        XCTAssertEqual(commands[0].animated, false)
+        XCTAssertTrue(controller.isCommandCurrent(commands[0]))
+    }
+
+    func testContentShrinkUnderPinnedBottomSchedulesCorrection() throws {
+        var controller = makeController(following: keyA)
+        _ = controller.layoutMetricsChanged(facts: layoutFacts(
+            bottomMarkerMaxY: 800, viewportMaxY: 800,
+            scope: controller.renderedScrollScope
+        ))
+        // The streaming bubble settles into a shorter row: content end
+        // moves up 180pt, the offset does not follow.
+        let token = try XCTUnwrap(scheduledCorrection(in: controller.layoutMetricsChanged(
+            facts: layoutFacts(
+                bottomMarkerMaxY: 620, viewportMaxY: 800,
+                scope: controller.renderedScrollScope
+            )
+        )))
+        XCTAssertEqual(scrollCommands(controller.followCorrectionDue(token)).count, 1)
+    }
+
+    func testOvershootWithinToleranceIssuesNothing() {
+        var controller = makeController(following: keyA)
+        let effects = controller.layoutMetricsChanged(facts: layoutFacts(
+            bottomMarkerMaxY: 797, viewportMaxY: 800,
+            scope: controller.renderedScrollScope
+        ))
+        XCTAssertNil(scheduledCorrection(in: effects))
+        XCTAssertNil(controller.pendingFollowCorrection)
+    }
+
+    /// Content shorter than the viewport legitimately ends above the
+    /// viewport bottom and scrollTo cannot change that: one correction per
+    /// distinct geometry, never one per tick.
+    func testUnfixableOvershootDoesNotRearmForUnchangedGeometry() throws {
+        var controller = makeController(following: keyA)
+        let token = try XCTUnwrap(scheduledCorrection(in: controller.layoutMetricsChanged(
+            facts: layoutFacts(
+                bottomMarkerMaxY: 400, viewportMaxY: 800,
+                scope: controller.renderedScrollScope
+            )
+        )))
+        XCTAssertFalse(scrollCommands(controller.followCorrectionDue(token)).isEmpty)
+
+        for _ in 0..<10 {
+            let effects = controller.layoutMetricsChanged(facts: layoutFacts(
+                bottomMarkerMaxY: 402, viewportMaxY: 800,
+                scope: controller.renderedScrollScope
+            ))
+            XCTAssertNil(
+                scheduledCorrection(in: effects),
+                "unchanged overshoot geometry must not re-arm the correction"
+            )
+        }
+
+        // A new message lands (content end moves): one fresh correction.
+        XCTAssertNotNil(scheduledCorrection(in: controller.layoutMetricsChanged(
+            facts: layoutFacts(
+                bottomMarkerMaxY: 480, viewportMaxY: 800,
+                scope: controller.renderedScrollScope
+            )
+        )))
+    }
+
+    /// A browsing viewport stranded past the end (a restored anchor placed
+    /// at the top, or a rubber-band release) counts as near the bottom, so
+    /// it relatches — and the overshoot is scheduled for repair on that
+    /// same tick, because a static layout may never deliver another.
+    func testBrowsingOvershootRelatchesAndSchedulesCorrectionSameTick() throws {
+        var controller = makeController(following: keyA)
+        _ = dragBegan(&controller, sessionKey: keyA)
+        _ = controller.userDragGestureEnded()
+        XCTAssertEqual(controller.mode, .browsing)
+
+        let effects = controller.layoutMetricsChanged(facts: layoutFacts(
+            bottomMarkerMaxY: 300, viewportMaxY: 800,
+            scope: controller.renderedScrollScope
+        ))
+        XCTAssertEqual(controller.mode, .followingLatest)
+        XCTAssertTrue(scrollCommands(effects).isEmpty, "relatch tick itself never scrolls")
+        let token = try XCTUnwrap(scheduledCorrection(in: effects))
+        XCTAssertEqual(scrollCommands(controller.followCorrectionDue(token)).count, 1)
+    }
+
+    func testOvershootWhileDraggingRestoringOrHandingOffNeverSchedules() {
+        var dragging = makeController(following: keyA)
+        _ = dragBegan(&dragging, sessionKey: keyA)
+        _ = dragging.layoutMetricsChanged(facts: layoutFacts(
+            bottomMarkerMaxY: 300, viewportMaxY: 800,
+            scope: dragging.renderedScrollScope
+        ))
+        XCTAssertEqual(dragging.mode, .browsing, "finger down: no relatch")
+        XCTAssertNil(dragging.pendingFollowCorrection)
+
+        var restoring = makeController(following: keyA)
+        _ = restoring.restorationRequested(restoreRequest(for: keyA))
+        _ = restoring.layoutMetricsChanged(facts: layoutFacts(
+            bottomMarkerMaxY: 300, viewportMaxY: 800,
+            scope: restoring.renderedScrollScope
+        ))
+        XCTAssertNil(restoring.pendingFollowCorrection)
+
+        var handing = makeController(following: keyA)
+        _ = handing.notificationHandoffBegan(destination: keyB)
+        _ = handing.layoutMetricsChanged(facts: layoutFacts(
+            bottomMarkerMaxY: 300, viewportMaxY: 800,
+            scope: handing.renderedScrollScope
+        ))
+        XCTAssertNil(handing.pendingFollowCorrection)
+    }
+
+    /// The correction re-validates at due time: an overshoot that resolved
+    /// itself (the animated reassert landed) must not scroll.
+    func testOvershootCorrectionDiesWhenResolvedBeforeDue() throws {
+        var controller = makeController(following: keyA)
+        let token = try XCTUnwrap(scheduledCorrection(in: controller.layoutMetricsChanged(
+            facts: layoutFacts(
+                bottomMarkerMaxY: 600, viewportMaxY: 800,
+                scope: controller.renderedScrollScope
+            )
+        )))
+        _ = controller.layoutMetricsChanged(facts: layoutFacts(
+            bottomMarkerMaxY: 800, viewportMaxY: 800,
+            scope: controller.renderedScrollScope
+        ))
+        XCTAssertTrue(scrollCommands(controller.followCorrectionDue(token)).isEmpty)
+    }
+}
