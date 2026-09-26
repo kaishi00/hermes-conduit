@@ -413,7 +413,9 @@ struct GroupRespondingRow: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(AppLocalization.string("\(name) is responding…")))
+        .accessibilityAddTraits(.updatesFrequently)
     }
 }
 
@@ -452,6 +454,7 @@ struct MentionSuggestionList: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityHint(Text(AppLocalization.string("Inserts this mention.")))
                     if index < candidates.count - 1 {
                         Divider().opacity(0.3)
                     }

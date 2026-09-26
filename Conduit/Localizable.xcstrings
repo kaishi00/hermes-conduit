@@ -255,6 +255,17 @@
       }
     },
 
+    "Inserts this mention." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "插入此提及。"
+          }
+        }
+      }
+    },
+
     "The room settled." : {
       "localizations" : {
         "zh-Hans" : {

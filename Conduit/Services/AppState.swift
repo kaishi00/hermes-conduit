@@ -3540,6 +3540,18 @@ final class AppState: ObservableObject {
             ))
             groupRoomOutbox.accept(eventID: logical.eventID)
             pendingRoomMessage = groupRoomOutbox.pending
+            if result.driverStarted {
+                // The driver took the message on: show it working now rather
+                // than waiting for the next poll's status, which corrects it.
+                let previous = activeRoomDriverStatus
+                activeRoomDriverStatus = GroupDriverStatus(
+                    running: true,
+                    working: true,
+                    blocked: previous?.blocked ?? false,
+                    counts: previous?.counts ?? [:],
+                    pendingActions: previous?.pendingActions ?? []
+                )
+            }
             // A delivered message retires the failure banner of its earlier
             // ambiguous attempt.
             clearRoomSendError()

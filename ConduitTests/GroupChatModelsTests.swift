@@ -785,4 +785,24 @@ final class GroupChatModelsTests: XCTestCase {
         ]))!
         XCTAssertFalse(MentionAutocomplete.roomCandidates([shadow]).map(\.tag).contains("user"))
     }
+
+    func testTurnIdentityFoldsCase() {
+        let members = roomMembers()
+        let passed = turnEvent(eventJSON(
+            seq: 4, kind: "turn.settled", actor: ["kind": "gateway", "id": "gw-a"],
+            payload: ["thread_id": "main", "discussion_event_id": "user:d1", "member_id": "Zhongli",
+                      "round_index": 0, "passed": true, "message_event_id": NSNull()]
+        ))
+        XCTAssertEqual(GroupRoomTurns.member(for: passed, members: members)?.memberID, "zhongli")
+        // Zhongli's differently-cased terminal still ends Zhongli's turn.
+        let log = [userMessage(seq: 1, text: "@zhongli hi"), passed]
+        XCTAssertNil(GroupRoomTurns.pendingResponder(events: log, members: members))
+    }
+
+    func testUnknownTurnKindsStayOutOfTheTranscript() {
+        let future = turnEvent(eventJSON(seq: 3, kind: "turn.heartbeat", actor: ["kind": "gateway", "id": "gw-a"]))
+        let failed = turnEvent(eventJSON(seq: 4, kind: "turn.failed", actor: ["kind": "gateway", "id": "gw-a"]))
+        XCTAssertFalse(GroupRoomTurns.isVisible(future))
+        XCTAssertTrue(GroupRoomTurns.isVisible(failed))
+    }
 }

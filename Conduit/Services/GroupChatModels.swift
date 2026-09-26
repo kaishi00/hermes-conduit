@@ -600,10 +600,12 @@ enum GroupRoomTurns {
         switch event.kind {
         case "turn.settled":
             return event.payload["passed"]?.boolValue == true
-        case "turn.deferred", "turn.started", "turn.reassigned":
-            return false
-        default:
+        case "turn.failed", "turn.cancelled":
             return true
+        default:
+            // Every other per-member turn kind, including ones this client
+            // predates, is bookkeeping: the placeholder bubble covers it.
+            return !event.kind.hasPrefix("turn.")
         }
     }
 
@@ -675,7 +677,7 @@ enum GroupRoomTurns {
                 ? resolveMentions(in: [discussion.payload["text"]?.stringValue ?? ""], members: members, defaultAll: true)
                 : unaddressedMentions(discussionMessages, members: members)
             for member in rotate(responders, by: round)
-            where !terminals.contains("\(round)|\(routingID(of: member).lowercased())") {
+            where !terminals.contains("\(round)|\(routingID(of: member))") {
                 return member
             }
             let spokeThisRound = memberMessages.contains {
@@ -737,7 +739,7 @@ enum GroupRoomTurns {
         var citedAt: [String: Int] = [:]
         var lastPostAt: [String: Int] = [:]
         for event in messages where event.isMemberMessage {
-            let speaker = event.payload["member_id"]?.stringValue ?? ""
+            let speaker = event.payload["member_id"]?.stringValue?.lowercased() ?? ""
             lastPostAt[speaker] = event.seq
             let cited = resolveMentions(
                 in: [event.payload["text"]?.stringValue ?? ""], members: members, defaultAll: false
@@ -759,13 +761,15 @@ enum GroupRoomTurns {
         return Array(members[shift...] + members[..<shift])
     }
 
-    /// The id the gateway stamps on turn payloads (`member_id`).
+    /// The id the gateway stamps on turn payloads (`member_id`), lowercased:
+    /// every comparison against a payload id folds case.
     private static func routingID(of member: GroupMember) -> String {
-        member.memberID ?? member.identityKey
+        (member.memberID ?? member.identityKey).lowercased()
     }
 
     private static func member(withID id: String, in members: [GroupMember]) -> GroupMember? {
-        members.first(where: { routingID(of: $0) == id })
+        let id = id.lowercased()
+        return members.first(where: { routingID(of: $0) == id })
             ?? members.first(where: { $0.profile?.caseInsensitiveCompare(id) == .orderedSame })
     }
 }
