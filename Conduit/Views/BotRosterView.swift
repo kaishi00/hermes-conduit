@@ -172,7 +172,6 @@ struct BotRosterView: View {
             Text(AppLocalization.string("New Group Chat"))
                 .font(.body.weight(.semibold))
                 .foregroundStyle(.conduitAccent)
-                .lineLimit(1)
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 12)

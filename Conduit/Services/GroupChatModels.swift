@@ -804,7 +804,8 @@ enum MentionAutocomplete {
             guard before.isWhitespace else { return nil }
         }
         let query = text[text.index(after: at)...]
-        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "._:-"))
+        // ASCII only, matching the gateway's mention pattern.
+        let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._:-")
         guard query.unicodeScalars.allSatisfy({ allowed.contains($0) }) else { return nil }
         return query.lowercased()
     }
