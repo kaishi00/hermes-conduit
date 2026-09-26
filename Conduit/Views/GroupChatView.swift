@@ -146,7 +146,7 @@ struct GroupChatView: View {
                     sendDraft()
                 } label: {
                     Image(systemName: "arrow.up.circle.fill")
-                        .font(.system(size: 28))
+                        .font(.title)
                         .foregroundStyle(canSend ? Color.conduitAccent : Color.secondary.opacity(0.4))
                 }
                 .disabled(!canSend)
@@ -194,7 +194,7 @@ struct GroupChatView: View {
                 appState.closeGroupRoom()
             } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.subheadline.weight(.semibold))
             }
             .accessibilityLabel(Text(AppLocalization.string("Leave this group chat")))
         }
@@ -226,7 +226,7 @@ struct GroupChatView: View {
                 }
             } label: {
                 Image(systemName: "ellipsis.circle")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.callout.weight(.semibold))
             }
             .accessibilityLabel(Text(AppLocalization.string("Group chat actions")))
         }

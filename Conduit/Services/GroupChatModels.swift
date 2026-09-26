@@ -468,8 +468,10 @@ enum GroupRoomMentions {
     /// result is one unknown token for a Matrix-style id (never a false
     /// mention split), at the cost of not styling the `@user` prefix of
     /// `@user:matrix.id` the way upstream's presentation-only path does.
+    /// A tag must start the text or follow whitespace, so `a@all` or
+    /// `name@user.example` stay plain prose.
     static let mentionScanRegex = try? NSRegularExpression(
-        pattern: "@([a-z0-9][a-z0-9._:-]*)",
+        pattern: "(?<!\\S)@([a-z0-9][a-z0-9._:-]*)",
         options: [.caseInsensitive]
     )
 

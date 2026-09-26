@@ -522,6 +522,17 @@ final class GroupChatModelsTests: XCTestCase {
         XCTAssertNil(GroupRoomMentions.classify(token: "example.com", members: members))
     }
 
+    func testRoomMentionScanNeedsALeadingBoundary() throws {
+        let regex = try XCTUnwrap(GroupRoomMentions.mentionScanRegex)
+        func tokens(_ text: String) -> [String] {
+            regex.matches(in: text, range: NSRange(text.startIndex..., in: text)).compactMap {
+                Range($0.range(at: 1), in: text).map { String(text[$0]) }
+            }
+        }
+        XCTAssertEqual(tokens("@all hi @user\n@scout"), ["all", "user", "scout"])
+        XCTAssertEqual(tokens("a@all x@user name@example.com"), [])
+    }
+
     func testRoomMentionClassificationCoversRenamedAndTitleFirstWordForms() {
         let renamed = GroupDecoders.member(any([
             "member_id": "researcher",

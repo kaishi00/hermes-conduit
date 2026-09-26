@@ -3326,6 +3326,8 @@ final class AppState: ObservableObject {
     /// Leave the room view WITHOUT touching session state — the next session
     /// open, or this call's inverse, owns the viewport transition.
     func closeGroupRoom() {
+        // A room's error must not outlive the room the user just left.
+        errorMessage = nil
         closeRoomSurface()
         Task { await self.refreshGroupRooms() }
     }
