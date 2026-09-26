@@ -111,6 +111,15 @@ struct GroupChatView: View {
 
     private var composer: some View {
         VStack(spacing: 6) {
+            if appState.activeRoomSendInFlight, appState.pendingRoomMessage == nil {
+                // A poll can show the message delivered before the send's
+                // own answer returns; Send stays off until it does.
+                Text(AppLocalization.string("Sending…"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 14)
+            }
             if appState.pendingRoomMessage != nil, !appState.activeRoomSendInFlight {
                 // The pending row owns the composer; say why Send is off
                 // instead of leaving a silently disabled button.

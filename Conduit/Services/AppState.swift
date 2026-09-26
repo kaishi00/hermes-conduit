@@ -3014,7 +3014,9 @@ final class AppState: ObservableObject {
     /// Rooms (keyed like `parkedRoomOutboxes`) with a `groups.send` still
     /// awaiting its answer. A room left and reopened mid-send shows its row
     /// as "Sending…", not "Not delivered", until that attempt resolves.
-    private var inFlightRoomSendKeys: Set<String> = []
+    /// Each send owns its entry by token, so a late send that outlived an
+    /// identity teardown never retires a newer send's entry for the room.
+    private var inFlightRoomSendTokens: [String: UUID] = [:]
 
     /// Fences every in-flight room response and stops the poller. Runs at
     /// the server-identity boundary (with the rest of Bot Mode teardown), on
@@ -3083,7 +3085,7 @@ final class AppState: ObservableObject {
         groupRoomDrafts.removeAll()
         // A send still awaiting its reply belongs to the outgoing identity;
         // its defer's removal is a no-op once the key is gone.
-        inFlightRoomSendKeys.removeAll()
+        inFlightRoomSendTokens.removeAll()
     }
 
     private static func roomKey(dashboardID: UUID, roomID: String) -> String {
@@ -3237,10 +3239,14 @@ final class AppState: ObservableObject {
         guard groupChatPhase == .available, let client, isConnected else { return }
         let epoch = groupRoomEpoch
         do {
-            let (rooms, _) = try await groupsList(client)
+            let (rooms, nextOffset) = try await groupsList(client)
             guard groupRoomEpoch == epoch else { return }
             groupRooms = rooms.filter { !$0.isDisbanded }
-            pruneRoomStores(liveRoomIDs: Set(groupRooms.map(\.roomID)))
+            // Only a complete list proves a room is gone: a partial page
+            // (next_offset set) must not drop another room's retry key.
+            if nextOffset == nil {
+                pruneRoomStores(liveRoomIDs: Set(groupRooms.map(\.roomID)))
+            }
         } catch is CancellationError {
             return
         } catch {
@@ -3268,12 +3274,13 @@ final class AppState: ObservableObject {
         // The room banner renders the shared errorMessage: a stale session
         // error must not greet the user inside the room.
         errorMessage = nil
+        roomSendErrorMessage = nil
         // Switching straight from another room parks that room's send; the
         // in-flight flag follows the room being opened.
         parkActiveRoomSend()
-        activeRoomSendInFlight = inFlightRoomSendKeys.contains(
+        activeRoomSendInFlight = inFlightRoomSendTokens[
             Self.roomKey(dashboardID: dashboardID, roomID: room.roomID)
-        )
+        ] != nil
         activeRoomSurface = GroupRoomSurface(dashboardID: dashboardID, room: room)
         activeRoomReplay = GroupRoomReplay(roomID: room.roomID)
         activeRoomDriverStatus = nil
@@ -3444,14 +3451,19 @@ final class AppState: ObservableObject {
         pendingRoomMessage = groupRoomOutbox.pending
         let sendKey = Self.roomKey(dashboardID: surface.dashboardID, roomID: surface.room.roomID)
         activeRoomSendInFlight = true
-        inFlightRoomSendKeys.insert(sendKey)
+        let sendToken = UUID()
+        inFlightRoomSendTokens[sendKey] = sendToken
         // Per room: this send's end unlocks only its own room's composer,
         // whether that room is still open, reopened, or not open at all.
         defer {
-            inFlightRoomSendKeys.remove(sendKey)
-            if let open = activeRoomSurface,
-               Self.roomKey(dashboardID: open.dashboardID, roomID: open.room.roomID) == sendKey {
-                activeRoomSendInFlight = false
+            // Only while the entry is still this send's: after a teardown a
+            // newer send to the same room owns the entry and the composer.
+            if inFlightRoomSendTokens[sendKey] == sendToken {
+                inFlightRoomSendTokens.removeValue(forKey: sendKey)
+                if let open = activeRoomSurface,
+                   Self.roomKey(dashboardID: open.dashboardID, roomID: open.room.roomID) == sendKey {
+                    activeRoomSendInFlight = false
+                }
             }
         }
         do {

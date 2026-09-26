@@ -419,6 +419,98 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         appState.closeGroupRoom()
     }
 
+    /// A partial room-list page (next_offset set) does not prove a room is
+    /// gone, so the room keeps its parked send.
+    func testPartialRoomListKeepsAMissingRoomsParkedSend() async {
+        final class ListBox {
+            var page: ([GroupRoom], Int?) = ([], nil)
+        }
+        let box = ListBox()
+        let room = self.room()
+        box.page = ([room], nil)
+        let operations = GroupChatLifecycleOperations(
+            capabilities: { _ in self.capabilities(supported: true) },
+            list: { _ in box.page },
+            state: { _, _ in (room, nil) },
+            log: { _, _, sinceSeq, _ in
+                GroupLogPage(events: [], cursor: sinceSeq, latestSeq: 0, hasMore: false,
+                             authorityGatewayID: "gw-a", authorityEpoch: 1)
+            },
+            send: { _, _, _, _, _ in throw TestError() }
+        )
+        let appState = makeAppState(operations: operations)
+        connect(appState)
+        await appState.refreshGroupChatSupport()
+        await appState.openGroupRoom(room)
+        await appState.sendGroupRoomMessage("still pending")
+        appState.closeGroupRoom()
+
+        box.page = ([], 50)
+        await appState.refreshGroupRooms()
+
+        await appState.openGroupRoom(room)
+        XCTAssertEqual(appState.pendingRoomMessage?.text, "still pending")
+        appState.closeGroupRoom()
+    }
+
+    /// A send that outlives an identity teardown must not unlock a newer
+    /// send to the same room when its answer finally lands.
+    func testLateSendAfterTeardownKeepsTheNewerSendInFlight() async {
+        final class SendGate: @unchecked Sendable {
+            var started = 0
+            var released = 0
+        }
+        let gate = SendGate()
+        let room = self.room()
+        let operations = GroupChatLifecycleOperations(
+            capabilities: { _ in self.capabilities(supported: true) },
+            list: { _ in ([room], nil) },
+            state: { _, _ in (room, nil) },
+            log: { _, _, sinceSeq, _ in
+                GroupLogPage(events: [], cursor: sinceSeq, latestSeq: 0, hasMore: false,
+                             authorityGatewayID: "gw-a", authorityEpoch: 1)
+            },
+            send: { _, roomID, _, _, _ in
+                gate.started += 1
+                let mine = gate.started
+                while gate.released < mine {
+                    try? await Task.sleep(nanoseconds: 10_000_000)
+                }
+                return self.sendResult(roomID: roomID, seq: 1)
+            }
+        )
+        let appState = makeAppState(operations: operations)
+        connect(appState)
+        await appState.refreshGroupChatSupport()
+        await appState.openGroupRoom(room)
+
+        func waitForSend(_ count: Int) async {
+            for _ in 0..<500 where gate.started < count {
+                try? await Task.sleep(nanoseconds: 10_000_000)
+            }
+            XCTAssertEqual(gate.started, count)
+        }
+
+        let old = Task { @MainActor in await appState.sendGroupRoomMessage("before sign-out") }
+        await waitForSend(1)
+        appState.disconnect()
+        connect(appState)
+        await appState.refreshGroupChatSupport()
+        await appState.openGroupRoom(room)
+        let newer = Task { @MainActor in await appState.sendGroupRoomMessage("after sign-in") }
+        await waitForSend(2)
+        XCTAssertTrue(appState.activeRoomSendInFlight)
+
+        gate.released = 1
+        _ = await old.value
+        XCTAssertTrue(appState.activeRoomSendInFlight, "the late answer must not unlock the newer send")
+
+        gate.released = 2
+        _ = await newer.value
+        XCTAssertFalse(appState.activeRoomSendInFlight)
+        appState.closeGroupRoom()
+    }
+
     func testSuccessfulSendClearsThePendingRow() async {
         let room = self.room()
         let operations = GroupChatLifecycleOperations(

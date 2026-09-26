@@ -454,7 +454,11 @@ struct GroupRoomOutbox: Equatable {
     }
 
     /// Settle the pending send when `events` carry its server-side twin (an
-    /// ambiguous send that did land). Returns whether it settled.
+    /// ambiguous send that did land). Returns whether it settled. Only the
+    /// fetched events are searched, and the opening tail and resyncs are
+    /// bounded to the replay window (200 events). A twin older than that
+    /// stays pending, and its retry is still safe: it reuses the same id,
+    /// so the gateway deduplicates it.
     @discardableResult
     mutating func settle(from events: [GroupEvent]) -> Bool {
         guard let pending else { return false }
