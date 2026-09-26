@@ -109,6 +109,50 @@ final class CarPlayTransportRecoveryTests: XCTestCase {
         XCTAssertEqual(recorder.scheduledDelays.count, 1, "the dropped timer is re-armed for CarPlay")
     }
 
+    func testCarPlayReArmsFollowTheBackoffAfterTheImmediateConnectRetry() async {
+        let recorder = ReconnectRecorder()
+        let appState = makeAppState(recorder: recorder)
+        appState.handleScenePhase(.background)
+        appState.setCarPlayVoiceSurfaceActive(true)
+        appState.handleCarPlayVoiceSurfaceActivated()
+        await recorder.operations.last?()
+
+        // Phone-scene transitions during the drive re-arm the dead transport.
+        appState.handleScenePhase(.background)
+        await recorder.operations.last?()
+        appState.handleScenePhase(.background)
+
+        XCTAssertEqual(recorder.scheduledDelays.count, 3)
+        XCTAssertEqual(recorder.scheduledDelays[0], 0.1, accuracy: 0.001, "CarPlay connect retries at once")
+        XCTAssertGreaterThan(recorder.scheduledDelays[1], 0.1, "later re-arms use the backoff delay")
+        XCTAssertGreaterThan(
+            recorder.scheduledDelays[2], recorder.scheduledDelays[1],
+            "the backoff grows instead of resetting to an immediate retry"
+        )
+    }
+
+    func testFailedRestoreDuringACarPlayWaitHandsOffToRecovery() async {
+        let recorder = ReconnectRecorder()
+        let appState = makeAppState(recorder: recorder)
+        appState.handleScenePhase(.background)
+        appState.setCarPlayVoiceSurfaceActive(true)
+        appState.isConnecting = true
+        appState.handleCarPlayVoiceSurfaceActivated()
+        XCTAssertTrue(recorder.scheduledDelays.isEmpty, "the in-flight restore owns the flow")
+
+        let wait = Task { @MainActor in
+            await CarPlayVoiceCoordinator.awaitConnection(of: appState, timeout: .milliseconds(500))
+        }
+        // The restore fails: still disconnected, no longer connecting. The
+        // watcher may or may not have subscribed yet; either order hands off.
+        appState.isConnecting = false
+        for _ in 0..<500 where recorder.scheduledDelays.isEmpty { await Task.yield() }
+
+        XCTAssertEqual(recorder.scheduledDelays.count, 1, "the failed restore handed off to a reconnect")
+        let connected = await wait.value
+        XCTAssertFalse(connected)
+    }
+
     func testCarPlayActivationLeavesAnInFlightRestoreAlone() {
         let recorder = ReconnectRecorder()
         let appState = makeAppState(recorder: recorder)

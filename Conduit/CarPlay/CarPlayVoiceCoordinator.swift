@@ -320,7 +320,11 @@ final class CarPlayVoiceCoordinator {
         }
         connectionWaitTask = waitTask
         let connected = await waitTask.value
-        if isCurrent(generation) { connectionWaitTask = nil }
+        // Clear the slot only if it still holds THIS wait: an overlapping
+        // prepare on the same generation (connect-time establishment plus a
+        // Listen tap) may have replaced it, and that newer wait must stay
+        // cancellable by the next connect or disconnect.
+        if connectionWaitTask == waitTask { connectionWaitTask = nil }
         guard connected, isCurrent(generation), isConnected else {
             return .deferred
         }
@@ -331,13 +335,24 @@ final class CarPlayVoiceCoordinator {
     }
 
     /// Resolves true as soon as `appState.isConnected` is true, or false once
-    /// `timeout` elapses first.
+    /// `timeout` elapses first. Whenever the app is neither connected nor
+    /// connecting during the wait (an in-flight restore failed), it hands off
+    /// to CarPlay's own backoff recovery instead of leaving nothing armed for
+    /// the rest of the wait.
     static func awaitConnection(of appState: AppState, timeout: Duration) async -> Bool {
         if appState.isConnected { return true }
         return await withTaskGroup(of: Bool.self) { group in
             group.addTask { @MainActor in
-                for await connected in appState.$isConnected.values where connected {
-                    return true
+                let states = appState.$isConnected.combineLatest(appState.$isConnecting).values
+                for await (connected, connecting) in states {
+                    if connected { return true }
+                    // Neither connected nor connecting — including on the
+                    // first emission, so a restore that failed before this
+                    // watcher subscribed is not missed. The recovery guard
+                    // and planReconnect never double-arm an armed cycle.
+                    if !connecting {
+                        appState.recoverTransportForCarPlayIfNeeded()
+                    }
                 }
                 return false
             }
