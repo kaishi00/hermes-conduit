@@ -221,7 +221,10 @@ struct MainView: View {
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    if !isPersistentSidebarActive {
+                    // An open room supplies its own leading Leave button; a
+                    // second leading control would be ambiguous. The edge
+                    // swipe still opens the sidebar.
+                    if !isPersistentSidebarActive && appState.activeRoomSurface == nil {
                         Button {
                             appState.showSidebar = true
                         } label: {

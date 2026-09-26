@@ -421,6 +421,16 @@ final class GroupChatModelsTests: XCTestCase {
         XCTAssertEqual(replay.hasGap, false)
         XCTAssertEqual(replay.events.map(\.seq), [1, 2])
         XCTAssertEqual(replay.cursor, 2)
+
+        // A bounded authoritative tail that starts past the old cursor is
+        // the new truth, not a gap.
+        replay.replaceAll(page: logPage([
+            eventJSON(seq: 40, kind: "message.user", payload: ["text": "x"]),
+            eventJSON(seq: 41, kind: "message.user", payload: ["text": "y"]),
+        ]))
+        XCTAssertEqual(replay.hasGap, false)
+        XCTAssertEqual(replay.events.map(\.seq), [40, 41])
+        XCTAssertEqual(replay.cursor, 41)
     }
 
     func testInitialTailAdoptionDoesNotFlagTheWindowTruncationAsAGap() {

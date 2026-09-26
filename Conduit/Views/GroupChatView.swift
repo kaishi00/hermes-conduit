@@ -105,6 +105,18 @@ struct GroupChatView: View {
 
     private var composer: some View {
         VStack(spacing: 6) {
+            if appState.pendingRoomMessage != nil, !appState.activeRoomSendInFlight {
+                // The pending row owns the composer; say why Send is off
+                // instead of leaving a silently disabled button.
+                Text(AppLocalization.string(
+                    "Your previous message is still pending. Retry it from the room, or wait for it to deliver."
+                ))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 14)
+            }
             if let error = appState.errorMessage, !error.isEmpty {
                 // The session surface's error banner lives inside ChatView,
                 // which this room surface replaces — room errors must render
@@ -499,6 +511,7 @@ struct GroupCreateSheet: View {
             }
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     private func selectionGlyph(isSelected: Bool) -> some View {

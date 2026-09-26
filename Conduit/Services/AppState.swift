@@ -3043,6 +3043,9 @@ final class AppState: ObservableObject {
         groupRoomEpoch &+= 1
         let epoch = groupRoomEpoch
         groupRoomPollTask?.cancel()
+        // The room banner renders the shared errorMessage: a stale session
+        // error must not greet the user inside the room.
+        errorMessage = nil
         activeRoomSurface = GroupRoomSurface(dashboardID: dashboardID, room: room)
         activeRoomReplay = GroupRoomReplay(roomID: room.roomID)
         activeRoomDriverStatus = nil
@@ -3113,6 +3116,10 @@ final class AppState: ObservableObject {
     }
 
     private func pollActiveRoomOnce(epoch: Int) async {
+        // Backgrounded: skip the tick (no RPCs while the app is not
+        // visible); the loop resumes polling on the first tick after the
+        // scene is active again.
+        guard isSceneActive else { return }
         guard let client, isConnected,
               let surface = activeRoomSurface,
               groupRoomEpoch == epoch,
@@ -3214,6 +3221,12 @@ final class AppState: ObservableObject {
             guard groupRoomEpoch == epoch, activeRoomSurface?.room.roomID == surface.room.roomID else {
                 return true
             }
+            guard result.event.roomID == surface.room.roomID else {
+                // An answer naming another room settles nothing: keep the
+                // pending row (same event id) for an explicit retry.
+                errorMessage = AppLocalization.string("Could not send to this group chat: \(HermesError.invalidResponse.localizedDescription)")
+                return true
+            }
             let cursorBefore = activeRoomReplay.cursor
             activeRoomReplay.adopt(page: GroupLogPage(
                 events: [result.event],
@@ -3225,6 +3238,9 @@ final class AppState: ObservableObject {
             ))
             groupRoomOutbox.accept(eventID: logical.eventID)
             pendingRoomMessage = groupRoomOutbox.pending
+            // A delivered message retires the failure banner of its earlier
+            // ambiguous attempt.
+            errorMessage = nil
             if result.event.seq > cursorBefore + 1 {
                 // The accepted event jumped past events this client has not
                 // seen (a busy room between polls): resync from the room's
@@ -3330,6 +3346,9 @@ final class AppState: ObservableObject {
               groupCapabilities?.foundationSupported == true else { return false }
         guard bots.count >= 2, bots.count <= 6 else { return false }
         guard !trimmedName.isEmpty else { return false }
+        // The create sheet renders the shared errorMessage: clear the last
+        // attempt's (or an unrelated surface's) failure before this one.
+        errorMessage = nil
         var usedHandles = Set<String>(["all", "everyone"])
         var members: [[String: Any]] = []
         for bot in bots {
@@ -10461,6 +10480,12 @@ final class AppState: ObservableObject {
                 errorMessage = AppLocalization.string("Wait for the workspace switch to finish before starting a conversation.")
             }
             return
+        }
+        // A new conversation takes the viewport back from an open room, the
+        // same as a session open: otherwise the room stays on screen while
+        // the new session is adopted invisibly behind it.
+        if activeRoomSurface != nil {
+            closeRoomSurface()
         }
         let transitionGeneration = beginExplicitChatViewportTransition()
         defer {

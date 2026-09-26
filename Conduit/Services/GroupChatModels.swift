@@ -378,12 +378,10 @@ struct GroupRoomReplay: Equatable {
 
     /// Full resync: rebuild from an authoritative page (a reconnect after a
     /// gap, or a moved authority). The gap flag clears — the new page IS the
-    /// new truth.
+    /// new truth, and a bounded tail's truncation point is by design, so this
+    /// shares the initial-tail semantics.
     mutating func replaceAll(page: GroupLogPage) {
-        events = []
-        cursor = 0
-        hasGap = false
-        adopt(page: page)
+        adoptInitialTail(page: page)
     }
 }
 
