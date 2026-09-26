@@ -5834,6 +5834,7 @@ final class AppStateChatResumeTests: XCTestCase {
     /// connect task has returned with the scene still inactive; the caller
     /// owns the activation and its assertions.
     private func startConnectInterruptedBySceneDeactivation(
+        behavior: ChatResumeBehavior = .continueWhereLeftOff,
         deactivatingBeforeHandshake: Bool = true,
         configure: (OwedBootstrapCounters) -> Void = { _ in },
         onHarness: (AppState) -> Void = { _ in }
@@ -5847,6 +5848,7 @@ final class AppStateChatResumeTests: XCTestCase {
         let socket = ClarifyFakeSocket()
         transport.nextSocket = { socket }
         let harness = makeHarness(
+            behavior: behavior,
             reconnectScheduler: scheduler.schedule(after:operation:),
             lifecycleOperations: ChatResumeLifecycleOperations(
                 connectClient: { client in
@@ -6103,7 +6105,15 @@ final class AppStateChatResumeTests: XCTestCase {
         // user types (explicit ownership of the visible conversation) and
         // then the scene deactivates, so connect returns with the bootstrap
         // still owed.
+        //
+        // "Latest activity" makes the two purposes pick different rows:
+        // `.automaticReturn` jumps to the newest row, while `.preserveCurrent`
+        // keeps the conversation connect restored from the saved reference —
+        // the one on screen, which the user typed into. Under "continue where
+        // I left off" both purposes pick the saved session, so the test could
+        // not tell a replayed automatic return from a preserved conversation.
         let fixture = await startConnectInterruptedBySceneDeactivation(
+            behavior: .latestActivity,
             deactivatingBeforeHandshake: false
         ) { counters in
             counters.leadingCatalogRows = [newest]
@@ -6118,19 +6128,24 @@ final class AppStateChatResumeTests: XCTestCase {
         let counters = fixture.counters
         XCTAssertTrue(counters.catalogLoadHooks.isEmpty, "The connect's own sync must have reached the catalog")
         XCTAssertTrue(counters.openedSessionIDs.isEmpty)
+        XCTAssertEqual(
+            harness.appState.activeSessionId, fixture.saved.id,
+            "Connect restores the saved conversation as the visible one"
+        )
 
         if let activation = harness.appState.handleScenePhase(.active) {
             await activation.value
         }
 
-        // The owed sync preserves the visible conversation (none yet, so the
-        // newest row) instead of replaying the automatic return to the saved
-        // session the user moved away from.
+        // The owed sync preserves the visible conversation the user typed
+        // into instead of replaying the automatic return, which would jump
+        // to the newest row.
         XCTAssertFalse(
-            counters.openedSessionIDs.contains(fixture.saved.id),
+            counters.openedSessionIDs.contains(newest.id),
             "An owed bootstrap must not replay .automaticReturn after the user took ownership"
         )
-        XCTAssertEqual(counters.openedSessionIDs, [newest.id])
+        XCTAssertEqual(counters.openedSessionIDs, [fixture.saved.id])
+        XCTAssertEqual(harness.appState.activeSessionId, fixture.saved.id)
     }
 
     func testConnectSyncThatPublishedTheCatalogIsNotReplayedAfterDeactivation() async {
@@ -6369,8 +6384,8 @@ private final class OwedBootstrapCounters {
     var probes = 0
     /// Run in order, one inside each catalog load, until exhausted.
     var catalogLoadHooks: [@MainActor () throws -> Void] = []
-    /// Catalog rows listed ahead of the saved session (the newest-first
-    /// fallback a `.preserveCurrent` sync with no visible chat picks).
+    /// Catalog rows listed ahead of the saved session (the newest row that
+    /// a "latest activity" automatic return picks).
     var leadingCatalogRows: [SessionSummary] = []
 }
 
