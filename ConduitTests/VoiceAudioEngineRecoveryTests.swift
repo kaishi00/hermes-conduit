@@ -7,12 +7,17 @@ import XCTest
 /// rendering lifetime now starts on a fresh engine and retries once after a
 /// recoverable graph failure. Driven through pure seams and a start-failing
 /// engine subclass, so no test renders audio or starts a real engine.
-@MainActor
-final class VoiceAudioEngineRecoveryTests: XCTestCase {
-    private let formatNotSupported = NSError(
-        domain: "com.apple.coreaudio.avfaudio",
-        code: VoiceAudioEngineRecovery.formatNotSupported
-    )
+///
+/// Hosted as an extension of an existing voice-audio test class rather than a
+/// new XCTestCase: the CI planner's per-job batch policy is at capacity, and
+/// one more planned class fails plan validation.
+extension VoiceAudioSessionCoordinatorTests {
+    private var formatNotSupported: NSError {
+        NSError(
+            domain: "com.apple.coreaudio.avfaudio",
+            code: VoiceAudioEngineRecovery.formatNotSupported
+        )
+    }
 
     // MARK: - Error classification
 
