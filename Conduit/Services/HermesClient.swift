@@ -1933,6 +1933,7 @@ private enum HermesDisplayKind: String {
     case personalitySwitch = "personality_switch"
     case autoContinue = "auto_continue"
     case asyncDelegationComplete = "async_delegation_complete"
+    case processComplete = "process_complete"
     case internalNotification = "internal_notification"
 }
 
@@ -2455,6 +2456,15 @@ enum MessageNormalizer {
         return object.mapValues { AnyCodable.from($0) }
     }
 
+    /// The one-line title Hermes stamps on a background completion's
+    /// `display_metadata.display_text` (Desktop's `timelineDisplayText`).
+    /// Blank or non-string values degrade to nil.
+    private static func timelineDisplayText(metadata: AnyCodable?) -> String? {
+        guard let text = displayMetadataObject(metadata)?["display_text"]?.stringValue,
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return text
+    }
+
     /// Upstream persists `task_count` on `async_delegation_complete` rows so
     /// clients can phrase the completion notice. The count goes through
     /// `doubleValue` + `Int(exactly:)` so non-representable numbers (1e100,
@@ -2511,7 +2521,17 @@ enum MessageNormalizer {
         case .autoContinue:
             return projected ?? AppLocalization.string("Resumed interrupted turn")
         case .asyncDelegationComplete:
-            return projected ?? delegationCompleteNotice(metadata: metadata)
+            return projected
+                ?? timelineDisplayText(metadata: metadata)
+                ?? delegationCompleteNotice(metadata: metadata)
+        case .processComplete:
+            // A background-process completion is a self-injected turn whose
+            // physical text is the whole `[IMPORTANT: …]` output wall written
+            // for the model. Hermes stamps a compact title in
+            // `display_text`; the canned label covers rows without one.
+            return projected
+                ?? timelineDisplayText(metadata: metadata)
+                ?? AppLocalization.string("Background process finished")
         case .internalNotification:
             // The row content is the operational notice itself (wake events,
             // background completions); show it as a system notice. An

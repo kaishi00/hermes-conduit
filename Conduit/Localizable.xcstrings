@@ -2300,6 +2300,16 @@
         }
       }
     },
+    "Background process finished" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "后台进程已完成"
+          }
+        }
+      }
+    },
     "Background task finished" : {
       "localizations" : {
         "zh-Hans" : {

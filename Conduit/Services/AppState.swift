@@ -975,10 +975,25 @@ final class AppState: ObservableObject {
             )
     }
 
+    /// Whether a push's conversation is a bot's canonical chat, by any id the
+    /// push carried (the runtime id and the durable row). This is the only
+    /// thing that separates a Bot Chat decision from a workspace one: bots are
+    /// ordinary Hermes profiles, and the workspace profile itself is on the
+    /// roster.
+    private func notificationTargetIsBotChat(_ target: ConduitNotificationTarget) -> Bool {
+        let ids = Set([target.sessionId, target.durableSessionID].compactMap {
+            ChatScrollIdentityNormalization.sessionID($0)
+        })
+        return !ids.isDisjoint(with: botOwnedSessionIDs)
+    }
+
     /// What the client can PROVE about a profile a decision wants to switch the
     /// dashboard to. A profile name alone proves nothing: bots are ordinary
     /// Hermes profiles, so only bot evidence (or its verified absence)
-    /// distinguishes a workspace from a bot.
+    /// distinguishes a workspace from a bot. Notification routing no longer
+    /// reads this verdict (every profile is on the roster, so it would refuse
+    /// every push); it decides by conversation through
+    /// `notificationTargetIsBotChat`.
     private func profileOwnershipVerdict(for profile: String) -> ProfileOwnershipVerdict {
         // Positive evidence first, whatever the capability phase says.
         if botOwnership.ownsProfile(profile) { return .botOwned }
@@ -10622,60 +10637,59 @@ final class AppState: ObservableObject {
             id: notificationAttemptID,
             transitionGeneration: transitionGeneration
         ) else { return false }
-        // The name the PUSH carried, not the one it resolves to: a bot-owned
-        // name that case-insensitively matches a workspace profile would
-        // otherwise route this decision into that workspace's store (and, when
-        // it matches the ACTIVE profile, skip the refusal below entirely).
-        if let notified = target.profile, botOwnership.ownsProfile(notified) {
-            refuseBotOwnedRouting(for: notified)
+        // A push is a Bot Chat decision when its CONVERSATION is a bot's
+        // canonical chat, never because of the profile it names. Every Hermes
+        // profile is listed by `profiles.list` (the Bots roster), and the
+        // notifier stamps its own profile on every push, so a name match would
+        // refuse every push once the roster had loaded, including replies and
+        // background turns from the workspace the dashboard is showing. The
+        // refusal copy still reads the name the PUSH carried, so a case-only
+        // match keeps its own diagnostic.
+        if notificationTargetIsBotChat(target) {
+            refuseBotOwnedRouting(for: target.profile ?? "")
             return false
         }
         let targetProfile = notificationProfileID(target.profile)
         if let targetProfile, targetProfile != activeProfile,
-           botModePhase != .gatewayUnsupported,
-           !botOwnership.ownsProfile(targetProfile) {
-            // The verdict below reads the roster as ABSENCE evidence, so it must
-            // be evidence from NOW. The roster is otherwise loaded once per
-            // connection and when the Bots surface opens, which leaves a window:
-            // a bot registered after that load is missing from a roster that
-            // still reports `.available`, and its profile would read as an
-            // ordinary workspace. One refresh at this user-initiated decision
-            // (single-flight, epoch-fenced) closes it — and a refresh that fails
-            // leaves the verdict unverifiable, which refuses.
+           botModePhase != .gatewayUnsupported {
+            // Crossing into another profile reads the roster as ABSENCE
+            // evidence (this conversation is no bot's chat), so it must be
+            // evidence from NOW. The roster is otherwise loaded once per
+            // connection and when the Bots surface opens, which leaves a
+            // window: a Bot Chat created after that load is missing from a
+            // roster that still reports `.available`. One refresh at this
+            // user-initiated decision (single-flight, epoch-fenced) closes it,
+            // and a refresh that fails leaves the evidence unverifiable, which
+            // refuses.
             await refreshBotRoster()
             // The refresh ALWAYS suspends (it creates or joins a task), so
             // this attempt must re-prove it still owns the route before it
-            // reads the verdict or writes an error: a newer tap can have
+            // reads the evidence or writes an error: a newer tap can have
             // replaced the attempt and begun its own viewport transition
             // while this one was waiting.
             guard notificationOpenAttemptIsCurrent(
                 id: notificationAttemptID,
                 transitionGeneration: transitionGeneration
             ) else { return false }
-        }
-        if let targetProfile, targetProfile != activeProfile {
-            // A bot's profile is not a workspace. Bots ARE ordinary Hermes
-            // profiles, so a decision pushed from a Bot Chat names one; making
-            // it this dashboard's profile would turn a bot conversation into
-            // the workspace's own context. Routing a push INTO the Bots
-            // surface is out of scope, so both the positive and the
-            // unverifiable case stop here.
-            switch profileOwnershipVerdict(for: targetProfile) {
-            case .botOwned:
-                refuseBotOwnedRouting(for: targetProfile)
+            if notificationTargetIsBotChat(target) {
+                // Routing a push INTO the Bots surface is out of scope; making
+                // the bot's profile this dashboard's workspace would turn its
+                // Bot Chat into the workspace's own context.
+                refuseBotOwnedRouting(for: target.profile ?? targetProfile)
                 return false
-            case .unverifiable:
-                // No usable Bot Mode evidence (the roster could not be loaded,
-                // or this gateway cannot list profiles): the target may be a
-                // bot's profile, and adopting it would hand a bot conversation
-                // the workspace's context. Fail closed rather than guess.
+            }
+            guard botEvidenceIsAvailable else {
+                // No usable Bot Mode evidence (the roster could not be
+                // loaded): the conversation may be a bot's chat, and adopting
+                // its profile would hand it the workspace's context. Fail
+                // closed rather than guess.
                 errorMessage = AppLocalization.string(
                     "Could not verify that workspace for this notification. Reconnect and try again."
                 )
                 return false
-            case .ordinary:
-                break
             }
+        }
+        if let targetProfile, targetProfile != activeProfile {
             guard await switchProfile(
                 to: targetProfile,
                 reusing: transitionGeneration
