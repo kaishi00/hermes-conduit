@@ -76,9 +76,12 @@ enum VoiceAudioEngineRecovery {
     /// AVAudioEngine asserts on when installing an input tap, so a node whose
     /// output rate disagrees with the (already validated) hardware is tapped
     /// at the hardware format instead of raising. Channel layout is left to
-    /// the converter.
+    /// the converter. An unpopulated (zero-rate) node output keeps the
+    /// nil-format tap, exactly as before this guard existed.
     static func tapFormat(nodeOutput: AVAudioFormat, hardware: AVAudioFormat) -> AVAudioFormat? {
-        abs(nodeOutput.sampleRate - hardware.sampleRate) < 0.5 ? nil : hardware
+        guard nodeOutput.sampleRate > 0,
+              abs(nodeOutput.sampleRate - hardware.sampleRate) >= 0.5 else { return nil }
+        return hardware
     }
 
     /// Starts one rendering lifetime on a freshly rebuilt engine. On a
