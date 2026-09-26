@@ -1519,6 +1519,15 @@ final class AppState: ObservableObject {
     /// immediately precedes backgrounding on home-press, and a socket that
     /// dies under a system overlay is recovered by the `.active` scene task.
     private var isSceneActive = true
+    /// Whether transport recovery (reconnect cycles and the post-connect
+    /// sync they drive) may run. The phone scene being active is one such
+    /// surface; a connected CarPlay Voice surface is another. In a car the
+    /// phone is usually locked, so gating recovery on the phone scene alone
+    /// left a socket lost during suspension dead for the whole drive and
+    /// CarPlay reporting Voice unavailable.
+    private var canRunTransportRecovery: Bool {
+        isSceneActive || isCarPlayVoiceSurfaceActive
+    }
     /// A transport whose handshake completed but whose post-connect bootstrap
     /// (profiles, Bot Mode roster, catalog sync + resume) was abandoned
     /// because the scene went inactive mid-connect — e.g. the Face ID
@@ -2479,8 +2488,10 @@ final class AppState: ObservableObject {
         // transport-wide, not reconnect-only: any chat-resume work that goes
         // inactive/backgrounded mid-flight must not keep publishing state
         // (watchdog: 0x8BADF00D). handleScenePhase(.active) re-establishes
-        // the transport and syncs the session catalog on return.
-        guard !Task.isCancelled, isSceneActive else { return nil }
+        // the transport and syncs the session catalog on return. A connected
+        // CarPlay Voice surface keeps the process foreground and admits the
+        // work as well (see canRunTransportRecovery).
+        guard !Task.isCancelled, canRunTransportRecovery else { return nil }
         if let automaticReconnectOperationID,
            activeAutomaticReconnectOperation?.id != automaticReconnectOperationID {
             return nil
@@ -6836,8 +6847,9 @@ final class AppState: ObservableObject {
         // the app returns: if a visible conversation identity exists, foreground
         // recovery repairs that same conversation using .preserveCurrent;
         // .automaticReturn is used only when there is no current visible session
-        // identity to preserve.
-        guard isSceneActive else { return }
+        // identity to preserve. A connected CarPlay Voice surface keeps the
+        // app on screen while the phone is locked, so it admits recovery too.
+        guard canRunTransportRecovery else { return }
         if reconnectTask == nil {
             recoverySequence.clearQueuedReconnect()
         }
@@ -6864,7 +6876,7 @@ final class AppState: ObservableObject {
             self.reconnectTask = nil
             let purpose = self.recoverySequence.takeQueuedReconnectPurpose()
                 ?? .preserveCurrent
-            guard self.isSceneActive else { return }
+            guard self.canRunTransportRecovery else { return }
             if incrementsBackoff { self.reconnectAttempts += 1 }
             await self.executeReconnect(purpose: purpose)
         }
@@ -6897,7 +6909,9 @@ final class AppState: ObservableObject {
         // handleScenePhase(.active) re-establishes the transport on return.
         // This also makes the public reconnect() a no-op while the scene is
         // inactive/backgrounded — the retry is picked up on the next .active.
-        guard isSceneActive else { return }
+        // A connected CarPlay Voice surface is a foreground surface of its
+        // own (the phone is usually locked in a car), so it admits the cycle.
+        guard canRunTransportRecovery else { return }
         if let reconnectExecutor {
             await reconnectExecutor(purpose)
         } else {
@@ -7410,6 +7424,9 @@ final class AppState: ObservableObject {
             // at their next transportContinuation checkpoint, and foreground
             // activation re-establishes the transport.
             cancelScheduledReconnect()
+            // Unless CarPlay still presents Voice: then the driver is relying
+            // on the transport right now, so a dropped cycle is re-armed.
+            recoverTransportForCarPlayIfNeeded()
             // Flush any pending coalesced cache writes before the app
             // suspends — iOS may kill the process before the debounce fires.
             flushPendingPresentationCache()
@@ -7435,8 +7452,11 @@ final class AppState: ObservableObject {
             // timer would only fire to be discarded. Drop it here; a socket
             // that dies under a system overlay (incoming call, control
             // center) is recovered by the .active scene task — the same
-            // moment the user can see the transcript again.
+            // moment the user can see the transcript again. The exception is
+            // a connected CarPlay Voice surface, which admits recovery on its
+            // own: re-arm for it, exactly as the .background branch does.
             cancelScheduledReconnect()
+            recoverTransportForCarPlayIfNeeded()
             // The scene treats .inactive like .background for reconnect
             // purposes; formally abort the in-flight scene attempt at the
             // transition too, rather than at its next checkpoint.
@@ -17419,6 +17439,23 @@ final class AppState: ObservableObject {
     /// re-arm capture. No-op while the phone scene is active.
     func handleCarPlayVoiceSurfaceActivated() {
         reassertVoiceSurfaceGate()
+        recoverTransportForCarPlayIfNeeded()
+    }
+
+    /// CarPlay can connect while the phone is locked with a transport that
+    /// died during an earlier background suspension. No scene-phase event
+    /// will re-establish it until the phone is unlocked, so the CarPlay
+    /// surface starts the reconnect itself. A restore or connect already in
+    /// flight owns the flow and is left alone.
+    /// While the phone scene is active its own foreground recovery owns the
+    /// transport, so CarPlay never arms a competing cycle then.
+    func recoverTransportForCarPlayIfNeeded() {
+        guard isCarPlayVoiceSurfaceActive,
+              !isSceneActive,
+              connection != nil,
+              !isConnected,
+              !isConnecting else { return }
+        scheduleReconnect(immediately: true, purpose: chatResumePurposeForDisconnect())
     }
 
     /// Called by the CarPlay coordinator when the CarPlay Voice surface goes
