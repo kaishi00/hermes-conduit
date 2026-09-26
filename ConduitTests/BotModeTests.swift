@@ -2661,7 +2661,8 @@ final class BotModeTests: XCTestCase {
             refreshContext: { _, _ in },
             botRoster: { _ in
                 BotRosterSnapshot(bots: [self.makeBot(name: "Atlas", canonicalID: "stored-atlas")], supportsBotProtocol: false)
-            }
+            },
+            findBotChat: { _, _ in [] }
         ))
         ordinaryTarget.appState.client = HermesClient(connection: connection, profile: "default")
         ordinaryTarget.appState.connection = connection
@@ -2894,7 +2895,8 @@ final class BotModeTests: XCTestCase {
                     bots: [self.makeBot(name: "Atlas", canonicalID: "stored-atlas")],
                     supportsBotProtocol: false
                 )
-            }
+            },
+            findBotChat: { _, _ in [] }
         ))
         let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
         harness.appState.client = HermesClient(connection: connection, profile: "default")
@@ -2999,7 +3001,8 @@ final class BotModeTests: XCTestCase {
                     bots: [self.makeBot(name: "Atlas", canonicalID: "stored-atlas")],
                     supportsBotProtocol: false
                 )
-            }
+            },
+            findBotChat: { _, _ in [] }
         ))
         let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
         harness.appState.client = HermesClient(connection: connection, profile: "default")
@@ -3019,6 +3022,57 @@ final class BotModeTests: XCTestCase {
             harness.appState.errorMessage,
             "Could not verify that workspace for this notification. Reconnect and try again."
         )
+    }
+
+    /// A Bot Chat that compacted after the roster was read is known to the
+    /// roster only by its old canonical id. The target profile's canonical
+    /// lookup reports the lineage tip, so the push is refused BEFORE the
+    /// dashboard adopts the bot's profile; a failed lookup fails closed.
+    func testCrossProfilePushForCompactedBotChatIsRefusedBeforeTheSwitch() async {
+        var lookupFails = false
+        let harness = makeBotHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            loadCatalog: { _, _ in [self.makeSessionSummary(id: "ordinary-1", title: "Design review")] },
+            refreshContext: { _, _ in },
+            botRoster: { _ in
+                BotRosterSnapshot(
+                    bots: [self.makeBot(name: "Atlas", canonicalID: "stored-atlas")],
+                    supportsBotProtocol: false
+                )
+            },
+            findBotChat: { _, _ in
+                if lookupFails { throw RpcError(code: 5000, message: "state.db is locked") }
+                return [BotChatLookupRow(
+                    id: "stored-atlas",
+                    resolvedID: "atlas-tip",
+                    title: BotMode.canonicalChatTitle
+                )]
+            }
+        ))
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        harness.appState.client = HermesClient(connection: connection, profile: "default")
+        harness.appState.connection = connection
+        await harness.appState.refreshBotRoster()
+
+        let refused = await harness.appState.openNotificationTarget(
+            ConduitNotificationTarget(profile: "Atlas", sessionId: "atlas-tip", type: "response")
+        )
+        XCTAssertFalse(refused)
+        XCTAssertEqual(
+            harness.appState.errorMessage,
+            "This decision belongs to a Bot Chat. Open Bots to answer it."
+        )
+        XCTAssertEqual(harness.appState.activeProfile, "default", "the bot's profile was never adopted")
+
+        lookupFails = true
+        let unverified = await harness.appState.openNotificationTarget(
+            ConduitNotificationTarget(profile: "Atlas", sessionId: "atlas-other", type: "response")
+        )
+        XCTAssertFalse(unverified)
+        XCTAssertEqual(
+            harness.appState.errorMessage,
+            "Could not verify that workspace for this notification. Reconnect and try again."
+        )
+        XCTAssertEqual(harness.appState.activeProfile, "default")
     }
 
     /// A padded id must resolve in the registry wherever it is looked up: the
