@@ -5,8 +5,8 @@ import XCTest
 /// Regressions for the voice "-10868" failure: audio engines kept across
 /// session reconfigurations started against stale hardware formats. Every
 /// rendering lifetime now starts on a fresh engine and retries once after a
-/// recoverable graph failure. Driven through pure seams, so these tests never
-/// touch audio hardware.
+/// recoverable graph failure. Driven through pure seams and a start-failing
+/// engine subclass, so no test renders audio or starts a real engine.
 @MainActor
 final class VoiceAudioEngineRecoveryTests: XCTestCase {
     private let formatNotSupported = NSError(

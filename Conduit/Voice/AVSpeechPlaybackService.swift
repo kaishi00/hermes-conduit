@@ -61,6 +61,14 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
             name: AVAudioSession.interruptionNotification,
             object: AVAudioSession.sharedInstance()
         )
+        // A media-services reset kills every engine without a configuration
+        // change; settle like an interruption so drain waiters never hang.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleMediaServicesReset(_:)),
+            name: AVAudioSession.mediaServicesWereResetNotification,
+            object: AVAudioSession.sharedInstance()
+        )
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleEngineConfigurationChange(_:)),
@@ -228,6 +236,10 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
             // breakage.
             self?.stop()
         }
+    }
+
+    @objc private func handleMediaServicesReset(_ notification: Notification) {
+        Task { @MainActor [weak self] in self?.stop() }
     }
 
     @objc private func handleEngineConfigurationChange(_ notification: Notification) {
