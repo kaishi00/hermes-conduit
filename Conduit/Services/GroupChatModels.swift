@@ -567,6 +567,265 @@ enum GroupRoomMentions {
     }
 }
 
+// MARK: - Room turn presentation
+
+/// Turn-level presentation for a hosted room log, ported from the gateway's
+/// Discussion policy (`gateway/hosted_room_discussion.py`, `plan_next_task`).
+///
+/// The log's `turn.*` events are PER MEMBER TURN (actor: the gateway;
+/// `payload.member_id` names the member), while the room as a whole settles
+/// only with `room.activity` (`status` settled|bounded). The driver status
+/// says THAT the room is working but not WHO; the Discussion policy is a pure
+/// function of the log, so replaying it here names the member whose turn is
+/// running. Presentation only — routing stays the gateway's.
+enum GroupRoomTurns {
+    /// `MAX_DISCUSSION_ROUNDS` / `MAX_DISCUSSION_MESSAGES` upstream.
+    static let maxRounds = 3
+    static let maxMessages = 10
+
+    static let terminalKinds: Set<String> = ["turn.settled", "turn.failed", "turn.cancelled", "turn.deferred"]
+
+    /// The gateway's `_MENTION_RE`: no leading-whitespace rule, exact handle.
+    private static let routingMentionRegex = try? NSRegularExpression(
+        pattern: "@([A-Za-z0-9][A-Za-z0-9._:-]*)",
+        options: [.caseInsensitive]
+    )
+
+    /// Whether a log event deserves its own transcript row. A member turn
+    /// that posted a message settles silently — the bubble already says it —
+    /// and a deferred turn is re-run by the driver, so neither is news.
+    static func isVisible(_ event: GroupEvent) -> Bool {
+        switch event.kind {
+        case "turn.settled":
+            return event.payload["passed"]?.boolValue == true
+        case "turn.deferred", "turn.started", "turn.reassigned":
+            return false
+        default:
+            return true
+        }
+    }
+
+    /// The member a turn event is about, by `payload.member_id`.
+    static func member(for event: GroupEvent, members: [GroupMember]) -> GroupMember? {
+        guard let id = event.payload["member_id"]?.stringValue else { return nil }
+        return member(withID: id, in: members)
+    }
+
+    static func displayName(of member: GroupMember) -> String {
+        for candidate in [member.displayName, member.handle, member.profile, member.memberID] {
+            if let trimmed = candidate?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !trimmed.isEmpty { return trimmed }
+        }
+        return ""
+    }
+
+    /// The member whose turn the driver is running (or will run next) for
+    /// the room's pending Discussion, or nil when the log says the room is
+    /// idle. Mirrors `plan_next_task` except the per-member watermark skip,
+    /// which never changes the pick for a live Discussion: a round-0
+    /// responder always has the new user message unseen, and a later-round
+    /// responder was cited after it last spoke.
+    static func pendingResponder(events: [GroupEvent], members: [GroupMember]) -> GroupMember? {
+        guard !members.isEmpty, let discussion = pendingDiscussion(events) else { return nil }
+        let threadID = discussion.threadID ?? ""
+        let committed = Set(events.compactMap { event -> String? in
+            guard event.kind == "turn.settled" else { return nil }
+            return event.payload["message_event_id"]?.stringValue
+        })
+        let threadMessages = events.filter { event in
+            (event.threadID ?? "") == threadID
+                && (event.isUserMessage || (event.isMemberMessage && committed.contains(event.eventID)))
+        }
+        let discussionMessages = threadMessages.filter { $0.seq >= discussion.seq }
+        let memberMessages = threadMessages.filter {
+            $0.isMemberMessage && $0.payload["discussion_event_id"]?.stringValue == discussion.eventID
+        }
+        guard memberMessages.count < maxMessages else { return nil }
+
+        var terminals = Set<String>()
+        for event in events where terminalKinds.contains(event.kind)
+            && event.payload["discussion_event_id"]?.stringValue == discussion.eventID {
+            if let round = HermesClient.exactIntValue(event.payload["round_index"]),
+               let memberID = event.payload["member_id"]?.stringValue {
+                terminals.insert("\(round)|\(memberID)")
+            }
+        }
+
+        for round in 0..<maxRounds {
+            let responders = round == 0
+                ? resolveMentions(in: [discussion.payload["text"]?.stringValue ?? ""], members: members, defaultAll: true)
+                : unaddressedMentions(discussionMessages, members: members)
+            for member in rotate(responders, by: round)
+            where !terminals.contains("\(round)|\(routingID(of: member))") {
+                return member
+            }
+            let spokeThisRound = memberMessages.contains {
+                HermesClient.exactIntValue($0.payload["round_index"]) == round
+            }
+            if !spokeThisRound { return nil }
+        }
+        return nil
+    }
+
+    /// Oldest latest-per-thread user message not stopped and not yet
+    /// settled or bounded (`_pending_discussion`).
+    private static func pendingDiscussion(_ events: [GroupEvent]) -> GroupEvent? {
+        let stoppedThrough = events.filter { $0.kind == "room.stop_requested" }.map(\.seq).max() ?? 0
+        let completed = Set(events.compactMap { event -> String? in
+            guard event.kind == "room.activity",
+                  let status = event.payload["status"]?.stringValue,
+                  status == "settled" || status == "bounded" else { return nil }
+            return event.payload["discussion_event_id"]?.stringValue
+        })
+        var latestByThread: [String: GroupEvent] = [:]
+        for event in events where event.isUserMessage {
+            let thread = event.threadID ?? ""
+            if let existing = latestByThread[thread], existing.seq > event.seq { continue }
+            latestByThread[thread] = event
+        }
+        return latestByThread.values
+            .sorted { $0.seq < $1.seq }
+            .first { $0.seq > stoppedThrough && !completed.contains($0.eventID) }
+    }
+
+    /// `resolve_mentions`: exact handle match against the frozen roster;
+    /// `@all`/`@everyone`, or no mention at all when `defaultAll`, is everyone.
+    static func resolveMentions(in texts: [String], members: [GroupMember], defaultAll: Bool) -> [GroupMember] {
+        let handles = Set(members.compactMap { $0.handle?.lowercased() })
+        var mentioned = Set<String>()
+        var everyone = false
+        if let regex = routingMentionRegex {
+            for text in texts {
+                let range = NSRange(text.startIndex..., in: text)
+                for match in regex.matches(in: text, range: range) {
+                    guard let tokenRange = Range(match.range(at: 1), in: text) else { continue }
+                    let handle = text[tokenRange].lowercased()
+                    if handle == "all" || handle == "everyone" {
+                        everyone = true
+                    } else if handles.contains(handle) {
+                        mentioned.insert(handle)
+                    }
+                }
+            }
+        }
+        if everyone || (defaultAll && mentioned.isEmpty) { return members }
+        return members.filter { mentioned.contains($0.handle?.lowercased() ?? "") }
+    }
+
+    /// `_unaddressed_member_mentions`: peers a member cited and who have not
+    /// posted since.
+    private static func unaddressedMentions(_ messages: [GroupEvent], members: [GroupMember]) -> [GroupMember] {
+        var citedAt: [String: Int] = [:]
+        var lastPostAt: [String: Int] = [:]
+        for event in messages where event.isMemberMessage {
+            let speaker = event.payload["member_id"]?.stringValue ?? ""
+            lastPostAt[speaker] = event.seq
+            let cited = resolveMentions(
+                in: [event.payload["text"]?.stringValue ?? ""], members: members, defaultAll: false
+            )
+            for member in cited where routingID(of: member) != speaker {
+                citedAt[routingID(of: member)] = event.seq
+            }
+        }
+        return members.filter { member in
+            let id = routingID(of: member)
+            guard let cited = citedAt[id] else { return false }
+            return (lastPostAt[id] ?? 0) <= cited
+        }
+    }
+
+    private static func rotate(_ members: [GroupMember], by round: Int) -> [GroupMember] {
+        guard !members.isEmpty else { return members }
+        let shift = round % members.count
+        return Array(members[shift...] + members[..<shift])
+    }
+
+    /// The id the gateway stamps on turn payloads (`member_id`).
+    private static func routingID(of member: GroupMember) -> String {
+        member.memberID ?? member.identityKey
+    }
+
+    private static func member(withID id: String, in members: [GroupMember]) -> GroupMember? {
+        members.first(where: { routingID(of: $0) == id })
+            ?? members.first(where: { $0.profile?.caseInsensitiveCompare(id) == .orderedSame })
+    }
+}
+
+// MARK: - Composer @mention picker
+
+/// The `@query` being typed at the end of a composer draft, and the members
+/// or bots it could complete to. Pure so both composers share one rule.
+enum MentionAutocomplete {
+    struct Candidate: Equatable, Identifiable {
+        /// The tag inserted after `@`.
+        let tag: String
+        let title: String
+
+        var id: String { tag }
+    }
+
+    /// The partial tag after a trailing `@` that starts the draft or follows
+    /// whitespace, lowercased; nil when the draft does not end in one. A bare
+    /// `@` yields "".
+    static func activeQuery(in text: String) -> String? {
+        guard let at = text.lastIndex(of: "@") else { return nil }
+        if at > text.startIndex {
+            let before = text[text.index(before: at)]
+            guard before.isWhitespace else { return nil }
+        }
+        let query = text[text.index(after: at)...]
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "._:-"))
+        guard query.unicodeScalars.allSatisfy({ allowed.contains($0) }) else { return nil }
+        return query.lowercased()
+    }
+
+    /// Candidates whose tag or title starts with `query` (or has a word
+    /// that does), in the given order.
+    static func filter(_ candidates: [Candidate], query: String) -> [Candidate] {
+        guard !query.isEmpty else { return candidates }
+        return candidates.filter { candidate in
+            if candidate.tag.lowercased().hasPrefix(query) { return true }
+            return candidate.title.lowercased()
+                .split(whereSeparator: { $0.isWhitespace })
+                .contains { $0.hasPrefix(query) }
+        }
+    }
+
+    /// The draft with its trailing `@query` replaced by `@tag `.
+    static func completing(_ text: String, with candidate: Candidate) -> String {
+        guard activeQuery(in: text) != nil, let at = text.lastIndex(of: "@") else { return text }
+        return String(text[..<at]) + "@" + candidate.tag + " "
+    }
+
+    /// Room members, then `@all`. Members without a handle cannot be routed
+    /// and are left out.
+    static func roomCandidates(_ members: [GroupMember]) -> [Candidate] {
+        var seen = Set<String>()
+        var result: [Candidate] = []
+        for member in members {
+            guard let handle = member.handle?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !handle.isEmpty, seen.insert(handle.lowercased()).inserted else { continue }
+            result.append(Candidate(tag: handle, title: GroupRoomTurns.displayName(of: member)))
+        }
+        result.append(Candidate(tag: "all", title: AppLocalization.string("Everyone")))
+        return result
+    }
+
+    /// Bot Mode roster bots other than the one listening, tagged the way
+    /// the composer middleware resolves them.
+    static func botCandidates(_ roster: [BotProfile], activeProfileName: String?) -> [Candidate] {
+        let active = activeProfileName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        var seen = Set<String>()
+        return roster.compactMap { bot in
+            guard !bot.isHiddenByMeta,
+                  active.isEmpty || bot.name.caseInsensitiveCompare(active) != .orderedSame else { return nil }
+            let tag = BotMentions.mentionTag(for: bot)
+            guard seen.insert(tag.lowercased()).inserted else { return nil }
+            return Candidate(tag: tag, title: bot.displayLabel)
+        }
+    }
+}
+
 // MARK: - Desktop-synced group chats
 
 /// A Group Chat created in Hermes Desktop. Desktop rooms are NOT hosted

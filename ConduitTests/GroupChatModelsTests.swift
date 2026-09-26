@@ -598,4 +598,120 @@ final class GroupChatModelsTests: XCTestCase {
         XCTAssertEqual(GroupRoomMentions.classify(token: "user", members: [titled]), .human)
         XCTAssertEqual(GroupRoomMentions.classify(token: "user-guide", members: [titled]), .agent)
     }
+
+    // MARK: - Room turns
+
+    private func roomMembers() -> [GroupMember] {
+        [
+            GroupDecoders.member(any([
+                "member_id": "furina", "profile": "furina", "handle": "furina", "display_name": "Furina",
+            ]))!,
+            GroupDecoders.member(any([
+                "member_id": "zhongli", "profile": "zhongli", "handle": "zhongli", "display_name": "Zhongli",
+            ]))!,
+        ]
+    }
+
+    private func turnEvent(_ json: [String: Any]) -> GroupEvent {
+        GroupDecoders.event(any(json))!
+    }
+
+    private func userMessage(seq: Int, text: String, id: String = "user:d1") -> GroupEvent {
+        turnEvent(eventJSON(seq: seq, kind: "message.user", payload: ["text": text, "thread_id": "main"], eventID: id))
+    }
+
+    private func memberMessage(seq: Int, member: String, round: Int, text: String) -> GroupEvent {
+        turnEvent(eventJSON(
+            seq: seq, kind: "message.member",
+            actor: ["kind": "member", "id": member, "profile": member],
+            payload: [
+                "text": text, "thread_id": "main", "discussion_event_id": "user:d1",
+                "member_id": member, "round_index": round,
+            ],
+            eventID: "dmessage:\(seq)"
+        ))
+    }
+
+    private func settled(seq: Int, member: String, round: Int, messageSeq: Int?) -> GroupEvent {
+        turnEvent(eventJSON(
+            seq: seq, kind: "turn.settled",
+            actor: ["kind": "gateway", "id": "gw-a"],
+            payload: [
+                "thread_id": "main", "discussion_event_id": "user:d1", "member_id": member,
+                "round_index": round, "passed": messageSeq == nil,
+                "message_event_id": messageSeq.map { "dmessage:\($0)" as Any } ?? NSNull(),
+            ]
+        ))
+    }
+
+    func testPendingResponderFollowsTheDiscussionRounds() {
+        let members = roomMembers()
+        var log = [userMessage(seq: 1, text: "Hello everyone")]
+        func responder() -> String? {
+            GroupRoomTurns.pendingResponder(events: log, members: members)?.memberID
+        }
+        // No mention means everyone, in roster order.
+        XCTAssertEqual(responder(), "furina")
+
+        log += [memberMessage(seq: 2, member: "furina", round: 0, text: "@zhongli, attend!"),
+                settled(seq: 3, member: "furina", round: 0, messageSeq: 2)]
+        XCTAssertEqual(responder(), "zhongli", "Furina's settled turn is not the room settling")
+
+        // Zhongli cites Furina, who has not spoken since: she gets round 1.
+        log += [memberMessage(seq: 4, member: "zhongli", round: 0, text: "@furina, verified."),
+                settled(seq: 5, member: "zhongli", round: 0, messageSeq: 4)]
+        XCTAssertEqual(responder(), "furina")
+
+        // She passes, and nobody spoke in round 1: nothing left to run.
+        log.append(settled(seq: 6, member: "furina", round: 1, messageSeq: nil))
+        XCTAssertNil(responder())
+    }
+
+    func testPendingResponderHonorsMentionsAndRoomCompletion() {
+        let members = roomMembers()
+        let log = [userMessage(seq: 1, text: "@zhongli what do you think?")]
+        XCTAssertEqual(GroupRoomTurns.pendingResponder(events: log, members: members)?.memberID, "zhongli")
+
+        let done = log + [turnEvent(eventJSON(
+            seq: 2, kind: "room.activity", actor: ["kind": "gateway", "id": "gw-a"],
+            payload: ["status": "settled", "reason_code": "silent_round", "thread_id": "main",
+                      "discussion_event_id": "user:d1"]
+        ))]
+        XCTAssertNil(GroupRoomTurns.pendingResponder(events: done, members: members))
+
+        let stopped = log + [turnEvent(eventJSON(
+            seq: 2, kind: "room.stop_requested", actor: ["kind": "gateway", "id": "gw-a"],
+            payload: ["cancel_id": "c1"]
+        ))]
+        XCTAssertNil(GroupRoomTurns.pendingResponder(events: stopped, members: members))
+    }
+
+    func testOnlyPassedTurnsEarnATranscriptRow() {
+        let members = roomMembers()
+        let spoke = settled(seq: 3, member: "furina", round: 0, messageSeq: 2)
+        let passed = settled(seq: 6, member: "furina", round: 1, messageSeq: nil)
+        XCTAssertFalse(GroupRoomTurns.isVisible(spoke))
+        XCTAssertTrue(GroupRoomTurns.isVisible(passed))
+        XCTAssertEqual(GroupRoomTurns.member(for: passed, members: members)?.displayName, "Furina")
+        XCTAssertTrue(GroupRoomTurns.isVisible(userMessage(seq: 1, text: "hi")))
+    }
+
+    // MARK: - Mention autocomplete
+
+    func testMentionQueryTracksATrailingTag() {
+        XCTAssertEqual(MentionAutocomplete.activeQuery(in: "@"), "")
+        XCTAssertEqual(MentionAutocomplete.activeQuery(in: "hey @Zho"), "zho")
+        XCTAssertNil(MentionAutocomplete.activeQuery(in: "hey @zhongli "))
+        XCTAssertNil(MentionAutocomplete.activeQuery(in: "mail me@example"))
+        XCTAssertNil(MentionAutocomplete.activeQuery(in: "no tag"))
+    }
+
+    func testMentionCompletionReplacesOnlyTheTrailingTag() {
+        let candidates = MentionAutocomplete.roomCandidates(roomMembers())
+        XCTAssertEqual(candidates.map(\.tag), ["furina", "zhongli", "all"])
+        let matches = MentionAutocomplete.filter(candidates, query: "zh")
+        XCTAssertEqual(matches.map(\.tag), ["zhongli"])
+        XCTAssertEqual(MentionAutocomplete.completing("@furina and @zh", with: matches[0]), "@furina and @zhongli ")
+        XCTAssertEqual(MentionAutocomplete.filter(candidates, query: "").count, 3)
+    }
 }

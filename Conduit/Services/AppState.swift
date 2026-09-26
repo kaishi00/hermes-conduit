@@ -2959,6 +2959,13 @@ final class AppState: ObservableObject {
         ) ?? text
     }
 
+    /// What the composer's @ picker offers: the Bot Mode roster minus the
+    /// bot this conversation already talks to, tagged exactly as the
+    /// middleware above resolves them. Empty without Bot Mode.
+    var composerMentionCandidates: [MentionAutocomplete.Candidate] {
+        MentionAutocomplete.botCandidates(botRoster, activeProfileName: activeConversationProfileScope)
+    }
+
     /// Presentation state for one open hosted room. A room is NOT a session:
     /// it never touches `activeSessionId`, the transcript cache, or the saved
     /// `SessionReference`, and it is deliberately NOT persisted — cold launch
