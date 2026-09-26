@@ -214,6 +214,54 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(harness.appState.activeSessionId, "stored-newest")
     }
 
+    /// Self-improvement reviews arrive only as `review.summary` stream events
+    /// keyed by the RUNTIME session id, and with Hermes' default notification
+    /// mode every one reads "Memory updated". Each review must keep its own
+    /// row, and the rows must survive a resume that opens the conversation
+    /// under its durable id.
+    func testRepeatedReviewSummariesSurviveResumeUnderTheDurableID() {
+        let suite = "AppStateChatResumeTests.reviewSummaries.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suite) else {
+            return XCTFail("Failed to create test UserDefaults suite")
+        }
+        addTeardownBlock {
+            defaults.removePersistentDomain(forName: suite)
+        }
+        let row = session("stored-a", alternateIDs: ["runtime-1"])
+        let source = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: {},
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        source.sessions = [row]
+        source.activeSessionId = row.id
+        let activity = ReviewActivity(summary: "Memory updated", details: nil, fullSessionId: nil)
+
+        source.handleStreamEvent(.reviewSummary(sessionId: "runtime-1", activity: activity))
+        source.messages.append(ChatMessage(id: "assistant-2", role: .assistant, content: "Next turn", timestamp: "2"))
+        source.handleStreamEvent(.reviewSummary(sessionId: "runtime-1", activity: activity))
+        XCTAssertEqual(source.messages.filter { $0.review == activity }.count, 2)
+
+        let resumed = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: {},
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        resumed.sessions = [row]
+        XCTAssertTrue(resumed.applyChatResume(SessionResumeResult(
+            sessionId: row.id,
+            messages: [],
+            snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+        )))
+        XCTAssertEqual(
+            resumed.messages.filter { $0.review == activity }.count,
+            2,
+            "both reviews come back under the durable id"
+        )
+    }
+
     func testFreshResumeRestoresInFlightToolAndReconcilesItsCompletion() {
         let suite = "AppStateChatResumeTests.inFlightTool.\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suite) else {

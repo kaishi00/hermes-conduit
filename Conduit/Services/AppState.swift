@@ -993,7 +993,9 @@ final class AppState: ObservableObject {
     /// distinguishes a workspace from a bot. Notification routing no longer
     /// reads this verdict (every profile is on the roster, so it would refuse
     /// every push); it decides by conversation through
-    /// `notificationTargetIsBotChat`.
+    /// `notificationTargetIsBotChat`. The verdict is kept as the test surface
+    /// for the evidence rules routing still relies on (`botEvidenceIsAvailable`:
+    /// a roster verified on this connection, or a gateway without Bot Mode).
     private func profileOwnershipVerdict(for profile: String) -> ProfileOwnershipVerdict {
         // Positive evidence first, whatever the capability phase says.
         if botOwnership.ownsProfile(profile) { return .botOwned }
@@ -1822,11 +1824,49 @@ final class AppState: ObservableObject {
     private let clearSessionPresentationCache: () -> Void
     private let initialChatResumeServerIdentity: String?
 
+    /// Every id the open conversation answers to: a review summary is keyed
+    /// by the stream's RUNTIME session id, and each resume mints a new one,
+    /// so matching the record against one id loses it on the next reload.
+    private func reviewCacheSessionIDs(for sessionId: String) -> Set<String> {
+        var ids: Set<String> = [sessionId]
+        for id in [
+            reconciliation?.requestedSessionId,
+            reconciliation?.resolvedSessionId
+        ].compactMap({ $0 }) {
+            ids.insert(id)
+        }
+        // The scroll identity may still describe the OUTGOING conversation
+        // mid-switch; borrow its aliases only when it names this one.
+        if let identityIDs = activeScrollIdentityIDs(containing: ids) {
+            ids.formUnion(identityIDs)
+        }
+        let seedIDs = ids
+        for row in sessions {
+            let rowIDs = Set([row.id, row.storedSessionId].compactMap { $0 } + row.alternateIds)
+            guard !rowIDs.isDisjoint(with: seedIDs) else { continue }
+            ids.formUnion(rowIDs)
+        }
+        return Set(ids.compactMap { ChatScrollIdentityNormalization.sessionID($0) })
+    }
+
+    private func activeScrollIdentityIDs(containing ids: Set<String>) -> Set<String>? {
+        let identity = activeChatScrollSessionIdentity
+        var identityIDs = identity.equivalentSessionIDs
+        if let canonical = identity.canonicalSessionID { identityIDs.insert(canonical) }
+        return identityIDs.isDisjoint(with: ids) ? nil : identityIDs
+    }
+
     private func mergeCachedReviews(into history: [ChatMessage], sessionId: String) -> [ChatMessage] {
-        let records = cachedReviews().filter { $0.profile == activeProfile && $0.sessionId == sessionId }
+        let sessionIDs = reviewCacheSessionIDs(for: sessionId)
+        let records = cachedReviews().filter {
+            $0.profile == activeProfile && sessionIDs.contains($0.sessionId)
+        }
         guard !records.isEmpty else { return history }
         var merged = history
-        for record in records where !merged.contains(where: { $0.review == record.activity }) {
+        // Dedup by record id, not by activity: with Hermes' default
+        // `display.memory_notifications: on` every review reads the same
+        // generic "Memory updated", and each one is its own event.
+        for record in records where !merged.contains(where: { $0.id == record.id }) {
             merged.append(ChatMessage(
                 id: record.id,
                 role: .system,
@@ -1844,7 +1884,7 @@ final class AppState: ObservableObject {
 
     private func persistReview(_ record: ReviewSummaryRecord) {
         var records = cachedReviews()
-        records.removeAll { $0.profile == record.profile && $0.sessionId == record.sessionId && $0.activity == record.activity }
+        records.removeAll { $0.id == record.id }
         records.append(record)
         // Keep this small, device-local resilience cache. Hermes remains the
         // source of truth for normal messages; this only preserves summaries
@@ -10650,7 +10690,8 @@ final class AppState: ObservableObject {
             return false
         }
         let targetProfile = notificationProfileID(target.profile)
-        if let targetProfile, targetProfile != activeProfile,
+        if let notified = target.profile, let targetProfile,
+           targetProfile != activeProfile,
            botModePhase != .gatewayUnsupported {
             // Crossing into another profile reads the roster as ABSENCE
             // evidence (this conversation is no bot's chat), so it must be
@@ -10675,7 +10716,7 @@ final class AppState: ObservableObject {
                 // Routing a push INTO the Bots surface is out of scope; making
                 // the bot's profile this dashboard's workspace would turn its
                 // Bot Chat into the workspace's own context.
-                refuseBotOwnedRouting(for: target.profile ?? targetProfile)
+                refuseBotOwnedRouting(for: notified)
                 return false
             }
             guard botEvidenceIsAvailable else {
@@ -10736,6 +10777,24 @@ final class AppState: ObservableObject {
             identityIndex: conversationIdentityIndex,
             profile: activeProfile
         )
+        // Second look at Bot Chat ownership, now with the fresh catalog: the
+        // notifier sends only the runtime `session_id`, so a Bot Chat that
+        // compacted after the roster snapshot is linked to its canonical id
+        // only through the row's lineage root or aliases. The same row-level
+        // rules the sessions list uses decide it.
+        let routedIDs = Set([requestedID, route.resumeTargetID, route.durableSessionID].compactMap {
+            ChatScrollIdentityNormalization.sessionID($0)
+        })
+        let botOwned = botOwnedSessionIDs
+        if sessions.contains(where: { row in
+            let rowIDs = Set([row.id, row.storedSessionId].compactMap { $0 } + row.alternateIds)
+            return !rowIDs.isDisjoint(with: routedIDs)
+                && (BotChatHygiene.isCanonicalBotChatRow(row, roster: botRoster)
+                    || BotChatHygiene.isBotOwnedRow(row, botOwnedSessionIDs: botOwned))
+        }) {
+            refuseBotOwnedRouting(for: target.profile ?? activeProfile)
+            return false
+        }
         // A decision raised while the app was backgrounded is delivered as a
         // structured payload on the notification (the one-shot gateway stream
         // event was missed). The card is recorded BEFORE the open — the
@@ -16965,7 +17024,11 @@ final class AppState: ObservableObject {
 
         case .reviewSummary(let sessionId, let activity):
             let id = "review-summary-\(sessionId)-\(UUID().uuidString)"
-            guard !messages.contains(where: { $0.review == activity }) else { return }
+            // Each review is its own event even when the text repeats (the
+            // default mode always reads "Memory updated"); only an immediate
+            // repeat with nothing in between is treated as a duplicate
+            // delivery.
+            if let last = messages.last, last.review == activity { return }
             // A mid-turn row must not land below the live reasoning card's
             // eventual commit — settle first so chronology matches the
             // pre-projection transcript.
@@ -16980,7 +17043,13 @@ final class AppState: ObservableObject {
             persistReview(ReviewSummaryRecord(
                 id: id,
                 profile: activeProfile,
-                sessionId: sessionId,
+                // The durable key when the conversation has one: the runtime
+                // id this event carries is replaced on the next resume.
+                sessionId: activeScrollIdentityIDs(containing: [sessionId]) != nil
+                    ? (ChatScrollIdentityNormalization.sessionID(
+                        activeChatScrollSessionIdentity.canonicalSessionID
+                    ) ?? sessionId)
+                    : sessionId,
                 timestamp: Self.localTimestamp(),
                 activity: activity
             ))

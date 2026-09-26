@@ -2470,10 +2470,15 @@ enum MessageNormalizer {
     /// `doubleValue` + `Int(exactly:)` so non-representable numbers (1e100,
     /// NaN, fractional) degrade to the generic notice instead of trapping
     /// normalization — malformed metadata must never fail hydration.
-    private static func delegationCompleteNotice(metadata: AnyCodable?) -> String {
+    private static func delegationTaskCount(metadata: AnyCodable?) -> Int? {
         guard let count = displayMetadataObject(metadata)?["task_count"]?.doubleValue,
               let taskCount = Int(exactly: count),
-              taskCount > 0 else {
+              taskCount > 0 else { return nil }
+        return taskCount
+    }
+
+    private static func delegationCompleteNotice(metadata: AnyCodable?) -> String {
+        guard let taskCount = delegationTaskCount(metadata: metadata) else {
             return AppLocalization.string("Background agent work finished")
         }
         return taskCount == 1 ? AppLocalization.string("1 background agent finished") : AppLocalization.string("\(String(taskCount)) background agents finished")
@@ -2521,9 +2526,14 @@ enum MessageNormalizer {
         case .autoContinue:
             return projected ?? AppLocalization.string("Resumed interrupted turn")
         case .asyncDelegationComplete:
-            return projected
-                ?? timelineDisplayText(metadata: metadata)
-                ?? delegationCompleteNotice(metadata: metadata)
+            // The localized count notice outranks Hermes' English
+            // `display_text`; the title covers rows that carry no usable count.
+            if let projected { return projected }
+            if delegationTaskCount(metadata: metadata) == nil,
+               let title = timelineDisplayText(metadata: metadata) {
+                return title
+            }
+            return delegationCompleteNotice(metadata: metadata)
         case .processComplete:
             // A background-process completion is a self-injected turn whose
             // physical text is the whole `[IMPORTANT: …]` output wall written
@@ -2947,7 +2957,12 @@ enum MessageNormalizer {
     static func reviewActivity(from payload: [String: AnyCodable], eventSessionId: String?) -> ReviewActivity? {
         let text = extractContent(payload["text"] ?? payload["content"] ?? .null)
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let activity = reviewActivity(fromText: text) else { return nil }
+        // Like Hermes Desktop, any non-empty `review.summary` is a memory
+        // write worth a row; the "💾 Self-improvement review:" prose is only
+        // parsed for its details when present.
+        guard let activity = reviewActivity(fromText: text) ?? plainReviewActivity(fromText: text) else {
+            return nil
+        }
 
         var details = activity.details ?? []
         for key in ["details", "transcript", "messages", "output"] {
@@ -2970,6 +2985,14 @@ enum MessageNormalizer {
             details: uniqueDetails.isEmpty ? nil : uniqueDetails,
             fullSessionId: fullSessionId
         )
+    }
+
+    private static func plainReviewActivity(fromText text: String) -> ReviewActivity? {
+        // Desktop strips the leading glyph (the row draws its own).
+        let summary = String(text.drop { !$0.isLetter && !$0.isNumber })
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !summary.isEmpty else { return nil }
+        return ReviewActivity(summary: summary, details: nil, fullSessionId: nil)
     }
 
     static func reviewActivity(fromText text: String) -> ReviewActivity? {

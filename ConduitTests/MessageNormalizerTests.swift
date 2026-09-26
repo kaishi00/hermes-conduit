@@ -2120,7 +2120,7 @@ final class MessageNormalizerTests: XCTestCase {
         }
     }
 
-    func testAsyncDelegationCompletePrefersStampedDisplayText() {
+    func testAsyncDelegationCompleteKeepsLocalizedCountOverStampedDisplayText() {
         let messages = MessageNormalizer.normalizeMessages([
             .object([
                 "id": .number(330),
@@ -2134,6 +2134,24 @@ final class MessageNormalizerTests: XCTestCase {
             ])
         ])
 
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages[0].content, "1 background agent finished")
+    }
+
+    func testAsyncDelegationCompleteUsesDisplayTextWithoutCount() {
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(333),
+                "role": .string("user"),
+                "content": .string("[ASYNC DELEGATION COMPLETE scaffold]"),
+                "display_kind": .string("async_delegation_complete"),
+                "display_metadata": .object([
+                    "display_text": .string("Subagent Task Completed: Tidy the notes")
+                ])
+            ])
+        ])
+
+        XCTAssertEqual(messages.count, 1)
         XCTAssertEqual(messages[0].content, "Subagent Task Completed: Tidy the notes")
     }
 
@@ -2171,6 +2189,7 @@ final class MessageNormalizerTests: XCTestCase {
             ])
         ])
 
+        XCTAssertEqual(messages.count, 1)
         XCTAssertEqual(messages[0].role, .system)
         XCTAssertEqual(messages[0].content, "Background process finished")
     }
