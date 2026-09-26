@@ -2194,6 +2194,22 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertEqual(messages[0].content, "Background process finished")
     }
 
+    /// The unprefixed review fallback belongs to the `review.summary` stream
+    /// event only: a persisted system row is never reclassified as a review.
+    func testPersistedSystemRowIsNotAReviewCard() {
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(334),
+                "role": .string("system"),
+                "content": .string("Workspace switched to /srv/app")
+            ])
+        ])
+
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages[0].role, .system)
+        XCTAssertNil(messages[0].review)
+    }
+
     func testInternalNotificationKindNeverRendersAsHumanUser() {
         let messages = MessageNormalizer.normalizeMessages([
             .object([

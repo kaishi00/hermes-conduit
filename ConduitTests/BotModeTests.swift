@@ -2925,6 +2925,14 @@ final class BotModeTests: XCTestCase {
         var resumedIDs: [String] = []
         let harness = makeBotHarness(lifecycleOperations: ChatResumeLifecycleOperations(
             loadCatalog: { _, _ in [self.makeSessionSummary(id: "ordinary-1", title: "Design review")] },
+            openSession: { _, id, _ in
+                resumedIDs.append(id)
+                return SessionResumeResult(
+                    sessionId: id,
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
             openSessionWithProfile: { _, id, _, _ in
                 resumedIDs.append(id)
                 return SessionResumeResult(
@@ -2950,16 +2958,17 @@ final class BotModeTests: XCTestCase {
         await harness.appState.refreshBotRoster()
         XCTAssertEqual(harness.appState.activeProfile, "default")
 
-        _ = await harness.appState.openNotificationTarget(
+        let routed = await harness.appState.openNotificationTarget(
             ConduitNotificationTarget(profile: "default", sessionId: "ordinary-1", type: "response")
         )
 
+        XCTAssertTrue(routed, "a workspace conversation opens even though its profile is on the roster")
         XCTAssertNotEqual(
             harness.appState.errorMessage,
-            "This decision belongs to a Bot Chat. Open Bots to answer it.",
-            "a workspace conversation is not refused because its profile is on the roster"
+            "This decision belongs to a Bot Chat. Open Bots to answer it."
         )
-        XCTAssertFalse(resumedIDs.contains("default-bot-chat"))
+        XCTAssertEqual(resumedIDs, ["ordinary-1"])
+        XCTAssertEqual(harness.appState.activeSessionId, "ordinary-1")
 
         // The same profile's canonical Bot Chat is still refused.
         let refused = await harness.appState.openNotificationTarget(

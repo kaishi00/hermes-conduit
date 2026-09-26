@@ -2460,8 +2460,9 @@ enum MessageNormalizer {
     /// `display_metadata.display_text` (Desktop's `timelineDisplayText`).
     /// Blank or non-string values degrade to nil.
     private static func timelineDisplayText(metadata: AnyCodable?) -> String? {
-        guard let text = displayMetadataObject(metadata)?["display_text"]?.stringValue,
-              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        guard let text = displayMetadataObject(metadata)?["display_text"]?.stringValue?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !text.isEmpty else { return nil }
         return text
     }
 
@@ -2954,13 +2955,20 @@ enum MessageNormalizer {
         }
     }
 
-    static func reviewActivity(from payload: [String: AnyCodable], eventSessionId: String?) -> ReviewActivity? {
+    /// `allowUnprefixedSummary` is for the `review.summary` STREAM event only:
+    /// like Hermes Desktop, any non-empty summary there is a memory write
+    /// worth a row. Persisted system rows keep requiring the
+    /// "💾 Self-improvement review:" prose, or every `[System: …]` notice
+    /// would render as a review card.
+    static func reviewActivity(
+        from payload: [String: AnyCodable],
+        eventSessionId: String?,
+        allowUnprefixedSummary: Bool = false
+    ) -> ReviewActivity? {
         let text = extractContent(payload["text"] ?? payload["content"] ?? .null)
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        // Like Hermes Desktop, any non-empty `review.summary` is a memory
-        // write worth a row; the "💾 Self-improvement review:" prose is only
-        // parsed for its details when present.
-        guard let activity = reviewActivity(fromText: text) ?? plainReviewActivity(fromText: text) else {
+        guard let activity = reviewActivity(fromText: text)
+            ?? (allowUnprefixedSummary ? plainReviewActivity(fromText: text) : nil) else {
             return nil
         }
 

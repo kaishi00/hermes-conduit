@@ -10790,7 +10790,8 @@ final class AppState: ObservableObject {
             let rowIDs = Set([row.id, row.storedSessionId].compactMap { $0 } + row.alternateIds)
             return !rowIDs.isDisjoint(with: routedIDs)
                 && (BotChatHygiene.isCanonicalBotChatRow(row, roster: botRoster)
-                    || BotChatHygiene.isBotOwnedRow(row, botOwnedSessionIDs: botOwned))
+                    || BotChatHygiene.isBotOwnedRow(row, botOwnedSessionIDs: botOwned)
+                    || BotChatHygiene.isReservedCanonicalTitleRow(row))
         }) {
             refuseBotOwnedRouting(for: target.profile ?? activeProfile)
             return false
@@ -17027,7 +17028,10 @@ final class AppState: ObservableObject {
             // Each review is its own event even when the text repeats (the
             // default mode always reads "Memory updated"); only an immediate
             // repeat with nothing in between is treated as a duplicate
-            // delivery.
+            // delivery. The event carries no server sequence to dedupe on,
+            // and Conduit does not replay session events on reconnect
+            // (`session.events.since` is used for rooms only), so a
+            // non-adjacent replay is not a path this has to absorb.
             if let last = messages.last, last.review == activity { return }
             // A mid-turn row must not land below the live reasoning card's
             // eventual commit — settle first so chronology matches the
