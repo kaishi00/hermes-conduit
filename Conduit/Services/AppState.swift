@@ -2488,7 +2488,9 @@ final class AppState: ObservableObject {
         // transport-wide, not reconnect-only: any chat-resume work that goes
         // inactive/backgrounded mid-flight must not keep publishing state
         // (watchdog: 0x8BADF00D). handleScenePhase(.active) re-establishes
-        // the transport and syncs the session catalog on return.
+        // the transport and syncs the session catalog on return. A connected
+        // CarPlay Voice surface keeps the process foreground and admits the
+        // work as well (see canRunTransportRecovery).
         guard !Task.isCancelled, canRunTransportRecovery else { return nil }
         if let automaticReconnectOperationID,
            activeAutomaticReconnectOperation?.id != automaticReconnectOperationID {
@@ -7411,8 +7413,11 @@ final class AppState: ObservableObject {
             // timer would only fire to be discarded. Drop it here; a socket
             // that dies under a system overlay (incoming call, control
             // center) is recovered by the .active scene task — the same
-            // moment the user can see the transcript again.
+            // moment the user can see the transcript again. The exception is
+            // a connected CarPlay Voice surface, which admits recovery on its
+            // own: re-arm for it, exactly as the .background branch does.
             cancelScheduledReconnect()
+            recoverTransportForCarPlayIfNeeded()
             // The scene treats .inactive like .background for reconnect
             // purposes; formally abort the in-flight scene attempt at the
             // transition too, rather than at its next checkpoint.
@@ -17395,8 +17400,11 @@ final class AppState: ObservableObject {
     /// will re-establish it until the phone is unlocked, so the CarPlay
     /// surface starts the reconnect itself. A restore or connect already in
     /// flight owns the flow and is left alone.
+    /// While the phone scene is active its own foreground recovery owns the
+    /// transport, so CarPlay never arms a competing cycle then.
     func recoverTransportForCarPlayIfNeeded() {
         guard isCarPlayVoiceSurfaceActive,
+              !isSceneActive,
               connection != nil,
               !isConnected,
               !isConnecting else { return }

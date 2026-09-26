@@ -88,6 +88,10 @@ final class CarPlayVoiceCoordinator {
     /// Test seam over the connection wait. nil (production) observes the
     /// bound AppState's `isConnected` for up to `connectionWaitTimeout`.
     var connectionWaiter: (@MainActor (AppState) async -> Bool)?
+    /// The in-flight connection wait, cancelled at every connect and
+    /// disconnect so a wait for a surface that is gone resolves at once
+    /// instead of holding its observation for the rest of the timeout.
+    private var connectionWaitTask: Task<Bool, Never>?
 
     private var stateObservation: AnyCancellable?
 
@@ -102,6 +106,8 @@ final class CarPlayVoiceCoordinator {
     func handleConnect(_ interfacing: any CarPlayInterfacing) {
         connectionGeneration &+= 1
         let generation = connectionGeneration
+        connectionWaitTask?.cancel()
+        connectionWaitTask = nil
         // Defensive: never two live sinks, even for an unpaired re-connect.
         stateObservation?.cancel()
         stateObservation = nil
@@ -138,6 +144,8 @@ final class CarPlayVoiceCoordinator {
     /// the runtime exactly like the PR #161 background boundary.
     func handleDisconnect() {
         connectionGeneration &+= 1
+        connectionWaitTask?.cancel()
+        connectionWaitTask = nil
         interfacing = nil
         template = nil
         stateObservation?.cancel()
@@ -301,12 +309,18 @@ final class CarPlayVoiceCoordinator {
         // A lost transport is re-established by the CarPlay surface itself
         // while the phone is locked; make sure a cycle is armed.
         appState.recoverTransportForCarPlayIfNeeded()
-        let connected: Bool
-        if let connectionWaiter {
-            connected = await connectionWaiter(appState)
-        } else {
-            connected = await Self.awaitConnection(of: appState, timeout: connectionWaitTimeout)
+        // Show that Hermes is being reached instead of sitting on Ready.
+        handleControllerState(.thinking)
+        let waiter = connectionWaiter
+        let timeout = connectionWaitTimeout
+        connectionWaitTask?.cancel()
+        let waitTask = Task { @MainActor () -> Bool in
+            if let waiter { return await waiter(appState) }
+            return await Self.awaitConnection(of: appState, timeout: timeout)
         }
+        connectionWaitTask = waitTask
+        let connected = await waitTask.value
+        if isCurrent(generation) { connectionWaitTask = nil }
         guard connected, isCurrent(generation), isConnected else {
             return .deferred
         }

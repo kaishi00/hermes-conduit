@@ -743,9 +743,9 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
         harness.appState.isConnected = false
         harness.appState.isConnecting = true
         let coordinator = harness.coordinator
-        coordinator.connectionWaiter = { appState in
+        coordinator.connectionWaiter = { [weak coordinator] appState in
             // The car disconnects while the connection is still restoring.
-            coordinator.handleDisconnect()
+            coordinator?.handleDisconnect()
             appState.isConnecting = false
             appState.isConnected = true
             return true
@@ -756,6 +756,56 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
 
         XCTAssertFalse(harness.controller.hasLiveVoiceSession, "a stale wait cannot reopen Voice")
         XCTAssertEqual(harness.capture.startCount, 0)
+    }
+
+    func testDisconnectCancelsAnInFlightConnectionWait() async {
+        let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
+        addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
+            defaults.removePersistentDomain(forName: suite)
+        }
+        harness.appState.isConnected = false
+        harness.appState.isConnecting = true
+        let coordinator = harness.coordinator
+        // The real waiter with a long timeout: only cancellation ends it.
+        coordinator.connectionWaiter = nil
+        coordinator.connectionWaitTimeout = .seconds(60)
+        coordinator.handleConnect(harness.spy)
+        let generation = coordinator.connectionGeneration
+
+        let establish = Task { @MainActor in
+            await coordinator.establishVoice(generation: generation)
+        }
+        for _ in 0..<20 { await Task.yield() }
+        coordinator.handleDisconnect()
+        let start = ContinuousClock.now
+        await establish.value
+
+        XCTAssertLessThan(ContinuousClock.now - start, .seconds(10), "the stale wait resolved at once")
+        XCTAssertFalse(harness.controller.hasLiveVoiceSession)
+    }
+
+    func testWaitingForTheConnectionShowsProcessingInsteadOfReady() async {
+        let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
+        addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
+            defaults.removePersistentDomain(forName: suite)
+        }
+        harness.appState.activeSessionId = "existing-session"
+        harness.appState.isConnected = false
+        harness.appState.isConnecting = true
+        var activationsDuringWait: [CarPlayVoiceState] = []
+        harness.coordinator.connectionWaiter = { appState in
+            activationsDuringWait = harness.activations
+            appState.isConnecting = false
+            appState.isConnected = true
+            return true
+        }
+        harness.coordinator.handleConnect(harness.spy)
+        await harness.coordinator.waitForPresentation()
+
+        await harness.coordinator.establishVoice(generation: harness.coordinator.connectionGeneration)
+
+        XCTAssertEqual(activationsDuringWait.last, .processing)
+        XCTAssertEqual(harness.activations.last, .listening)
     }
 
     func testAwaitConnectionResolvesWhenTheConnectionLands() async {

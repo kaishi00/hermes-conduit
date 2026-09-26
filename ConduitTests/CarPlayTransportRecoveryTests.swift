@@ -85,9 +85,34 @@ final class CarPlayTransportRecoveryTests: XCTestCase {
         XCTAssertEqual(recorder.executedPurposes.count, 1)
     }
 
+    func testCarPlayActivationWithAnActivePhoneSceneLeavesRecoveryToThePhone() {
+        let recorder = ReconnectRecorder()
+        let appState = makeAppState(recorder: recorder)
+        // Phone unlocked and foregrounded (the scene starts active).
+
+        appState.setCarPlayVoiceSurfaceActive(true)
+        appState.handleCarPlayVoiceSurfaceActivated()
+
+        XCTAssertTrue(
+            recorder.scheduledDelays.isEmpty,
+            "the active phone scene's own recovery owns the transport"
+        )
+    }
+
+    func testOverlayDipWithCarPlayActiveReArmsTheReconnect() {
+        let recorder = ReconnectRecorder()
+        let appState = makeAppState(recorder: recorder)
+        appState.setCarPlayVoiceSurfaceActive(true)
+
+        appState.handleScenePhase(.inactive)
+
+        XCTAssertEqual(recorder.scheduledDelays.count, 1, "the dropped timer is re-armed for CarPlay")
+    }
+
     func testCarPlayActivationLeavesAnInFlightRestoreAlone() {
         let recorder = ReconnectRecorder()
         let appState = makeAppState(recorder: recorder)
+        appState.handleScenePhase(.background)
         appState.isConnecting = true
 
         appState.setCarPlayVoiceSurfaceActive(true)
@@ -99,6 +124,7 @@ final class CarPlayTransportRecoveryTests: XCTestCase {
     func testCarPlayActivationWithoutASavedConnectionDoesNothing() {
         let recorder = ReconnectRecorder()
         let appState = makeAppState(recorder: recorder)
+        appState.handleScenePhase(.background)
         appState.connection = nil
 
         appState.setCarPlayVoiceSurfaceActive(true)
