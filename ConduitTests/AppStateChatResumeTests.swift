@@ -6384,8 +6384,7 @@ private final class OwedBootstrapCounters {
     var probes = 0
     /// Run in order, one inside each catalog load, until exhausted.
     var catalogLoadHooks: [@MainActor () throws -> Void] = []
-    /// Catalog rows listed ahead of the saved session (the newest row that
-    /// a "latest activity" automatic return picks).
+    /// Catalog rows prepended ahead of the saved session.
     var leadingCatalogRows: [SessionSummary] = []
 }
 
