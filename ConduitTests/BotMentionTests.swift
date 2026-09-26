@@ -132,6 +132,16 @@ final class BotMentionTests: XCTestCase {
         XCTAssertEqual(names("@alpha hello", roster: roster), ["alpha"])
     }
 
+    func testListenersLiveNameNeverFallsThroughToRenameHistory() {
+        // Inside alpha's Bot Chat, @alpha is the listener: beta's old name
+        // must not turn it into a handoff to beta.
+        let roster = [
+            bot("alpha"),
+            bot("beta", previousNames: ["alpha"]),
+        ]
+        XCTAssertEqual(names("@alpha hello", roster: roster, active: "alpha"), [])
+    }
+
     func testSharedPreviousNameResolvesForNeitherBot() {
         let roster = [
             bot("researcher", previousNames: ["scout"]),

@@ -3081,6 +3081,9 @@ final class AppState: ObservableObject {
         closeRoomSurface(clearingRoomError: false, parkingPendingSend: false)
         parkedRoomOutboxes.removeAll()
         groupRoomDrafts.removeAll()
+        // A send still awaiting its reply belongs to the outgoing identity;
+        // its defer's removal is a no-op once the key is gone.
+        inFlightRoomSendKeys.removeAll()
     }
 
     private static func roomKey(dashboardID: UUID, roomID: String) -> String {
