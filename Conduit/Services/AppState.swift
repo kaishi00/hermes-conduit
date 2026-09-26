@@ -14163,6 +14163,11 @@ final class AppState: ObservableObject {
             // Keep the previous socket alive until the new profile has
             // actually connected, so a failed switch has a recovery path.
             previousClient?.disconnect()
+            // An owed bootstrap belongs to the outgoing client; it can never
+            // match the new one, so retire it rather than pin a dead socket.
+            if let previousClient, owedPostConnectBootstrap?.client === previousClient {
+                owedPostConnectBootstrap = nil
+            }
             isConnected = true
             connectedAt = Date()
             if let dashboardID = activeDashboardID {
