@@ -260,6 +260,22 @@ final class AppStateChatResumeTests: XCTestCase {
             2,
             "both reviews come back under the durable id"
         )
+
+        // An older gateway that persisted one of them accounts for exactly
+        // one cached record; the other identically worded review stays.
+        let persisted = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: {},
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        persisted.sessions = [row]
+        XCTAssertTrue(persisted.applyChatResume(SessionResumeResult(
+            sessionId: row.id,
+            messages: [ChatMessage(id: "row-7", role: .system, content: "Memory updated", timestamp: "1", review: activity)],
+            snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+        )))
+        XCTAssertEqual(persisted.messages.filter { $0.review == activity }.count, 2)
     }
 
     func testFreshResumeRestoresInFlightToolAndReconcilesItsCompletion() {

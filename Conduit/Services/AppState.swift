@@ -1891,12 +1891,16 @@ final class AppState: ObservableObject {
         // generic "Memory updated", and each one is its own event. A review
         // the TRANSCRIPT already carries (older gateways persisted the
         // "💾 Self-improvement review:" line) is the same event, so a cached
-        // record repeating one of those is skipped.
-        let transcriptReviews = history.compactMap { message in
+        // record repeating one of those is skipped, one cached record per
+        // transcript row so identically worded reviews are not collapsed.
+        var transcriptReviews = history.compactMap { message in
             message.id.hasPrefix("review-summary-") ? nil : message.review
         }
-        for record in records where !merged.contains(where: { $0.id == record.id })
-            && !transcriptReviews.contains(record.activity) {
+        for record in records where !merged.contains(where: { $0.id == record.id }) {
+            if let match = transcriptReviews.firstIndex(of: record.activity) {
+                transcriptReviews.remove(at: match)
+                continue
+            }
             merged.append(ChatMessage(
                 id: record.id,
                 role: .system,
