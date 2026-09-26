@@ -3158,14 +3158,80 @@ extension ChatViewportControllerTests {
         XCTAssertEqual(scrollCommands(controller.followCorrectionDue(token)).count, 1)
     }
 
-    func testOvershootWithinToleranceIssuesNothing() {
+    func testOvershootToleranceBoundary() {
+        for (gap, schedules) in [(3, false), (4, false), (5, true)] as [(CGFloat, Bool)] {
+            var controller = makeController(following: keyA)
+            let effects = controller.layoutMetricsChanged(facts: layoutFacts(
+                bottomMarkerMaxY: 800 - gap, viewportMaxY: 800,
+                scope: controller.renderedScrollScope
+            ))
+            XCTAssertEqual(
+                scheduledCorrection(in: effects) != nil, schedules,
+                "a \(gap)pt overshoot must \(schedules ? "" : "not ")schedule"
+            )
+        }
+    }
+
+    /// An overshoot that resolved (the correction landed) forgets its
+    /// geometry: the same overshoot coming back is repaired again.
+    func testResolvedOvershootRecurringAtSameGeometrySchedulesAgain() throws {
         var controller = makeController(following: keyA)
-        let effects = controller.layoutMetricsChanged(facts: layoutFacts(
-            bottomMarkerMaxY: 797, viewportMaxY: 800,
+        let first = try XCTUnwrap(scheduledCorrection(in: controller.layoutMetricsChanged(
+            facts: layoutFacts(
+                bottomMarkerMaxY: 600, viewportMaxY: 800,
+                scope: controller.renderedScrollScope
+            )
+        )))
+        XCTAssertFalse(scrollCommands(controller.followCorrectionDue(first)).isEmpty)
+        _ = controller.layoutMetricsChanged(facts: layoutFacts(
+            bottomMarkerMaxY: 800, viewportMaxY: 800,
             scope: controller.renderedScrollScope
         ))
-        XCTAssertNil(scheduledCorrection(in: effects))
-        XCTAssertNil(controller.pendingFollowCorrection)
+        XCTAssertNotNil(scheduledCorrection(in: controller.layoutMetricsChanged(
+            facts: layoutFacts(
+                bottomMarkerMaxY: 600, viewportMaxY: 800,
+                scope: controller.renderedScrollScope
+            )
+        )), "a recurring overshoot at a previously seen geometry must be repaired")
+    }
+
+    /// An overshoot arriving inside the post-correction re-arm interval is
+    /// not dropped: one recheck is scheduled for when the interval ends,
+    /// and the recheck arms the correction even with no new geometry tick.
+    func testOvershootInsideRearmIntervalSchedulesOneRecheck() throws {
+        var controller = makeController(following: keyA)
+        func facts(_ bottom: CGFloat, at time: TimeInterval) -> ChatViewportLayoutFacts {
+            ChatViewportLayoutFacts(
+                bottomMarkerMaxY: bottom,
+                viewportMinY: 100,
+                viewportMaxY: 800,
+                rowFrames: [],
+                renderedScope: controller.renderedScrollScope,
+                timestamp: time
+            )
+        }
+        // Growth correction executes at t=10.
+        let growth = try XCTUnwrap(scheduledCorrection(in: controller.layoutMetricsChanged(
+            facts: facts(900, at: 10)
+        )))
+        XCTAssertFalse(scrollCommands(controller.followCorrectionDue(growth)).isEmpty)
+
+        // 30ms later the content shrinks into an overshoot.
+        let suppressed = controller.layoutMetricsChanged(facts: facts(600, at: 10.03))
+        XCTAssertNil(scheduledCorrection(in: suppressed))
+        guard case .scheduleFollowRecheck(let delay) = suppressed.last else {
+            return XCTFail("expected a recheck, got \(suppressed)")
+        }
+        XCTAssertEqual(delay, 0.09, accuracy: 0.001)
+
+        // Further ticks inside the interval do not arm a second recheck.
+        let again = controller.layoutMetricsChanged(facts: facts(590, at: 10.05))
+        XCTAssertFalse(again.contains { if case .scheduleFollowRecheck = $0 { return true }; return false })
+
+        // The recheck (no new geometry) arms the correction.
+        let recheck = controller.followRecheckDue(facts: facts(590, at: 10.13))
+        let token = try XCTUnwrap(scheduledCorrection(in: recheck))
+        XCTAssertEqual(scrollCommands(controller.followCorrectionDue(token)).count, 1)
     }
 
     /// Content shorter than the viewport legitimately ends above the

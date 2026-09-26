@@ -791,6 +791,18 @@ struct ChatView: View {
             // scrollTo → layout → preference → scrollTo loop is the
             // ScrollViewCommitMutation watchdog storm).
             break
+        case .scheduleFollowRecheck(let seconds):
+            // Only re-feeds facts; any correction it arms still drains
+            // through the pendingFollowCorrection observer.
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(seconds))
+                guard !Task.isCancelled else { return }
+                ChatViewportTrace.shared.log("follow recheck due")
+                performViewportEffects(
+                    viewport.followRecheckDue(facts: currentLayoutFacts()),
+                    using: proxy
+                )
+            }
         }
     }
 
