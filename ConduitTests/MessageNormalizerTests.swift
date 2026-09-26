@@ -2120,6 +2120,96 @@ final class MessageNormalizerTests: XCTestCase {
         }
     }
 
+    func testAsyncDelegationCompleteKeepsLocalizedCountOverStampedDisplayText() {
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(330),
+                "role": .string("user"),
+                "content": .string("[ASYNC DELEGATION COMPLETE scaffold]"),
+                "display_kind": .string("async_delegation_complete"),
+                "display_metadata": .object([
+                    "task_count": .number(1),
+                    "display_text": .string("Subagent Task Completed: Tidy the notes")
+                ])
+            ])
+        ])
+
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages[0].content, "1 background agent finished")
+    }
+
+    func testAsyncDelegationCompleteUsesDisplayTextWithoutCount() {
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(333),
+                "role": .string("user"),
+                "content": .string("[ASYNC DELEGATION COMPLETE scaffold]"),
+                "display_kind": .string("async_delegation_complete"),
+                "display_metadata": .object([
+                    "display_text": .string("Subagent Task Completed: Tidy the notes")
+                ])
+            ])
+        ])
+
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages[0].content, "Subagent Task Completed: Tidy the notes")
+    }
+
+    /// Hermes (2026-09-13) types background-process completion turns as
+    /// `process_complete` and stamps a compact title; the model-facing output
+    /// wall must never render as a user bubble.
+    func testProcessCompleteRendersItsStampedTitleAsSystemNotice() {
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(331),
+                "role": .string("user"),
+                "content": .string("[IMPORTANT: Background process proc_1 completed normally (exit code 0). Command: make. Output: scaffold]"),
+                "display_kind": .string("process_complete"),
+                "display_metadata": .object([
+                    "display_text": .string("Background Process Finished: make")
+                ])
+            ])
+        ])
+
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages[0].role, .system)
+        XCTAssertEqual(messages[0].displayKind, "process_complete")
+        XCTAssertEqual(messages[0].content, "Background Process Finished: make")
+        XCTAssertFalse(messages[0].content.contains("scaffold"))
+    }
+
+    func testProcessCompleteWithoutTitleFallsBackToGenericNotice() {
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(332),
+                "role": .string("user"),
+                "content": .string("[IMPORTANT: Background process proc_2 completed. Output: scaffold]"),
+                "display_kind": .string("process_complete"),
+                "display_metadata": .object(["display_text": .string("   ")])
+            ])
+        ])
+
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages[0].role, .system)
+        XCTAssertEqual(messages[0].content, "Background process finished")
+    }
+
+    /// The unprefixed review fallback belongs to the `review.summary` stream
+    /// event only: a persisted system row is never reclassified as a review.
+    func testPersistedSystemRowIsNotAReviewCard() {
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(334),
+                "role": .string("system"),
+                "content": .string("Workspace switched to /srv/app")
+            ])
+        ])
+
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages[0].role, .system)
+        XCTAssertNil(messages[0].review)
+    }
+
     func testInternalNotificationKindNeverRendersAsHumanUser() {
         let messages = MessageNormalizer.normalizeMessages([
             .object([

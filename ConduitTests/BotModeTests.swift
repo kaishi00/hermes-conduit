@@ -2661,7 +2661,8 @@ final class BotModeTests: XCTestCase {
             refreshContext: { _, _ in },
             botRoster: { _ in
                 BotRosterSnapshot(bots: [self.makeBot(name: "Atlas", canonicalID: "stored-atlas")], supportsBotProtocol: false)
-            }
+            },
+            findBotChat: { _, _ in [] }
         ))
         ordinaryTarget.appState.client = HermesClient(connection: connection, profile: "default")
         ordinaryTarget.appState.connection = connection
@@ -2894,7 +2895,8 @@ final class BotModeTests: XCTestCase {
                     bots: [self.makeBot(name: "Atlas", canonicalID: "stored-atlas")],
                     supportsBotProtocol: false
                 )
-            }
+            },
+            findBotChat: { _, _ in [] }
         ))
         let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
         harness.appState.client = HermesClient(connection: connection, profile: "default")
@@ -2914,6 +2916,211 @@ final class BotModeTests: XCTestCase {
             "Could not verify that workspace for this notification. Reconnect and try again.",
             "and the fresh roster is usable evidence, not unverifiable"
         )
+    }
+
+    /// `profiles.list` lists EVERY Hermes profile, the default and the active
+    /// workspace included, and the notifier stamps its profile on every push.
+    /// A reply (or a background turn) in an ordinary conversation of the
+    /// workspace on screen must still open: only the conversation being a
+    /// bot's canonical chat makes a push a Bot Chat decision.
+    func testPushForWorkspaceConversationOpensWhenItsProfileIsOnTheRoster() async {
+        var resumedIDs: [String] = []
+        let harness = makeBotHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            loadCatalog: { _, _ in [self.makeSessionSummary(id: "ordinary-1", title: "Design review")] },
+            openSession: { _, id, _ in
+                resumedIDs.append(id)
+                return SessionResumeResult(
+                    sessionId: id,
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            openSessionWithProfile: { _, id, _, _ in
+                resumedIDs.append(id)
+                return SessionResumeResult(
+                    sessionId: id,
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            refreshContext: { _, _ in },
+            botRoster: { _ in
+                BotRosterSnapshot(
+                    bots: [
+                        self.makeBot(name: "default", canonicalID: "default-bot-chat"),
+                        self.makeBot(name: "Atlas", canonicalID: "stored-atlas")
+                    ],
+                    supportsBotProtocol: false
+                )
+            },
+            findBotChat: { _, _ in [] }
+        ))
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        harness.appState.client = HermesClient(connection: connection, profile: "default")
+        harness.appState.connection = connection
+        await harness.appState.refreshBotRoster()
+        XCTAssertEqual(harness.appState.activeProfile, "default")
+
+        let routed = await harness.appState.openNotificationTarget(
+            ConduitNotificationTarget(profile: "default", sessionId: "ordinary-1", type: "response")
+        )
+
+        XCTAssertTrue(routed, "a workspace conversation opens even though its profile is on the roster")
+        XCTAssertNotEqual(
+            harness.appState.errorMessage,
+            "This decision belongs to a Bot Chat. Open Bots to answer it."
+        )
+        XCTAssertEqual(resumedIDs, ["ordinary-1"])
+        XCTAssertEqual(harness.appState.activeSessionId, "ordinary-1")
+
+        // The same profile's canonical Bot Chat is still refused.
+        let refused = await harness.appState.openNotificationTarget(
+            ConduitNotificationTarget(profile: "default", sessionId: "default-bot-chat", type: "approval")
+        )
+        XCTAssertFalse(refused)
+        XCTAssertEqual(
+            harness.appState.errorMessage,
+            "This decision belongs to a Bot Chat. Open Bots to answer it."
+        )
+    }
+
+    /// Crossing into another profile that is on the roster is still a workspace
+    /// switch when the conversation is not that profile's Bot Chat.
+    func testPushForOtherWorkspaceIsNotRefusedBecauseItsProfileIsOnTheRoster() async {
+        let harness = makeBotHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            loadCatalog: { _, _ in [self.makeSessionSummary(id: "ordinary-1", title: "Design review")] },
+            openSessionWithProfile: { _, id, _, _ in
+                SessionResumeResult(
+                    sessionId: id,
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            refreshContext: { _, _ in },
+            botRoster: { _ in
+                BotRosterSnapshot(
+                    bots: [self.makeBot(name: "Atlas", canonicalID: "stored-atlas")],
+                    supportsBotProtocol: false
+                )
+            },
+            findBotChat: { _, _ in [] }
+        ))
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        harness.appState.client = HermesClient(connection: connection, profile: "default")
+        harness.appState.connection = connection
+        await harness.appState.refreshBotRoster()
+
+        _ = await harness.appState.openNotificationTarget(
+            ConduitNotificationTarget(profile: "Atlas", sessionId: "atlas-workspace-1", type: "response")
+        )
+
+        XCTAssertNotEqual(
+            harness.appState.errorMessage,
+            "This decision belongs to a Bot Chat. Open Bots to answer it.",
+            "an ordinary conversation of a rostered profile is not a Bot Chat"
+        )
+        XCTAssertNotEqual(
+            harness.appState.errorMessage,
+            "Could not verify that workspace for this notification. Reconnect and try again."
+        )
+    }
+
+    /// The same compaction gap on the profile already on screen: the Bot
+    /// Chat's tip is hidden from the session catalog, so only the canonical
+    /// lookup can name it, and the push is refused instead of opened.
+    func testSameProfilePushForCompactedBotChatIsRefused() async {
+        var resumedIDs: [String] = []
+        let harness = makeBotHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            loadCatalog: { _, _ in [self.makeSessionSummary(id: "ordinary-1", title: "Design review")] },
+            openSession: { _, id, _ in
+                resumedIDs.append(id)
+                return SessionResumeResult(
+                    sessionId: id,
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            refreshContext: { _, _ in },
+            botRoster: { _ in
+                BotRosterSnapshot(
+                    bots: [self.makeBot(name: "default", canonicalID: "default-bot-chat")],
+                    supportsBotProtocol: false
+                )
+            },
+            findBotChat: { _, _ in
+                [BotChatLookupRow(
+                    id: "default-bot-chat",
+                    resolvedID: "default-tip",
+                    title: BotMode.canonicalChatTitle
+                )]
+            }
+        ))
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        harness.appState.client = HermesClient(connection: connection, profile: "default")
+        harness.appState.connection = connection
+        await harness.appState.refreshBotRoster()
+
+        let routed = await harness.appState.openNotificationTarget(
+            ConduitNotificationTarget(profile: "default", sessionId: "default-tip", type: "response")
+        )
+
+        XCTAssertFalse(routed)
+        XCTAssertEqual(
+            harness.appState.errorMessage,
+            "This decision belongs to a Bot Chat. Open Bots to answer it."
+        )
+        XCTAssertTrue(resumedIDs.isEmpty)
+    }
+
+    /// A Bot Chat that compacted after the roster was read is known to the
+    /// roster only by its old canonical id. The target profile's canonical
+    /// lookup reports the lineage tip, so the push is refused BEFORE the
+    /// dashboard adopts the bot's profile; a failed lookup fails closed.
+    func testCrossProfilePushForCompactedBotChatIsRefusedBeforeTheSwitch() async {
+        var lookupFails = false
+        let harness = makeBotHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            loadCatalog: { _, _ in [self.makeSessionSummary(id: "ordinary-1", title: "Design review")] },
+            refreshContext: { _, _ in },
+            botRoster: { _ in
+                BotRosterSnapshot(
+                    bots: [self.makeBot(name: "Atlas", canonicalID: "stored-atlas")],
+                    supportsBotProtocol: false
+                )
+            },
+            findBotChat: { _, _ in
+                if lookupFails { throw RpcError(code: 5000, message: "state.db is locked") }
+                return [BotChatLookupRow(
+                    id: "stored-atlas",
+                    resolvedID: "atlas-tip",
+                    title: BotMode.canonicalChatTitle
+                )]
+            }
+        ))
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        harness.appState.client = HermesClient(connection: connection, profile: "default")
+        harness.appState.connection = connection
+        await harness.appState.refreshBotRoster()
+
+        let refused = await harness.appState.openNotificationTarget(
+            ConduitNotificationTarget(profile: "Atlas", sessionId: "atlas-tip", type: "response")
+        )
+        XCTAssertFalse(refused)
+        XCTAssertEqual(
+            harness.appState.errorMessage,
+            "This decision belongs to a Bot Chat. Open Bots to answer it."
+        )
+        XCTAssertEqual(harness.appState.activeProfile, "default", "the bot's profile was never adopted")
+
+        lookupFails = true
+        let unverified = await harness.appState.openNotificationTarget(
+            ConduitNotificationTarget(profile: "Atlas", sessionId: "atlas-other", type: "response")
+        )
+        XCTAssertFalse(unverified)
+        XCTAssertEqual(
+            harness.appState.errorMessage,
+            "Could not verify that workspace for this notification. Reconnect and try again."
+        )
+        XCTAssertEqual(harness.appState.activeProfile, "default")
     }
 
     /// A padded id must resolve in the registry wherever it is looked up: the

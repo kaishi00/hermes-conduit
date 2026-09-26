@@ -645,9 +645,22 @@ final class StreamEventParserTests: XCTestCase {
         XCTAssertNotNil(activity.details)
     }
 
-    func testReviewSummaryWithNonReviewTextReturnsNil() {
+    /// Hermes Desktop renders every `review.summary` as a memory-write row,
+    /// whatever its prose; Conduit mirrors it, dropping the leading glyph.
+    func testReviewSummaryWithoutReviewPrefixStillSurfaces() {
         let event = parse(#"""
-        {"type": "review.summary", "session_id": "s1", "payload": {"text": "Just a normal message"}}
+        {"type": "review.summary", "session_id": "s1", "payload": {"text": "💾 Memory updated"}}
+        """#)
+        guard case .reviewSummary(_, let activity) = event else {
+            return XCTFail("Expected reviewSummary")
+        }
+        XCTAssertEqual(activity.summary, "Memory updated")
+        XCTAssertNil(activity.details)
+    }
+
+    func testReviewSummaryWithEmptyTextReturnsNil() {
+        let event = parse(#"""
+        {"type": "review.summary", "session_id": "s1", "payload": {"text": "  💾  "}}
         """#)
         XCTAssertNil(event)
     }

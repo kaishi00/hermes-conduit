@@ -1933,6 +1933,7 @@ private enum HermesDisplayKind: String {
     case personalitySwitch = "personality_switch"
     case autoContinue = "auto_continue"
     case asyncDelegationComplete = "async_delegation_complete"
+    case processComplete = "process_complete"
     case internalNotification = "internal_notification"
 }
 
@@ -2455,15 +2456,30 @@ enum MessageNormalizer {
         return object.mapValues { AnyCodable.from($0) }
     }
 
+    /// The one-line title Hermes stamps on a background completion's
+    /// `display_metadata.display_text` (Desktop's `timelineDisplayText`).
+    /// Blank or non-string values degrade to nil.
+    private static func timelineDisplayText(metadata: AnyCodable?) -> String? {
+        guard let text = displayMetadataObject(metadata)?["display_text"]?.stringValue?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !text.isEmpty else { return nil }
+        return text
+    }
+
     /// Upstream persists `task_count` on `async_delegation_complete` rows so
     /// clients can phrase the completion notice. The count goes through
     /// `doubleValue` + `Int(exactly:)` so non-representable numbers (1e100,
     /// NaN, fractional) degrade to the generic notice instead of trapping
     /// normalization — malformed metadata must never fail hydration.
-    private static func delegationCompleteNotice(metadata: AnyCodable?) -> String {
+    private static func delegationTaskCount(metadata: AnyCodable?) -> Int? {
         guard let count = displayMetadataObject(metadata)?["task_count"]?.doubleValue,
               let taskCount = Int(exactly: count),
-              taskCount > 0 else {
+              taskCount > 0 else { return nil }
+        return taskCount
+    }
+
+    private static func delegationCompleteNotice(metadata: AnyCodable?) -> String {
+        guard let taskCount = delegationTaskCount(metadata: metadata) else {
             return AppLocalization.string("Background agent work finished")
         }
         return taskCount == 1 ? AppLocalization.string("1 background agent finished") : AppLocalization.string("\(String(taskCount)) background agents finished")
@@ -2511,7 +2527,22 @@ enum MessageNormalizer {
         case .autoContinue:
             return projected ?? AppLocalization.string("Resumed interrupted turn")
         case .asyncDelegationComplete:
-            return projected ?? delegationCompleteNotice(metadata: metadata)
+            // The localized count notice outranks Hermes' English
+            // `display_text`; the title covers rows that carry no usable count.
+            if let projected { return projected }
+            if delegationTaskCount(metadata: metadata) == nil,
+               let title = timelineDisplayText(metadata: metadata) {
+                return title
+            }
+            return delegationCompleteNotice(metadata: metadata)
+        case .processComplete:
+            // A background-process completion is a self-injected turn whose
+            // physical text is the whole `[IMPORTANT: …]` output wall written
+            // for the model. Hermes stamps a compact title in
+            // `display_text`; the canned label covers rows without one.
+            return projected
+                ?? timelineDisplayText(metadata: metadata)
+                ?? AppLocalization.string("Background process finished")
         case .internalNotification:
             // The row content is the operational notice itself (wake events,
             // background completions); show it as a system notice. An
@@ -2924,10 +2955,22 @@ enum MessageNormalizer {
         }
     }
 
-    static func reviewActivity(from payload: [String: AnyCodable], eventSessionId: String?) -> ReviewActivity? {
+    /// `allowUnprefixedSummary` is for the `review.summary` STREAM event only:
+    /// like Hermes Desktop, any non-empty summary there is a memory write
+    /// worth a row. Persisted system rows keep requiring the
+    /// "💾 Self-improvement review:" prose, or every `[System: …]` notice
+    /// would render as a review card.
+    static func reviewActivity(
+        from payload: [String: AnyCodable],
+        eventSessionId: String?,
+        allowUnprefixedSummary: Bool = false
+    ) -> ReviewActivity? {
         let text = extractContent(payload["text"] ?? payload["content"] ?? .null)
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let activity = reviewActivity(fromText: text) else { return nil }
+        guard let activity = reviewActivity(fromText: text)
+            ?? (allowUnprefixedSummary ? plainReviewActivity(fromText: text) : nil) else {
+            return nil
+        }
 
         var details = activity.details ?? []
         for key in ["details", "transcript", "messages", "output"] {
@@ -2950,6 +2993,14 @@ enum MessageNormalizer {
             details: uniqueDetails.isEmpty ? nil : uniqueDetails,
             fullSessionId: fullSessionId
         )
+    }
+
+    private static func plainReviewActivity(fromText text: String) -> ReviewActivity? {
+        // Desktop strips the leading glyph (the row draws its own).
+        let summary = String(text.drop { !$0.isLetter && !$0.isNumber })
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !summary.isEmpty else { return nil }
+        return ReviewActivity(summary: summary, details: nil, fullSessionId: nil)
     }
 
     static func reviewActivity(fromText text: String) -> ReviewActivity? {

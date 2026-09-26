@@ -975,10 +975,50 @@ final class AppState: ObservableObject {
             )
     }
 
+    /// Whether a push's conversation is a bot's canonical chat, by any id the
+    /// push carried (the runtime id and the durable row). This is the only
+    /// thing that separates a Bot Chat decision from a workspace one: bots are
+    /// ordinary Hermes profiles, and the workspace profile itself is on the
+    /// roster.
+    private func notificationTargetIsBotChat(_ target: ConduitNotificationTarget) -> Bool {
+        let ids = Set([target.sessionId, target.durableSessionID].compactMap {
+            ChatScrollIdentityNormalization.sessionID($0)
+        })
+        return !ids.isDisjoint(with: botOwnedSessionIDs)
+    }
+
+    /// Asks `profile` for its canonical Bot Chat (exact-title lookup, which
+    /// the gateway resolves to the lineage tip) and reports whether the push
+    /// names it. Throws when the lookup cannot be made or fails.
+    private func notificationTargetIsCanonicalChat(
+        _ target: ConduitNotificationTarget,
+        of profile: String
+    ) async throws -> Bool {
+        guard let client else { throw HermesError.invalidResponse }
+        let rows: [BotChatLookupRow]
+        if let findBotChat = chatResumeLifecycleOperations.findBotChat {
+            rows = try await findBotChat(client, profile)
+        } else {
+            rows = try await client.findBotChatSession(profile: profile)
+        }
+        let pushIDs = Set([target.sessionId, target.durableSessionID].compactMap {
+            ChatScrollIdentityNormalization.sessionID($0)
+        })
+        return rows.contains { row in
+            row.isCanonicalTitle() && !Set([row.id, row.resolvedID].compactMap {
+                ChatScrollIdentityNormalization.sessionID($0)
+            }).isDisjoint(with: pushIDs)
+        }
+    }
+
     /// What the client can PROVE about a profile a decision wants to switch the
     /// dashboard to. A profile name alone proves nothing: bots are ordinary
     /// Hermes profiles, so only bot evidence (or its verified absence)
-    /// distinguishes a workspace from a bot.
+    /// distinguishes a workspace from a bot. No production path reads this
+    /// verdict any more: notification routing decides by conversation
+    /// (`notificationTargetIsBotChat` and the target's canonical lookup) and
+    /// reads `botEvidenceIsAvailable` directly. It is retained only as the
+    /// test surface pinning that evidence rule's three outcomes.
     private func profileOwnershipVerdict(for profile: String) -> ProfileOwnershipVerdict {
         // Positive evidence first, whatever the capability phase says.
         if botOwnership.ownsProfile(profile) { return .botOwned }
@@ -1807,11 +1847,60 @@ final class AppState: ObservableObject {
     private let clearSessionPresentationCache: () -> Void
     private let initialChatResumeServerIdentity: String?
 
+    /// Every id the open conversation answers to: a review summary is keyed
+    /// by the stream's RUNTIME session id, and each resume mints a new one,
+    /// so matching the record against one id loses it on the next reload.
+    private func reviewCacheSessionIDs(for sessionId: String) -> Set<String> {
+        var ids: Set<String> = [sessionId]
+        for id in [
+            reconciliation?.requestedSessionId,
+            reconciliation?.resolvedSessionId
+        ].compactMap({ $0 }) {
+            ids.insert(id)
+        }
+        // The scroll identity may still describe the OUTGOING conversation
+        // mid-switch; borrow its aliases only when it names this one.
+        if let identityIDs = activeScrollIdentityIDs(containing: ids) {
+            ids.formUnion(identityIDs)
+        }
+        let seedIDs = ids
+        for row in sessions {
+            let rowIDs = Set([row.id, row.storedSessionId].compactMap { $0 } + row.alternateIds)
+            guard !rowIDs.isDisjoint(with: seedIDs) else { continue }
+            ids.formUnion(rowIDs)
+        }
+        return Set(ids.compactMap { ChatScrollIdentityNormalization.sessionID($0) })
+    }
+
+    private func activeScrollIdentityIDs(containing ids: Set<String>) -> Set<String>? {
+        let identity = activeChatScrollSessionIdentity
+        var identityIDs = identity.equivalentSessionIDs
+        if let canonical = identity.canonicalSessionID { identityIDs.insert(canonical) }
+        return identityIDs.isDisjoint(with: ids) ? nil : identityIDs
+    }
+
     private func mergeCachedReviews(into history: [ChatMessage], sessionId: String) -> [ChatMessage] {
-        let records = cachedReviews().filter { $0.profile == activeProfile && $0.sessionId == sessionId }
+        let sessionIDs = reviewCacheSessionIDs(for: sessionId)
+        let records = cachedReviews().filter {
+            $0.profile == activeProfile && sessionIDs.contains($0.sessionId)
+        }
         guard !records.isEmpty else { return history }
         var merged = history
-        for record in records where !merged.contains(where: { $0.review == record.activity }) {
+        // Dedup by record id, not by activity: with Hermes' default
+        // `display.memory_notifications: on` every review reads the same
+        // generic "Memory updated", and each one is its own event. A review
+        // the TRANSCRIPT already carries (older gateways persisted the
+        // "💾 Self-improvement review:" line) is the same event, so a cached
+        // record repeating one of those is skipped, one cached record per
+        // transcript row so identically worded reviews are not collapsed.
+        var transcriptReviews = history.compactMap { message in
+            message.id.hasPrefix("review-summary-") ? nil : message.review
+        }
+        for record in records where !merged.contains(where: { $0.id == record.id }) {
+            if let match = transcriptReviews.firstIndex(of: record.activity) {
+                transcriptReviews.remove(at: match)
+                continue
+            }
             merged.append(ChatMessage(
                 id: record.id,
                 role: .system,
@@ -1828,8 +1917,9 @@ final class AppState: ObservableObject {
     }
 
     private func persistReview(_ record: ReviewSummaryRecord) {
+        // Append-only by design: every review is its own row (the default
+        // mode repeats "Memory updated"), and the merge dedupes by record id.
         var records = cachedReviews()
-        records.removeAll { $0.profile == record.profile && $0.sessionId == record.sessionId && $0.activity == record.activity }
         records.append(record)
         // Keep this small, device-local resilience cache. Hermes remains the
         // source of truth for normal messages; this only preserves summaries
@@ -10622,60 +10712,110 @@ final class AppState: ObservableObject {
             id: notificationAttemptID,
             transitionGeneration: transitionGeneration
         ) else { return false }
-        // The name the PUSH carried, not the one it resolves to: a bot-owned
-        // name that case-insensitively matches a workspace profile would
-        // otherwise route this decision into that workspace's store (and, when
-        // it matches the ACTIVE profile, skip the refusal below entirely).
-        if let notified = target.profile, botOwnership.ownsProfile(notified) {
-            refuseBotOwnedRouting(for: notified)
+        // A push is a Bot Chat decision when its CONVERSATION is a bot's
+        // canonical chat, never because of the profile it names. Every Hermes
+        // profile is listed by `profiles.list` (the Bots roster), and the
+        // notifier stamps its own profile on every push, so a name match would
+        // refuse every push once the roster had loaded, including replies and
+        // background turns from the workspace the dashboard is showing. The
+        // refusal copy still reads the name the PUSH carried, so a case-only
+        // match keeps its own diagnostic.
+        if notificationTargetIsBotChat(target) {
+            refuseBotOwnedRouting(for: target.profile ?? "")
             return false
         }
         let targetProfile = notificationProfileID(target.profile)
-        if let targetProfile, targetProfile != activeProfile,
-           botModePhase != .gatewayUnsupported,
-           !botOwnership.ownsProfile(targetProfile) {
-            // The verdict below reads the roster as ABSENCE evidence, so it must
-            // be evidence from NOW. The roster is otherwise loaded once per
-            // connection and when the Bots surface opens, which leaves a window:
-            // a bot registered after that load is missing from a roster that
-            // still reports `.available`, and its profile would read as an
-            // ordinary workspace. One refresh at this user-initiated decision
-            // (single-flight, epoch-fenced) closes it — and a refresh that fails
-            // leaves the verdict unverifiable, which refuses.
+        if let notified = target.profile, let targetProfile,
+           targetProfile != activeProfile,
+           botModePhase != .gatewayUnsupported {
+            // Crossing into another profile reads the roster as ABSENCE
+            // evidence (this conversation is no bot's chat), so it must be
+            // evidence from NOW. The roster is otherwise loaded once per
+            // connection and when the Bots surface opens, which leaves a
+            // window: a Bot Chat created after that load is missing from a
+            // roster that still reports `.available`. One refresh at this
+            // user-initiated decision (single-flight, epoch-fenced) closes it,
+            // and a refresh that fails leaves the evidence unverifiable, which
+            // refuses.
             await refreshBotRoster()
             // The refresh ALWAYS suspends (it creates or joins a task), so
             // this attempt must re-prove it still owns the route before it
-            // reads the verdict or writes an error: a newer tap can have
+            // reads the evidence or writes an error: a newer tap can have
             // replaced the attempt and begun its own viewport transition
             // while this one was waiting.
             guard notificationOpenAttemptIsCurrent(
                 id: notificationAttemptID,
                 transitionGeneration: transitionGeneration
             ) else { return false }
-        }
-        if let targetProfile, targetProfile != activeProfile {
-            // A bot's profile is not a workspace. Bots ARE ordinary Hermes
-            // profiles, so a decision pushed from a Bot Chat names one; making
-            // it this dashboard's profile would turn a bot conversation into
-            // the workspace's own context. Routing a push INTO the Bots
-            // surface is out of scope, so both the positive and the
-            // unverifiable case stop here.
-            switch profileOwnershipVerdict(for: targetProfile) {
-            case .botOwned:
-                refuseBotOwnedRouting(for: targetProfile)
+            if notificationTargetIsBotChat(target) {
+                // Routing a push INTO the Bots surface is out of scope; making
+                // the bot's profile this dashboard's workspace would turn its
+                // Bot Chat into the workspace's own context.
+                refuseBotOwnedRouting(for: notified)
                 return false
-            case .unverifiable:
-                // No usable Bot Mode evidence (the roster could not be loaded,
-                // or this gateway cannot list profiles): the target may be a
-                // bot's profile, and adopting it would hand a bot conversation
-                // the workspace's context. Fail closed rather than guess.
+            }
+            guard botEvidenceIsAvailable else {
+                // No usable Bot Mode evidence (the roster could not be
+                // loaded): the conversation may be a bot's chat, and adopting
+                // its profile would hand it the workspace's context. Fail
+                // closed rather than guess.
                 errorMessage = AppLocalization.string(
                     "Could not verify that workspace for this notification. Reconnect and try again."
                 )
                 return false
-            case .ordinary:
-                break
             }
+            // Ask the TARGET profile for its canonical Bot Chat before
+            // adopting it: the exact-title lookup reads the lineage tip
+            // server-side, so a Bot Chat that compacted since the roster was
+            // read is still recognized here, BEFORE the switch rather than
+            // after it. A failed lookup proves nothing and fails closed.
+            let pushesCanonicalChat: Bool
+            do {
+                pushesCanonicalChat = try await notificationTargetIsCanonicalChat(
+                    target,
+                    of: targetProfile
+                )
+            } catch {
+                guard notificationOpenAttemptIsCurrent(
+                    id: notificationAttemptID,
+                    transitionGeneration: transitionGeneration
+                ) else { return false }
+                errorMessage = AppLocalization.string(
+                    "Could not verify that workspace for this notification. Reconnect and try again."
+                )
+                return false
+            }
+            guard notificationOpenAttemptIsCurrent(
+                id: notificationAttemptID,
+                transitionGeneration: transitionGeneration
+            ) else { return false }
+            if pushesCanonicalChat {
+                refuseBotOwnedRouting(for: notified)
+                return false
+            }
+        }
+        if let notified = target.profile, let targetProfile,
+           targetProfile == activeProfile,
+           botModePhase != .gatewayUnsupported {
+            // Same lookup for a push on the profile already on screen: a Bot
+            // Chat that compacted since the roster was read is hidden from
+            // the session catalog, so only the canonical lookup can name its
+            // tip. No profile is adopted here, so a failed lookup does not
+            // block the push; the catalog check below still applies.
+            let pushesCanonicalChat = (try? await notificationTargetIsCanonicalChat(
+                target,
+                of: targetProfile
+            )) ?? false
+            guard notificationOpenAttemptIsCurrent(
+                id: notificationAttemptID,
+                transitionGeneration: transitionGeneration
+            ) else { return false }
+            if pushesCanonicalChat {
+                refuseBotOwnedRouting(for: notified)
+                return false
+            }
+        }
+        if let targetProfile, targetProfile != activeProfile {
             guard await switchProfile(
                 to: targetProfile,
                 reusing: transitionGeneration
@@ -10722,6 +10862,26 @@ final class AppState: ObservableObject {
             identityIndex: conversationIdentityIndex,
             profile: activeProfile
         )
+        // Last look at Bot Chat ownership, with the fresh catalog of the
+        // (now active) profile: a Bot Chat linked to its canonical id only
+        // through the row's lineage root or aliases is refused before its
+        // conversation opens. The same row-level rules the sessions list and
+        // resume selection use decide it. A cross-profile Bot Chat was
+        // already refused before the switch by the target's canonical lookup.
+        let routedIDs = Set([requestedID, route.resumeTargetID, route.durableSessionID].compactMap {
+            ChatScrollIdentityNormalization.sessionID($0)
+        })
+        let botOwned = botOwnedSessionIDs
+        if sessions.contains(where: { row in
+            let rowIDs = Set([row.id, row.storedSessionId].compactMap { $0 } + row.alternateIds)
+            return !rowIDs.isDisjoint(with: routedIDs)
+                && (BotChatHygiene.isCanonicalBotChatRow(row, roster: botRoster)
+                    || BotChatHygiene.isBotOwnedRow(row, botOwnedSessionIDs: botOwned)
+                    || BotChatHygiene.isReservedCanonicalTitleRow(row))
+        }) {
+            refuseBotOwnedRouting(for: target.profile ?? activeProfile)
+            return false
+        }
         // A decision raised while the app was backgrounded is delivered as a
         // structured payload on the notification (the one-shot gateway stream
         // event was missed). The card is recorded BEFORE the open — the
@@ -16951,7 +17111,16 @@ final class AppState: ObservableObject {
 
         case .reviewSummary(let sessionId, let activity):
             let id = "review-summary-\(sessionId)-\(UUID().uuidString)"
-            guard !messages.contains(where: { $0.review == activity }) else { return }
+            // Each review is its own event even when the text repeats (the
+            // default mode always reads "Memory updated"); only an immediate
+            // repeat with nothing in between is treated as a duplicate
+            // delivery. Known limit: two genuine reviews with identical
+            // text and nothing between them collapse into one row. The event
+            // carries no server sequence to dedupe on,
+            // and Conduit does not replay session events on reconnect
+            // (`session.events.since` is used for rooms only), so a
+            // non-adjacent replay is not a path this has to absorb.
+            if let last = messages.last, last.review == activity { return }
             // A mid-turn row must not land below the live reasoning card's
             // eventual commit — settle first so chronology matches the
             // pre-projection transcript.
@@ -16966,7 +17135,13 @@ final class AppState: ObservableObject {
             persistReview(ReviewSummaryRecord(
                 id: id,
                 profile: activeProfile,
-                sessionId: sessionId,
+                // The durable key when the conversation has one: the runtime
+                // id this event carries is replaced on the next resume.
+                sessionId: activeScrollIdentityIDs(containing: [sessionId]) != nil
+                    ? (ChatScrollIdentityNormalization.sessionID(
+                        activeChatScrollSessionIdentity.canonicalSessionID
+                    ) ?? sessionId)
+                    : sessionId,
                 timestamp: Self.localTimestamp(),
                 activity: activity
             ))

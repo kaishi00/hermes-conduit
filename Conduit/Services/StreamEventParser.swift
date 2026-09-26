@@ -111,7 +111,11 @@ enum StreamEventParser {
             return .toolComplete(sessionId: sessionId, toolName: name, toolOutput: output, toolID: toolID)
 
         case "review.summary":
-            guard let payload, let review = MessageNormalizer.reviewActivity(from: payload, eventSessionId: sessionId) else { return nil }
+            guard let payload, let review = MessageNormalizer.reviewActivity(
+                from: payload,
+                eventSessionId: sessionId,
+                allowUnprefixedSummary: true
+            ) else { return nil }
             return .reviewSummary(sessionId: sessionId, activity: review)
 
         case "clarify", "clarify.request":
