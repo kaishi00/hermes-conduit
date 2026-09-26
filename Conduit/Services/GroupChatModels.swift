@@ -632,12 +632,14 @@ enum GroupRoomTurns {
         return member(withID: id, in: members)
     }
 
+    /// The member's name for captions, never empty: a member with no name
+    /// fields at all reads as "A member".
     static func displayName(of member: GroupMember) -> String {
         for candidate in [member.displayName, member.handle, member.profile, member.memberID] {
             if let trimmed = candidate?.trimmingCharacters(in: .whitespacesAndNewlines),
                !trimmed.isEmpty { return trimmed }
         }
-        return ""
+        return AppLocalization.string("A member")
     }
 
     /// The member whose turn the driver is running (or will run next) for
@@ -838,14 +840,26 @@ enum MentionAutocomplete {
 
     /// Bot Mode roster bots other than the one listening, tagged the way
     /// the composer middleware resolves them.
+    /// A tag two bots can claim is ambiguous to the middleware, which then
+    /// resolves it for neither, so the picker falls back to the bot's
+    /// profile handle, or leaves the bot out when that collides too. Hidden
+    /// bots still claim their forms there, so they count here as well.
     static func botCandidates(_ roster: [BotProfile], activeProfileName: String?) -> [Candidate] {
         let active = activeProfileName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let others = roster.filter {
+            active.isEmpty || $0.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                .caseInsensitiveCompare(active) != .orderedSame
+        }
+        var claims: [String: Int] = [:]
+        for bot in others {
+            for form in BotMentions.resolvableForms(of: bot) { claims[form, default: 0] += 1 }
+        }
         var seen = Set<String>()
-        return roster.compactMap { bot in
-            guard !bot.isHiddenByMeta,
-                  active.isEmpty || bot.name.caseInsensitiveCompare(active) != .orderedSame else { return nil }
-            let tag = BotMentions.mentionTag(for: bot)
-            guard seen.insert(tag.lowercased()).inserted else { return nil }
+        return others.compactMap { bot in
+            guard !bot.isHiddenByMeta else { return nil }
+            let tag = [BotMentions.mentionTag(for: bot), BotMentions.handle(for: bot)]
+                .first { claims[$0.lowercased(), default: 0] == 1 }
+            guard let tag, seen.insert(tag.lowercased()).inserted else { return nil }
             return Candidate(tag: tag, title: bot.displayLabel)
         }
     }

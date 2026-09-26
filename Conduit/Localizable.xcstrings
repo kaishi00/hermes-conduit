@@ -266,6 +266,17 @@
       }
     },
 
+    "A member" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "某成员"
+          }
+        }
+      }
+    },
+
     "The room settled." : {
       "localizations" : {
         "zh-Hans" : {

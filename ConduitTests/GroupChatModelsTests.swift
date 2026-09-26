@@ -805,4 +805,23 @@ final class GroupChatModelsTests: XCTestCase {
         XCTAssertFalse(GroupRoomTurns.isVisible(future))
         XCTAssertTrue(GroupRoomTurns.isVisible(failed))
     }
+
+    func testBotCandidatesSkipTagsTheMiddlewareFindsAmbiguous() {
+        func bot(_ name: String, title: String?, hidden: Bool = false) -> BotProfile {
+            BotProfile(
+                name: name, botTitle: title, displayName: "", profileDescription: "",
+                model: nil, provider: nil, hasAvatar: false, isPinned: false,
+                isHiddenByMeta: hidden, appearanceColor: nil, canonicalSession: nil,
+                lastActive: nil, lastPreview: nil
+            )
+        }
+        // Two bots titled alike: each falls back to its own profile handle.
+        let roster = [bot("scout", title: "Research Buddy"), bot("finder", title: "Research Buddy", hidden: true)]
+        XCTAssertEqual(MentionAutocomplete.botCandidates(roster, activeProfileName: nil).map(\.tag), ["scout"])
+    }
+
+    func testNamelessMemberStillReadsAsAMember() {
+        let nameless = GroupDecoders.member(any(["target": ["kind": "local"]]))!
+        XCTAssertFalse(GroupRoomTurns.displayName(of: nameless).isEmpty)
+    }
 }

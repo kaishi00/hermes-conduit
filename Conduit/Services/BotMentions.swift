@@ -222,7 +222,7 @@ enum BotMentions {
         case ambiguous
     }
 
-    private static func resolvableForms(of bot: BotProfile) -> Set<String> {
+    static func resolvableForms(of bot: BotProfile) -> Set<String> {
         var forms = Set<String>()
         forms.insert(handle(for: bot).lowercased())
         forms.insert(bot.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
