@@ -1526,9 +1526,15 @@ final class AppState: ObservableObject {
     /// handshake. The next `.active` on the SAME healthy client owes that
     /// bootstrap; the observational foreground probe alone never loads the
     /// catalog.
+    ///
+    /// The purpose follows the interrupted connect's own continuation: once
+    /// the user takes ownership (the connect's automatic intent is cancelled
+    /// or handed off), the owed sync is `.preserveCurrent`, never a replayed
+    /// `.automaticReturn`.
     private struct OwedPostConnectBootstrap {
         let client: HermesClient
-        let purpose: ChatResumeSyncPurpose
+        var purpose: ChatResumeSyncPurpose
+        let automaticWorkToken: ChatResumeAutomaticWorkToken?
     }
     private var owedPostConnectBootstrap: OwedPostConnectBootstrap?
     private var connectedAt: Date?
@@ -2546,7 +2552,28 @@ final class AppState: ObservableObject {
         )
     }
 
+    /// Tracks a continuation handoff (`.automaticReturn` → `.preserveCurrent`)
+    /// on the owed bootstrap of the same client; never upgrades.
+    private func followOwedPostConnectBootstrapPurpose(
+        _ purpose: ChatResumeSyncPurpose,
+        for client: HermesClient
+    ) {
+        guard purpose == .preserveCurrent,
+              owedPostConnectBootstrap?.client === client else { return }
+        owedPostConnectBootstrap?.purpose = .preserveCurrent
+    }
+
     func cancelChatResumeRestoration() {
+        // Cancelling the automatic intent an interrupted connect was carrying
+        // is the same handoff that connect's own continuation would have
+        // observed: the owed bootstrap then preserves the visible
+        // conversation instead of replaying the automatic return.
+        if let owed = owedPostConnectBootstrap,
+           owed.purpose == .automaticReturn,
+           let token = owed.automaticWorkToken,
+           chatResumeCoordinator.isCurrent(token) {
+            owedPostConnectBootstrap?.purpose = .preserveCurrent
+        }
         chatResumeCoordinator.cancelViewportRestoration(
             keepViewportFrozen: chatViewportTransition != nil
         )
@@ -3336,7 +3363,11 @@ final class AppState: ObservableObject {
         do {
             try await connectChatResumeClient(client)
             if self.client === client {
-                owedPostConnectBootstrap = OwedPostConnectBootstrap(client: client, purpose: syncPurpose)
+                owedPostConnectBootstrap = OwedPostConnectBootstrap(
+                    client: client,
+                    purpose: syncPurpose,
+                    automaticWorkToken: automaticWorkToken
+                )
             }
             guard let continuation = transportContinuation(
                     purpose: syncPurpose,
@@ -3347,6 +3378,7 @@ final class AppState: ObservableObject {
             var continuationPurpose = continuation.purpose
             var continuationAutomaticWorkToken = continuation.automaticWorkToken
             handedOffAutomaticIntent = continuation.handedOffAutomaticIntent
+            followOwedPostConnectBootstrapPurpose(continuationPurpose, for: client)
             isConnected = true
             isConnecting = false
             // A fresh healthy session never inherits an older banner error.
@@ -3375,6 +3407,7 @@ final class AppState: ObservableObject {
             continuationAutomaticWorkToken = continuation.automaticWorkToken
             handedOffAutomaticIntent = handedOffAutomaticIntent
                 || continuation.handedOffAutomaticIntent
+            followOwedPostConnectBootstrapPurpose(continuationPurpose, for: client)
             guard let continuation = await synchronizeTransportContinuation(
                 purpose: continuationPurpose,
                 automaticWorkToken: continuationAutomaticWorkToken,
@@ -6866,6 +6899,9 @@ final class AppState: ObservableObject {
             continuationAutomaticWorkToken = continuation.automaticWorkToken
             handedOffAutomaticIntent = handedOffAutomaticIntent
                 || continuation.handedOffAutomaticIntent
+            if let client = self.client {
+                followOwedPostConnectBootstrapPurpose(continuationPurpose, for: client)
+            }
             return true
         }
         defer {
@@ -6987,7 +7023,11 @@ final class AppState: ObservableObject {
         do {
             try await connectChatResumeClient(client)
             if self.client === client {
-                owedPostConnectBootstrap = OwedPostConnectBootstrap(client: client, purpose: continuationPurpose)
+                owedPostConnectBootstrap = OwedPostConnectBootstrap(
+                    client: client,
+                    purpose: continuationPurpose,
+                    automaticWorkToken: continuationAutomaticWorkToken
+                )
             }
             guard refreshTransportContinuation(),
                   let activeClient = self.client, activeClient === client else { return }

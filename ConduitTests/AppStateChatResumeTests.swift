@@ -5833,11 +5833,16 @@ final class AppStateChatResumeTests: XCTestCase {
     /// `connect()` built is the one that reads as connected. Returns once the
     /// connect task has returned with the scene still inactive; the caller
     /// owns the activation and its assertions.
-    private func startConnectInterruptedBySceneDeactivation() async -> OwedBootstrapColdLaunchFixture {
+    private func startConnectInterruptedBySceneDeactivation(
+        deactivatingBeforeHandshake: Bool = true,
+        configure: (OwedBootstrapCounters) -> Void = { _ in },
+        onHarness: (AppState) -> Void = { _ in }
+    ) async -> OwedBootstrapColdLaunchFixture {
         let scheduler = ControlledReconnectScheduler()
         let connectGate = ControlledSuspension()
         let saved = session("stored-saved")
         let counters = OwedBootstrapCounters()
+        configure(counters)
         let transport = ClarifyFakeTransport()
         let socket = ClarifyFakeSocket()
         transport.nextSocket = { socket }
@@ -5857,7 +5862,7 @@ final class AppStateChatResumeTests: XCTestCase {
                         counters.onCatalogLoad = nil
                         try onCatalogLoad()
                     }
-                    return [saved]
+                    return counters.leadingCatalogRows + [saved]
                 },
                 openSession: { _, sessionID, _ in
                     counters.openedSessionIDs.append(sessionID)
@@ -5912,6 +5917,7 @@ final class AppStateChatResumeTests: XCTestCase {
             )
         )
         harness.store.setLastSessionID(saved.id, for: "default")
+        onHarness(harness.appState)
         let connection = HermesConnection(
             baseUrl: "https://one.example",
             ticket: "ticket"
@@ -5924,7 +5930,9 @@ final class AppStateChatResumeTests: XCTestCase {
         // The Face ID window: the handshake below completes while the scene is
         // deactivated, which is exactly where the cold-launch bootstrap was
         // abandoned before this fix.
-        harness.appState.handleScenePhase(.inactive)
+        if deactivatingBeforeHandshake {
+            harness.appState.handleScenePhase(.inactive)
+        }
         connectGate.resume()
         await connect.value
         addTeardownBlock { harness.appState.client?.disconnect() }
@@ -6084,6 +6092,43 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(counters.openedSessionIDs, [fixture.saved.id])
         XCTAssertEqual(harness.appState.activeSessionId, fixture.saved.id)
         XCTAssertEqual(harness.appState.turnState, .idle)
+    }
+
+    func testConnectHandoffBeforeSceneInterruptionOwesPreserveCurrentNotAutomaticReturn() async {
+        let newest = session("newest-other")
+        let appStateBox = WeakAppStateReference()
+        // The connect runs with the scene active until its catalog sync: the
+        // user types (explicit ownership of the visible conversation) and
+        // then the scene deactivates, so connect returns with the bootstrap
+        // still owed.
+        let fixture = await startConnectInterruptedBySceneDeactivation(
+            deactivatingBeforeHandshake: false
+        ) { counters in
+            counters.leadingCatalogRows = [newest]
+            counters.onCatalogLoad = {
+                appStateBox.value?.noteComposerUserEdit()
+                appStateBox.value?.handleScenePhase(.inactive)
+            }
+        } onHarness: { appState in
+            appStateBox.value = appState
+        }
+        let harness = fixture.harness
+        let counters = fixture.counters
+        XCTAssertNil(counters.onCatalogLoad, "The connect's own sync must have reached the catalog")
+        XCTAssertTrue(counters.openedSessionIDs.isEmpty)
+
+        if let activation = harness.appState.handleScenePhase(.active) {
+            await activation.value
+        }
+
+        // The owed sync preserves the visible conversation (none yet, so the
+        // newest row) instead of replaying the automatic return to the saved
+        // session the user moved away from.
+        XCTAssertFalse(
+            counters.openedSessionIDs.contains(fixture.saved.id),
+            "An owed bootstrap must not replay .automaticReturn after the user took ownership"
+        )
+        XCTAssertEqual(counters.openedSessionIDs, [newest.id])
     }
 
     private func makeHarness(
@@ -6252,6 +6297,9 @@ private final class OwedBootstrapCounters {
     var probes = 0
     /// Runs once, inside the next catalog load, then clears itself.
     var onCatalogLoad: (@MainActor () throws -> Void)?
+    /// Catalog rows listed ahead of the saved session (the newest-first
+    /// fallback a `.preserveCurrent` sync with no visible chat picks).
+    var leadingCatalogRows: [SessionSummary] = []
 }
 
 private struct OwedBootstrapColdLaunchFixture {
