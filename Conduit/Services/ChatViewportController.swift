@@ -45,6 +45,11 @@ enum ChatViewportEffect: Equatable {
     /// executes it on a later MainActor turn (see
     /// ChatViewportController.followCorrectionDue).
     case scheduleFollowCorrection(ChatFollowCorrectionToken)
+    /// An overshoot was seen while the post-correction re-arm interval was
+    /// still running. The view re-feeds current layout facts through
+    /// followRecheckDue after `seconds`, because a settled layout may never
+    /// deliver another geometry tick on its own.
+    case scheduleFollowRecheck(after: TimeInterval)
 }
 
 /// A "Load earlier messages" backfill that is in flight: the transcript row
@@ -74,6 +79,18 @@ struct ChatFollowCorrectionToken: Equatable {
     let generation: UInt64
     let sessionKey: ChatScrollSessionKey?
     let sequence: UInt64
+}
+
+/// Geometry an overshoot follow correction was scheduled against; see
+/// ChatViewportController.followCorrectionOvershootFacts.
+struct ChatFollowOvershootFacts: Equatable {
+    let contentBottom: CGFloat
+    let viewportBottom: CGFloat
+
+    func isWithin(_ tolerance: CGFloat, of other: ChatFollowOvershootFacts) -> Bool {
+        abs(contentBottom - other.contentBottom) <= tolerance
+            && abs(viewportBottom - other.viewportBottom) <= tolerance
+    }
 }
 
 struct ChatViewportLayoutFacts: Equatable {
@@ -177,6 +194,16 @@ struct ChatViewportController: Equatable {
     /// the correction itself becomes the layout-churn source it exists to
     /// prevent.
     private var followCorrectionContentBottom: CGFloat?
+    /// Geometry (content bottom, viewport bottom) the last OVERSHOOT
+    /// correction was scheduled against. The overshoot twin of
+    /// followCorrectionContentBottom: when the content is shorter than the
+    /// viewport, the transcript end legitimately sits above the viewport
+    /// bottom and scrollTo cannot change that, so a correction re-arms only
+    /// when either edge has moved since.
+    private var followCorrectionOvershootFacts: ChatFollowOvershootFacts?
+    /// A follow recheck is outstanding (see .scheduleFollowRecheck); at most
+    /// one at a time.
+    private(set) var followRecheckArmed = false
     private(set) var notificationHandoff: ChatViewportHandoffState?
     private(set) var restoration: RestorationState?
     /// Armed while an older-page backfill is in flight; consumed by the
@@ -295,7 +322,9 @@ struct ChatViewportController: Equatable {
             renderedSessionKey = key
             pendingFollowCorrection = nil
             followCorrectionContentBottom = nil
-        followCorrectionLastExecutionAt = nil
+            followCorrectionOvershootFacts = nil
+            followCorrectionLastExecutionAt = nil
+            followRecheckArmed = false
             if wasFollowing {
                 mirroredViewportTransitionGeneration = viewportTransitionGeneration
             }
@@ -308,7 +337,9 @@ struct ChatViewportController: Equatable {
             pendingFollowCorrection = nil
             pendingPrependAnchor = nil
             followCorrectionContentBottom = nil
-        followCorrectionLastExecutionAt = nil
+            followCorrectionOvershootFacts = nil
+            followCorrectionLastExecutionAt = nil
+            followRecheckArmed = false
         }
         renderedSessionKey = key
         if wasFollowing {
@@ -469,7 +500,9 @@ struct ChatViewportController: Equatable {
         // earlier drift tick would only fight the in-flight animation.
         pendingFollowCorrection = nil
         followCorrectionContentBottom = nil
+        followCorrectionOvershootFacts = nil
         followCorrectionLastExecutionAt = nil
+        followRecheckArmed = false
         return [.scroll(latestCommand(animated: true))]
     }
 
@@ -517,14 +550,120 @@ struct ChatViewportController: Equatable {
             // pin the viewport flush even when the content bottom itself has
             // not moved since the last correction cycle.
             followCorrectionContentBottom = nil
-        followCorrectionLastExecutionAt = nil
+            followCorrectionOvershootFacts = nil
+            followCorrectionLastExecutionAt = nil
+            followRecheckArmed = false
         }
 
-        guard !relatchedThisTick,
-              mode == .followingLatest,
+        guard mode == .followingLatest,
               restoration == nil,
               notificationHandoff == nil else { return effects }
 
+        // Overshoot: the transcript end sits ABOVE the viewport bottom
+        // while following — the viewport is scrolled past the last message
+        // and shows empty space under it (#193). The scroll view does not
+        // clamp its offset when the viewport grows (keyboard dismissal,
+        // returning from background) or the content shrinks under a pinned
+        // bottom (the streaming bubble settling into a shorter row, the
+        // typing indicator unmounting, lazy rows realizing shorter than
+        // their estimate), and the growth path below only ever corrects
+        // content extending BELOW the viewport. isNearBottom counts an
+        // overshoot as "at the bottom", so nothing else — not even the
+        // scroll-to-latest button — would ever repair it. Allowed on the
+        // relatch tick too (it only schedules; the scroll runs a turn
+        // later): a browsing viewport stranded past the end relatches here,
+        // and a static layout may never deliver another tick.
+        guard let bottom = bottomMarkerMaxY,
+              let viewport = viewportMaxY,
+              viewport - bottom > Self.followOvershootTolerance else {
+            // Out of overshoot (the correction landed, or content grew
+            // back): forget the recorded geometry so a later overshoot at
+            // the same spot is repaired again.
+            followCorrectionOvershootFacts = nil
+            guard !relatchedThisTick else { return effects }
+            return effects + growthFollowEffects()
+        }
+        if let floor = followCorrectionContentBottom, bottom < floor {
+            // Same as the at-bottom growth branch: growth is measured from
+            // where the content actually sits.
+            followCorrectionContentBottom = bottom
+        }
+        let overshoot = ChatFollowOvershootFacts(contentBottom: bottom, viewportBottom: viewport)
+        guard pendingFollowCorrection == nil,
+              followCorrectionOvershootFacts?.isWithin(
+                  Self.followCorrectionRegrowthTolerance, of: overshoot
+              ) != true else { return effects }
+        guard followCorrectionRearmIntervalElapsed else {
+            // Suppressed only by the re-arm interval: recheck once it has
+            // elapsed instead of waiting for a tick that may never come.
+            if !followRecheckArmed, let executedAt = followCorrectionLastExecutionAt {
+                followRecheckArmed = true
+                let remaining = Self.followCorrectionRearmInterval
+                    - (latestFactTimestamp - executedAt)
+                effects.append(.scheduleFollowRecheck(after: max(remaining, 0) + 0.02))
+            }
+            return effects
+        }
+        followCorrectionOvershootFacts = overshoot
+        effects.append(mintFollowCorrection())
+        return effects
+    }
+
+    /// Re-arm is rate-limited after an EXECUTED correction; see
+    /// growthFollowEffects.
+    private var followCorrectionRearmIntervalElapsed: Bool {
+        followCorrectionLastExecutionAt
+            .map { latestFactTimestamp - $0 >= Self.followCorrectionRearmInterval }
+            ?? true
+    }
+
+    /// Arms the one outstanding coalesced correction (overshoot or growth).
+    private mutating func mintFollowCorrection() -> ChatViewportEffect {
+        followCorrectionSequence &+= 1
+        let token = ChatFollowCorrectionToken(
+            generation: generation,
+            sessionKey: renderedSessionKey ?? activeSessionKey,
+            sequence: followCorrectionSequence
+        )
+        pendingFollowCorrection = token
+        return .scheduleFollowCorrection(token)
+    }
+
+    /// The view dropped a due correction because an animated bottom
+    /// command is still in flight. That command normally lands at the same
+    /// bottom, but a drag can invalidate it mid-flight; recheck after it
+    /// would have landed instead of trusting it. Nothing was executed, so no
+    /// execution stamp is recorded, and the overshoot geometry is forgotten
+    /// so the recheck can re-arm at the same spot.
+    mutating func followCorrectionDeferred(
+        _ token: ChatFollowCorrectionToken,
+        recheckAfter seconds: TimeInterval
+    ) -> [ChatViewportEffect] {
+        guard pendingFollowCorrection == token else { return [] }
+        pendingFollowCorrection = nil
+        followCorrectionOvershootFacts = nil
+        guard !followRecheckArmed else { return [] }
+        followRecheckArmed = true
+        return [.scheduleFollowRecheck(after: seconds)]
+    }
+
+    /// The deferred recheck armed by .scheduleFollowRecheck: re-runs the
+    /// ordinary layout decision against the view's current facts, so every
+    /// ownership, pending-token and geometry guard still applies.
+    mutating func followRecheckDue(
+        facts: ChatViewportLayoutFacts
+    ) -> [ChatViewportEffect] {
+        // A reset since arming (session change, reassert, drag, handoff,
+        // disappearance) disarmed this recheck: a stale one must not mint a
+        // token no live observer would drain.
+        guard followRecheckArmed else { return [] }
+        followRecheckArmed = false
+        return layoutMetricsChanged(facts: facts)
+    }
+
+    /// Growth following for a tick that is NOT an overshoot.
+    private mutating func growthFollowEffects() -> [ChatViewportEffect] {
+        var effects: [ChatViewportEffect] = []
         // Follow actual rendered growth — COALESCED. Geometry preference
         // callbacks fire many times per layout cycle (bottom marker,
         // viewport frame, row frames), and this method used to emit a
@@ -558,10 +697,7 @@ struct ChatViewportController: Equatable {
         // every future schedule (observed live in the hosted streaming
         // fixture). The interval lets those frames settle first; genuine
         // growth re-arms on a later tick.
-        let rearmIntervalElapsed = followCorrectionLastExecutionAt
-            .map { latestFactTimestamp - $0 >= Self.followCorrectionRearmInterval }
-            ?? true
-        if rearmIntervalElapsed,
+        if followCorrectionRearmIntervalElapsed,
            pendingFollowCorrection == nil,
            let bottom = bottomMarkerMaxY,
            let viewport = viewportMaxY {
@@ -574,14 +710,7 @@ struct ChatViewportController: Equatable {
             ) {
             case .schedule:
                 followCorrectionContentBottom = bottom
-                followCorrectionSequence &+= 1
-                let token = ChatFollowCorrectionToken(
-                    generation: generation,
-                    sessionKey: renderedSessionKey ?? activeSessionKey,
-                    sequence: followCorrectionSequence
-                )
-                pendingFollowCorrection = token
-                effects.append(.scheduleFollowCorrection(token))
+                effects.append(mintFollowCorrection())
             case .adoptSettledBottom:
                 followCorrectionContentBottom = bottom
             case .idle:
@@ -596,6 +725,11 @@ struct ChatViewportController: Equatable {
     /// line: streaming reveal steps and layout refinements accumulate
     /// against it instead of re-arming a correction per frame.
     static let followCorrectionRegrowthTolerance: CGFloat = 12
+
+    /// How far the transcript end may sit above the viewport bottom while
+    /// following before an overshoot correction arms. Absorbs sub-line
+    /// layout flap; a real overshoot is tens to hundreds of points.
+    static let followOvershootTolerance: CGFloat = 4
 
     /// Pure decision for the coalesced follow-correction re-arm policy.
     enum FollowCorrectionDecision: Equatable {
@@ -670,7 +804,8 @@ struct ChatViewportController: Equatable {
         guard tokenOwnsCurrentSession(token) else { return [] }
         guard let bottom = bottomMarkerMaxY,
               let viewport = viewportMaxY,
-              bottom - viewport > followDriftTolerance else { return [] }
+              bottom - viewport > followDriftTolerance
+                || viewport - bottom > Self.followOvershootTolerance else { return [] }
         // Stamp the execution so re-arming waits out the scroll commit's
         // global-frame flap (see layoutMetricsChanged).
         followCorrectionLastExecutionAt = latestFactTimestamp
@@ -715,7 +850,9 @@ struct ChatViewportController: Equatable {
         pendingFollowCorrection = nil
         pendingPrependAnchor = nil
         followCorrectionContentBottom = nil
+        followCorrectionOvershootFacts = nil
         followCorrectionLastExecutionAt = nil
+        followRecheckArmed = false
         restoration = nil
         mode = .browsing
         return [.cancelAutomaticRestoration]
@@ -1007,7 +1144,9 @@ struct ChatViewportController: Equatable {
         pendingFollowCorrection = nil
         pendingPrependAnchor = nil
         followCorrectionContentBottom = nil
+        followCorrectionOvershootFacts = nil
         followCorrectionLastExecutionAt = nil
+        followRecheckArmed = false
         return abandonDrag()
     }
 
@@ -1056,7 +1195,9 @@ struct ChatViewportController: Equatable {
         pendingFollowCorrection = nil
         pendingPrependAnchor = nil
         followCorrectionContentBottom = nil
+        followCorrectionOvershootFacts = nil
         followCorrectionLastExecutionAt = nil
+        followRecheckArmed = false
     }
 
     private mutating func beginHandoffOwnership() -> [ChatViewportEffect] {
@@ -1065,7 +1206,9 @@ struct ChatViewportController: Equatable {
         pendingFollowCorrection = nil
         pendingPrependAnchor = nil
         followCorrectionContentBottom = nil
+        followCorrectionOvershootFacts = nil
         followCorrectionLastExecutionAt = nil
+        followRecheckArmed = false
         restoration = nil
         return [.cancelAutomaticRestoration]
     }

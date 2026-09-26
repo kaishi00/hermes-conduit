@@ -791,6 +791,18 @@ struct ChatView: View {
             // scrollTo → layout → preference → scrollTo loop is the
             // ScrollViewCommitMutation watchdog storm).
             break
+        case .scheduleFollowRecheck(let seconds):
+            // Only re-feeds facts; any correction it arms still drains
+            // through the pendingFollowCorrection observer.
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(seconds))
+                guard !Task.isCancelled else { return }
+                ChatViewportTrace.shared.log("follow recheck due")
+                performViewportEffects(
+                    viewport.followRecheckDue(facts: currentLayoutFacts()),
+                    using: proxy
+                )
+            }
         }
     }
 
@@ -807,11 +819,15 @@ struct ChatView: View {
         if let armed = armedAnimatedBottomRetry {
             // An animated bottom command is still in flight with its own
             // retry armed; a correction now would fight the animation. Drop
-            // this cycle — genuinely new growth schedules a fresh one.
+            // this cycle and recheck once the animation would have landed
+            // (a drag can invalidate it mid-flight).
             ChatViewportTrace.shared.log(
                 "follow correction skipped, animated retry armed gen=\(armed.generation)"
             )
-            _ = viewport.followCorrectionDue(token)
+            performViewportEffects(
+                viewport.followCorrectionDeferred(token, recheckAfter: 0.2),
+                using: proxy
+            )
             return
         }
         ChatViewportTrace.shared.log(
