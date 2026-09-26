@@ -18,7 +18,11 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
     private static let outputBytesPerFrame = outputBytesPerSample * Int(outputChannelCount)
     private static let preRollDuration: TimeInterval = 5
 
-    private let engine = AVAudioEngine()
+    /// Rebuilt at the start of every rendering lifetime (see
+    /// `VoiceAudioEngineRecovery`): an engine kept across session
+    /// reconfigurations starts against stale input formats (-10868).
+    private var engine: AVAudioEngine
+    private let makeEngine: () -> AVAudioEngine
     private let session = AVAudioSession.sharedInstance()
     private let coordinator: VoiceAudioSessionCoordinator
     /// AVAudioEngine and AVAudioConverter use deinterleaved Float32 as their
@@ -73,8 +77,13 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
     /// Optional injection instead of a default `.shared` argument: default
     /// parameter values are evaluated in a nonisolated context, which cannot
     /// read the MainActor-isolated singleton.
-    init(coordinator: VoiceAudioSessionCoordinator? = nil) {
+    init(
+        coordinator: VoiceAudioSessionCoordinator? = nil,
+        makeEngine: @escaping () -> AVAudioEngine = { AVAudioEngine() }
+    ) {
         self.coordinator = coordinator ?? .shared
+        self.makeEngine = makeEngine
+        self.engine = makeEngine()
         var capturedContinuation: AsyncStream<VoiceCaptureEvent>.Continuation?
         events = AsyncStream { capturedContinuation = $0 }
         continuation = capturedContinuation
@@ -200,7 +209,23 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
             // concurrent owners can never fight over the singleton.
             captureLease = try coordinator.acquire(.conversationCapture)
         }
-        if !engine.isRunning { try startEngine() }
+        if !engine.isRunning { try startFreshEngine() }
+    }
+
+    /// Every rendering lifetime starts on a new engine so the input node
+    /// reports the live hardware format; a recoverable graph failure
+    /// re-applies the session policy and retries once.
+    private func startFreshEngine() throws {
+        try VoiceAudioEngineRecovery.startFresh(
+            rebuild: { rebuildEngine() },
+            reassert: { try coordinator.reassert() },
+            start: { try startEngine() }
+        )
+    }
+
+    private func rebuildEngine() {
+        teardownRendering()
+        engine = makeEngine()
     }
 
     private func handleStartupFailure(_ error: Error, stage: String) {
@@ -224,6 +249,16 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
         let hardwareFormat = input.inputFormat(forBus: 0)
         guard hardwareFormat.sampleRate > 0, hardwareFormat.channelCount > 0 else {
             throw VoiceAudioError.unavailable(AppLocalization.string("The selected microphone is unavailable."))
+        }
+        // A nil-format tap uses the node's output format. If that disagrees
+        // with the live hardware, installTap raises an Objective-C exception
+        // (an app crash), so fail with a recoverable error instead.
+        let tapFormat = input.outputFormat(forBus: 0)
+        guard VoiceAudioEngineRecovery.tapFormat(tapFormat, matchesHardware: hardwareFormat) else {
+            throw VoiceAudioInputFormatMismatch(
+                hardwareSampleRate: hardwareFormat.sampleRate,
+                tapSampleRate: tapFormat.sampleRate
+            )
         }
         converter = nil
         // Defensive: a recovery restart (e.g. after a route change stops the
@@ -414,7 +449,7 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
                 // session down with the old route: reapply the conversation
                 // policy before restarting the engine.
                 try coordinator.reassert()
-                try startEngine()
+                try startFreshEngine()
             } catch {
                 handleStartupFailure(error, stage: "routeChange")
                 continuation?.yield(.interrupted(generation: captureGeneration))
