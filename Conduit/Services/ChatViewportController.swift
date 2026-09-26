@@ -323,7 +323,8 @@ struct ChatViewportController: Equatable {
             pendingFollowCorrection = nil
             followCorrectionContentBottom = nil
             followCorrectionOvershootFacts = nil
-        followCorrectionLastExecutionAt = nil
+            followCorrectionLastExecutionAt = nil
+            followRecheckArmed = false
             if wasFollowing {
                 mirroredViewportTransitionGeneration = viewportTransitionGeneration
             }
@@ -337,7 +338,8 @@ struct ChatViewportController: Equatable {
             pendingPrependAnchor = nil
             followCorrectionContentBottom = nil
             followCorrectionOvershootFacts = nil
-        followCorrectionLastExecutionAt = nil
+            followCorrectionLastExecutionAt = nil
+            followRecheckArmed = false
         }
         renderedSessionKey = key
         if wasFollowing {
@@ -500,6 +502,7 @@ struct ChatViewportController: Equatable {
         followCorrectionContentBottom = nil
         followCorrectionOvershootFacts = nil
         followCorrectionLastExecutionAt = nil
+        followRecheckArmed = false
         return [.scroll(latestCommand(animated: true))]
     }
 
@@ -548,7 +551,8 @@ struct ChatViewportController: Equatable {
             // not moved since the last correction cycle.
             followCorrectionContentBottom = nil
             followCorrectionOvershootFacts = nil
-        followCorrectionLastExecutionAt = nil
+            followCorrectionLastExecutionAt = nil
+            followRecheckArmed = false
         }
 
         guard mode == .followingLatest,
@@ -631,6 +635,10 @@ struct ChatViewportController: Equatable {
     mutating func followRecheckDue(
         facts: ChatViewportLayoutFacts
     ) -> [ChatViewportEffect] {
+        // A reset since arming (session change, reassert, drag, handoff,
+        // disappearance) disarmed this recheck: a stale one must not mint a
+        // token no live observer would drain.
+        guard followRecheckArmed else { return [] }
         followRecheckArmed = false
         return layoutMetricsChanged(facts: facts)
     }
@@ -826,6 +834,7 @@ struct ChatViewportController: Equatable {
         followCorrectionContentBottom = nil
         followCorrectionOvershootFacts = nil
         followCorrectionLastExecutionAt = nil
+        followRecheckArmed = false
         restoration = nil
         mode = .browsing
         return [.cancelAutomaticRestoration]
@@ -1119,6 +1128,7 @@ struct ChatViewportController: Equatable {
         followCorrectionContentBottom = nil
         followCorrectionOvershootFacts = nil
         followCorrectionLastExecutionAt = nil
+        followRecheckArmed = false
         return abandonDrag()
     }
 
@@ -1169,6 +1179,7 @@ struct ChatViewportController: Equatable {
         followCorrectionContentBottom = nil
         followCorrectionOvershootFacts = nil
         followCorrectionLastExecutionAt = nil
+        followRecheckArmed = false
     }
 
     private mutating func beginHandoffOwnership() -> [ChatViewportEffect] {
@@ -1179,6 +1190,7 @@ struct ChatViewportController: Equatable {
         followCorrectionContentBottom = nil
         followCorrectionOvershootFacts = nil
         followCorrectionLastExecutionAt = nil
+        followRecheckArmed = false
         restoration = nil
         return [.cancelAutomaticRestoration]
     }

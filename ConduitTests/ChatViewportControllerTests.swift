@@ -3234,6 +3234,33 @@ extension ChatViewportControllerTests {
         XCTAssertEqual(scrollCommands(controller.followCorrectionDue(token)).count, 1)
     }
 
+    /// A recheck disarmed by a reset (here: the view disappearing) must not
+    /// mint a correction token that no live observer would drain.
+    func testRecheckAfterViewDisappearedIsIgnored() throws {
+        var controller = makeController(following: keyA)
+        func facts(_ bottom: CGFloat, at time: TimeInterval) -> ChatViewportLayoutFacts {
+            ChatViewportLayoutFacts(
+                bottomMarkerMaxY: bottom,
+                viewportMinY: 100,
+                viewportMaxY: 800,
+                rowFrames: [],
+                renderedScope: controller.renderedScrollScope,
+                timestamp: time
+            )
+        }
+        let growth = try XCTUnwrap(scheduledCorrection(in: controller.layoutMetricsChanged(
+            facts: facts(900, at: 20)
+        )))
+        XCTAssertFalse(scrollCommands(controller.followCorrectionDue(growth)).isEmpty)
+        let suppressed = controller.layoutMetricsChanged(facts: facts(600, at: 20.03))
+        XCTAssertTrue(controller.followRecheckArmed, "expected an armed recheck, got \(suppressed)")
+
+        _ = controller.viewDisappeared()
+        XCTAssertFalse(controller.followRecheckArmed)
+        XCTAssertTrue(controller.followRecheckDue(facts: facts(600, at: 20.2)).isEmpty)
+        XCTAssertNil(controller.pendingFollowCorrection)
+    }
+
     /// Content shorter than the viewport legitimately ends above the
     /// viewport bottom and scrollTo cannot change that: one correction per
     /// distinct geometry, never one per tick.
