@@ -94,7 +94,6 @@ final class FakeGeminiLiveSocket: GeminiLiveSocket {
         return recordedClose
     }
 }
-}
 
 @MainActor
 final class FakeGeminiLiveSessionControl: GeminiLiveSessionControlling {

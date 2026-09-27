@@ -28,9 +28,14 @@ struct GeminiLiveServerClose: Equatable {
         [1003, 1007, 1008].contains(code) || (4000...4999).contains(code)
     }
 
-    /// What the user is shown: Google's reason, or the code without one.
+    /// What the user is shown: the first line of Google's reason (capped),
+    /// or the code when there is none.
     var summary: String {
-        reason.isEmpty ? "close code \(code)" : reason
+        let firstLine = reason.split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
+        guard !firstLine.isEmpty else {
+            return AppLocalization.string("close code \(String(code))")
+        }
+        return firstLine.count > 200 ? String(firstLine.prefix(200)) + "…" : firstLine
     }
 }
 
@@ -249,6 +254,7 @@ final class GeminiLiveSession {
             guard !Task.isCancelled, state != .stopped else { return }
             // A missing plugin or key will not fix itself on retry.
             if error is GeminiLiveTokenError {
+                retireHandoff()
                 state = .failed(error.localizedDescription)
                 return
             }
@@ -297,7 +303,7 @@ final class GeminiLiveSession {
                 // A close before setup decides between failing and retrying,
                 // so give its close frame a moment to be reported.
                 let beforeSetup = awaitingSetup?.id == id
-                let close = await socket.serverClose(within: beforeSetup ? .seconds(1) : .zero)
+                let close = await socket.serverClose(within: beforeSetup ? .seconds(1) : .milliseconds(100))
                 connectionFailed(id, error: error, serverClose: close)
                 return
             }
@@ -348,7 +354,7 @@ final class GeminiLiveSession {
         // whose access_token is a live credential. Google's close reason
         // names the problem (a rejected model or token), not the token.
         let nsError = error as NSError
-        geminiLiveLogger.error("Gemini Live connection lost: domain=\(nsError.domain, privacy: .public) code=\(nsError.code, privacy: .public) serverClose=\(serverClose.map { "\($0.code) \($0.reason)" } ?? "none", privacy: .public)")
+        geminiLiveLogger.error("Gemini Live connection lost: domain=\(nsError.domain, privacy: .public) code=\(nsError.code, privacy: .public) closeCode=\(serverClose?.code ?? 0, privacy: .public) closeReason=\(serverClose?.reason ?? "", privacy: .private)")
         socket?.close()
         socket = nil
         receiveTask = nil

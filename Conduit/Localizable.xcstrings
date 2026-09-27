@@ -111,6 +111,16 @@
         }
       }
     },
+    "Couldn't connect to Gemini Live: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法连接到 Gemini Live：%@"
+          }
+        }
+      }
+    },
     "Gemini Live" : {
       "localizations" : {
         "zh-Hans" : {
@@ -131,26 +141,6 @@
         }
       }
     },
-    "Couldn't connect to Gemini Live: %@" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法连接到 Gemini Live：%@"
-          }
-        }
-      }
-    },
-    "Gemini Live refused the connection: %@" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gemini Live 拒绝了连接：%@"
-          }
-        }
-      }
-    },
     "Gemini Live is not available on this Hermes server: %@" : {
       "localizations" : {
         "zh-Hans" : {
@@ -167,6 +157,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Gemini Live 不可用：此 Hermes 服务器上的 Conduit 插件尚不支持。"
+          }
+        }
+      }
+    },
+    "Gemini Live refused the connection: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live 拒绝了连接：%@"
+          }
+        }
+      }
+    },
+    "close code %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关闭代码 %@"
           }
         }
       }
