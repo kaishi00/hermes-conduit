@@ -57,6 +57,7 @@ enum GeminiLiveProtocol {
         systemInstruction: String,
         functions: [FunctionDeclaration],
         googleSearch: Bool = true,
+        voice: String? = nil,
         resumptionHandle: String?
     ) -> [String: Any] {
         var tools: [[String: Any]] = [["functionDeclarations": functions.map(\.json)]]
@@ -67,12 +68,17 @@ enum GeminiLiveProtocol {
         if let resumptionHandle, !resumptionHandle.isEmpty {
             sessionResumption["handle"] = resumptionHandle
         }
+        var generationConfig: [String: Any] = ["responseModalities": ["AUDIO"]]
+        // No voice leaves Gemini's own default.
+        if let voice, !voice.isEmpty {
+            generationConfig["speechConfig"] = [
+                "voiceConfig": ["prebuiltVoiceConfig": ["voiceName": voice]],
+            ]
+        }
         return [
             "setup": [
                 "model": qualifiedModel(model),
-                "generationConfig": [
-                    "responseModalities": ["AUDIO"],
-                ],
+                "generationConfig": generationConfig,
                 "systemInstruction": [
                     "parts": [["text": systemInstruction]],
                 ],

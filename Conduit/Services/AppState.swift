@@ -1289,6 +1289,22 @@ final class AppState: ObservableObject {
         saveVoiceProfilePreferences(preferences, profile: activeProfile)
     }
 
+    /// The prebuilt voice Gemini Live speaks with on this profile; nil is
+    /// Gemini's default voice.
+    var geminiLiveVoice: String? {
+        loadVoiceProfilePreferences(profile: activeProfile).geminiLiveVoice
+    }
+
+    /// Applies from the next Gemini Live conversation.
+    func setGeminiLiveVoice(_ voice: String?) {
+        var preferences = loadVoiceProfilePreferences(profile: activeProfile)
+        let stored = voice.flatMap { $0.isEmpty ? nil : $0 }
+        guard preferences.geminiLiveVoice != stored else { return }
+        objectWillChange.send()
+        preferences.geminiLiveVoice = stored
+        saveVoiceProfilePreferences(preferences, profile: activeProfile)
+    }
+
     /// The search the next Gemini Live session uses, resolved when it
     /// starts (automatic asks the host whether it has a search backend).
     private var geminiLiveSearchSource: GeminiLiveSearchSource = .google
@@ -1336,7 +1352,8 @@ final class AppState: ObservableObject {
                     tokens: tokens,
                     systemInstruction: GeminiLiveConversationController.instructions(search: search),
                     functions: GeminiLiveToolBridge.declarations(webSearch: search == .hermes),
-                    googleSearch: search == .google
+                    googleSearch: search == .google,
+                    voice: self?.geminiLiveVoice
                 )
             },
             availability: { [weak self] in

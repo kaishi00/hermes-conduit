@@ -554,7 +554,9 @@ struct SettingsView: View {
                             }
                         },
                         search: appState.geminiLiveSearchMode,
-                        setSearch: { appState.setGeminiLiveSearchMode($0) }
+                        setSearch: { appState.setGeminiLiveSearchMode($0) },
+                        voice: appState.geminiLiveVoice,
+                        setVoice: { appState.setGeminiLiveVoice($0) }
                     ),
                     voiceJobs: VoiceJobModelSettingsModel(
                         provider: voicePreferences.voiceJobProvider,

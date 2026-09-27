@@ -600,7 +600,9 @@ final class GeminiLiveConversationController: ObservableObject {
     private func appendTranscript(_ text: String, speaker: VoiceConversationTranscriptEntry.Speaker) {
         let openID = speaker == .user ? openUserEntry : openAssistantEntry
         if let openID, let index = transcript.firstIndex(where: { $0.id == openID }) {
-            transcript[index].text += text
+            transcript[index].text = speaker == .assistant
+                ? Self.joinTranscriptChunk(transcript[index].text, text)
+                : transcript[index].text + text
             return
         }
         let entry = VoiceConversationTranscriptEntry(speaker: speaker, text: text.trimmingCharacters(in: .whitespaces))
@@ -612,6 +614,41 @@ final class GeminiLiveConversationController: ObservableObject {
         } else {
             openAssistantEntry = entry.id
             openUserEntry = nil
+        }
+    }
+
+    /// Gemini streams the model's transcript in word-sized chunks and
+    /// sometimes drops the space between two of them ("you" + "please").
+    /// Put it back when both sides of the seam are word characters of a
+    /// script that separates words with spaces, or when a sentence mark is
+    /// followed straight by a letter.
+    nonisolated static func joinTranscriptChunk(_ existing: String, _ chunk: String) -> String {
+        guard let last = existing.last, let first = chunk.first else { return existing + chunk }
+        if last.isWhitespace || first.isWhitespace { return existing + chunk }
+        let needsSpace: Bool
+        if isSpacedWordCharacter(last) {
+            needsSpace = isSpacedWordCharacter(first)
+        } else if ".,!?;:".contains(last) {
+            needsSpace = first.isLetter && isSpacedWordCharacter(first)
+        } else {
+            needsSpace = false
+        }
+        return needsSpace ? existing + " " + chunk : existing + chunk
+    }
+
+    private nonisolated static func isSpacedWordCharacter(_ character: Character) -> Bool {
+        guard character.isLetter || character.isNumber,
+              let scalar = character.unicodeScalars.first else { return false }
+        switch scalar.value {
+        case 0x0E00...0x0EFF, // Thai, Lao
+             0x1000...0x109F, // Myanmar
+             0x1780...0x17FF, // Khmer
+             0x3040...0x30FF, // Hiragana, Katakana
+             0x3400...0x4DBF, 0x4E00...0x9FFF, 0xF900...0xFAFF, // CJK ideographs
+             0xFF66...0xFF9F: // Half-width Katakana
+            return false
+        default:
+            return true
         }
     }
 

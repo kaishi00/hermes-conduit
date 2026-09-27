@@ -15,12 +15,17 @@ struct GeminiLiveSettingsModel {
     var checkAvailability: () async -> Result<GeminiLiveAvailability, Error>
     var search: GeminiLiveSearchMode = .automatic
     var setSearch: (GeminiLiveSearchMode) -> Void = { _ in }
+    /// Prebuilt voice name; nil is Gemini's default voice.
+    var voice: String? = nil
+    var setVoice: (String?) -> Void = { _ in }
 }
 
 struct GeminiLiveSettingsSection: View {
     let model: GeminiLiveSettingsModel
     @State private var enabled: Bool
     @State private var search: GeminiLiveSearchMode
+    /// Empty is Gemini's default voice (a Picker tag can't be nil).
+    @State private var voice: String
     @State private var status: String?
     @State private var isAvailable: Bool?
     @State private var isChecking = false
@@ -29,6 +34,7 @@ struct GeminiLiveSettingsSection: View {
         self.model = model
         _enabled = State(initialValue: model.enabled)
         _search = State(initialValue: model.search)
+        _voice = State(initialValue: model.voice ?? "")
     }
 
     var body: some View {
@@ -80,12 +86,33 @@ struct GeminiLiveSettingsSection: View {
                 Text("How Gemini answers quick questions like weather or news. Hermes web search uses the search your Hermes server is set up with (SearXNG, Firecrawl…). Google Search has its own quota on your Gemini key. Automatic uses Hermes when it has a search set up, otherwise Google. Applies to the next conversation.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Picker("Voice", selection: Binding(
+                    get: { voice },
+                    set: { chosen in
+                        voice = chosen
+                        model.setVoice(chosen.isEmpty ? nil : chosen)
+                    }
+                )) {
+                    Text("Gemini default").tag("")
+                    ForEach(GeminiLiveVoice.all) { option in
+                        Text(verbatim: "\(option.name) · \(option.style)").tag(option.name)
+                    }
+                    // A voice saved by a newer build that this one doesn't list.
+                    if !voice.isEmpty, !GeminiLiveVoice.all.contains(where: { $0.name == voice }) {
+                        Text(verbatim: voice).tag(voice)
+                    }
+                }
+                .pickerStyle(.menu)
+                Text("The voice Gemini speaks with. Applies to the next conversation.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
         .task { if enabled { await check() } }
         // A profile switch can change the preference under a retained view.
         .onChange(of: model.enabled) { _, newValue in enabled = newValue }
         .onChange(of: model.search) { _, newValue in search = newValue }
+        .onChange(of: model.voice) { _, newValue in voice = newValue ?? "" }
     }
 
     private func check() async {
