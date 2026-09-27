@@ -542,7 +542,27 @@ struct SettingsView: View {
                     },
                     setEndConversationPhrases: { phrases in
                         appState.setSpokenEndConversationPhrases(phrases)
-                    }
+                    },
+                    geminiLive: GeminiLiveSettingsModel(
+                        enabled: appState.isGeminiLiveEnabled,
+                        setEnabled: { appState.setGeminiLiveEnabled($0) },
+                        checkAvailability: {
+                            do {
+                                return .success(try await appState.geminiLiveTokenClient.availability())
+                            } catch {
+                                return .failure(error)
+                            }
+                        }
+                    ),
+                    voiceJobs: VoiceJobModelSettingsModel(
+                        provider: voicePreferences.voiceJobProvider,
+                        model: voicePreferences.voiceJobModel,
+                        reasoningEffort: voicePreferences.voiceJobReasoningEffort,
+                        loadProviders: { await appState.loadVoiceJobModelProviders() },
+                        save: { provider, model, reasoning in
+                            appState.setVoiceJobModel(provider: provider, model: model, reasoningEffort: reasoning)
+                        }
+                    )
                 )
             } else {
                 SettingsDetailContainer {

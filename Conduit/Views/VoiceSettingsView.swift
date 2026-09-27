@@ -23,6 +23,8 @@ struct VoiceSettingsRoute: View {
     let setContinuousConversation: (Bool) async -> Bool
     let setStopPhrases: ([String]) -> Void
     let setEndConversationPhrases: ([String]) -> Void
+    let geminiLive: GeminiLiveSettingsModel?
+    let voiceJobs: VoiceJobModelSettingsModel?
 
     init(
         bridge: DashboardTicketBridge,
@@ -39,8 +41,12 @@ struct VoiceSettingsRoute: View {
         setTranscriptionMode: @escaping (VoiceTranscriptionMode) async -> Bool,
         setContinuousConversation: @escaping (Bool) async -> Bool = { _ in true },
         setStopPhrases: @escaping ([String]) -> Void = { _ in },
-        setEndConversationPhrases: @escaping ([String]) -> Void = { _ in }
+        setEndConversationPhrases: @escaping ([String]) -> Void = { _ in },
+        geminiLive: GeminiLiveSettingsModel? = nil,
+        voiceJobs: VoiceJobModelSettingsModel? = nil
     ) {
+        self.geminiLive = geminiLive
+        self.voiceJobs = voiceJobs
         _service = StateObject(wrappedValue: HermesVoiceConfigurationService(bridge: bridge, profile: profile))
         _conversationController = ObservedObject(wrappedValue: conversationController)
         self.actions = actions
@@ -72,7 +78,9 @@ struct VoiceSettingsRoute: View {
             setTranscriptionMode: setTranscriptionMode,
             setContinuousConversation: setContinuousConversation,
             setStopPhrases: setStopPhrases,
-            setEndConversationPhrases: setEndConversationPhrases
+            setEndConversationPhrases: setEndConversationPhrases,
+            geminiLive: geminiLive,
+            voiceJobs: voiceJobs
         )
     }
 }
@@ -119,6 +127,8 @@ struct VoiceSettingsView: View {
     let spokenEndConversationPhrases: [String]
     let setStopPhrases: ([String]) -> Void
     let setEndConversationPhrases: ([String]) -> Void
+    var geminiLive: GeminiLiveSettingsModel?
+    var voiceJobs: VoiceJobModelSettingsModel?
 
     init(
         service: HermesVoiceConfigurationService,
@@ -134,8 +144,12 @@ struct VoiceSettingsView: View {
         setTranscriptionMode: @escaping (VoiceTranscriptionMode) async -> Bool = { _ in false },
         setContinuousConversation: @escaping (Bool) async -> Bool = { _ in true },
         setStopPhrases: @escaping ([String]) -> Void = { _ in },
-        setEndConversationPhrases: @escaping ([String]) -> Void = { _ in }
+        setEndConversationPhrases: @escaping ([String]) -> Void = { _ in },
+        geminiLive: GeminiLiveSettingsModel? = nil,
+        voiceJobs: VoiceJobModelSettingsModel? = nil
     ) {
+        self.geminiLive = geminiLive
+        self.voiceJobs = voiceJobs
         self.service = service
         _conversationController = ObservedObject(wrappedValue: conversationController)
         self.actions = actions
@@ -158,6 +172,12 @@ struct VoiceSettingsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     capabilitySection
+                    if let geminiLive {
+                        GeminiLiveSettingsSection(model: geminiLive)
+                    }
+                    if let voiceJobs {
+                        VoiceJobModelSettingsSection(settings: voiceJobs)
+                    }
                     if service.isLoading {
                         ProgressView("Loading profile voice settings…")
                             .frame(maxWidth: .infinity, alignment: .leading)

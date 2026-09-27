@@ -39,6 +39,10 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
     // can create flag combinations the lifecycle never produces and are not
     // supported.
     var capturedPCM = Data()
+    /// Streaming consumers (Gemini Live) receive every converted 16 kHz
+    /// PCM16 chunk as it is produced. Nil for the classic Voice path, which
+    /// only reads whole utterances.
+    var onPCM16Chunk: (@MainActor (Data) -> Void)?
     var preRollPCM = Data()
     private let maximumPreRollBytes = Int(AVAudioCaptureService.outputSampleRate * AVAudioCaptureService.preRollDuration) * AVAudioCaptureService.outputBytesPerFrame
     var activelyRecording = false
@@ -389,6 +393,7 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
         lastCaptureFailure = nil
         appendPreRoll(pcm)
         if activelyRecording { capturedPCM.append(pcm) }
+        onPCM16Chunk?(pcm)
         continuation?.yield(.level(encoded.peak, date: Date(), generation: generation))
     }
 

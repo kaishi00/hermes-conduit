@@ -142,6 +142,15 @@ struct VoiceProfilePreferences: Codable, Equatable {
     var spokenEndConversationPhrases: [String] = VoiceSpokenCommands.defaultEndConversationPhrases
     /// Nil decodes older preferences as the Hermes-hosted route.
     var transcriptionMode: VoiceTranscriptionMode? = nil
+    /// Opt-in Gemini Live voice mode (off by default; older blobs decode off).
+    var geminiLiveEnabled: Bool = false
+    /// Model for the Hermes sessions voice background jobs create. Nil keeps
+    /// the profile's current model (the pre-existing behavior).
+    var voiceJobModel: String? = nil
+    var voiceJobProvider: String? = nil
+    /// Reasoning effort for voice jobs ("none", "low", …). Nil keeps the
+    /// profile default.
+    var voiceJobReasoningEffort: String? = nil
 
     var resolvedTranscriptionMode: VoiceTranscriptionMode {
         transcriptionMode ?? .hermes
@@ -179,6 +188,25 @@ struct VoiceProfilePreferences: Codable, Equatable {
             )
         } ?? VoiceSpokenCommands.defaultEndConversationPhrases
         transcriptionMode = try container.decodeIfPresent(VoiceTranscriptionMode.self, forKey: .transcriptionMode)
+        geminiLiveEnabled = try container.decodeIfPresent(Bool.self, forKey: .geminiLiveEnabled) ?? false
+        voiceJobModel = try container.decodeIfPresent(String.self, forKey: .voiceJobModel)
+        voiceJobProvider = try container.decodeIfPresent(String.self, forKey: .voiceJobProvider)
+        voiceJobReasoningEffort = try container.decodeIfPresent(String.self, forKey: .voiceJobReasoningEffort)
+    }
+
+    /// What a voice job's `session.create` asks for: the chosen voice-job
+    /// model, else the profile's current model; the chosen reasoning effort
+    /// either way.
+    func voiceJobSessionOptions(runtimeModel: String, runtimeProvider: String) -> (model: String?, provider: String?, reasoningEffort: String?) {
+        let reasoning = voiceJobReasoningEffort.flatMap { $0.isEmpty ? nil : $0 }
+        if let model = voiceJobModel, !model.isEmpty {
+            return (model, voiceJobProvider.flatMap { $0.isEmpty ? nil : $0 }, reasoning)
+        }
+        return (
+            runtimeModel.isEmpty ? nil : runtimeModel,
+            runtimeProvider.isEmpty ? nil : runtimeProvider,
+            reasoning
+        )
     }
 }
 

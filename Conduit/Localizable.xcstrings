@@ -1,6 +1,246 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Couldn't cancel %@. It may still be running." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法取消 %@，它可能仍在运行。"
+          }
+        }
+      }
+    },
+    "You: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你：%@"
+          }
+        }
+      }
+    },
+    "Gemini: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini：%@"
+          }
+        }
+      }
+    },
+    "Voice jobs" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音任务"
+          }
+        }
+      }
+    },
+    "Profile default" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "配置默认"
+          }
+        }
+      }
+    },
+    "The model Hermes uses for background jobs started by voice. A fast model with low reasoning keeps spoken requests quick; your chats keep the profile's model." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 用于语音启动的后台任务的模型。选择快速模型和低推理强度可以让语音请求更快；你的聊天仍使用配置的模型。"
+          }
+        }
+      }
+    },
+    "%@ · %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ · %2$@"
+          }
+        }
+      }
+    },
+    "Available (%@)" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可用（%@）"
+          }
+        }
+      }
+    },
+    "Check Gemini Live" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "检查 Gemini Live"
+          }
+        }
+      }
+    },
+    "Connecting to Gemini Live…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在连接 Gemini Live…"
+          }
+        }
+      }
+    },
+    "Couldn't connect to Gemini Live." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法连接到 Gemini Live。"
+          }
+        }
+      }
+    },
+    "Gemini Live" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live"
+          }
+        }
+      }
+    },
+    "Gemini Live is not available on this Hermes server." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 Hermes 服务器不支持 Gemini Live。"
+          }
+        }
+      }
+    },
+    "Gemini Live is not available on this Hermes server: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 Hermes 服务器不支持 Gemini Live：%@"
+          }
+        }
+      }
+    },
+    "Gemini Live is not available: the Conduit plugin on this Hermes server does not support it yet." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live 不可用：此 Hermes 服务器上的 Conduit 插件尚不支持。"
+          }
+        }
+      }
+    },
+    "Hermes returned an invalid Gemini Live token." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 返回了无效的 Gemini Live 令牌。"
+          }
+        }
+      }
+    },
+    "Microphone muted" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "麦克风已静音"
+          }
+        }
+      }
+    },
+    "Mute microphone" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "静音麦克风"
+          }
+        }
+      }
+    },
+    "Not checked yet" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未检查"
+          }
+        }
+      }
+    },
+    "Speaking" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在说话"
+          }
+        }
+      }
+    },
+    "Talk with Gemini Live instead of the Hermes speech pipeline. Hermes still does the work: Gemini starts background jobs on this profile and tells you their results. The API key stays on your Hermes server. Approvals are never given by voice." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用 Gemini Live 进行语音对话，替代 Hermes 的语音流程。工作仍由 Hermes 完成：Gemini 会在此配置中启动后台任务并告诉你结果。API 密钥保存在你的 Hermes 服务器上。审批永远不会通过语音进行。"
+          }
+        }
+      }
+    },
+    "Try again" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重试"
+          }
+        }
+      }
+    },
+    "Unmute microphone" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取消麦克风静音"
+          }
+        }
+      }
+    },
+    "Use Gemini Live for voice" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用 Gemini Live 进行语音"
+          }
+        }
+      }
+    },
     "%@ failed." : {
       "localizations" : {
         "en" : {

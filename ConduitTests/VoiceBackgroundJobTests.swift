@@ -59,6 +59,7 @@ extension VoiceSpokenCommandMatchingTests {
 final class FakeVoiceJobBackend {
     var createError: Error?
     var submitError: Error?
+    var cancelError: Error?
     /// When true, the next createSession parks until `releaseCreate()`.
     var parksCreate = false
     let createParked = AwaitableCounter()
@@ -71,9 +72,13 @@ final class FakeVoiceJobBackend {
     private(set) var submissions: [(String, String)] = []
     private(set) var cancelled: [String] = []
 
+    /// Strong captures: tests routinely discard the fake (`let (supervisor, _)
+    /// = makeSupervisor()`), and the supervisor's backend must keep it alive
+    /// (an unowned capture crashed every such test). The fake holds nothing
+    /// back, so there is no cycle.
     var backend: VoiceBackgroundJobBackend {
         VoiceBackgroundJobBackend(
-            createSession: { [unowned self] in
+            createSession: { [self] in
                 if let error = self.createError { throw error }
                 if self.parksCreate {
                     self.parksCreate = false
@@ -85,14 +90,17 @@ final class FakeVoiceJobBackend {
                 self.created += 1
                 return ("rt-\(self.created)", "st-\(self.created)")
             },
-            setTitle: { [unowned self] id, title in self.titles.append((id, title)) },
-            submit: { [unowned self] id, text in
+            setTitle: { [self] id, title in self.titles.append((id, title)) },
+            submit: { [self] id, text in
                 self.submissions.append((id, text))
                 self.onSubmit?(id)
                 if let error = self.submitError { throw error }
             },
-            cancel: { [unowned self] id in self.cancelled.append(id) },
-            liveSessions: { [unowned self] in self.liveRows }
+            cancel: { [self] id in
+                if let cancelError = self.cancelError { throw cancelError }
+                self.cancelled.append(id)
+            },
+            liveSessions: { [self] in self.liveRows }
         )
     }
 
@@ -203,6 +211,21 @@ extension VoiceConversationControllerTests {
         XCTAssertNil(supervisor.takePendingNotice(), "the user already heard the cancellation")
         let again = await supervisor.cancelAll()
         XCTAssertEqual(again, AppLocalization.string("There are no background jobs to cancel."))
+    }
+
+    func testAFailedHermesCancelIsReportedAndTheJobStaysSupervised() async throws {
+        let (supervisor, fake) = makeSupervisor()
+        _ = await supervisor.startJob(instructions: "first")
+        let jobID = try XCTUnwrap(supervisor.jobs.first?.id)
+        fake.cancelError = HermesError.notConnected
+
+        let reply = await supervisor.cancel(jobID: jobID)
+
+        XCTAssertEqual(reply?.hasPrefix("Couldn't cancel"), true, reply ?? "nil")
+        XCTAssertTrue(supervisor.jobs.first?.status.isActive == true, "a job Hermes didn't stop stays active")
+        XCTAssertFalse(supervisor.jobs.first?.outcomeDelivered ?? true)
+        let all = await supervisor.cancelAll()
+        XCTAssertFalse(all.contains("Cancelled"), all)
     }
 
     func testFailedStartIsReportedInlineOnly() async {

@@ -802,18 +802,18 @@ struct ComposerBar: View {
                 )
             }
         } label: {
-            Image(systemName: appState.canStartVoiceConversation ? "mic.fill" : "mic.slash")
+            Image(systemName: appState.canStartPhoneVoiceConversation ? "mic.fill" : "mic.slash")
                 .font(.system(size: 18, weight: .semibold))
                 .frame(width: 44, height: 44)
         }
-        .disabled(!appState.canStartVoiceConversation || appState.isBusy || !appState.composerIsEnabled)
+        .disabled(!appState.canStartPhoneVoiceConversation || appState.isBusy || !appState.composerIsEnabled)
         .conduitGlassControl(
             cornerRadius: 22,
-            tint: appState.canStartVoiceConversation ? .conduitAura.opacity(0.14) : .secondary.opacity(0.06),
-            interactive: appState.canStartVoiceConversation
+            tint: appState.canStartPhoneVoiceConversation ? .conduitAura.opacity(0.14) : .secondary.opacity(0.06),
+            interactive: appState.canStartPhoneVoiceConversation
         )
         .accessibilityLabel("Start voice conversation")
-        .accessibilityHint(appState.voiceUnavailableReason ?? AppLocalization.string("Opens voice controls over this conversation"))
+        .accessibilityHint(appState.phoneVoiceUnavailableReason ?? AppLocalization.string("Opens voice controls over this conversation"))
     }
 
     /// Collapse the draft in the same transaction that dismisses the keyboard.
