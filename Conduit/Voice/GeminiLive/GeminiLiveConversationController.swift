@@ -474,9 +474,11 @@ final class GeminiLiveConversationController: ObservableObject {
                 // The outcome is already marked delivered, so a send that
                 // fails keeps it as a text update for the next connection.
                 var onFailure: (@MainActor () -> Void)?
-                if scheduling != .silent, let text = Self.fallbackText(for: result) {
-                    onFailure = { [weak self] in
-                        guard let self, self.isActive else { return }
+                if scheduling != .silent, let text = Self.fallbackText(for: result), let sentOn = session {
+                    onFailure = { [weak self, weak sentOn] in
+                        // Only for the conversation that sent it, not one
+                        // started since.
+                        guard let self, self.isActive, let sentOn, self.session === sentOn else { return }
                         self.pendingTextTurns.append(text)
                         self.scheduleIdleFlush()
                     }
@@ -512,8 +514,8 @@ final class GeminiLiveConversationController: ObservableObject {
         modelTurnActive = true
         // An update that never reached the socket waits for the next
         // connection instead of being lost.
-        session.send(GeminiLiveProtocol.textTurnMessage(text), onFailure: { [weak self] in
-            guard let self, self.isActive else { return }
+        session.send(GeminiLiveProtocol.textTurnMessage(text), onFailure: { [weak self, weak session] in
+            guard let self, self.isActive, let session, self.session === session else { return }
             self.modelTurnActive = false
             self.pendingTextTurns.insert(text, at: 0)
             self.scheduleIdleFlush()
