@@ -387,8 +387,12 @@ extension VoiceConversationControllerTests {
         for code in [1000, 1001, 1005, 1006, 1011] {
             XCTAssertFalse(GeminiLiveServerClose(code: code, reason: "").isRefusal, "\(code)")
         }
+        let quota = GeminiLiveServerClose(code: 1011, reason: "You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits.")
+        XCTAssertTrue(quota.isRefusal, "retrying an exhausted quota only spends more of it")
+        XCTAssertEqual(quota.summary, "You exceeded your current quota, please check your plan and billing details.")
+        XCTAssertFalse(GeminiLiveServerClose(code: 1011, reason: "Internal error").isRefusal)
         XCTAssertTrue(GeminiLiveServerClose(code: 403, reason: "", isHTTPStatus: true).isRefusal)
-        XCTAssertFalse(GeminiLiveServerClose(code: 429, reason: "", isHTTPStatus: true).isRefusal)
+        XCTAssertTrue(GeminiLiveServerClose(code: 429, reason: "", isHTTPStatus: true).isRefusal)
         XCTAssertFalse(GeminiLiveServerClose(code: 503, reason: "", isHTTPStatus: true).isRefusal)
         XCTAssertEqual(GeminiLiveServerClose(code: 403, reason: "", isHTTPStatus: true).summary, "HTTP 403")
         XCTAssertEqual(GeminiLiveServerClose(code: 1008, reason: "").summary, AppLocalization.string("close code \(String(1008))"))

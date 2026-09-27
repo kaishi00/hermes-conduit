@@ -25,22 +25,39 @@ struct GeminiLiveServerClose: Equatable {
     /// Codes that mean Google rejected what was sent (the setup, token or
     /// model), which a retry won't change: unsupported or invalid data,
     /// a policy violation, and the application-defined 4xxx range, or an
-    /// upgrade refused as bad, unauthorized, forbidden or not found. Going
-    /// away, abnormal, internal-error, rate-limit and 5xx stay retryable.
+    /// upgrade refused as bad, unauthorized, forbidden, not found or rate
+    /// limited. An exhausted quota is final too: every retry would only
+    /// spend more of it. Going away, abnormal, internal-error and 5xx
+    /// stay retryable.
     var isRefusal: Bool {
-        if isHTTPStatus { return [400, 401, 403, 404].contains(code) }
+        if isQuotaExhausted { return true }
+        if isHTTPStatus { return [400, 401, 403, 404, 429].contains(code) }
         return [1003, 1007, 1008].contains(code) || (4000...4999).contains(code)
+    }
+
+    var isQuotaExhausted: Bool {
+        let text = reason.lowercased()
+        return text.contains("quota") || text.contains("resource_exhausted") || text.contains("resource exhausted")
     }
 
     /// What the user is shown: the first line of Google's reason (capped),
     /// or the code when there is none.
     var summary: String {
-        let firstLine = reason.split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
-        guard !firstLine.isEmpty else {
+        var text = reason.split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
+        // Google appends "For more information on this error, head to: <url>";
+        // a link can't be followed from the sheet and would be cut mid-URL.
+        if let pointer = text.range(of: "For more information", options: .caseInsensitive) {
+            text = String(text[..<pointer.lowerBound])
+        }
+        text = text.trimmingCharacters(in: .whitespaces)
+        guard !text.isEmpty else {
             if isHTTPStatus { return "HTTP \(code)" }
             return AppLocalization.string("close code \(String(code))")
         }
-        return firstLine.count > 200 ? String(firstLine.prefix(200)) + "…" : firstLine
+        guard text.count > 300 else { return text }
+        let capped = text.prefix(300)
+        let cut = capped.lastIndex(of: " ") ?? capped.endIndex
+        return String(capped[..<cut]) + "…"
     }
 }
 
