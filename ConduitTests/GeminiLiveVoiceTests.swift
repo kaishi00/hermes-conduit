@@ -215,6 +215,19 @@ extension HermesVoiceGatewayTimeoutTests {
             XCTAssertEqual(error as? GeminiLiveTokenError, .unavailable(.unavailable(reason: "no key")))
         }
 
+        // Requests are scoped to the active profile like /api/audio/*, so the
+        // host reads that profile's key.
+        var paths: [String] = []
+        var profile = "default"
+        let scoped = GeminiLiveTokenClient(profile: { profile }, request: { path, _, _ in
+            paths.append(path)
+            return ["ok": true, "available": true, "model": "gemini-3.8-live"]
+        })
+        _ = try await scoped.availability()
+        profile = "work"
+        _ = try await scoped.availability()
+        XCTAssertEqual(paths, [GeminiLiveTokenClient.statusPath, GeminiLiveTokenClient.statusPath + "?profile=work"])
+
         // The plugin not being installed is reported, never papered over.
         let missing = GeminiLiveTokenClient(request: { _, _, _ in throw DashboardTicketBridgeError.http(status: 404, detail: "Not Found") })
         let status = try await missing.availability()

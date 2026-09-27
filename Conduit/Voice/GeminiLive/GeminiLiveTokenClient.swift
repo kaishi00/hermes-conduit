@@ -95,22 +95,30 @@ final class GeminiLiveTokenClient: GeminiLiveTokenProviding {
     typealias Request = @MainActor (_ path: String, _ method: String, _ body: [String: Any]?) async throws -> [String: Any]
 
     private let request: Request
+    /// The Hermes profile whose key the host should use, read at call time
+    /// (same `?profile=` scoping as /api/audio/*).
+    private let profile: @MainActor () -> String
 
-    init(request: @escaping Request) {
+    init(profile: @escaping @MainActor () -> String = { "default" }, request: @escaping Request) {
+        self.profile = profile
         self.request = request
     }
 
-    convenience init(bridge: DashboardTicketBridge) {
-        self.init(request: { [weak bridge] path, method, body in
+    convenience init(bridge: DashboardTicketBridge, profile: @escaping @MainActor () -> String) {
+        self.init(profile: profile, request: { [weak bridge] path, method, body in
             guard let bridge else { throw DashboardTicketBridgeError.notReady }
             return try await bridge.requestJSON(path: path, method: method, body: body)
         })
     }
 
+    private func scoped(_ path: String) -> String {
+        DashboardPath.withProfile(path, profile: profile())
+    }
+
     func availability() async throws -> GeminiLiveAvailability {
         let response: [String: Any]
         do {
-            response = try await request(Self.statusPath, "GET", nil)
+            response = try await request(scoped(Self.statusPath), "GET", nil)
         } catch let error as DashboardTicketBridgeError {
             if Self.isMissingRoute(error) { return .pluginMissing }
             throw error
@@ -121,7 +129,7 @@ final class GeminiLiveTokenClient: GeminiLiveTokenProviding {
     func freshToken() async throws -> GeminiLiveToken {
         let response: [String: Any]
         do {
-            response = try await request(Self.tokenPath, "POST", [:])
+            response = try await request(scoped(Self.tokenPath), "POST", [:])
         } catch let error as DashboardTicketBridgeError {
             if Self.isMissingRoute(error) { throw GeminiLiveTokenError.unavailable(.pluginMissing) }
             throw error

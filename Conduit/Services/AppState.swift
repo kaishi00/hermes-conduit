@@ -1269,7 +1269,9 @@ final class AppState: ObservableObject {
 
     /// Hermes-hosted Gemini Live credentials (the conduit_push plugin), read
     /// through whichever dashboard bridge is current at call time.
-    lazy var geminiLiveTokenClient = GeminiLiveTokenClient(request: { [weak self] path, method, body in
+    lazy var geminiLiveTokenClient = GeminiLiveTokenClient(profile: { [weak self] in
+        self?.activeProfile ?? "default"
+    }, request: { [weak self] path, method, body in
         guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
         return try await bridge.requestJSON(path: path, method: method, body: body)
     })
