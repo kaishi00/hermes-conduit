@@ -6,8 +6,10 @@ import XCTest
 /// main-thread cost fixes: the decoded store is reused instead of re-read on
 /// every call, the app's instance writes to disk off the main thread, and
 /// signatures come from a scalar pass instead of a regex.
-@MainActor
-final class SessionPresentationCacheStorageTests: XCTestCase {
+///
+/// An extension of the existing class, not a new one: the CI test planner is
+/// at its class capacity and fails validation when a class is added.
+extension SessionPresentationCacheTests {
 
     /// Stored signatures from earlier builds were made with the regex. The
     /// scalar pass must produce byte-identical text or every cached row would
