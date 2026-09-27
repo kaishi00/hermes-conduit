@@ -41,6 +41,8 @@ struct GeminiLiveServerClose: Equatable {
         let text = reason.lowercased().replacingOccurrences(of: "_", with: " ")
             .split(whereSeparator: \.isWhitespace).joined(separator: " ")
         return text.contains("exceeded your current quota") || text.contains("resource exhausted")
+            // gRPC's RESOURCE_EXHAUSTED text.
+            || text.contains("resource has been exhausted")
     }
 
     /// What the user is shown: the first line of Google's reason (capped),

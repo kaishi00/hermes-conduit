@@ -500,6 +500,7 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(GeminiLiveServerClose(code: 429, reason: "", isHTTPStatus: true).isRefusal, "a bare rate limit retries")
         XCTAssertTrue(GeminiLiveServerClose(code: 1011, reason: "RESOURCE_EXHAUSTED").isRefusal)
         XCTAssertTrue(GeminiLiveServerClose(code: 1011, reason: "RESOURCE  EXHAUSTED").isQuotaExhausted)
+        XCTAssertTrue(GeminiLiveServerClose(code: 1011, reason: "Resource has been exhausted (e.g. check quota).").isQuotaExhausted)
         XCTAssertEqual(GeminiLiveServerClose(code: 1008, reason: "Error: " + String(repeating: "x", count: 400)).summary.count, 301, "no cut at an early space")
         XCTAssertFalse(GeminiLiveServerClose(code: 1011, reason: "Rate limit exceeded. Your quota will reset in 30s.").isRefusal, "a passing throttle retries")
         XCTAssertEqual(GeminiLiveServerClose(code: 1008, reason: "For more information, see the setup docs").summary, "For more information, see the setup docs")
