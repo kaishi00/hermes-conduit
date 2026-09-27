@@ -215,6 +215,18 @@ final class GeminiLiveSession {
     func stop() {
         connectTask?.cancel()
         connectTask = nil
+        closeAllConnections()
+        state = .stopped
+    }
+
+    /// Ends the session with `message`: every connection (live, retiring
+    /// or still in setup) is closed and nothing from them is heard again.
+    private func fail(_ message: String) {
+        closeAllConnections()
+        state = .failed(message)
+    }
+
+    private func closeAllConnections() {
         awaitingSetup = nil
         receiveTask?.cancel()
         receiveTask = nil
@@ -225,7 +237,6 @@ final class GeminiLiveSession {
         retiringSocket?.close()
         retiringSocket = nil
         connectionID = UUID()
-        state = .stopped
     }
 
     func send(_ message: [String: Any], onFailure: (@MainActor () -> Void)?) {
@@ -259,12 +270,7 @@ final class GeminiLiveSession {
             guard !Task.isCancelled, state != .stopped else { return }
             // A missing plugin or key will not fix itself on retry.
             if error is GeminiLiveTokenError {
-                retireHandoff()
-                receiveTask?.cancel()
-                receiveTask = nil
-                socket?.close()
-                socket = nil
-                state = .failed(error.localizedDescription)
+                fail(error.localizedDescription)
                 return
             }
             await retry(after: attempt, error: error)
@@ -359,7 +365,7 @@ final class GeminiLiveSession {
     }
 
     private func connectionFailed(_ id: UUID, error: Error, serverClose: GeminiLiveServerClose? = nil) {
-        guard id == connectionID, state != .stopped else { return }
+        guard id == connectionID, state != .stopped, !isFailed else { return }
         // Never the error's description: it can carry the connection URL,
         // whose access_token is a live credential. Google's close reason
         // names the problem (a rejected model or token), not the token.
@@ -380,30 +386,19 @@ final class GeminiLiveSession {
         // Closed before setupComplete: a failed attempt, not a lost
         // connection. A deliberate refusal won't change on retry.
         if let serverClose, serverClose.isRefusal {
-            retireHandoff()
-            state = .failed(AppLocalization.string("Gemini Live refused the connection: \(serverClose.summary)"))
+            fail(AppLocalization.string("Gemini Live refused the connection: \(serverClose.summary)"))
             return
         }
         if let serverClose { lastSetupClose = serverClose }
         connectTask = Task { [weak self] in await self?.retry(after: pendingSetup.attempt, error: error) }
     }
 
-    /// The connection a GoAway handoff was replacing, closed when the
-    /// session gives up on the handoff.
-    private func retireHandoff() {
-        retiringReceiveTask?.cancel()
-        retiringReceiveTask = nil
-        retiringSocket?.close()
-        retiringSocket = nil
-    }
-
     private func retry(after attempt: Int, error: Error) async {
         guard attempt < Self.maximumReconnectAttempts else {
-            retireHandoff()
             if let close = lastSetupClose {
-                state = .failed(AppLocalization.string("Couldn't connect to Gemini Live: \(close.summary)"))
+                fail(AppLocalization.string("Couldn't connect to Gemini Live: \(close.summary)"))
             } else {
-                state = .failed(AppLocalization.string("Couldn't connect to Gemini Live."))
+                fail(AppLocalization.string("Couldn't connect to Gemini Live."))
             }
             return
         }
