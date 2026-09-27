@@ -70,6 +70,29 @@ final class FakeGeminiLiveSocket: GeminiLiveSocket {
         waiter?.resume(throwing: URLError(.cancelled))
         waiter = nil
     }
+
+    private var recordedClose: GeminiLiveServerClose?
+
+    /// The server ends the connection; `close` nil is a plain drop. Like
+    /// URLSession, the close is reported only after `receive()` has failed.
+    func serverClose(_ close: GeminiLiveServerClose?) {
+        closed = true
+        waiter?.resume(throwing: URLError(.networkConnectionLost))
+        waiter = nil
+        guard let close else { return }
+        Task { @MainActor [weak self] in
+            await Task.yield()
+            self?.recordedClose = close
+        }
+    }
+
+    func serverClose(within timeout: Duration) async -> GeminiLiveServerClose? {
+        for _ in 0..<(timeout == .zero ? 1 : 50) {
+            if let recordedClose { return recordedClose }
+            await Task.yield()
+        }
+        return recordedClose
+    }
 }
 
 @MainActor
@@ -322,6 +345,62 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(session.state, .ready)
         XCTAssertEqual(replaced, 1)
         session.stop()
+    }
+
+    func testGeminiLiveSetupRefusedByGoogleFailsWithItsReasonInsteadOfLooping() async throws {
+        let tokens = FakeGeminiLiveTokens()
+        let (session, sockets) = makeGeminiSession(tokens: tokens)
+        session.start()
+        await settle()
+        try XCTUnwrap(sockets().first).serverClose(.init(code: 1008, reason: "models/gemini-3.8-live is not found"))
+        await settle(80)
+
+        XCTAssertEqual(session.state, .failed(AppLocalization.string("Gemini Live refused the connection: \("models/gemini-3.8-live is not found")")))
+        XCTAssertEqual(sockets().count, 1, "a refused setup is not retried")
+        XCTAssertEqual(tokens.issued, 1)
+    }
+
+    func testGeminiLiveBenignClosesBeforeSetupRetryAndNameTheLastReason() async {
+        let tokens = FakeGeminiLiveTokens()
+        let (session, sockets) = makeGeminiSession(tokens: tokens)
+        session.start()
+        await driveUntilFailed(session) { sockets().last?.serverClose(.init(code: 1001, reason: "going away")) }
+
+        XCTAssertEqual(session.state, .failed(AppLocalization.string("Couldn't connect to Gemini Live: \("going away")")))
+        XCTAssertEqual(sockets().count, 1 + GeminiLiveSession.maximumReconnectAttempts)
+    }
+
+    func testGeminiLiveDropsBeforeSetupCountTowardTheRetryLimit() async {
+        let tokens = FakeGeminiLiveTokens()
+        let (session, sockets) = makeGeminiSession(tokens: tokens)
+        session.start()
+        await driveUntilFailed(session) { sockets().last?.serverClose(nil) }
+
+        XCTAssertEqual(session.state, .failed(AppLocalization.string("Couldn't connect to Gemini Live.")))
+        XCTAssertEqual(sockets().count, 1 + GeminiLiveSession.maximumReconnectAttempts)
+    }
+
+    func testGeminiLiveCloseCodesSplitRefusalsFromRetryableCloses() {
+        for code in [1003, 1007, 1008, 4003] {
+            XCTAssertTrue(GeminiLiveServerClose(code: code, reason: "").isRefusal, "\(code)")
+        }
+        for code in [1000, 1001, 1005, 1006, 1011] {
+            XCTAssertFalse(GeminiLiveServerClose(code: code, reason: "").isRefusal, "\(code)")
+        }
+        XCTAssertTrue(GeminiLiveServerClose(code: 403, reason: "", isHTTPStatus: true).isRefusal)
+        XCTAssertFalse(GeminiLiveServerClose(code: 429, reason: "", isHTTPStatus: true).isRefusal)
+        XCTAssertFalse(GeminiLiveServerClose(code: 503, reason: "", isHTTPStatus: true).isRefusal)
+        XCTAssertEqual(GeminiLiveServerClose(code: 403, reason: "", isHTTPStatus: true).summary, "HTTP 403")
+        XCTAssertEqual(GeminiLiveServerClose(code: 1008, reason: "").summary, AppLocalization.string("close code \(String(1008))"))
+    }
+
+    /// Closes each new connection before setup until the session gives up.
+    private func driveUntilFailed(_ session: GeminiLiveSession, close: () -> Void) async {
+        for _ in 0..<10 {
+            await settle(80)
+            if case .failed = session.state { return }
+            close()
+        }
     }
 
     func testGeminiLiveSessionFailsWithoutRetryWhenTheHostCannotServeIt() async {
