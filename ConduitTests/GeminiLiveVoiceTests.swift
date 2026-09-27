@@ -500,6 +500,7 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(GeminiLiveServerClose(code: 429, reason: "", isHTTPStatus: true).isRefusal, "a bare rate limit retries")
         XCTAssertTrue(GeminiLiveServerClose(code: 1011, reason: "RESOURCE_EXHAUSTED").isRefusal)
         XCTAssertTrue(GeminiLiveServerClose(code: 1011, reason: "RESOURCE  EXHAUSTED").isQuotaExhausted)
+        XCTAssertTrue(GeminiLiveServerClose(code: 1011, reason: "Resource has been exhausted (e.g. check quota).").isQuotaExhausted)
         XCTAssertEqual(GeminiLiveServerClose(code: 1008, reason: "Error: " + String(repeating: "x", count: 400)).summary.count, 301, "no cut at an early space")
         XCTAssertFalse(GeminiLiveServerClose(code: 1011, reason: "Rate limit exceeded. Your quota will reset in 30s.").isRefusal, "a passing throttle retries")
         XCTAssertEqual(GeminiLiveServerClose(code: 1008, reason: "For more information, see the setup docs").summary, "For more information, see the setup docs")
@@ -1004,5 +1005,160 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(input.running, "Capture comes back after the interruption")
         XCTAssertEqual(input.starts, 2)
         controller.stop()
+    }
+}
+
+// MARK: - Web lookups
+
+@MainActor
+final class FakeGeminiLiveWebSearch: GeminiLiveWebSearching {
+    var results: [GeminiLiveWebResult] = []
+    var error: Error?
+    private(set) var queries: [String] = []
+
+    func webSearch(query: String) async throws -> [GeminiLiveWebResult] {
+        queries.append(query)
+        if let error { throw error }
+        return results
+    }
+}
+
+@MainActor
+extension HermesVoiceGatewayTimeoutTests {
+    func testGeminiLiveSearchModeResolvesAutomaticToHermesOnlyWhenTheHostHasSearch() {
+        XCTAssertEqual(GeminiLiveSearchMode.automatic.resolved(hermesAvailable: true), .hermes)
+        XCTAssertEqual(GeminiLiveSearchMode.automatic.resolved(hermesAvailable: false), .google)
+        XCTAssertEqual(GeminiLiveSearchMode.hermes.resolved(hermesAvailable: false), .hermes)
+        XCTAssertEqual(GeminiLiveSearchMode.google.resolved(hermesAvailable: true), .google)
+        XCTAssertEqual(GeminiLiveSearchMode.off.resolved(hermesAvailable: true), GeminiLiveSearchSource.none)
+    }
+
+    func testGeminiLiveSearchPreferenceDecodesMissingOrUnknownModesAsAutomatic() throws {
+        let missing = try JSONDecoder().decode(VoiceProfilePreferences.self, from: Data(#"{"geminiLiveEnabled":true}"#.utf8))
+        XCTAssertNil(missing.geminiLiveSearch)
+        XCTAssertTrue(missing.geminiLiveEnabled)
+        let unknown = try JSONDecoder().decode(VoiceProfilePreferences.self, from: Data(#"{"geminiLiveEnabled":true,"geminiLiveSearch":"bing"}"#.utf8))
+        XCTAssertNil(unknown.geminiLiveSearch, "a newer build's mode must not fail the whole blob")
+        XCTAssertTrue(unknown.geminiLiveEnabled)
+        var preferences = VoiceProfilePreferences()
+        preferences.geminiLiveSearch = .hermes
+        let roundTrip = try JSONDecoder().decode(VoiceProfilePreferences.self, from: JSONEncoder().encode(preferences))
+        XCTAssertEqual(roundTrip.geminiLiveSearch, .hermes)
+    }
+
+    func testGeminiLiveHermesSearchDeclaresABlockingWebSearchInsteadOfGoogleSearch() throws {
+        let declarations = GeminiLiveToolBridge.declarations(webSearch: true)
+        let setup = try XCTUnwrap(GeminiLiveProtocol.setupMessage(
+            systemInstruction: GeminiLiveConversationController.instructions(search: .hermes),
+            functions: declarations,
+            googleSearch: false,
+            resumptionHandle: nil
+        )["setup"] as? [String: Any])
+        let tools = try XCTUnwrap(setup["tools"] as? [[String: Any]])
+        XCTAssertFalse(tools.contains { $0["googleSearch"] != nil })
+        let functions = try XCTUnwrap(tools.first?["functionDeclarations"] as? [[String: Any]])
+        XCTAssertEqual(functions.first { $0["name"] as? String == "web_search" }?["behavior"] as? String, "BLOCKING")
+        XCTAssertFalse(GeminiLiveToolBridge.declarations(webSearch: false).contains { $0.name == "web_search" })
+        XCTAssertTrue(GeminiLiveConversationController.instructions(search: .hermes).contains("web_search"))
+        XCTAssertTrue(GeminiLiveConversationController.instructions(search: .google).contains("Google Search"))
+        XCTAssertFalse(GeminiLiveConversationController.instructions(search: .none).contains("Google Search"))
+    }
+
+    func testGeminiLiveSessionWithoutGoogleSearchNeverAsksForIt() async throws {
+        let tokens = FakeGeminiLiveTokens()
+        var sockets: [FakeGeminiLiveSocket] = []
+        let session = GeminiLiveSession(
+            tokens: tokens,
+            systemInstruction: "test",
+            functions: GeminiLiveToolBridge.declarations(webSearch: true),
+            googleSearch: false,
+            openSocket: { url in
+                let socket = FakeGeminiLiveSocket(url: url)
+                sockets.append(socket)
+                return socket
+            },
+            reconnectDelay: { _ in }
+        )
+        session.start()
+        await settle()
+        let setup = try XCTUnwrap(sockets.first?.sent.first?["setup"] as? [String: Any])
+        XCTAssertFalse((setup["tools"] as? [[String: Any]] ?? []).contains { $0["googleSearch"] != nil })
+
+        // With no Search to drop, a spent quota is final.
+        try XCTUnwrap(sockets.first).serverClose(.init(code: 1011, reason: "You exceeded your current quota, please check your plan and billing details."))
+        await settle(80)
+        XCTAssertEqual(sockets.count, 1)
+        guard case .failed = session.state else { return XCTFail("Expected failed, got \(session.state)") }
+    }
+
+    func testGeminiLiveWebSearchAnswersFromTheHostsResults() async {
+        let (supervisor, backend) = makeJobsForSearch()
+        defer { withExtendedLifetime(backend) {} }
+        let search = FakeGeminiLiveWebSearch()
+        search.results = [
+            GeminiLiveWebResult(title: "Toronto weather", url: "https://example.com/w", snippet: "Sunny, 21°C"),
+            GeminiLiveWebResult(title: "Forecast", url: "https://example.com/f", snippet: "Rain tomorrow"),
+        ]
+        let bridge = GeminiLiveToolBridge(supervisor: supervisor, webSearch: search)
+
+        let answer = await bridge.handle(.init(id: "s1", name: "web_search", arguments: ["query": "  weather in Toronto "]))
+
+        XCTAssertEqual(search.queries, ["weather in Toronto"])
+        XCTAssertEqual(answer, [.toolResponse(
+            id: "s1",
+            name: "web_search",
+            result: ["results": "1. Toronto weather: Sunny, 21°C (https://example.com/w)\n2. Forecast: Rain tomorrow (https://example.com/f)"],
+            scheduling: nil
+        )])
+    }
+
+    func testGeminiLiveWebSearchReportsFailuresToTheModel() async {
+        let (supervisor, backend) = makeJobsForSearch()
+        defer { withExtendedLifetime(backend) {} }
+        let search = FakeGeminiLiveWebSearch()
+        search.error = DashboardTicketBridgeError.requestFailed("No web search provider configured.")
+        let bridge = GeminiLiveToolBridge(supervisor: supervisor, webSearch: search)
+
+        let failed = await bridge.handle(.init(id: "s1", name: "web_search", arguments: ["query": "news"]))
+        guard case .toolResponse(_, _, let result, let scheduling) = failed.first else { return XCTFail("Expected a response") }
+        XCTAssertNotNil(result["error"])
+        XCTAssertNil(scheduling)
+
+        let empty = await bridge.handle(.init(id: "s2", name: "web_search", arguments: [:]))
+        XCTAssertEqual(empty, [.toolResponse(id: "s2", name: "web_search", result: ["error": "query is required"], scheduling: nil)])
+        XCTAssertEqual(search.queries, ["news"])
+
+        let unwired = await GeminiLiveToolBridge(supervisor: supervisor).handle(.init(id: "s3", name: "web_search", arguments: ["query": "news"]))
+        XCTAssertEqual(unwired, [.toolResponse(id: "s3", name: "web_search", result: ["error": "web search is not available"], scheduling: nil)])
+    }
+
+    func testGeminiLiveWebSearchClientParsesResultsAndRequestsTheProfilesBackend() async throws {
+        var requests: [(String, String, [String: Any]?)] = []
+        let client = GeminiLiveTokenClient(profile: { "work" }, request: { path, method, body in
+            requests.append((path, method, body))
+            if path.contains("/web-search/status") { return ["ok": true, "available": true, "backend": "searxng"] }
+            return ["ok": true, "query": "news", "results": [
+                ["title": "A", "url": "https://a.example", "snippet": "first"],
+                ["title": "no url"],
+            ]]
+        })
+
+        let available = await client.webSearchAvailable()
+        let results = try await client.webSearch(query: "news")
+
+        XCTAssertTrue(available)
+        XCTAssertEqual(results, [GeminiLiveWebResult(title: "A", url: "https://a.example", snippet: "first")])
+        XCTAssertEqual(requests.map(\.1), ["GET", "POST"])
+        XCTAssertTrue(requests.allSatisfy { $0.0.contains("profile=work") })
+        XCTAssertEqual(requests.last?.2?["query"] as? String, "news")
+
+        let older = GeminiLiveTokenClient(request: { _, _, _ in throw DashboardTicketBridgeError.http(status: 404, detail: "") })
+        let olderAvailable = await older.webSearchAvailable()
+        XCTAssertFalse(olderAvailable, "a plugin without the route means no Hermes search")
+    }
+
+    private func makeJobsForSearch() -> (VoiceBackgroundJobSupervisor, FakeVoiceJobBackend) {
+        let fake = FakeVoiceJobBackend()
+        return (VoiceBackgroundJobSupervisor(backend: fake.backend, pollInterval: .seconds(3_600)), fake)
     }
 }

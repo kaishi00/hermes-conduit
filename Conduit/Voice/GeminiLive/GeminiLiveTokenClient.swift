@@ -85,10 +85,27 @@ protocol GeminiLiveTokenProviding: AnyObject {
     func freshToken() async throws -> GeminiLiveToken
 }
 
+/// One web result for a quick lookup.
+struct GeminiLiveWebResult: Equatable {
+    let title: String
+    let url: String
+    let snippet: String
+}
+
+/// Quick lookups on the Hermes host's own web search backend.
 @MainActor
-final class GeminiLiveTokenClient: GeminiLiveTokenProviding {
+protocol GeminiLiveWebSearching: AnyObject {
+    func webSearch(query: String) async throws -> [GeminiLiveWebResult]
+}
+
+@MainActor
+final class GeminiLiveTokenClient: GeminiLiveTokenProviding, GeminiLiveWebSearching {
     static let statusPath = "/api/plugins/conduit_push/gemini-live/status"
     static let tokenPath = "/api/plugins/conduit_push/gemini-live/token"
+    static let webSearchStatusPath = "/api/plugins/conduit_push/web-search/status"
+    static let webSearchPath = "/api/plugins/conduit_push/web-search"
+    /// Results a lookup asks for: enough to answer, short enough to read.
+    static let webSearchLimit = 3
 
     /// The authenticated dashboard request, injected so tests can script
     /// responses. Production binds it to `DashboardTicketBridge.requestJSON`.
@@ -137,7 +154,33 @@ final class GeminiLiveTokenClient: GeminiLiveTokenProviding {
         return try Self.token(from: response)
     }
 
+    /// Whether the host can answer quick lookups with its own backend. Any
+    /// failure (an older plugin without the route, no backend) is false.
+    func webSearchAvailable() async -> Bool {
+        guard let response = try? await request(scoped(Self.webSearchStatusPath), "GET", nil) else { return false }
+        return response["ok"] as? Bool == true && response["available"] as? Bool == true
+    }
+
+    func webSearch(query: String) async throws -> [GeminiLiveWebResult] {
+        let response = try await request(scoped(Self.webSearchPath), "POST", ["query": query, "limit": Self.webSearchLimit])
+        return try Self.webResults(from: response)
+    }
+
     // MARK: Parsing (static for tests)
+
+    static func webResults(from response: [String: Any]) throws -> [GeminiLiveWebResult] {
+        guard response["ok"] as? Bool == true, let items = response["results"] as? [[String: Any]] else {
+            throw GeminiLiveTokenError.malformedResponse
+        }
+        return items.compactMap { item in
+            guard let url = item["url"] as? String, !url.isEmpty else { return nil }
+            return GeminiLiveWebResult(
+                title: item["title"] as? String ?? "",
+                url: url,
+                snippet: item["snippet"] as? String ?? ""
+            )
+        }
+    }
 
     static func isMissingRoute(_ error: DashboardTicketBridgeError) -> Bool {
         if case .http(let status, _) = error { return status == 404 || status == 410 }

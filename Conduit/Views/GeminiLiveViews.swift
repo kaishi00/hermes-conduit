@@ -13,11 +13,14 @@ struct GeminiLiveSettingsModel {
     var setEnabled: (Bool) -> Void
     /// Asks the Hermes host whether it can serve Gemini Live.
     var checkAvailability: () async -> Result<GeminiLiveAvailability, Error>
+    var search: GeminiLiveSearchMode = .automatic
+    var setSearch: (GeminiLiveSearchMode) -> Void = { _ in }
 }
 
 struct GeminiLiveSettingsSection: View {
     let model: GeminiLiveSettingsModel
     @State private var enabled: Bool
+    @State private var search: GeminiLiveSearchMode
     @State private var status: String?
     @State private var isAvailable: Bool?
     @State private var isChecking = false
@@ -25,6 +28,7 @@ struct GeminiLiveSettingsSection: View {
     init(model: GeminiLiveSettingsModel) {
         self.model = model
         _enabled = State(initialValue: model.enabled)
+        _search = State(initialValue: model.search)
     }
 
     var body: some View {
@@ -60,11 +64,28 @@ struct GeminiLiveSettingsSection: View {
                 }
                 .disabled(isChecking)
                 .conduitGlassControl(cornerRadius: 16, tint: .conduitAura.opacity(0.14))
+                Picker("Web lookups", selection: Binding(
+                    get: { search },
+                    set: { chosen in
+                        search = chosen
+                        model.setSearch(chosen)
+                    }
+                )) {
+                    Text("Automatic").tag(GeminiLiveSearchMode.automatic)
+                    Text("Hermes web search").tag(GeminiLiveSearchMode.hermes)
+                    Text("Google Search").tag(GeminiLiveSearchMode.google)
+                    Text("Off").tag(GeminiLiveSearchMode.off)
+                }
+                .pickerStyle(.menu)
+                Text("How Gemini answers quick questions like weather or news. Hermes web search uses the search your Hermes server is set up with (SearXNG, Firecrawl…). Google Search has its own quota on your Gemini key. Automatic uses Hermes when it has a search set up, otherwise Google. Applies to the next conversation.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
         .task { if enabled { await check() } }
         // A profile switch can change the preference under a retained view.
         .onChange(of: model.enabled) { _, newValue in enabled = newValue }
+        .onChange(of: model.search) { _, newValue in search = newValue }
     }
 
     private func check() async {

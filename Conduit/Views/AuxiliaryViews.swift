@@ -552,7 +552,9 @@ struct SettingsView: View {
                             } catch {
                                 return .failure(error)
                             }
-                        }
+                        },
+                        search: appState.geminiLiveSearchMode,
+                        setSearch: { appState.setGeminiLiveSearchMode($0) }
                     ),
                     voiceJobs: VoiceJobModelSettingsModel(
                         provider: voicePreferences.voiceJobProvider,

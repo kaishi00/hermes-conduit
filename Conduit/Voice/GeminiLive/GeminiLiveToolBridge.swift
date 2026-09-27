@@ -13,6 +13,9 @@
 //  answers and BLOCKING. Approvals and clarifications are never answered by
 //  voice: a job that needs input tells the user to open it in Conduit.
 //
+//  web_search (offered only when lookups run on the Hermes host) is
+//  BLOCKING: a quick lookup the model answers from as soon as it returns.
+//
 
 import Foundation
 
@@ -35,6 +38,7 @@ final class GeminiLiveToolBridge {
         case startJob = "start_job"
         case listJobs = "list_jobs"
         case cancelJob = "cancel_job"
+        case webSearch = "web_search"
     }
 
     /// What the bridge asks the session to send.
@@ -51,6 +55,28 @@ final class GeminiLiveToolBridge {
             return false
         }
     }
+
+    /// The declarations for a session, with web_search when its lookups run
+    /// on the Hermes host.
+    static func declarations(webSearch: Bool) -> [GeminiLiveProtocol.FunctionDeclaration] {
+        webSearch ? functionDeclarations + [webSearchDeclaration] : functionDeclarations
+    }
+
+    static let webSearchDeclaration = GeminiLiveProtocol.FunctionDeclaration(
+        name: Tool.webSearch.rawValue,
+        description: "Search the web for current information: weather, news, sports, prices, and other quick facts. Returns titles, snippets and URLs. Answer from them in a sentence or two; don't read URLs aloud.",
+        parameters: [
+            "type": "OBJECT",
+            "properties": [
+                "query": [
+                    "type": "STRING",
+                    "description": "A short web search query.",
+                ],
+            ],
+            "required": ["query"],
+        ],
+        behavior: .blocking
+    )
 
     static let functionDeclarations: [GeminiLiveProtocol.FunctionDeclaration] = [
         .init(
@@ -91,13 +117,15 @@ final class GeminiLiveToolBridge {
     ]
 
     private let supervisor: GeminiLiveJobSupervising
+    private let webSearch: GeminiLiveWebSearching?
     /// Open start_job calls, keyed by the job they started.
     private var openCalls: [UUID: String] = [:]
     /// Calls the model withdrew before their start_job finished starting.
     private var withdrawnCallIDs: Set<String> = []
 
-    init(supervisor: GeminiLiveJobSupervising) {
+    init(supervisor: GeminiLiveJobSupervising, webSearch: GeminiLiveWebSearching? = nil) {
         self.supervisor = supervisor
+        self.webSearch = webSearch
     }
 
     var openCallCount: Int { openCalls.count }
@@ -150,6 +178,8 @@ final class GeminiLiveToolBridge {
             // Close the open start_job calls of what was just cancelled.
             outgoing += settleOpenCalls()
             return outgoing
+        case .webSearch:
+            return [.toolResponse(id: call.id, name: call.name, result: await searchResult(call.arguments["query"]), scheduling: nil)]
         case nil:
             return [.toolResponse(id: call.id, name: call.name, result: ["error": "unknown function"], scheduling: .whenIdle)]
         }
@@ -221,6 +251,28 @@ final class GeminiLiveToolBridge {
             outgoing.append(.toolResponse(id: callID, name: Tool.startJob.rawValue, result: result, scheduling: scheduling))
         }
         return outgoing
+    }
+
+    private func searchResult(_ rawQuery: String?) async -> [String: String] {
+        let query = rawQuery?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !query.isEmpty else { return ["error": "query is required"] }
+        guard let webSearch else { return ["error": "web search is not available"] }
+        do {
+            let results = try await webSearch.webSearch(query: query)
+            guard !results.isEmpty else { return ["results": "No results."] }
+            return ["results": Self.searchSummary(results)]
+        } catch {
+            // The host's own reason ("No web search provider configured…")
+            // lets the model tell the user what's wrong.
+            return ["error": error.localizedDescription]
+        }
+    }
+
+    /// Results as numbered lines for the model. Not UI copy.
+    static func searchSummary(_ results: [GeminiLiveWebResult]) -> String {
+        results.enumerated().map { index, result in
+            "\(index + 1). \(result.title): \(result.snippet) (\(result.url))"
+        }.joined(separator: "\n")
     }
 
     private func listResult() -> [String: String] {

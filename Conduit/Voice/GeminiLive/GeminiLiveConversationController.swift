@@ -133,15 +133,26 @@ final class GeminiLiveConversationController: ObservableObject {
 
     /// Instructions for the live model. Written for the model, not shown as
     /// UI copy, so not localized.
-    static let systemInstruction = """
+    static func instructions(search: GeminiLiveSearchSource) -> String {
+        let lookups: String
+        switch search {
+        case .google:
+            lookups = "For weather, news, sports, prices, and other quick facts from the web, use Google Search and answer directly."
+        case .hermes:
+            lookups = "For weather, news, sports, prices, and other quick facts from the web, call web_search and answer directly from its results."
+        case .none:
+            lookups = "You can't search the web yourself. When a question needs current information from the web, offer to start a job for it."
+        }
+        return """
     You are the voice of the user's Hermes agent, speaking with them through the Conduit iPhone app. Keep replies short and conversational: this is speech, not text.
     Never speak while the user is speaking. If they interrupt you, stop and listen. If you have nothing useful to add, stay silent rather than filling the pause.
-    Answer quick questions yourself. For weather, news, sports, prices, and other quick facts from the web, use Google Search and answer directly.
+    Answer quick questions yourself. \(lookups)
     Call start_job only for work that needs the user's Hermes agent: their files, code, systems, accounts, or longer multi-step research. Pass the complete task. Every time you call start_job, first say a very short acknowledgement out loud, like "On it, I'll have Hermes look into that." Then carry on with the conversation; the job runs on Hermes in the background.
     Do not comment on how a job is progressing unless the user asks; use list_jobs when they do. When a job's result arrives, tell the user the outcome once, in a few spoken sentences, when the conversation is quiet.
     Never approve, deny, or answer anything on a job's behalf. If a job needs input, tell the user to open it in Conduit.
     Use cancel_job only when the user asks to cancel.
     """
+    }
 
     /// Quiet time after the user's last recognized speech before Conduit
     /// sends a job update of its own.

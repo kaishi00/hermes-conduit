@@ -144,6 +144,8 @@ struct VoiceProfilePreferences: Codable, Equatable {
     var transcriptionMode: VoiceTranscriptionMode? = nil
     /// Opt-in Gemini Live voice mode (off by default; older blobs decode off).
     var geminiLiveEnabled: Bool = false
+    /// Where Gemini Live's quick lookups search. Nil is automatic.
+    var geminiLiveSearch: GeminiLiveSearchMode? = nil
     /// Model for the Hermes sessions voice background jobs create. Nil keeps
     /// the profile's current model (the pre-existing behavior).
     var voiceJobModel: String? = nil
@@ -189,6 +191,9 @@ struct VoiceProfilePreferences: Codable, Equatable {
         } ?? VoiceSpokenCommands.defaultEndConversationPhrases
         transcriptionMode = try container.decodeIfPresent(VoiceTranscriptionMode.self, forKey: .transcriptionMode)
         geminiLiveEnabled = try container.decodeIfPresent(Bool.self, forKey: .geminiLiveEnabled) ?? false
+        // An unknown mode (a newer build's) falls back to automatic rather
+        // than failing the whole blob.
+        geminiLiveSearch = (try? container.decodeIfPresent(GeminiLiveSearchMode.self, forKey: .geminiLiveSearch)) ?? nil
         voiceJobModel = try container.decodeIfPresent(String.self, forKey: .voiceJobModel)
         voiceJobProvider = try container.decodeIfPresent(String.self, forKey: .voiceJobProvider)
         voiceJobReasoningEffort = try container.decodeIfPresent(String.self, forKey: .voiceJobReasoningEffort)
@@ -208,6 +213,34 @@ struct VoiceProfilePreferences: Codable, Equatable {
             reasoning
         )
     }
+}
+
+/// The user's choice for Gemini Live's quick lookups (weather, news, facts).
+enum GeminiLiveSearchMode: String, Codable, Equatable, CaseIterable {
+    /// The Hermes host's own web search when it has one, else Google Search.
+    case automatic
+    /// The Hermes host's web search backend (SearXNG, Firecrawl…).
+    case hermes
+    /// Gemini's built-in Google Search, metered by Google on its own quota.
+    case google
+    /// No web lookups; web questions become Hermes jobs.
+    case off
+
+    func resolved(hermesAvailable: Bool) -> GeminiLiveSearchSource {
+        switch self {
+        case .automatic: return hermesAvailable ? .hermes : .google
+        case .hermes: return .hermes
+        case .google: return .google
+        case .off: return .none
+        }
+    }
+}
+
+/// What a Gemini Live session actually searches with.
+enum GeminiLiveSearchSource: Equatable {
+    case hermes
+    case google
+    case none
 }
 
 enum VoiceTranscriptionMode: String, Codable, Equatable {

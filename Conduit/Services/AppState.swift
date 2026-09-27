@@ -1274,6 +1274,31 @@ final class AppState: ObservableObject {
         return (try? await client.modelOptions(sessionId: activeSessionId))?.2 ?? []
     }
 
+    /// Where Gemini Live's quick lookups search on this profile.
+    var geminiLiveSearchMode: GeminiLiveSearchMode {
+        loadVoiceProfilePreferences(profile: activeProfile).geminiLiveSearch ?? .automatic
+    }
+
+    /// Applies from the next Gemini Live conversation.
+    func setGeminiLiveSearchMode(_ mode: GeminiLiveSearchMode) {
+        var preferences = loadVoiceProfilePreferences(profile: activeProfile)
+        let stored: GeminiLiveSearchMode? = mode == .automatic ? nil : mode
+        guard preferences.geminiLiveSearch != stored else { return }
+        objectWillChange.send()
+        preferences.geminiLiveSearch = stored
+        saveVoiceProfilePreferences(preferences, profile: activeProfile)
+    }
+
+    /// The search the next Gemini Live session uses, resolved when it
+    /// starts (automatic asks the host whether it has a search backend).
+    private var geminiLiveSearchSource: GeminiLiveSearchSource = .google
+
+    private func resolveGeminiLiveSearchSource() async -> GeminiLiveSearchSource {
+        let mode = geminiLiveSearchMode
+        let hermesAvailable = mode == .automatic ? await geminiLiveTokenClient.webSearchAvailable() : false
+        return mode.resolved(hermesAvailable: hermesAvailable)
+    }
+
     func setGeminiLiveEnabled(_ enabled: Bool) {
         var preferences = loadVoiceProfilePreferences(profile: activeProfile)
         guard preferences.geminiLiveEnabled != enabled else { return }
@@ -1305,15 +1330,25 @@ final class AppState: ObservableObject {
         geminiLiveControllerCreated = true
         let tokens = geminiLiveTokenClient
         return GeminiLiveConversationController(
-            makeSession: {
-                GeminiLiveSession(
+            makeSession: { [weak self] in
+                let search = self?.geminiLiveSearchSource ?? .google
+                return GeminiLiveSession(
                     tokens: tokens,
-                    systemInstruction: GeminiLiveConversationController.systemInstruction,
-                    functions: GeminiLiveToolBridge.functionDeclarations
+                    systemInstruction: GeminiLiveConversationController.instructions(search: search),
+                    functions: GeminiLiveToolBridge.declarations(webSearch: search == .hermes),
+                    googleSearch: search == .google
                 )
             },
-            availability: { try await tokens.availability() },
-            tools: GeminiLiveToolBridge(supervisor: self.voiceBackgroundJobSupervisor),
+            availability: { [weak self] in
+                let status = try await tokens.availability()
+                // Resolved before each conversation, so a changed setting or
+                // a newly configured host backend applies on the next one.
+                if status.isAvailable, let self {
+                    self.geminiLiveSearchSource = await self.resolveGeminiLiveSearchSource()
+                }
+                return status
+            },
+            tools: GeminiLiveToolBridge(supervisor: self.voiceBackgroundJobSupervisor, webSearch: tokens),
             input: CaptureServiceGeminiLiveInput(capture: AVAudioCaptureService()),
             output: PlaybackServiceGeminiLiveOutput(playback: AVSpeechPlaybackService())
         )
