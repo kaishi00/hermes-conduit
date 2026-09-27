@@ -1152,6 +1152,10 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertTrue(requests.allSatisfy { $0.0.contains("profile=work") })
         XCTAssertEqual(requests.last?.2?["query"] as? String, "news")
 
+        XCTAssertThrowsError(try GeminiLiveTokenClient.webResults(from: ["ok": false, "detail": "No web search provider configured."])) { error in
+            XCTAssertEqual(error.localizedDescription, "No web search provider configured.")
+        }
+
         let older = GeminiLiveTokenClient(request: { _, _, _ in throw DashboardTicketBridgeError.http(status: 404, detail: "") })
         let olderAvailable = await older.webSearchAvailable()
         XCTAssertFalse(olderAvailable, "a plugin without the route means no Hermes search")

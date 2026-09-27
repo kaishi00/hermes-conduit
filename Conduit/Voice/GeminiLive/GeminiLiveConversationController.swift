@@ -141,7 +141,7 @@ final class GeminiLiveConversationController: ObservableObject {
         case .hermes:
             lookups = "For weather, news, sports, prices, and other quick facts from the web, call web_search and answer directly from its results."
         case .none:
-            lookups = "You can't search the web yourself. When a question needs current information from the web, offer to start a job for it."
+            lookups = "You have no web search. A question that needs current information from the web (weather, news, prices) is work for Hermes: offer to start a job for it."
         }
         return """
     You are the voice of the user's Hermes agent, speaking with them through the Conduit iPhone app. Keep replies short and conversational: this is speech, not text.

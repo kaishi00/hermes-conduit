@@ -63,6 +63,13 @@ struct GeminiLiveToken: Equatable {
     }
 }
 
+/// A quick lookup the host couldn't answer. Its text goes to the model,
+/// not the screen.
+struct GeminiLiveWebSearchError: LocalizedError, Equatable {
+    let reason: String
+    var errorDescription: String? { reason }
+}
+
 enum GeminiLiveTokenError: LocalizedError, Equatable {
     case unavailable(GeminiLiveAvailability)
     case malformedResponse
@@ -170,7 +177,8 @@ final class GeminiLiveTokenClient: GeminiLiveTokenProviding, GeminiLiveWebSearch
 
     static func webResults(from response: [String: Any]) throws -> [GeminiLiveWebResult] {
         guard response["ok"] as? Bool == true, let items = response["results"] as? [[String: Any]] else {
-            throw GeminiLiveTokenError.malformedResponse
+            let reason = response["detail"] as? String ?? response["error"] as? String ?? response["reason"] as? String
+            throw GeminiLiveWebSearchError(reason: reason.flatMap { $0.isEmpty ? nil : $0 } ?? "The Hermes web search returned no results")
         }
         return items.compactMap { item in
             guard let url = item["url"] as? String, !url.isEmpty else { return nil }
