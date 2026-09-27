@@ -146,6 +146,9 @@ struct VoiceProfilePreferences: Codable, Equatable {
     var geminiLiveEnabled: Bool = false
     /// Where Gemini Live's quick lookups search. Nil is automatic.
     var geminiLiveSearch: GeminiLiveSearchMode? = nil
+    /// Gemini Live's prebuilt voice ("Kore", "Puck"…). Nil is Gemini's
+    /// default voice.
+    var geminiLiveVoice: String? = nil
     /// Model for the Hermes sessions voice background jobs create. Nil keeps
     /// the profile's current model (the pre-existing behavior).
     var voiceJobModel: String? = nil
@@ -194,6 +197,7 @@ struct VoiceProfilePreferences: Codable, Equatable {
         // An unknown mode (a newer build's) falls back to automatic rather
         // than failing the whole blob.
         geminiLiveSearch = (try? container.decodeIfPresent(GeminiLiveSearchMode.self, forKey: .geminiLiveSearch)) ?? nil
+        geminiLiveVoice = (try? container.decodeIfPresent(String.self, forKey: .geminiLiveVoice)) ?? nil
         voiceJobModel = try container.decodeIfPresent(String.self, forKey: .voiceJobModel)
         voiceJobProvider = try container.decodeIfPresent(String.self, forKey: .voiceJobProvider)
         voiceJobReasoningEffort = try container.decodeIfPresent(String.self, forKey: .voiceJobReasoningEffort)
@@ -233,6 +237,52 @@ enum GeminiLiveSearchMode: String, Codable, Equatable, CaseIterable {
         case .google: return .google
         case .off: return .none
         }
+    }
+}
+
+/// A prebuilt Gemini Live voice: its API name and Google's one-word
+/// description of how it sounds.
+struct GeminiLiveVoice: Equatable, Identifiable {
+    let name: String
+    let style: String
+
+    var id: String { name }
+
+    /// Google's prebuilt voices for native-audio models, in Google's order.
+    /// Computed so the descriptions follow the current app language.
+    static var all: [GeminiLiveVoice] {
+        [
+            GeminiLiveVoice(name: "Zephyr", style: AppLocalization.string("Bright")),
+            GeminiLiveVoice(name: "Puck", style: AppLocalization.string("Upbeat")),
+            GeminiLiveVoice(name: "Charon", style: AppLocalization.string("Informative")),
+            GeminiLiveVoice(name: "Kore", style: AppLocalization.string("Firm")),
+            GeminiLiveVoice(name: "Fenrir", style: AppLocalization.string("Excitable")),
+            GeminiLiveVoice(name: "Leda", style: AppLocalization.string("Youthful")),
+            GeminiLiveVoice(name: "Orus", style: AppLocalization.string("Firm")),
+            GeminiLiveVoice(name: "Aoede", style: AppLocalization.string("Breezy")),
+            GeminiLiveVoice(name: "Callirrhoe", style: AppLocalization.string("Easy-going")),
+            GeminiLiveVoice(name: "Autonoe", style: AppLocalization.string("Bright")),
+            GeminiLiveVoice(name: "Enceladus", style: AppLocalization.string("Breathy")),
+            GeminiLiveVoice(name: "Iapetus", style: AppLocalization.string("Clear")),
+            GeminiLiveVoice(name: "Umbriel", style: AppLocalization.string("Easy-going")),
+            GeminiLiveVoice(name: "Algieba", style: AppLocalization.string("Smooth")),
+            GeminiLiveVoice(name: "Despina", style: AppLocalization.string("Smooth")),
+            GeminiLiveVoice(name: "Erinome", style: AppLocalization.string("Clear")),
+            GeminiLiveVoice(name: "Algenib", style: AppLocalization.string("Gravelly")),
+            GeminiLiveVoice(name: "Rasalgethi", style: AppLocalization.string("Informative")),
+            GeminiLiveVoice(name: "Laomedeia", style: AppLocalization.string("Upbeat")),
+            GeminiLiveVoice(name: "Achernar", style: AppLocalization.string("Soft")),
+            GeminiLiveVoice(name: "Alnilam", style: AppLocalization.string("Firm")),
+            GeminiLiveVoice(name: "Schedar", style: AppLocalization.string("Even")),
+            GeminiLiveVoice(name: "Gacrux", style: AppLocalization.string("Mature")),
+            GeminiLiveVoice(name: "Pulcherrima", style: AppLocalization.string("Forward")),
+            GeminiLiveVoice(name: "Achird", style: AppLocalization.string("Friendly")),
+            GeminiLiveVoice(name: "Zubenelgenubi", style: AppLocalization.string("Casual")),
+            GeminiLiveVoice(name: "Vindemiatrix", style: AppLocalization.string("Gentle")),
+            GeminiLiveVoice(name: "Sadachbia", style: AppLocalization.string("Lively")),
+            GeminiLiveVoice(name: "Sadaltager", style: AppLocalization.string("Knowledgeable")),
+            GeminiLiveVoice(name: "Sulafat", style: AppLocalization.string("Warm")),
+        ]
     }
 }
 

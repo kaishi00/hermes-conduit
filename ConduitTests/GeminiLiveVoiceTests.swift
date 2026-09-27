@@ -1166,3 +1166,53 @@ extension HermesVoiceGatewayTimeoutTests {
         return (VoiceBackgroundJobSupervisor(backend: fake.backend, pollInterval: .seconds(3_600)), fake)
     }
 }
+
+// MARK: - Transcript joins and voice
+
+@MainActor
+extension HermesVoiceGatewayTimeoutTests {
+    func testGeminiLiveTranscriptJoinRestoresTheSpaceGeminiDropsBetweenChunks() {
+        let join = GeminiLiveConversationController.joinTranscriptChunk
+        XCTAssertEqual(join("Could you", "please"), "Could you please")
+        XCTAssertEqual(join("It was", "released"), "It was released")
+        XCTAssertEqual(join("It's in", "Chesapeake"), "It's in Chesapeake")
+        XCTAssertEqual(join("Sure.", "Here"), "Sure. Here")
+        // Chunks that already carry their space are left alone.
+        XCTAssertEqual(join("Could you", " please"), "Could you please")
+        XCTAssertEqual(join("Could you ", "please"), "Could you please")
+        // Punctuation and contractions attach to the word before them.
+        XCTAssertEqual(join("those tools", "."), "those tools.")
+        XCTAssertEqual(join("that", "'s"), "that's")
+        XCTAssertEqual(join("version 3.", "5"), "version 3.5")
+        // Scripts written without spaces are joined as they are.
+        XCTAssertEqual(join("今天", "天气"), "今天天气")
+        XCTAssertEqual(join("", "Hello"), "Hello")
+    }
+
+    func testGeminiLiveSetupSendsTheChosenVoiceAndOmitsItForTheDefault() throws {
+        let chosen = try XCTUnwrap(GeminiLiveProtocol.setupMessage(
+            systemInstruction: "", functions: [], voice: "Kore", resumptionHandle: nil
+        )["setup"] as? [String: Any])
+        let config = try XCTUnwrap(chosen["generationConfig"] as? [String: Any])
+        let speech = try XCTUnwrap(config["speechConfig"] as? [String: Any])
+        let voice = try XCTUnwrap(speech["voiceConfig"] as? [String: Any])
+        let prebuilt = try XCTUnwrap(voice["prebuiltVoiceConfig"] as? [String: Any])
+        XCTAssertEqual(prebuilt["voiceName"] as? String, "Kore")
+        XCTAssertEqual(config["responseModalities"] as? [String], ["AUDIO"])
+
+        let standard = try XCTUnwrap(GeminiLiveProtocol.setupMessage(
+            systemInstruction: "", functions: [], resumptionHandle: nil
+        )["setup"] as? [String: Any])
+        XCTAssertNil((standard["generationConfig"] as? [String: Any])?["speechConfig"])
+    }
+
+    func testGeminiLiveVoicePreferenceRoundTripsAndDefaultsToGemini() throws {
+        let missing = try JSONDecoder().decode(VoiceProfilePreferences.self, from: Data(#"{"geminiLiveEnabled":true}"#.utf8))
+        XCTAssertNil(missing.geminiLiveVoice)
+        var preferences = VoiceProfilePreferences()
+        preferences.geminiLiveVoice = "Puck"
+        let roundTrip = try JSONDecoder().decode(VoiceProfilePreferences.self, from: JSONEncoder().encode(preferences))
+        XCTAssertEqual(roundTrip.geminiLiveVoice, "Puck")
+        XCTAssertEqual(Set(GeminiLiveVoice.all.map(\.name)).count, GeminiLiveVoice.all.count)
+    }
+}
