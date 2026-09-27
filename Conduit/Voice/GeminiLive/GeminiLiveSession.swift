@@ -25,19 +25,19 @@ struct GeminiLiveServerClose: Equatable {
     /// Codes that mean Google rejected what was sent (the setup, token or
     /// model), which a retry won't change: unsupported or invalid data,
     /// a policy violation, and the application-defined 4xxx range, or an
-    /// upgrade refused as bad, unauthorized, forbidden, not found or rate
-    /// limited. An exhausted quota is final too: every retry would only
-    /// spend more of it. Going away, abnormal, internal-error and 5xx
-    /// stay retryable.
+    /// upgrade refused as bad, unauthorized, forbidden or not found. An
+    /// exhausted quota is final too: every retry would only spend more of
+    /// it. Going away, abnormal, internal-error, a bare rate limit (429)
+    /// and 5xx stay retryable.
     var isRefusal: Bool {
         if isQuotaExhausted { return true }
-        if isHTTPStatus { return [400, 401, 403, 404, 429].contains(code) }
+        if isHTTPStatus { return [400, 401, 403, 404].contains(code) }
         return [1003, 1007, 1008].contains(code) || (4000...4999).contains(code)
     }
 
     var isQuotaExhausted: Bool {
-        let text = reason.lowercased()
-        return text.contains("quota") || text.contains("resource_exhausted") || text.contains("resource exhausted")
+        let text = reason.lowercased().replacingOccurrences(of: "_", with: " ")
+        return text.contains("quota") || text.contains("resource exhausted")
     }
 
     /// What the user is shown: the first line of Google's reason (capped),
@@ -321,8 +321,15 @@ final class GeminiLiveSession {
         do {
             try await socket.send(try GeminiLiveProtocol.encode(setup))
         } catch {
+            // A refused WebSocket upgrade surfaces here, on the first send.
+            let close = await socket.serverClose(within: .milliseconds(400))
             socket.close()
-            guard !Task.isCancelled, state != .stopped else { return }
+            guard !Task.isCancelled, state != .stopped, !isFailed else { return }
+            if let close, close.isRefusal {
+                fail(AppLocalization.string("Gemini Live refused the connection: \(close.summary)"))
+                return
+            }
+            if let close { lastSetupClose = close }
             await retry(after: attempt, error: error)
             return
         }

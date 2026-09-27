@@ -43,9 +43,17 @@ final class FakeGeminiLiveSocket: GeminiLiveSocket {
     private var inbox: [Data] = []
     private var waiter: CheckedContinuation<Data, Error>?
 
+    /// Set to make the WebSocket upgrade fail the way URLSession reports it:
+    /// the first send throws and the refusal is readable afterwards.
+    var upgradeRefusal: GeminiLiveServerClose?
+
     init(url: URL) { self.url = url }
 
     func send(_ text: String) async throws {
+        if let upgradeRefusal {
+            recordedClose = upgradeRefusal
+            throw URLError(.badServerResponse)
+        }
         sent.append((try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any]) ?? [:])
     }
 
@@ -280,7 +288,10 @@ extension HermesVoiceGatewayTimeoutTests {
 
 @MainActor
 extension VoiceConversationControllerTests {
-    private func makeGeminiSession(tokens: FakeGeminiLiveTokens) -> (GeminiLiveSession, () -> [FakeGeminiLiveSocket]) {
+    private func makeGeminiSession(
+        tokens: FakeGeminiLiveTokens,
+        upgradeRefusal: GeminiLiveServerClose? = nil
+    ) -> (GeminiLiveSession, () -> [FakeGeminiLiveSocket]) {
         var sockets: [FakeGeminiLiveSocket] = []
         let session = GeminiLiveSession(
             tokens: tokens,
@@ -288,6 +299,7 @@ extension VoiceConversationControllerTests {
             functions: GeminiLiveToolBridge.functionDeclarations,
             openSocket: { url in
                 let socket = FakeGeminiLiveSocket(url: url)
+                socket.upgradeRefusal = upgradeRefusal
                 sockets.append(socket)
                 return socket
             },
@@ -392,7 +404,12 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(quota.summary, "You exceeded your current quota, please check your plan and billing details.")
         XCTAssertFalse(GeminiLiveServerClose(code: 1011, reason: "Internal error").isRefusal)
         XCTAssertTrue(GeminiLiveServerClose(code: 403, reason: "", isHTTPStatus: true).isRefusal)
-        XCTAssertTrue(GeminiLiveServerClose(code: 429, reason: "", isHTTPStatus: true).isRefusal)
+        XCTAssertFalse(GeminiLiveServerClose(code: 429, reason: "", isHTTPStatus: true).isRefusal, "a bare rate limit retries")
+        XCTAssertTrue(GeminiLiveServerClose(code: 1011, reason: "RESOURCE_EXHAUSTED").isRefusal)
+        let long = GeminiLiveServerClose(code: 1008, reason: String(repeating: "word ", count: 100))
+        XCTAssertTrue(long.summary.hasSuffix("word…"), "cut on a word boundary")
+        XCTAssertLessThanOrEqual(long.summary.count, 301)
+        XCTAssertEqual(GeminiLiveServerClose(code: 1008, reason: String(repeating: "x", count: 400)).summary.count, 301)
         XCTAssertFalse(GeminiLiveServerClose(code: 503, reason: "", isHTTPStatus: true).isRefusal)
         XCTAssertEqual(GeminiLiveServerClose(code: 403, reason: "", isHTTPStatus: true).summary, "HTTP 403")
         XCTAssertEqual(GeminiLiveServerClose(code: 1008, reason: "").summary, AppLocalization.string("close code \(String(1008))"))
@@ -405,6 +422,19 @@ extension VoiceConversationControllerTests {
             if case .failed = session.state { return }
             close()
         }
+    }
+
+    func testGeminiLiveRefusedUpgradeFailsOnTheFirstAttempt() async {
+        let tokens = FakeGeminiLiveTokens()
+        let (session, sockets) = makeGeminiSession(
+            tokens: tokens,
+            upgradeRefusal: .init(code: 403, reason: "", isHTTPStatus: true)
+        )
+        session.start()
+        await settle(80)
+
+        XCTAssertEqual(session.state, .failed(AppLocalization.string("Gemini Live refused the connection: \("HTTP 403")")))
+        XCTAssertEqual(sockets().count, 1)
     }
 
     func testGeminiLiveSessionFailsWithoutRetryWhenTheHostCannotServeIt() async {
