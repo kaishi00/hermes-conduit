@@ -256,6 +256,9 @@ final class GeminiLiveConversationController: ObservableObject {
         // calls opened on the old one can't be answered there, so their
         // results must go out as text updates.
         tools.connectionReplaced()
+        // "Try again" after a failure: the old transport must not keep
+        // feeding this controller alongside the new one.
+        retireSession()
         let session = makeSession()
         session.onEvent = { [weak self] in self?.handle($0) }
         session.onStateChange = { [weak self] in self?.sessionStateChanged($0) }
@@ -324,7 +327,8 @@ final class GeminiLiveConversationController: ObservableObject {
     private func sessionStateChanged(_ state: GeminiLiveSession.State) {
         switch state {
         case .ready:
-            if !isMicrophoneMuted { startInput() }
+            // A microphone that fails to start leaves the phase failed.
+            if !isMicrophoneMuted, !startInput() { return }
             phase = modelTurnActive ? .speaking : .listening
             // Anything that settled while (re)connecting goes out now.
             dispatch(tools.pendingUpdates())
@@ -336,6 +340,9 @@ final class GeminiLiveConversationController: ObservableObject {
         case .failed(let message):
             stopInput()
             output.stop()
+            // Close the socket too, so nothing from it reaches a failed
+            // conversation.
+            retireSession()
             phase = .failed(message)
         case .connecting:
             phase = .connecting
@@ -449,11 +456,11 @@ final class GeminiLiveConversationController: ObservableObject {
     private func dispatch(_ outgoing: [GeminiLiveToolBridge.Outgoing]) {
         for item in outgoing {
             switch item {
-            case .toolResponse(_, _, let result, _) where session?.isReady != true:
+            case .toolResponse(_, _, let result, let scheduling) where session?.isReady != true:
                 // The connection dropped while this was being prepared: the
                 // call can't be answered any more, so the outcome is kept as
-                // a text update rather than lost.
-                if let text = Self.fallbackText(for: result) { pendingTextTurns.append(text) }
+                // a text update rather than lost. A silent one stays silent.
+                if scheduling != .silent, let text = Self.fallbackText(for: result) { pendingTextTurns.append(text) }
             case .toolResponse(let id, let name, let result, let scheduling):
                 session?.send(GeminiLiveProtocol.toolResponseMessage(
                     id: id,
@@ -517,15 +524,30 @@ final class GeminiLiveConversationController: ObservableObject {
 
     // MARK: Audio input
 
-    private func startInput() {
-        guard !inputRunning else { return }
+    /// False when the microphone couldn't start; the phase is then failed.
+    @discardableResult
+    private func startInput() -> Bool {
+        guard !inputRunning else { return true }
         do {
             try input.start()
             inputRunning = true
+            return true
         } catch {
             phase = .failed(error.localizedDescription)
             session?.stop()
+            return false
         }
+    }
+
+    /// Detaches and closes the current session so none of its callbacks
+    /// reach this controller again.
+    private func retireSession() {
+        guard let old = session else { return }
+        session = nil
+        old.onEvent = nil
+        old.onStateChange = nil
+        old.onConnectionReplaced = nil
+        old.stop()
     }
 
     private func stopInput() {
