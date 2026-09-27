@@ -8897,7 +8897,10 @@ final class AppState: ObservableObject {
             recoverTransportForCarPlayIfNeeded()
             // Flush any pending coalesced cache writes before the app
             // suspends — iOS may kill the process before the debounce fires.
+            // The cache writes on a background queue, so wait for it to
+            // land before letting the app suspend.
             flushPendingPresentationCache()
+            sessionPresentationCache.waitForPendingWrites()
             // A suspended socket may still look open. Invalidate incomplete
             // snapshots so foreground always obtains a fresh authoritative one.
             invalidateReconciliation()

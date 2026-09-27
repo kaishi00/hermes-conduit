@@ -156,6 +156,9 @@ final class SessionPresentationCache {
     /// instance on the same defaults, a test fixture) is still picked up.
     private var memoryStoreData: Data?
     private var memoryPendingToolsData: Data?
+    /// Guards the memory copies above. Today every caller is on the main
+    /// actor, but the type itself doesn't enforce that.
+    private let memoryLock = NSLock()
     /// When set, encoding and UserDefaults writes run on `writeQueue` and the
     /// memory copies are authoritative (defaults may briefly lag behind).
     private let writeQueue: DispatchQueue?
@@ -173,7 +176,8 @@ final class SessionPresentationCache {
     }
 
     /// Blocks until every queued disk write has landed. No-op in
-    /// synchronous mode.
+    /// synchronous mode. Callers that need a write durable before they
+    /// return (suspension, clears, deletes) call this.
     func waitForPendingWrites() {
         writeQueue?.sync {}
     }
@@ -954,10 +958,12 @@ final class SessionPresentationCache {
 
     func clear(profile: String? = nil) {
         guard let profile else {
-            memoryStore = [:]
-            memoryPendingTools = [:]
-            memoryStoreData = nil
-            memoryPendingToolsData = nil
+            memoryLock.withLock {
+                memoryStore = [:]
+                memoryPendingTools = [:]
+                memoryStoreData = nil
+                memoryPendingToolsData = nil
+            }
             let defaults = defaults
             let storageKey = storageKey
             let pendingToolsStorageKey = pendingToolsStorageKey
@@ -965,6 +971,9 @@ final class SessionPresentationCache {
                 defaults.removeObject(forKey: storageKey)
                 defaults.removeObject(forKey: pendingToolsStorageKey)
             }
+            // A clear protects another account's data (sign-out, server
+            // switch): it must be on disk before this returns.
+            waitForPendingWrites()
             return
         }
 
@@ -975,6 +984,7 @@ final class SessionPresentationCache {
         var pendingStore = loadPendingTools()
         pendingStore.keys.filter { $0.hasPrefix(prefix) }.forEach { pendingStore.removeValue(forKey: $0) }
         persistPendingTools(pendingStore)
+        waitForPendingWrites()
     }
 
     /// Removes the cached records for the given sessions inside `profile`,
@@ -998,6 +1008,8 @@ final class SessionPresentationCache {
         }
         if changed { persist(store) }
         removePendingToolSideRecords(profile: profile, sessionIDs: Array(ids))
+        // A deleted conversation must not come back after a relaunch.
+        waitForPendingWrites()
     }
 
     /// Durable-owned persistence: once this conversation's durable identity
@@ -1196,6 +1208,8 @@ final class SessionPresentationCache {
     }
 
     private func load() -> [String: CachedSession] {
+        memoryLock.lock()
+        defer { memoryLock.unlock() }
         if writeQueue != nil, let memoryStore { return memoryStore }
         let data = defaults.data(forKey: storageKey)
         if let memoryStore, data == memoryStoreData { return memoryStore }
@@ -1206,6 +1220,8 @@ final class SessionPresentationCache {
     }
 
     private func persist(_ store: [String: CachedSession]) {
+        memoryLock.lock()
+        defer { memoryLock.unlock() }
         memoryStore = store
         let defaults = defaults
         let storageKey = storageKey
@@ -1225,6 +1241,8 @@ final class SessionPresentationCache {
     }
 
     private func loadPendingTools() -> [String: [CachedMessage]] {
+        memoryLock.lock()
+        defer { memoryLock.unlock() }
         if writeQueue != nil, let memoryPendingTools { return memoryPendingTools }
         let data = defaults.data(forKey: pendingToolsStorageKey)
         if let memoryPendingTools, data == memoryPendingToolsData { return memoryPendingTools }
@@ -1235,6 +1253,8 @@ final class SessionPresentationCache {
     }
 
     private func persistPendingTools(_ store: [String: [CachedMessage]]) {
+        memoryLock.lock()
+        defer { memoryLock.unlock() }
         memoryPendingTools = store
         let defaults = defaults
         let key = pendingToolsStorageKey
