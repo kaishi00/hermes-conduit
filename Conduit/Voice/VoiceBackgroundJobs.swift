@@ -243,6 +243,9 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             guard generation == self.generation, self.job(job.id)?.status != .cancelled else {
                 return await abandonStart(job, sessionID: runtimeID, generation: generation)
             }
+            if case .failed = self.job(job.id)?.status {
+                return failedStartReply(job.id)
+            }
             if self.job(job.id)?.status == .starting {
                 update(job.id) { $0.status = .running }
             }
@@ -254,18 +257,25 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             }
             // A lost submit acknowledgement after Hermes already started the
             // turn (its events moved the job on) is not a failed start.
-            if let status = self.job(job.id)?.status, status != .starting {
+            switch self.job(job.id)?.status {
+            case .running?, .needsInput?, .finished?:
                 startPollingIfNeeded()
                 return AppLocalization.string("Started a background job: \(job.title).")
+            case .failed?:
+                break
+            default:
+                update(job.id) { $0.status = .failed(error.localizedDescription) }
             }
-            update(job.id) {
-                $0.status = .failed(error.localizedDescription)
-                // The user heard the failure right here; don't announce it again.
-                $0.outcomeDelivered = true
-            }
-            pruneSettledJobs()
-            return AppLocalization.string("Couldn't start the background job.")
+            return failedStartReply(job.id)
         }
+    }
+
+    /// The start failed (or Hermes failed the turn before submit returned):
+    /// the reply says so, and the same failure is not announced again later.
+    private func failedStartReply(_ id: UUID) -> String {
+        update(id) { $0.outcomeDelivered = true }
+        pruneSettledJobs()
+        return AppLocalization.string("Couldn't start the background job.")
     }
 
     /// A start is still wanted while its job is `.starting` in the ledger
@@ -348,6 +358,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
               let index = jobs.firstIndex(where: { $0.owns(sessionID: sessionID) }) else { return }
         let before = jobs[index]
         guard before.status.isActive else { return }
+        // Any event for the job is proof of life for the liveness poll.
+        jobs[index].consecutiveMissedPolls = 0
         switch event {
         case .messageStart, .messageDelta, .reasoningDelta, .toolStart, .toolComplete:
             if before.status == .needsInput || before.status == .starting {

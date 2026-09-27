@@ -61,6 +61,8 @@ final class FakeVoiceJobBackend {
     /// When true, the next createSession parks until `releaseCreate()`.
     var parksCreate = false
     let createParked = AwaitableCounter()
+    /// Runs inside submit, so a test can deliver events mid-submission.
+    var onSubmit: (@MainActor (_ sessionID: String) -> Void)?
     private var parkedCreate: CheckedContinuation<Void, Never>?
     var liveRows: [LiveSessionStatus] = []
     private(set) var created = 0
@@ -83,7 +85,10 @@ final class FakeVoiceJobBackend {
                 return ("rt-\(self.created)", "st-\(self.created)")
             },
             setTitle: { [unowned self] id, title in self.titles.append((id, title)) },
-            submit: { [unowned self] id, text in self.submissions.append((id, text)) },
+            submit: { [unowned self] id, text in
+                self.submissions.append((id, text))
+                self.onSubmit?(id)
+            },
             cancel: { [unowned self] id in self.cancelled.append(id) },
             liveSessions: { [unowned self] in self.liveRows }
         )
@@ -225,6 +230,27 @@ extension VoiceConversationControllerTests {
             return XCTFail("a finished job without a captured result points the user at its chat")
         }
         XCTAssertTrue(text.contains("gone quiet"))
+    }
+
+    func testTurnFailingDuringSubmitIsReportedAsAFailedStart() async {
+        let (supervisor, fake) = makeSupervisor()
+        fake.onSubmit = { id in supervisor.observe(.messageError(sessionId: id, message: "model unavailable")) }
+
+        let reply = await supervisor.startJob(instructions: "doomed")
+
+        XCTAssertEqual(reply, AppLocalization.string("Couldn't start the background job."))
+        XCTAssertNil(supervisor.takePendingNotice(), "the failure was the reply; it is not announced twice")
+    }
+
+    func testActivityBetweenMissedPollsKeepsTheJobRunning() async {
+        let (supervisor, _) = makeSupervisor()
+        _ = await supervisor.startJob(instructions: "long task")
+
+        await supervisor.pollOnce()
+        supervisor.observe(.toolStart(sessionId: "rt-1", toolName: "terminal", toolInput: nil))
+        await supervisor.pollOnce()
+
+        XCTAssertEqual(supervisor.jobs.map(\.status), [.running], "misses separated by activity are not consecutive")
     }
 
     func testIdleRegistryRowSettlesAJobOnTheFirstPoll() async {
