@@ -31,6 +31,46 @@
         }
       }
     },
+    "Web lookups" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "网页查询"
+          }
+        }
+      }
+    },
+    "Hermes web search" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 网页搜索"
+          }
+        }
+      }
+    },
+    "Google Search" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Google 搜索"
+          }
+        }
+      }
+    },
+    "How Gemini answers quick questions like weather or news. Hermes web search uses the search your Hermes server is set up with (SearXNG, Firecrawl…). Google Search has its own quota on your Gemini key. Automatic uses Hermes when it has a search set up, otherwise Google. Applies to the next conversation." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini 如何回答天气、新闻等快速问题。Hermes 网页搜索使用你的 Hermes 服务器配置的搜索（SearXNG、Firecrawl…）。Google 搜索在你的 Gemini 密钥上有单独的配额。“自动”会在 Hermes 配置了搜索时使用 Hermes，否则使用 Google。从下一次对话开始生效。"
+          }
+        }
+      }
+    },
     "Voice jobs" : {
       "localizations" : {
         "zh-Hans" : {

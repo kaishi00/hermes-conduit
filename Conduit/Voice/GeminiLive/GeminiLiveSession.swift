@@ -202,6 +202,9 @@ final class GeminiLiveSession {
     private let openSocket: @MainActor (URL) -> GeminiLiveSocket
     private let systemInstruction: String
     private let functions: [GeminiLiveProtocol.FunctionDeclaration]
+    /// Whether this session's lookups use Google Search at all (the user may
+    /// have chosen the Hermes host's search, or none).
+    private let usesGoogleSearch: Bool
     private let reconnectDelay: @Sendable (Int) async throws -> Void
 
     private var socket: GeminiLiveSocket?
@@ -230,6 +233,7 @@ final class GeminiLiveSession {
         tokens: GeminiLiveTokenProviding,
         systemInstruction: String,
         functions: [GeminiLiveProtocol.FunctionDeclaration],
+        googleSearch: Bool = true,
         openSocket: @escaping @MainActor (URL) -> GeminiLiveSocket = { URLSessionGeminiLiveSocket(url: $0) },
         reconnectDelay: @escaping @Sendable (Int) async throws -> Void = { attempt in
             try await Task.sleep(for: .seconds(min(8, 1 << attempt)))
@@ -238,6 +242,8 @@ final class GeminiLiveSession {
         self.tokens = tokens
         self.systemInstruction = systemInstruction
         self.functions = functions
+        self.usesGoogleSearch = googleSearch
+        self.googleSearch = googleSearch
         self.openSocket = openSocket
         self.reconnectDelay = reconnectDelay
     }
@@ -248,7 +254,7 @@ final class GeminiLiveSession {
         guard state == .idle || state == .stopped || isFailed else { return }
         resumptionHandle = nil
         lastSetupClose = nil
-        googleSearch = true
+        googleSearch = usesGoogleSearch
         hasConnectedOnce = false
         state = .connecting
         connectTask = Task { [weak self] in await self?.connect(attempt: 0) }
