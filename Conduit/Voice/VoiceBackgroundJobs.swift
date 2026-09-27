@@ -265,6 +265,11 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 break
             default:
                 update(job.id) { $0.status = .failed(error.localizedDescription) }
+                // A submit can fail after Hermes accepted the turn (a lost
+                // acknowledgement). The user is told the start failed, so
+                // interrupt whatever may be running rather than leave it
+                // unmonitored.
+                if let createdSessionID { try? await backend.cancel(createdSessionID) }
             }
             return failedStartReply(job.id)
         }

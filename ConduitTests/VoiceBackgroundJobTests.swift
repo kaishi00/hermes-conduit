@@ -58,6 +58,7 @@ extension VoiceSpokenCommandMatchingTests {
 @MainActor
 final class FakeVoiceJobBackend {
     var createError: Error?
+    var submitError: Error?
     /// When true, the next createSession parks until `releaseCreate()`.
     var parksCreate = false
     let createParked = AwaitableCounter()
@@ -88,6 +89,7 @@ final class FakeVoiceJobBackend {
             submit: { [unowned self] id, text in
                 self.submissions.append((id, text))
                 self.onSubmit?(id)
+                if let error = self.submitError { throw error }
             },
             cancel: { [unowned self] id in self.cancelled.append(id) },
             liveSessions: { [unowned self] in self.liveRows }
@@ -240,6 +242,17 @@ extension VoiceConversationControllerTests {
 
         XCTAssertEqual(reply, AppLocalization.string("Couldn't start the background job."))
         XCTAssertNil(supervisor.takePendingNotice(), "the failure was the reply; it is not announced twice")
+    }
+
+    func testFailedSubmitInterruptsTheCreatedSession() async {
+        let (supervisor, fake) = makeSupervisor()
+        fake.submitError = HermesError.timeout("prompt.submit")
+
+        let reply = await supervisor.startJob(instructions: "lost ack")
+
+        XCTAssertEqual(reply, AppLocalization.string("Couldn't start the background job."))
+        XCTAssertEqual(fake.cancelled, ["rt-1"], "a turn Hermes may have accepted is interrupted, not left unmonitored")
+        XCTAssertNil(supervisor.takePendingNotice())
     }
 
     func testActivityBetweenMissedPollsKeepsTheJobRunning() async {
