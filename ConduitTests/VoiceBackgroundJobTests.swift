@@ -454,6 +454,43 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(gateway.stream?.appended, ["Open it in Conduit."])
     }
 
+    func testSilentHandBackIsReleasedWithTheFallback() async {
+        let jobs = FakeVoiceBackgroundJobs()
+        jobs.pending = [.submit(prompt: "HAND-BACK", fallback: "Open it in Conduit.")]
+        let (controller, capture, gateway, spy) = makeJobController(jobs: jobs)
+        controller.backgroundHandBackStartTimeout = .milliseconds(50)
+
+        controller.beginVoiceTurn(sessionID: "session")
+        await controller.startListening()
+        await spy.waitUntilSubmitted(1)
+        await gateway.waitUntilSpeechAppended(1)
+        await capture.waitUntilStartCount(2)
+
+        XCTAssertEqual(gateway.stream?.appended, ["Open it in Conduit."])
+        let listening = await controller.waitForState(.listening)
+        XCTAssertTrue(listening, "later job updates are no longer blocked")
+        // A reply that turns up after the release stays unowned.
+        controller.receiveAssistantEvent(.started(sessionID: "session"))
+        controller.receiveAssistantEvent(.delta(sessionID: "session", text: "Late."))
+        XCTAssertEqual(gateway.stream?.appended, ["Open it in Conduit."])
+    }
+
+    func testStartedHandBackReplyIsNeverReleasedByTheWatchdog() async {
+        let jobs = FakeVoiceBackgroundJobs()
+        jobs.pending = [.submit(prompt: "HAND-BACK", fallback: "Open it in Conduit.")]
+        let (controller, _, _, spy) = makeJobController(jobs: jobs)
+        controller.backgroundHandBackStartTimeout = .milliseconds(50)
+
+        controller.beginVoiceTurn(sessionID: "session")
+        await controller.startListening()
+        await spy.waitUntilSubmitted(1)
+        controller.receiveAssistantEvent(.started(sessionID: "session"))
+        try? await Task.sleep(for: .milliseconds(200))
+
+        XCTAssertEqual(controller.state, .thinking, "a reply that began keeps ownership")
+        XCTAssertFalse(controller.conversationTranscript.map(\.text).contains("Open it in Conduit."))
+    }
+
     func testHandBackWaitsWhileATurnIsInFlight() async {
         let jobs = FakeVoiceBackgroundJobs()
         let (controller, _, _, spy) = makeJobController(transcript: "What's the weather?", jobs: jobs)

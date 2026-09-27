@@ -80,6 +80,12 @@ final class VoiceConversationController: ObservableObject {
     private var backgroundNoticeTask: Task<Void, Never>?
     /// The deferred delivery check scheduled when listening opens.
     private var backgroundNoticeDeliveryTask: Task<Void, Never>?
+    /// Releases an accepted hand-back whose reply never starts, so one
+    /// silent turn cannot block every later job update while the user is
+    /// away. Cancelled once the reply starts or a spoken turn takes over.
+    private var backgroundHandBackWatchdogTask: Task<Void, Never>?
+    /// How long an accepted hand-back may wait for its reply to start.
+    var backgroundHandBackStartTimeout: Duration = .seconds(60)
     private var captureEventsTask: Task<Void, Never>?
     private var speechDeltas: [String] = []
     private var isDrainingSpeech = false
@@ -477,6 +483,7 @@ final class VoiceConversationController: ObservableObject {
         backgroundNoticeTask = nil
         backgroundNoticeDeliveryTask?.cancel()
         backgroundNoticeDeliveryTask = nil
+        cancelBackgroundHandBackWatchdog()
         cancelSpeechDrainAndStream()
         capture.stop()
         deviceTranscriber.cancel()
@@ -706,6 +713,7 @@ final class VoiceConversationController: ObservableObject {
         switch event {
         case .started:
             awaitedAssistantResponseStarted = true
+            cancelBackgroundHandBackWatchdog()
             activeAssistantTranscriptEntryID = nil
             receivedAssistantDelta = false
             assistantFinished = false
@@ -714,6 +722,7 @@ final class VoiceConversationController: ObservableObject {
             if state == .thinking || state == .muted { beginBargeInMonitoring() }
         case .delta(_, let text):
             awaitedAssistantResponseStarted = true
+            cancelBackgroundHandBackWatchdog()
             receivedAssistantDelta = true
             appendAssistantTranscriptDelta(text)
             guard !isOutputMuted else { return }
@@ -928,6 +937,7 @@ final class VoiceConversationController: ObservableObject {
             // Completion clears ownership for the previous response. Arm the
             // same authoritative session again immediately before each new
             // voice submission so continuous conversation accepts its reply.
+            cancelBackgroundHandBackWatchdog()
             isAwaitingVoiceAssistant = true
             awaitedAssistantResponseStarted = false
             guard await submit(transcript) else {
@@ -1025,6 +1035,7 @@ final class VoiceConversationController: ObservableObject {
         backgroundNoticeTask = nil
         backgroundNoticeDeliveryTask?.cancel()
         backgroundNoticeDeliveryTask = nil
+        cancelBackgroundHandBackWatchdog()
         cancelSpeechDrainAndStream()
         capture.stop()
         deviceTranscriber.cancel()
@@ -1174,11 +1185,40 @@ final class VoiceConversationController: ObservableObject {
                 let submitted = await self.submit(prompt)
                 guard self.operationGeneration == generation else { return }
                 self.backgroundNoticeTask = nil
-                guard !submitted, self.isCurrent(generation), self.state == .thinking else { return }
-                self.isAwaitingVoiceAssistant = false
-                self.speakLocalNotice(fallback)
+                guard self.isCurrent(generation), self.state == .thinking else { return }
+                guard submitted else {
+                    self.isAwaitingVoiceAssistant = false
+                    self.speakLocalNotice(fallback)
+                    return
+                }
+                self.startBackgroundHandBackWatchdog(generation: generation, fallback: fallback)
             }
         }
+    }
+
+    private func startBackgroundHandBackWatchdog(generation: UInt64, fallback: String) {
+        guard isAwaitingVoiceAssistant, !awaitedAssistantResponseStarted else { return }
+        let timeout = backgroundHandBackStartTimeout
+        backgroundHandBackWatchdogTask?.cancel()
+        backgroundHandBackWatchdogTask = Task { [weak self] in
+            try? await Task.sleep(for: timeout)
+            guard let self, !Task.isCancelled else { return }
+            self.backgroundHandBackWatchdogTask = nil
+            guard self.isCurrent(generation),
+                  self.state == .thinking,
+                  self.isAwaitingVoiceAssistant,
+                  !self.awaitedAssistantResponseStarted else { return }
+            // The hand-back was accepted but its reply never began. Drop
+            // ownership (a late reply stays unowned) and say where the
+            // result is, which relistens like any finished reply.
+            self.isAwaitingVoiceAssistant = false
+            self.speakLocalNotice(fallback)
+        }
+    }
+
+    private func cancelBackgroundHandBackWatchdog() {
+        backgroundHandBackWatchdogTask?.cancel()
+        backgroundHandBackWatchdogTask = nil
     }
 
     /// Speaks a fixed notice through the conversation's own speech path,

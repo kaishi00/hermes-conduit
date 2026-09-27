@@ -2293,6 +2293,14 @@ final class AppState: ObservableObject {
         persistVoiceJobSessions()
     }
 
+    /// Stops following Voice background jobs at a server, profile, or
+    /// sign-out boundary. The jobs keep running on the server as chats.
+    private func retireVoiceBackgroundJobs() {
+        voiceBackgroundJobSupervisor.reset()
+        voiceJobSessionListRefreshTask?.cancel()
+        voiceJobSessionListRefreshTask = nil
+    }
+
     private func persistVoiceJobSessions() {
         if voiceJobSessionIDsByProfile.isEmpty {
             defaults.removeObject(forKey: voiceJobSessionIDsByProfileKey)
@@ -4082,7 +4090,7 @@ final class AppState: ObservableObject {
             "Server replacement \(previousIdentity, privacy: .private) -> \(identity, privacy: .private): retiring speech ownership (voiceLive=\(voiceWasLive ? "yes" : "no", privacy: .public), readAloudActive=\(readAloudWasActive ? "yes" : "no", privacy: .public))"
         )
         voiceConversationController.stop()
-        voiceBackgroundJobSupervisor.reset()
+        retireVoiceBackgroundJobs()
         // Read Aloud teardown flows through the controller's own pinned
         // Option-A semantics: replacing a non-nil gateway performs the single
         // authoritative stop. A nil gateway means nothing can be live — an
@@ -4968,9 +4976,7 @@ final class AppState: ObservableObject {
         invalidateGroupChatState()
         // Background jobs keep running on the server as ordinary chats; the
         // signed-out ledger just stops following them.
-        voiceBackgroundJobSupervisor.reset()
-        voiceJobSessionListRefreshTask?.cancel()
-        voiceJobSessionListRefreshTask = nil
+        retireVoiceBackgroundJobs()
         // Unsent drafts belong to the signed-out user; AppState owns the
         // store (it outlives the composer view), so sign-out must clear it.
         composerDraftStore.removeAll()
@@ -15685,7 +15691,7 @@ final class AppState: ObservableObject {
                 saveVoiceProfilePreferences(preferences, profile: activeProfile)
             }
             voiceConversationController.stop()
-            voiceBackgroundJobSupervisor.reset()
+            retireVoiceBackgroundJobs()
             showVoiceSheet = false
             suspendedVoiceConversation = nil
             voiceSheetShouldAutoListen = false
@@ -15893,6 +15899,7 @@ final class AppState: ObservableObject {
             saveVoiceProfilePreferences(preferences, profile: activeProfile)
         }
         voiceConversationController.stop()
+        retireVoiceBackgroundJobs()
         showVoiceSheet = false
         suspendedVoiceConversation = nil
         voiceSheetShouldAutoListen = false
