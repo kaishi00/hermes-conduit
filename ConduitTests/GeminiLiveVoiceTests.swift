@@ -381,7 +381,9 @@ extension VoiceConversationControllerTests {
         return tools.contains { $0["googleSearch"] != nil }
     }
 
-    private let spentQuota = GeminiLiveServerClose(code: 1011, reason: "You exceeded your current quota, please check your plan and billing details.")
+    private var spentQuota: GeminiLiveServerClose {
+        GeminiLiveServerClose(code: 1011, reason: "You exceeded your current quota, please check your plan and billing details.")
+    }
 
     func testGeminiLiveQuotaRefusedUpgradeRetriesOnceWithoutGoogleSearch() async throws {
         let tokens = FakeGeminiLiveTokens()
