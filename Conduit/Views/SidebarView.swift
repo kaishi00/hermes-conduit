@@ -651,7 +651,11 @@ private struct ArchivedSessionsSheet: View {
                     } else {
                         ForEach(displayedSessions) { session in
                             HStack(spacing: 10) {
-                                SessionRow(session: session, showsDisclosureIndicator: false)
+                                SessionRow(
+                                    session: session,
+                                    isVoiceJob: appState.isVoiceJobSession(session),
+                                    showsDisclosureIndicator: false
+                                )
 
                                 VStack(spacing: 6) {
                                     Button {
@@ -859,7 +863,11 @@ private struct ProjectSessionsSheet: View {
                                         dismiss()
                                         appState.requestOpenSession(session.id)
                                     } label: {
-                                        SessionRow(session: session, isSelected: session.id == appState.activeSessionId)
+                                        SessionRow(
+                                            session: session,
+                                            isSelected: session.id == appState.activeSessionId,
+                                            isVoiceJob: appState.isVoiceJobSession(session)
+                                        )
                                             .contentShape(Rectangle())
                                     }
                                     .buttonStyle(.plain)

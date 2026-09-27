@@ -57,8 +57,11 @@ extension VoiceSpokenCommandMatchingTests {
 
 @MainActor
 final class FakeVoiceJobBackend {
-    var nextSessionIDs: [(String, String?)] = [("rt-1", "st-1"), ("rt-2", "st-2"), ("rt-3", "st-3"), ("rt-4", "st-4")]
     var createError: Error?
+    /// When true, the next createSession parks until `releaseCreate()`.
+    var parksCreate = false
+    let createParked = AwaitableCounter()
+    private var parkedCreate: CheckedContinuation<Void, Never>?
     var liveRows: [LiveSessionStatus] = []
     private(set) var created = 0
     private(set) var titles: [(String, String)] = []
@@ -69,14 +72,27 @@ final class FakeVoiceJobBackend {
         VoiceBackgroundJobBackend(
             createSession: { [unowned self] in
                 if let error = self.createError { throw error }
+                if self.parksCreate {
+                    self.parksCreate = false
+                    await withCheckedContinuation { continuation in
+                        self.parkedCreate = continuation
+                        self.createParked.increment()
+                    }
+                }
                 self.created += 1
-                return self.nextSessionIDs.removeFirst()
+                return ("rt-\(self.created)", "st-\(self.created)")
             },
             setTitle: { [unowned self] id, title in self.titles.append((id, title)) },
             submit: { [unowned self] id, text in self.submissions.append((id, text)) },
             cancel: { [unowned self] id in self.cancelled.append(id) },
             liveSessions: { [unowned self] in self.liveRows }
         )
+    }
+
+    func releaseCreate() {
+        let continuation = parkedCreate
+        parkedCreate = nil
+        continuation?.resume()
     }
 }
 
@@ -200,12 +216,70 @@ extension VoiceConversationControllerTests {
         fake.liveRows = [LiveSessionStatus(runtimeSessionId: "rt-1", storedSessionId: "st-1", status: "working")]
 
         await supervisor.pollOnce()
+        XCTAssertEqual(supervisor.jobs.map(\.status), [.running, .running], "one missing row can be transient")
+        XCTAssertNil(supervisor.takePendingNotice())
+        await supervisor.pollOnce()
 
-        XCTAssertEqual(supervisor.jobs.map(\.status), [.running, .finished])
+        XCTAssertEqual(supervisor.jobs.map(\.status), [.running, .finished], "a second miss settles the job")
         guard case .speak(let text)? = supervisor.takePendingNotice() else {
             return XCTFail("a finished job without a captured result points the user at its chat")
         }
         XCTAssertTrue(text.contains("gone quiet"))
+    }
+
+    func testIdleRegistryRowSettlesAJobOnTheFirstPoll() async {
+        let (supervisor, fake) = makeSupervisor()
+        _ = await supervisor.startJob(instructions: "done already")
+        fake.liveRows = [LiveSessionStatus(runtimeSessionId: "rt-1", storedSessionId: "st-1", status: "idle")]
+
+        await supervisor.pollOnce()
+
+        XCTAssertEqual(supervisor.jobs.map(\.status), [.finished])
+    }
+
+    func testCancelDuringSessionCreationNeverSubmitsTheJob() async {
+        let (supervisor, fake) = makeSupervisor()
+        fake.parksCreate = true
+        let start = Task { await supervisor.startJob(instructions: "slow start") }
+        await fake.createParked.waitUntil(1)
+
+        _ = await supervisor.cancelAll()
+        fake.releaseCreate()
+        let reply = await start.value
+
+        XCTAssertTrue(fake.submissions.isEmpty, "a job the user cancelled must never be submitted")
+        XCTAssertEqual(fake.cancelled, ["rt-1"], "the session Hermes already created is interrupted")
+        XCTAssertEqual(supervisor.jobs.map(\.status), [.cancelled])
+        XCTAssertTrue(reply.contains("slow start"))
+        XCTAssertNil(supervisor.takePendingNotice())
+    }
+
+    func testResetDuringSessionCreationInterruptsTheCreatedSession() async {
+        let (supervisor, fake) = makeSupervisor()
+        fake.parksCreate = true
+        let start = Task { await supervisor.startJob(instructions: "old server") }
+        await fake.createParked.waitUntil(1)
+
+        supervisor.reset()
+        fake.releaseCreate()
+        _ = await start.value
+
+        XCTAssertTrue(fake.submissions.isEmpty)
+        XCTAssertEqual(fake.cancelled, ["rt-1"])
+        XCTAssertTrue(supervisor.jobs.isEmpty)
+    }
+
+    func testSettledJobsArePrunedOnceAnnounced() async {
+        let (supervisor, _) = makeSupervisor()
+        let total = VoiceBackgroundJobSupervisor.maximumSettledJobs + 3
+        for index in 1...total {
+            _ = await supervisor.startJob(instructions: "job \(index)")
+            supervisor.observe(.messageComplete(sessionId: "rt-\(index)", messageId: nil, content: "ok", reasoning: nil))
+            XCTAssertNotNil(supervisor.takePendingNotice())
+        }
+
+        XCTAssertEqual(supervisor.jobs.count, VoiceBackgroundJobSupervisor.maximumSettledJobs)
+        XCTAssertEqual(supervisor.jobs.last?.title, "job \(total)", "the most recent jobs are kept")
     }
 
     func testResetForgetsJobsAndIgnoresTheirLateEvents() async {

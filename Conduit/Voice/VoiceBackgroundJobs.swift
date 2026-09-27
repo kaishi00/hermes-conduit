@@ -113,6 +113,9 @@ struct VoiceBackgroundJob: Identifiable, Equatable {
     var outcomeDelivered = false
     /// Whether the current needs-input episode was announced.
     var inputRequestDelivered = false
+    /// Consecutive liveness polls that found no registry row for the job.
+    /// One miss can be transient; two settle it.
+    var consecutiveMissedPolls = 0
 
     func owns(sessionID: String) -> Bool {
         guard !sessionID.isEmpty else { return false }
@@ -157,6 +160,9 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// Upper bound on the finished-job text handed to the voice session.
     static let maximumResultCharacters = 6_000
     static let maximumTitleCharacters = 60
+    /// Settled, already-announced jobs kept for the Voice sheet and status.
+    static let maximumSettledJobs = 10
+    static let missedPollsBeforeSettling = 2
 
     @Published private(set) var jobs: [VoiceBackgroundJob] = []
 
@@ -210,38 +216,73 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         )
         jobs.append(job)
         let generation = generation
+        var createdSessionID: String?
         do {
             let ids = try await backend.createSession()
-            guard generation == self.generation else { throw CancellationError() }
-            guard !ids.runtimeID.isEmpty else {
+            createdSessionID = ids.runtimeID.isEmpty ? nil : ids.runtimeID
+            guard startIsCurrent(job.id, generation: generation) else {
+                return await abandonStart(job, sessionID: createdSessionID, generation: generation)
+            }
+            guard let runtimeID = createdSessionID else {
                 throw VoiceAudioError.unavailable(AppLocalization.string("Hermes did not return a session."))
             }
             update(job.id) {
-                $0.runtimeSessionID = ids.runtimeID
+                $0.runtimeSessionID = runtimeID
                 $0.storedSessionID = ids.storedID
             }
-            onJobSessionCreated?([ids.runtimeID, ids.storedID].compactMap { $0 }.filter { !$0.isEmpty })
-            await backend.setTitle(ids.runtimeID, job.title)
-            guard generation == self.generation else { throw CancellationError() }
-            try await backend.submit(ids.runtimeID, Self.jobPrompt(for: instructions))
-            guard generation == self.generation else { throw CancellationError() }
-            // An event may already have settled the job while submit awaited.
+            onJobSessionCreated?([runtimeID, ids.storedID].compactMap { $0 }.filter { !$0.isEmpty })
+            await backend.setTitle(runtimeID, job.title)
+            guard startIsCurrent(job.id, generation: generation) else {
+                return await abandonStart(job, sessionID: runtimeID, generation: generation)
+            }
+            try await backend.submit(runtimeID, Self.jobPrompt(for: instructions))
+            // Events may legitimately move the job past .starting while
+            // submit awaits; only a cancel or a reset retires it here. A
+            // cancel that landed mid-submit reached Hermes before the turn
+            // existed, so it is repeated now that there is one to stop.
+            guard generation == self.generation, self.job(job.id)?.status != .cancelled else {
+                return await abandonStart(job, sessionID: runtimeID, generation: generation)
+            }
             if self.job(job.id)?.status == .starting {
                 update(job.id) { $0.status = .running }
             }
             startPollingIfNeeded()
             return AppLocalization.string("Started a background job: \(job.title).")
         } catch {
-            guard generation == self.generation else {
-                return AppLocalization.string("Couldn't start the background job.")
+            guard generation == self.generation, self.job(job.id)?.status != .cancelled else {
+                return await abandonStart(job, sessionID: createdSessionID, generation: generation)
+            }
+            // A lost submit acknowledgement after Hermes already started the
+            // turn (its events moved the job on) is not a failed start.
+            if let status = self.job(job.id)?.status, status != .starting {
+                startPollingIfNeeded()
+                return AppLocalization.string("Started a background job: \(job.title).")
             }
             update(job.id) {
                 $0.status = .failed(error.localizedDescription)
                 // The user heard the failure right here; don't announce it again.
                 $0.outcomeDelivered = true
             }
+            pruneSettledJobs()
             return AppLocalization.string("Couldn't start the background job.")
         }
+    }
+
+    /// A start is still wanted while its job is `.starting` in the ledger
+    /// generation it began in: `cancelAll` and `reset` both retire it.
+    private func startIsCurrent(_ id: UUID, generation: UInt64) -> Bool {
+        generation == self.generation && job(id)?.status == .starting
+    }
+
+    /// Winds down a start that a cancel or reset overtook: whatever Hermes
+    /// already created is interrupted (best effort) so a job the user heard
+    /// cancelled never runs unmonitored.
+    private func abandonStart(_ job: VoiceBackgroundJob, sessionID: String?, generation: UInt64) async -> String {
+        if let sessionID { try? await backend.cancel(sessionID) }
+        guard generation == self.generation else {
+            return AppLocalization.string("Couldn't start the background job.")
+        }
+        return AppLocalization.string("\(job.title) was cancelled.")
     }
 
     func statusSummary() -> String {
@@ -283,6 +324,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             }
         }
         stopPollingIfIdle()
+        pruneSettledJobs()
         let count = targets.count
         return AppLocalization.string("Cancelled \(count) background jobs.")
     }
@@ -345,6 +387,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     // MARK: Delivery
 
     func takePendingNotice() -> VoiceBackgroundJobNotice? {
+        defer { pruneSettledJobs() }
         for index in jobs.indices {
             let job = jobs[index]
             if job.status == .needsInput, !job.inputRequestDelivered {
@@ -413,7 +456,16 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         for index in jobs.indices where jobs[index].status == .running || jobs[index].status == .needsInput {
             let job = jobs[index]
             let row = rows.first { job.owns(sessionID: $0.runtimeSessionId) || job.owns(sessionID: $0.storedSessionId) }
-            if let row, row.isRunning || row.status == "starting" { continue }
+            if let row {
+                jobs[index].consecutiveMissedPolls = 0
+                // A listed, idle runtime is positive evidence the turn ended.
+                if row.isRunning || row.status == "starting" { continue }
+            } else {
+                // Absence is only trusted when it repeats: a row missing
+                // from one read must not discard the real completion.
+                jobs[index].consecutiveMissedPolls += 1
+                if jobs[index].consecutiveMissedPolls < Self.missedPollsBeforeSettling { continue }
+            }
             jobs[index].status = .finished
             changed = true
         }
@@ -421,6 +473,17 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     }
 
     // MARK: Helpers
+
+    /// Keeps the ledger bounded over a long conversation: only the most
+    /// recent settled-and-announced jobs stay listed. Active jobs and
+    /// outcomes still waiting to be delivered are never dropped.
+    private func pruneSettledJobs() {
+        let settled = jobs.filter { !$0.status.isActive && $0.outcomeDelivered }
+        let excess = settled.count - Self.maximumSettledJobs
+        guard excess > 0 else { return }
+        let dropped = Set(settled.prefix(excess).map(\.id))
+        jobs.removeAll { dropped.contains($0.id) }
+    }
 
     private func job(_ id: UUID) -> VoiceBackgroundJob? {
         jobs.first { $0.id == id }

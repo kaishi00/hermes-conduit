@@ -78,6 +78,8 @@ final class VoiceConversationController: ObservableObject {
     /// Submission of a finished job's hand-back into the voice session.
     /// Kept apart from `utteranceTask` so it never aliases a user turn.
     private var backgroundNoticeTask: Task<Void, Never>?
+    /// The deferred delivery check scheduled when listening opens.
+    private var backgroundNoticeDeliveryTask: Task<Void, Never>?
     private var captureEventsTask: Task<Void, Never>?
     private var speechDeltas: [String] = []
     private var isDrainingSpeech = false
@@ -473,6 +475,8 @@ final class VoiceConversationController: ObservableObject {
         bargeInTask = nil
         backgroundNoticeTask?.cancel()
         backgroundNoticeTask = nil
+        backgroundNoticeDeliveryTask?.cancel()
+        backgroundNoticeDeliveryTask = nil
         cancelSpeechDrainAndStream()
         capture.stop()
         deviceTranscriber.cancel()
@@ -1019,6 +1023,8 @@ final class VoiceConversationController: ObservableObject {
         bargeInTask = nil
         backgroundNoticeTask?.cancel()
         backgroundNoticeTask = nil
+        backgroundNoticeDeliveryTask?.cancel()
+        backgroundNoticeDeliveryTask = nil
         cancelSpeechDrainAndStream()
         capture.stop()
         deviceTranscriber.cancel()
@@ -1124,7 +1130,12 @@ final class VoiceConversationController: ObservableObject {
     /// released its handle first.
     private func scheduleBackgroundJobNoticeDelivery() {
         guard backgroundJobs != nil else { return }
-        Task { [weak self] in self?.deliverPendingBackgroundJobNoticeIfIdle() }
+        backgroundNoticeDeliveryTask?.cancel()
+        backgroundNoticeDeliveryTask = Task { [weak self] in
+            guard !Task.isCancelled, let self else { return }
+            self.backgroundNoticeDeliveryTask = nil
+            self.deliverPendingBackgroundJobNoticeIfIdle()
+        }
     }
 
     /// Hands the next pending background-job update to the conversation,

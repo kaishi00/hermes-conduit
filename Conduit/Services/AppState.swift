@@ -1266,8 +1266,17 @@ final class AppState: ObservableObject {
     lazy var voiceBackgroundJobSupervisor: VoiceBackgroundJobSupervisor = {
         let supervisor = VoiceBackgroundJobSupervisor(backend: VoiceBackgroundJobBackend(
             createSession: { [weak self] in
-                guard let client = self?.client else { throw HermesError.notConnected }
-                let created = try await client.createSession()
+                guard let self, let client = self.client else { throw HermesError.notConnected }
+                // Same model/provider as a composer-created chat, and the
+                // same refusal when Hermes lands it in another profile.
+                let profile = self.activeProfile
+                let created = try await client.createSession(
+                    model: self.runtime.model.isEmpty ? nil : self.runtime.model,
+                    provider: self.runtime.provider.isEmpty ? nil : self.runtime.provider
+                )
+                if let returnedProfile = created.profile, !self.profilesMatch(returnedProfile, profile) {
+                    throw HermesError.invalidResponse
+                }
                 return (created.sessionId, created.storedSessionId)
             },
             setTitle: { [weak self] sessionID, title in
