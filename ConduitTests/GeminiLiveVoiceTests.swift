@@ -633,6 +633,26 @@ extension VoiceConversationControllerTests {
         controller.stop()
     }
 
+    func testGeminiLiveKeepsATextUpdateWhoseSendFailed() async {
+        let (controller, session, _, _, _) = makeGeminiController(clock: Date.init)
+        await controller.start()
+        session.becomeReady()
+        session.failSends = true
+
+        controller.acknowledgeIfSilent(since: .distantPast)
+
+        XCTAssertEqual(session.textTurns, [GeminiLiveConversationController.acknowledgementPrompt], "the send was attempted")
+        XCTAssertEqual(controller.pendingTextTurnCountForTesting, 1, "and the update waits for the next connection")
+        controller.stop()
+    }
+
+    func testGeminiLiveOutgoingAnswersOnlyItsOwnCall() {
+        let response = GeminiLiveToolBridge.Outgoing.toolResponse(id: "c2", name: "start_job", result: [:], scheduling: .whenIdle)
+        XCTAssertTrue(response.answers("c2"))
+        XCTAssertFalse(response.answers("c1"), "another job settling in the same batch is not this call's answer")
+        XCTAssertFalse(GeminiLiveToolBridge.Outgoing.textWhenIdle("x").answers("c1"))
+    }
+
     func testVoiceJobsUseTheirOwnModelAndReasoningWhenChosen() {
         var preferences = VoiceProfilePreferences()
         let fallback = preferences.voiceJobSessionOptions(runtimeModel: "big-model", runtimeProvider: "anthropic")
