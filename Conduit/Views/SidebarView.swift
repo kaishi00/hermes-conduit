@@ -465,7 +465,8 @@ struct SessionList: View {
             SessionRow(
                 session: session,
                 isSelected: session.id == appState.activeSessionId,
-                isPinned: appState.isSessionPinned(session)
+                isPinned: appState.isSessionPinned(session),
+                isVoiceJob: appState.isVoiceJobSession(session)
             )
             .contentShape(Rectangle())
         }
@@ -682,6 +683,8 @@ struct SessionRow: View {
     let session: SessionSummary
     var isSelected = false
     var isPinned = false
+    /// Started as a Voice background job (issue #163).
+    var isVoiceJob = false
     var showsDisclosureIndicator = true
 
     var body: some View {
@@ -706,6 +709,12 @@ struct SessionRow: View {
             }
 
             Spacer(minLength: 0)
+            if isVoiceJob {
+                Image(systemName: "waveform")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(Color.conduitAura)
+                    .accessibilityLabel("Started from voice")
+            }
             if isPinned {
                 Image(systemName: "pin.fill")
                     .font(.caption2.weight(.bold))

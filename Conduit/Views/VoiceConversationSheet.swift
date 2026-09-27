@@ -10,6 +10,7 @@ import SwiftUI
 struct VoiceConversationSheet: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @ObservedObject var controller: VoiceConversationController
+    @ObservedObject var backgroundJobs: VoiceBackgroundJobSupervisor
     let profile: String
     let onClose: () -> Void
     /// One-shot gate armed by a fresh `openVoiceConversation` and consumed
@@ -29,6 +30,7 @@ struct VoiceConversationSheet: View {
                     VStack(spacing: 14) {
                         statusCard
                         conversationCard
+                        backgroundJobsCard
                         controlsCard
                         Text("Your conversation also continues in chat. Close ends this voice session.")
                             .font(.footnote)
@@ -99,6 +101,72 @@ struct VoiceConversationSheet: View {
                     }
                 }
             }
+        }
+    }
+
+    private var backgroundJobsCard: some View {
+        ConduitSettingsSection(title: AppLocalization.string("Background jobs"), symbol: "square.stack.3d.up", tint: .conduitAccent) {
+            if backgroundJobs.jobs.isEmpty {
+                Text("Say “background job” and then a task to run it as its own chat while you keep talking.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(backgroundJobs.jobs.reversed()) { job in
+                        HStack(spacing: 10) {
+                            Image(systemName: Self.jobSymbol(job.status))
+                                .foregroundStyle(Self.jobTint(job.status))
+                                .frame(width: 22)
+                                .accessibilityHidden(true)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(job.title)
+                                    .font(.subheadline)
+                                    .lineLimit(2)
+                                Text(Self.jobStatusLabel(job.status))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .accessibilityElement(children: .combine)
+                    }
+                }
+                Text("Each job is its own chat in your session list. Say “job status” or “cancel background jobs” at any time.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private static func jobSymbol(_ status: VoiceBackgroundJob.Status) -> String {
+        switch status {
+        case .starting, .running: return "hourglass"
+        case .needsInput: return "exclamationmark.bubble"
+        case .finished: return "checkmark.circle"
+        case .failed: return "xmark.octagon"
+        case .cancelled: return "minus.circle"
+        }
+    }
+
+    private static func jobTint(_ status: VoiceBackgroundJob.Status) -> Color {
+        switch status {
+        case .starting, .running: return .conduitAccent
+        case .needsInput: return .orange
+        case .finished: return .green
+        case .failed: return .red
+        case .cancelled: return .secondary
+        }
+    }
+
+    private static func jobStatusLabel(_ status: VoiceBackgroundJob.Status) -> String {
+        switch status {
+        case .starting: return AppLocalization.string("Starting")
+        case .running: return AppLocalization.string("Running")
+        case .needsInput: return AppLocalization.string("Waiting for your input")
+        case .finished: return AppLocalization.string("Finished")
+        case .failed: return AppLocalization.string("Failed")
+        case .cancelled: return AppLocalization.string("Cancelled")
         }
     }
 
