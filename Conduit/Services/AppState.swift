@@ -1301,7 +1301,10 @@ final class AppState: ObservableObject {
         supervisor.onJobSessionCreated = { [weak self] sessionIDs in
             guard let self else { return }
             self.rememberVoiceJobSessions(sessionIDs)
-            Task { await self.loadSessions(forceRefresh: true) }
+            self.voiceJobSessionListRefreshTask?.cancel()
+            self.voiceJobSessionListRefreshTask = Task { [weak self] in
+                await self?.loadSessions(forceRefresh: true)
+            }
         }
         return supervisor
     }()
@@ -1601,6 +1604,8 @@ final class AppState: ObservableObject {
     /// Coalesces presentation-cache flushes during streaming so we
     /// don't serialize and write UserDefaults on every WebSocket frame.
     private var presentationCacheFlushTask: Task<Void, Never>?
+    /// Session-list refresh after a Voice background job creates its chat.
+    private var voiceJobSessionListRefreshTask: Task<Void, Never>?
     /// Monotonic fence for deferred presentation-cache writes. Bumped when
     /// the active profile identity changes so a coalesced flush scheduled
     /// under one profile can never land in another profile's namespace.
@@ -2285,7 +2290,13 @@ final class AppState: ObservableObject {
             remembered.removeFirst(remembered.count - Self.maximumRememberedVoiceJobSessions)
         }
         voiceJobSessionIDsByProfile[activeProfile] = remembered
-        if let data = try? JSONEncoder().encode(voiceJobSessionIDsByProfile) {
+        persistVoiceJobSessions()
+    }
+
+    private func persistVoiceJobSessions() {
+        if voiceJobSessionIDsByProfile.isEmpty {
+            defaults.removeObject(forKey: voiceJobSessionIDsByProfileKey)
+        } else if let data = try? JSONEncoder().encode(voiceJobSessionIDsByProfile) {
             defaults.set(data, forKey: voiceJobSessionIDsByProfileKey)
         }
     }
@@ -3187,8 +3198,10 @@ final class AppState: ObservableObject {
         activeSessionTitlesByProfile = [:]
         pinnedSessionIDsByProfile = [:]
         pinnedSessionIDs = []
+        voiceJobSessionIDsByProfile = [:]
         defaults.removeObject(forKey: activeSessionTitlesByProfileKey)
         defaults.removeObject(forKey: pinnedSessionIDsByProfileKey)
+        defaults.removeObject(forKey: voiceJobSessionIDsByProfileKey)
         defaults.removeObject(forKey: reviewSummaryCacheKey)
         defaults.removeObject(forKey: knownProfilesKey)
         clearSessionPresentationCache()
@@ -4956,6 +4969,8 @@ final class AppState: ObservableObject {
         // Background jobs keep running on the server as ordinary chats; the
         // signed-out ledger just stops following them.
         voiceBackgroundJobSupervisor.reset()
+        voiceJobSessionListRefreshTask?.cancel()
+        voiceJobSessionListRefreshTask = nil
         // Unsent drafts belong to the signed-out user; AppState owns the
         // store (it outlives the composer view), so sign-out must clear it.
         composerDraftStore.removeAll()
@@ -5024,8 +5039,10 @@ final class AppState: ObservableObject {
         turnState = .idle
         defaults.removeObject(forKey: activeSessionTitlesByProfileKey)
         defaults.removeObject(forKey: pinnedSessionIDsByProfileKey)
+        defaults.removeObject(forKey: voiceJobSessionIDsByProfileKey)
         activeSessionTitlesByProfile = [:]
         pinnedSessionIDsByProfile = [:]
+        voiceJobSessionIDsByProfile = [:]
         defaults.removeObject(forKey: activeProfileKey)
         clearDashboardWebSession(dashboardID: signingOutDashboardID, baseURL: dashboardBaseURL)
     }
@@ -15906,8 +15923,10 @@ final class AppState: ObservableObject {
         // resurrecting obsolete titles and pins.
         activeSessionTitlesByProfile.removeValue(forKey: activeProfile)
         pinnedSessionIDsByProfile.removeValue(forKey: activeProfile)
+        voiceJobSessionIDsByProfile.removeValue(forKey: activeProfile)
         persistActiveSessionTitles()
         persistPinnedSessions()
+        persistVoiceJobSessions()
         setActiveProfile(fallback)
         restoreActiveSessionState(for: fallback)
         restorePinnedSessions(for: fallback)

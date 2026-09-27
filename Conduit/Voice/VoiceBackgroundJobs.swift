@@ -375,6 +375,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             jobs[index].status = .needsInput
             jobs[index].inputRequestDelivered = false
         case .messageComplete(_, _, let content, _):
+            // Contract: Hermes emits message.complete once per turn, after
+            // the tool loop ends (intermediate assistant text arrives as
+            // deltas around tool.start/tool.complete). Voice turns rely on
+            // the same event to finish speaking, so a job treats it as final.
             jobs[index].status = .finished
             jobs[index].result = content
         case .messageError(_, let message):
