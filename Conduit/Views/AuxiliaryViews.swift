@@ -542,7 +542,18 @@ struct SettingsView: View {
                     },
                     setEndConversationPhrases: { phrases in
                         appState.setSpokenEndConversationPhrases(phrases)
-                    }
+                    },
+                    geminiLive: GeminiLiveSettingsModel(
+                        enabled: appState.isGeminiLiveEnabled,
+                        setEnabled: { appState.setGeminiLiveEnabled($0) },
+                        checkAvailability: {
+                            do {
+                                return .success(try await appState.geminiLiveTokenClient.availability())
+                            } catch {
+                                return .failure(error)
+                            }
+                        }
+                    )
                 )
             } else {
                 SettingsDetailContainer {

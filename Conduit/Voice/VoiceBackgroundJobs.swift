@@ -202,7 +202,13 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         }
     }
 
-    func startJob(instructions: String) async -> String {
+    /// `onJobCreated` receives the ledger id as soon as the job is admitted
+    /// (before any Hermes round trip), so a caller can correlate the job's
+    /// later outcome with its own request (Gemini Live's open tool call).
+    func startJob(
+        instructions: String,
+        onJobCreated: (@MainActor (UUID) -> Void)? = nil
+    ) async -> String {
         let activeCount = activeJobCount
         guard activeCount < Self.maximumActiveJobs else {
             return AppLocalization.string("You already have \(activeCount) background jobs running. Cancel them before starting another.")
@@ -215,6 +221,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             startedAt: Date()
         )
         jobs.append(job)
+        onJobCreated?(job.id)
         let generation = generation
         var createdSessionID: String?
         do {
@@ -343,6 +350,32 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         let count = targets.count
         return AppLocalization.string("Cancelled \(count) background jobs.")
     }
+
+    /// Cancels one active job. Returns what to say, or nil when no active
+    /// job has that id.
+    func cancel(jobID: UUID) async -> String? {
+        guard let job = job(jobID), job.status.isActive else { return nil }
+        update(jobID) {
+            $0.status = .cancelled
+            $0.outcomeDelivered = true
+        }
+        if let sessionID = job.runtimeSessionID {
+            try? await backend.cancel(sessionID)
+        }
+        stopPollingIfIdle()
+        pruneSettledJobs()
+        return AppLocalization.string("\(job.title) was cancelled.")
+    }
+
+    /// Records that a job's terminal outcome reached the user through
+    /// another channel (a Gemini Live tool response), so `takePendingNotice`
+    /// never announces it a second time.
+    func markOutcomeDelivered(jobID: UUID) {
+        update(jobID) { $0.outcomeDelivered = true }
+        pruneSettledJobs()
+    }
+
+    func job(withID id: UUID) -> VoiceBackgroundJob? { job(id) }
 
     /// Forgets every job without touching Hermes: the jobs keep running on
     /// the server as ordinary chats. Used at server, profile, and sign-out
