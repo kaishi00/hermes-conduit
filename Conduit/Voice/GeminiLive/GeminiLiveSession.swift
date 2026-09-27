@@ -216,6 +216,10 @@ final class GeminiLiveSession {
     private var awaitingSetup: (id: UUID, attempt: Int)?
     /// The last close Google sent before setup, named if retries run out.
     private var lastSetupClose: GeminiLiveServerClose?
+    /// Whether setup asks for Google Search. Search is metered on its own,
+    /// so once Google refuses a setup for quota the session carries on
+    /// without it rather than failing.
+    private var googleSearch = true
 
     init(
         tokens: GeminiLiveTokenProviding,
@@ -239,6 +243,7 @@ final class GeminiLiveSession {
         guard state == .idle || state == .stopped || isFailed else { return }
         resumptionHandle = nil
         lastSetupClose = nil
+        googleSearch = true
         hasConnectedOnce = false
         state = .connecting
         connectTask = Task { [weak self] in await self?.connect(attempt: 0) }
@@ -316,6 +321,7 @@ final class GeminiLiveSession {
             model: token.model,
             systemInstruction: systemInstruction,
             functions: functions,
+            googleSearch: googleSearch,
             resumptionHandle: resumptionHandle
         )
         do {
@@ -326,7 +332,7 @@ final class GeminiLiveSession {
             socket.close()
             guard !Task.isCancelled, state != .stopped, !isFailed else { return }
             if let close, close.isRefusal {
-                fail(AppLocalization.string("Gemini Live refused the connection: \(close.summary)"))
+                refused(close, attempt: attempt)
                 return
             }
             if let close { lastSetupClose = close }
@@ -426,12 +432,26 @@ final class GeminiLiveSession {
         // Closed before setupComplete: a failed attempt, not a lost
         // connection. A deliberate refusal won't change on retry.
         if let serverClose, serverClose.isRefusal {
-            fail(AppLocalization.string("Gemini Live refused the connection: \(serverClose.summary)"))
+            refused(serverClose, attempt: pendingSetup.attempt)
             return
         }
         // The most recent explained close is the one worth naming.
         if let serverClose { lastSetupClose = serverClose }
         connectTask = Task { [weak self] in await self?.retry(after: pendingSetup.attempt, error: error) }
+    }
+
+    /// Google refused a setup. A quota refusal while Search is on is most
+    /// likely Search's own quota, so the same attempt runs again without
+    /// it; any other refusal (or a quota one without Search) is final.
+    private func refused(_ close: GeminiLiveServerClose, attempt: Int) {
+        if close.isQuotaExhausted, googleSearch {
+            geminiLiveLogger.notice("Gemini Live setup refused for quota; retrying without Google Search")
+            googleSearch = false
+            connectTask?.cancel()
+            connectTask = Task { [weak self] in await self?.connect(attempt: attempt) }
+            return
+        }
+        fail(AppLocalization.string("Gemini Live refused the connection: \(close.summary)"))
     }
 
     private func retry(after attempt: Int, error: Error) async {

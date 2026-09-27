@@ -372,6 +372,31 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(tokens.issued, 1)
     }
 
+    func testGeminiLiveQuotaRefusalRetriesOnceWithoutGoogleSearch() async throws {
+        let tokens = FakeGeminiLiveTokens()
+        let (session, sockets) = makeGeminiSession(tokens: tokens)
+        session.start()
+        await settle()
+        let quota = GeminiLiveServerClose(code: 1011, reason: "You exceeded your current quota, please check your plan and billing details.")
+        func searches(_ socket: FakeGeminiLiveSocket) -> Bool {
+            let setup = socket.sent.first?["setup"] as? [String: Any]
+            let tools = setup?["tools"] as? [[String: Any]] ?? []
+            return tools.contains { $0["googleSearch"] != nil }
+        }
+        XCTAssertTrue(searches(try XCTUnwrap(sockets().first)))
+
+        try XCTUnwrap(sockets().first).serverClose(quota)
+        await settle(80)
+        XCTAssertEqual(sockets().count, 2, "Search's own quota doesn't end the conversation")
+        XCTAssertFalse(searches(try XCTUnwrap(sockets().last)))
+        if case .failed = session.state { XCTFail("the retry without Search should still be connecting") }
+
+        try XCTUnwrap(sockets().last).serverClose(quota)
+        await settle(80)
+        XCTAssertEqual(session.state, .failed(AppLocalization.string("Gemini Live refused the connection: \(quota.summary)")))
+        XCTAssertEqual(sockets().count, 2, "without Search a quota refusal is final")
+    }
+
     func testGeminiLiveBenignClosesBeforeSetupRetryAndNameTheLastReason() async {
         let tokens = FakeGeminiLiveTokens()
         let (session, sockets) = makeGeminiSession(tokens: tokens)
