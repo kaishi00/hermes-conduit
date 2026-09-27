@@ -252,6 +252,10 @@ final class GeminiLiveConversationController: ObservableObject {
             return
         }
         guard phase == .connecting else { return }
+        // A retry after a failed connection starts a new server session:
+        // calls opened on the old one can't be answered there, so their
+        // results must go out as text updates.
+        tools.connectionReplaced()
         let session = makeSession()
         session.onEvent = { [weak self] in self?.handle($0) }
         session.onStateChange = { [weak self] in self?.sessionStateChanged($0) }

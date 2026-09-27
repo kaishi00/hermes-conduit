@@ -132,11 +132,19 @@ enum GeminiLiveProtocol {
         scheduling: Scheduling?
     ) -> [String: Any] {
         var response = result
-        if let scheduling { response["scheduling"] = scheduling.rawValue }
+        var functionResponse: [String: Any] = ["id": id, "name": name]
+        if let scheduling {
+            // Google's async function-calling examples put scheduling inside
+            // `response`; the API's FunctionResponse also defines it as a
+            // sibling field. Send both so either reading applies it.
+            response["scheduling"] = scheduling.rawValue
+            functionResponse["scheduling"] = scheduling.rawValue
+        }
+        functionResponse["response"] = response
         return [
             "toolResponse": [
                 "functionResponses": [
-                    ["id": id, "name": name, "response": response] as [String: Any],
+                    functionResponse,
                 ],
             ],
         ]

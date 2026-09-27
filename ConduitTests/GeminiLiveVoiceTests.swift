@@ -159,6 +159,7 @@ extension HermesVoiceGatewayTimeoutTests {
         let response = ((message["toolResponse"] as? [String: Any])?["functionResponses"] as? [[String: Any]])?.first
         XCTAssertEqual(response?["id"] as? String, "c1")
         XCTAssertEqual((response?["response"] as? [String: Any])?["scheduling"] as? String, "WHEN_IDLE")
+        XCTAssertEqual(response?["scheduling"] as? String, "WHEN_IDLE")
         XCTAssertEqual((response?["response"] as? [String: Any])?["result"] as? String, "done")
 
         let audio = GeminiLiveProtocol.audioMessage(pcm16: Data([1, 2]))
