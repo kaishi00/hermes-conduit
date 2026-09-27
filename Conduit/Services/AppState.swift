@@ -18908,7 +18908,18 @@ final class AppState: ObservableObject {
     @discardableResult
     func openVoiceConversation(_ intent: PendingVoiceIntent) async -> Bool {
         guard isConnected else { return false }
-        if isGeminiLiveEnabled {
+        // The mode is the requested profile's (Siri may name another one).
+        let requestedProfile = intent.profile?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let targetProfile = requestedProfile.isEmpty ? activeProfile : requestedProfile
+        if loadVoiceProfilePreferences(profile: targetProfile).geminiLiveEnabled {
+            if targetProfile != activeProfile {
+                await switchProfile(to: targetProfile)
+                guard targetProfile == activeProfile else {
+                    errorMessage = AppLocalization.string("Conduit could not open the requested voice profile.")
+                    return true
+                }
+                guard isConnected else { return false }
+            }
             return openGeminiLiveConversation()
         }
         // Mutual exclusion: the voice conversation owns playback while its

@@ -44,6 +44,12 @@ final class GeminiLiveToolBridge {
         /// A text turn for an update with no open call to answer on. The
         /// host sends it only while the conversation is idle.
         case textWhenIdle(String)
+
+        /// Whether this answers the function call `id`.
+        func answers(_ id: String) -> Bool {
+            if case .toolResponse(let responseID, _, _, _) = self { return responseID == id }
+            return false
+        }
     }
 
     static let functionDeclarations: [GeminiLiveProtocol.FunctionDeclaration] = [

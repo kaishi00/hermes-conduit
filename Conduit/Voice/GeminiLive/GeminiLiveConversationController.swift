@@ -400,9 +400,10 @@ final class GeminiLiveConversationController: ObservableObject {
                     let requestedAt = min(calledAt, self.lastUserSpeechAt ?? calledAt)
                     let outgoing = await self.tools.handle(call)
                     self.dispatch(outgoing)
-                    // An empty answer means a start_job is running: make
-                    // sure the user heard that it was taken.
-                    if call.name == GeminiLiveToolBridge.Tool.startJob.rawValue, outgoing.isEmpty {
+                    // A start_job its own call didn't answer is running
+                    // (other jobs may settle in the same batch): make sure
+                    // the user heard that it was taken.
+                    if call.name == GeminiLiveToolBridge.Tool.startJob.rawValue, !outgoing.contains(where: { $0.answers(call.id) }) {
                         self.ensureAcknowledgement(since: requestedAt)
                     }
                 }
@@ -473,9 +474,11 @@ final class GeminiLiveConversationController: ObservableObject {
                 // The outcome is already marked delivered, so a send that
                 // fails keeps it as a text update for the next connection.
                 var onFailure: (@MainActor () -> Void)?
-                if scheduling != .silent, let text = Self.fallbackText(for: result) {
-                    onFailure = { [weak self] in
-                        guard let self, self.isActive else { return }
+                if scheduling != .silent, let text = Self.fallbackText(for: result), let sentOn = session {
+                    onFailure = { [weak self, weak sentOn] in
+                        // Only for the conversation that sent it, not one
+                        // started since.
+                        guard let self, self.isActive, let sentOn, self.session === sentOn else { return }
                         self.pendingTextTurns.append(text)
                         self.scheduleIdleFlush()
                     }
@@ -509,7 +512,14 @@ final class GeminiLiveConversationController: ObservableObject {
         guard !pendingTextTurns.isEmpty, isConversationIdle, let session else { return }
         let text = pendingTextTurns.removeFirst()
         modelTurnActive = true
-        session.send(GeminiLiveProtocol.textTurnMessage(text))
+        // An update that never reached the socket waits for the next
+        // connection instead of being lost.
+        session.send(GeminiLiveProtocol.textTurnMessage(text), onFailure: { [weak self, weak session] in
+            guard let self, self.isActive, let session, self.session === session else { return }
+            self.modelTurnActive = false
+            self.pendingTextTurns.insert(text, at: 0)
+            self.scheduleIdleFlush()
+        })
     }
 
     private func scheduleIdleFlush() {
