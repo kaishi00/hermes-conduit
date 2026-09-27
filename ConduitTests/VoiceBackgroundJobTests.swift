@@ -59,6 +59,7 @@ extension VoiceSpokenCommandMatchingTests {
 final class FakeVoiceJobBackend {
     var createError: Error?
     var submitError: Error?
+    var cancelError: Error?
     /// When true, the next createSession parks until `releaseCreate()`.
     var parksCreate = false
     let createParked = AwaitableCounter()
@@ -95,7 +96,10 @@ final class FakeVoiceJobBackend {
                 self.onSubmit?(id)
                 if let error = self.submitError { throw error }
             },
-            cancel: { [self] id in self.cancelled.append(id) },
+            cancel: { [self] id in
+                if let cancelError = self.cancelError { throw cancelError }
+                self.cancelled.append(id)
+            },
             liveSessions: { [self] in self.liveRows }
         )
     }
@@ -207,6 +211,21 @@ extension VoiceConversationControllerTests {
         XCTAssertNil(supervisor.takePendingNotice(), "the user already heard the cancellation")
         let again = await supervisor.cancelAll()
         XCTAssertEqual(again, AppLocalization.string("There are no background jobs to cancel."))
+    }
+
+    func testAFailedHermesCancelIsReportedAndTheJobStaysSupervised() async {
+        let (supervisor, fake) = makeSupervisor()
+        _ = await supervisor.startJob(instructions: "first")
+        let jobID = try! XCTUnwrap(supervisor.jobs.first?.id)
+        fake.cancelError = HermesError.notConnected
+
+        let reply = await supervisor.cancel(jobID: jobID)
+
+        XCTAssertEqual(reply?.hasPrefix("Couldn't cancel"), true, reply ?? "nil")
+        XCTAssertTrue(supervisor.jobs.first?.status.isActive == true, "a job Hermes didn't stop stays active")
+        XCTAssertFalse(supervisor.jobs.first?.outcomeDelivered ?? true)
+        let all = await supervisor.cancelAll()
+        XCTAssertFalse(all.contains("Cancelled"), all)
     }
 
     func testFailedStartIsReportedInlineOnly() async {

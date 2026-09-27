@@ -1,6 +1,16 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Couldn't cancel %@. It may still be running." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法取消 %@，它可能仍在运行。"
+          }
+        }
+      }
+    },
     "You: %@" : {
       "localizations" : {
         "zh-Hans" : {

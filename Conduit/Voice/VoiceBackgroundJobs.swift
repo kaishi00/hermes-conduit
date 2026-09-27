@@ -334,37 +334,54 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         guard !targets.isEmpty else {
             return AppLocalization.string("There are no background jobs to cancel.")
         }
+        var failures: [String] = []
         for job in targets {
-            // Mark first: the interrupt's own terminal event must read as a
-            // cancellation, not a failure to announce.
-            update(job.id) {
-                $0.status = .cancelled
-                $0.outcomeDelivered = true
-            }
-            if let sessionID = job.runtimeSessionID {
-                try? await backend.cancel(sessionID)
+            if !(await cancelOnHermes(job)) {
+                failures.append(AppLocalization.string("Couldn't cancel \(job.title). It may still be running."))
             }
         }
         stopPollingIfIdle()
         pruneSettledJobs()
-        let count = targets.count
-        return AppLocalization.string("Cancelled \(count) background jobs.")
+        let count = targets.count - failures.count
+        let summary = count > 0 ? [AppLocalization.string("Cancelled \(count) background jobs.")] : []
+        return (summary + failures).joined(separator: " ")
     }
 
     /// Cancels one active job. Returns what to say, or nil when no active
     /// job has that id.
     func cancel(jobID: UUID) async -> String? {
         guard let job = job(jobID), job.status.isActive else { return nil }
-        update(jobID) {
+        let cancelled = await cancelOnHermes(job)
+        stopPollingIfIdle()
+        pruneSettledJobs()
+        return cancelled
+            ? AppLocalization.string("\(job.title) was cancelled.")
+            : AppLocalization.string("Couldn't cancel \(job.title). It may still be running.")
+    }
+
+    /// Marks the job cancelled and interrupts its Hermes session. If Hermes
+    /// refuses, the job goes back to what it was and stays supervised, so
+    /// nobody is told a running job stopped. Returns whether it cancelled.
+    private func cancelOnHermes(_ job: VoiceBackgroundJob) async -> Bool {
+        // Mark first: the interrupt's own terminal event must read as a
+        // cancellation, not a failure to announce.
+        update(job.id) {
             $0.status = .cancelled
             $0.outcomeDelivered = true
         }
-        if let sessionID = job.runtimeSessionID {
-            try? await backend.cancel(sessionID)
+        guard let sessionID = job.runtimeSessionID else { return true }
+        do {
+            try await backend.cancel(sessionID)
+            return true
+        } catch {
+            if self.job(job.id)?.status == .cancelled {
+                update(job.id) {
+                    $0.status = job.status
+                    $0.outcomeDelivered = job.outcomeDelivered
+                }
+            }
+            return false
         }
-        stopPollingIfIdle()
-        pruneSettledJobs()
-        return AppLocalization.string("\(job.title) was cancelled.")
     }
 
     /// Records that a job's terminal outcome reached the user through
