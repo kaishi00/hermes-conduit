@@ -142,6 +142,8 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual((body["realtimeInputConfig"] as? [String: Any])?["activityHandling"] as? String, "START_OF_ACTIVITY_INTERRUPTS")
         let declarations = try XCTUnwrap(((body["tools"] as? [[String: Any]])?.first)?["functionDeclarations"] as? [[String: Any]])
         let behaviors = Dictionary(uniqueKeysWithValues: declarations.map { ($0["name"] as! String, $0["behavior"] as! String) })
+        // Quick web lookups (weather, news) go to Gemini's own Search, not a Hermes job.
+        XCTAssertTrue((body["tools"] as? [[String: Any]])?.contains { $0["googleSearch"] != nil } == true)
         XCTAssertEqual(behaviors, ["start_job": "NON_BLOCKING", "list_jobs": "BLOCKING", "cancel_job": "BLOCKING"])
 
         // A first connection opts in to resumption without a handle.
@@ -380,6 +382,7 @@ extension VoiceConversationControllerTests {
 
     private func makeGeminiController(
         tokens providedTokens: FakeGeminiLiveTokens? = nil,
+        route: VoiceBargeInRoutePolicy = .fullDuplex,
         clock: @escaping () -> Date
     ) -> (GeminiLiveConversationController, FakeGeminiLiveSessionControl, FakeGeminiLiveInput, FakeGeminiLiveOutput, VoiceBackgroundJobSupervisor) {
         let tokens = providedTokens ?? FakeGeminiLiveTokens()
@@ -393,7 +396,8 @@ extension VoiceConversationControllerTests {
             tools: GeminiLiveToolBridge(supervisor: supervisor),
             input: input,
             output: output,
-            now: clock
+            now: clock,
+            routePolicy: { route }
         )
         return (controller, session, input, output, supervisor)
     }
@@ -532,5 +536,100 @@ extension AppStateVoiceCapabilityTests {
 
         XCTAssertFalse(appState.showGeminiLiveSheet)
         XCTAssertFalse(appState.geminiLiveController.isActive)
+    }
+}
+
+// MARK: - Speaker echo, acknowledgement, voice-job model
+
+@MainActor
+extension VoiceConversationControllerTests {
+    func testGeminiLiveHoldsTheMicOnTheSpeakerWhileItTalksButNotOnAHeadset() async {
+        var current = Date(timeIntervalSince1970: 1_000)
+        let (controller, session, input, output, _) = makeGeminiController(route: .speakerSafeHalfDuplex, clock: { current })
+        await controller.start()
+        session.becomeReady()
+        input.onChunk?(Data([1]))
+        XCTAssertEqual(session.sent.count, 1, "The mic streams while nobody is speaking")
+
+        session.onEvent?(.audio(Data([0, 0]), sampleRate: 24_000))
+        input.onChunk?(Data([1]))
+        XCTAssertEqual(session.sent.count, 1, "The speaker's own voice must never reach Gemini as barge-in")
+
+        // Turn over, playback drained: the echo tail still holds the mic briefly.
+        session.onEvent?(.turnComplete)
+        output.isPlaying = false
+        _ = controller.isMicrophoneGatedForSpeaker
+        current += GeminiLiveConversationController.speakerEchoTail / 2
+        input.onChunk?(Data([1]))
+        XCTAssertEqual(session.sent.count, 1)
+        current += GeminiLiveConversationController.speakerEchoTail
+        input.onChunk?(Data([1]))
+        XCTAssertEqual(session.sent.count, 2)
+
+        // Interrupt is how the user cuts in on the speaker.
+        session.onEvent?(.audio(Data([0, 0]), sampleRate: 24_000))
+        controller.interruptSpeaking()
+        XCTAssertFalse(output.isPlaying)
+        session.onEvent?(.audio(Data([0, 0]), sampleRate: 24_000))
+        XCTAssertFalse(output.isPlaying, "The rest of an interrupted turn is dropped")
+        input.onChunk?(Data([1]))
+        XCTAssertEqual(session.sent.count, 3)
+        controller.stop()
+    }
+
+    func testGeminiLiveHeadsetStaysFullDuplex() async {
+        let (controller, session, input, _, _) = makeGeminiController(route: .fullDuplex, clock: Date.init)
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.audio(Data([0, 0]), sampleRate: 24_000))
+        input.onChunk?(Data([1]))
+        XCTAssertEqual(session.sent.count, 1, "With a headset the user can barge in by voice")
+        controller.stop()
+    }
+
+    func testGeminiLivePromptsAnAcknowledgementOnlyWhenTheModelStayedSilent() async {
+        var current = Date(timeIntervalSince1970: 1_000)
+        let (controller, session, _, _, _) = makeGeminiController(clock: { current })
+        await controller.start()
+        session.becomeReady()
+
+        let calledAt = current
+        current += 5
+        controller.acknowledgeIfSilent(since: calledAt)
+        XCTAssertEqual(session.textTurns, [GeminiLiveConversationController.acknowledgementPrompt])
+
+        // The model spoke after the call: no prompt.
+        session.onEvent?(.turnComplete)
+        let secondCall = current
+        current += 0.2
+        session.onEvent?(.audio(Data([0, 0]), sampleRate: 24_000))
+        session.onEvent?(.turnComplete)
+        current += 5
+        controller.acknowledgeIfSilent(since: secondCall)
+        XCTAssertEqual(session.textTurns.count, 1)
+        controller.stop()
+    }
+
+    func testVoiceJobsUseTheirOwnModelAndReasoningWhenChosen() {
+        var preferences = VoiceProfilePreferences()
+        let fallback = preferences.voiceJobSessionOptions(runtimeModel: "big-model", runtimeProvider: "anthropic")
+        XCTAssertEqual(fallback.model, "big-model")
+        XCTAssertEqual(fallback.provider, "anthropic")
+        XCTAssertNil(fallback.reasoningEffort)
+
+        preferences.voiceJobReasoningEffort = "low"
+        XCTAssertEqual(preferences.voiceJobSessionOptions(runtimeModel: "big-model", runtimeProvider: "anthropic").reasoningEffort, "low")
+
+        preferences.voiceJobModel = "fast-model"
+        preferences.voiceJobProvider = "openrouter"
+        let chosen = preferences.voiceJobSessionOptions(runtimeModel: "big-model", runtimeProvider: "anthropic")
+        XCTAssertEqual(chosen.model, "fast-model")
+        XCTAssertEqual(chosen.provider, "openrouter")
+        XCTAssertEqual(chosen.reasoningEffort, "low")
+
+        let decoded = try? JSONDecoder().decode(VoiceProfilePreferences.self, from: JSONEncoder().encode(preferences))
+        XCTAssertEqual(decoded?.voiceJobModel, "fast-model")
+        XCTAssertEqual(decoded?.voiceJobReasoningEffort, "low")
+        XCTAssertEqual(VoiceJobModelSettingsSection.parse(VoiceJobModelSettingsSection.tag(provider: "openrouter", model: "a/b")).model, "a/b")
     }
 }

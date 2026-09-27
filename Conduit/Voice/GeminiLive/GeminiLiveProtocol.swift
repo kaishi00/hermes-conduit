@@ -58,8 +58,13 @@ enum GeminiLiveProtocol {
         model: String = GeminiLiveProtocol.model,
         systemInstruction: String,
         functions: [FunctionDeclaration],
+        googleSearch: Bool = true,
         resumptionHandle: String?
     ) -> [String: Any] {
+        var tools: [[String: Any]] = [["functionDeclarations": functions.map(\.json)]]
+        // Gemini's own Google Search answers quick lookups (weather, news,
+        // facts) directly instead of sending them through a Hermes job.
+        if googleSearch { tools.append(["googleSearch": [String: Any]()]) }
         var sessionResumption: [String: Any] = [:]
         if let resumptionHandle, !resumptionHandle.isEmpty {
             sessionResumption["handle"] = resumptionHandle
@@ -73,9 +78,7 @@ enum GeminiLiveProtocol {
                 "systemInstruction": [
                     "parts": [["text": systemInstruction]],
                 ],
-                "tools": [
-                    ["functionDeclarations": functions.map(\.json)],
-                ],
+                "tools": tools,
                 "realtimeInputConfig": [
                     "automaticActivityDetection": ["disabled": false],
                     // The user's speech always interrupts the model: it must

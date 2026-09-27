@@ -1258,6 +1258,22 @@ final class AppState: ObservableObject {
         loadVoiceProfilePreferences(profile: activeProfile).geminiLiveEnabled
     }
 
+    /// Voice-job model and reasoning (nil = the profile's defaults).
+    func setVoiceJobModel(provider: String?, model: String?, reasoningEffort: String?) {
+        var preferences = loadVoiceProfilePreferences(profile: activeProfile)
+        preferences.voiceJobProvider = model == nil ? nil : provider
+        preferences.voiceJobModel = model
+        preferences.voiceJobReasoningEffort = reasoningEffort
+        objectWillChange.send()
+        saveVoiceProfilePreferences(preferences, profile: activeProfile)
+    }
+
+    /// The models Hermes offers, for the voice-job model picker.
+    func loadVoiceJobModelProviders() async -> [ProviderInfo] {
+        guard let client else { return [] }
+        return (try? await client.modelOptions(sessionId: activeSessionId))?.2 ?? []
+    }
+
     func setGeminiLiveEnabled(_ enabled: Bool) {
         var preferences = loadVoiceProfilePreferences(profile: activeProfile)
         guard preferences.geminiLiveEnabled != enabled else { return }
@@ -1355,9 +1371,16 @@ final class AppState: ObservableObject {
                 // Same model/provider as a composer-created chat, and the
                 // same refusal when Hermes lands it in another profile.
                 let profile = self.activeProfile
+                // Voice jobs can run on their own (faster) model and
+                // reasoning level, chosen in Voice settings.
+                let options = self.loadVoiceProfilePreferences(profile: profile).voiceJobSessionOptions(
+                    runtimeModel: self.runtime.model,
+                    runtimeProvider: self.runtime.provider
+                )
                 let created = try await client.createSession(
-                    model: self.runtime.model.isEmpty ? nil : self.runtime.model,
-                    provider: self.runtime.provider.isEmpty ? nil : self.runtime.provider
+                    model: options.model,
+                    provider: options.provider,
+                    reasoningEffort: options.reasoningEffort
                 )
                 if let returnedProfile = created.profile, !self.profilesMatch(returnedProfile, profile) {
                     throw HermesError.invalidResponse

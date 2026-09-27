@@ -553,6 +553,15 @@ struct SettingsView: View {
                                 return .failure(error)
                             }
                         }
+                    ),
+                    voiceJobs: VoiceJobModelSettingsModel(
+                        provider: voicePreferences.voiceJobProvider,
+                        model: voicePreferences.voiceJobModel,
+                        reasoningEffort: voicePreferences.voiceJobReasoningEffort,
+                        loadProviders: { await appState.loadVoiceJobModelProviders() },
+                        save: { provider, model, reasoning in
+                            appState.setVoiceJobModel(provider: provider, model: model, reasoningEffort: reasoning)
+                        }
                     )
                 )
             } else {

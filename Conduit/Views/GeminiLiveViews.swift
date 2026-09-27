@@ -147,6 +147,18 @@ struct GeminiLiveVoiceSheet: View {
             }
             .conduitGlassControl(cornerRadius: 18, tint: .conduitAccent.opacity(0.14))
         } else {
+            if controller.phase == .speaking {
+                // On an open speaker the mic is closed while Gemini talks,
+                // so this is the way to cut in.
+                Button {
+                    controller.interruptSpeaking()
+                } label: {
+                    Label("Interrupt", systemImage: "hand.raised.fill")
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 50)
+                }
+                .conduitGlassControl(cornerRadius: 18, tint: .conduitAccent.opacity(0.14))
+            }
             Button {
                 controller.setMicrophoneMuted(!controller.isMicrophoneMuted)
             } label: {
@@ -180,5 +192,87 @@ struct GeminiLiveVoiceSheet: View {
         case .speaking: return AppLocalization.string("Speaking")
         case .failed(let message): return message
         }
+    }
+}
+
+/// What Voice settings needs for the voice-job model choice.
+struct VoiceJobModelSettingsModel {
+    var provider: String?
+    var model: String?
+    var reasoningEffort: String?
+    var loadProviders: () async -> [ProviderInfo]
+    var save: (_ provider: String?, _ model: String?, _ reasoningEffort: String?) -> Void
+}
+
+/// The model and reasoning level for Hermes sessions that voice background
+/// jobs create (both Voice modes). A faster model here keeps spoken
+/// requests quick without changing the profile's main chat model.
+struct VoiceJobModelSettingsSection: View {
+    let settings: VoiceJobModelSettingsModel
+    @State private var selection: String
+    @State private var reasoning: String
+    @State private var providers: [ProviderInfo] = []
+
+    private static let profileDefault = ""
+
+    init(settings: VoiceJobModelSettingsModel) {
+        self.settings = settings
+        _selection = State(initialValue: settings.model.map { Self.tag(provider: settings.provider, model: $0) } ?? Self.profileDefault)
+        _reasoning = State(initialValue: settings.reasoningEffort ?? Self.profileDefault)
+    }
+
+    var body: some View {
+        ConduitSettingsSection(title: AppLocalization.string("Voice jobs"), symbol: "bolt.horizontal.circle", tint: .conduitAccent) {
+            Picker("Model", selection: $selection) {
+                Text("Profile default").tag(Self.profileDefault)
+                // Keep a saved choice visible even before the list loads.
+                if selection != Self.profileDefault, !providers.contains(where: { provider in
+                    provider.models.contains { Self.tag(provider: provider.name, model: $0.id) == selection }
+                }) {
+                    Text(Self.parse(selection).model).tag(selection)
+                }
+                ForEach(providers, id: \.name) { provider in
+                    ForEach(provider.models, id: \.id) { model in
+                        Text("\(model.label ?? model.id) · \(provider.name)")
+                            .tag(Self.tag(provider: provider.name, model: model.id))
+                    }
+                }
+            }
+            .pickerStyle(.menu)
+            Picker("Reasoning", selection: $reasoning) {
+                Text("Profile default").tag(Self.profileDefault)
+                // Same levels as the model picker's reasoning control.
+                Text("None").tag("none")
+                Text("Minimal").tag("minimal")
+                Text("Low").tag("low")
+                Text("Medium").tag("medium")
+                Text("High").tag("high")
+                Text("Extra High").tag("xhigh")
+                Text("Max").tag("max")
+            }
+            .pickerStyle(.menu)
+            Text("The model Hermes uses for background jobs started by voice. A fast model with low reasoning keeps spoken requests quick; your chats keep the profile's model.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .task { providers = await settings.loadProviders() }
+        .onChange(of: selection) { _, _ in save() }
+        .onChange(of: reasoning) { _, _ in save() }
+    }
+
+    private func save() {
+        let chosen = selection == Self.profileDefault ? nil : Self.parse(selection)
+        settings.save(chosen?.provider, chosen?.model, reasoning == Self.profileDefault ? nil : reasoning)
+    }
+
+    /// Picker tag for a provider/model pair (provider may be empty).
+    static func tag(provider: String?, model: String) -> String {
+        "\(provider ?? "")\u{1F}\(model)"
+    }
+
+    static func parse(_ tag: String) -> (provider: String?, model: String) {
+        let parts = tag.split(separator: "\u{1F}", maxSplits: 1, omittingEmptySubsequences: false)
+        guard parts.count == 2 else { return (nil, tag) }
+        return (parts[0].isEmpty ? nil : String(parts[0]), String(parts[1]))
     }
 }

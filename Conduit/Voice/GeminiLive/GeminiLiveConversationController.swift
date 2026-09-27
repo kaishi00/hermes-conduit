@@ -113,7 +113,8 @@ final class GeminiLiveConversationController: ObservableObject {
     static let systemInstruction = """
     You are the voice of the user's Hermes agent, speaking with them through the Conduit iPhone app. Keep replies short and conversational: this is speech, not text.
     Never speak while the user is speaking. If they interrupt you, stop and listen. If you have nothing useful to add, stay silent rather than filling the pause.
-    For anything that needs research, tools, files, code, or more than a quick answer, call start_job with the complete task. Say briefly that you've started it and carry on with the conversation; the job runs on Hermes in the background.
+    Answer quick questions yourself. For weather, news, sports, prices, and other quick facts from the web, use Google Search and answer directly.
+    Call start_job only for work that needs the user's Hermes agent: their files, code, systems, accounts, or longer multi-step research. Pass the complete task. Every time you call start_job, first say a very short acknowledgement out loud, like "On it, I'll have Hermes look into that." Then carry on with the conversation; the job runs on Hermes in the background.
     Do not comment on how a job is progressing unless the user asks; use list_jobs when they do. When a job's result arrives, tell the user the outcome once, in a few spoken sentences, when the conversation is quiet.
     Never approve, deny, or answer anything on a job's behalf. If a job needs input, tell the user to open it in Conduit.
     Use cancel_job only when the user asks to cancel.
@@ -142,8 +143,21 @@ final class GeminiLiveConversationController: ObservableObject {
     private let input: GeminiLiveAudioInput
     private let output: GeminiLiveAudioOutput
     private let now: () -> Date
+    private let routePolicy: @MainActor () -> VoiceBargeInRoutePolicy
+
+    /// After the model stops playing on an open speaker, the mic stays
+    /// closed this long so the room's echo tail can't read as user speech.
+    static let speakerEchoTail: TimeInterval = 0.35
+    /// How long the model has to acknowledge a start_job out loud before
+    /// Conduit prompts it to.
+    static let acknowledgementGrace: TimeInterval = 1.5
 
     private var session: GeminiLiveSessionControlling?
+    /// Set by the Interrupt button: the rest of the current model turn is
+    /// dropped locally until the server ends or interrupts it.
+    private var suppressingModelTurn = false
+    private var lastPlaybackAt: Date?
+    private var lastModelAudioAt: Date?
     private var inputRunning = false
     private var modelTurnActive = false
     private var lastUserSpeechAt: Date?
@@ -160,7 +174,8 @@ final class GeminiLiveConversationController: ObservableObject {
         tools: GeminiLiveToolBridge,
         input: GeminiLiveAudioInput,
         output: GeminiLiveAudioOutput,
-        now: @escaping () -> Date = Date.init
+        now: @escaping () -> Date = Date.init,
+        routePolicy: @escaping @MainActor () -> VoiceBargeInRoutePolicy = { VoiceBargeInRoutePolicy.current() }
     ) {
         self.makeSession = makeSession
         self.availability = availability
@@ -168,6 +183,20 @@ final class GeminiLiveConversationController: ObservableObject {
         self.input = input
         self.output = output
         self.now = now
+        self.routePolicy = routePolicy
+    }
+
+    /// The Interrupt button: stop the model now. On an open speaker this is
+    /// how the user barges in, since the mic is closed while it speaks.
+    func interruptSpeaking() {
+        guard modelTurnActive || output.isPlaying else { return }
+        output.interrupt()
+        suppressingModelTurn = true
+        modelTurnActive = false
+        lastModelTurnEndedAt = now()
+        lastPlaybackAt = nil
+        openAssistantEntry = nil
+        phase = .listening
     }
 
     // MARK: Lifecycle
@@ -216,6 +245,9 @@ final class GeminiLiveConversationController: ObservableObject {
         input.onChunk = nil
         output.stop()
         modelTurnActive = false
+        suppressingModelTurn = false
+        lastPlaybackAt = nil
+        lastModelAudioAt = nil
         pendingTextTurns = []
         tools.connectionReplaced()
         closeOpenEntries()
@@ -269,7 +301,9 @@ final class GeminiLiveConversationController: ObservableObject {
     private func handle(_ event: GeminiLiveProtocol.ServerEvent) {
         switch event {
         case .audio(let pcm, let sampleRate):
+            guard !suppressingModelTurn else { return }
             modelTurnActive = true
+            lastModelAudioAt = now()
             phase = .speaking
             do {
                 try output.play(pcm, sampleRate: sampleRate)
@@ -277,6 +311,7 @@ final class GeminiLiveConversationController: ObservableObject {
                 output.interrupt()
             }
         case .outputTranscription(let text):
+            guard !suppressingModelTurn else { return }
             modelTurnActive = true
             appendTranscript(text, speaker: .assistant)
         case .inputTranscription(let text):
@@ -285,11 +320,13 @@ final class GeminiLiveConversationController: ObservableObject {
         case .interrupted:
             // The user started speaking: the model must stop immediately.
             output.interrupt()
+            suppressingModelTurn = false
             modelTurnActive = false
             lastModelTurnEndedAt = now()
             openAssistantEntry = nil
             phase = .listening
         case .turnComplete:
+            suppressingModelTurn = false
             modelTurnActive = false
             lastModelTurnEndedAt = now()
             closeOpenEntries()
@@ -299,8 +336,14 @@ final class GeminiLiveConversationController: ObservableObject {
             for call in calls {
                 Task { [weak self] in
                     guard let self else { return }
+                    let calledAt = self.now()
                     let outgoing = await self.tools.handle(call)
                     self.dispatch(outgoing)
+                    // An empty answer means a start_job is running: make
+                    // sure the user heard that it was taken.
+                    if call.name == GeminiLiveToolBridge.Tool.startJob.rawValue, outgoing.isEmpty {
+                        self.ensureAcknowledgement(since: calledAt)
+                    }
                 }
             }
         case .toolCallCancellation(let ids):
@@ -312,8 +355,48 @@ final class GeminiLiveConversationController: ObservableObject {
 
     private func microphoneChunk(_ chunk: Data) {
         guard !isMicrophoneMuted, let session, session.isReady else { return }
+        guard !isMicrophoneGatedForSpeaker else { return }
         session.send(GeminiLiveProtocol.audioMessage(pcm16: chunk))
     }
+
+    /// On an open speaker (no headset), the model's own voice reaches the
+    /// microphone; streamed, it reads as the user barging in and the model
+    /// interrupts itself in a loop. So the mic is held back while the model
+    /// speaks and for a short echo tail — the same half duplex the classic
+    /// Voice mode uses on the speaker. Headsets stay full duplex.
+    var isMicrophoneGatedForSpeaker: Bool {
+        guard routePolicy() == .speakerSafeHalfDuplex else { return false }
+        if output.isPlaying {
+            lastPlaybackAt = now()
+            return true
+        }
+        if modelTurnActive, !suppressingModelTurn { return true }
+        if let lastPlaybackAt, now().timeIntervalSince(lastPlaybackAt) < Self.speakerEchoTail { return true }
+        return false
+    }
+
+    /// The model is told to acknowledge every start_job out loud. If it
+    /// stayed silent (it sometimes does while a NON_BLOCKING call runs),
+    /// prompt a one-line acknowledgement once the conversation is quiet.
+    private func ensureAcknowledgement(since calledAt: Date) {
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(Self.acknowledgementGrace))
+            guard let self, self.isActive else { return }
+            self.acknowledgeIfSilent(since: calledAt)
+        }
+    }
+
+    func acknowledgeIfSilent(since calledAt: Date) {
+        if let lastModelAudioAt, lastModelAudioAt >= calledAt { return }
+        pendingTextTurns.insert(Self.acknowledgementPrompt, at: 0)
+        scheduleIdleFlush()
+        flushPendingTextIfIdle()
+    }
+
+    /// Not UI copy (written for the model), so not localized.
+    static let acknowledgementPrompt = "[You just started a background job on Hermes for the user's last request. Acknowledge it out loud in a few words, like \"On it, Hermes is checking.\" Do not start another job.]"
+
+    var lastModelAudioAtForTesting: Date? { lastModelAudioAt }
 
     // MARK: Outgoing
 
