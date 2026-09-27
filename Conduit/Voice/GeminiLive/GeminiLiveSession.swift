@@ -15,17 +15,21 @@ private let geminiLiveLogger = Logger(subsystem: "com.milim.relay", category: "G
 
 // MARK: - Transport
 
-/// How the server ended a WebSocket: its close code and reason text.
+/// How the server ended a WebSocket: its close code and reason text, or
+/// the HTTP status when it refused the WebSocket upgrade itself.
 struct GeminiLiveServerClose: Equatable {
     let code: Int
     let reason: String
+    var isHTTPStatus = false
 
     /// Codes that mean Google rejected what was sent (the setup, token or
     /// model), which a retry won't change: unsupported or invalid data,
-    /// a policy violation, and the application-defined 4xxx range. Going
-    /// away, abnormal and internal-error closes stay retryable.
+    /// a policy violation, and the application-defined 4xxx range, or an
+    /// upgrade refused as bad, unauthorized, forbidden or not found. Going
+    /// away, abnormal, internal-error, rate-limit and 5xx stay retryable.
     var isRefusal: Bool {
-        [1003, 1007, 1008].contains(code) || (4000...4999).contains(code)
+        if isHTTPStatus { return [400, 401, 403, 404].contains(code) }
+        return [1003, 1007, 1008].contains(code) || (4000...4999).contains(code)
     }
 
     /// What the user is shown: the first line of Google's reason (capped),
@@ -33,6 +37,7 @@ struct GeminiLiveServerClose: Equatable {
     var summary: String {
         let firstLine = reason.split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
         guard !firstLine.isEmpty else {
+            if isHTTPStatus { return "HTTP \(code)" }
             return AppLocalization.string("close code \(String(code))")
         }
         return firstLine.count > 200 ? String(firstLine.prefix(200)) + "…" : firstLine
@@ -112,8 +117,9 @@ final class URLSessionGeminiLiveSocket: GeminiLiveSocket {
 
     func close() {
         task.cancel(with: .normalClosure, reason: nil)
-        // The session retains its delegate until invalidated.
-        session.invalidateAndCancel()
+        // The session retains its delegate until invalidated; finishing
+        // (rather than cancelling) lets the normal-closure frame go out.
+        session.finishTasksAndInvalidate()
     }
 
     func serverClose(within timeout: Duration) async -> GeminiLiveServerClose? {
@@ -124,6 +130,10 @@ final class URLSessionGeminiLiveSocket: GeminiLiveSocket {
                 let text = task.closeReason.flatMap { String(data: $0, encoding: .utf8) }?
                     .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 return GeminiLiveServerClose(code: task.closeCode.rawValue, reason: text)
+            }
+            // No close frame, but the upgrade itself was refused.
+            if let http = task.response as? HTTPURLResponse, http.statusCode != 101 {
+                return GeminiLiveServerClose(code: http.statusCode, reason: "", isHTTPStatus: true)
             }
             guard ContinuousClock.now < deadline else { return nil }
             do {
@@ -395,8 +405,8 @@ final class GeminiLiveSession {
             fail(AppLocalization.string("Gemini Live refused the connection: \(serverClose.summary)"))
             return
         }
-        // Only the latest attempt's close is worth naming.
-        lastSetupClose = serverClose
+        // The most recent explained close is the one worth naming.
+        if let serverClose { lastSetupClose = serverClose }
         connectTask = Task { [weak self] in await self?.retry(after: pendingSetup.attempt, error: error) }
     }
 

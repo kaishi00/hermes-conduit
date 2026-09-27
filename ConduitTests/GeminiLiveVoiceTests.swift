@@ -387,6 +387,10 @@ extension VoiceConversationControllerTests {
         for code in [1000, 1001, 1005, 1006, 1011] {
             XCTAssertFalse(GeminiLiveServerClose(code: code, reason: "").isRefusal, "\(code)")
         }
+        XCTAssertTrue(GeminiLiveServerClose(code: 403, reason: "", isHTTPStatus: true).isRefusal)
+        XCTAssertFalse(GeminiLiveServerClose(code: 429, reason: "", isHTTPStatus: true).isRefusal)
+        XCTAssertFalse(GeminiLiveServerClose(code: 503, reason: "", isHTTPStatus: true).isRefusal)
+        XCTAssertEqual(GeminiLiveServerClose(code: 403, reason: "", isHTTPStatus: true).summary, "HTTP 403")
         XCTAssertEqual(GeminiLiveServerClose(code: 1008, reason: "").summary, AppLocalization.string("close code \(String(1008))"))
     }
 
