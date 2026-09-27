@@ -39,6 +39,7 @@ struct GeminiLiveServerClose: Equatable {
     /// quota…", RESOURCE_EXHAUSTED), not any reason that mentions a quota.
     var isQuotaExhausted: Bool {
         let text = reason.lowercased().replacingOccurrences(of: "_", with: " ")
+            .split(whereSeparator: \.isWhitespace).joined(separator: " ")
         return text.contains("exceeded your current quota") || text.contains("resource exhausted")
     }
 
@@ -58,7 +59,9 @@ struct GeminiLiveServerClose: Equatable {
         }
         guard text.count > 300 else { return text }
         let capped = text.prefix(300)
-        let cut = capped.lastIndex(of: " ") ?? capped.endIndex
+        // A space too early would drop most of the reason: cut hard instead.
+        var cut = capped.lastIndex(of: " ") ?? capped.endIndex
+        if capped.distance(from: capped.startIndex, to: cut) < 200 { cut = capped.endIndex }
         return String(capped[..<cut]) + "…"
     }
 }
@@ -426,10 +429,10 @@ final class GeminiLiveSession {
         let pendingSetup = awaitingSetup?.id == id ? awaitingSetup : nil
         awaitingSetup = nil
         connectTask?.cancel()
-        // A refusal won't change on retry, before setup or on a live
-        // connection (a quota spent mid-conversation) alike.
-        if let serverClose, serverClose.isRefusal {
-            if pendingSetup == nil { state = .reconnecting }
+        // A refusal before setup won't change on retry. On a live
+        // connection only a spent quota is handled that way; other closes
+        // reconnect with resumption as before.
+        if let serverClose, pendingSetup != nil ? serverClose.isRefusal : serverClose.isQuotaExhausted {
             refused(serverClose, attempt: pendingSetup?.attempt ?? 0)
             return
         }
@@ -452,6 +455,7 @@ final class GeminiLiveSession {
         if close.isQuotaExhausted, googleSearch {
             geminiLiveLogger.notice("Gemini Live refused for quota; retrying without Google Search")
             googleSearch = false
+            if state == .ready { state = .reconnecting }
             connectTask?.cancel()
             let delay = reconnectDelay
             connectTask = Task { [weak self] in
