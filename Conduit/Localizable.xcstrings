@@ -1,6 +1,26 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "You: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你：%@"
+          }
+        }
+      }
+    },
+    "Gemini: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini：%@"
+          }
+        }
+      }
+    },
     "Voice jobs" : {
       "localizations" : {
         "zh-Hans" : {

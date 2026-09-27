@@ -19,8 +19,6 @@ enum GeminiLiveProtocol {
 
     /// Function scheduling for a response to a NON_BLOCKING call.
     enum Scheduling: String {
-        /// Tell the user right away, interrupting what the model is saying.
-        case interrupt = "INTERRUPT"
         /// Wait until the model has finished what it is currently doing.
         case whenIdle = "WHEN_IDLE"
         /// Absorb silently; use later in the conversation.

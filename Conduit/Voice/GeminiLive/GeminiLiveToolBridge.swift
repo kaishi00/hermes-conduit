@@ -87,6 +87,8 @@ final class GeminiLiveToolBridge {
     private let supervisor: GeminiLiveJobSupervising
     /// Open start_job calls, keyed by the job they started.
     private var openCalls: [UUID: String] = [:]
+    /// Calls the model withdrew before their start_job finished starting.
+    private var withdrawnCallIDs: Set<String> = []
 
     init(supervisor: GeminiLiveJobSupervising) {
         self.supervisor = supervisor
@@ -105,19 +107,26 @@ final class GeminiLiveToolBridge {
                 return [.toolResponse(id: call.id, name: call.name, result: ["error": "instructions is required"], scheduling: .whenIdle)]
             }
             var createdJobID: UUID?
-            let reply = await supervisor.startJob(instructions: instructions) { createdJobID = $0 }
-            guard let jobID = createdJobID, let job = supervisor.jobs.first(where: { $0.id == jobID }) else {
+            // The call is registered the moment the job exists, so a
+            // withdrawal arriving during Hermes' session setup is honored.
+            let reply = await supervisor.startJob(instructions: instructions) { [weak self] jobID in
+                createdJobID = jobID
+                self?.openCalls[jobID] = call.id
+            }
+            guard let jobID = createdJobID else {
                 // Refused (too many jobs): answer now.
                 return [.toolResponse(id: call.id, name: call.name, result: ["status": "not_started", "message": reply], scheduling: .whenIdle)]
             }
-            if job.status.isActive {
-                // Keep the call open until the job settles.
-                openCalls[jobID] = call.id
+            if withdrawnCallIDs.remove(call.id) != nil || openCalls[jobID] != call.id {
+                // Withdrawn while starting: its outcome arrives later as a
+                // text update instead.
+                if openCalls[jobID] == call.id { openCalls[jobID] = nil }
                 return []
             }
-            // Failed or cancelled before it got going: settle the call now.
-            supervisor.markOutcomeDelivered(jobID: jobID)
-            return [.toolResponse(id: call.id, name: call.name, result: ["status": Self.statusName(job.status), "message": reply], scheduling: .whenIdle)]
+            // Still running: the call stays open. Already settled (it failed,
+            // or even finished, while starting): settleOpenCalls answers it
+            // with the full outcome, result included.
+            return settleOpenCalls()
         case .listJobs:
             return [.toolResponse(id: call.id, name: call.name, result: listResult(), scheduling: nil)]
         case .cancelJob:
@@ -144,13 +153,17 @@ final class GeminiLiveToolBridge {
     /// jobs keep running; their results arrive later as a text update.
     func cancelCalls(_ ids: [String]) {
         let withdrawn = Set(ids)
+        let known = Set(openCalls.values)
         openCalls = openCalls.filter { !withdrawn.contains($0.value) }
+        // A withdrawal can overtake a start_job still waiting on Hermes.
+        withdrawnCallIDs.formUnion(withdrawn.subtracting(known))
     }
 
     /// A new connection replaced the one these calls were opened on: they
     /// can no longer be answered, so results go out as text updates.
     func connectionReplaced() {
         openCalls.removeAll()
+        withdrawnCallIDs.removeAll()
     }
 
     // MARK: Job updates
@@ -195,8 +208,10 @@ final class GeminiLiveToolBridge {
             default:
                 break
             }
-            // A cancel the user just heard confirmed needs no second report.
-            let scheduling: GeminiLiveProtocol.Scheduling = alreadyAnnounced || job.status == .cancelled ? .silent : .whenIdle
+            // A cancel the user just heard confirmed (cancel_job) needs no
+            // second report; everything else — including a start that failed
+            // — is told once the conversation is quiet.
+            let scheduling: GeminiLiveProtocol.Scheduling = job.status == .cancelled && alreadyAnnounced ? .silent : .whenIdle
             outgoing.append(.toolResponse(id: callID, name: Tool.startJob.rawValue, result: result, scheduling: scheduling))
         }
         return outgoing

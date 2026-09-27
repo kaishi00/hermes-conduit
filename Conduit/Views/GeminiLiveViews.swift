@@ -63,6 +63,8 @@ struct GeminiLiveSettingsSection: View {
             }
         }
         .task { if enabled { await check() } }
+        // A profile switch can change the preference under a retained view.
+        .onChange(of: model.enabled) { _, newValue in enabled = newValue }
     }
 
     private func check() async {
@@ -131,6 +133,10 @@ struct GeminiLiveVoiceSheet: View {
                         .font(.body)
                         .foregroundStyle(entry.speaker == .user ? Color.primary : Color.conduitAccent)
                         .frame(maxWidth: .infinity, alignment: entry.speaker == .user ? .trailing : .leading)
+                        // Color and alignment alone don't tell VoiceOver who spoke.
+                        .accessibilityLabel(entry.speaker == .user
+                            ? AppLocalization.string("You: \(entry.text)")
+                            : AppLocalization.string("Gemini: \(entry.text)"))
                 }
             }
         }

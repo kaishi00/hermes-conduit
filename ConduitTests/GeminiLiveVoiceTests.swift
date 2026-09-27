@@ -101,10 +101,12 @@ final class FakeGeminiLiveSessionControl: GeminiLiveSessionControlling {
 @MainActor
 final class FakeGeminiLiveInput: GeminiLiveAudioInput {
     var onChunk: (@MainActor (Data) -> Void)?
+    var onInterrupted: (@MainActor () -> Void)?
+    private(set) var starts = 0
     var permission = true
     private(set) var running = false
     func requestPermission() async -> Bool { permission }
-    func start() throws { running = true }
+    func start() throws { running = true; starts += 1 }
     func stop() { running = false }
 }
 
@@ -510,7 +512,10 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertFalse(appState.canStartVoiceConversation)
 
         appState.setGeminiLiveEnabled(true)
-        XCTAssertNil(appState.voiceUnavailableReason, "Gemini Live does not need Hermes speech providers")
+        XCTAssertNil(appState.phoneVoiceUnavailableReason, "Gemini Live does not need Hermes speech providers")
+        XCTAssertTrue(appState.canStartPhoneVoiceConversation)
+        XCTAssertNotNil(appState.voiceUnavailableReason, "Classic-only surfaces (CarPlay, restore) keep the classic checks")
+        XCTAssertFalse(appState.canStartVoiceConversation)
         XCTAssertTrue(appState.showsComposerVoiceButton)
 
         let opened = await appState.openVoiceConversation(
@@ -631,5 +636,109 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(decoded?.voiceJobModel, "fast-model")
         XCTAssertEqual(decoded?.voiceJobReasoningEffort, "low")
         XCTAssertEqual(VoiceJobModelSettingsSection.parse(VoiceJobModelSettingsSection.tag(provider: "openrouter", model: "a/b")).model, "a/b")
+    }
+}
+
+// MARK: - Review round: delivery only on a live connection, races
+
+@MainActor
+extension VoiceConversationControllerTests {
+    func testGeminiLiveNeverSettlesAJobWhileTheConnectionCannotSendIt() async {
+        let (controller, session, _, _, supervisor) = makeGeminiController(clock: Date.init)
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.toolCall([.init(id: "c1", name: "start_job", arguments: ["instructions": "check the server"])]))
+        await settle(40)
+        XCTAssertEqual(supervisor.jobs.count, 1)
+
+        // The job finishes while the connection is being replaced.
+        session.isReady = false
+        session.onStateChange?(.reconnecting)
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "All green.", reasoning: nil))
+        controller.deliverPendingJobUpdates()
+        XCTAssertTrue(session.sent.isEmpty, "Nothing can go out while reconnecting")
+        XCTAssertFalse(supervisor.jobs[0].outcomeDelivered, "The outcome must not be marked delivered unsent")
+
+        // Back on a (same-connection) ready session: answered on the call.
+        session.becomeReady()
+        let response = session.sent.compactMap { ($0["toolResponse"] as? [String: Any])?["functionResponses"] as? [[String: Any]] }.first?.first
+        XCTAssertEqual(response?["id"] as? String, "c1")
+        XCTAssertEqual((response?["response"] as? [String: Any])?["result"] as? String, "All green.")
+        XCTAssertTrue(supervisor.jobs[0].outcomeDelivered)
+        controller.stop()
+    }
+
+    func testGeminiLiveResumeDropsOldCallsBeforeAnnouncingReady() async throws {
+        let tokens = FakeGeminiLiveTokens()
+        let (session, sockets) = makeGeminiSession(tokens: tokens)
+        var events: [String] = []
+        session.onConnectionReplaced = { events.append("replaced") }
+        session.onStateChange = { if $0 == .ready { events.append("ready") } }
+        session.start()
+        await settle()
+        try XCTUnwrap(sockets().first).deliver(["setupComplete": [String: Any]()])
+        await settle()
+        sockets()[0].deliver(["goAway": ["timeLeft": "5s"]])
+        await settle(40)
+        sockets()[1].deliver(["setupComplete": [String: Any]()])
+        await settle()
+        XCTAssertEqual(events, ["ready", "replaced", "ready"])
+        session.stop()
+    }
+
+    func testGeminiLiveWithdrawnWhileStartingIsNotAnsweredOnTheCall() async {
+        let fake = FakeVoiceJobBackend()
+        fake.parksCreate = true
+        let supervisor = VoiceBackgroundJobSupervisor(backend: fake.backend, pollInterval: .seconds(3_600))
+        let bridge = GeminiLiveToolBridge(supervisor: supervisor)
+        let handling = Task { await bridge.handle(.init(id: "c1", name: "start_job", arguments: ["instructions": "long task"])) }
+        await fake.createParked.waitUntil(1)
+        bridge.cancelCalls(["c1"])
+        fake.releaseCreate()
+        let immediate = await handling.value
+        XCTAssertEqual(immediate, [])
+        XCTAssertEqual(bridge.openCallCount, 0, "A withdrawn call is never answered later")
+
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "Done.", reasoning: nil))
+        guard case .textWhenIdle(let text)? = bridge.pendingUpdates().first else { return XCTFail("Expected a text update") }
+        XCTAssertTrue(text.contains("Done."))
+    }
+
+    func testGeminiLiveJobThatSettlesWhileStartingIsAnsweredWithItsResult() async {
+        let fake = FakeVoiceJobBackend()
+        let supervisor = VoiceBackgroundJobSupervisor(backend: fake.backend, pollInterval: .seconds(3_600))
+        fake.onSubmit = { id in
+            supervisor.observe(.messageComplete(sessionId: id, messageId: nil, content: "Quick answer.", reasoning: nil))
+        }
+        let bridge = GeminiLiveToolBridge(supervisor: supervisor)
+        let outgoing = await bridge.handle(.init(id: "c1", name: "start_job", arguments: ["instructions": "quick one"]))
+        guard case .toolResponse(let id, _, let result, let scheduling)? = outgoing.first else { return XCTFail("\(outgoing)") }
+        XCTAssertEqual(id, "c1")
+        XCTAssertEqual(result["result"], "Quick answer.")
+        XCTAssertEqual(scheduling, .whenIdle)
+    }
+
+    func testGeminiLiveFailedStartIsToldNotSilenced() async {
+        let fake = FakeVoiceJobBackend()
+        fake.createError = URLError(.notConnectedToInternet)
+        let supervisor = VoiceBackgroundJobSupervisor(backend: fake.backend, pollInterval: .seconds(3_600))
+        let bridge = GeminiLiveToolBridge(supervisor: supervisor)
+        let outgoing = await bridge.handle(.init(id: "c1", name: "start_job", arguments: ["instructions": "anything"]))
+        guard case .toolResponse(_, _, let result, let scheduling)? = outgoing.first else { return XCTFail("\(outgoing)") }
+        XCTAssertEqual(result["status"], "failed")
+        XCTAssertEqual(scheduling, .whenIdle, "The model must be able to tell the user the start failed")
+    }
+
+    func testGeminiLiveRestartsTheMicAfterAnAudioInterruption() async {
+        let (controller, session, input, _, _) = makeGeminiController(clock: Date.init)
+        await controller.start()
+        session.becomeReady()
+        XCTAssertEqual(input.starts, 1)
+        input.stop()
+        input.onInterrupted?()
+        try? await Task.sleep(for: .milliseconds(700))
+        XCTAssertTrue(input.running, "Capture comes back after the interruption")
+        XCTAssertEqual(input.starts, 2)
+        controller.stop()
     }
 }

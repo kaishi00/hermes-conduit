@@ -375,8 +375,6 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         pruneSettledJobs()
     }
 
-    func job(withID id: UUID) -> VoiceBackgroundJob? { job(id) }
-
     /// Forgets every job without touching Hermes: the jobs keep running on
     /// the server as ordinary chats. Used at server, profile, and sign-out
     /// boundaries, where the ledger no longer belongs to the active gateway.

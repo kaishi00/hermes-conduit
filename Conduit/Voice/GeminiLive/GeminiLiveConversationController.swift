@@ -33,6 +33,8 @@ extension GeminiLiveSession: GeminiLiveSessionControlling {}
 @MainActor
 protocol GeminiLiveAudioInput: AnyObject {
     var onChunk: (@MainActor (Data) -> Void)? { get set }
+    /// The system stopped capture (an audio interruption: a call, Siri…).
+    var onInterrupted: (@MainActor () -> Void)? { get set }
     func requestPermission() async -> Bool
     func start() throws
     func stop()
@@ -51,13 +53,29 @@ protocol GeminiLiveAudioOutput: AnyObject {
 @MainActor
 final class CaptureServiceGeminiLiveInput: GeminiLiveAudioInput {
     private let capture: AVAudioCaptureService
+    private var eventsTask: Task<Void, Never>?
     var onChunk: (@MainActor (Data) -> Void)? {
         didSet { capture.onPCM16Chunk = onChunk }
     }
+    var onInterrupted: (@MainActor () -> Void)?
 
     init(capture: AVAudioCaptureService) {
         self.capture = capture
+        // This capture instance belongs to Gemini Live alone. Its event
+        // stream buffers every frame's level until read, so it is always
+        // drained; interruptions are the events that matter here.
+        let events = capture.events
+        eventsTask = Task { [weak self] in
+            for await event in events {
+                guard let self else { return }
+                if case .interrupted(let generation) = event, generation == self.capture.captureGeneration {
+                    self.onInterrupted?()
+                }
+            }
+        }
     }
+
+    deinit { eventsTask?.cancel() }
 
     func requestPermission() async -> Bool { await capture.requestPermission() }
 
@@ -164,7 +182,6 @@ final class GeminiLiveConversationController: ObservableObject {
     private var lastModelTurnEndedAt: Date?
     private var pendingTextTurns: [String] = []
     private var idleFlushTask: Task<Void, Never>?
-    private var startTask: Task<Void, Never>?
     private var openUserEntry: UUID?
     private var openAssistantEntry: UUID?
 
@@ -209,6 +226,14 @@ final class GeminiLiveConversationController: ObservableObject {
         phase = .connecting
         transcript = []
         pendingTextTurns = []
+        // Nothing from a previous attempt may gate or attach to this one.
+        modelTurnActive = false
+        suppressingModelTurn = false
+        lastUserSpeechAt = nil
+        lastModelTurnEndedAt = nil
+        lastPlaybackAt = nil
+        lastModelAudioAt = nil
+        closeOpenEntries()
         do {
             let status = try await availability()
             guard phase == .connecting else { return }
@@ -233,6 +258,7 @@ final class GeminiLiveConversationController: ObservableObject {
         session.onConnectionReplaced = { [weak self] in self?.tools.connectionReplaced() }
         self.session = session
         input.onChunk = { [weak self] chunk in self?.microphoneChunk(chunk) }
+        input.onInterrupted = { [weak self] in self?.captureInterrupted() }
         session.start()
     }
 
@@ -269,8 +295,24 @@ final class GeminiLiveConversationController: ObservableObject {
     /// Background-job updates became pending (the supervisor's
     /// onNoticePending, routed here while this mode is active).
     func deliverPendingJobUpdates() {
-        guard isActive else { return }
+        // Only on a live connection: settling an open call marks the job
+        // announced, so it must never happen while nothing can be sent. The
+        // updates stay pending and go out when the session is ready again.
+        guard isActive, session?.isReady == true else { return }
         dispatch(tools.pendingUpdates())
+    }
+
+    /// An audio interruption stopped the microphone. Restart it once the
+    /// system lets go; if it can't, say so instead of showing "Listening".
+    private func captureInterrupted() {
+        guard inputRunning else { return }
+        inputRunning = false
+        guard !isMicrophoneMuted else { return }
+        Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(500))
+            guard let self, self.isActive, !self.isMicrophoneMuted, self.session?.isReady == true else { return }
+            self.startInput()
+        }
     }
 
     // MARK: Session
@@ -403,6 +445,11 @@ final class GeminiLiveConversationController: ObservableObject {
     private func dispatch(_ outgoing: [GeminiLiveToolBridge.Outgoing]) {
         for item in outgoing {
             switch item {
+            case .toolResponse(_, _, let result, _) where session?.isReady != true:
+                // The connection dropped while this was being prepared: the
+                // call can't be answered any more, so the outcome is kept as
+                // a text update rather than lost.
+                if let text = Self.fallbackText(for: result) { pendingTextTurns.append(text) }
             case .toolResponse(let id, let name, let result, let scheduling):
                 session?.send(GeminiLiveProtocol.toolResponseMessage(
                     id: id,
@@ -452,6 +499,17 @@ final class GeminiLiveConversationController: ObservableObject {
     }
 
     var pendingTextTurnCountForTesting: Int { pendingTextTurns.count }
+
+    /// A job outcome that can no longer go back on its call, as a text turn.
+    /// Nil for answers only meaningful to the call (list_jobs, errors).
+    static func fallbackText(for result: [String: String]) -> String? {
+        guard let title = result["title"], let status = result["status"] else { return nil }
+        if let outcome = result["result"] {
+            return VoiceBackgroundJobSupervisor.completionPrompt(title: title, result: outcome)
+        }
+        let detail = result["error"].map { " (\($0))" } ?? ""
+        return GeminiLiveToolBridge.relayPrompt("The background job \"\(title)\" is \(status)\(detail).")
+    }
 
     // MARK: Audio input
 

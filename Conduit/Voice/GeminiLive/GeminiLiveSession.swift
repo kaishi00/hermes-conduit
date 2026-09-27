@@ -66,6 +66,8 @@ final class GeminiLiveSession {
         case stopped
     }
 
+    /// Retries after a connection attempt fails, for the first connect and
+    /// every reconnect alike (so at most 1 + 3 attempts in a row).
     static let maximumReconnectAttempts = 3
 
     private(set) var state: State = .idle {
@@ -230,8 +232,10 @@ final class GeminiLiveSession {
             retiringReceiveTask = nil
             retiringSocket?.close()
             retiringSocket = nil
-            state = .ready
+            // Calls opened on the previous connection are gone before anyone
+            // sees `.ready` and starts answering on this one.
             if replaced { onConnectionReplaced?() }
+            state = .ready
         case .resumptionUpdate(let handle, let resumable):
             if resumable, let handle { resumptionHandle = handle }
         case .goAway(let timeLeft):
@@ -253,14 +257,17 @@ final class GeminiLiveSession {
 
     private func connectionFailed(_ id: UUID, error: Error) {
         guard id == connectionID, state != .stopped else { return }
-        geminiLiveLogger.error("Gemini Live connection lost: \(String(describing: error), privacy: .public)")
+        // Never the error's description: it can carry the connection URL,
+        // whose access_token is a live credential.
+        let nsError = error as NSError
+        geminiLiveLogger.error("Gemini Live connection lost: domain=\(nsError.domain, privacy: .public) code=\(nsError.code, privacy: .public)")
         socket?.close()
         socket = nil
         receiveTask = nil
         connectionID = UUID()
         state = .reconnecting
         connectTask?.cancel()
-        connectTask = Task { [weak self] in await self?.connect(attempt: 1) }
+        connectTask = Task { [weak self] in await self?.connect(attempt: 0) }
     }
 
     private func retry(after attempt: Int, error: Error) async {

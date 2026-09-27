@@ -18668,9 +18668,6 @@ final class AppState: ObservableObject {
 
     var voiceUnavailableReason: String? {
         if !isConnected { return "Connect to Hermes before starting voice." }
-        // Gemini Live brings its own speech in and out; the host's plugin
-        // availability is checked (and reported) when the sheet opens.
-        if isGeminiLiveEnabled { return nil }
         if !isVoiceEnabled { return "Enable voice for this profile in Settings." }
         if voiceTranscriptionMode == .appleOnDevice, !appleSpeechAvailability.canAttemptRecognition {
             switch appleSpeechAvailability {
@@ -18692,6 +18689,20 @@ final class AppState: ObservableObject {
     }
 
     var canStartVoiceConversation: Bool { voiceUnavailableReason == nil }
+
+    /// The phone's voice entry points (composer mic, Siri/intents that open
+    /// the sheet): Gemini Live brings its own speech in and out, so it only
+    /// needs a connection (the host's plugin is checked, and any refusal
+    /// reported, when the sheet opens). Classic-only surfaces — CarPlay,
+    /// suspension restore, provider tests — keep `voiceUnavailableReason`.
+    var phoneVoiceUnavailableReason: String? {
+        if isGeminiLiveEnabled {
+            return isConnected ? nil : "Connect to Hermes before starting voice."
+        }
+        return voiceUnavailableReason
+    }
+
+    var canStartPhoneVoiceConversation: Bool { phoneVoiceUnavailableReason == nil }
 
     /// Whether the composer offers its voice button (in the trailing slot it
     /// shares with send). Voice the user never enabled for this profile is
