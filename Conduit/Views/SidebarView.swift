@@ -515,7 +515,8 @@ struct SessionList: View {
             SessionRow(
                 session: session,
                 isSelected: session.id == appState.activeSessionId,
-                isPinned: appState.isSessionPinned(session)
+                isPinned: appState.isSessionPinned(session),
+                isVoiceJob: appState.isVoiceJobSession(session)
             )
             .contentShape(Rectangle())
         }
@@ -650,7 +651,11 @@ private struct ArchivedSessionsSheet: View {
                     } else {
                         ForEach(displayedSessions) { session in
                             HStack(spacing: 10) {
-                                SessionRow(session: session, showsDisclosureIndicator: false)
+                                SessionRow(
+                                    session: session,
+                                    isVoiceJob: appState.isVoiceJobSession(session),
+                                    showsDisclosureIndicator: false
+                                )
 
                                 VStack(spacing: 6) {
                                     Button {
@@ -732,6 +737,8 @@ struct SessionRow: View {
     let session: SessionSummary
     var isSelected = false
     var isPinned = false
+    /// Started as a Voice background job (issue #163).
+    var isVoiceJob = false
     var showsDisclosureIndicator = true
 
     var body: some View {
@@ -756,6 +763,12 @@ struct SessionRow: View {
             }
 
             Spacer(minLength: 0)
+            if isVoiceJob {
+                Image(systemName: "waveform")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(Color.conduitAura)
+                    .accessibilityLabel("Started from voice")
+            }
             if isPinned {
                 Image(systemName: "pin.fill")
                     .font(.caption2.weight(.bold))
@@ -850,7 +863,11 @@ private struct ProjectSessionsSheet: View {
                                         dismiss()
                                         appState.requestOpenSession(session.id)
                                     } label: {
-                                        SessionRow(session: session, isSelected: session.id == appState.activeSessionId)
+                                        SessionRow(
+                                            session: session,
+                                            isSelected: session.id == appState.activeSessionId,
+                                            isVoiceJob: appState.isVoiceJobSession(session)
+                                        )
                                             .contentShape(Rectangle())
                                     }
                                     .buttonStyle(.plain)

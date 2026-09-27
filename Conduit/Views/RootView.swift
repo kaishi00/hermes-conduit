@@ -113,6 +113,7 @@ struct MainView: View {
         .sheet(isPresented: $appState.showVoiceSheet, onDismiss: appState.closeVoiceConversation) {
             VoiceConversationSheet(
                 controller: appState.voiceConversationController,
+                backgroundJobs: appState.voiceBackgroundJobSupervisor,
                 profile: appState.activeProfile,
                 onClose: appState.closeVoiceConversation,
                 shouldAutoListen: { appState.consumeVoiceSheetAutoListen() }

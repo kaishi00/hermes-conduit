@@ -1,0 +1,509 @@
+//
+//  VoiceBackgroundJobTests.swift
+//  Conduit
+//
+//  Voice background jobs (issue #163, phase 1): spoken job commands, the
+//  job supervisor's ledger, and the Voice controller's hand-back of finished
+//  jobs. Written as extensions of existing Voice suites: the CI test planner
+//  is at capacity for new XCTestCase classes.
+//
+
+import XCTest
+@testable import Conduit
+
+// MARK: - Spoken command parsing
+
+@MainActor
+extension VoiceSpokenCommandMatchingTests {
+    func testBackgroundJobStartPrefixCarriesTheTaskWithOriginalCasing() {
+        XCTAssertEqual(
+            VoiceBackgroundJobCommands.parse("Background job, check why my server went down."),
+            .start(instructions: "check why my server went down")
+        )
+        XCTAssertEqual(
+            VoiceBackgroundJobCommands.parse("Start a background job: Review PR 12"),
+            .start(instructions: "Review PR 12")
+        )
+        XCTAssertEqual(
+            VoiceBackgroundJobCommands.parse("run in the background summarize today's email"),
+            .start(instructions: "summarize today's email")
+        )
+    }
+
+    func testBackgroundJobChineseStartPrefixNeedsNoSeparator() {
+        XCTAssertEqual(VoiceBackgroundJobCommands.parse("后台任务检查服务器"), .start(instructions: "检查服务器"))
+        XCTAssertEqual(VoiceBackgroundJobCommands.parse("后台任务，检查服务器。"), .start(instructions: "检查服务器"))
+    }
+
+    func testBackgroundJobStatusAndCancelMatchWholeUtterancesOnly() {
+        XCTAssertEqual(VoiceBackgroundJobCommands.parse("Job status."), .status)
+        XCTAssertEqual(VoiceBackgroundJobCommands.parse("background jobs"), .status)
+        XCTAssertEqual(VoiceBackgroundJobCommands.parse("后台任务状态"), .status)
+        XCTAssertEqual(VoiceBackgroundJobCommands.parse("Cancel background jobs!"), .cancelAll)
+        XCTAssertEqual(VoiceBackgroundJobCommands.parse("取消后台任务"), .cancelAll)
+        XCTAssertNil(VoiceBackgroundJobCommands.parse("what is the job status of the build"))
+    }
+
+    func testOrdinarySentencesNeverStartBackgroundJobs() {
+        XCTAssertNil(VoiceBackgroundJobCommands.parse("background job"), "a prefix with no task is not a command")
+        XCTAssertNil(VoiceBackgroundJobCommands.parse("background jobsite cleanup"), "Latin prefixes need a word boundary")
+        XCTAssertNil(VoiceBackgroundJobCommands.parse("tell me about background jobs in iOS"))
+        XCTAssertNil(VoiceBackgroundJobCommands.parse("what's in the background of this photo"))
+        XCTAssertNil(VoiceBackgroundJobCommands.parse("   "))
+    }
+}
+
+// MARK: - Supervisor
+
+@MainActor
+final class FakeVoiceJobBackend {
+    var createError: Error?
+    var submitError: Error?
+    /// When true, the next createSession parks until `releaseCreate()`.
+    var parksCreate = false
+    let createParked = AwaitableCounter()
+    /// Runs inside submit, so a test can deliver events mid-submission.
+    var onSubmit: (@MainActor (_ sessionID: String) -> Void)?
+    private var parkedCreate: CheckedContinuation<Void, Never>?
+    var liveRows: [LiveSessionStatus] = []
+    private(set) var created = 0
+    private(set) var titles: [(String, String)] = []
+    private(set) var submissions: [(String, String)] = []
+    private(set) var cancelled: [String] = []
+
+    var backend: VoiceBackgroundJobBackend {
+        VoiceBackgroundJobBackend(
+            createSession: { [unowned self] in
+                if let error = self.createError { throw error }
+                if self.parksCreate {
+                    self.parksCreate = false
+                    await withCheckedContinuation { continuation in
+                        self.parkedCreate = continuation
+                        self.createParked.increment()
+                    }
+                }
+                self.created += 1
+                return ("rt-\(self.created)", "st-\(self.created)")
+            },
+            setTitle: { [unowned self] id, title in self.titles.append((id, title)) },
+            submit: { [unowned self] id, text in
+                self.submissions.append((id, text))
+                self.onSubmit?(id)
+                if let error = self.submitError { throw error }
+            },
+            cancel: { [unowned self] id in self.cancelled.append(id) },
+            liveSessions: { [unowned self] in self.liveRows }
+        )
+    }
+
+    func releaseCreate() {
+        let continuation = parkedCreate
+        parkedCreate = nil
+        continuation?.resume()
+    }
+}
+
+@MainActor
+extension VoiceConversationControllerTests {
+    private func makeSupervisor() -> (VoiceBackgroundJobSupervisor, FakeVoiceJobBackend) {
+        let fake = FakeVoiceJobBackend()
+        // A long poll interval keeps the liveness fallback out of the way;
+        // tests drive it explicitly through pollOnce().
+        return (VoiceBackgroundJobSupervisor(backend: fake.backend, pollInterval: .seconds(3_600)), fake)
+    }
+
+    func testStartingAJobCreatesATitledSessionAndSubmitsTheTask() async {
+        let (supervisor, fake) = makeSupervisor()
+        var createdIDs: [String] = []
+        supervisor.onJobSessionCreated = { createdIDs = $0 }
+
+        let reply = await supervisor.performVoiceCommand(.start(instructions: "check why my server went down"))
+
+        XCTAssertTrue(reply.contains("check why my server went down"), "the confirmation names the job")
+        XCTAssertEqual(createdIDs, ["rt-1", "st-1"])
+        XCTAssertEqual(fake.titles.map(\.1), ["check why my server went down"])
+        XCTAssertEqual(fake.submissions.count, 1)
+        XCTAssertEqual(fake.submissions.first?.0, "rt-1")
+        XCTAssertTrue(fake.submissions.first?.1.hasSuffix("check why my server went down") == true)
+        XCTAssertEqual(supervisor.jobs.map(\.status), [.running])
+        XCTAssertNil(supervisor.takePendingNotice(), "a running job has nothing to hand back")
+    }
+
+    func testFinishedJobIsHandedBackOnceWithItsResult() async {
+        let (supervisor, _) = makeSupervisor()
+        var pendingSignals = 0
+        supervisor.onNoticePending = { pendingSignals += 1 }
+        _ = await supervisor.startJob(instructions: "review the PR")
+
+        supervisor.observe(.messageComplete(sessionId: "other", messageId: nil, content: "not ours", reasoning: nil))
+        XCTAssertEqual(supervisor.jobs.first?.status, .running, "events for other sessions are ignored")
+        supervisor.observe(.messageComplete(sessionId: "st-1", messageId: nil, content: "Looks good.", reasoning: nil))
+
+        XCTAssertEqual(supervisor.jobs.first?.status, .finished, "the stored id also identifies the job")
+        XCTAssertEqual(pendingSignals, 1)
+        guard case .submit(let prompt, let fallback)? = supervisor.takePendingNotice() else {
+            return XCTFail("a finished job with a result is handed to the voice session")
+        }
+        XCTAssertTrue(prompt.contains("review the PR"))
+        XCTAssertTrue(prompt.contains("Looks good."))
+        XCTAssertTrue(fallback.contains("review the PR"))
+        XCTAssertNil(supervisor.takePendingNotice(), "each outcome is delivered once")
+    }
+
+    func testApprovalAnnouncesNeedsInputOncePerEpisode() async {
+        let (supervisor, _) = makeSupervisor()
+        _ = await supervisor.startJob(instructions: "clean the logs")
+        let approval = ApprovalActivity(
+            sessionId: "rt-1",
+            command: "rm -rf /var/log/old",
+            description: "Delete old logs",
+            choices: nil,
+            allowPermanent: false,
+            smartDenied: false,
+            status: .pending,
+            choice: nil,
+            error: nil
+        )
+
+        supervisor.observe(.approval(sessionId: "rt-1", activity: approval))
+        XCTAssertEqual(supervisor.jobs.first?.status, .needsInput)
+        guard case .speak(let text)? = supervisor.takePendingNotice() else { return XCTFail("needs-input is spoken") }
+        XCTAssertTrue(text.contains("clean the logs"))
+        XCTAssertNil(supervisor.takePendingNotice())
+
+        supervisor.observe(.toolStart(sessionId: "rt-1", toolName: "terminal", toolInput: nil))
+        XCTAssertEqual(supervisor.jobs.first?.status, .running, "activity after the answer resumes the job")
+        supervisor.observe(.approval(sessionId: "rt-1", activity: approval))
+        XCTAssertNotNil(supervisor.takePendingNotice(), "a new approval is a new episode")
+    }
+
+    func testActiveJobLimitRefusesWithoutCreatingASession() async {
+        let (supervisor, fake) = makeSupervisor()
+        for index in 0..<VoiceBackgroundJobSupervisor.maximumActiveJobs {
+            _ = await supervisor.startJob(instructions: "job \(index)")
+        }
+        let reply = await supervisor.startJob(instructions: "one too many")
+
+        XCTAssertEqual(fake.created, VoiceBackgroundJobSupervisor.maximumActiveJobs)
+        XCTAssertTrue(reply.contains("\(VoiceBackgroundJobSupervisor.maximumActiveJobs)"))
+        XCTAssertEqual(supervisor.jobs.count, VoiceBackgroundJobSupervisor.maximumActiveJobs)
+    }
+
+    func testCancelAllInterruptsEveryActiveJobWithoutAnnouncingIt() async {
+        let (supervisor, fake) = makeSupervisor()
+        _ = await supervisor.startJob(instructions: "first")
+        _ = await supervisor.startJob(instructions: "second")
+
+        let reply = await supervisor.performVoiceCommand(.cancelAll)
+
+        XCTAssertTrue(reply.contains("2"), "the reply counts the cancelled jobs")
+        XCTAssertEqual(fake.cancelled, ["rt-1", "rt-2"])
+        XCTAssertEqual(supervisor.jobs.map(\.status), [.cancelled, .cancelled])
+        supervisor.observe(.messageInterrupted(sessionId: "rt-1"))
+        XCTAssertNil(supervisor.takePendingNotice(), "the user already heard the cancellation")
+        let again = await supervisor.cancelAll()
+        XCTAssertEqual(again, AppLocalization.string("There are no background jobs to cancel."))
+    }
+
+    func testFailedStartIsReportedInlineOnly() async {
+        let (supervisor, fake) = makeSupervisor()
+        fake.createError = HermesError.notConnected
+
+        let reply = await supervisor.startJob(instructions: "anything")
+
+        XCTAssertEqual(reply, AppLocalization.string("Couldn't start the background job."))
+        XCTAssertEqual(supervisor.activeJobCount, 0)
+        XCTAssertNil(supervisor.takePendingNotice(), "the failure was already spoken as the reply")
+    }
+
+    func testLivenessPollSettlesAJobWhoseCompletionEventWasMissed() async {
+        let (supervisor, fake) = makeSupervisor()
+        _ = await supervisor.startJob(instructions: "still going")
+        _ = await supervisor.startJob(instructions: "gone quiet")
+        fake.liveRows = [LiveSessionStatus(runtimeSessionId: "rt-1", storedSessionId: "st-1", status: "working")]
+
+        await supervisor.pollOnce()
+        XCTAssertEqual(supervisor.jobs.map(\.status), [.running, .running], "one missing row can be transient")
+        XCTAssertNil(supervisor.takePendingNotice())
+        await supervisor.pollOnce()
+
+        XCTAssertEqual(supervisor.jobs.map(\.status), [.running, .finished], "a second miss settles the job")
+        guard case .speak(let text)? = supervisor.takePendingNotice() else {
+            return XCTFail("a finished job without a captured result points the user at its chat")
+        }
+        XCTAssertTrue(text.contains("gone quiet"))
+    }
+
+    func testTurnFailingDuringSubmitIsReportedAsAFailedStart() async {
+        let (supervisor, fake) = makeSupervisor()
+        fake.onSubmit = { id in supervisor.observe(.messageError(sessionId: id, message: "model unavailable")) }
+
+        let reply = await supervisor.startJob(instructions: "doomed")
+
+        XCTAssertEqual(reply, AppLocalization.string("Couldn't start the background job."))
+        XCTAssertNil(supervisor.takePendingNotice(), "the failure was the reply; it is not announced twice")
+    }
+
+    func testFailedSubmitInterruptsTheCreatedSession() async {
+        let (supervisor, fake) = makeSupervisor()
+        fake.submitError = HermesError.timeout("prompt.submit")
+
+        let reply = await supervisor.startJob(instructions: "lost ack")
+
+        XCTAssertEqual(reply, AppLocalization.string("Couldn't start the background job."))
+        XCTAssertEqual(fake.cancelled, ["rt-1"], "a turn Hermes may have accepted is interrupted, not left unmonitored")
+        XCTAssertNil(supervisor.takePendingNotice())
+    }
+
+    func testActivityBetweenMissedPollsKeepsTheJobRunning() async {
+        let (supervisor, _) = makeSupervisor()
+        _ = await supervisor.startJob(instructions: "long task")
+
+        await supervisor.pollOnce()
+        supervisor.observe(.toolStart(sessionId: "rt-1", toolName: "terminal", toolInput: nil))
+        await supervisor.pollOnce()
+
+        XCTAssertEqual(supervisor.jobs.map(\.status), [.running], "misses separated by activity are not consecutive")
+    }
+
+    func testIdleRegistryRowSettlesAJobOnTheFirstPoll() async {
+        let (supervisor, fake) = makeSupervisor()
+        _ = await supervisor.startJob(instructions: "done already")
+        fake.liveRows = [LiveSessionStatus(runtimeSessionId: "rt-1", storedSessionId: "st-1", status: "idle")]
+
+        await supervisor.pollOnce()
+
+        XCTAssertEqual(supervisor.jobs.map(\.status), [.finished])
+    }
+
+    func testCancelDuringSessionCreationNeverSubmitsTheJob() async {
+        let (supervisor, fake) = makeSupervisor()
+        fake.parksCreate = true
+        let start = Task { await supervisor.startJob(instructions: "slow start") }
+        await fake.createParked.waitUntil(1)
+
+        _ = await supervisor.cancelAll()
+        fake.releaseCreate()
+        let reply = await start.value
+
+        XCTAssertTrue(fake.submissions.isEmpty, "a job the user cancelled must never be submitted")
+        XCTAssertEqual(fake.cancelled, ["rt-1"], "the session Hermes already created is interrupted")
+        XCTAssertEqual(supervisor.jobs.map(\.status), [.cancelled])
+        XCTAssertTrue(reply.contains("slow start"))
+        XCTAssertNil(supervisor.takePendingNotice())
+    }
+
+    func testResetDuringSessionCreationInterruptsTheCreatedSession() async {
+        let (supervisor, fake) = makeSupervisor()
+        fake.parksCreate = true
+        let start = Task { await supervisor.startJob(instructions: "old server") }
+        await fake.createParked.waitUntil(1)
+
+        supervisor.reset()
+        fake.releaseCreate()
+        _ = await start.value
+
+        XCTAssertTrue(fake.submissions.isEmpty)
+        XCTAssertEqual(fake.cancelled, ["rt-1"])
+        XCTAssertTrue(supervisor.jobs.isEmpty)
+    }
+
+    func testSettledJobsArePrunedOnceAnnounced() async {
+        let (supervisor, _) = makeSupervisor()
+        let total = VoiceBackgroundJobSupervisor.maximumSettledJobs + 3
+        for index in 1...total {
+            _ = await supervisor.startJob(instructions: "job \(index)")
+            supervisor.observe(.messageComplete(sessionId: "rt-\(index)", messageId: nil, content: "ok", reasoning: nil))
+            XCTAssertNotNil(supervisor.takePendingNotice())
+        }
+
+        XCTAssertEqual(supervisor.jobs.count, VoiceBackgroundJobSupervisor.maximumSettledJobs)
+        XCTAssertEqual(supervisor.jobs.last?.title, "job \(total)", "the most recent jobs are kept")
+    }
+
+    func testResetForgetsJobsAndIgnoresTheirLateEvents() async {
+        let (supervisor, _) = makeSupervisor()
+        _ = await supervisor.startJob(instructions: "old server work")
+        supervisor.reset()
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "done", reasoning: nil))
+
+        XCTAssertTrue(supervisor.jobs.isEmpty)
+        XCTAssertNil(supervisor.takePendingNotice())
+        XCTAssertEqual(supervisor.statusSummary(), AppLocalization.string("No background jobs are running."))
+    }
+
+    func testJobTitlesAreCutAtAWordBoundary() {
+        let long = String(repeating: "word ", count: 30)
+        let title = VoiceBackgroundJobSupervisor.title(for: long)
+        XCTAssertTrue(title.hasSuffix("…"))
+        XCTAssertLessThanOrEqual(title.count, VoiceBackgroundJobSupervisor.maximumTitleCharacters + 1)
+        XCTAssertEqual(VoiceBackgroundJobSupervisor.title(for: "  short\n task "), "short task")
+    }
+}
+
+// MARK: - Voice controller integration
+
+@MainActor
+final class FakeVoiceBackgroundJobs: VoiceBackgroundJobHandling {
+    var reply = "Started a background job."
+    var pending: [VoiceBackgroundJobNotice] = []
+    private(set) var commands: [VoiceBackgroundJobCommand] = []
+    private(set) var takeCount = 0
+
+    func performVoiceCommand(_ command: VoiceBackgroundJobCommand) async -> String {
+        commands.append(command)
+        return reply
+    }
+
+    func takePendingNotice() -> VoiceBackgroundJobNotice? {
+        takeCount += 1
+        return pending.isEmpty ? nil : pending.removeFirst()
+    }
+}
+
+@MainActor
+extension VoiceConversationControllerTests {
+    private func makeJobController(
+        transcript: String = "test",
+        jobs: FakeVoiceBackgroundJobs?,
+        submitResult: Bool = true
+    ) -> (VoiceConversationController, MockCapture, MockGateway, SubmitSpy) {
+        let capture = MockCapture(permissionGranted: true)
+        let gateway = MockGateway(transcript: transcript, startsPlaybackOnOpen: true)
+        let spy = SubmitSpy()
+        let submitAction: @MainActor (String) async -> Bool = { text in
+            _ = await spy.submit(text)
+            return submitResult
+        }
+        let controller = VoiceConversationController(
+            capture: capture,
+            playback: MockPlayback(),
+            gateway: gateway,
+            submit: submitAction,
+            interrupt: { true },
+            backgroundJobs: jobs
+        )
+        return (controller, capture, gateway, spy)
+    }
+
+    private func speakOneUtterance(_ controller: VoiceConversationController) async {
+        controller.beginVoiceTurn(sessionID: "session")
+        await controller.startListening()
+        let start = Date()
+        controller.ingestAudioLevel(0.1, at: start)
+        controller.ingestAudioLevel(0, at: start.addingTimeInterval(1.3))
+    }
+
+    func testSpokenBackgroundJobIsConsumedLocallyAndConfirmedAloud() async {
+        let jobs = FakeVoiceBackgroundJobs()
+        let (controller, capture, gateway, spy) = makeJobController(
+            transcript: "Background job, check the server.", jobs: jobs
+        )
+
+        await speakOneUtterance(controller)
+        await gateway.waitUntilSpeechAppended(1)
+        await capture.waitUntilStartCount(2)
+
+        XCTAssertEqual(jobs.commands, [.start(instructions: "check the server")])
+        XCTAssertEqual(spy.texts, [], "the command never reaches the voice session")
+        XCTAssertEqual(gateway.stream?.appended, ["Started a background job."])
+        XCTAssertEqual(controller.conversationTranscript.map(\.text), ["Background job, check the server.", "Started a background job."])
+        let listening = await controller.waitForState(.listening)
+        XCTAssertTrue(listening, "the conversation keeps flowing after the confirmation")
+    }
+
+    func testWithoutTheJobSeamTheSameUtteranceIsAnOrdinaryTurn() async {
+        let (controller, _, _, spy) = makeJobController(transcript: "Background job, check the server.", jobs: nil)
+
+        await speakOneUtterance(controller)
+        await spy.waitUntilSubmitted(1)
+
+        XCTAssertEqual(spy.texts, ["Background job, check the server."])
+    }
+
+    func testFinishedJobHandBackIsSubmittedInAQuietListeningWindowAndSpoken() async {
+        let jobs = FakeVoiceBackgroundJobs()
+        jobs.pending = [.submit(prompt: "HAND-BACK", fallback: "Open it in Conduit.")]
+        let (controller, capture, gateway, spy) = makeJobController(jobs: jobs)
+
+        controller.beginVoiceTurn(sessionID: "session")
+        await controller.startListening()
+        await spy.waitUntilSubmitted(1)
+
+        XCTAssertEqual(spy.texts, ["HAND-BACK"])
+        XCTAssertEqual(controller.state, .thinking)
+        controller.receiveAssistantEvent(.started(sessionID: "session"))
+        controller.receiveAssistantEvent(.delta(sessionID: "session", text: "The server is fine."))
+        controller.receiveAssistantEvent(.completed(sessionID: "session", content: "The server is fine."))
+        await gateway.waitUntilSpeechAppended(1)
+        await capture.waitUntilStartCount(2)
+
+        XCTAssertEqual(gateway.stream?.appended, ["The server is fine."], "the hand-back reply is spoken like any turn")
+    }
+
+    func testFailedHandBackSubmissionSpeaksTheFallback() async {
+        let jobs = FakeVoiceBackgroundJobs()
+        jobs.pending = [.submit(prompt: "HAND-BACK", fallback: "Open it in Conduit.")]
+        let (controller, _, gateway, spy) = makeJobController(jobs: jobs, submitResult: false)
+
+        controller.beginVoiceTurn(sessionID: "session")
+        await controller.startListening()
+        await spy.waitUntilSubmitted(1)
+        await gateway.waitUntilSpeechAppended(1)
+
+        XCTAssertEqual(gateway.stream?.appended, ["Open it in Conduit."])
+    }
+
+    func testSilentHandBackIsReleasedWithTheFallback() async {
+        let jobs = FakeVoiceBackgroundJobs()
+        jobs.pending = [.submit(prompt: "HAND-BACK", fallback: "Open it in Conduit.")]
+        let (controller, capture, gateway, spy) = makeJobController(jobs: jobs)
+        controller.backgroundHandBackStartTimeout = .milliseconds(50)
+
+        controller.beginVoiceTurn(sessionID: "session")
+        await controller.startListening()
+        await spy.waitUntilSubmitted(1)
+        await gateway.waitUntilSpeechAppended(1)
+        await capture.waitUntilStartCount(2)
+
+        XCTAssertEqual(gateway.stream?.appended, ["Open it in Conduit."])
+        let listening = await controller.waitForState(.listening)
+        XCTAssertTrue(listening, "later job updates are no longer blocked")
+        // A reply that turns up after the release stays unowned.
+        controller.receiveAssistantEvent(.started(sessionID: "session"))
+        controller.receiveAssistantEvent(.delta(sessionID: "session", text: "Late."))
+        XCTAssertEqual(gateway.stream?.appended, ["Open it in Conduit."])
+    }
+
+    func testStartedHandBackReplyIsNeverReleasedByTheWatchdog() async {
+        let jobs = FakeVoiceBackgroundJobs()
+        jobs.pending = [.submit(prompt: "HAND-BACK", fallback: "Open it in Conduit.")]
+        let (controller, _, _, spy) = makeJobController(jobs: jobs)
+        controller.backgroundHandBackStartTimeout = .milliseconds(50)
+
+        controller.beginVoiceTurn(sessionID: "session")
+        await controller.startListening()
+        await spy.waitUntilSubmitted(1)
+        controller.receiveAssistantEvent(.started(sessionID: "session"))
+        try? await Task.sleep(for: .milliseconds(200))
+
+        XCTAssertEqual(controller.state, .thinking, "a reply that began keeps ownership")
+        XCTAssertFalse(controller.conversationTranscript.map(\.text).contains("Open it in Conduit."))
+    }
+
+    func testHandBackWaitsWhileATurnIsInFlight() async {
+        let jobs = FakeVoiceBackgroundJobs()
+        let (controller, _, _, spy) = makeJobController(transcript: "What's the weather?", jobs: jobs)
+
+        await speakOneUtterance(controller)
+        await spy.waitUntilSubmitted(1)
+        XCTAssertEqual(controller.state, .thinking)
+        jobs.pending = [.speak("Job finished.")]
+        let takesBefore = jobs.takeCount
+
+        controller.deliverPendingBackgroundJobNoticeIfIdle()
+
+        XCTAssertEqual(jobs.takeCount, takesBefore, "nothing is taken while the user's own turn is pending")
+        XCTAssertEqual(jobs.pending, [.speak("Job finished.")])
+    }
+}

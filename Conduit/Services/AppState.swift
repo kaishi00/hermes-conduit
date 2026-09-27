@@ -1257,8 +1257,57 @@ final class AppState: ObservableObject {
         },
         onEndConversation: { [weak self] in
             self?.closeVoiceConversation()
-        }
+        },
+        backgroundJobs: self.voiceBackgroundJobSupervisor
     )
+    /// Background jobs started from Voice (issue #163): each job is an
+    /// ordinary Hermes session created on the current client, and its
+    /// finished result is handed back to the Voice conversation.
+    lazy var voiceBackgroundJobSupervisor: VoiceBackgroundJobSupervisor = {
+        let supervisor = VoiceBackgroundJobSupervisor(backend: VoiceBackgroundJobBackend(
+            createSession: { [weak self] in
+                guard let self, let client = self.client else { throw HermesError.notConnected }
+                // Same model/provider as a composer-created chat, and the
+                // same refusal when Hermes lands it in another profile.
+                let profile = self.activeProfile
+                let created = try await client.createSession(
+                    model: self.runtime.model.isEmpty ? nil : self.runtime.model,
+                    provider: self.runtime.provider.isEmpty ? nil : self.runtime.provider
+                )
+                if let returnedProfile = created.profile, !self.profilesMatch(returnedProfile, profile) {
+                    throw HermesError.invalidResponse
+                }
+                return (created.sessionId, created.storedSessionId)
+            },
+            setTitle: { [weak self] sessionID, title in
+                try? await self?.client?.setSessionTitle(sessionID, title: title)
+            },
+            submit: { [weak self] sessionID, text in
+                guard let client = self?.client else { throw HermesError.notConnected }
+                _ = try await client.sendPrompt(sessionID, text: text)
+            },
+            cancel: { [weak self] sessionID in
+                guard let client = self?.client else { throw HermesError.notConnected }
+                try await client.cancel(sessionID)
+            },
+            liveSessions: { [weak self] in
+                guard let client = self?.client else { throw HermesError.notConnected }
+                return try await client.activeSessions()
+            }
+        ))
+        supervisor.onNoticePending = { [weak self] in
+            self?.voiceConversationController.deliverPendingBackgroundJobNoticeIfIdle()
+        }
+        supervisor.onJobSessionCreated = { [weak self] sessionIDs in
+            guard let self else { return }
+            self.rememberVoiceJobSessions(sessionIDs)
+            self.voiceJobSessionListRefreshTask?.cancel()
+            self.voiceJobSessionListRefreshTask = Task { [weak self] in
+                await self?.loadSessions(forceRefresh: true)
+            }
+        }
+        return supervisor
+    }()
     /// Logical identity of a Voice conversation suspended by an app lifecycle
     /// transition (scene backgrounded / device locked). Identity only: it
     /// never holds audio resources, gateway or transport references, session
@@ -1555,6 +1604,8 @@ final class AppState: ObservableObject {
     /// Coalesces presentation-cache flushes during streaming so we
     /// don't serialize and write UserDefaults on every WebSocket frame.
     private var presentationCacheFlushTask: Task<Void, Never>?
+    /// Session-list refresh after a Voice background job creates its chat.
+    private var voiceJobSessionListRefreshTask: Task<Void, Never>?
     /// Monotonic fence for deferred presentation-cache writes. Bumped when
     /// the active profile identity changes so a coalesced flush scheduled
     /// under one profile can never land in another profile's namespace.
@@ -1981,6 +2032,7 @@ final class AppState: ObservableObject {
     static let chatReturnSurfaceKey = "conduit.chatReturnSurface.v1"
     private let activeSessionTitlesByProfileKey = "conduit.activeSessionTitlesByProfile.v1"
     private let pinnedSessionIDsByProfileKey = "conduit.pinnedSessionIdsByProfile.v1"
+    private let voiceJobSessionIDsByProfileKey = "conduit.voiceJobSessionIdsByProfile.v1"
     private let activeProfileKey = "conduit.activeProfile"
     private let themePreferenceKey = "conduit.themePreference"
     private let dashboardURLKey = "conduit.dashboardURL"
@@ -1994,6 +2046,10 @@ final class AppState: ObservableObject {
     static let chatResumeServerIdentityKey = "conduit.chatResumeServerIdentity.v1"
     private var activeSessionTitlesByProfile: [String: String] = [:]
     private var pinnedSessionIDsByProfile: [String: [String]] = [:]
+    /// Session ids of chats started as Voice background jobs, per profile,
+    /// newest last. Presentation only (the session-list badge).
+    @Published private(set) var voiceJobSessionIDsByProfile: [String: [String]] = [:]
+    static let maximumRememberedVoiceJobSessions = 200
     private let chatResumeCoordinator: ChatResumeCoordinator
     private let recoverySequence: ChatResumeRecoverySequence
     private let clearSessionPresentationCache: () -> Void
@@ -2161,6 +2217,10 @@ final class AppState: ObservableObject {
            let stored = try? JSONDecoder().decode([String: [String]].self, from: data) {
             pinnedSessionIDsByProfile = stored
         }
+        if let data = defaults.data(forKey: voiceJobSessionIDsByProfileKey),
+           let stored = try? JSONDecoder().decode([String: [String]].self, from: data) {
+            voiceJobSessionIDsByProfile = stored
+        }
         // Hydrate the visible profile list from the persisted known-profile
         // cache before any discovery runs. A cold launch must not present an
         // effectively empty list — starting from `[]` is what let a single
@@ -2210,6 +2270,43 @@ final class AppState: ObservableObject {
             return rootID
         }
         return session.id
+    }
+
+    /// Whether a chat was started as a Voice background job (session-list
+    /// badge). Matches every id the session answers to.
+    func isVoiceJobSession(_ session: SessionSummary) -> Bool {
+        guard let remembered = voiceJobSessionIDsByProfile[activeProfile], !remembered.isEmpty else { return false }
+        let ids = Set([session.id] + session.alternateIds)
+        return remembered.contains { ids.contains($0) }
+    }
+
+    func rememberVoiceJobSessions(_ sessionIDs: [String]) {
+        let fresh = sessionIDs.filter { !$0.isEmpty }
+        guard !fresh.isEmpty else { return }
+        var remembered = voiceJobSessionIDsByProfile[activeProfile] ?? []
+        remembered.removeAll { fresh.contains($0) }
+        remembered.append(contentsOf: fresh)
+        if remembered.count > Self.maximumRememberedVoiceJobSessions {
+            remembered.removeFirst(remembered.count - Self.maximumRememberedVoiceJobSessions)
+        }
+        voiceJobSessionIDsByProfile[activeProfile] = remembered
+        persistVoiceJobSessions()
+    }
+
+    /// Stops following Voice background jobs at a server, profile, or
+    /// sign-out boundary. The jobs keep running on the server as chats.
+    private func retireVoiceBackgroundJobs() {
+        voiceBackgroundJobSupervisor.reset()
+        voiceJobSessionListRefreshTask?.cancel()
+        voiceJobSessionListRefreshTask = nil
+    }
+
+    private func persistVoiceJobSessions() {
+        if voiceJobSessionIDsByProfile.isEmpty {
+            defaults.removeObject(forKey: voiceJobSessionIDsByProfileKey)
+        } else if let data = try? JSONEncoder().encode(voiceJobSessionIDsByProfile) {
+            defaults.set(data, forKey: voiceJobSessionIDsByProfileKey)
+        }
     }
 
     func isSessionPinned(_ session: SessionSummary) -> Bool {
@@ -3109,8 +3206,10 @@ final class AppState: ObservableObject {
         activeSessionTitlesByProfile = [:]
         pinnedSessionIDsByProfile = [:]
         pinnedSessionIDs = []
+        voiceJobSessionIDsByProfile = [:]
         defaults.removeObject(forKey: activeSessionTitlesByProfileKey)
         defaults.removeObject(forKey: pinnedSessionIDsByProfileKey)
+        defaults.removeObject(forKey: voiceJobSessionIDsByProfileKey)
         defaults.removeObject(forKey: reviewSummaryCacheKey)
         defaults.removeObject(forKey: knownProfilesKey)
         clearSessionPresentationCache()
@@ -3991,6 +4090,7 @@ final class AppState: ObservableObject {
             "Server replacement \(previousIdentity, privacy: .private) -> \(identity, privacy: .private): retiring speech ownership (voiceLive=\(voiceWasLive ? "yes" : "no", privacy: .public), readAloudActive=\(readAloudWasActive ? "yes" : "no", privacy: .public))"
         )
         voiceConversationController.stop()
+        retireVoiceBackgroundJobs()
         // Read Aloud teardown flows through the controller's own pinned
         // Option-A semantics: replacing a non-nil gateway performs the single
         // authoritative stop. A nil gateway means nothing can be live — an
@@ -4874,6 +4974,9 @@ final class AppState: ObservableObject {
         // sign-in never crosses the server-identity boundary, so without
         // this the previous session's room would be restored as it was.
         invalidateGroupChatState()
+        // Background jobs keep running on the server as ordinary chats; the
+        // signed-out ledger just stops following them.
+        retireVoiceBackgroundJobs()
         // Unsent drafts belong to the signed-out user; AppState owns the
         // store (it outlives the composer view), so sign-out must clear it.
         composerDraftStore.removeAll()
@@ -4942,8 +5045,10 @@ final class AppState: ObservableObject {
         turnState = .idle
         defaults.removeObject(forKey: activeSessionTitlesByProfileKey)
         defaults.removeObject(forKey: pinnedSessionIDsByProfileKey)
+        defaults.removeObject(forKey: voiceJobSessionIDsByProfileKey)
         activeSessionTitlesByProfile = [:]
         pinnedSessionIDsByProfile = [:]
+        voiceJobSessionIDsByProfile = [:]
         defaults.removeObject(forKey: activeProfileKey)
         clearDashboardWebSession(dashboardID: signingOutDashboardID, baseURL: dashboardBaseURL)
     }
@@ -15586,6 +15691,7 @@ final class AppState: ObservableObject {
                 saveVoiceProfilePreferences(preferences, profile: activeProfile)
             }
             voiceConversationController.stop()
+            retireVoiceBackgroundJobs()
             showVoiceSheet = false
             suspendedVoiceConversation = nil
             voiceSheetShouldAutoListen = false
@@ -15793,6 +15899,7 @@ final class AppState: ObservableObject {
             saveVoiceProfilePreferences(preferences, profile: activeProfile)
         }
         voiceConversationController.stop()
+        retireVoiceBackgroundJobs()
         showVoiceSheet = false
         suspendedVoiceConversation = nil
         voiceSheetShouldAutoListen = false
@@ -15823,8 +15930,10 @@ final class AppState: ObservableObject {
         // resurrecting obsolete titles and pins.
         activeSessionTitlesByProfile.removeValue(forKey: activeProfile)
         pinnedSessionIDsByProfile.removeValue(forKey: activeProfile)
+        voiceJobSessionIDsByProfile.removeValue(forKey: activeProfile)
         persistActiveSessionTitles()
         persistPinnedSessions()
+        persistVoiceJobSessions()
         setActiveProfile(fallback)
         restoreActiveSessionState(for: fallback)
         restorePinnedSessions(for: fallback)
@@ -16919,6 +17028,9 @@ final class AppState: ObservableObject {
     // MARK: - Stream event handling
 
     func handleStreamEvent(_ event: StreamEvent) {
+        // Voice background jobs are not the active conversation, so they
+        // observe every event before the active-session filter below.
+        voiceBackgroundJobSupervisor.observe(event)
         if case .sessionTitle(let runtimeSessionId, let storedSessionId, let title) = event {
             let taskKey = Self.secondaryTitleRecoveryTaskKey(
                 profile: activeProfile,
