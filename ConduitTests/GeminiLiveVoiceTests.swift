@@ -613,6 +613,17 @@ extension VoiceConversationControllerTests {
         current += 5
         controller.acknowledgeIfSilent(since: secondCall)
         XCTAssertEqual(session.textTurns.count, 1)
+
+        // The model acknowledged before calling, right after the user's
+        // request: no second prompt.
+        session.onEvent?(.inputTranscription("What's on my calendar?"))
+        let requestedAt = current
+        current += 0.5
+        session.onEvent?(.audio(Data([0, 0]), sampleRate: 24_000))
+        session.onEvent?(.turnComplete)
+        current += 5
+        controller.acknowledgeIfSilent(since: requestedAt)
+        XCTAssertEqual(session.textTurns.count, 1)
         controller.stop()
     }
 

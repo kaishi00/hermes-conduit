@@ -389,13 +389,16 @@ final class GeminiLiveConversationController: ObservableObject {
             for call in calls {
                 Task { [weak self] in
                     guard let self else { return }
+                    // The model is told to acknowledge before it calls, so
+                    // any speech since the user's request counts.
                     let calledAt = self.now()
+                    let requestedAt = min(calledAt, self.lastUserSpeechAt ?? calledAt)
                     let outgoing = await self.tools.handle(call)
                     self.dispatch(outgoing)
                     // An empty answer means a start_job is running: make
                     // sure the user heard that it was taken.
                     if call.name == GeminiLiveToolBridge.Tool.startJob.rawValue, outgoing.isEmpty {
-                        self.ensureAcknowledgement(since: calledAt)
+                        self.ensureAcknowledgement(since: requestedAt)
                     }
                 }
             }
