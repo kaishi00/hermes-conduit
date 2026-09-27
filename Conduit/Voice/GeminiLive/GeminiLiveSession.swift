@@ -113,12 +113,12 @@ final class URLSessionGeminiLiveSocket: GeminiLiveSocket {
     func close() {
         task.cancel(with: .normalClosure, reason: nil)
         // The session retains its delegate until invalidated.
-        session.finishTasksAndInvalidate()
+        session.invalidateAndCancel()
     }
 
     func serverClose(within timeout: Duration) async -> GeminiLiveServerClose? {
         let deadline = ContinuousClock.now.advanced(by: timeout)
-        while true {
+        while !Task.isCancelled {
             if let recorded = delegate.serverClose { return recorded }
             if task.closeCode != .invalid {
                 let text = task.closeReason.flatMap { String(data: $0, encoding: .utf8) }?
@@ -126,8 +126,13 @@ final class URLSessionGeminiLiveSocket: GeminiLiveSocket {
                 return GeminiLiveServerClose(code: task.closeCode.rawValue, reason: text)
             }
             guard ContinuousClock.now < deadline else { return nil }
-            try? await Task.sleep(for: .milliseconds(50))
+            do {
+                try await Task.sleep(for: .milliseconds(50))
+            } catch {
+                return nil
+            }
         }
+        return nil
     }
 }
 
@@ -227,6 +232,7 @@ final class GeminiLiveSession {
     }
 
     private func closeAllConnections() {
+        connectTask?.cancel()
         awaitingSetup = nil
         receiveTask?.cancel()
         receiveTask = nil
@@ -389,7 +395,8 @@ final class GeminiLiveSession {
             fail(AppLocalization.string("Gemini Live refused the connection: \(serverClose.summary)"))
             return
         }
-        if let serverClose { lastSetupClose = serverClose }
+        // Only the latest attempt's close is worth naming.
+        lastSetupClose = serverClose
         connectTask = Task { [weak self] in await self?.retry(after: pendingSetup.attempt, error: error) }
     }
 
@@ -408,7 +415,7 @@ final class GeminiLiveSession {
         } catch {
             return
         }
-        guard !Task.isCancelled, state != .stopped else { return }
+        guard !Task.isCancelled, state != .stopped, !isFailed else { return }
         await connect(attempt: attempt + 1)
     }
 }
