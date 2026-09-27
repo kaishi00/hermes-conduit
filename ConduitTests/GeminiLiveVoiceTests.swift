@@ -84,7 +84,13 @@ final class FakeGeminiLiveSessionControl: GeminiLiveSessionControlling {
 
     func start() { started += 1 }
     func stop() { stopped += 1; isReady = false }
-    func send(_ message: [String: Any]) { sent.append(message) }
+    /// When set, sends are recorded but reported as failed.
+    var failSends = false
+
+    func send(_ message: [String: Any], onFailure: (@MainActor () -> Void)?) {
+        sent.append(message)
+        if failSends { onFailure?() }
+    }
 
     func becomeReady() {
         isReady = true
@@ -677,6 +683,22 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(response?["id"] as? String, "c1")
         XCTAssertEqual((response?["response"] as? [String: Any])?["result"] as? String, "All green.")
         XCTAssertTrue(supervisor.jobs[0].outcomeDelivered)
+        controller.stop()
+    }
+
+    func testGeminiLiveKeepsAJobResultWhoseToolResponseFailedToSend() async {
+        let (controller, session, _, _, supervisor) = makeGeminiController(clock: Date.init)
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.toolCall([.init(id: "c1", name: "start_job", arguments: ["instructions": "check the server"])]))
+        await settle(40)
+        XCTAssertEqual(supervisor.jobs.count, 1)
+
+        session.failSends = true
+        let before = controller.pendingTextTurnCountForTesting
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "All green.", reasoning: nil))
+        controller.deliverPendingJobUpdates()
+        XCTAssertEqual(controller.pendingTextTurnCountForTesting, before + 1, "the result waits as a text update")
         controller.stop()
     }
 

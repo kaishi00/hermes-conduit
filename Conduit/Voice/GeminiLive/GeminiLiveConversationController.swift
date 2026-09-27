@@ -25,7 +25,12 @@ protocol GeminiLiveSessionControlling: AnyObject {
     var isReady: Bool { get }
     func start()
     func stop()
-    func send(_ message: [String: Any])
+    /// `onFailure` runs when the message never reached the socket.
+    func send(_ message: [String: Any], onFailure: (@MainActor () -> Void)?)
+}
+
+extension GeminiLiveSessionControlling {
+    func send(_ message: [String: Any]) { send(message, onFailure: nil) }
 }
 
 extension GeminiLiveSession: GeminiLiveSessionControlling {}
@@ -465,12 +470,22 @@ final class GeminiLiveConversationController: ObservableObject {
                 // a text update rather than lost. A silent one stays silent.
                 if scheduling != .silent, let text = Self.fallbackText(for: result) { pendingTextTurns.append(text) }
             case .toolResponse(let id, let name, let result, let scheduling):
+                // The outcome is already marked delivered, so a send that
+                // fails keeps it as a text update for the next connection.
+                var onFailure: (@MainActor () -> Void)?
+                if scheduling != .silent, let text = Self.fallbackText(for: result) {
+                    onFailure = { [weak self] in
+                        guard let self, self.isActive else { return }
+                        self.pendingTextTurns.append(text)
+                        self.scheduleIdleFlush()
+                    }
+                }
                 session?.send(GeminiLiveProtocol.toolResponseMessage(
                     id: id,
                     name: name,
                     result: result,
                     scheduling: scheduling
-                ))
+                ), onFailure: onFailure)
             case .textWhenIdle(let text):
                 pendingTextTurns.append(text)
             }
@@ -537,7 +552,7 @@ final class GeminiLiveConversationController: ObservableObject {
             return true
         } catch {
             phase = .failed(error.localizedDescription)
-            session?.stop()
+            retireSession()
             return false
         }
     }

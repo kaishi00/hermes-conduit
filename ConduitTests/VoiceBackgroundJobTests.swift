@@ -213,10 +213,10 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(again, AppLocalization.string("There are no background jobs to cancel."))
     }
 
-    func testAFailedHermesCancelIsReportedAndTheJobStaysSupervised() async {
+    func testAFailedHermesCancelIsReportedAndTheJobStaysSupervised() async throws {
         let (supervisor, fake) = makeSupervisor()
         _ = await supervisor.startJob(instructions: "first")
-        let jobID = try! XCTUnwrap(supervisor.jobs.first?.id)
+        let jobID = try XCTUnwrap(supervisor.jobs.first?.id)
         fake.cancelError = HermesError.notConnected
 
         let reply = await supervisor.cancel(jobID: jobID)
