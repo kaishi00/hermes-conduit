@@ -93,6 +93,11 @@ final class URLSessionGeminiLiveSocket: GeminiLiveSocket {
         task.resume()
     }
 
+    deinit {
+        // A socket dropped without close() must not keep its session.
+        session.invalidateAndCancel()
+    }
+
     func send(_ text: String) async throws {
         try await task.send(.string(text))
     }
@@ -255,6 +260,10 @@ final class GeminiLiveSession {
             // A missing plugin or key will not fix itself on retry.
             if error is GeminiLiveTokenError {
                 retireHandoff()
+                receiveTask?.cancel()
+                receiveTask = nil
+                socket?.close()
+                socket = nil
                 state = .failed(error.localizedDescription)
                 return
             }
@@ -301,9 +310,10 @@ final class GeminiLiveSession {
                 data = try await socket.receive()
             } catch {
                 // A close before setup decides between failing and retrying,
-                // so give its close frame a moment to be reported.
+                // so give its close frame a moment to be reported. For a
+                // live connection the reason is only logged (best effort).
                 let beforeSetup = awaitingSetup?.id == id
-                let close = await socket.serverClose(within: beforeSetup ? .seconds(1) : .milliseconds(100))
+                let close = await socket.serverClose(within: beforeSetup ? .milliseconds(400) : .milliseconds(100))
                 connectionFailed(id, error: error, serverClose: close)
                 return
             }

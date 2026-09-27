@@ -387,7 +387,7 @@ extension VoiceConversationControllerTests {
         for code in [1000, 1001, 1005, 1006, 1011] {
             XCTAssertFalse(GeminiLiveServerClose(code: code, reason: "").isRefusal, "\(code)")
         }
-        XCTAssertEqual(GeminiLiveServerClose(code: 1008, reason: "").summary, "close code 1008")
+        XCTAssertEqual(GeminiLiveServerClose(code: 1008, reason: "").summary, AppLocalization.string("close code \(String(1008))"))
     }
 
     /// Closes each new connection before setup until the session gives up.
