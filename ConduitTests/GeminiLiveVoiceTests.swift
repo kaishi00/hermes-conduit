@@ -70,6 +70,16 @@ final class FakeGeminiLiveSocket: GeminiLiveSocket {
         waiter?.resume(throwing: URLError(.cancelled))
         waiter = nil
     }
+
+    private(set) var serverCloseReason: String?
+
+    /// The server ends the connection; `reason` nil is a plain drop.
+    func serverClose(reason: String?) {
+        serverCloseReason = reason
+        closed = true
+        waiter?.resume(throwing: URLError(.networkConnectionLost))
+        waiter = nil
+    }
 }
 
 @MainActor
@@ -322,6 +332,36 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(session.state, .ready)
         XCTAssertEqual(replaced, 1)
         session.stop()
+    }
+
+    func testGeminiLiveSetupRefusedByGoogleFailsWithItsReasonInsteadOfLooping() async throws {
+        let tokens = FakeGeminiLiveTokens()
+        let (session, sockets) = makeGeminiSession(tokens: tokens)
+        session.start()
+        await settle()
+        try XCTUnwrap(sockets().first).serverClose(reason: "models/gemini-3.8-live is not found")
+        await settle(40)
+
+        XCTAssertEqual(session.state, .failed(AppLocalization.string("Gemini Live refused the connection: \("models/gemini-3.8-live is not found")")))
+        XCTAssertEqual(sockets().count, 1, "a refused setup is not retried")
+        XCTAssertEqual(tokens.issued, 1)
+    }
+
+    func testGeminiLiveDropsBeforeSetupCountTowardTheRetryLimit() async {
+        let tokens = FakeGeminiLiveTokens()
+        let (session, sockets) = makeGeminiSession(tokens: tokens)
+        session.start()
+        for _ in 0..<10 {
+            await settle(20)
+            guard case .failed = session.state else {
+                sockets().last?.serverClose(reason: nil)
+                continue
+            }
+            break
+        }
+
+        XCTAssertEqual(session.state, .failed(AppLocalization.string("Couldn't connect to Gemini Live.")))
+        XCTAssertEqual(sockets().count, 1 + GeminiLiveSession.maximumReconnectAttempts)
     }
 
     func testGeminiLiveSessionFailsWithoutRetryWhenTheHostCannotServeIt() async {

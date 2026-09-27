@@ -22,6 +22,13 @@ protocol GeminiLiveSocket: AnyObject {
     /// socket closes.
     func receive() async throws -> Data
     func close()
+    /// Why the server closed the socket (its close code and reason), once
+    /// it has. Nil while open or when the connection simply dropped.
+    var serverCloseReason: String? { get }
+}
+
+extension GeminiLiveSocket {
+    var serverCloseReason: String? { nil }
 }
 
 @MainActor
@@ -49,6 +56,13 @@ final class URLSessionGeminiLiveSocket: GeminiLiveSocket {
 
     func close() {
         task.cancel(with: .normalClosure, reason: nil)
+    }
+
+    var serverCloseReason: String? {
+        guard task.closeCode != .invalid else { return nil }
+        let reason = task.closeReason.flatMap { String(data: $0, encoding: .utf8) }?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return reason.isEmpty ? "close code \(task.closeCode.rawValue)" : reason
     }
 }
 
@@ -99,6 +113,10 @@ final class GeminiLiveSession {
     private var retiringReceiveTask: Task<Void, Never>?
     private var connectTask: Task<Void, Never>?
     private var hasConnectedOnce = false
+    /// The connection still waiting for setupComplete, and which attempt it
+    /// is. A socket that closes before setup is a failed attempt, not a
+    /// lost connection, so it counts toward the retry limit.
+    private var awaitingSetup: (id: UUID, attempt: Int)?
 
     init(
         tokens: GeminiLiveTokenProviding,
@@ -129,6 +147,7 @@ final class GeminiLiveSession {
     func stop() {
         connectTask?.cancel()
         connectTask = nil
+        awaitingSetup = nil
         receiveTask?.cancel()
         receiveTask = nil
         retiringReceiveTask?.cancel()
@@ -207,6 +226,7 @@ final class GeminiLiveSession {
         }
         self.socket = socket
         connectionID = id
+        awaitingSetup = (id, attempt)
         receiveTask = Task { [weak self] in await self?.receiveLoop(socket, id: id) }
     }
 
@@ -216,7 +236,7 @@ final class GeminiLiveSession {
             do {
                 data = try await socket.receive()
             } catch {
-                connectionFailed(id, error: error)
+                connectionFailed(id, error: error, closeReason: socket.serverCloseReason)
                 return
             }
             guard id == connectionID else { return }
@@ -231,6 +251,7 @@ final class GeminiLiveSession {
         case .setupComplete:
             let replaced = hasConnectedOnce
             hasConnectedOnce = true
+            awaitingSetup = nil
             retiringReceiveTask?.cancel()
             retiringReceiveTask = nil
             retiringSocket?.close()
@@ -258,19 +279,32 @@ final class GeminiLiveSession {
         connectTask = Task { [weak self] in await self?.connect(attempt: 0) }
     }
 
-    private func connectionFailed(_ id: UUID, error: Error) {
+    private func connectionFailed(_ id: UUID, error: Error, closeReason: String? = nil) {
         guard id == connectionID, state != .stopped else { return }
         // Never the error's description: it can carry the connection URL,
         // whose access_token is a live credential.
         let nsError = error as NSError
-        geminiLiveLogger.error("Gemini Live connection lost: domain=\(nsError.domain, privacy: .public) code=\(nsError.code, privacy: .public)")
+        geminiLiveLogger.error("Gemini Live connection lost: domain=\(nsError.domain, privacy: .public) code=\(nsError.code, privacy: .public) serverClose=\(closeReason ?? "none", privacy: .public)")
         socket?.close()
         socket = nil
         receiveTask = nil
         connectionID = UUID()
-        state = .reconnecting
+        let pendingSetup = awaitingSetup?.id == id ? awaitingSetup : nil
+        awaitingSetup = nil
         connectTask?.cancel()
-        connectTask = Task { [weak self] in await self?.connect(attempt: 0) }
+        guard let pendingSetup else {
+            state = .reconnecting
+            connectTask = Task { [weak self] in await self?.connect(attempt: 0) }
+            return
+        }
+        // Closed before setupComplete. Google closing it on purpose (a
+        // rejected setup, token or model) won't change on retry: say why
+        // instead of reconnecting in a loop.
+        if let closeReason {
+            state = .failed(AppLocalization.string("Gemini Live refused the connection: \(closeReason)"))
+            return
+        }
+        connectTask = Task { [weak self] in await self?.retry(after: pendingSetup.attempt, error: error) }
     }
 
     private func retry(after attempt: Int, error: Error) async {
