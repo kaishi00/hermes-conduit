@@ -312,6 +312,9 @@ struct ConduitNotificationPreferences: Codable, Equatable {
     var turnFailed = true
     var backgroundTaskFinished = true
     var completionSound = true
+    /// Sound for approval.needed / input.needed pushes. Those wait on the
+    /// user (approvals time out and fail closed), so they chime by default.
+    var attentionSound = true
     var showPreviews = false
     /// Independent of `showPreviews`: controls whether pushes carry structured
     /// decision content (answerable approval cards). Defaults on because the
@@ -327,6 +330,7 @@ struct ConduitNotificationPreferences: Codable, Equatable {
         case turnFailed = "turn_failed"
         case backgroundTaskFinished = "background_task_finished"
         case completionSound = "completion_sound"
+        case attentionSound = "attention_sound"
         case showPreviews = "show_previews"
         case decisionCards = "decision_cards"
     }
@@ -348,6 +352,7 @@ extension ConduitNotificationPreferences {
         turnFailed = try container.decodeIfPresent(Bool.self, forKey: .turnFailed) ?? true
         backgroundTaskFinished = try container.decodeIfPresent(Bool.self, forKey: .backgroundTaskFinished) ?? true
         completionSound = try container.decodeIfPresent(Bool.self, forKey: .completionSound) ?? true
+        attentionSound = try container.decodeIfPresent(Bool.self, forKey: .attentionSound) ?? true
         showPreviews = try container.decodeIfPresent(Bool.self, forKey: .showPreviews) ?? false
         decisionCards = try container.decodeIfPresent(Bool.self, forKey: .decisionCards) ?? true
     }

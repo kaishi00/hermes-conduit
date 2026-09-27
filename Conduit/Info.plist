@@ -84,6 +84,8 @@
 	<string>Conduit uses Face ID to unlock saved Hermes credentials.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Conduit uses the microphone for voice conversations and foreground wake phrases.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Conduit saves images and videos from your chats to Photos when you choose Save in the share sheet.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Conduit uses on-device Apple speech recognition to turn your voice into text when you select On this iPhone.</string>
 	<key>UISupportedInterfaceOrientations</key>

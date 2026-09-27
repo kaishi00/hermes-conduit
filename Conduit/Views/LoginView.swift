@@ -212,6 +212,7 @@ struct LoginView: View {
                             KeychainHelper.clearNativeOAuthTokens(dashboardID: dashboardID)
                         }
                         appState.rememberDashboardURL(baseUrl)
+                        appState.prepareInteractiveSignIn(baseURL: baseUrl)
                         await appState.connect(with: HermesConnection(baseUrl: baseUrl, ticket: ticket))
                     }
                 },
@@ -631,6 +632,7 @@ struct LoginView: View {
             if let dashboardID {
                 authenticatedConnection.commitCookies(dashboardID: dashboardID)
             }
+            appState.prepareInteractiveSignIn(baseURL: serverUrl)
             await appState.connect(with: HermesConnection(baseUrl: serverUrl, ticket: authenticatedConnection.ticket))
         } catch is CancellationError {
             return

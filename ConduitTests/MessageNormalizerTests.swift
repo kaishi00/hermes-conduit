@@ -321,6 +321,19 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertFalse(decoded.decisionCards)
     }
 
+    func testNotificationPreferencesRoundTripAttentionSoundKey() throws {
+        var preferences = ConduitNotificationPreferences()
+        XCTAssertTrue(preferences.attentionSound, "Approval and input sounds default on")
+
+        preferences.attentionSound = false
+        let data = try JSONEncoder().encode(preferences)
+        let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        XCTAssertEqual(object?["attention_sound"] as? Bool, false, "The relay expects the snake_case attention_sound key")
+
+        let decoded = try JSONDecoder().decode(ConduitNotificationPreferences.self, from: data)
+        XCTAssertFalse(decoded.attentionSound)
+    }
+
     func testNotificationPreferencesDecodeLegacyRegistrationWithoutDecisionCardsKey() throws {
         // A registration persisted by a build that predated decision_cards.
         // Decoding must fall back to the default rather than throwing — a
@@ -345,6 +358,7 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertFalse(decoded.approvalNeeded, "Persisted values must survive")
         XCTAssertTrue(decoded.showPreviews, "Persisted values must survive")
         XCTAssertTrue(decoded.decisionCards, "Absent decision_cards must fall back to the default-on value")
+        XCTAssertTrue(decoded.attentionSound, "Absent attention_sound must fall back to the default-on value")
     }
 
     func testRelayMetaDecodingAndCapabilityChecks() throws {

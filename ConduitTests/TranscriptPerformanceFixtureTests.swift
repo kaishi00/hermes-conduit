@@ -194,8 +194,21 @@ final class TranscriptPerformanceFixtureTests: XCTestCase {
     /// identity STRUCTURAL across the churn re-creation — same discipline
     /// as the isolation suite's ChurnableRoot — so the preference-churn
     /// regression cannot depend on AnyView same-type identity preservation.
+    ///
+    /// `generation` is defensive: the churn bumps it so the re-created
+    /// root is a genuinely DIFFERENT value (same discipline as the
+    /// isolation suite's ChurnableRoot, whose churn changes `ambient`).
+    /// A non-Equatable root is expected to re-run its body on every
+    /// re-assignment anyway (the invariant SettledGateHarnessRow's doc
+    /// states), so the field is inert today and only keeps
+    /// the churn observable if an equality fast-path ever applies to an
+    /// otherwise identical value. The release-gate flake itself was the
+    /// bare run-loop wait; see the vacuity gates' layout-pumping waits.
+    /// It is not read by `body`, so the rendered hierarchy and row identity
+    /// are unchanged.
     private struct PinnedChatRoot: View {
         let appState: AppState
+        var generation = 0
 
         var body: some View {
             DormancyHarnessEnvironment.applying(
@@ -424,16 +437,15 @@ final class TranscriptPerformanceFixtureTests: XCTestCase {
             )
             return
         }
-        host.rootView = PinnedChatRoot(appState: appState)
+        host.rootView = PinnedChatRoot(appState: appState, generation: host.rootView.generation + 1)
         host.view.setNeedsLayout()
         host.view.layoutIfNeeded()
-        // Snapshot AFTER the re-creation so vacuity gate 2 can attribute the
-        // bubble-body re-runs to the streaming publish, not to the
-        // re-creation itself.
-        let bubblesAfterRecreation = TranscriptPerf.settledMessageBubbleBodyEvaluations
-
         // Vacuity gate 1: the re-creation must have re-run ChatView's body.
-        let chatViewReran = PerformanceFixtureWait.eventually {
+        // Pump layout every turn, not just the run loop: under lane load
+        // the hosting update can sit behind a deferred commit that a bare
+        // run-loop turn never forces (the SwiftUI async-commit pitfall
+        // streamTicks already guards against).
+        let chatViewReran = PerformanceFixtureWait.eventually(pumpingLayoutOf: host.view) {
             TranscriptPerf.chatViewBodyEvaluations > 0
         }
         guard chatViewReran else {
@@ -443,6 +455,21 @@ final class TranscriptPerformanceFixtureTests: XCTestCase {
             )
             return
         }
+
+        // Drain the re-creation's own trailing row work (forcing layout
+        // each turn, as gate 2's wait will) before the snapshot, so gate 2
+        // credits the streaming publish rather than re-creation work that
+        // had not landed yet. Gate 1 returns on the first pass where
+        // ChatView's body ran, which can be before the re-created rows
+        // finish.
+        guard PerformanceFixtureWait.settleUntilCountersQuiet(
+            quietFor: 1.2,
+            pumpingLayoutOf: host.view
+        ) else {
+            XCTFail("post-re-creation counters never quieted; vacuity gate 2 could not attribute the publish on this runner")
+            return
+        }
+        let bubblesAfterRecreation = TranscriptPerf.settledMessageBubbleBodyEvaluations
 
         // A streaming publish tick in the same window: the publish
         // invalidation re-runs the settled rows' body chains THROUGH the
@@ -458,7 +485,7 @@ final class TranscriptPerformanceFixtureTests: XCTestCase {
         // body chains BEYOND what the re-creation itself did (AssistantBubble
         // bodies note through the publish) — otherwise the dormancy
         // assertions measure a pruned update, not a consulted gate.
-        let rowsReran = PerformanceFixtureWait.eventually {
+        let rowsReran = PerformanceFixtureWait.eventually(pumpingLayoutOf: host.view) {
             TranscriptPerf.settledMessageBubbleBodyEvaluations > bubblesAfterRecreation
         }
         guard rowsReran else {
@@ -479,7 +506,10 @@ final class TranscriptPerformanceFixtureTests: XCTestCase {
         // asserting; a non-quiet post-churn hierarchy would make the
         // snapshot below race in-flight commits, so the failsafe must
         // fail the test (the helper's contract), not be discarded.
-        let postChurnSettled = PerformanceFixtureWait.settleUntilCountersQuiet(quietFor: 1.2)
+        let postChurnSettled = PerformanceFixtureWait.settleUntilCountersQuiet(
+            quietFor: 1.2,
+            pumpingLayoutOf: host.view
+        )
         guard postChurnSettled else {
             XCTFail("post-churn counters never quieted; the dormancy snapshot would race in-flight commits on this runner")
             return

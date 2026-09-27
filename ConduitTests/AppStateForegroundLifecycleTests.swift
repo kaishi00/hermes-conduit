@@ -2440,6 +2440,79 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         XCTAssertEqual(harness.appState.turnState, .idle)
     }
 
+    // MARK: - Offline return keeps the in-memory chat readable (#99)
+
+    /// A short trip to another app while the server is unreachable must leave
+    /// the conversation already in memory on screen: the failed foreground
+    /// recovery may mark the transport as reconnecting, but it must not
+    /// clear the transcript, switch sessions, or fall back to the sign-in
+    /// screen.
+    func testForegroundWithUnreachableServerKeepsInMemoryChatReadable() async {
+        struct Scenario {
+            let name: String
+            let mintFails: Bool
+            let connectFails: Bool
+        }
+        let scenarios = [
+            Scenario(name: "ticket mint unreachable", mintFails: true, connectFails: false),
+            Scenario(name: "socket connect unreachable", mintFails: false, connectFails: true),
+        ]
+        for scenario in scenarios {
+            let active = session("stored-a")
+            var scheduledReconnects = 0
+            let harness = makeHarness(
+                lifecycleOperations: ChatResumeLifecycleOperations(
+                    connectClient: { _ in
+                        if scenario.connectFails { throw URLError(.notConnectedToInternet) }
+                    },
+                    loadCatalog: { _, _ in
+                        XCTFail("An offline return must not reload the catalog (\(scenario.name))")
+                        throw URLError(.notConnectedToInternet)
+                    },
+                    mintTicket: { _ in
+                        if scenario.mintFails { throw URLError(.notConnectedToInternet) }
+                        return "fresh-ticket"
+                    },
+                    openSession: { _, _, _ in
+                        XCTFail("An offline return must not resume (\(scenario.name))")
+                        throw URLError(.notConnectedToInternet)
+                    },
+                    refreshContext: { _, _ in },
+                    loadProfiles: {},
+                    loadBusyInputMode: { _ in },
+                    loadProfileDisplayPreferences: {},
+                    loadSlashCommands: {}
+                ),
+                reconnectScheduler: { _, _ in
+                    scheduledReconnects += 1
+                    return {}
+                }
+            )
+            installDisconnectedClient(into: harness)
+            harness.appState.showLogin = false
+            harness.appState.sessions = [active]
+            harness.appState.activeSessionId = active.id
+            let visible = [
+                ChatMessage(id: "user-1", role: .user, content: "Question", timestamp: "1"),
+                ChatMessage(id: "assistant-1", role: .assistant, content: "Answer", timestamp: "2"),
+            ]
+            harness.appState.messages = visible
+
+            harness.appState.handleScenePhase(.inactive)
+            harness.appState.handleScenePhase(.background)
+            await runSceneActivation(harness)
+
+            XCTAssertEqual(harness.appState.messages, visible, scenario.name)
+            XCTAssertEqual(harness.appState.activeSessionId, active.id, scenario.name)
+            XCTAssertNotNil(harness.appState.connection, scenario.name)
+            XCTAssertNotNil(harness.appState.client, scenario.name)
+            XCTAssertFalse(harness.appState.showLogin, scenario.name)
+            XCTAssertFalse(harness.appState.isConnected, scenario.name)
+            XCTAssertEqual(harness.appState.turnState, .reconnecting, scenario.name)
+            XCTAssertEqual(scheduledReconnects, 1, scenario.name)
+        }
+    }
+
     // MARK: - F. Gateway restart (runtime gone, stored session remains)
 
     func testForegroundAfterGatewayRestartResumesStoredSessionOnce() async {

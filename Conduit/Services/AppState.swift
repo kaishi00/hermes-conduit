@@ -567,8 +567,17 @@ final class AppState: ObservableObject {
         didSet {
             chatTranscriptRevision &+= 1
             advanceChatViewportExpectedTranscriptRevisionIfNeeded()
+            // A real transcript replaces the read-only offline copy wholesale;
+            // the two are never mixed on screen.
+            if !messages.isEmpty, offlineChatPresentation != nil {
+                offlineChatPresentation = nil
+            }
         }
     }
+    /// Read-only copy of a recently opened conversation, shown while the
+    /// server has not answered yet (#99). Presentation only: it never feeds
+    /// `messages`, `sessions`, or any resume/selection/routing decision.
+    @Published private(set) var offlineChatPresentation: OfflineChatPresentation?
     @Published private(set) var activeSessionTitle = "New conversation"
     /// Persisted-history pagination window of the active conversation.
     /// Drives the "Load earlier messages" affordance; nil means the current
@@ -1091,10 +1100,15 @@ final class AppState: ObservableObject {
     /// Kept as a computed compatibility surface for views that only need the
     /// currently-running flag. New code should use `turnState` for actions.
     var isBusy: Bool { turnState.isRunning }
-    var composerIsEnabled: Bool { turnState.acceptsComposerActions }
+    /// The read-only offline copy never accepts input: nothing typed there
+    /// could be delivered, and it is not the live conversation.
+    var composerIsEnabled: Bool {
+        turnState.acceptsComposerActions && offlineChatPresentation == nil
+    }
 
     func composerAction(hasText: Bool, hasAttachments: Bool) -> ComposerAction {
-        turnState.composerAction(
+        guard offlineChatPresentation == nil else { return .unavailable }
+        return turnState.composerAction(
             hasText: hasText,
             hasAttachments: hasAttachments,
             busyInputMode: busyInputMode
@@ -1102,6 +1116,9 @@ final class AppState: ObservableObject {
     }
 
     var composerPlaceholder: String {
+        if offlineChatPresentation != nil {
+            return AppLocalization.string("Read-only saved copy")
+        }
         switch turnState {
         case .running:
             return AppLocalization.string("\(busyInputMode.title) \(profileDisplayName(activeProfile))…")
@@ -1199,7 +1216,14 @@ final class AppState: ObservableObject {
     /// when the user starts a manual login (which abandons the prior
     /// failure's repair context).
     @Published var lastConnectionFailure: ConnectionFailure?
-    @Published var showLogin = true
+    @Published var showLogin = true {
+        didSet {
+            // The sign-in surface never keeps a saved copy in memory: after an
+            // authentication failure it must not reappear on the next sign-in.
+            // (The files stay until sign-out/removal/switch wipes them.)
+            if showLogin { dismissOfflineChatPresentation() }
+        }
+    }
     @Published private(set) var composerPrefillText = ""
     @Published private(set) var composerPrefillToken = UUID()
 
@@ -1654,6 +1678,7 @@ final class AppState: ObservableObject {
     /// awaits. A late response must not populate a replacement conversation.
     private var pendingApprovalsRequestGeneration: UInt64 = 0
     private let sessionPresentationCache: SessionPresentationCache
+    private let offlineChatCache: OfflineChatCacheStore
     private let sessionYoloStore: SessionYoloStore
     private let conversationIdentityIndex: ConversationIdentityIndex
     private var sessionYoloWriteRevision: UInt64 = 0
@@ -1822,7 +1847,132 @@ final class AppState: ObservableObject {
         presentationCacheFlushTask = nil
         lastPresentationCacheFlushDate = Date()
         cacheMessagePresentation()
+        recordOfflineChatCopy()
     }
+
+    // MARK: - Offline chat cache (#99)
+
+    #if DEBUG
+    private static let testOfflineChatCacheRoot: URL? = {
+        guard NSClassFromString("XCTestCase") != nil else { return nil }
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("OfflineChatCache-tests", isDirectory: true)
+        try? FileManager.default.removeItem(at: root)
+        return root
+    }()
+    #endif
+
+    private static func makeDefaultOfflineChatCache() -> OfflineChatCacheStore {
+        #if DEBUG
+        // Unit tests construct many AppStates in one process without
+        // injecting a store: each gets its own subdirectory (so no test can
+        // read another's copy) under ONE per-process root, which is wiped the
+        // first time it is used — nothing accumulates across runs.
+        if let testRoot = testOfflineChatCacheRoot {
+            return OfflineChatCacheStore(
+                directory: testRoot.appendingPathComponent(UUID().uuidString, isDirectory: true)
+            )
+        }
+        #endif
+        return OfflineChatCacheStore(directory: OfflineChatCacheStore.defaultDirectory())
+    }
+
+    /// Saves the newest page of the conversation on screen. Only
+    /// authoritative, connected state is recorded — never the offline copy
+    /// itself, and never a transcript mid-reconciliation.
+    func recordOfflineChatCopy() {
+        guard isConnected,
+              offlineChatPresentation == nil,
+              turnState != .synchronizing,
+              !messages.isEmpty,
+              let dashboardID = activeDashboardID,
+              let identities = offlineChatIdentities() else { return }
+        offlineChatCache.record(
+            dashboardID: dashboardID,
+            profile: activeProfile,
+            sessionID: offlineChatDurableSessionID(identities: identities),
+            identities: identities,
+            title: activeSessionTitle,
+            messages: messages,
+            sessions: sessions
+        )
+    }
+
+    /// The key a saved transcript is stored under: the durable id of the
+    /// catalog row this conversation matches (by runtime id, stored id, or
+    /// alias) — the same `storedSessionId ?? id` that keys the saved session
+    /// list — so a server that reports distinct runtime and stored ids still
+    /// lines the transcript up with its sidebar row.
+    /// Nil when the live catalog has no row for this conversation: the store
+    /// then resolves the key from its saved session list, or skips the write.
+    private func offlineChatDurableSessionID(identities: Set<String>) -> String? {
+        let row = sessions.first { session in
+            identities.contains(session.id)
+                || session.storedSessionId.map(identities.contains) == true
+                || !identities.isDisjoint(with: session.alternateIds)
+        }
+        return row.map { $0.storedSessionId ?? $0.id }
+    }
+
+    /// Every identity the on-screen conversation is known under.
+    private func offlineChatIdentities() -> Set<String>? {
+        guard let active = ChatScrollIdentityNormalization.sessionID(
+            activeChatScrollSessionIdentity.canonicalSessionID ?? activeSessionId
+        ) else { return nil }
+        var identities = acceptedIdentitySessionIDs(forRequested: active)
+        identities.formUnion(activeChatScrollSessionIdentity.equivalentSessionIDs)
+        return identities
+    }
+
+    /// Cold launch: present the saved copy for the active dashboard until the
+    /// server answers. A no-op once any real transcript is on screen.
+    func presentOfflineChatIfAvailable(dashboardID: UUID) {
+        guard offlineChatPresentation == nil,
+              messages.isEmpty,
+              let snapshot = offlineChatCache.load(dashboardID: dashboardID, profile: activeProfile),
+              !snapshot.transcripts.isEmpty || !snapshot.sessions.isEmpty else { return }
+        let displayed = snapshot.lastSessionID.flatMap { snapshot.transcript(for: $0) != nil ? $0 : nil }
+            ?? snapshot.transcripts.first?.sessionID
+        offlineChatPresentation = OfflineChatPresentation(
+            dashboardID: dashboardID,
+            profile: activeProfile,
+            snapshot: snapshot,
+            displayedSessionID: displayed
+        )
+    }
+
+    /// Shows another saved conversation inside the offline copy. Sessions
+    /// without a saved transcript cannot be shown offline.
+    func showOfflineCachedSession(_ sessionID: String) {
+        guard var presentation = offlineChatPresentation,
+              presentation.snapshot.transcript(for: sessionID) != nil else { return }
+        presentation.displayedSessionID = sessionID
+        offlineChatPresentation = presentation
+    }
+
+    /// Header title: the saved conversation's title while the offline copy
+    /// is on screen, otherwise the live conversation's.
+    var displayedChatTitle: String {
+        offlineChatPresentation?.displayedTranscript?.title ?? activeSessionTitle
+    }
+
+    func dismissOfflineChatPresentation() {
+        guard offlineChatPresentation != nil else { return }
+        offlineChatPresentation = nil
+    }
+
+    private func wipeOfflineChatCache(dashboardID: UUID?) {
+        if let dashboardID {
+            offlineChatCache.removeDashboard(dashboardID)
+        } else {
+            offlineChatCache.removeAll()
+        }
+        if offlineChatPresentation.map({ dashboardID == nil || $0.dashboardID == dashboardID }) == true {
+            offlineChatPresentation = nil
+        }
+    }
+
+    var offlineChatCacheForTesting: OfflineChatCacheStore { offlineChatCache }
 
     /// Assigns the active profile and fences deferred presentation-cache
     /// work: any coalesced flush scheduled under another profile becomes
@@ -1842,6 +1992,8 @@ final class AppState: ObservableObject {
         guard newValue != activeProfile else { return }
         activeProfile = newValue
         presentationCacheProfileEpoch &+= 1
+        // The saved copy belongs to the outgoing profile's scope.
+        dismissOfflineChatPresentation()
     }
 
 #if DEBUG
@@ -1994,6 +2146,7 @@ final class AppState: ObservableObject {
         chatResumeLifecycleOperations: ChatResumeLifecycleOperations = .live,
         groupChatOperations: GroupChatLifecycleOperations = .live,
         sessionPresentationCache: SessionPresentationCache = .shared,
+        offlineChatCache: OfflineChatCacheStore? = nil,
         sessionYoloStore: SessionYoloStore? = nil,
         conversationIdentityIndex: ConversationIdentityIndex? = nil,
         presentationCacheDebounceSuspension: (@Sendable (Duration) async throws -> Void)? = nil
@@ -2007,6 +2160,7 @@ final class AppState: ObservableObject {
         self.savedDashboardRegistry = preloadedRegistry
             ?? SavedDashboardMigrator.loadRegistry(defaults: defaults)
         self.sessionPresentationCache = sessionPresentationCache
+        self.offlineChatCache = offlineChatCache ?? Self.makeDefaultOfflineChatCache()
         self.sessionYoloStore = sessionYoloStore ?? SessionYoloStore(defaults: defaults)
         self.conversationIdentityIndex = conversationIdentityIndex ?? ConversationIdentityIndex()
         self.chatResumeCoordinator = chatResumeCoordinator
@@ -3029,6 +3183,7 @@ final class AppState: ObservableObject {
         defaults.removeObject(forKey: reviewSummaryCacheKey)
         defaults.removeObject(forKey: knownProfilesKey)
         clearSessionPresentationCache()
+        wipeOfflineChatCache(dashboardID: nil)
         // Identity evidence and per-session overrides are keyed only by
         // (profile, session id); without this clear they would leak between
         // Hermes servers whose strings collide. Same boundary that clears
@@ -4258,6 +4413,7 @@ final class AppState: ObservableObject {
         }
         rememberDashboardURL(dashboard.normalizedURL)
         if KeychainHelper.loadNativeOAuthTokens(dashboardID: activeID) != nil {
+            presentOfflineChatIfAvailable(dashboardID: activeID)
             showLogin = false
             isConnecting = true
             turnState = .synchronizing
@@ -4268,8 +4424,18 @@ final class AppState: ObservableObject {
                 )
             }
         } else if let credentials = KeychainHelper.loadCredentials(dashboardID: activeID) {
+            // A Face ID-protected dashboard reveals its saved copy only after
+            // this launch's Face ID succeeds (restoreSavedCredentials).
+            if !credentials.requiresFaceID {
+                presentOfflineChatIfAvailable(dashboardID: activeID)
+                if offlineChatPresentation != nil {
+                    showLogin = false
+                    isConnecting = true
+                }
+            }
             Task { await restoreSavedCredentials(credentials, dashboardID: activeID) }
         } else if let saved = KeychainHelper.loadConnection(dashboardID: activeID) {
+            presentOfflineChatIfAvailable(dashboardID: activeID)
             // Keep the authenticated app shell in place while WebKit restores
             // its cookie process. A cold WebKit launch is not evidence that the
             // dashboard sign-in expired.
@@ -4301,6 +4467,9 @@ final class AppState: ObservableObject {
             // its old in-memory session. Tear it down before presenting login.
             dashboardTicketBridge?.invalidate()
             dashboardTicketBridge = nil
+            let failure = ConnectionFailureClassifier.classify(error)
+            if keepOfflineChatInsteadOfSignIn(failure) { return }
+            wipeOfflineChatCacheForSignIn(after: failure, dashboardID: dashboardID)
             isConnecting = false
             isConnected = false
             showLogin = true
@@ -4659,6 +4828,7 @@ final class AppState: ObservableObject {
         guard let dashboardID = resolveDashboardID(forURL: baseURL, registerIfMissing: true) else {
             return false
         }
+        prepareInteractiveSignIn(dashboardID: dashboardID)
         let storedTokens = KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID)
         let previousTokens = storedTokens == result.tokens ? result.previousTokens : storedTokens
         KeychainHelper.saveNativeOAuthTokens(result.tokens, dashboardID: dashboardID)
@@ -4793,6 +4963,7 @@ final class AppState: ObservableObject {
         // captured BEFORE any state is nulled so the web/native session is
         // cleared even when there is no live connection.
         let signingOutDashboardID = activeDashboardID
+        wipeOfflineChatCache(dashboardID: signingOutDashboardID)
         if let dashboardID = signingOutDashboardID {
             KeychainHelper.clearConnection(dashboardID: dashboardID)
             KeychainHelper.clearCredentials(dashboardID: dashboardID)
@@ -4979,11 +5150,22 @@ final class AppState: ObservableObject {
         rememberDashboardURL(dashboard.normalizedURL)
         _ = prepareChatResumeForConnection(to: dashboard.normalizedURL, dashboardID: id)
         retireConnectionRuntimeForDashboardSwitch()
+        // Mirrors cold launch. A switch to a DIFFERENT server already wiped
+        // every saved copy above (prepareChatResumeForConnection), so this
+        // only finds one when re-selecting the same server.
         if let credentials = KeychainHelper.loadCredentials(dashboardID: id) {
+            if !credentials.requiresFaceID {
+                presentOfflineChatIfAvailable(dashboardID: id)
+                if offlineChatPresentation != nil {
+                    showLogin = false
+                    isConnecting = true
+                }
+            }
             await restoreSavedCredentials(credentials, dashboardID: id, switchGeneration: generation)
             return
         }
         if let saved = KeychainHelper.loadConnection(dashboardID: id) {
+            presentOfflineChatIfAvailable(dashboardID: id)
             // Cookie/ticket-based resume: keep the app shell up while the
             // bridge restores the dashboard's own cookie mirror.
             connection = saved
@@ -5066,6 +5248,7 @@ final class AppState: ObservableObject {
         KeychainHelper.clearConnection(dashboardID: id)
         KeychainHelper.clearCredentials(dashboardID: id)
         KeychainHelper.clearCloudflareAccess(dashboardID: id)
+        wipeOfflineChatCache(dashboardID: id)
         // The dashboard is not connected, but its OWN web session may still
         // hold live cookies from an earlier session; sign-out removes the
         // identified WebKit store and the dashboard's native jar (plus
@@ -5168,6 +5351,13 @@ final class AppState: ObservableObject {
             if let switchGeneration, !switchGenerationIsCurrent(switchGeneration) {
                 return
             }
+            if let scopedDashboardID {
+                presentOfflineChatIfAvailable(dashboardID: scopedDashboardID)
+                if offlineChatPresentation != nil {
+                    showLogin = false
+                    isConnecting = true
+                }
+            }
         }
 
         do {
@@ -5221,10 +5411,86 @@ final class AppState: ObservableObject {
         switchGeneration: UInt64?
     ) -> Bool {
         guard restoreOwnsFlow(switchGeneration) else { return false }
+        if keepOfflineChatInsteadOfSignIn(failure) { return true }
+        wipeOfflineChatCacheForSignIn(after: failure, dashboardID: activeDashboardID)
         lastConnectionFailure = failure
         showLogin = true
         pendingLoginFailure = .presenting(failure)
         return true
+    }
+
+    /// Server-unreachable failures that leave the saved offline copy on
+    /// screen instead of sending the user to sign-in. Authentication
+    /// failures always go to sign-in.
+    static func failureKeepsOfflineChat(_ failure: ConnectionFailure) -> Bool {
+        switch failure {
+        case .hostNotFound, .unreachable, .connectionRefused, .timedOut, .offline, .dashboardUnavailable:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Cold-launch restore failed because the server could not be reached:
+    /// keep the read-only saved copy up (composer disabled) and retry on the
+    /// next foreground or explicit Retry. Returns false when there is no
+    /// copy or the failure needs sign-in.
+    private func keepOfflineChatInsteadOfSignIn(_ failure: ConnectionFailure) -> Bool {
+        guard offlineChatPresentation != nil, Self.failureKeepsOfflineChat(failure) else { return false }
+        lastConnectionFailure = failure
+        isConnecting = false
+        isConnected = false
+        // Same state the saved-ticket path reaches through connect's failure:
+        // recovery is pending, not synchronizing.
+        turnState = .reconnecting
+        showLogin = false
+        return true
+    }
+
+    /// Retry from the offline copy. With no connection yet (the cold-launch
+    /// restore never completed) this re-runs the saved-dashboard restore;
+    /// otherwise the normal reconnect path owns recovery.
+    func retryFromOfflineChat() {
+        guard offlineChatPresentation != nil, !isConnecting else { return }
+        if connection == nil {
+            loadSavedConnection()
+        } else {
+            // Same purpose rule as a foreground recovery: with no conversation
+            // selected yet (a cold launch), the automatic resume picks it.
+            let purpose = foregroundRecoveryPurpose
+            Task {
+                cancelChatResumeTransportRecovery()
+                await executeReconnect(purpose: purpose)
+            }
+        }
+    }
+
+    /// An authentication failure means the saved copy can no longer be tied
+    /// to a signed-in account: the next sign-in may be a DIFFERENT account on
+    /// the same dashboard, so the dashboard's files go too — not just the
+    /// in-memory copy. Unreachable-server failures keep them (they are what
+    /// the copy exists for).
+    private func wipeOfflineChatCacheForSignIn(after failure: ConnectionFailure, dashboardID: UUID?) {
+        guard !Self.failureKeepsOfflineChat(failure), let dashboardID else { return }
+        wipeOfflineChatCache(dashboardID: dashboardID)
+    }
+
+    /// Every interactive sign-in (password, dashboard web login, native
+    /// OAuth) starts from no saved copy for that dashboard: the account
+    /// signing in may not be the one whose conversations were saved.
+    func prepareInteractiveSignIn(baseURL: String) {
+        prepareInteractiveSignIn(dashboardID: resolveDashboardID(forURL: baseURL, registerIfMissing: false))
+    }
+
+    private func prepareInteractiveSignIn(dashboardID: UUID?) {
+        guard let dashboardID else { return }
+        wipeOfflineChatCache(dashboardID: dashboardID)
+    }
+
+    /// Opens sign-in from the offline copy. The copy leaves the screen (and
+    /// memory) with it; the files stay on disk.
+    func signInFromOfflineChat() {
+        showLogin = true
     }
 
     func prepareDashboardBridge(for baseUrl: String) {
@@ -5311,6 +5577,7 @@ final class AppState: ObservableObject {
             // dashboard's saved ticket (and cookie mirror) is retired.
             KeychainHelper.clearConnection(dashboardID: dashboardID)
         }
+        wipeOfflineChatCache(dashboardID: activeDashboardID)
         turnState = .idle
         retireOutstandingPreferredReturnSurfaceRequests()
         // The banner content belonged to the session being torn down; with
@@ -6875,6 +7142,7 @@ final class AppState: ObservableObject {
             markChatViewportReplacement()
             setActiveSessionState(id: runtimeSessionID, title: AppLocalization.string("New conversation"))
             messages = []
+            dismissOfflineChatPresentation()
             persistedTranscriptWindow = nil
             resetTranscriptLifecycleEvidence()
             noteChatViewportTranscriptReplacement()
@@ -6995,6 +7263,9 @@ final class AppState: ObservableObject {
             syncOperationID: automaticSyncOperationID
         ) else { return false }
         let retainedRestoredMessages = pendingDecisionRestorationMessages(for: result.sessionId)
+        // The server answered with an authoritative conversation: it replaces
+        // the read-only offline copy wholesale, even when it is empty.
+        dismissOfflineChatPresentation()
         markChatViewportReplacement()
         // A canonical Bot Chat keeps the title the open just applied (the
         // bot's display label) and is recorded with kind `.bot`: cold launch
@@ -8255,7 +8526,14 @@ final class AppState: ObservableObject {
             // a stale request after the user signs back in.
             let didReturnFromBackground = hasEnteredBackgroundScenePhase
             hasEnteredBackgroundScenePhase = false
-            guard connection != nil else { return nil }
+            guard connection != nil else {
+                // A cold-launch restore that failed offline left the saved
+                // copy up without a connection: try the restore again.
+                if offlineChatPresentation != nil, !showLogin {
+                    retryFromOfflineChat()
+                }
+                return nil
+            }
             // The preferred return surface belongs to the authenticated
             // app: MainView presents the drawer while the automatic resume
             // sync restores the chat underneath, and explicit navigation
@@ -10691,6 +10969,8 @@ final class AppState: ObservableObject {
         // comes from the bot registry (seeded above), never the id's shape.
         setActiveSessionState(id: sessionId)
         messages = []
+        // Explicit navigation owns the chat surface from here.
+        dismissOfflineChatPresentation()
         persistedTranscriptWindow = nil
         // Freshness evidence belongs to the conversation it was captured
         // for; the reconcile below re-establishes it authoritatively.
@@ -17969,8 +18249,11 @@ final class AppState: ObservableObject {
                 path: endpoint,
                 maxResponseBytes: DataURLLimits.maxJSONResponseBytes
             )
+            // Any media type: inline images check for `data:image/`
+            // themselves, while video, audio and document previews (#195)
+            // take whatever the gateway returns.
             guard let dataURL = result["dataUrl"] as? String,
-                  DataURLLimits.isBoundedBase64DataURL(dataURL, prefix: "data:image/") else { return nil }
+                  DataURLLimits.isBoundedBase64DataURL(dataURL) else { return nil }
             return dataURL
         } catch is CancellationError {
             return nil
@@ -18254,6 +18537,23 @@ final class AppState: ObservableObject {
 
     var canStartVoiceConversation: Bool { voiceUnavailableReason == nil }
 
+    /// Whether the composer offers its voice button (in the trailing slot it
+    /// shares with send). Voice the user never enabled for this profile is
+    /// not offered, so an empty composer shows the action button instead
+    /// (#194). Once enabled, the button stays and shows its
+    /// disabled state for transient or provider problems. This reads the
+    /// persisted per-profile preference rather than `isVoiceEnabled`, which
+    /// is reset while a connection re-establishes (the button must not blink
+    /// out then) and lags a profile switch until capabilities reload. The
+    /// key is scoped to the current connection, so this only bridges
+    /// reconnects to the same gateway (with no connection the key falls back
+    /// to a "disconnected" bucket, but no composer is shown then). Re-renders
+    /// ride `activeProfile` and the `isVoiceEnabled` publish in
+    /// `setVoiceEnabled`, the only writer of the persisted key.
+    var showsComposerVoiceButton: Bool {
+        defaults.bool(forKey: voiceEnabledPreferenceKey(profile: activeProfile))
+    }
+
     /// TTS-only availability for read aloud: a connected gateway with voice
     /// enabled and a ready speech provider. Deliberately does not require
     /// transcription, mic permission, or Apple Speech — a profile with TTS
@@ -18276,6 +18576,8 @@ final class AppState: ObservableObject {
     /// message stops it without touching the gateway; starting a different
     /// message takes over from whatever is playing.
     func toggleReadAloud(message: ChatMessage) {
+        // The saved copy is read-only and has no gateway to speak through.
+        guard offlineChatPresentation == nil else { return }
         if messageReadAloudController.isActiveMessage(message.id) {
             messageReadAloudController.stop()
             return

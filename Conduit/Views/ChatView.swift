@@ -212,6 +212,18 @@ struct ChatView: View {
                     )
                 )
             }
+            // VoiceOver reads only the saved copy while it is up.
+            .accessibilityHidden(appState.messages.isEmpty && appState.offlineChatPresentation != nil)
+            // The read-only saved copy (#99) sits OVER the live scroll view
+            // instead of feeding it: the live view stays mounted with the
+            // same empty transcript a cold launch always had, so its viewport
+            // ownership, restoration, and follow logic are untouched. The
+            // first real transcript clears the copy in the same update.
+            .overlay {
+                if appState.messages.isEmpty, let offline = appState.offlineChatPresentation {
+                    OfflineChatTranscriptView(presentation: offline)
+                }
+            }
 
             // Composer + control bar
             ComposerBar()
@@ -252,7 +264,7 @@ struct ChatView: View {
                     transcriptTopBackfillControl
                 }
 
-                if appState.messages.isEmpty {
+                if appState.messages.isEmpty && appState.offlineChatPresentation == nil {
                     EmptyChatState().padding(.top, 60)
                 }
 
@@ -791,6 +803,18 @@ struct ChatView: View {
             // scrollTo → layout → preference → scrollTo loop is the
             // ScrollViewCommitMutation watchdog storm).
             break
+        case .scheduleFollowRecheck(let seconds):
+            // Only re-feeds facts; any correction it arms still drains
+            // through the pendingFollowCorrection observer.
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(seconds))
+                guard !Task.isCancelled else { return }
+                ChatViewportTrace.shared.log("follow recheck due")
+                performViewportEffects(
+                    viewport.followRecheckDue(facts: currentLayoutFacts()),
+                    using: proxy
+                )
+            }
         }
     }
 
@@ -807,11 +831,15 @@ struct ChatView: View {
         if let armed = armedAnimatedBottomRetry {
             // An animated bottom command is still in flight with its own
             // retry armed; a correction now would fight the animation. Drop
-            // this cycle — genuinely new growth schedules a fresh one.
+            // this cycle and recheck once the animation would have landed
+            // (a drag can invalidate it mid-flight).
             ChatViewportTrace.shared.log(
                 "follow correction skipped, animated retry armed gen=\(armed.generation)"
             )
-            _ = viewport.followCorrectionDue(token)
+            performViewportEffects(
+                viewport.followCorrectionDeferred(token, recheckAfter: 0.2),
+                using: proxy
+            )
             return
         }
         ChatViewportTrace.shared.log(
@@ -1083,7 +1111,7 @@ struct UserMessageContent: View, Equatable {
                     if attachment.kind == .image {
                         UserImageAttachmentPreview(attachment: attachment, gatewayResolver: gatewayResolver)
                     } else {
-                        UserDocumentAttachmentChip(attachment: attachment)
+                        UserDocumentAttachmentChip(attachment: attachment, gatewayResolver: gatewayResolver)
                     }
                 }
             }
@@ -1112,6 +1140,8 @@ private struct UserImageAttachmentPreview: View {
     let attachment: Attachment
     let gatewayResolver: GatewayMediaDataURLResolver?
     @State private var gatewayImage: UIImage?
+    @State private var opening = false
+    @State private var openTask: Task<Void, Never>?
     @State private var gatewayLoadFailed = false
     @State private var localPreview: UIImage?
     @State private var localPreviewPath: String?
@@ -1236,7 +1266,8 @@ private struct UserImageAttachmentPreview: View {
                 gatewayLoadFailed = false
                 guard let dataURL = await gatewayResolver.dataURL(for: attachment.uri),
                 !Task.isCancelled,
-                let image = image(fromDataURL: dataURL) else {
+                let data = DataURLLimits.decodeBase64DataURL(dataURL, prefix: "data:image/"),
+                let image = UIImage(data: data) else {
                     guard !Task.isCancelled else { return }
                     gatewayLoadFailed = true
                     return
@@ -1273,7 +1304,35 @@ private struct UserImageAttachmentPreview: View {
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .strokeBorder(Color.white.opacity(0.22), lineWidth: 1)
                 }
+                .overlay { if opening { ProgressView().tint(.white) } }
+                .opensMediaPreview(openPreview)
+                .onDisappear {
+                    openTask?.cancel()
+                    openTask = nil
+                    opening = false
+                }
                 .accessibilityLabel("Attached image: \(attachment.name)")
+    }
+
+    /// Opens the full-resolution original: the local file when the photo
+    /// is still on this device, otherwise the bytes re-fetched from Hermes.
+    /// The row keeps only the downsampled/decoded image, never the original
+    /// bytes, so an image-heavy transcript doesn't pin them all in memory.
+    private func openPreview() {
+        if let localFileURL, MediaPreviewPresenter.shared.present(fileURL: localFileURL, title: attachment.name) {
+            return
+        }
+        guard !opening, isGatewayImage, let gatewayResolver else { return }
+        let uri = attachment.uri
+        let filename = AttachmentPreviewFilename.make(name: attachment.name, uri: uri)
+        opening = true
+        openTask = Task {
+            if let dataURL = await gatewayResolver.dataURL(for: uri), !Task.isCancelled {
+                await MediaPreviewPresenter.shared.present(dataURL: dataURL, filename: filename)
+            }
+            guard !Task.isCancelled else { return }
+            opening = false
+        }
     }
 
     private func previewHeight(for image: UIImage) -> CGFloat {
@@ -1281,23 +1340,85 @@ private struct UserImageAttachmentPreview: View {
         return min(260, max(120, 224 * image.size.height / image.size.width))
     }
 
-    private func image(fromDataURL value: String) -> UIImage? {
-        guard let data = DataURLLimits.decodeBase64DataURL(value, prefix: "data:image/") else { return nil }
-        return UIImage(data: data)
+}
+
+/// The name a previewed attachment is saved/shared under: the display name,
+/// borrowing the stored path's extension when the name has none so the
+/// share sheet and Quick Look still recognize the type.
+enum AttachmentPreviewFilename {
+    static func make(name: String, uri: String) -> String {
+        let uriName = MediaPreviewPresenter.sanitizedFilename(uri)
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return uriName }
+        let cleanName = MediaPreviewPresenter.sanitizedFilename(trimmed)
+        let uriExtension = (uriName as NSString).pathExtension
+        guard !uriExtension.isEmpty else { return cleanName }
+        // The stored path's extension describes the bytes; a display name
+        // that disagrees (or has none) would make Quick Look pick the wrong
+        // renderer.
+        let nameExtension = (cleanName as NSString).pathExtension
+        if nameExtension.caseInsensitiveCompare(uriExtension) == .orderedSame { return cleanName }
+        let stem = nameExtension.isEmpty ? cleanName : (cleanName as NSString).deletingPathExtension
+        return MediaPreviewPresenter.truncatedFilename("\(stem).\(uriExtension)")
     }
 }
 
 private struct UserDocumentAttachmentChip: View {
     let attachment: Attachment
+    let gatewayResolver: GatewayMediaDataURLResolver?
+    @State private var loading = false
+    @State private var openTask: Task<Void, Never>?
+
+    private var localFileURL: URL? {
+        if let url = URL(string: attachment.uri), url.isFileURL {
+            return FileManager.default.fileExists(atPath: url.path) ? url : nil
+        }
+        let url = URL(fileURLWithPath: attachment.uri)
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
 
     var body: some View {
-        Label(attachment.name, systemImage: "doc")
-            .font(.caption.weight(.medium))
-            .foregroundStyle(.white)
-            .lineLimit(1)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .background(Color.white.opacity(0.13), in: Capsule())
+        HStack(spacing: 6) {
+            Label(attachment.name, systemImage: "doc")
+                .lineLimit(1)
+            if loading {
+                ProgressView()
+                    .controlSize(.mini)
+                    .tint(.white)
+            }
+        }
+        .font(.caption.weight(.medium))
+        .foregroundStyle(.white)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(Color.white.opacity(0.13), in: Capsule())
+        .opensMediaPreview(open)
+        .onDisappear {
+            openTask?.cancel()
+            openTask = nil
+            loading = false
+        }
+    }
+
+    private func open() {
+        if let localFileURL {
+            MediaPreviewPresenter.shared.present(fileURL: localFileURL, title: attachment.name)
+            return
+        }
+        guard !loading, attachment.uri.hasPrefix("/"), let gatewayResolver else { return }
+        loading = true
+        // Cancelled on disappear, so a slow fetch can't pop a preview over
+        // whatever screen the user moved on to.
+        openTask = Task {
+            if let dataURL = await gatewayResolver.dataURL(for: attachment.uri), !Task.isCancelled {
+                await MediaPreviewPresenter.shared.present(
+                    dataURL: dataURL,
+                    filename: AttachmentPreviewFilename.make(name: attachment.name, uri: attachment.uri)
+                )
+            }
+            guard !Task.isCancelled else { return }
+            loading = false
+        }
     }
 }
 
@@ -1423,8 +1544,8 @@ struct AssistantMessageActions: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(.secondary)
-        .disabled(appState.isBusy || appState.isBranchingChat)
-        .opacity(appState.isBusy || appState.isBranchingChat ? 0.45 : 1)
+        .disabled(appState.isBusy || appState.isBranchingChat || appState.offlineChatPresentation != nil)
+        .opacity(appState.isBusy || appState.isBranchingChat || appState.offlineChatPresentation != nil ? 0.45 : 1)
         .accessibilityLabel("Branch from this response")
     }
 
@@ -1455,7 +1576,7 @@ struct ReadAloudButton: View {
     }
 
     private var unavailable: Bool {
-        appState.readAloudUnavailableReason != nil
+        appState.readAloudUnavailableReason != nil || appState.offlineChatPresentation != nil
     }
 
     var body: some View {

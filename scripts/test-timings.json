@@ -53,6 +53,7 @@
     "MessageReadAloudControllerTests": 5.661,
     "ModelPickerTests": 0.036,
     "NativeAuthClientTests": 0.087,
+    "OfflineChatCacheTests": 3.6,
     "ResponseHapticPolicyTests": 0.006,
     "ResponseHapticStateTests": 0.009,
     "SecurityBoundaryTests": 0.012,

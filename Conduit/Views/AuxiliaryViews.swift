@@ -1683,14 +1683,15 @@ private struct NotificationsSettingsDetail: View {
 
             if notifications.isEnabled {
                 ConduitSettingsSection(title: AppLocalization.string("Notify me when"), symbol: "slider.horizontal.3", tint: .conduitAccent) {
-                    notificationToggle("Approval needed", detail: AppLocalization.string("A tool is waiting for approval"), keyPath: \.approvalNeeded)
-                    notificationToggle("Input needed", detail: AppLocalization.string("Hermes needs your answer"), keyPath: \.inputNeeded)
-                    notificationToggle("Response ready", detail: AppLocalization.string("An active turn finishes"), keyPath: \.responseReady)
-                    notificationToggle("Turn failed", detail: AppLocalization.string("A turn stops with an error"), keyPath: \.turnFailed)
-                    notificationToggle("Background task finished", detail: AppLocalization.string("A delegated agent completes"), keyPath: \.backgroundTaskFinished)
-                    notificationToggle("Completion sound", detail: AppLocalization.string("Play a sound with notifications"), keyPath: \.completionSound)
-                    notificationToggle("Show previews", detail: AppLocalization.string("Include response text in notifications"), keyPath: \.showPreviews)
-                    notificationToggle("Approval cards in pushes", detail: AppLocalization.string("Include approval details so cards work from notifications. Disable for maximum privacy."), keyPath: \.decisionCards)
+                    notificationToggle(AppLocalization.string("Approval needed"), detail: AppLocalization.string("A tool is waiting for approval"), keyPath: \.approvalNeeded)
+                    notificationToggle(AppLocalization.string("Input needed"), detail: AppLocalization.string("Hermes needs your answer"), keyPath: \.inputNeeded)
+                    notificationToggle(AppLocalization.string("Response ready"), detail: AppLocalization.string("An active turn finishes"), keyPath: \.responseReady)
+                    notificationToggle(AppLocalization.string("Turn failed"), detail: AppLocalization.string("A turn stops with an error"), keyPath: \.turnFailed)
+                    notificationToggle(AppLocalization.string("Background task finished"), detail: AppLocalization.string("A delegated agent completes"), keyPath: \.backgroundTaskFinished)
+                    notificationToggle(AppLocalization.string("Approval & input sound"), detail: AppLocalization.string("Play a sound when Hermes is waiting on you"), keyPath: \.attentionSound)
+                    notificationToggle(AppLocalization.string("Completion sound"), detail: AppLocalization.string("Play a sound when a turn or task finishes"), keyPath: \.completionSound)
+                    notificationToggle(AppLocalization.string("Show previews"), detail: AppLocalization.string("Include response text in notifications"), keyPath: \.showPreviews)
+                    notificationToggle(AppLocalization.string("Approval cards in pushes"), detail: AppLocalization.string("Include approval details so cards work from notifications. Disable for maximum privacy."), keyPath: \.decisionCards)
                 }
 
                 ConduitSettingsSection(title: AppLocalization.string("Compatibility"), symbol: "checkmark.seal", tint: .conduitAura) {

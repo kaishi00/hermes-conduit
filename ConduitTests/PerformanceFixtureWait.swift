@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 @testable import Conduit
 
 /// Shared deterministic-wait support for the performance fixtures.
@@ -54,17 +55,33 @@ enum PerformanceFixtureWait {
     @discardableResult
     static func settleUntilCountersQuiet(
         quietFor: TimeInterval = 1.0,
-        cap: TimeInterval = 45.0
+        cap: TimeInterval = 45.0,
+        pumpingLayoutOf view: UIView? = nil,
+        pumpFor: TimeInterval = 1.0
     ) -> Bool {
         var quietForElapsed: TimeInterval = 0
         var elapsed: TimeInterval = 0
         var last = allCounters()
         let step: TimeInterval = 0.1
         while elapsed < cap {
+            // Optional layout pump for the first `pumpFor` seconds only: it
+            // flushes a deferred hosting update that only a forced layout
+            // would land (see eventually(pumpingLayoutOf:)). Bounded, and
+            // the quiet window only counts once pumping stops, because a
+            // forced layout can itself wake the lazy prefetcher — pumping
+            // for the whole drain could keep renewing the work it waits on.
+            let pumping = view != nil && elapsed < pumpFor
+            if pumping, let view {
+                view.setNeedsLayout()
+                view.layoutIfNeeded()
+            }
             RunLoop.current.run(until: Date().addingTimeInterval(step))
             elapsed += step
             let current = allCounters()
-            if current == last {
+            if pumping {
+                quietForElapsed = 0
+                last = current
+            } else if current == last {
                 quietForElapsed += step
                 if quietForElapsed >= quietFor { return true }
             } else {
@@ -92,5 +109,30 @@ enum PerformanceFixtureWait {
             if condition() { return true }
         }
         return condition()
+    }
+
+    /// `eventually`, but forcing a layout pass on `view` before every turn.
+    /// Use when the awaited work is a hosting-controller update (a root
+    /// reassignment or a published change): a bare run-loop turn only
+    /// drains whatever commit SwiftUI already scheduled, and on a loaded
+    /// runner that commit can be deferred past the cap. A forced layout
+    /// makes each turn flush pending view updates itself.
+    ///
+    /// Side effect: every turn runs `setNeedsLayout()`/`layoutIfNeeded()`
+    /// on `view` BEFORE evaluating `condition`, so the condition must not
+    /// rely on no layout happening. The default cap is longer than plain
+    /// `eventually`'s because hosting updates are what a loaded release-gate
+    /// lane delays; it is still only a failsafe.
+    @discardableResult
+    static func eventually(
+        pumpingLayoutOf view: UIView,
+        cap: TimeInterval = 30.0,
+        _ condition: () -> Bool
+    ) -> Bool {
+        eventually(cap: cap) {
+            view.setNeedsLayout()
+            view.layoutIfNeeded()
+            return condition()
+        }
     }
 }

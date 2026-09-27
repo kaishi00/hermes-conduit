@@ -199,8 +199,9 @@ struct SessionList: View {
                     .background(Color.conduitAccent, in: RoundedRectangle(cornerRadius: 14))
                 }
                 .buttonStyle(.plain)
-                .disabled(appState.turnState == .synchronizing)
-                .opacity(appState.turnState == .synchronizing ? 0.6 : 1)
+                // The saved copy has no live gateway to create a chat on.
+                .disabled(appState.turnState == .synchronizing || appState.offlineChatPresentation != nil)
+                .opacity(appState.turnState == .synchronizing || appState.offlineChatPresentation != nil ? 0.6 : 1)
 
                 Menu {
                     Button {
@@ -269,10 +270,32 @@ struct SessionList: View {
             if !showingProjects {
                 sourceFilters
             }
+            let layout = SidebarOfflineLayout.visibility(
+                showingProjects: showingProjects,
+                hasOfflineCopy: appState.offlineChatPresentation != nil,
+                displayedSessionsEmpty: displayedSessions.isEmpty
+            )
             List {
                 if showingProjects {
                     projectContent
-                } else if displayedSessions.isEmpty {
+                }
+                if layout.savedSection, let offline = appState.offlineChatPresentation {
+                    // While the saved copy is up (#99), its saved session list
+                    // shows ABOVE the live sections, which keep rendering as
+                    // soon as the live catalog arrives. Read-only — only
+                    // conversations with a saved transcript open, and they
+                    // open inside the offline copy.
+                    Section {
+                        ForEach(offline.snapshot.sessions) { session in
+                            offlineSessionRow(session, presentation: offline)
+                        }
+                    } header: {
+                        Text("Saved on this device")
+                    } footer: {
+                        Text("Read-only copies from your last connection.")
+                    }
+                }
+                if layout.emptyState {
                     ContentUnavailableView(
                         selectedSource == nil ? AppLocalization.string("No Sessions") : AppLocalization.string("No \(selectedSource!.label) Sessions"),
                         systemImage: "tray",
@@ -280,7 +303,7 @@ struct SessionList: View {
                     )
                 }
 
-                if !showingProjects && !pinnedSessions.isEmpty {
+                if layout.liveSections && !pinnedSessions.isEmpty {
                     Section("Pinned") {
                         ForEach(pinnedSessions) { session in
                             sessionRow(session)
@@ -288,7 +311,7 @@ struct SessionList: View {
                     }
                 }
 
-                if !showingProjects && !unpinnedSessions.isEmpty {
+                if layout.liveSections && !unpinnedSessions.isEmpty {
                     Section(pinnedSessions.isEmpty ? "Sessions" : "Recent") {
                         ForEach(unpinnedSessions) { session in
                             sessionRow(session)
@@ -454,6 +477,33 @@ struct SessionList: View {
                 .background(selectedSource == source ? Color.conduitAccent : Color.primary.opacity(0.07), in: Capsule())
         }
         .buttonStyle(.plain)
+    }
+
+    private func offlineSessionRow(
+        _ session: OfflineCachedSession,
+        presentation: OfflineChatPresentation
+    ) -> some View {
+        let isSaved = presentation.snapshot.transcript(for: session.id) != nil
+        let isDisplayed = presentation.displayedSessionID == session.id
+        return Button {
+            Haptics.selection()
+            appState.showOfflineCachedSession(session.id)
+            appState.dismissSidebarDrawer()
+        } label: {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(session.title)
+                    .font(.subheadline.weight(isDisplayed ? .semibold : .regular))
+                    .lineLimit(1)
+                Text(isSaved ? session.displayUpdatedLabel() : AppLocalization.string("Not saved offline"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.plain)
+        .disabled(!isSaved)
+        .opacity(isSaved ? 1 : 0.5)
+        .accessibilityHint(isSaved ? "" : AppLocalization.string("This conversation has no saved copy on this device"))
     }
 
     private func sessionRow(_ session: SessionSummary) -> some View {
@@ -1199,5 +1249,29 @@ private struct CronJobDetailSheet: View {
             }
         }
         .task { await appState.loadCronRuns(for: job) }
+    }
+}
+
+/// Which session-list parts the sidebar shows while a saved offline copy
+/// (#99) may be up. The saved section never replaces the live sections: a
+/// live catalog published before the live transcript replaces the copy (the
+/// owed-bootstrap window) renders alongside it.
+enum SidebarOfflineLayout {
+    struct Visibility: Equatable {
+        let savedSection: Bool
+        let liveSections: Bool
+        let emptyState: Bool
+    }
+
+    static func visibility(
+        showingProjects: Bool,
+        hasOfflineCopy: Bool,
+        displayedSessionsEmpty: Bool
+    ) -> Visibility {
+        Visibility(
+            savedSection: !showingProjects && hasOfflineCopy,
+            liveSections: !showingProjects,
+            emptyState: !showingProjects && !hasOfflineCopy && displayedSessionsEmpty
+        )
     }
 }

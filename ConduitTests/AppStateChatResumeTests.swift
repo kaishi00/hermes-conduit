@@ -6052,6 +6052,51 @@ final class AppStateChatResumeTests: XCTestCase {
         )
     }
 
+    /// #99 × #208/#209: a cold launch showing the read-only offline copy
+    /// whose connect was interrupted by scene deactivation keeps the copy up
+    /// while the bootstrap is owed, then the owed bootstrap selects the
+    /// conversation from the resume store (never from the copy) and its
+    /// transcript replaces the copy wholesale.
+    func testOwedBootstrapReplacesOfflineCopyWithoutUsingItAsEvidence() async throws {
+        let dashboard = UUID()
+        var revisionAfterPresenting: UInt64 = 0
+        let fixture = await startConnectInterruptedBySceneDeactivation(onHarness: { appState in
+            appState.offlineChatCacheForTesting.record(
+                dashboardID: dashboard,
+                profile: "default",
+                sessionID: "cached-other",
+                title: "Cached",
+                messages: [ChatMessage(id: "cached-1", role: .user, content: "Cached", timestamp: "1")],
+                sessions: [self.session("cached-other")]
+            )
+            appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+            revisionAfterPresenting = appState.chatTranscriptRevision
+        })
+        let harness = fixture.harness
+        let counters = fixture.counters
+
+        // Bootstrap owed: the catalog never loaded, so the copy is still the
+        // only thing on screen and nothing live was derived from it.
+        XCTAssertEqual(counters.catalogLoads, 0)
+        XCTAssertNotNil(harness.appState.offlineChatPresentation)
+        XCTAssertTrue(harness.appState.messages.isEmpty)
+        XCTAssertTrue(harness.appState.sessions.isEmpty)
+        XCTAssertEqual(harness.appState.chatTranscriptRevision, revisionAfterPresenting)
+
+        if let activation = harness.appState.handleScenePhase(.active) {
+            await activation.value
+        }
+
+        XCTAssertEqual(counters.catalogLoads, 1)
+        XCTAssertEqual(counters.openedSessionIDs, [fixture.saved.id],
+                       "The resume store picks the conversation; the offline copy's last session is not evidence")
+        XCTAssertEqual(harness.appState.activeSessionId, fixture.saved.id)
+        XCTAssertNil(harness.appState.offlineChatPresentation)
+        XCTAssertEqual(harness.appState.messages.map(\.id), ["100", "101"])
+        XCTAssertEqual(harness.appState.sessions.map(\.id), [fixture.saved.id])
+        XCTAssertEqual(harness.appState.turnState, .idle)
+    }
+
     func testOwedBootstrapIsConsumedOnceThenForegroundStaysObservational() async {
         let fixture = await startConnectInterruptedBySceneDeactivation()
         let harness = fixture.harness

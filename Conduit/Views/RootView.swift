@@ -15,7 +15,10 @@ struct RootView: View {
 
     var body: some View {
         ZStack {
-            if appState.showLogin || appState.connection == nil {
+            // A cold launch that could not reach the server yet still shows
+            // the app shell over the read-only saved copy (#99).
+            if appState.showLogin
+                || (appState.connection == nil && appState.offlineChatPresentation == nil) {
                 LoginView()
                     .transition(.opacity)
             } else {
@@ -248,7 +251,7 @@ struct MainView: View {
                         Button {
                             appState.requestChatScrollToTop()
                         } label: {
-                            Text(appState.activeSessionTitle)
+                            Text(appState.displayedChatTitle)
                                 .font(.subheadline.weight(.semibold))
                                 .lineLimit(1)
                                 .padding(.horizontal, 12)
@@ -256,7 +259,7 @@ struct MainView: View {
                                 .conduitGlassSurface(cornerRadius: 16, tint: .conduitAccent.opacity(0.06))
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel(appState.activeSessionTitle)
+                        .accessibilityLabel(appState.displayedChatTitle)
                         .accessibilityHint("Scroll to top of conversation")
                     }
                     ToolbarItem(placement: .topBarTrailing) {

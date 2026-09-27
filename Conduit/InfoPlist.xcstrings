@@ -35,6 +35,23 @@
         }
       }
     },
+    "NSPhotoLibraryAddUsageDescription" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit saves images and videos from your chats to Photos when you choose Save in the share sheet."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当你在分享菜单中选择存储时，Conduit 会将聊天中的图片和视频保存到“照片”。"
+          }
+        }
+      }
+    },
     "NSSpeechRecognitionUsageDescription" : {
       "extractionState" : "manual",
       "localizations" : {

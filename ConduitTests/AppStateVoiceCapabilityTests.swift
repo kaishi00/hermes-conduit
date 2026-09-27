@@ -220,10 +220,114 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
         )
     }
 
+    // MARK: - Composer voice button visibility (#194)
+
+    func testComposerHidesVoiceButtonWhenVoiceWasNeverEnabled() {
+        let appState = makeAppState(snapshot: readySnapshot, isVoiceEnabled: false)
+
+        XCTAssertFalse(appState.showsComposerVoiceButton)
+    }
+
+    func testComposerShowsVoiceButtonOnceVoiceIsEnabled() async {
+        let appState = makeAppState(snapshot: readySnapshot, isVoiceEnabled: false)
+        let didEnable = await appState.setVoiceEnabled(true)
+        XCTAssertTrue(didEnable)
+
+        XCTAssertTrue(appState.showsComposerVoiceButton)
+    }
+
+    /// Enabled voice with a broken provider keeps the (disabled) button, so
+    /// the user can still see something needs fixing.
+    func testComposerKeepsVoiceButtonWhenEnabledVoiceIsUnavailable() async {
+        let appState = makeAppState(snapshot: readySnapshot, isVoiceEnabled: false)
+        _ = await appState.setVoiceEnabled(true)
+        appState.installVoiceCapabilityStateForTesting(
+            bridge: DashboardTicketBridge(baseURL: "https://example.com"),
+            snapshot: .unavailable,
+            isVoiceEnabled: true
+        )
+
+        XCTAssertFalse(appState.canStartVoiceConversation)
+        XCTAssertTrue(appState.showsComposerVoiceButton)
+    }
+
+    /// A reconnect resets `isVoiceEnabled` before capabilities reload; the
+    /// persisted preference keeps the button from blinking out meanwhile.
+    func testPersistedVoicePreferenceKeepsButtonThroughReconnectReset() async {
+        let appState = makeAppState(snapshot: readySnapshot, isVoiceEnabled: false)
+        _ = await appState.setVoiceEnabled(true)
+
+        appState.installVoiceCapabilityStateForTesting(
+            bridge: DashboardTicketBridge(baseURL: "https://example.com"),
+            snapshot: .unavailable,
+            isVoiceEnabled: false
+        )
+
+        XCTAssertTrue(appState.showsComposerVoiceButton)
+    }
+
+    /// Switching away from a voice-enabled profile must not leak its state
+    /// while `isVoiceEnabled` still holds the previous profile's value.
+    func testSwitchingToNeverEnabledProfileHidesVoiceButton() async {
+        let appState = makeAppState(snapshot: readySnapshot, isVoiceEnabled: false)
+        _ = await appState.setVoiceEnabled(true)
+
+        appState.setActiveProfileForTesting("other-profile")
+
+        XCTAssertTrue(appState.isVoiceEnabled)
+        XCTAssertFalse(appState.showsComposerVoiceButton)
+    }
+
+    func testDisablingVoiceHidesComposerVoiceButton() async {
+        let appState = makeAppState(snapshot: readySnapshot, isVoiceEnabled: false)
+        _ = await appState.setVoiceEnabled(true)
+        _ = await appState.setVoiceEnabled(false)
+
+        XCTAssertFalse(appState.showsComposerVoiceButton)
+    }
+
+    // MARK: - Shared mic/send trailing slot (#194)
+
+    func testEmptyIdleComposerOffersVoiceInTheTrailingSlot() {
+        XCTAssertEqual(
+            ComposerBar.trailingControl(action: .unavailable, showsVoiceButton: true),
+            .voice
+        )
+    }
+
+    func testEmptyComposerWithoutVoiceKeepsTheActionButton() {
+        XCTAssertEqual(
+            ComposerBar.trailingControl(action: .unavailable, showsVoiceButton: false),
+            .action
+        )
+    }
+
+    /// A sendable draft or a live turn always owns the slot, so Send, Stop,
+    /// Steer and Interrupt are never hidden behind the mic.
+    func testSendableOrRunningStatesTakeTheTrailingSlot() {
+        for action in [ComposerAction.send, .stop, .steer, .interrupt] {
+            XCTAssertEqual(
+                ComposerBar.trailingControl(action: action, showsVoiceButton: true),
+                .action,
+                "\(action) must not be replaced by the mic"
+            )
+        }
+    }
+
+    private var readySnapshot: VoiceCapabilitySnapshot {
+        VoiceCapabilitySnapshot(
+            isGatewayConnected: true,
+            supportsTranscription: true,
+            supportsSpeech: true,
+            unavailableReason: nil
+        )
+    }
+
     private func makeAppState(
         snapshot: VoiceCapabilitySnapshot,
         transcriptionMode: VoiceTranscriptionMode = .hermes,
-        appleSpeechAvailability: AppleSpeechRecognitionAvailability = .ready(localeIdentifier: "en-US")
+        appleSpeechAvailability: AppleSpeechRecognitionAvailability = .ready(localeIdentifier: "en-US"),
+        isVoiceEnabled: Bool = true
     ) -> AppState {
         let suite = "AppStateVoiceCapabilityTests.\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suite) else {
@@ -239,7 +343,7 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
         appState.installVoiceCapabilityStateForTesting(
             bridge: DashboardTicketBridge(baseURL: "https://example.com"),
             snapshot: snapshot,
-            isVoiceEnabled: true,
+            isVoiceEnabled: isVoiceEnabled,
             transcriptionMode: transcriptionMode,
             appleSpeechAvailability: appleSpeechAvailability
         )

@@ -307,7 +307,107 @@
         }
       }
     },
+    "Read-only copies from your last connection." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上次连接时保存的只读副本。"
+          }
+        }
+      }
+    },
+    "This conversation has no saved copy on this device" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此对话在此设备上没有已保存的副本"
+          }
+        }
+      }
+    },
+    "Read-only saved copy" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "只读的已保存副本"
+          }
+        }
+      }
+    },
+    "Showing a saved copy" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在显示已保存的副本"
+          }
+        }
+      }
+    },
+    "Saved %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存于 %@"
+          }
+        }
+      }
+    },
+    "No saved copy of this conversation" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此对话没有已保存的副本"
+          }
+        }
+      }
+    },
+    "Saved on this device" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已保存在此设备上"
+          }
+        }
+      }
+    },
+    "Not saved offline" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未离线保存"
+          }
+        }
+      }
+    },
 
+    "Audio" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音频"
+          }
+        }
+      }
+    },
+    "Couldn't open this file" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法打开此文件"
+          }
+        }
+      }
+    },
     "Created in Hermes Desktop. Desktop runs this group's conversation, so reply from there; this shows the latest synced messages." : {
       "localizations" : {
         "zh-Hans" : {
@@ -330,6 +430,16 @@
       }
     },
 
+    "Image" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "图片"
+          }
+        }
+      }
+    },
     "No messages yet." : {
       "localizations" : {
         "zh-Hans" : {
@@ -341,6 +451,16 @@
       }
     },
 
+    "Opens full screen with save and share" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全屏打开，可保存和分享"
+          }
+        }
+      }
+    },
     "Shortened — the full message is in Hermes Desktop." : {
       "localizations" : {
         "zh-Hans" : {
@@ -385,6 +505,16 @@
       }
     },
 
+    "Video" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "视频"
+          }
+        }
+      }
+    },
     "Your previous message is still pending. Retry it from the room, or wait for it to deliver." : {
       "localizations" : {
         "zh-Hans" : {
@@ -2034,6 +2164,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "应用后将保存这些设置，供下次重连使用。当前会话保持连接。"
+          }
+        }
+      }
+    },
+    "Approval & input sound" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "审批和输入提示音"
           }
         }
       }
@@ -10076,12 +10216,22 @@
         }
       }
     },
-    "Play a sound with notifications" : {
+    "Play a sound when a turn or task finishes" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "通知时播放提示音"
+            "value" : "回合或任务完成时播放提示音"
+          }
+        }
+      }
+    },
+    "Play a sound when Hermes is waiting on you" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 等待你操作时播放提示音"
           }
         }
       }
