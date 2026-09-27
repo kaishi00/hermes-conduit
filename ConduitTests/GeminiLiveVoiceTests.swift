@@ -39,6 +39,8 @@ final class FakeGeminiLiveTokens: GeminiLiveTokenProviding {
 final class FakeGeminiLiveSocket: GeminiLiveSocket {
     let url: URL
     private(set) var sent: [[String: Any]] = []
+    /// Every send, including ones a refused upgrade threw on.
+    private(set) var attempted: [[String: Any]] = []
     private(set) var closed = false
     private var inbox: [Data] = []
     private var waiter: CheckedContinuation<Data, Error>?
@@ -50,6 +52,7 @@ final class FakeGeminiLiveSocket: GeminiLiveSocket {
     init(url: URL) { self.url = url }
 
     func send(_ text: String) async throws {
+        attempted.append((try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any]) ?? [:])
         if let upgradeRefusal {
             recordedClose = upgradeRefusal
             throw URLError(.badServerResponse)
@@ -372,17 +375,50 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(tokens.issued, 1)
     }
 
+    private func searches(_ socket: FakeGeminiLiveSocket) -> Bool {
+        let setup = socket.attempted.first?["setup"] as? [String: Any]
+        let tools = setup?["tools"] as? [[String: Any]] ?? []
+        return tools.contains { $0["googleSearch"] != nil }
+    }
+
+    private let spentQuota = GeminiLiveServerClose(code: 1011, reason: "You exceeded your current quota, please check your plan and billing details.")
+
+    func testGeminiLiveQuotaRefusedUpgradeRetriesOnceWithoutGoogleSearch() async throws {
+        let tokens = FakeGeminiLiveTokens()
+        let (session, sockets) = makeGeminiSession(tokens: tokens, upgradeRefusal: spentQuota)
+        session.start()
+        await settle(120)
+
+        XCTAssertEqual(sockets().count, 2)
+        XCTAssertTrue(searches(try XCTUnwrap(sockets().first)))
+        XCTAssertFalse(searches(try XCTUnwrap(sockets().last)))
+        XCTAssertEqual(session.state, .failed(AppLocalization.string("Gemini Live refused the connection: \(spentQuota.summary)")))
+    }
+
+    func testGeminiLiveQuotaSpentMidConversationReconnectsWithoutGoogleSearch() async throws {
+        let tokens = FakeGeminiLiveTokens()
+        let (session, sockets) = makeGeminiSession(tokens: tokens)
+        session.start()
+        await settle()
+        try XCTUnwrap(sockets().first).deliver(["setupComplete": [String: Any]()])
+        await settle()
+        XCTAssertEqual(session.state, .ready)
+
+        try XCTUnwrap(sockets().first).serverClose(spentQuota)
+        await settle(80)
+        XCTAssertEqual(sockets().count, 2)
+        XCTAssertFalse(searches(try XCTUnwrap(sockets().last)))
+        try XCTUnwrap(sockets().last).deliver(["setupComplete": [String: Any]()])
+        await settle()
+        XCTAssertEqual(session.state, .ready)
+    }
+
     func testGeminiLiveQuotaRefusalRetriesOnceWithoutGoogleSearch() async throws {
         let tokens = FakeGeminiLiveTokens()
         let (session, sockets) = makeGeminiSession(tokens: tokens)
         session.start()
         await settle()
-        let quota = GeminiLiveServerClose(code: 1011, reason: "You exceeded your current quota, please check your plan and billing details.")
-        func searches(_ socket: FakeGeminiLiveSocket) -> Bool {
-            let setup = socket.sent.first?["setup"] as? [String: Any]
-            let tools = setup?["tools"] as? [[String: Any]] ?? []
-            return tools.contains { $0["googleSearch"] != nil }
-        }
+        let quota = spentQuota
         XCTAssertTrue(searches(try XCTUnwrap(sockets().first)))
 
         try XCTUnwrap(sockets().first).serverClose(quota)
@@ -431,6 +467,8 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(GeminiLiveServerClose(code: 403, reason: "", isHTTPStatus: true).isRefusal)
         XCTAssertFalse(GeminiLiveServerClose(code: 429, reason: "", isHTTPStatus: true).isRefusal, "a bare rate limit retries")
         XCTAssertTrue(GeminiLiveServerClose(code: 1011, reason: "RESOURCE_EXHAUSTED").isRefusal)
+        XCTAssertFalse(GeminiLiveServerClose(code: 1011, reason: "Rate limit exceeded. Your quota will reset in 30s.").isRefusal, "a passing throttle retries")
+        XCTAssertEqual(GeminiLiveServerClose(code: 1008, reason: "For more information, see the setup docs").summary, "For more information, see the setup docs")
         let long = GeminiLiveServerClose(code: 1008, reason: String(repeating: "word ", count: 100))
         XCTAssertTrue(long.summary.hasSuffix("word…"), "cut on a word boundary")
         XCTAssertLessThanOrEqual(long.summary.count, 301)

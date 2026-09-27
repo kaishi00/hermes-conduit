@@ -35,9 +35,11 @@ struct GeminiLiveServerClose: Equatable {
         return [1003, 1007, 1008].contains(code) || (4000...4999).contains(code)
     }
 
+    /// Google's wording for a spent quota ("You exceeded your current
+    /// quota…", RESOURCE_EXHAUSTED), not any reason that mentions a quota.
     var isQuotaExhausted: Bool {
         let text = reason.lowercased().replacingOccurrences(of: "_", with: " ")
-        return text.contains("quota") || text.contains("resource exhausted")
+        return text.contains("exceeded your current quota") || text.contains("resource exhausted")
     }
 
     /// What the user is shown: the first line of Google's reason (capped),
@@ -46,7 +48,7 @@ struct GeminiLiveServerClose: Equatable {
         var text = reason.split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
         // Google appends "For more information on this error, head to: <url>";
         // a link can't be followed from the sheet and would be cut mid-URL.
-        if let pointer = text.range(of: "For more information", options: .caseInsensitive) {
+        if let pointer = text.range(of: "For more information on this error", options: .caseInsensitive) {
             text = String(text[..<pointer.lowerBound])
         }
         text = text.trimmingCharacters(in: .whitespaces)
@@ -424,31 +426,39 @@ final class GeminiLiveSession {
         let pendingSetup = awaitingSetup?.id == id ? awaitingSetup : nil
         awaitingSetup = nil
         connectTask?.cancel()
+        // A refusal won't change on retry, before setup or on a live
+        // connection (a quota spent mid-conversation) alike.
+        if let serverClose, serverClose.isRefusal {
+            if pendingSetup == nil { state = .reconnecting }
+            refused(serverClose, attempt: pendingSetup?.attempt ?? 0)
+            return
+        }
         guard let pendingSetup else {
             state = .reconnecting
             connectTask = Task { [weak self] in await self?.connect(attempt: 0) }
             return
         }
         // Closed before setupComplete: a failed attempt, not a lost
-        // connection. A deliberate refusal won't change on retry.
-        if let serverClose, serverClose.isRefusal {
-            refused(serverClose, attempt: pendingSetup.attempt)
-            return
-        }
-        // The most recent explained close is the one worth naming.
+        // connection. The most recent explained close is the one worth naming.
         if let serverClose { lastSetupClose = serverClose }
         connectTask = Task { [weak self] in await self?.retry(after: pendingSetup.attempt, error: error) }
     }
 
-    /// Google refused a setup. A quota refusal while Search is on is most
-    /// likely Search's own quota, so the same attempt runs again without
-    /// it; any other refusal (or a quota one without Search) is final.
+    /// Google refused the connection. A spent quota while Search is on is
+    /// most likely Search's own, so the same attempt runs again without it
+    /// after the usual backoff; any other refusal (or a quota one without
+    /// Search) is final.
     private func refused(_ close: GeminiLiveServerClose, attempt: Int) {
         if close.isQuotaExhausted, googleSearch {
-            geminiLiveLogger.notice("Gemini Live setup refused for quota; retrying without Google Search")
+            geminiLiveLogger.notice("Gemini Live refused for quota; retrying without Google Search")
             googleSearch = false
             connectTask?.cancel()
-            connectTask = Task { [weak self] in await self?.connect(attempt: attempt) }
+            let delay = reconnectDelay
+            connectTask = Task { [weak self] in
+                do { try await delay(attempt) } catch { return }
+                guard let self, !Task.isCancelled, self.state != .stopped, !self.isFailed else { return }
+                await self.connect(attempt: attempt)
+            }
             return
         }
         fail(AppLocalization.string("Gemini Live refused the connection: \(close.summary)"))
