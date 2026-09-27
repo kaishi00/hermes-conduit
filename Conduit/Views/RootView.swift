@@ -110,6 +110,15 @@ struct MainView: View {
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }
+        .sheet(isPresented: $appState.showGeminiLiveSheet, onDismiss: appState.closeGeminiLiveConversation) {
+            GeminiLiveVoiceSheet(
+                controller: appState.geminiLiveController,
+                onClose: appState.closeGeminiLiveConversation,
+                onRetry: { Task { await appState.geminiLiveController.start() } }
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        }
         .sheet(isPresented: $appState.showVoiceSheet, onDismiss: appState.closeVoiceConversation) {
             VoiceConversationSheet(
                 controller: appState.voiceConversationController,

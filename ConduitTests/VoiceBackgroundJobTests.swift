@@ -71,9 +71,13 @@ final class FakeVoiceJobBackend {
     private(set) var submissions: [(String, String)] = []
     private(set) var cancelled: [String] = []
 
+    /// Strong captures: tests routinely discard the fake (`let (supervisor, _)
+    /// = makeSupervisor()`), and the supervisor's backend must keep it alive
+    /// (an unowned capture crashed every such test). The fake holds nothing
+    /// back, so there is no cycle.
     var backend: VoiceBackgroundJobBackend {
         VoiceBackgroundJobBackend(
-            createSession: { [unowned self] in
+            createSession: { [self] in
                 if let error = self.createError { throw error }
                 if self.parksCreate {
                     self.parksCreate = false
@@ -85,14 +89,14 @@ final class FakeVoiceJobBackend {
                 self.created += 1
                 return ("rt-\(self.created)", "st-\(self.created)")
             },
-            setTitle: { [unowned self] id, title in self.titles.append((id, title)) },
-            submit: { [unowned self] id, text in
+            setTitle: { [self] id, title in self.titles.append((id, title)) },
+            submit: { [self] id, text in
                 self.submissions.append((id, text))
                 self.onSubmit?(id)
                 if let error = self.submitError { throw error }
             },
-            cancel: { [unowned self] id in self.cancelled.append(id) },
-            liveSessions: { [unowned self] in self.liveRows }
+            cancel: { [self] id in self.cancelled.append(id) },
+            liveSessions: { [self] in self.liveRows }
         )
     }
 

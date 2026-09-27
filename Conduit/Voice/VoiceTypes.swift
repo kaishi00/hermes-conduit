@@ -142,6 +142,8 @@ struct VoiceProfilePreferences: Codable, Equatable {
     var spokenEndConversationPhrases: [String] = VoiceSpokenCommands.defaultEndConversationPhrases
     /// Nil decodes older preferences as the Hermes-hosted route.
     var transcriptionMode: VoiceTranscriptionMode? = nil
+    /// Opt-in Gemini Live voice mode (off by default; older blobs decode off).
+    var geminiLiveEnabled: Bool = false
 
     var resolvedTranscriptionMode: VoiceTranscriptionMode {
         transcriptionMode ?? .hermes
@@ -179,6 +181,7 @@ struct VoiceProfilePreferences: Codable, Equatable {
             )
         } ?? VoiceSpokenCommands.defaultEndConversationPhrases
         transcriptionMode = try container.decodeIfPresent(VoiceTranscriptionMode.self, forKey: .transcriptionMode)
+        geminiLiveEnabled = try container.decodeIfPresent(Bool.self, forKey: .geminiLiveEnabled) ?? false
     }
 }
 

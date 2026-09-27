@@ -1246,6 +1246,89 @@ final class AppState: ObservableObject {
     @Published private(set) var appleSpeechAvailability = AppleOnDeviceSpeechTranscriber.currentAvailability()
 
     private var voiceAssistantObserverID: UUID?
+
+    // MARK: Gemini Live voice mode
+
+    /// Presents the Gemini Live sheet. Separate from `showVoiceSheet`: the
+    /// two voice modes never run at once.
+    @Published var showGeminiLiveSheet = false
+
+    /// Gemini Live is an opt-in, per-profile Voice mode (off by default).
+    var isGeminiLiveEnabled: Bool {
+        loadVoiceProfilePreferences(profile: activeProfile).geminiLiveEnabled
+    }
+
+    func setGeminiLiveEnabled(_ enabled: Bool) {
+        var preferences = loadVoiceProfilePreferences(profile: activeProfile)
+        guard preferences.geminiLiveEnabled != enabled else { return }
+        objectWillChange.send()
+        preferences.geminiLiveEnabled = enabled
+        saveVoiceProfilePreferences(preferences, profile: activeProfile)
+        if !enabled { closeGeminiLiveConversation() }
+    }
+
+    /// Hermes-hosted Gemini Live credentials (the conduit_push plugin), read
+    /// through whichever dashboard bridge is current at call time.
+    lazy var geminiLiveTokenClient = GeminiLiveTokenClient(request: { [weak self] path, method, body in
+        guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+        return try await bridge.requestJSON(path: path, method: method, body: body)
+    })
+
+    /// Built on first use only: boundaries that merely check whether Gemini
+    /// Live is running must not construct its audio engines.
+    private var geminiLiveControllerCreated = false
+
+    /// Whether a Gemini Live conversation is running, without creating one.
+    private var isGeminiLiveActive: Bool {
+        geminiLiveControllerCreated && geminiLiveController.isActive
+    }
+
+    lazy var geminiLiveController: GeminiLiveConversationController = {
+        geminiLiveControllerCreated = true
+        let tokens = geminiLiveTokenClient
+        return GeminiLiveConversationController(
+            makeSession: {
+                GeminiLiveSession(
+                    tokens: tokens,
+                    systemInstruction: GeminiLiveConversationController.systemInstruction,
+                    functions: GeminiLiveToolBridge.functionDeclarations
+                )
+            },
+            availability: { try await tokens.availability() },
+            tools: GeminiLiveToolBridge(supervisor: self.voiceBackgroundJobSupervisor),
+            input: CaptureServiceGeminiLiveInput(capture: AVAudioCaptureService()),
+            output: PlaybackServiceGeminiLiveOutput(playback: AVSpeechPlaybackService())
+        )
+    }()
+
+    /// Opens Gemini Live instead of the classic Voice conversation. The
+    /// classic conversation (and Read Aloud) is closed first so the two
+    /// modes never share the audio session.
+    @discardableResult
+    func openGeminiLiveConversation() -> Bool {
+        guard isConnected else { return false }
+        messageReadAloudController.stop()
+        if showVoiceSheet { closeVoiceConversation() }
+        showSidebar = false
+        showGeminiLiveSheet = true
+        if !geminiLiveController.isActive {
+            Task { await geminiLiveController.start() }
+        }
+        return true
+    }
+
+    func closeGeminiLiveConversation() {
+        if geminiLiveControllerCreated { geminiLiveController.stop() }
+        showGeminiLiveSheet = false
+    }
+
+    /// Boundary teardown (disconnect, server/profile change, forced
+    /// sign-out). Background jobs are retired by the same boundaries.
+    private func stopGeminiLiveConversation() {
+        guard showGeminiLiveSheet || isGeminiLiveActive else { return }
+        closeGeminiLiveConversation()
+    }
+
     lazy var voiceConversationController = VoiceConversationController(
         submit: { [weak self] transcript in
             guard let self else { return false }
@@ -1296,7 +1379,12 @@ final class AppState: ObservableObject {
             }
         ))
         supervisor.onNoticePending = { [weak self] in
-            self?.voiceConversationController.deliverPendingBackgroundJobNoticeIfIdle()
+            guard let self else { return }
+            if self.isGeminiLiveActive {
+                self.geminiLiveController.deliverPendingJobUpdates()
+            } else {
+                self.voiceConversationController.deliverPendingBackgroundJobNoticeIfIdle()
+            }
         }
         supervisor.onJobSessionCreated = { [weak self] sessionIDs in
             guard let self else { return }
@@ -2581,7 +2669,7 @@ final class AppState: ObservableObject {
     /// over the preferred return surface.
     var isModalSheetPresented: Bool {
         showModelPicker || showContextSheet || showWorkspaceSheet || showGatewaySheet
-            || showAgentsSheet || showVoiceSheet || isSettingsSheetPresented
+            || showAgentsSheet || showVoiceSheet || showGeminiLiveSheet || isSettingsSheetPresented
     }
 
     /// True when an explicit destination exists but has not been routed yet
@@ -4090,6 +4178,7 @@ final class AppState: ObservableObject {
             "Server replacement \(previousIdentity, privacy: .private) -> \(identity, privacy: .private): retiring speech ownership (voiceLive=\(voiceWasLive ? "yes" : "no", privacy: .public), readAloudActive=\(readAloudWasActive ? "yes" : "no", privacy: .public))"
         )
         voiceConversationController.stop()
+        stopGeminiLiveConversation()
         retireVoiceBackgroundJobs()
         // Read Aloud teardown flows through the controller's own pinned
         // Option-A semantics: replacing a non-nil gateway performs the single
@@ -5012,6 +5101,7 @@ final class AppState: ObservableObject {
         dashboardTicketBridge?.invalidate()
         dashboardTicketBridge = nil
         voiceConversationController.stop()
+        stopGeminiLiveConversation()
         messageReadAloudController.stop()
         // The bridge is invalidated above; a gateway built against it can
         // never open a stream again, so it must not survive the re-login.
@@ -5600,6 +5690,7 @@ final class AppState: ObservableObject {
         voiceSheetShouldAutoListen = false
         voiceControllerSessionProfile = nil
         voiceConversationController.stop()
+        stopGeminiLiveConversation()
         showVoiceSheet = false
         projects = []
         supportsProjects = false
@@ -15691,6 +15782,7 @@ final class AppState: ObservableObject {
                 saveVoiceProfilePreferences(preferences, profile: activeProfile)
             }
             voiceConversationController.stop()
+            stopGeminiLiveConversation()
             retireVoiceBackgroundJobs()
             showVoiceSheet = false
             suspendedVoiceConversation = nil
@@ -15899,6 +15991,7 @@ final class AppState: ObservableObject {
             saveVoiceProfilePreferences(preferences, profile: activeProfile)
         }
         voiceConversationController.stop()
+        stopGeminiLiveConversation()
         retireVoiceBackgroundJobs()
         showVoiceSheet = false
         suspendedVoiceConversation = nil
@@ -18550,6 +18643,9 @@ final class AppState: ObservableObject {
 
     var voiceUnavailableReason: String? {
         if !isConnected { return "Connect to Hermes before starting voice." }
+        // Gemini Live brings its own speech in and out; the host's plugin
+        // availability is checked (and reported) when the sheet opens.
+        if isGeminiLiveEnabled { return nil }
         if !isVoiceEnabled { return "Enable voice for this profile in Settings." }
         if voiceTranscriptionMode == .appleOnDevice, !appleSpeechAvailability.canAttemptRecognition {
             switch appleSpeechAvailability {
@@ -18586,7 +18682,7 @@ final class AppState: ObservableObject {
     /// ride `activeProfile` and the `isVoiceEnabled` publish in
     /// `setVoiceEnabled`, the only writer of the persisted key.
     var showsComposerVoiceButton: Bool {
-        defaults.bool(forKey: voiceEnabledPreferenceKey(profile: activeProfile))
+        defaults.bool(forKey: voiceEnabledPreferenceKey(profile: activeProfile)) || isGeminiLiveEnabled
     }
 
     /// TTS-only availability for read aloud: a connected gateway with voice
@@ -18776,6 +18872,9 @@ final class AppState: ObservableObject {
     @discardableResult
     func openVoiceConversation(_ intent: PendingVoiceIntent) async -> Bool {
         guard isConnected else { return false }
+        if isGeminiLiveEnabled {
+            return openGeminiLiveConversation()
+        }
         // Mutual exclusion: the voice conversation owns playback while its
         // sheet is open, so a read aloud started before must not continue.
         messageReadAloudController.stop()
@@ -18836,6 +18935,9 @@ final class AppState: ObservableObject {
         profile: String?,
         startsFreshConversation: Bool
     ) async -> VoiceConversationPrepareOutcome {
+        // The classic conversation (e.g. CarPlay) takes over from Gemini
+        // Live: the two voice modes never run at once.
+        stopGeminiLiveConversation()
         if let rawProfile = profile {
             let requestedProfile = rawProfile.trimmingCharacters(in: .whitespacesAndNewlines)
             if !requestedProfile.isEmpty, requestedProfile != activeProfile {
