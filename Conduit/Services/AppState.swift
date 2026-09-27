@@ -2004,11 +2004,11 @@ final class AppState: ObservableObject {
 
     /// Flushes any pending presentation-cache write immediately (used on
     /// session switch, completion, and scene-phase change).
-    private func flushPendingPresentationCache() {
+    private func flushPendingPresentationCache(for sessionIDs: [String] = []) {
         presentationCacheFlushTask?.cancel()
         presentationCacheFlushTask = nil
         lastPresentationCacheFlushDate = Date()
-        cacheMessagePresentation()
+        cacheMessagePresentation(for: sessionIDs)
         recordOfflineChatCopy()
     }
 
@@ -2265,11 +2265,14 @@ final class AppState: ObservableObject {
                 review: record.activity
             ))
         }
-        return merged.sorted { left, right in
-            let leftDate = ISO8601DateFormatter().date(from: left.timestamp) ?? .distantPast
-            let rightDate = ISO8601DateFormatter().date(from: right.timestamp) ?? .distantPast
-            return leftDate < rightDate
-        }
+        // Parse each timestamp once with one formatter. The comparator used
+        // to build two ISO8601DateFormatters per comparison, which made every
+        // resume of a long chat with a cached review slow.
+        let formatter = ISO8601DateFormatter()
+        return merged
+            .map { (message: $0, date: formatter.date(from: $0.timestamp) ?? .distantPast) }
+            .sorted { $0.date < $1.date }
+            .map(\.message)
     }
 
     private func persistReview(_ record: ReviewSummaryRecord) {
@@ -19511,9 +19514,10 @@ final class AppState: ObservableObject {
         resetReasoningTurn()
         setRunning(false)
         // Cancel any pending coalesced flush and write immediately — the
-        // turn is complete so all messages are in their final state.
-        flushPendingPresentationCache()
-        cacheMessagePresentation(for: [sessionId])
+        // turn is complete so all messages are in their final state. One
+        // write covering the stream's session id too; this used to write the
+        // whole cache twice back to back.
+        flushPendingPresentationCache(for: [sessionId])
 
         if displayRole == .assistant,
            isFirstUserTurn,

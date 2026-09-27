@@ -1947,11 +1947,18 @@ enum MessageTimestampFormatter {
             return Date(timeIntervalSince1970: seconds)
         }
 
-        if let date = ISO8601DateFormatter().date(from: value) { return date }
+        if let date = internetDateFormatter.date(from: value) { return date }
+        return fractionalInternetDateFormatter.date(from: value)
+    }
+
+    // Shared parsers: building an ISO8601DateFormatter is expensive, and
+    // this runs for every mounted row on each streaming publish.
+    private static let internetDateFormatter = ISO8601DateFormatter()
+    private static let fractionalInternetDateFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter.date(from: value)
-    }
+        return formatter
+    }()
 }
 
 // MARK: - Tool Card
