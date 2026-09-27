@@ -131,6 +131,16 @@
         }
       }
     },
+    "Couldn't connect to Gemini Live: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法连接到 Gemini Live：%@"
+          }
+        }
+      }
+    },
     "Gemini Live refused the connection: %@" : {
       "localizations" : {
         "zh-Hans" : {

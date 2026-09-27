@@ -15,6 +15,25 @@ private let geminiLiveLogger = Logger(subsystem: "com.milim.relay", category: "G
 
 // MARK: - Transport
 
+/// How the server ended a WebSocket: its close code and reason text.
+struct GeminiLiveServerClose: Equatable {
+    let code: Int
+    let reason: String
+
+    /// Codes that mean Google rejected what was sent (the setup, token or
+    /// model), which a retry won't change: unsupported or invalid data,
+    /// a policy violation, and the application-defined 4xxx range. Going
+    /// away, abnormal and internal-error closes stay retryable.
+    var isRefusal: Bool {
+        [1003, 1007, 1008].contains(code) || (4000...4999).contains(code)
+    }
+
+    /// What the user is shown: Google's reason, or the code without one.
+    var summary: String {
+        reason.isEmpty ? "close code \(code)" : reason
+    }
+}
+
 @MainActor
 protocol GeminiLiveSocket: AnyObject {
     func send(_ text: String) async throws
@@ -22,20 +41,47 @@ protocol GeminiLiveSocket: AnyObject {
     /// socket closes.
     func receive() async throws -> Data
     func close()
-    /// Why the server closed the socket (its close code and reason), once
-    /// it has. Nil while open or when the connection simply dropped.
-    var serverCloseReason: String? { get }
+    /// How the server closed the socket, waiting up to `timeout` for the
+    /// close frame to be reported (it can land after `receive()` throws).
+    /// Nil when the connection simply dropped.
+    func serverClose(within timeout: Duration) async -> GeminiLiveServerClose?
 }
 
 extension GeminiLiveSocket {
-    var serverCloseReason: String? { nil }
+    func serverClose(within timeout: Duration) async -> GeminiLiveServerClose? { nil }
+}
+
+/// URLSession reports a server's close frame through its delegate, and
+/// not necessarily before a pending `receive()` fails, so it is recorded
+/// here rather than read from the task.
+private final class GeminiLiveSocketDelegate: NSObject, URLSessionWebSocketDelegate, @unchecked Sendable {
+    private let lock = NSLock()
+    private var recorded: GeminiLiveServerClose?
+
+    var serverClose: GeminiLiveServerClose? {
+        lock.lock()
+        defer { lock.unlock() }
+        return recorded
+    }
+
+    func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didCloseWith closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
+        let text = reason.flatMap { String(data: $0, encoding: .utf8) }?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        lock.lock()
+        recorded = GeminiLiveServerClose(code: closeCode.rawValue, reason: text)
+        lock.unlock()
+    }
 }
 
 @MainActor
 final class URLSessionGeminiLiveSocket: GeminiLiveSocket {
     private let task: URLSessionWebSocketTask
+    private let session: URLSession
+    private let delegate = GeminiLiveSocketDelegate()
 
-    init(url: URL, session: URLSession = .shared) {
+    init(url: URL) {
+        // A session of its own, so its delegate hears this socket's close.
+        session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
         task = session.webSocketTask(with: url)
         // Model audio frames are larger than URLSession's 1 MB default.
         task.maximumMessageSize = 16 * 1024 * 1024
@@ -56,13 +102,22 @@ final class URLSessionGeminiLiveSocket: GeminiLiveSocket {
 
     func close() {
         task.cancel(with: .normalClosure, reason: nil)
+        // The session retains its delegate until invalidated.
+        session.finishTasksAndInvalidate()
     }
 
-    var serverCloseReason: String? {
-        guard task.closeCode != .invalid else { return nil }
-        let reason = task.closeReason.flatMap { String(data: $0, encoding: .utf8) }?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return reason.isEmpty ? "close code \(task.closeCode.rawValue)" : reason
+    func serverClose(within timeout: Duration) async -> GeminiLiveServerClose? {
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        while true {
+            if let recorded = delegate.serverClose { return recorded }
+            if task.closeCode != .invalid {
+                let text = task.closeReason.flatMap { String(data: $0, encoding: .utf8) }?
+                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                return GeminiLiveServerClose(code: task.closeCode.rawValue, reason: text)
+            }
+            guard ContinuousClock.now < deadline else { return nil }
+            try? await Task.sleep(for: .milliseconds(50))
+        }
     }
 }
 
@@ -117,6 +172,8 @@ final class GeminiLiveSession {
     /// is. A socket that closes before setup is a failed attempt, not a
     /// lost connection, so it counts toward the retry limit.
     private var awaitingSetup: (id: UUID, attempt: Int)?
+    /// The last close Google sent before setup, named if retries run out.
+    private var lastSetupClose: GeminiLiveServerClose?
 
     init(
         tokens: GeminiLiveTokenProviding,
@@ -139,6 +196,7 @@ final class GeminiLiveSession {
     func start() {
         guard state == .idle || state == .stopped || isFailed else { return }
         resumptionHandle = nil
+        lastSetupClose = nil
         hasConnectedOnce = false
         state = .connecting
         connectTask = Task { [weak self] in await self?.connect(attempt: 0) }
@@ -236,7 +294,11 @@ final class GeminiLiveSession {
             do {
                 data = try await socket.receive()
             } catch {
-                connectionFailed(id, error: error, closeReason: socket.serverCloseReason)
+                // A close before setup decides between failing and retrying,
+                // so give its close frame a moment to be reported.
+                let beforeSetup = awaitingSetup?.id == id
+                let close = await socket.serverClose(within: beforeSetup ? .seconds(1) : .zero)
+                connectionFailed(id, error: error, serverClose: close)
                 return
             }
             guard id == connectionID else { return }
@@ -252,6 +314,7 @@ final class GeminiLiveSession {
             let replaced = hasConnectedOnce
             hasConnectedOnce = true
             awaitingSetup = nil
+            lastSetupClose = nil
             retiringReceiveTask?.cancel()
             retiringReceiveTask = nil
             retiringSocket?.close()
@@ -279,12 +342,13 @@ final class GeminiLiveSession {
         connectTask = Task { [weak self] in await self?.connect(attempt: 0) }
     }
 
-    private func connectionFailed(_ id: UUID, error: Error, closeReason: String? = nil) {
+    private func connectionFailed(_ id: UUID, error: Error, serverClose: GeminiLiveServerClose? = nil) {
         guard id == connectionID, state != .stopped else { return }
         // Never the error's description: it can carry the connection URL,
-        // whose access_token is a live credential.
+        // whose access_token is a live credential. Google's close reason
+        // names the problem (a rejected model or token), not the token.
         let nsError = error as NSError
-        geminiLiveLogger.error("Gemini Live connection lost: domain=\(nsError.domain, privacy: .public) code=\(nsError.code, privacy: .public) serverClose=\(closeReason ?? "none", privacy: .public)")
+        geminiLiveLogger.error("Gemini Live connection lost: domain=\(nsError.domain, privacy: .public) code=\(nsError.code, privacy: .public) serverClose=\(serverClose.map { "\($0.code) \($0.reason)" } ?? "none", privacy: .public)")
         socket?.close()
         socket = nil
         receiveTask = nil
@@ -297,19 +361,34 @@ final class GeminiLiveSession {
             connectTask = Task { [weak self] in await self?.connect(attempt: 0) }
             return
         }
-        // Closed before setupComplete. Google closing it on purpose (a
-        // rejected setup, token or model) won't change on retry: say why
-        // instead of reconnecting in a loop.
-        if let closeReason {
-            state = .failed(AppLocalization.string("Gemini Live refused the connection: \(closeReason)"))
+        // Closed before setupComplete: a failed attempt, not a lost
+        // connection. A deliberate refusal won't change on retry.
+        if let serverClose, serverClose.isRefusal {
+            retireHandoff()
+            state = .failed(AppLocalization.string("Gemini Live refused the connection: \(serverClose.summary)"))
             return
         }
+        if let serverClose { lastSetupClose = serverClose }
         connectTask = Task { [weak self] in await self?.retry(after: pendingSetup.attempt, error: error) }
+    }
+
+    /// The connection a GoAway handoff was replacing, closed when the
+    /// session gives up on the handoff.
+    private func retireHandoff() {
+        retiringReceiveTask?.cancel()
+        retiringReceiveTask = nil
+        retiringSocket?.close()
+        retiringSocket = nil
     }
 
     private func retry(after attempt: Int, error: Error) async {
         guard attempt < Self.maximumReconnectAttempts else {
-            state = .failed(AppLocalization.string("Couldn't connect to Gemini Live."))
+            retireHandoff()
+            if let close = lastSetupClose {
+                state = .failed(AppLocalization.string("Couldn't connect to Gemini Live: \(close.summary)"))
+            } else {
+                state = .failed(AppLocalization.string("Couldn't connect to Gemini Live."))
+            }
             return
         }
         if state != .connecting { state = .reconnecting }
