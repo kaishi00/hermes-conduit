@@ -417,6 +417,13 @@ final class OfflineChatCacheTests: XCTestCase {
             registry: SavedDashboardRegistry(activeDashboardID: loopback.id, dashboards: [loopback])
         )
         seedCopy(store, dashboard: loopback.id)
+        // The in-memory keychain every multi-dashboard suite uses: an
+        // unsigned simulator test host (CODE_SIGNING_ALLOWED=NO, as in the
+        // gate and hosted CI) can't write the system keychain, so the saved
+        // credentials would silently not exist and the switch would take
+        // the no-credentials branch instead.
+        KeychainHelper.useBackendForTesting(InMemoryKeychainBackend())
+        addTeardownBlock { KeychainHelper.useBackendForTesting(KeychainHelper.SystemKeychainBackend()) }
         KeychainHelper.saveCredentials(
             DashboardCredentials(baseURL: loopback.normalizedURL, username: "hermes", password: "unused", requiresFaceID: false),
             dashboardID: loopback.id

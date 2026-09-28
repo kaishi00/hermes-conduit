@@ -5627,11 +5627,22 @@ final class AppStateChatResumeTests: XCTestCase {
         defer { observer.cancel() }
 
         harness.appState.noteComposerUserEdit()
+        // The first edit cancels the automatic return. Whether that publishes
+        // is not the point (cancelling an already-nil restoration request
+        // deliberately doesn't, so a chat drag never re-renders ChatView);
+        // what matters is that it lands once and later edits change nothing.
+        XCTAssertEqual(
+            harness.recoverySequence.currentPurpose, .preserveCurrent,
+            "The first edit cancels this generation's automatic return"
+        )
+        let publishedAfterFirstEdit = publishedCount
+        XCTAssertLessThanOrEqual(publishedAfterFirstEdit, 1)
+
         harness.appState.noteComposerUserEdit()
         harness.appState.noteComposerUserEdit()
 
         XCTAssertEqual(
-            publishedCount, 1,
+            publishedCount, publishedAfterFirstEdit,
             "Exactly one cancellation may land per automatic-work generation"
         )
 
