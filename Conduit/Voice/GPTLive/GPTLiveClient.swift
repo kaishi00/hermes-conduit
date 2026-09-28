@@ -136,8 +136,9 @@ final class GPTLiveClient: GPTLiveSessionProviding {
         guard response["ok"] as? Bool == true, response["available"] as? Bool == true else {
             return .unavailable(reason: reason)
         }
-        // Only the subscription route is ever used; anything else is not GPT-Live on this plan.
-        if let auth = response["auth"] as? String, auth != "subscription" {
+        // Only the subscription route is ever used; anything else (or a host
+        // that doesn't say) is not GPT-Live on this plan.
+        guard response["auth"] as? String == "subscription" else {
             return .unavailable(reason: reason)
         }
         let model = (response["model"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "gpt-live"

@@ -262,9 +262,10 @@ enum VoiceScreenAwake {
     static let preferenceKey = "conduit.voice.keepScreenAwake"
 
     /// Auto-lock is held off only while the setting is on and a voice
-    /// conversation (classic or Gemini Live) is on screen.
-    static func holdsScreenAwake(enabled: Bool, voiceSheetShown: Bool, geminiLiveSheetShown: Bool) -> Bool {
-        enabled && (voiceSheetShown || geminiLiveSheetShown)
+    /// conversation (classic, or a live mode: Gemini Live or GPT-Live) is
+    /// on screen.
+    static func holdsScreenAwake(enabled: Bool, voiceSheetShown: Bool, liveSheetShown: Bool) -> Bool {
+        enabled && (voiceSheetShown || liveSheetShown)
     }
 }
 

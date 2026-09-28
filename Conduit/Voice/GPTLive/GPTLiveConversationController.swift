@@ -26,6 +26,7 @@ protocol GPTLiveSessionControlling: AnyObject {
     func start()
     /// Ends the call (telling GPT-Live, when it can hear it).
     func stop()
+    /// True once any of `text` went out (never resend it); false when none did.
     @discardableResult
     func appendContext(_ text: String, channel: GPTLiveProtocol.Channel, delegationID: String?) -> Bool
     func setMicrophoneEnabled(_ enabled: Bool)
@@ -116,10 +117,17 @@ final class GPTLiveConversationController: ObservableObject {
     /// Idle-only session context (job notices) waiting to be sent.
     private var pendingContext: [String] = []
     private var idleFlushTask: Task<Void, Never>?
+    /// Entries still taking streamed fragments. The other speaker starting
+    /// closes one, as in Gemini Live.
     private var openUserEntry: UUID?
     private var openAssistantEntry: UUID?
-    /// Transcript entries already handed to a delegation.
-    private var delegatedThrough = 0
+    /// The entries each speaker's unfinished turn is spread over (the other
+    /// speaker can start before a turn is done); its `turn.done` folds them
+    /// back into one.
+    private var userTurnEntries: [UUID] = []
+    private var assistantTurnEntries: [UUID] = []
+    /// The last transcript entry already handed to a delegation.
+    private var lastDelegatedEntry: UUID?
     private var endRequestedAt: Date?
     private var endTask: Task<Void, Never>?
     private var activeEndPhrases: [String] = []
@@ -161,7 +169,7 @@ final class GPTLiveConversationController: ObservableObject {
         lastUserSpeechAt = nil
         lastModelOutputAt = nil
         lastModelTurnEndedAt = nil
-        delegatedThrough = 0
+        lastDelegatedEntry = nil
         closeOpenEntries()
         activeEndPhrases = endConversationPhrases()
         do {
@@ -318,14 +326,16 @@ final class GPTLiveConversationController: ObservableObject {
         case .turnDone(let role, let text):
             if role == "user" {
                 lastUserSpeechAt = now()
-                let finished = finishEntry(openUserEntry, speaker: .user, text: text)
+                let finished = finishTurn(userTurnEntries, speaker: .user, text: text)
                 openUserEntry = nil
+                userTurnEntries = []
                 if let finished { userFinished(finished) }
             } else {
                 modelTurnActive = false
                 lastModelTurnEndedAt = now()
-                _ = finishEntry(openAssistantEntry, speaker: .assistant, text: text)
+                _ = finishTurn(assistantTurnEntries, speaker: .assistant, text: text)
                 openAssistantEntry = nil
+                assistantTurnEntries = []
                 if endRequestedAt == nil { phase = .listening }
                 scheduleIdleFlush()
             }
@@ -371,8 +381,10 @@ final class GPTLiveConversationController: ObservableObject {
     /// otherwise the user's words since the last delegation, with the
     /// recent conversation for context. Not UI copy.
     func delegationRequest(itemText: String) -> String {
-        let recent = Array(transcript.suffix(from: min(delegatedThrough, transcript.count)))
-        delegatedThrough = transcript.count
+        // By entry, not index: a finished turn can fold entries away.
+        let start = lastDelegatedEntry.flatMap { id in transcript.firstIndex { $0.id == id } }.map { $0 + 1 } ?? 0
+        let recent = Array(transcript[min(start, transcript.count)...])
+        lastDelegatedEntry = transcript.last?.id ?? lastDelegatedEntry
         let userWords = recent.filter { $0.speaker == .user }.map(\.text).joined(separator: " ")
         let own = itemText.trimmingCharacters(in: .whitespacesAndNewlines)
         let request = own.isEmpty ? userWords : own
@@ -483,27 +495,36 @@ final class GPTLiveConversationController: ObservableObject {
         transcript.append(entry)
         if speaker == .user {
             openUserEntry = entry.id
+            userTurnEntries.append(entry.id)
             openAssistantEntry = nil
         } else {
             openAssistantEntry = entry.id
+            assistantTurnEntries.append(entry.id)
+            openUserEntry = nil
         }
     }
 
-    /// `turn.done` carries the whole turn: it replaces the streamed
-    /// fragments (or adds the turn when none arrived). Returns its text.
-    private func finishEntry(_ id: UUID?, speaker: VoiceConversationTranscriptEntry.Speaker, text: String) -> String? {
+    /// `turn.done` carries the whole turn: it becomes the turn's first entry
+    /// and replaces the fragments streamed into any later ones (or adds the
+    /// turn when none arrived). Returns its text.
+    private func finishTurn(_ entries: [UUID], speaker: VoiceConversationTranscriptEntry.Speaker, text: String) -> String? {
         let final = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let id, let index = transcript.firstIndex(where: { $0.id == id }) {
-            if !final.isEmpty { transcript[index].text = final }
-            return transcript[index].text
+        guard let first = entries.first, let index = transcript.firstIndex(where: { $0.id == first }) else {
+            guard !final.isEmpty else { return nil }
+            transcript.append(VoiceConversationTranscriptEntry(speaker: speaker, text: final))
+            return final
         }
-        guard !final.isEmpty else { return nil }
-        transcript.append(VoiceConversationTranscriptEntry(speaker: speaker, text: final))
+        guard !final.isEmpty else { return transcript[index].text }
+        transcript[index].text = final
+        let later = Set(entries.dropFirst())
+        if !later.isEmpty { transcript.removeAll { later.contains($0.id) } }
         return final
     }
 
     private func closeOpenEntries() {
         openUserEntry = nil
         openAssistantEntry = nil
+        userTurnEntries = []
+        assistantTurnEntries = []
     }
 }

@@ -9,6 +9,7 @@
 //  test planner is at capacity for new XCTestCase classes.
 //
 
+import AVFAudio
 import XCTest
 @testable import Conduit
 
@@ -33,10 +34,12 @@ final class FakeGPTLiveClient: GPTLiveSessionProviding {
 @MainActor
 final class FakeGPTLivePeer: GPTLivePeer {
     var onMessage: (@MainActor (String) -> Void)?
-    var onChannelOpen: (@MainActor () -> Void)?
     var onDisconnected: (@MainActor () -> Void)?
+    var onAudioLost: (@MainActor (String) -> Void)?
     var offerError: Error?
     var channelOpen = true
+    /// Sends fail once this many have gone out (nil: never).
+    var sendsBeforeFailure: Int?
     private(set) var acceptedAnswers: [String] = []
     private(set) var sent: [[String: Any]] = []
     private(set) var microphoneEnabled = true
@@ -51,6 +54,7 @@ final class FakeGPTLivePeer: GPTLivePeer {
 
     func send(_ text: String) -> Bool {
         guard channelOpen, !closed else { return false }
+        if let limit = sendsBeforeFailure, sent.count >= limit { return false }
         sent.append((try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any]) ?? [:])
         return true
     }
@@ -94,6 +98,22 @@ final class FakeGPTLiveSessionControl: GPTLiveSessionControlling {
     var speakable: [(text: String, delegationID: String?)] {
         appended.filter { $0.channel == .speakable }.map { ($0.text, $0.delegationID) }
     }
+}
+
+@MainActor
+final class FakeGPTLiveAudio: GPTLiveAudioSessionControlling {
+    private(set) var events: [String] = []
+    var hasConversationPolicy = true
+    var reassertError: Error?
+    func acquire() throws { events.append("acquire") }
+    func reassert() throws {
+        events.append("reassert")
+        if let reassertError { throw reassertError }
+        hasConversationPolicy = true
+    }
+    func release() { events.append("release") }
+    func enableWebRTCAudio() { events.append("enable") }
+    func disableWebRTCAudio() { events.append("disable") }
 }
 
 @MainActor
@@ -156,6 +176,7 @@ extension HermesVoiceGatewayTimeoutTests {
             .unavailable(reason: "GPT-Live needs a working Codex sign-in on the Hermes host.")
         )
         XCTAssertFalse(GPTLiveClient.availability(from: ["ok": true, "auth": "api", "available": true]).isAvailable, "Never an API-billed session")
+        XCTAssertFalse(GPTLiveClient.availability(from: ["ok": true, "available": true]).isAvailable, "A host that doesn't say it's the subscription isn't trusted")
     }
 
     func testGPTLiveSessionPostsTheOfferToTheProfileScopedRouteAndSurfacesHostErrorsAsIs() async throws {
@@ -229,6 +250,91 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(peer.sent.last?["type"] as? String, "session.close")
         XCTAssertTrue(peer.closed)
         XCTAssertEqual(session.state, .stopped)
+    }
+
+    func testGPTLiveAppendCutShortStillCountsAsSentSoItIsNeverResent() async {
+        let (session, peer) = makeGPTSession(client: FakeGPTLiveClient())
+        session.start()
+        await settle()
+        peer.deliver(["type": "session.started"])
+        peer.sendsBeforeFailure = 1
+        XCTAssertTrue(session.appendContext(String(repeating: "a", count: 1_200), channel: .speakable, delegationID: "del_1"),
+                      "Part of it reached GPT-Live: resending would repeat that part")
+        XCTAssertEqual(peer.sent.count, 1)
+        XCTAssertFalse(session.appendContext("nothing goes out", channel: .speakable, delegationID: "del_2"))
+        session.stop()
+    }
+
+    func testGPTLiveAudioLinkStopsWebRTCOnInterruptionAndResumesWhenItEnds() {
+        let audio = FakeGPTLiveAudio()
+        let link = GPTLiveAudioLink(audio: audio, center: NotificationCenter())
+        var lost: [String] = []
+        link.onAudioLost = { lost.append($0) }
+        XCTAssertNoThrow(try link.start())
+        XCTAssertEqual(audio.events, ["acquire", "enable"])
+
+        link.interruptionBegan()
+        XCTAssertTrue(link.isInterrupted)
+        XCTAssertEqual(audio.events.last, "disable")
+        link.interruptionBegan()
+        XCTAssertEqual(audio.events.filter { $0 == "disable" }.count, 1, "A repeated began changes nothing")
+
+        link.interruptionEnded()
+        XCTAssertFalse(link.isInterrupted)
+        XCTAssertEqual(Array(audio.events.suffix(2)), ["reassert", "enable"], "The lease is reapplied before WebRTC resumes")
+
+        // A route change that kept our policy is left alone; one that lost it is reapplied.
+        let before = audio.events.count
+        link.routeChanged(.newDeviceAvailable)
+        XCTAssertEqual(audio.events.count, before)
+        audio.hasConversationPolicy = false
+        link.routeChanged(.categoryChange)
+        XCTAssertEqual(audio.events.count, before, "Our own category changes never loop")
+        link.routeChanged(.oldDeviceUnavailable)
+        XCTAssertEqual(audio.events.last, "reassert")
+
+        // Resuming can fail: the call is reported lost rather than left mute.
+        link.interruptionBegan()
+        audio.reassertError = URLError(.cannotConnectToHost)
+        link.interruptionEnded()
+        XCTAssertEqual(lost.count, 1)
+
+        link.stop()
+        XCTAssertEqual(audio.events.last, "release")
+        let afterStop = audio.events.count
+        link.interruptionBegan()
+        link.interruptionEnded()
+        XCTAssertEqual(audio.events.count, afterStop, "Nothing after stop")
+    }
+
+    func testGPTLiveAudioLinkHearsTheSystemsInterruptionNotifications() async {
+        let audio = FakeGPTLiveAudio()
+        let center = NotificationCenter()
+        let link = GPTLiveAudioLink(audio: audio, center: center)
+        try? link.start()
+        center.post(name: AVAudioSession.interruptionNotification, object: nil,
+                    userInfo: [AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.began.rawValue])
+        await settle()
+        XCTAssertTrue(link.isInterrupted)
+        center.post(name: AVAudioSession.interruptionNotification, object: nil,
+                    userInfo: [AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.ended.rawValue])
+        await settle()
+        XCTAssertFalse(link.isInterrupted)
+        link.stop()
+        center.post(name: AVAudioSession.interruptionNotification, object: nil,
+                    userInfo: [AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.began.rawValue])
+        await settle()
+        XCTAssertFalse(link.isInterrupted, "Observers are gone after stop")
+    }
+
+    func testGPTLiveAudioThatCannotResumeFailsTheSession() async {
+        let (session, peer) = makeGPTSession(client: FakeGPTLiveClient())
+        session.start()
+        await settle()
+        peer.deliver(["type": "session.started"])
+        peer.onAudioLost?("GPT-Live's audio couldn't resume after the interruption.")
+        XCTAssertEqual(session.state, .failed("GPT-Live's audio couldn't resume after the interruption."))
+        XCTAssertTrue(peer.closed)
     }
 
     func testGPTLiveSessionFailsWithTheHostsReasonAndClosesThePeer() async {
@@ -466,6 +572,22 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(closed, 1)
         XCTAssertEqual(controller.phase, .idle)
         XCTAssertEqual(session.stopped, 1)
+    }
+
+    func testGPTLiveTurnDoneFoldsATurnInterleavedWithTheOtherSpeakerBackIntoOneEntry() async {
+        let (controller, session, _, _) = makeGPTController(clock: Date.init)
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.inputTranscript("what's the"))
+        // GPT-Live starts answering before the user's turn is final.
+        session.onEvent?(.outputTranscript("Let me"))
+        session.onEvent?(.inputTranscript("weather"))
+        session.onEvent?(.turnDone(role: "user", transcript: "What's the weather?"))
+        session.onEvent?(.outputTranscript("check."))
+        session.onEvent?(.turnDone(role: "assistant", transcript: "Let me check."))
+        XCTAssertEqual(controller.transcript.map(\.text), ["What's the weather?", "Let me check."])
+        XCTAssertEqual(controller.transcript.map(\.speaker), [.user, .assistant])
+        controller.stop()
     }
 
     func testGPTLiveCallThatEndsOnItsOwnShowsWhy() async {

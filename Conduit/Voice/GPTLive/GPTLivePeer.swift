@@ -7,7 +7,8 @@
 //  `oai-events` data channel for events. WebRTC's own audio unit plays the
 //  model and does echo cancellation, so there is no separate playback
 //  service; the shared audio session is still leased from
-//  VoiceAudioSessionCoordinator like every other Conduit voice path.
+//  VoiceAudioSessionCoordinator like every other Conduit voice path, with
+//  GPTLiveAudioLink carrying interruptions and route changes to WebRTC.
 //
 
 import AVFAudio
@@ -23,10 +24,10 @@ private let gptLivePeerLogger = Logger(subsystem: "com.milim.relay", category: "
 protocol GPTLivePeer: AnyObject {
     /// A message from the data channel.
     var onMessage: (@MainActor (String) -> Void)? { get set }
-    /// The data channel opened: events can be sent.
-    var onChannelOpen: (@MainActor () -> Void)? { get set }
     /// The connection failed or closed underneath the session.
     var onDisconnected: (@MainActor () -> Void)? { get set }
+    /// The call's audio couldn't be brought back (after an interruption).
+    var onAudioLost: (@MainActor (String) -> Void)? { get set }
     /// Opens the microphone and the data channel and returns the local SDP
     /// offer, with its ICE candidates gathered.
     func makeOffer() async throws -> String
@@ -55,8 +56,8 @@ enum GPTLivePeerError: LocalizedError {
 @MainActor
 final class WebRTCGPTLivePeer: NSObject, GPTLivePeer {
     var onMessage: (@MainActor (String) -> Void)?
-    var onChannelOpen: (@MainActor () -> Void)?
     var onDisconnected: (@MainActor () -> Void)?
+    var onAudioLost: (@MainActor (String) -> Void)?
 
     /// How long ICE gathering may take before the offer goes out with the
     /// candidates it has (host candidates come almost at once).
@@ -67,22 +68,25 @@ final class WebRTCGPTLivePeer: NSObject, GPTLivePeer {
         return RTCPeerConnectionFactory()
     }()
 
-    private let audioSessions: VoiceAudioSessionCoordinator
+    private let audio: GPTLiveAudioLink
     private var connection: RTCPeerConnection?
     private var channel: RTCDataChannel?
     private var microphone: RTCAudioTrack?
-    private var lease: VoiceAudioLease?
     private var isClosed = false
 
-    /// Optional rather than defaulted to `.shared`: default arguments are
-    /// evaluated outside the main actor.
-    init(audioSessions: VoiceAudioSessionCoordinator? = nil) {
-        self.audioSessions = audioSessions ?? .shared
+    /// Optional rather than defaulted: default arguments are evaluated
+    /// outside the main actor.
+    init(audio: GPTLiveAudioLink? = nil) {
+        self.audio = audio ?? GPTLiveAudioLink(audio: SystemGPTLiveAudioSession())
         super.init()
+        self.audio.onAudioLost = { [weak self] message in
+            guard let self, !self.isClosed else { return }
+            self.onAudioLost?(message)
+        }
     }
 
     func makeOffer() async throws -> String {
-        try startAudio()
+        try audio.start()
         let configuration = RTCConfiguration()
         configuration.sdpSemantics = .unifiedPlan
         let constraints = RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil)
@@ -167,35 +171,7 @@ final class WebRTCGPTLivePeer: NSObject, GPTLivePeer {
         connection?.delegate = nil
         connection?.close()
         connection = nil
-        stopAudio()
-    }
-
-    // MARK: Audio session
-
-    /// Conduit owns the audio session (a conversation lease); WebRTC is told
-    /// when it may use it instead of configuring it on its own.
-    private func startAudio() throws {
-        let configuration = VoiceAudioSessionConfiguration.capture
-        let webRTC = RTCAudioSessionConfiguration.webRTC()
-        webRTC.category = configuration.category.rawValue
-        webRTC.mode = configuration.mode.rawValue
-        webRTC.categoryOptions = configuration.options
-        RTCAudioSessionConfiguration.setWebRTC(webRTC)
-        let session = RTCAudioSession.sharedInstance()
-        session.useManualAudio = true
-        session.isAudioEnabled = false
-        lease = try audioSessions.acquire(.conversationCapture)
-        session.audioSessionDidActivate(AVAudioSession.sharedInstance())
-        session.isAudioEnabled = true
-    }
-
-    private func stopAudio() {
-        let session = RTCAudioSession.sharedInstance()
-        session.isAudioEnabled = false
-        guard let lease else { return }
-        self.lease = nil
-        session.audioSessionDidDeactivate(AVAudioSession.sharedInstance())
-        audioSessions.release(lease)
+        audio.stop()
     }
 
     fileprivate func connectionStateChanged(_ state: RTCPeerConnectionState) {
@@ -211,11 +187,7 @@ final class WebRTCGPTLivePeer: NSObject, GPTLivePeer {
 
     fileprivate func channelStateChanged(_ state: RTCDataChannelState) {
         guard !isClosed else { return }
-        switch state {
-        case .open: onChannelOpen?()
-        case .closed: onDisconnected?()
-        default: break
-        }
+        if state == .closed { onDisconnected?() }
     }
 
     fileprivate func received(_ text: String) {

@@ -74,6 +74,10 @@ final class GPTLiveSession {
             guard let self, let peer, self.peer === peer else { return }
             self.connectionLost()
         }
+        peer.onAudioLost = { [weak self, weak peer] message in
+            guard let self, let peer, self.peer === peer, self.state == .ready || self.state == .connecting else { return }
+            self.fail(message)
+        }
         connectTask = Task { [weak self] in await self?.connect(peer) }
     }
 
@@ -88,15 +92,20 @@ final class GPTLiveSession {
         state = .stopped
     }
 
-    /// Sends `text` as context appends (chunked). False when nothing could
-    /// be sent.
+    /// Sends `text` as context appends (chunked). True once any of it went
+    /// out, so a caller never sends it twice; false only when none did.
     @discardableResult
     func appendContext(_ text: String, channel: GPTLiveProtocol.Channel, delegationID: String?) -> Bool {
         guard state == .ready, let peer else { return false }
         let messages = GPTLiveProtocol.contextAppendMessages(text, channel: channel, delegationID: delegationID)
         guard !messages.isEmpty else { return true }
-        for message in messages {
-            guard let encoded = try? GPTLiveProtocol.encode(message), peer.send(encoded) else { return false }
+        for (index, message) in messages.enumerated() {
+            guard let encoded = try? GPTLiveProtocol.encode(message), peer.send(encoded) else {
+                if index > 0 {
+                    gptLiveLogger.error("GPT-Live context append cut short after \(index, privacy: .public) of \(messages.count, privacy: .public) chunks")
+                }
+                return index > 0
+            }
         }
         return true
     }
@@ -226,7 +235,7 @@ final class GPTLiveSession {
         closeTask = nil
         peer?.onMessage = nil
         peer?.onDisconnected = nil
-        peer?.onChannelOpen = nil
+        peer?.onAudioLost = nil
         peer?.close()
         peer = nil
     }

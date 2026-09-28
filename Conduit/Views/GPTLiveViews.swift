@@ -100,6 +100,7 @@ struct GPTLiveSettingsSection: View {
     }
 
     private func check() async {
+        guard !isChecking else { return }
         isChecking = true
         defer { isChecking = false }
         switch await model.checkAvailability() {
@@ -138,6 +139,16 @@ struct GPTLiveVoiceSheet: View {
             }
             .navigationTitle("GPT-Live")
             .navigationBarTitleDisplayMode(.inline)
+            // The status and new turns change without focus moving.
+            .onChange(of: controller.phase) { _, _ in
+                AccessibilityNotification.Announcement(statusText).post()
+            }
+            .onChange(of: controller.transcript.count) { oldCount, newCount in
+                guard newCount > oldCount, let entry = controller.transcript.last else { return }
+                AccessibilityNotification.Announcement(entry.speaker == .user
+                    ? AppLocalization.string("You: \(entry.text)")
+                    : AppLocalization.string("GPT-Live: \(entry.text)")).post()
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close", action: onClose)

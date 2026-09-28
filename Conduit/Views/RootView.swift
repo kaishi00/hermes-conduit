@@ -118,7 +118,7 @@ struct MainView: View {
             of: VoiceScreenAwake.holdsScreenAwake(
                 enabled: keepScreenAwake,
                 voiceSheetShown: appState.showVoiceSheet,
-                geminiLiveSheetShown: appState.showGeminiLiveSheet || appState.showGPTLiveSheet
+                liveSheetShown: appState.showGeminiLiveSheet || appState.showGPTLiveSheet
             ),
             initial: true
         ) { _, holds in
