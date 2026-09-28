@@ -13,7 +13,6 @@ struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dismissWindow) private var dismissWindow
     @State private var isPrimaryWindow = false
-    @AppStorage(VoiceScreenAwake.preferenceKey) private var keepScreenAwake = false
 
     var body: some View {
         ZStack {
@@ -70,6 +69,7 @@ struct RootView: View {
 struct MainView: View {
     @EnvironmentObject var appState: AppState
     @AppStorage("conduit.ipadPersistentSidebar") private var prefersPersistentSidebar = false
+    @AppStorage(VoiceScreenAwake.preferenceKey) private var keepScreenAwake = false
     @State private var availableWindowWidth: CGFloat = 0
     @State private var settingsPresentation: SettingsSnapshot?
     @State private var shouldPresentSettingsAfterSidebarDismissal = false
