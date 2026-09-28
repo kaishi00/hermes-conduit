@@ -164,7 +164,7 @@ final class SessionPresentationCache {
     /// each with the write ticket both stores must reach before it can be
     /// dropped; see `removingDurably`. Guarded by `memoryLock`; nil until
     /// read from disk.
-    private var tombstones: [(tombstone: Tombstone, ticket: Int)]?
+    private var tombstones: [(tombstone: Tombstone, tickets: [StoreKind: Int])]?
     /// Ticket of the newest write that reached disk for each store.
     /// Guarded by `memoryLock`.
     private var landedWriteTicket: [StoreKind: Int] = [:]
@@ -206,16 +206,16 @@ final class SessionPresentationCache {
     }
     #endif
 
-    /// Calls `completion` once every disk write queued so far has landed,
-    /// without blocking the caller: on the main queue in asynchronous mode,
-    /// inline (writes are already on disk) in synchronous mode.
-    func notifyWhenPendingWritesLand(_ completion: @escaping () -> Void) {
+    /// Calls `completion` on the main queue once every disk write queued so
+    /// far has landed, without blocking the caller. In synchronous mode the
+    /// writes are already on disk, so it only hops to the main queue.
+    func notifyWhenPendingWritesLand(_ completion: @escaping @MainActor () -> Void) {
         guard let writeQueue else {
-            completion()
+            DispatchQueue.main.async { completion() }
             return
         }
         writeQueue.async {
-            DispatchQueue.main.async(execute: completion)
+            DispatchQueue.main.async { completion() }
         }
     }
 
@@ -1006,13 +1006,11 @@ final class SessionPresentationCache {
                 memoryStoreData = nil
                 memoryPendingToolsData = nil
             }
-            guard writeQueue != nil else {
+            // In asynchronous mode `removingDurably` queues the writes.
+            if writeQueue == nil {
                 defaults.removeObject(forKey: storageKey)
                 defaults.removeObject(forKey: pendingToolsStorageKey)
-                return
             }
-            scheduleWrite(.sessions)
-            scheduleWrite(.pendingTools)
             return
         }
 
@@ -1337,49 +1335,55 @@ final class SessionPresentationCache {
     }
 
     /// Queues a write of `kind`'s current memory copy (asynchronous mode
-    /// only).
-    private func scheduleWrite(_ kind: StoreKind) {
-        guard let writeQueue else { return }
+    /// only) and returns its ticket.
+    @discardableResult
+    private func scheduleWrite(_ kind: StoreKind) -> Int {
+        guard let writeQueue else { return 0 }
         let ticket = memoryLock.withLock { () -> Int in
             writeTicket += 1
             newestWriteTicket[kind] = writeTicket
             return writeTicket
         }
         writeQueue.async { self.writeLatest(kind, ticket: ticket) }
+        return ticket
     }
 
     /// Encodes and stores `kind`'s memory copy as it is now, unless a newer
     /// write was scheduled since `ticket` (that one will store newer
-    /// state). The copy is taken under `memoryLock`; encoding and the
-    /// UserDefaults write happen outside it, so a UserDefaults change
+    /// state). A store that was never loaded is left alone: nil means "not
+    /// read yet", not "empty". The copy is taken under `memoryLock`;
+    /// encoding and the UserDefaults write happen outside it, so a UserDefaults change
     /// notification can never re-enter the lock.
     private func writeLatest(_ kind: StoreKind, ticket: Int) {
         func isNewest() -> Bool { newestWriteTicket[kind] == ticket }
+        guard memoryLock.withLock({ isNewest() }) else { return }
         let key: String
-        let data: Data?
+        // Outer nil: never loaded, nothing to write. Inner nil: empty store.
+        let encoded: Data??
         switch kind {
         case .sessions:
             key = storageKey
-            let snapshot: [String: CachedSession]? = memoryLock.withLock { isNewest() ? (memoryStore ?? [:]) : nil }
-            guard let store = snapshot else { return }
-            data = store.isEmpty ? nil : (try? JSONEncoder().encode(store))
-            if !store.isEmpty, data == nil { return }
+            let snapshot: [String: CachedSession]? = memoryLock.withLock { memoryStore }
+            encoded = snapshot.map { $0.isEmpty ? nil : (try? JSONEncoder().encode($0)) }
+            if let snapshot, !snapshot.isEmpty, encoded == .some(nil) { return }
         case .pendingTools:
             key = pendingToolsStorageKey
-            let snapshot: [String: [CachedMessage]]? = memoryLock.withLock { isNewest() ? (memoryPendingTools ?? [:]) : nil }
-            guard let store = snapshot else { return }
-            data = store.isEmpty ? nil : (try? JSONEncoder().encode(store))
-            if !store.isEmpty, data == nil { return }
+            let snapshot: [String: [CachedMessage]]? = memoryLock.withLock { memoryPendingTools }
+            encoded = snapshot.map { $0.isEmpty ? nil : (try? JSONEncoder().encode($0)) }
+            if let snapshot, !snapshot.isEmpty, encoded == .some(nil) { return }
         }
-        if let data {
-            defaults.set(data, forKey: key)
-        } else {
-            defaults.removeObject(forKey: key)
+        if let encoded {
+            guard memoryLock.withLock({ isNewest() }) else { return }
+            if let data = encoded {
+                defaults.set(data, forKey: key)
+            } else {
+                defaults.removeObject(forKey: key)
+            }
         }
         let canRetireTombstones = memoryLock.withLock { () -> Bool in
             landedWriteTicket[kind] = max(landedWriteTicket[kind] ?? 0, ticket)
             guard let tombstones else { return false }
-            return tombstones.contains { $0.ticket <= landedFloorLocked() }
+            return tombstones.contains { hasLandedLocked($0.tickets) }
         }
         if canRetireTombstones {
             DispatchQueue.main.async { self.retireLandedTombstones() }
@@ -1398,13 +1402,13 @@ final class SessionPresentationCache {
     private func removingDurably(_ removed: [Tombstone], _ body: () -> Void) {
         body()
         guard writeQueue != nil, !removed.isEmpty else { return }
-        scheduleWrite(.sessions)
-        scheduleWrite(.pendingTools)
+        let tickets: [StoreKind: Int] = [
+            .sessions: scheduleWrite(.sessions),
+            .pendingTools: scheduleWrite(.pendingTools)
+        ]
         let stored = memoryLock.withLock { () -> [Tombstone] in
-            var current = loadedTombstonesLocked()
-            for tombstone in removed where !current.contains(where: { $0.tombstone == tombstone }) {
-                current.append((tombstone: tombstone, ticket: writeTicket))
-            }
+            var current = loadedTombstonesLocked().filter { !removed.contains($0.tombstone) }
+            current += removed.map { (tombstone: $0, tickets: tickets) }
             tombstones = current
             return current.map(\.tombstone)
         }
@@ -1416,8 +1420,7 @@ final class SessionPresentationCache {
     private func retireLandedTombstones() {
         let remaining = memoryLock.withLock { () -> [Tombstone]? in
             guard let current = tombstones else { return nil }
-            let floor = landedFloorLocked()
-            let kept = current.filter { $0.ticket > floor }
+            let kept = current.filter { !hasLandedLocked($0.tickets) }
             guard kept.count != current.count else { return nil }
             tombstones = kept
             return kept.map(\.tombstone)
@@ -1433,20 +1436,21 @@ final class SessionPresentationCache {
         }
     }
 
-    /// Newest ticket both stores have landed. Caller holds `memoryLock`.
-    private func landedFloorLocked() -> Int {
-        min(landedWriteTicket[.sessions] ?? -1, landedWriteTicket[.pendingTools] ?? -1)
+    /// Whether each store has landed a write at least as new as its ticket
+    /// in `tickets`. Caller holds `memoryLock`.
+    private func hasLandedLocked(_ tickets: [StoreKind: Int]) -> Bool {
+        tickets.allSatisfy { (landedWriteTicket[$0.key] ?? -1) >= $0.value }
     }
 
     /// Tombstones in effect, read from disk on first use. Ones left by an
-    /// earlier launch carry ticket 0, so the first landed write of each
-    /// store retires them. Synchronous instances re-read on every call
+    /// earlier launch carry ticket 0 for both stores, so the first landed
+    /// write of each store retires them. Synchronous instances re-read on every call
     /// (another instance may have written them). Caller holds `memoryLock`.
-    private func loadedTombstonesLocked() -> [(tombstone: Tombstone, ticket: Int)] {
+    private func loadedTombstonesLocked() -> [(tombstone: Tombstone, tickets: [StoreKind: Int])] {
         if writeQueue != nil, let tombstones { return tombstones }
         let stored = defaults.data(forKey: tombstonesStorageKey)
             .flatMap { try? JSONDecoder().decode([Tombstone].self, from: $0) } ?? []
-        let loaded = stored.map { (tombstone: $0, ticket: 0) }
+        let loaded = stored.map { (tombstone: $0, tickets: [StoreKind.sessions: 0, .pendingTools: 0]) }
         if writeQueue != nil { tombstones = loaded }
         return loaded
     }
