@@ -2045,10 +2045,9 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Flushes any pending presentation-cache write immediately (used on
-    /// session switch, completion, and scene-phase change).
     /// Keeps the process alive after suspension begins until the
-    /// presentation cache's queued disk writes have landed.
+    /// presentation cache's queued disk writes have landed. Main actor only:
+    /// both callbacks that end the task arrive on the main queue.
     private func holdBackgroundTaskUntilPresentationCacheWritesLand() {
         var taskID = UIBackgroundTaskIdentifier.invalid
         let end = {
@@ -2063,6 +2062,8 @@ final class AppState: ObservableObject {
         sessionPresentationCache.notifyWhenPendingWritesLand(end)
     }
 
+    /// Flushes any pending presentation-cache write immediately (used on
+    /// session switch, completion, and scene-phase change).
     private func flushPendingPresentationCache(for sessionIDs: [String] = []) {
         presentationCacheFlushTask?.cancel()
         presentationCacheFlushTask = nil

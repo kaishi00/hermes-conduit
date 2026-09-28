@@ -159,6 +159,8 @@ final class SessionPresentationCache {
     /// Guards the memory copies above. Today every caller is on the main
     /// actor, but the type itself doesn't enforce that.
     private let memoryLock = NSLock()
+    /// Nonzero while a clear or delete runs; see `performingDurably`.
+    private var durableWriteDepth = 0
     /// When set, encoding and UserDefaults writes run on `writeQueue` and the
     /// memory copies are authoritative (defaults may briefly lag behind).
     /// Writes land in order, so a clear or delete can't be overtaken by an
@@ -185,13 +187,15 @@ final class SessionPresentationCache {
     /// writing thread, SwiftUI's observer takes SwiftUI's lock there, and a
     /// main thread holding that lock (any view update) while waiting here
     /// deadlocks until the watchdog kills the app.
+    #if DEBUG
     func waitForPendingWrites() {
         writeQueue?.sync {}
     }
+    #endif
 
-    /// Calls `completion` on the main queue once every disk write queued so
-    /// far has landed, without blocking the caller. Immediate in synchronous
-    /// mode.
+    /// Calls `completion` once every disk write queued so far has landed,
+    /// without blocking the caller: on the main queue in asynchronous mode,
+    /// inline (writes are already on disk) in synchronous mode.
     func notifyWhenPendingWritesLand(_ completion: @escaping () -> Void) {
         guard let writeQueue else {
             completion()
@@ -977,6 +981,10 @@ final class SessionPresentationCache {
     }
 
     func clear(profile: String? = nil) {
+        performingDurably { clearNow(profile: profile) }
+    }
+
+    private func clearNow(profile: String?) {
         guard let profile else {
             memoryLock.withLock {
                 memoryStore = [:]
@@ -1009,6 +1017,10 @@ final class SessionPresentationCache {
     /// deleted conversation cannot resurrect its presentation (including any
     /// pending decision cards) from a stale alias.
     func removeSessions(profile: String, sessionIDs: [String]) {
+        performingDurably { removeSessionsNow(profile: profile, sessionIDs: sessionIDs) }
+    }
+
+    private func removeSessionsNow(profile: String, sessionIDs: [String]) {
         let prefix = normalized(profile) + "|"
         let ids = Set(sessionIDs.compactMap {
             $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0
@@ -1300,11 +1312,26 @@ final class SessionPresentationCache {
     /// write, so a clear can never be overtaken by an older save), or inline
     /// in synchronous mode.
     private func performWrite(_ write: @escaping () -> Void) {
-        if let writeQueue {
-            writeQueue.async(execute: write)
-        } else {
+        guard let writeQueue else {
+            write()
+            return
+        }
+        if durableWriteDepth > 0 {
+            // Destructive paths (see `performingDurably`) also land now, on
+            // the caller's thread, so nothing they remove survives a kill.
+            // The queued copy still runs after every earlier save, so an
+            // older save can't leave the removed rows behind.
             write()
         }
+        writeQueue.async(execute: write)
+    }
+
+    /// Runs `body` so that every write it makes is on disk before this
+    /// returns, without waiting on the write queue.
+    private func performingDurably(_ body: () -> Void) {
+        durableWriteDepth += 1
+        defer { durableWriteDepth -= 1 }
+        body()
     }
 
     private func pendingToolRecords(profile: String, sessionIDs: [String]) -> [CachedMessage] {
