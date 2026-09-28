@@ -1360,8 +1360,10 @@ final class AppState: ObservableObject {
         guard preferences.geminiLiveEnabled != enabled else { return }
         objectWillChange.send()
         preferences.geminiLiveEnabled = enabled
+        // One live voice engine per profile: turning Gemini on turns GPT-Live off.
+        if enabled { preferences.gptLiveEnabled = false }
         saveVoiceProfilePreferences(preferences, profile: activeProfile)
-        if !enabled { closeGeminiLiveConversation() }
+        if enabled { closeGPTLiveConversation() } else { closeGeminiLiveConversation() }
         CarPlayVoiceCoordinator.shared.voiceModeChanged(in: self)
     }
 
@@ -1435,6 +1437,7 @@ final class AppState: ObservableObject {
         guard isConnected else { return false }
         messageReadAloudController.stop()
         if showVoiceSheet { closeVoiceConversation() }
+        stopGPTLiveConversation()
         showSidebar = false
         showGeminiLiveSheet = true
         if !geminiLiveController.isActive {
@@ -1474,6 +1477,146 @@ final class AppState: ObservableObject {
     private func stopGeminiLiveConversation() {
         guard showGeminiLiveSheet || isGeminiLiveActive else { return }
         closeGeminiLiveConversation()
+    }
+
+    // MARK: GPT-Live voice mode
+
+    /// Presents the GPT-Live sheet. Separate from the classic and Gemini Live
+    /// sheets: no two voice modes run at once.
+    @Published var showGPTLiveSheet = false
+
+    /// GPT-Live on the host's ChatGPT subscription: an opt-in, per-profile
+    /// Voice mode (off by default), never on together with Gemini Live.
+    var isGPTLiveEnabled: Bool {
+        let preferences = loadVoiceProfilePreferences(profile: activeProfile)
+        return preferences.gptLiveEnabled && !preferences.geminiLiveEnabled
+    }
+
+    func setGPTLiveEnabled(_ enabled: Bool) {
+        var preferences = loadVoiceProfilePreferences(profile: activeProfile)
+        guard preferences.gptLiveEnabled != enabled || (enabled && preferences.geminiLiveEnabled) else { return }
+        objectWillChange.send()
+        preferences.gptLiveEnabled = enabled
+        // One live voice engine per profile: turning GPT-Live on turns Gemini off.
+        if enabled { preferences.geminiLiveEnabled = false }
+        saveVoiceProfilePreferences(preferences, profile: activeProfile)
+        if enabled { closeGeminiLiveConversation() } else { closeGPTLiveConversation() }
+        CarPlayVoiceCoordinator.shared.voiceModeChanged(in: self)
+    }
+
+    /// Whether GPT-Live gets the Hermes host's memory on this profile. Off
+    /// until the user turns it on: it sends that memory to OpenAI.
+    var gptLiveMemoryEnabled: Bool {
+        loadVoiceProfilePreferences(profile: activeProfile).gptLiveMemory ?? false
+    }
+
+    /// Applies from the next GPT-Live conversation.
+    func setGPTLiveMemoryEnabled(_ enabled: Bool) {
+        var preferences = loadVoiceProfilePreferences(profile: activeProfile)
+        let stored: Bool? = enabled ? true : nil
+        guard preferences.gptLiveMemory != stored else { return }
+        objectWillChange.send()
+        preferences.gptLiveMemory = stored
+        saveVoiceProfilePreferences(preferences, profile: activeProfile)
+    }
+
+    /// Whether GPT-Live speaks as the profile's SOUL.md persona. Off until
+    /// the user turns it on: it sends SOUL.md to OpenAI.
+    var gptLivePersonalityEnabled: Bool {
+        loadVoiceProfilePreferences(profile: activeProfile).gptLivePersonality ?? false
+    }
+
+    /// Applies from the next GPT-Live conversation.
+    func setGPTLivePersonalityEnabled(_ enabled: Bool) {
+        var preferences = loadVoiceProfilePreferences(profile: activeProfile)
+        let stored: Bool? = enabled ? true : nil
+        guard preferences.gptLivePersonality != stored else { return }
+        objectWillChange.send()
+        preferences.gptLivePersonality = stored
+        saveVoiceProfilePreferences(preferences, profile: activeProfile)
+    }
+
+    /// The persona and memory for the next GPT-Live call, read when it
+    /// starts and dropped when it closes.
+    private var gptLivePersonality: String?
+    private var gptLiveMemoryContext: GeminiLiveMemoryContext?
+
+    /// GPT-Live calls start on the Hermes host (the conduit_push plugin),
+    /// through whichever dashboard bridge is current at call time.
+    lazy var gptLiveClient = GPTLiveClient(profile: { [weak self] in
+        self?.activeProfile ?? "default"
+    }, request: { [weak self] path, method, body, timeout in
+        guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+        return try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: timeout)
+    })
+
+    /// Built on first use only, like Gemini Live's.
+    private var gptLiveControllerCreated = false
+
+    /// Whether a GPT-Live conversation is running, without creating one.
+    private var isGPTLiveActive: Bool {
+        gptLiveControllerCreated && gptLiveController.isActive
+    }
+
+    lazy var gptLiveController: GPTLiveConversationController = {
+        gptLiveControllerCreated = true
+        let client = gptLiveClient
+        // Memory and persona come from the same host routes Gemini Live reads.
+        let hostContext = geminiLiveTokenClient
+        let controller = GPTLiveConversationController(
+            makeSession: { GPTLiveSession(client: client) },
+            availability: { [weak self] in
+                let status = try await client.availability()
+                if status.isAvailable, let self {
+                    self.gptLiveMemoryContext = self.gptLiveMemoryEnabled ? await hostContext.memoryContext() : nil
+                    self.gptLivePersonality = self.gptLivePersonalityEnabled ? await hostContext.personality() : nil
+                }
+                return status
+            },
+            briefing: { [weak self] in
+                GPTLiveConversationController.briefing(memory: self?.gptLiveMemoryContext, personality: self?.gptLivePersonality)
+            },
+            supervisor: self.voiceBackgroundJobSupervisor,
+            // The same "End conversation" phrases as the other voice modes.
+            endConversationPhrases: { [weak self] in
+                guard let self else { return [] }
+                return self.loadVoiceProfilePreferences(profile: self.activeProfile).spokenEndConversationPhrases
+            }
+        )
+        // A hands-free goodbye closes the sheet like the Close button.
+        controller.onEndConversation = { [weak self] in self?.closeGPTLiveConversation() }
+        return controller
+    }()
+
+    /// Opens GPT-Live instead of the other voice modes, which (with Read
+    /// Aloud) are closed first so they never share the audio session.
+    @discardableResult
+    func openGPTLiveConversation() -> Bool {
+        guard isConnected else { return false }
+        messageReadAloudController.stop()
+        if showVoiceSheet { closeVoiceConversation() }
+        stopGeminiLiveConversation()
+        showSidebar = false
+        showGPTLiveSheet = true
+        if !gptLiveController.isActive {
+            Task { await gptLiveController.start() }
+        }
+        return true
+    }
+
+    func closeGPTLiveConversation() {
+        if gptLiveControllerCreated { gptLiveController.stop() }
+        showGPTLiveSheet = false
+        // Personal text isn't kept around between conversations.
+        gptLiveMemoryContext = nil
+        gptLivePersonality = nil
+    }
+
+    /// Boundary teardown (disconnect, server/profile change, sign-out, or
+    /// another voice mode taking over).
+    private func stopGPTLiveConversation() {
+        guard showGPTLiveSheet || isGPTLiveActive else { return }
+        closeGPTLiveConversation()
     }
 
     lazy var voiceConversationController = VoiceConversationController(
@@ -1536,6 +1679,8 @@ final class AppState: ObservableObject {
             guard let self else { return }
             if self.isGeminiLiveActive {
                 self.geminiLiveController.deliverPendingJobUpdates()
+            } else if self.isGPTLiveActive {
+                self.gptLiveController.deliverPendingJobUpdates()
             } else {
                 self.voiceConversationController.deliverPendingBackgroundJobNoticeIfIdle()
             }
@@ -2843,7 +2988,7 @@ final class AppState: ObservableObject {
     /// over the preferred return surface.
     var isModalSheetPresented: Bool {
         showModelPicker || showContextSheet || showWorkspaceSheet || showGatewaySheet
-            || showAgentsSheet || showVoiceSheet || showGeminiLiveSheet || isSettingsSheetPresented
+            || showAgentsSheet || showVoiceSheet || showGeminiLiveSheet || showGPTLiveSheet || isSettingsSheetPresented
     }
 
     /// True when an explicit destination exists but has not been routed yet
@@ -4357,6 +4502,7 @@ final class AppState: ObservableObject {
         )
         voiceConversationController.stop()
         stopGeminiLiveConversation()
+        stopGPTLiveConversation()
         retireVoiceBackgroundJobs()
         // Read Aloud teardown flows through the controller's own pinned
         // Option-A semantics: replacing a non-nil gateway performs the single
@@ -5280,6 +5426,7 @@ final class AppState: ObservableObject {
         dashboardTicketBridge = nil
         voiceConversationController.stop()
         stopGeminiLiveConversation()
+        stopGPTLiveConversation()
         messageReadAloudController.stop()
         // The bridge is invalidated above; a gateway built against it can
         // never open a stream again, so it must not survive the re-login.
@@ -5869,6 +6016,7 @@ final class AppState: ObservableObject {
         voiceControllerSessionProfile = nil
         voiceConversationController.stop()
         stopGeminiLiveConversation()
+        stopGPTLiveConversation()
         showVoiceSheet = false
         projects = []
         supportsProjects = false
@@ -15986,6 +16134,7 @@ final class AppState: ObservableObject {
             }
             voiceConversationController.stop()
             stopGeminiLiveConversation()
+            stopGPTLiveConversation()
             retireVoiceBackgroundJobs()
             showVoiceSheet = false
             suspendedVoiceConversation = nil
@@ -16195,6 +16344,7 @@ final class AppState: ObservableObject {
         }
         voiceConversationController.stop()
         stopGeminiLiveConversation()
+        stopGPTLiveConversation()
         retireVoiceBackgroundJobs()
         showVoiceSheet = false
         suspendedVoiceConversation = nil
@@ -18884,7 +19034,7 @@ final class AppState: ObservableObject {
     /// own; classic-only surfaces (suspension restore, provider tests) keep
     /// `voiceUnavailableReason`.
     var phoneVoiceUnavailableReason: String? {
-        if isGeminiLiveEnabled {
+        if isGeminiLiveEnabled || isGPTLiveEnabled {
             return isConnected ? nil : "Connect to Hermes before starting voice."
         }
         return voiceUnavailableReason
@@ -18906,7 +19056,7 @@ final class AppState: ObservableObject {
     /// ride `activeProfile` and the `isVoiceEnabled` publish in
     /// `setVoiceEnabled`, the only writer of the persisted key.
     var showsComposerVoiceButton: Bool {
-        defaults.bool(forKey: voiceEnabledPreferenceKey(profile: activeProfile)) || isGeminiLiveEnabled
+        defaults.bool(forKey: voiceEnabledPreferenceKey(profile: activeProfile)) || isGeminiLiveEnabled || isGPTLiveEnabled
     }
 
     /// TTS-only availability for read aloud: a connected gateway with voice
@@ -19110,6 +19260,17 @@ final class AppState: ObservableObject {
             }
             return openGeminiLiveConversation()
         }
+        if loadVoiceProfilePreferences(profile: targetProfile).gptLiveEnabled {
+            if targetProfile != activeProfile {
+                await switchProfile(to: targetProfile)
+                guard targetProfile == activeProfile else {
+                    errorMessage = AppLocalization.string("Conduit could not open the requested voice profile.")
+                    return true
+                }
+                guard isConnected else { return false }
+            }
+            return openGPTLiveConversation()
+        }
         // Mutual exclusion: the voice conversation owns playback while its
         // sheet is open, so a read aloud started before must not continue.
         messageReadAloudController.stop()
@@ -19173,6 +19334,7 @@ final class AppState: ObservableObject {
         // The classic conversation (e.g. CarPlay) takes over from Gemini
         // Live: the two voice modes never run at once.
         stopGeminiLiveConversation()
+        stopGPTLiveConversation()
         if let rawProfile = profile {
             let requestedProfile = rawProfile.trimmingCharacters(in: .whitespacesAndNewlines)
             if !requestedProfile.isEmpty, requestedProfile != activeProfile {

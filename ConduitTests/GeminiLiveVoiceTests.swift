@@ -1566,9 +1566,9 @@ extension VoiceConversationControllerTests {
 @MainActor
 extension VoiceConversationControllerTests {
     func testKeepPhoneAwakeHoldsAutoLockOnlyWhileAVoiceConversationIsOpen() {
-        XCTAssertFalse(VoiceScreenAwake.holdsScreenAwake(enabled: false, voiceSheetShown: true, geminiLiveSheetShown: true))
-        XCTAssertFalse(VoiceScreenAwake.holdsScreenAwake(enabled: true, voiceSheetShown: false, geminiLiveSheetShown: false))
-        XCTAssertTrue(VoiceScreenAwake.holdsScreenAwake(enabled: true, voiceSheetShown: true, geminiLiveSheetShown: false))
-        XCTAssertTrue(VoiceScreenAwake.holdsScreenAwake(enabled: true, voiceSheetShown: false, geminiLiveSheetShown: true))
+        XCTAssertFalse(VoiceScreenAwake.holdsScreenAwake(enabled: false, voiceSheetShown: true, liveSheetShown: true))
+        XCTAssertFalse(VoiceScreenAwake.holdsScreenAwake(enabled: true, voiceSheetShown: false, liveSheetShown: false))
+        XCTAssertTrue(VoiceScreenAwake.holdsScreenAwake(enabled: true, voiceSheetShown: true, liveSheetShown: false))
+        XCTAssertTrue(VoiceScreenAwake.holdsScreenAwake(enabled: true, voiceSheetShown: false, liveSheetShown: true))
     }
 }
