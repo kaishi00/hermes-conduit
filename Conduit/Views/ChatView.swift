@@ -11,12 +11,57 @@ import ImageIO
 
 struct ChatView: View {
     @EnvironmentObject var appState: AppState
-    @State private var bottomMarkerMaxY: CGFloat?
-    @State private var scrollViewportFrame: CGRect?
     @State private var renderedScrollContent: ChatRenderedScrollContent?
-    @State private var renderedScrollTargets = ChatRenderedScrollTargets()
     @State private var viewportSnapshotProviderID = UUID()
-    @State private var viewport = ChatViewportController()
+    /// The viewport controller and the raw geometry it is fed live in a
+    /// reference box, not in @State: geometry preferences fire many times
+    /// per layout pass, and every @State write re-ran this body, which
+    /// hands the whole transcript to ForEach again for SwiftUI to compare
+    /// row by row. In a long chat that per-tick comparison is what kept the
+    /// main thread inside layout for seconds (the frozen-chat reports and
+    /// the 0x8BADF00D logs). The body re-runs only when `viewportInputs`,
+    /// the few values it actually renders from, change.
+    @State private var viewportStore = ChatViewportStore()
+    @State private var viewportInputs = ChatViewportRenderInputs()
+
+    private var viewport: ChatViewportController {
+        get { viewportStore.controller }
+        nonmutating set {
+            viewportStore.controller = newValue
+            publishViewportInputs()
+        }
+    }
+
+    private var bottomMarkerMaxY: CGFloat? {
+        get { viewportStore.bottomMarkerMaxY }
+        nonmutating set {
+            viewportStore.bottomMarkerMaxY = newValue
+            publishViewportInputs()
+        }
+    }
+
+    private var scrollViewportFrame: CGRect? {
+        get { viewportStore.scrollViewportFrame }
+        nonmutating set {
+            viewportStore.scrollViewportFrame = newValue
+            publishViewportInputs()
+        }
+    }
+
+    private var renderedScrollTargets: ChatRenderedScrollTargets {
+        get { viewportStore.renderedScrollTargets }
+        nonmutating set { viewportStore.renderedScrollTargets = newValue }
+    }
+
+    private func publishViewportInputs() {
+        let inputs = ChatViewportRenderInputs(
+            controller: viewportStore.controller,
+            isNearBottom: isNearBottom
+        )
+        if inputs != viewportInputs {
+            viewportInputs = inputs
+        }
+    }
     /// The animated bottom command whose delayed retry is still armed. A
     /// coalesced follow correction must not execute while this is set: the
     /// animation is mid-flight toward the bottom, the measured drift is
@@ -41,14 +86,14 @@ struct ChatView: View {
     @State private var backfillViewportTask: Task<Void, Never>?
     @GestureState private var isDraggingChat = false
 
-    private var renderedScrollSessionKey: ChatScrollSessionKey? { viewport.renderedSessionKey }
+    private var renderedScrollSessionKey: ChatScrollSessionKey? { viewportInputs.renderedSessionKey }
 
     private var scrollViewportMaxY: CGFloat? { scrollViewportFrame?.maxY }
 
     private var scrollViewportMinY: CGFloat? { scrollViewportFrame?.minY }
 
     /// Single source of follow-latest truth: the controller's mode.
-    private var followsLatest: Bool { viewport.isFollowingLatest }
+    private var followsLatest: Bool { viewportInputs.isFollowingLatest }
 
     private var activeScrollSessionKey: ChatScrollSessionKey? {
         if let canonical = appState.activeChatScrollSessionIdentity.canonicalSessionKey {
@@ -79,8 +124,11 @@ struct ChatView: View {
         )
     }
 
+    /// Read from the box; `viewportInputs.renderedScrollScope` carries the
+    /// cache's rendering revision, so any target change re-runs the body.
     private var chatMessageScrollTargets: [ChatMessageScrollTarget] {
-        viewport.targets
+        _ = viewportInputs.renderedScrollScope
+        return viewportStore.controller.targets
     }
 
     private var bottomAnchor: String {
@@ -181,7 +229,7 @@ struct ChatView: View {
     }
 
     private var renderedScrollScope: ChatRenderedScrollScope? {
-        viewport.renderedScrollScope
+        viewportInputs.renderedScrollScope
     }
 
     /// Test-only seam for the dormancy fixtures (PR #201 review): ChatView
@@ -395,7 +443,7 @@ struct ChatView: View {
         }
         .simultaneousGesture(chatDragGesture(proxy: proxy))
         .overlay(alignment: .bottomTrailing) {
-            if !followsLatest && !isNearBottom {
+            if !followsLatest && !viewportInputs.isNearBottom {
                 Button {
                     ChatViewportTrace.shared.log("event explicitLatest (button)")
                     performViewportEffects(
@@ -515,7 +563,7 @@ struct ChatView: View {
                 guard wasDragging, !isDragging else { return }
                 performViewportEffects(viewport.userDragGestureEnded(), using: proxy)
             }
-            .onChange(of: viewport.pendingFollowCorrection) { _, pending in
+            .onChange(of: viewportInputs.pendingFollowCorrection) { _, pending in
                 // The coalesced follow-correction executor: the controller
                 // scheduled (state changed) from a geometry preference
                 // callback; SwiftUI delivers this observer on the update
@@ -2931,5 +2979,37 @@ struct ConduitAgentMark: View {
                     isBreathing = true
                 }
             }
+    }
+}
+
+/// Mutable viewport state ChatView keeps out of SwiftUI's diffing; see
+/// `ChatView.viewportStore`.
+private final class ChatViewportStore {
+    var controller = ChatViewportController()
+    var bottomMarkerMaxY: CGFloat?
+    var scrollViewportFrame: CGRect?
+    var renderedScrollTargets = ChatRenderedScrollTargets()
+}
+
+/// The viewport values ChatView's body renders from or observes. Small and
+/// cheap to compare; a geometry tick that changes none of them does not
+/// re-run the body.
+private struct ChatViewportRenderInputs: Equatable {
+    var renderedSessionKey: ChatScrollSessionKey?
+    var isFollowingLatest = true
+    var renderedScrollScope: ChatRenderedScrollScope?
+    var pendingFollowCorrection: ChatFollowCorrectionToken?
+    var targetCount = 0
+    var isNearBottom = true
+
+    init() {}
+
+    init(controller: ChatViewportController, isNearBottom: Bool) {
+        renderedSessionKey = controller.renderedSessionKey
+        isFollowingLatest = controller.isFollowingLatest
+        renderedScrollScope = controller.renderedScrollScope
+        pendingFollowCorrection = controller.pendingFollowCorrection
+        targetCount = controller.targets.count
+        self.isNearBottom = isNearBottom
     }
 }
