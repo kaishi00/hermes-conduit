@@ -608,9 +608,10 @@ struct KanbanView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.top, 10)
-        .background(ConduitBackdrop())
+        // The drawer owns the backdrop and the side gutters, as it does for
+        // the Sessions and Cron tabs; a second backdrop here painted an
+        // inset rectangle over the drawer's own.
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .sheet(item: $selectedTask) { task in
             KanbanTaskDetailView(task: task)
                 .environmentObject(store)
