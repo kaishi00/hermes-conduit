@@ -1325,9 +1325,29 @@ final class AppState: ObservableObject {
         saveVoiceProfilePreferences(preferences, profile: activeProfile)
     }
 
+    /// Whether Gemini Live speaks as the profile's SOUL.md persona. Off
+    /// until the user turns it on: it sends SOUL.md to Google.
+    var geminiLivePersonalityEnabled: Bool {
+        loadVoiceProfilePreferences(profile: activeProfile).geminiLivePersonality ?? false
+    }
+
+    /// Applies from the next Gemini Live conversation.
+    func setGeminiLivePersonalityEnabled(_ enabled: Bool) {
+        var preferences = loadVoiceProfilePreferences(profile: activeProfile)
+        let stored: Bool? = enabled ? true : nil
+        guard preferences.geminiLivePersonality != stored else { return }
+        objectWillChange.send()
+        preferences.geminiLivePersonality = stored
+        saveVoiceProfilePreferences(preferences, profile: activeProfile)
+    }
+
+    /// The profile's persona for the next Gemini Live session.
+    private var geminiLivePersonality: String?
     /// The host's memory for the next Gemini Live session, read when it
     /// starts so it reflects what Hermes has learned since the last one.
     private var geminiLiveMemoryContext: GeminiLiveMemoryContext?
+    /// The transcript `submitVoiceTranscript` is submitting, while it is.
+    private var spokenSubmissionText: String?
 
     private func resolveGeminiLiveSearchSource() async -> GeminiLiveSearchSource {
         let mode = geminiLiveSearchMode
@@ -1372,7 +1392,11 @@ final class AppState: ObservableObject {
                 let memory = self?.geminiLiveMemoryContext
                 return GeminiLiveSession(
                     tokens: tokens,
-                    systemInstruction: GeminiLiveConversationController.instructions(search: search, memory: memory),
+                    systemInstruction: GeminiLiveConversationController.instructions(
+                        search: search,
+                        memory: memory,
+                        personality: self?.geminiLivePersonality
+                    ),
                     functions: GeminiLiveToolBridge.declarations(webSearch: search == .hermes, memoryRecall: memory?.canRecall == true),
                     googleSearch: search == .google,
                     voice: self?.geminiLiveVoice
@@ -1385,6 +1409,7 @@ final class AppState: ObservableObject {
                 if status.isAvailable, let self {
                     self.geminiLiveSearchSource = await self.resolveGeminiLiveSearchSource()
                     self.geminiLiveMemoryContext = self.geminiLiveMemoryEnabled ? await tokens.memoryContext() : nil
+                    self.geminiLivePersonality = self.geminiLivePersonalityEnabled ? await tokens.personality() : nil
                 }
                 return status
             },
@@ -1441,6 +1466,7 @@ final class AppState: ObservableObject {
         showGeminiLiveSheet = false
         // Personal text isn't kept around between conversations.
         geminiLiveMemoryContext = nil
+        geminiLivePersonality = nil
     }
 
     /// Boundary teardown (disconnect, server/profile change, forced
@@ -12631,6 +12657,7 @@ final class AppState: ObservableObject {
         // bubble and the durable gateway row stay identical, so hydration
         // never rewrites what the user already saw.
         let outboundText = mentionAnnotatedOutboundText(text)
+        let surface: String? = spokenSubmissionText == text ? Self.spokenPromptSurface : nil
         // Durable before/after identity for ambiguous-delivery recovery:
         // positively-proven persisted row ids (from the latest accepted
         // hydration) plus whether the conversation holds rows whose persisted
@@ -12701,7 +12728,7 @@ final class AppState: ObservableObject {
             if let sendPrompt = chatResumeLifecycleOperations.sendPrompt {
                 outcome = try await sendPrompt(client, sessionId, outboundText)
             } else {
-                outcome = try await client.sendPrompt(sessionId, text: outboundText)
+                outcome = try await client.sendPrompt(sessionId, text: outboundText, surface: surface)
             }
             // The gateway accepted the prompt. A session handoff may have
             // happened while the RPC was suspended, but that does not turn a
@@ -18770,11 +18797,20 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Hermes' surface for a spoken turn: its note asks for plain, short,
+    /// speakable prose in the model input only.
+    static let spokenPromptSurface = "voice-live"
+
     /// Voice uses the same submission and active-turn interruption policy as
     /// the composer. Keeping this seam here prevents audio UI from inferring
     /// request state from transcript timing.
     func submitVoiceTranscript(_ transcript: String) async -> Bool {
-        await submitComposer(text: transcript, attachments: [])
+        // Marks this exact text as a spoken turn for the prompt.submit it
+        // reaches, so Hermes asks for a reply meant to be read aloud. A typed
+        // send interleaving on another text never matches.
+        spokenSubmissionText = transcript
+        defer { spokenSubmissionText = nil }
+        return await submitComposer(text: transcript, attachments: [])
     }
 
     /// Stops the authoritative Hermes turn when a spoken stop command,

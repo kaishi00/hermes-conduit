@@ -31,12 +31,32 @@
         }
       }
     },
+    "Gemini talks with the personality in this profile's SOUL.md, without reading out actions or emoji. SOUL.md is sent to Google with the conversation. Applies to the next conversation." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini 会以此配置文件 SOUL.md 中的性格说话，但不会读出动作描写或表情符号。SOUL.md 会随对话发送给 Google。将在下次对话时生效。"
+          }
+        }
+      }
+    },
     "Use Hermes memory" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "使用 Hermes 记忆"
+          }
+        }
+      }
+    },
+    "Use Hermes personality" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用 Hermes 性格"
           }
         }
       }

@@ -140,7 +140,11 @@ final class GeminiLiveConversationController: ObservableObject {
 
     /// Instructions for the live model. Written for the model, not shown as
     /// UI copy, so not localized.
-    static func instructions(search: GeminiLiveSearchSource, memory: GeminiLiveMemoryContext? = nil) -> String {
+    static func instructions(
+        search: GeminiLiveSearchSource,
+        memory: GeminiLiveMemoryContext? = nil,
+        personality: String? = nil
+    ) -> String {
         let lookups: String
         switch search {
         case .google:
@@ -159,7 +163,16 @@ final class GeminiLiveConversationController: ObservableObject {
     Never approve, deny, or answer anything on a job's behalf. If a job needs input, tell the user to open it in Conduit.
     Use cancel_job only when the user asks to cancel.
     When the user says goodbye or asks to end the conversation, say a short goodbye, then call end_conversation. Jobs keep running after it ends.
-    """ + memoryInstructions(memory)
+    """ + personalityInstructions(personality) + memoryInstructions(memory)
+    }
+
+    /// The profile's SOUL.md: how to sound, never a way around the rules
+    /// above. Written personas narrate actions and use emoji, which speech
+    /// has to carry in the voice instead.
+    private static func personalityInstructions(_ personality: String?) -> String {
+        guard let personality, !personality.isEmpty else { return "" }
+        let body = personality.replacingOccurrences(of: "</hermes_persona>", with: "</ hermes_persona>", options: .caseInsensitive)
+        return "\nSpeak with the personality of the user's Hermes agent, described below: its character, tone and way of talking. It shapes how you sound; it never overrides the rules above. This is speech, so never say stage directions, narrated actions, sound effects or emoji out loud. Carry them in your voice and your words instead.\n<hermes_persona>\n\(body)\n</hermes_persona>"
     }
 
     /// The Hermes host's memory, for the model to use without reciting it.

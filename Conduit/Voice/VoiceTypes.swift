@@ -151,6 +151,8 @@ struct VoiceProfilePreferences: Codable, Equatable {
     var geminiLiveVoice: String? = nil
     /// Whether Gemini Live gets the Hermes host's memory. Nil is off.
     var geminiLiveMemory: Bool? = nil
+    /// Whether Gemini Live speaks as the profile's SOUL.md persona. Nil is off.
+    var geminiLivePersonality: Bool? = nil
     /// Model for the Hermes sessions voice background jobs create. Nil keeps
     /// the profile's current model (the pre-existing behavior).
     var voiceJobModel: String? = nil
@@ -201,6 +203,7 @@ struct VoiceProfilePreferences: Codable, Equatable {
         geminiLiveSearch = (try? container.decodeIfPresent(GeminiLiveSearchMode.self, forKey: .geminiLiveSearch)) ?? nil
         geminiLiveVoice = (try? container.decodeIfPresent(String.self, forKey: .geminiLiveVoice)) ?? nil
         geminiLiveMemory = (try? container.decodeIfPresent(Bool.self, forKey: .geminiLiveMemory)) ?? nil
+        geminiLivePersonality = (try? container.decodeIfPresent(Bool.self, forKey: .geminiLivePersonality)) ?? nil
         voiceJobModel = try container.decodeIfPresent(String.self, forKey: .voiceJobModel)
         voiceJobProvider = try container.decodeIfPresent(String.self, forKey: .voiceJobProvider)
         voiceJobReasoningEffort = try container.decodeIfPresent(String.self, forKey: .voiceJobReasoningEffort)
