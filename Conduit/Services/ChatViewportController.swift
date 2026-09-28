@@ -214,7 +214,8 @@ struct ChatViewportController: Equatable {
     /// so it snaps to the latest row instead of animating: an animated
     /// scroll across rows whose heights LazyVStack has only estimated
     /// overshoots, and the follow correction that fixes it reads as a jump.
-    private(set) var awaitingSessionLanding = false
+    private var sessionLandingKey: ChatScrollSessionKey?
+    var awaitingSessionLanding: Bool { sessionLandingKey != nil }
 
     let nearBottomTolerance: CGFloat
     let followDriftTolerance: CGFloat
@@ -360,7 +361,7 @@ struct ChatViewportController: Equatable {
         // Ports ChatFollowLatestRelatchPolicy.shouldFollowLatestAfterTransition.
         let shouldFollowLatest = !dragGestureActive
         mode = shouldFollowLatest ? .followingLatest : .browsing
-        awaitingSessionLanding = true
+        sessionLandingKey = key
         if shouldFollowLatest {
             effects.append(.scroll(latestCommand(animated: false)))
         }
@@ -499,9 +500,15 @@ struct ChatViewportController: Equatable {
         // The first non-empty change after a switch consumes the flag. Only
         // a multi-row load is a transcript landing; a single row is the
         // first message of a new conversation and animates like any send.
+        // Only a change for the switched-to conversation counts; a mirror
+        // sync or a late publish for the previous one leaves the flag armed.
         var landsSwitchedSession = false
-        if awaitingSessionLanding, update != .unchanged, !messages.isEmpty {
-            awaitingSessionLanding = false
+        if let landingKey = sessionLandingKey,
+           !isInitialSync,
+           update != .unchanged,
+           !messages.isEmpty,
+           identity.areEquivalent(landingKey, activeSessionKey ?? renderedSessionKey) {
+            sessionLandingKey = nil
             landsSwitchedSession = messages.count > 1
         }
         guard !isInitialSync,
@@ -1156,7 +1163,7 @@ struct ChatViewportController: Equatable {
     // MARK: - View lifecycle
 
     mutating func viewDisappeared() -> [ChatViewportEffect] {
-        awaitingSessionLanding = false
+        sessionLandingKey = nil
         pendingFollowCorrection = nil
         pendingPrependAnchor = nil
         followCorrectionContentBottom = nil
@@ -1206,7 +1213,7 @@ struct ChatViewportController: Equatable {
     // MARK: - Private
 
     private mutating func effectsForExplicitOwnershipChange() {
-        awaitingSessionLanding = false
+        sessionLandingKey = nil
         _ = invalidateDrag(hasActiveGesture: dragGestureActive)
         generation &+= 1
         pendingFollowCorrection = nil
@@ -1218,7 +1225,7 @@ struct ChatViewportController: Equatable {
     }
 
     private mutating func beginHandoffOwnership() -> [ChatViewportEffect] {
-        awaitingSessionLanding = false
+        sessionLandingKey = nil
         _ = invalidateDrag(hasActiveGesture: dragGestureActive)
         generation &+= 1
         pendingFollowCorrection = nil

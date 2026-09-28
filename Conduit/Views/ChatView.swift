@@ -503,8 +503,13 @@ struct ChatView: View {
                 await runViewportRestoration(request, using: proxy)
             }
             .onPreferenceChange(ChatBottomMarkerPreferenceKey.self) { value in
+                guard !viewportPausedInBackground else {
+                    // Recorded without republishing: no body update while
+                    // backgrounded. The return to the foreground publishes.
+                    viewportStore.bottomMarkerMaxY = value
+                    return
+                }
                 bottomMarkerMaxY = value
-                guard !viewportPausedInBackground else { return }
                 // Facts first: the handoff readiness decision reads the
                 // controller's geometry copy, so it must see this tick.
                 performViewportEffects(
@@ -515,8 +520,11 @@ struct ChatView: View {
                 finishNotificationHandoffIfReady(using: proxy)
             }
             .onPreferenceChange(ChatViewportFramePreferenceKey.self) { value in
+                guard !viewportPausedInBackground else {
+                    viewportStore.scrollViewportFrame = value
+                    return
+                }
                 scrollViewportFrame = value
-                guard !viewportPausedInBackground else { return }
                 performViewportEffects(
                     viewport.layoutMetricsChanged(facts: currentLayoutFacts()),
                     using: proxy
@@ -558,6 +566,11 @@ struct ChatView: View {
                         : viewport.layoutMetricsChanged(facts: facts),
                     using: proxy
                 )
+                publishViewportInputs()
+                // A handoff that became ready while paused had its scroll
+                // skipped; finish it now.
+                recordNotificationHandoffLayout()
+                finishNotificationHandoffIfReady(using: proxy)
             }
             .onChange(of: isDraggingChat) { wasDragging, isDragging in
                 guard wasDragging, !isDragging else { return }
