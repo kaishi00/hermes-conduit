@@ -10,6 +10,9 @@
 //
 
 import Foundation
+import OSLog
+
+private let geminiLiveMemoryLogger = Logger(subsystem: "com.milim.relay", category: "GeminiLiveMemory")
 
 enum GeminiLiveAvailability: Equatable {
     case available(model: String)
@@ -199,8 +202,18 @@ final class GeminiLiveTokenClient: GeminiLiveTokenProviding, GeminiLiveWebSearch
     /// The host's memory for a new conversation. Nil when there is none
     /// or the plugin predates the route: the conversation goes on without.
     func memoryContext() async -> GeminiLiveMemoryContext? {
-        guard let response = try? await request(scoped(Self.memoryContextPath), "GET", nil) else { return nil }
-        return Self.memoryContext(from: response)
+        do {
+            let response = try await request(scoped(Self.memoryContextPath), "GET", nil)
+            return Self.memoryContext(from: response)
+        } catch let error as DashboardTicketBridgeError where Self.isMissingRoute(error) {
+            geminiLiveMemoryLogger.notice("Hermes plugin has no memory route; Gemini Live starts without memory")
+            return nil
+        } catch {
+            // Memory is extra context: the conversation still starts, but
+            // the failure is logged rather than lost.
+            geminiLiveMemoryLogger.error("Hermes memory context failed: \(String(describing: error), privacy: .public)")
+            return nil
+        }
     }
 
     func recallMemory(query: String) async throws -> String {
@@ -212,6 +225,8 @@ final class GeminiLiveTokenClient: GeminiLiveTokenProviding, GeminiLiveWebSearch
 
     /// The most memory a conversation's instructions carry.
     static let memoryContextLimit = 8000
+    /// The most a single recall hands the model.
+    static let memoryRecallLimit = 4000
 
     static func memoryContext(from response: [String: Any]) -> GeminiLiveMemoryContext? {
         guard response["ok"] as? Bool == true, response["available"] as? Bool == true else { return nil }
@@ -229,7 +244,7 @@ final class GeminiLiveTokenClient: GeminiLiveTokenProviding, GeminiLiveWebSearch
             let reason = response["detail"] as? String ?? response["error"] as? String ?? response["reason"] as? String
             throw GeminiLiveMemoryError(reason: reason.flatMap { $0.isEmpty ? nil : $0 } ?? "Hermes memory is not available")
         }
-        return results.trimmingCharacters(in: .whitespacesAndNewlines)
+        return String(results.trimmingCharacters(in: .whitespacesAndNewlines).prefix(memoryRecallLimit))
     }
 
     static func webResults(from response: [String: Any]) throws -> [GeminiLiveWebResult] {

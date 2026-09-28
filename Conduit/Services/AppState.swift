@@ -1310,14 +1310,15 @@ final class AppState: ObservableObject {
     private var geminiLiveSearchSource: GeminiLiveSearchSource = .google
 
     /// Whether Gemini Live gets the Hermes host's memory on this profile.
+    /// Off until the user turns it on: it sends that memory to Google.
     var geminiLiveMemoryEnabled: Bool {
-        loadVoiceProfilePreferences(profile: activeProfile).geminiLiveMemory ?? true
+        loadVoiceProfilePreferences(profile: activeProfile).geminiLiveMemory ?? false
     }
 
     /// Applies from the next Gemini Live conversation.
     func setGeminiLiveMemoryEnabled(_ enabled: Bool) {
         var preferences = loadVoiceProfilePreferences(profile: activeProfile)
-        let stored: Bool? = enabled ? nil : false
+        let stored: Bool? = enabled ? true : nil
         guard preferences.geminiLiveMemory != stored else { return }
         objectWillChange.send()
         preferences.geminiLiveMemory = stored
@@ -1438,6 +1439,8 @@ final class AppState: ObservableObject {
     func closeGeminiLiveConversation() {
         if geminiLiveControllerCreated { geminiLiveController.stop() }
         showGeminiLiveSheet = false
+        // Personal text isn't kept around between conversations.
+        geminiLiveMemoryContext = nil
     }
 
     /// Boundary teardown (disconnect, server/profile change, forced

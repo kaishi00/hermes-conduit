@@ -18,7 +18,7 @@ struct GeminiLiveSettingsModel {
     /// Prebuilt voice name; nil is Gemini's default voice.
     var voice: String? = nil
     var setVoice: (String?) -> Void = { _ in }
-    var memory: Bool = true
+    var memory: Bool = false
     var setMemory: (Bool) -> Void = { _ in }
 }
 

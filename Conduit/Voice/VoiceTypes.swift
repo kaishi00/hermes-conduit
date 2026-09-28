@@ -149,7 +149,7 @@ struct VoiceProfilePreferences: Codable, Equatable {
     /// Gemini Live's prebuilt voice ("Kore", "Puck"…). Nil is Gemini's
     /// default voice.
     var geminiLiveVoice: String? = nil
-    /// Whether Gemini Live gets the Hermes host's memory. Nil is on.
+    /// Whether Gemini Live gets the Hermes host's memory. Nil is off.
     var geminiLiveMemory: Bool? = nil
     /// Model for the Hermes sessions voice background jobs create. Nil keeps
     /// the profile's current model (the pre-existing behavior).
