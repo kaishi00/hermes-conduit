@@ -1359,3 +1359,15 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(CarPlayGeminiLiveListenAction.forPhase(.connecting), .nothing)
     }
 }
+
+// MARK: - Keep phone awake
+
+@MainActor
+extension VoiceConversationControllerTests {
+    func testKeepPhoneAwakeHoldsAutoLockOnlyWhileAVoiceConversationIsOpen() {
+        XCTAssertFalse(VoiceScreenAwake.holdsScreenAwake(enabled: false, voiceSheetShown: true, geminiLiveSheetShown: true))
+        XCTAssertFalse(VoiceScreenAwake.holdsScreenAwake(enabled: true, voiceSheetShown: false, geminiLiveSheetShown: false))
+        XCTAssertTrue(VoiceScreenAwake.holdsScreenAwake(enabled: true, voiceSheetShown: true, geminiLiveSheetShown: false))
+        XCTAssertTrue(VoiceScreenAwake.holdsScreenAwake(enabled: true, voiceSheetShown: false, geminiLiveSheetShown: true))
+    }
+}

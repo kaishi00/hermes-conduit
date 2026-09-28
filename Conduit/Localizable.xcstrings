@@ -311,6 +311,26 @@
         }
       }
     },
+    "Keep phone awake during voice conversations" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音对话期间保持手机唤醒"
+          }
+        }
+      }
+    },
+    "The screen stays on while a voice conversation is open, including Gemini Live. When off, the phone locks on its usual timer and the conversation keeps going in the background. Applies to this device." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音对话（包括 Gemini Live）打开时屏幕保持常亮。关闭时，手机按平常的时间自动锁定，对话会在后台继续。仅适用于此设备。"
+          }
+        }
+      }
+    },
     "Voice jobs" : {
       "localizations" : {
         "zh-Hans" : {

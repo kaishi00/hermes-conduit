@@ -123,6 +123,7 @@ struct VoiceSettingsView: View {
     @State private var transcriptionMode: VoiceTranscriptionMode
     @State private var appleSpeechAvailability: AppleSpeechRecognitionAvailability
     @State private var continuousConversation: Bool
+    @AppStorage(VoiceScreenAwake.preferenceKey) private var keepScreenAwake = false
     let spokenStopPhrases: [String]
     let spokenEndConversationPhrases: [String]
     let setStopPhrases: ([String]) -> Void
@@ -233,6 +234,10 @@ struct VoiceSettingsView: View {
             ))
             .accessibilityHint("Automatically listens again after each response. Turn off to start each listening turn manually.")
             Text("When enabled, Conduit automatically listens again after each response. When disabled, the session stays open and you start the next listening turn manually. This does not change Pause Mic, Interrupt, Close, or wake-word settings.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Toggle("Keep phone awake during voice conversations", isOn: $keepScreenAwake)
+            Text("The screen stays on while a voice conversation is open, including Gemini Live. When off, the phone locks on its usual timer and the conversation keeps going in the background. Applies to this device.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             HStack(spacing: 10) {

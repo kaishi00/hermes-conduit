@@ -6,12 +6,14 @@
 //
 
 import SwiftUI
+import UIKit
 
 struct RootView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dismissWindow) private var dismissWindow
     @State private var isPrimaryWindow = false
+    @AppStorage(VoiceScreenAwake.preferenceKey) private var keepScreenAwake = false
 
     var body: some View {
         ZStack {
@@ -109,6 +111,18 @@ struct MainView: View {
             DelegateAgentsSheet()
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
+        }
+        // "Keep phone awake during voice conversations": hold off auto-lock
+        // only while a voice conversation is on screen.
+        .onChange(
+            of: VoiceScreenAwake.holdsScreenAwake(
+                enabled: keepScreenAwake,
+                voiceSheetShown: appState.showVoiceSheet,
+                geminiLiveSheetShown: appState.showGeminiLiveSheet
+            ),
+            initial: true
+        ) { _, holds in
+            UIApplication.shared.isIdleTimerDisabled = holds
         }
         .sheet(isPresented: $appState.showGeminiLiveSheet, onDismiss: appState.closeGeminiLiveConversation) {
             GeminiLiveVoiceSheet(
