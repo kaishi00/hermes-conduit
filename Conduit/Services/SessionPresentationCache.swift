@@ -142,6 +142,7 @@ final class SessionPresentationCache {
     private let now: () -> Date
     private let storageKey = "conduit.sessionPresentation.v1"
     private let pendingToolsStorageKey = "conduit.sessionPresentation.pendingTools.v1"
+    private let tombstonesStorageKey = "conduit.sessionPresentation.tombstones.v1"
     private let maxSessions = 32
     private let maxMessagesPerSession = 320
 
@@ -159,8 +160,26 @@ final class SessionPresentationCache {
     /// Guards the memory copies above. Today every caller is on the main
     /// actor, but the type itself doesn't enforce that.
     private let memoryLock = NSLock()
+    /// Removals the stores on disk may not reflect yet (asynchronous mode),
+    /// each with the write ticket both stores must reach before it can be
+    /// dropped; see `removingDurably`. Guarded by `memoryLock`; nil until
+    /// read from disk.
+    private var tombstones: [(tombstone: Tombstone, tickets: [StoreKind: Int])]?
+    /// Ticket of the newest write that reached disk for each store.
+    /// Guarded by `memoryLock`.
+    private var landedWriteTicket: [StoreKind: Int] = [:]
+    /// Ticket of the newest write scheduled for each store, guarded by
+    /// `memoryLock`. A queued write whose ticket is no longer the newest
+    /// skips itself: a later write is queued behind it and will store the
+    /// newer memory copy, so an older snapshot never lands after a newer one.
+    private var writeTicket = 0
+    private var newestWriteTicket: [StoreKind: Int] = [:]
     /// When set, encoding and UserDefaults writes run on `writeQueue` and the
     /// memory copies are authoritative (defaults may briefly lag behind).
+    /// Each queued write stores the memory copy as it is when the write
+    /// runs, not as it was when it was queued. The app keeps itself alive
+    /// through suspension until the queue drains (see AppState's background
+    /// handling); nothing on the main thread may block on this queue.
     private let writeQueue: DispatchQueue?
 
     init(
@@ -176,10 +195,28 @@ final class SessionPresentationCache {
     }
 
     /// Blocks until every queued disk write has landed. No-op in
-    /// synchronous mode. Callers that need a write durable before they
-    /// return (suspension, clears, deletes) call this.
+    /// synchronous mode. Test-only: never call this on the main thread in
+    /// the app. A UserDefaults write posts its change notification on the
+    /// writing thread, SwiftUI's observer takes SwiftUI's lock there, and a
+    /// main thread holding that lock (any view update) while waiting here
+    /// deadlocks until the watchdog kills the app.
+    #if DEBUG
     func waitForPendingWrites() {
         writeQueue?.sync {}
+    }
+    #endif
+
+    /// Calls `completion` on the main queue once every disk write queued so
+    /// far has landed, without blocking the caller. In synchronous mode the
+    /// writes are already on disk, so it only hops to the main queue.
+    func notifyWhenPendingWritesLand(_ completion: @escaping @MainActor () -> Void) {
+        guard let writeQueue else {
+            DispatchQueue.main.async { completion() }
+            return
+        }
+        writeQueue.async {
+            DispatchQueue.main.async { completion() }
+        }
     }
 
     func unconfirmedPendingDecisionDate(
@@ -957,6 +994,11 @@ final class SessionPresentationCache {
     }
 
     func clear(profile: String? = nil) {
+        let prefix = profile.map { normalized($0) + "|" } ?? ""
+        removingDurably([Tombstone(prefix: prefix, exact: false)]) { clearNow(profile: profile) }
+    }
+
+    private func clearNow(profile: String?) {
         guard let profile else {
             memoryLock.withLock {
                 memoryStore = [:]
@@ -964,16 +1006,11 @@ final class SessionPresentationCache {
                 memoryStoreData = nil
                 memoryPendingToolsData = nil
             }
-            let defaults = defaults
-            let storageKey = storageKey
-            let pendingToolsStorageKey = pendingToolsStorageKey
-            performWrite {
+            // In asynchronous mode `removingDurably` queues the writes.
+            if writeQueue == nil {
                 defaults.removeObject(forKey: storageKey)
                 defaults.removeObject(forKey: pendingToolsStorageKey)
             }
-            // A clear protects another account's data (sign-out, server
-            // switch): it must be on disk before this returns.
-            waitForPendingWrites()
             return
         }
 
@@ -984,7 +1021,6 @@ final class SessionPresentationCache {
         var pendingStore = loadPendingTools()
         pendingStore.keys.filter { $0.hasPrefix(prefix) }.forEach { pendingStore.removeValue(forKey: $0) }
         persistPendingTools(pendingStore)
-        waitForPendingWrites()
     }
 
     /// Removes the cached records for the given sessions inside `profile`,
@@ -993,6 +1029,16 @@ final class SessionPresentationCache {
     /// deleted conversation cannot resurrect its presentation (including any
     /// pending decision cards) from a stale alias.
     func removeSessions(profile: String, sessionIDs: [String]) {
+        let removed = Set(sessionIDs.compactMap { sessionID -> String? in
+            let trimmed = sessionID.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : key(profile: profile, sessionID: trimmed)
+        })
+        removingDurably(removed.sorted().map { Tombstone(prefix: $0, exact: true) }) {
+            removeSessionsNow(profile: profile, sessionIDs: sessionIDs)
+        }
+    }
+
+    private func removeSessionsNow(profile: String, sessionIDs: [String]) {
         let prefix = normalized(profile) + "|"
         let ids = Set(sessionIDs.compactMap {
             $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0
@@ -1008,8 +1054,6 @@ final class SessionPresentationCache {
         }
         if changed { persist(store) }
         removePendingToolSideRecords(profile: profile, sessionIDs: Array(ids))
-        // A deleted conversation must not come back after a relaunch.
-        waitForPendingWrites()
     }
 
     /// Durable-owned persistence: once this conversation's durable identity
@@ -1213,25 +1257,23 @@ final class SessionPresentationCache {
         if writeQueue != nil, let memoryStore { return memoryStore }
         let data = defaults.data(forKey: storageKey)
         if let memoryStore, data == memoryStoreData { return memoryStore }
-        let decoded = data.flatMap { try? JSONDecoder().decode([String: CachedSession].self, from: $0) } ?? [:]
+        let decoded = withoutTombstonedKeys(
+            data.flatMap { try? JSONDecoder().decode([String: CachedSession].self, from: $0) } ?? [:]
+        )
         memoryStore = decoded
         memoryStoreData = data
         return decoded
     }
 
     private func persist(_ store: [String: CachedSession]) {
+        guard writeQueue == nil else {
+            memoryLock.withLock { memoryStore = store }
+            scheduleWrite(.sessions)
+            return
+        }
         memoryLock.lock()
         defer { memoryLock.unlock() }
         memoryStore = store
-        let defaults = defaults
-        let storageKey = storageKey
-        if writeQueue != nil {
-            performWrite {
-                guard let data = try? JSONEncoder().encode(store) else { return }
-                defaults.set(data, forKey: storageKey)
-            }
-            return
-        }
         guard let data = try? JSONEncoder().encode(store) else {
             memoryStore = nil
             return
@@ -1246,29 +1288,24 @@ final class SessionPresentationCache {
         if writeQueue != nil, let memoryPendingTools { return memoryPendingTools }
         let data = defaults.data(forKey: pendingToolsStorageKey)
         if let memoryPendingTools, data == memoryPendingToolsData { return memoryPendingTools }
-        let decoded = data.flatMap { try? JSONDecoder().decode([String: [CachedMessage]].self, from: $0) } ?? [:]
+        let decoded = withoutTombstonedKeys(
+            data.flatMap { try? JSONDecoder().decode([String: [CachedMessage]].self, from: $0) } ?? [:]
+        )
         memoryPendingTools = decoded
         memoryPendingToolsData = data
         return decoded
     }
 
     private func persistPendingTools(_ store: [String: [CachedMessage]]) {
+        guard writeQueue == nil else {
+            memoryLock.withLock { memoryPendingTools = store }
+            scheduleWrite(.pendingTools)
+            return
+        }
         memoryLock.lock()
         defer { memoryLock.unlock() }
         memoryPendingTools = store
-        let defaults = defaults
         let key = pendingToolsStorageKey
-        if writeQueue != nil {
-            performWrite {
-                guard !store.isEmpty else {
-                    defaults.removeObject(forKey: key)
-                    return
-                }
-                guard let data = try? JSONEncoder().encode(store) else { return }
-                defaults.set(data, forKey: key)
-            }
-            return
-        }
         guard !store.isEmpty else {
             defaults.removeObject(forKey: key)
             memoryPendingToolsData = nil
@@ -1282,15 +1319,149 @@ final class SessionPresentationCache {
         memoryPendingToolsData = data
     }
 
-    /// Runs a disk write on the write queue (in order with every earlier
-    /// write, so a clear can never be overtaken by an older save), or inline
-    /// in synchronous mode.
-    private func performWrite(_ write: @escaping () -> Void) {
-        if let writeQueue {
-            writeQueue.async(execute: write)
-        } else {
-            write()
+    private enum StoreKind {
+        case sessions, pendingTools
+    }
+
+    /// Cache keys a clear or delete removed: one exact key, or every key
+    /// with the prefix (a profile's, or "" for all).
+    private struct Tombstone: Codable, Equatable {
+        var prefix: String
+        var exact: Bool
+
+        func covers(_ key: String) -> Bool {
+            exact ? key == prefix : key.hasPrefix(prefix)
         }
+    }
+
+    /// Queues a write of `kind`'s current memory copy (asynchronous mode
+    /// only) and returns its ticket.
+    @discardableResult
+    private func scheduleWrite(_ kind: StoreKind) -> Int {
+        guard let writeQueue else { return 0 }
+        let ticket = memoryLock.withLock { () -> Int in
+            writeTicket += 1
+            newestWriteTicket[kind] = writeTicket
+            return writeTicket
+        }
+        writeQueue.async { self.writeLatest(kind, ticket: ticket) }
+        return ticket
+    }
+
+    /// Encodes and stores `kind`'s memory copy as it is now, unless a newer
+    /// write was scheduled since `ticket` (that one will store newer
+    /// state). A store that was never loaded is left alone: nil means "not
+    /// read yet", not "empty". The copy is taken under `memoryLock`;
+    /// encoding and the UserDefaults write happen outside it, so a UserDefaults change
+    /// notification can never re-enter the lock.
+    private func writeLatest(_ kind: StoreKind, ticket: Int) {
+        func isNewest() -> Bool { newestWriteTicket[kind] == ticket }
+        guard memoryLock.withLock({ isNewest() }) else { return }
+        let key: String
+        // Outer nil: never loaded, nothing to write. Inner nil: empty store.
+        let encoded: Data??
+        switch kind {
+        case .sessions:
+            key = storageKey
+            let snapshot: [String: CachedSession]? = memoryLock.withLock { memoryStore }
+            encoded = snapshot.map { $0.isEmpty ? nil : (try? JSONEncoder().encode($0)) }
+            if let snapshot, !snapshot.isEmpty, encoded == .some(nil) { return }
+        case .pendingTools:
+            key = pendingToolsStorageKey
+            let snapshot: [String: [CachedMessage]]? = memoryLock.withLock { memoryPendingTools }
+            encoded = snapshot.map { $0.isEmpty ? nil : (try? JSONEncoder().encode($0)) }
+            if let snapshot, !snapshot.isEmpty, encoded == .some(nil) { return }
+        }
+        guard let encoded, memoryLock.withLock({ isNewest() }) else { return }
+        if let data = encoded {
+            defaults.set(data, forKey: key)
+        } else {
+            defaults.removeObject(forKey: key)
+        }
+        let canRetireTombstones = memoryLock.withLock { () -> Bool in
+            landedWriteTicket[kind] = max(landedWriteTicket[kind] ?? 0, ticket)
+            guard let tombstones else { return false }
+            return tombstones.contains { hasLandedLocked($0.tickets) }
+        }
+        if canRetireTombstones {
+            DispatchQueue.main.async { self.retireLandedTombstones() }
+        }
+    }
+
+    /// Runs a clear or delete so it holds across a kill, without waiting on
+    /// the write queue. In asynchronous mode the stores on disk can lag
+    /// memory, and a save queued before the removal can still land after
+    /// it, so the removed keys are recorded under their own UserDefaults key
+    /// before this returns and filtered out whenever a store is read from
+    /// disk. That key is only ever written on the main thread (here and in
+    /// `retireLandedTombstones`), so no queued write can overwrite it. Once
+    /// a write of each store queued after the removal has landed, disk
+    /// matches and the tombstones are dropped. Main thread only.
+    private func removingDurably(_ removed: [Tombstone], _ body: () -> Void) {
+        body()
+        guard writeQueue != nil, !removed.isEmpty else { return }
+        let tickets: [StoreKind: Int] = [
+            .sessions: scheduleWrite(.sessions),
+            .pendingTools: scheduleWrite(.pendingTools)
+        ]
+        let stored = memoryLock.withLock { () -> [Tombstone] in
+            var current = loadedTombstonesLocked().filter { !removed.contains($0.tombstone) }
+            current += removed.map { (tombstone: $0, tickets: tickets) }
+            tombstones = current
+            return current.map(\.tombstone)
+        }
+        storeTombstones(stored)
+        // The removal's writes may already have landed before the
+        // tombstones were recorded, in which case no write will retire them.
+        retireLandedTombstones()
+    }
+
+    /// Drops tombstones whose removal both stores on disk now reflect.
+    /// Main thread only (see `removingDurably`).
+    private func retireLandedTombstones() {
+        let remaining = memoryLock.withLock { () -> [Tombstone]? in
+            guard let current = tombstones else { return nil }
+            let kept = current.filter { !hasLandedLocked($0.tickets) }
+            guard kept.count != current.count else { return nil }
+            tombstones = kept
+            return kept.map(\.tombstone)
+        }
+        if let remaining { storeTombstones(remaining) }
+    }
+
+    private func storeTombstones(_ stored: [Tombstone]) {
+        if stored.isEmpty {
+            defaults.removeObject(forKey: tombstonesStorageKey)
+        } else if let data = try? JSONEncoder().encode(stored) {
+            defaults.set(data, forKey: tombstonesStorageKey)
+        }
+    }
+
+    /// Whether each store has landed a write at least as new as its ticket
+    /// in `tickets`. Caller holds `memoryLock`.
+    private func hasLandedLocked(_ tickets: [StoreKind: Int]) -> Bool {
+        tickets.allSatisfy { (landedWriteTicket[$0.key] ?? -1) >= $0.value }
+    }
+
+    /// Tombstones in effect, read from disk on first use. Ones left by an
+    /// earlier launch carry ticket 0 for both stores, so the first landed
+    /// write of each store retires them. Synchronous instances re-read on every call
+    /// (another instance may have written them). Caller holds `memoryLock`.
+    private func loadedTombstonesLocked() -> [(tombstone: Tombstone, tickets: [StoreKind: Int])] {
+        if writeQueue != nil, let tombstones { return tombstones }
+        let stored = defaults.data(forKey: tombstonesStorageKey)
+            .flatMap { try? JSONDecoder().decode([Tombstone].self, from: $0) } ?? []
+        let loaded = stored.map { (tombstone: $0, tickets: [StoreKind.sessions: 0, .pendingTools: 0]) }
+        if writeQueue != nil { tombstones = loaded }
+        return loaded
+    }
+
+    /// `store` minus every key a clear or delete removed but disk may still
+    /// hold. Caller holds `memoryLock`.
+    private func withoutTombstonedKeys<Value>(_ store: [String: Value]) -> [String: Value] {
+        let active = loadedTombstonesLocked()
+        guard !active.isEmpty else { return store }
+        return store.filter { key, _ in !active.contains { $0.tombstone.covers(key) } }
     }
 
     private func pendingToolRecords(profile: String, sessionIDs: [String]) -> [CachedMessage] {
