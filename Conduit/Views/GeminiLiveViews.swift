@@ -223,7 +223,7 @@ struct GeminiLiveVoiceSheet: View {
                 .frame(maxWidth: .infinity)
                 .frame(height: 50)
             }
-            .disabled(!controller.isActive)
+            .disabled(!controller.isActive || controller.isEnding)
             .conduitGlassControl(cornerRadius: 18, tint: .conduitAura.opacity(0.14))
         }
     }
@@ -233,6 +233,7 @@ struct GeminiLiveVoiceSheet: View {
         case .idle, .connecting, .reconnecting: return "antenna.radiowaves.left.and.right"
         case .listening: return controller.isMicrophoneMuted ? "mic.slash" : "waveform"
         case .speaking: return "speaker.wave.3.fill"
+        case .ending: return "hand.wave.fill"
         case .failed: return "exclamationmark.triangle.fill"
         }
     }
@@ -244,6 +245,7 @@ struct GeminiLiveVoiceSheet: View {
         case .reconnecting: return AppLocalization.string("Reconnecting…")
         case .listening: return controller.isMicrophoneMuted ? AppLocalization.string("Microphone muted") : AppLocalization.string("Listening")
         case .speaking: return AppLocalization.string("Speaking")
+        case .ending: return AppLocalization.string("Ending conversation…")
         case .failed(let message): return message
         }
     }

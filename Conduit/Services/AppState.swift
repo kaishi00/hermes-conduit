@@ -1322,6 +1322,7 @@ final class AppState: ObservableObject {
         preferences.geminiLiveEnabled = enabled
         saveVoiceProfilePreferences(preferences, profile: activeProfile)
         if !enabled { closeGeminiLiveConversation() }
+        CarPlayVoiceCoordinator.shared.voiceModeChanged(in: self)
     }
 
     /// Hermes-hosted Gemini Live credentials (the conduit_push plugin), read

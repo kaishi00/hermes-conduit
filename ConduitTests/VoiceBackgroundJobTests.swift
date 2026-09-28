@@ -344,6 +344,32 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(supervisor.jobs.last?.title, "job \(total)", "the most recent jobs are kept")
     }
 
+    func testQueuedNoticeKeepsItsJobUntilSentOrHandedBack() async {
+        let (supervisor, _) = makeSupervisor()
+        _ = await supervisor.startJob(instructions: "queued job")
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "ok", reasoning: nil))
+        let queued = supervisor.takePendingNoticeForJob()
+        XCTAssertNotNil(queued)
+
+        // A backlog of announced jobs would normally prune the oldest.
+        let total = VoiceBackgroundJobSupervisor.maximumSettledJobs + 2
+        for index in 2...total {
+            _ = await supervisor.startJob(instructions: "job \(index)")
+            supervisor.observe(.messageComplete(sessionId: "rt-\(index)", messageId: nil, content: "ok", reasoning: nil))
+            XCTAssertNotNil(supervisor.takePendingNotice())
+        }
+        XCTAssertEqual(supervisor.jobs.first?.title, "queued job", "a notice not yet spoken keeps its job")
+
+        // Handed back unspoken: the outcome is pending again.
+        supervisor.returnUndeliveredNotice(jobID: queued!.jobID)
+        XCTAssertNotNil(supervisor.takePendingNotice())
+
+        // Once spoken, it is pruned like any other announced job.
+        let again = supervisor.takePendingNoticeForJob()
+        XCTAssertNil(again, "the handed-back notice was already taken above")
+        XCTAssertEqual(supervisor.jobs.count, VoiceBackgroundJobSupervisor.maximumSettledJobs)
+    }
+
     func testResetForgetsJobsAndIgnoresTheirLateEvents() async {
         let (supervisor, _) = makeSupervisor()
         _ = await supervisor.startJob(instructions: "old server work")
