@@ -3437,8 +3437,14 @@ final class AppState: ObservableObject {
         guard automaticChatResumeWorkMayStillSelectSession else { return }
         guard !composerEditClaimedAutomaticWork else { return }
         composerEditClaimedAutomaticWork = true
+        composerEditCancellationCount += 1
         cancelChatResumeRestoration()
     }
+
+    /// Cancellations `noteComposerUserEdit()` has made (tests): the latch's
+    /// own evidence, since a cancellation that finds nothing published to
+    /// clear publishes nothing either.
+    private(set) var composerEditCancellationCount = 0
 
     /// Latch for `noteComposerUserEdit()`: set once an edit has invalidated
     /// the current generation's automatic-return intent, cleared when the
