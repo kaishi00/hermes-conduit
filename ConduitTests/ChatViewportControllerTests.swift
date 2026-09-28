@@ -1147,6 +1147,24 @@ final class ChatViewportControllerTests: XCTestCase {
         ))
         XCTAssertEqual(append.count, 1)
         XCTAssertEqual(append[0].animated, true)
+
+        // A new, empty conversation: its first message is a send, not a
+        // landing, and still animates; the flag does not linger after it.
+        var fresh = makeController(following: keyA)
+        _ = fresh.renderedSessionChanged(
+            to: keyB,
+            identity: identity(for: keyB),
+            viaNotification: false,
+            viewportTransitionGeneration: 2
+        )
+        let firstSend = scrollCommands(fresh.transcriptChanged(
+            messages: [message("b1", "hi")],
+            transcriptRevision: 2,
+            viewportTransitionGeneration: 2
+        ))
+        XCTAssertEqual(firstSend.count, 1)
+        XCTAssertEqual(firstSend[0].animated, true)
+        XCTAssertFalse(fresh.awaitingSessionLanding)
     }
 }
 

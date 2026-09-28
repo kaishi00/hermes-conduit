@@ -500,15 +500,16 @@ struct ChatView: View {
                 guard paused != viewportPausedInBackground else { return }
                 viewportPausedInBackground = paused
                 guard !paused else { return }
-                // Catch up on the geometry skipped while backgrounded, then
-                // run any correction that was waiting.
+                // Catch up on the geometry skipped while backgrounded. A
+                // correction deferred meanwhile left its recheck armed; any
+                // correction this schedules drains through the observer.
+                let facts = currentLayoutFacts()
                 performViewportEffects(
-                    viewport.layoutMetricsChanged(facts: currentLayoutFacts()),
+                    viewport.followRecheckArmed
+                        ? viewport.followRecheckDue(facts: facts)
+                        : viewport.layoutMetricsChanged(facts: facts),
                     using: proxy
                 )
-                if let pending = viewport.pendingFollowCorrection {
-                    executePendingFollowCorrection(pending, using: proxy)
-                }
             }
             .onChange(of: isDraggingChat) { wasDragging, isDragging in
                 guard wasDragging, !isDragging else { return }
@@ -856,8 +857,15 @@ struct ChatView: View {
         _ token: ChatFollowCorrectionToken,
         using proxy: ScrollViewProxy
     ) {
-        // Left pending; the return to the foreground runs it.
-        guard !viewportPausedInBackground else { return }
+        guard !viewportPausedInBackground else {
+            // Deferred with its recheck armed; the return to the foreground
+            // runs that recheck against fresh geometry.
+            performViewportEffects(
+                viewport.followCorrectionDeferred(token, recheckAfter: 0.2),
+                using: proxy
+            )
+            return
+        }
         if let armed = armedAnimatedBottomRetry {
             // An animated bottom command is still in flight with its own
             // retry armed; a correction now would fight the animation. Drop
@@ -924,6 +932,12 @@ struct ChatView: View {
         _ command: ChatViewportCommand,
         using proxy: ScrollViewProxy
     ) {
+        // No scrolling while backgrounded (see viewportPausedInBackground);
+        // following resumes from fresh geometry on return.
+        guard !viewportPausedInBackground else {
+            ChatViewportTrace.shared.log("scroll skipped in background \(command.destination)")
+            return
+        }
         ChatViewportTrace.shared.log(
             "scroll \(command.destination) gen=\(command.generation) animated=\(command.animated)"
         )

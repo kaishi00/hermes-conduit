@@ -496,11 +496,13 @@ struct ChatViewportController: Equatable {
                 effects.append(.scroll(prependAnchorCommand(id: messageID)))
             }
         }
-        let landsSwitchedSession = awaitingSessionLanding
-            && update != .unchanged
-            && !messages.isEmpty
-        if landsSwitchedSession {
+        // The first non-empty change after a switch consumes the flag. Only
+        // a multi-row load is a transcript landing; a single row is the
+        // first message of a new conversation and animates like any send.
+        var landsSwitchedSession = false
+        if awaitingSessionLanding, update != .unchanged, !messages.isEmpty {
             awaitingSessionLanding = false
+            landsSwitchedSession = messages.count > 1
         }
         guard !isInitialSync,
               update != .unchanged,
@@ -1154,6 +1156,7 @@ struct ChatViewportController: Equatable {
     // MARK: - View lifecycle
 
     mutating func viewDisappeared() -> [ChatViewportEffect] {
+        awaitingSessionLanding = false
         pendingFollowCorrection = nil
         pendingPrependAnchor = nil
         followCorrectionContentBottom = nil
@@ -1203,6 +1206,7 @@ struct ChatViewportController: Equatable {
     // MARK: - Private
 
     private mutating func effectsForExplicitOwnershipChange() {
+        awaitingSessionLanding = false
         _ = invalidateDrag(hasActiveGesture: dragGestureActive)
         generation &+= 1
         pendingFollowCorrection = nil
@@ -1214,6 +1218,7 @@ struct ChatViewportController: Equatable {
     }
 
     private mutating func beginHandoffOwnership() -> [ChatViewportEffect] {
+        awaitingSessionLanding = false
         _ = invalidateDrag(hasActiveGesture: dragGestureActive)
         generation &+= 1
         pendingFollowCorrection = nil
