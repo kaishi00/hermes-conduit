@@ -13768,6 +13768,11 @@ final class AppState: ObservableObject {
             if let context {
                 guard isCurrentComposerSubmission(context) else { throw error }
             }
+            // Only a gateway answer (`RpcError`) means slash.exec declined to
+            // run the command. A timeout or dropped connection may mean it IS
+            // running, and re-sending it through command.dispatch could run a
+            // skill or plugin twice.
+            guard error is RpcError else { throw error }
             // `command` arrives already stripped of its leading slash (the
             // `cleaned` form, or an alias target), so re-slash it before
             // parsing: `parseSlashCommand` only accepts `/`-prefixed text,
@@ -14198,9 +14203,9 @@ final class AppState: ObservableObject {
     /// path working there, mirroring upstream Desktop. Only a missing-method
     /// failure routes here — a timeout means the gateway IS compressing, and
     /// re-running `/compress` through the legacy route would start a second
-    /// server-side compression. On those legacy gateways today's failure mode
-    /// survives unchanged (a slow `slash.exec` can still cascade into
-    /// `command.dispatch`); preserving that is the point of the fallback.
+    /// server-side compression. On those legacy gateways the generic slash
+    /// path behaves as for any other command (a `slash.exec` rejection falls
+    /// back to `command.dispatch`; a timeout does not).
     private func runLegacyCompressionFallback(
         legacyCommand: String,
         aliasArgument: String,

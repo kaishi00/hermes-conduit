@@ -5,6 +5,8 @@ import XCTest
 /// with its LLM-scale timeout, upstream response semantics (pending /
 /// lock-held / aborted / transcript adoption), the legacy `slash.exec`
 /// fallback for gateways missing the method, and the stale-completion guards.
+/// Also pins the generic `slash.exec` → `command.dispatch` fallback that the
+/// legacy compression route shares with every other gateway command.
 @MainActor
 final class AppStateSessionCompressTests: XCTestCase {
 
@@ -1369,6 +1371,54 @@ final class AppStateSessionCompressTests: XCTestCase {
         XCTAssertEqual(recorder.dispatchCalls.first?.name, "ghost-new")
         XCTAssertEqual(recorder.dispatchCalls.first?.arg, "draft a post")
         XCTAssertEqual(harness.appState.messages.last?.content, "skill ran")
+    }
+
+    func testBareSkillCommandDispatchesWithEmptyArgument() async throws {
+        let recorder = SlashCallRecorder()
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            executeSlash: { _, _, command in
+                recorder.recordSlashExec(command: command)
+                throw RpcError(code: 4018, message: "skill command: use command.dispatch for /ghost-new")
+            },
+            dispatchCommand: { _, _, name, arg in
+                recorder.recordDispatch(name: name, arg: arg)
+                return .object(["type": .string("exec"), "output": .string("skill ran")])
+            }
+        ))
+        installComposerClient(in: harness)
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+
+        _ = await harness.appState.submitComposer(text: "/ghost-new")
+        XCTAssertEqual(recorder.dispatchCount, 1)
+        XCTAssertEqual(recorder.dispatchCalls.first?.name, "ghost-new")
+        XCTAssertEqual(recorder.dispatchCalls.first?.arg, "")
+    }
+
+    func testSlashExecTimeoutDoesNotFallBackToCommandDispatch() async throws {
+        let recorder = SlashCallRecorder()
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            executeSlash: { _, _, command in
+                recorder.recordSlashExec(command: command)
+                throw HermesError.timeout("slash.exec")
+            },
+            dispatchCommand: { _, _, name, arg in
+                recorder.recordDispatch(name: name, arg: arg)
+                return .object(["type": .string("exec"), "output": .string("must not run")])
+            }
+        ))
+        installComposerClient(in: harness)
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+
+        _ = await harness.appState.submitComposer(text: "/ghost-new draft a post")
+        // A timed-out slash.exec may still be running server-side; re-sending
+        // it through command.dispatch could run the command twice.
+        XCTAssertEqual(recorder.slashExecCount, 1)
+        XCTAssertEqual(recorder.dispatchCount, 0)
+        XCTAssertEqual(harness.appState.messages.last?.content, "⚠️ Command failed: Request timed out: slash.exec")
     }
 
     private func makeHarness(
