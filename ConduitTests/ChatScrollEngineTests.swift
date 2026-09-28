@@ -449,6 +449,15 @@ final class ChatScrollEngineTests: XCTestCase {
         XCTAssertTrue(events.contains(.completeRestoration(generation: 3)))
     }
 
+    func testAReplacementRestorationPublishesItsGeneration() {
+        let (engine, _) = makeEngine()
+        engine.restorationRequested(anchorRequest(engine, row: 5))
+        let replacement = ChatResumeRestorationRequest(generation: 12, sessionKey: keyA, destination: .latest)
+        engine.restorationRequested(replacement)
+        XCTAssertEqual(engine.mode, .restoring)
+        XCTAssertEqual(engine.renderInputs.renderedScrollScope?.restorationGeneration, 12)
+    }
+
     func testRestorationForAnotherConversationIsAbandoned() {
         let (engine, _) = makeEngine()
         engine.restorationRequested(
@@ -486,6 +495,25 @@ final class ChatScrollEngineTests: XCTestCase {
 
         engine.setPaused(false)
         XCTAssertEqual(surface.contentOffsetY, 4200)
+    }
+
+    func testASessionSwitchInTheBackgroundDoesNotScroll() {
+        let (engine, surface) = makeEngine()
+        engine.setPaused(true)
+        let setsBefore = surface.sets.count
+        events.removeAll()
+        engine.renderedSessionChanged(
+            to: keyB,
+            identity: identity("b"),
+            viaNotification: false,
+            viewportTransitionGeneration: 2
+        )
+        XCTAssertEqual(surface.sets.count, setsBefore)
+        XCTAssertFalse(events.contains(.revealLatest))
+
+        surface.layOut(contentHeight: 5000)
+        engine.setPaused(false)
+        XCTAssertEqual(surface.contentOffsetY, 4200, "returning pins the new conversation")
     }
 
     func testRenderInputsFromUIKitCallbacksPublishOnTheNextTurn() {

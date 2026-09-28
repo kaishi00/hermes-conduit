@@ -375,7 +375,7 @@ final class ChatScrollEngine: ObservableObject {
             self.restoration = restoration
         }
         if mode == .following, !isInitialSync, let surface, !isPaused,
-           !surface.isTracking, !latestAnimationInFlight {
+           !surface.isTracking, !surface.isDecelerating, !latestAnimationInFlight {
             // Usually a no-op: the new rows have not been laid out yet, and
             // the content-size change that follows pins again.
             pin(surface)
@@ -467,6 +467,9 @@ final class ChatScrollEngine: ObservableObject {
             destination: resolveRestorationDestination(for: request)
         )
         setMode(.restoring)
+        // A replacement request keeps the mode but changes the generation
+        // the rendered scope reports.
+        renderInputsMayHaveChanged()
     }
 
     /// The published request went away on the AppState side.
@@ -613,7 +616,10 @@ final class ChatScrollEngine: ObservableObject {
     }
 
     private func pinOrReveal() {
-        if let surface, !isPaused {
+        // In the background the offset is left alone; setPaused(false)
+        // catches up and pins.
+        guard !isPaused else { return }
+        if let surface {
             pin(surface)
         } else {
             emit(.revealLatest)
@@ -646,7 +652,8 @@ final class ChatScrollEngine: ObservableObject {
             prependAnchor = nil
             return
         }
-        guard !surface.isTracking else { return }
+        // A flick after the prepend belongs to the reader.
+        guard !surface.isTracking, !surface.isDecelerating else { return }
         let target = surface.clampedOffsetY(surface.contentHeight - anchor.bottomDistance)
         if abs(surface.contentOffsetY - target) > 0.5 {
             surface.setContentOffsetY(target, animated: false)

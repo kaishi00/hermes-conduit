@@ -389,6 +389,9 @@ struct ChatView: View {
             }
             .onDisappear {
                 scrollEngine.viewDisappeared()
+                // Reinstalled on appear; late events go nowhere meanwhile.
+                scrollEngine.onEvent = nil
+                scrollEventRouter.proxy = nil
                 backfillViewportTask?.cancel()
                 latestAnimationTask?.cancel()
                 appState.removeChatViewportSnapshotProvider(id: viewportSnapshotProviderID)
