@@ -25,12 +25,16 @@ protocol GeminiLiveSessionControlling: AnyObject {
     var isReady: Bool { get }
     func start()
     func stop()
-    /// `onFailure` runs when the message never reached the socket.
-    func send(_ message: [String: Any], onFailure: (@MainActor () -> Void)?)
+    /// `onSent` runs once the socket took the message; `onFailure` when it
+    /// never reached the socket.
+    func send(_ message: [String: Any], onSent: (@MainActor () -> Void)?, onFailure: (@MainActor () -> Void)?)
 }
 
 extension GeminiLiveSessionControlling {
-    func send(_ message: [String: Any]) { send(message, onFailure: nil) }
+    func send(_ message: [String: Any]) { send(message, onSent: nil, onFailure: nil) }
+    func send(_ message: [String: Any], onFailure: (@MainActor () -> Void)?) {
+        send(message, onSent: nil, onFailure: onFailure)
+    }
 }
 
 extension GeminiLiveSession: GeminiLiveSessionControlling {}
@@ -457,7 +461,9 @@ final class GeminiLiveConversationController: ObservableObject {
             // Close the socket too, so nothing from it reaches a failed
             // conversation.
             retireSession()
-            phase = .failed(message)
+            // Ending: the goodbye finishes closing instead of offering a
+            // retry (the end task closes the conversation).
+            if endRequestedAt == nil { phase = .failed(message) }
         case .connecting:
             if endRequestedAt == nil { phase = .connecting }
         case .idle, .stopped:
@@ -626,12 +632,14 @@ final class GeminiLiveConversationController: ObservableObject {
     func flushPendingTextIfIdle() {
         guard !pendingTextTurns.isEmpty, endRequestedAt == nil, isConversationIdle, let session else { return }
         let text = pendingTextTurns.removeFirst()
-        let noticeJobID = tools.textUpdateSent(text)
+        let noticeJobID = tools.textUpdateSending(text)
         modelTurnActive = true
         // An update that never reached the socket waits for the next
         // connection instead of being lost; a job notice whose conversation
         // is gone goes back to the supervisor.
-        session.send(GeminiLiveProtocol.textTurnMessage(text), onFailure: { [weak self, weak session] in
+        session.send(GeminiLiveProtocol.textTurnMessage(text), onSent: { [weak self] in
+            self?.tools.textUpdateDelivered(jobID: noticeJobID)
+        }, onFailure: { [weak self, weak session] in
             guard let self else { return }
             guard self.isActive, self.endRequestedAt == nil, let session, self.session === session else {
                 self.tools.returnNotice(jobID: noticeJobID)

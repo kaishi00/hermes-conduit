@@ -482,13 +482,6 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         pruneSettledJobs()
     }
 
-    /// A notice reported sent whose send then failed: keep its job again
-    /// until it is sent or handed back.
-    func holdNotice(jobID: UUID) {
-        guard job(jobID) != nil else { return }
-        noticesInFlight.insert(jobID)
-    }
-
     private func takeNotice() -> (notice: VoiceBackgroundJobNotice, jobID: UUID)? {
         for index in jobs.indices {
             let job = jobs[index]

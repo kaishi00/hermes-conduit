@@ -364,9 +364,26 @@ extension VoiceConversationControllerTests {
         supervisor.returnUndeliveredNotice(jobID: queued!.jobID)
         XCTAssertNotNil(supervisor.takePendingNotice())
 
-        // Once spoken, it is pruned like any other announced job.
-        let again = supervisor.takePendingNoticeForJob()
-        XCTAssertNil(again, "the handed-back notice was already taken above")
+        XCTAssertEqual(supervisor.jobs.count, VoiceBackgroundJobSupervisor.maximumSettledJobs)
+    }
+
+    func testQueuedNoticeJobIsReleasedOnlyOnceItsSendIsConfirmed() async {
+        let (supervisor, _) = makeSupervisor()
+        let total = VoiceBackgroundJobSupervisor.maximumSettledJobs + 1
+        var held: UUID?
+        for index in 1...total {
+            _ = await supervisor.startJob(instructions: "job \(index)")
+            supervisor.observe(.messageComplete(sessionId: "rt-\(index)", messageId: nil, content: "ok", reasoning: nil))
+            if index == 1 {
+                held = supervisor.takePendingNoticeForJob()?.jobID
+            } else {
+                XCTAssertNotNil(supervisor.takePendingNotice())
+            }
+        }
+        XCTAssertEqual(supervisor.jobs.first?.id, held, "still sending: the job stays")
+
+        supervisor.noticeSent(jobID: held!)
+        XCTAssertFalse(supervisor.jobs.contains { $0.id == held }, "sent: pruned like any announced job")
         XCTAssertEqual(supervisor.jobs.count, VoiceBackgroundJobSupervisor.maximumSettledJobs)
     }
 

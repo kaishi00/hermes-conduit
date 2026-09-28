@@ -121,9 +121,9 @@ final class FakeGeminiLiveSessionControl: GeminiLiveSessionControlling {
     /// When set, sends are recorded but reported as failed.
     var failSends = false
 
-    func send(_ message: [String: Any], onFailure: (@MainActor () -> Void)?) {
+    func send(_ message: [String: Any], onSent: (@MainActor () -> Void)?, onFailure: (@MainActor () -> Void)?) {
         sent.append(message)
-        if failSends { onFailure?() }
+        if failSends { onFailure?() } else { onSent?() }
     }
 
     func becomeReady() {
