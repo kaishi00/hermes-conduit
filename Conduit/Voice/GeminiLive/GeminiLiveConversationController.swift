@@ -214,6 +214,10 @@ final class GeminiLiveConversationController: ObservableObject {
     private var pendingTextTurns: [String] = []
     private var idleFlushTask: Task<Void, Never>?
     private var openUserEntry: UUID?
+    /// The user's latest utterance in this exchange. Unlike openUserEntry,
+    /// the model's reply doesn't clear it, so turnComplete can still check
+    /// it for an end phrase.
+    private var exchangeUserEntry: UUID?
     private var openAssistantEntry: UUID?
     /// When a hands-free end was requested; the conversation closes once
     /// the model's goodbye has played.
@@ -262,6 +266,11 @@ final class GeminiLiveConversationController: ObservableObject {
         guard !isActive else { return }
         phase = .connecting
         transcript = []
+        // A retry after a failure mid-goodbye starts clean: the old end
+        // must not close this conversation or keep its microphone shut.
+        endTask?.cancel()
+        endTask = nil
+        endRequestedAt = nil
         tools.returnUnsent(pendingTextTurns)
         pendingTextTurns = []
         // Nothing from a previous attempt may gate or attach to this one.
@@ -478,12 +487,14 @@ final class GeminiLiveConversationController: ObservableObject {
             modelTurnActive = false
             lastModelTurnEndedAt = now()
             openAssistantEntry = nil
-            phase = .listening
+            // Ending: the microphone is closed, so it isn't listening.
+            if endRequestedAt == nil { phase = .listening }
         case .turnComplete:
             suppressingModelTurn = false
             modelTurnActive = false
             lastModelTurnEndedAt = now()
-            if let openUserEntry { endIfUserSaidGoodbye(openUserEntry) }
+            if let exchangeUserEntry { endIfUserSaidGoodbye(exchangeUserEntry) }
+            exchangeUserEntry = nil
             closeOpenEntries()
             // Ending: the microphone is closed, so it isn't listening.
             if endRequestedAt == nil { phase = .listening }
@@ -707,6 +718,7 @@ final class GeminiLiveConversationController: ObservableObject {
         transcript.append(entry)
         if speaker == .user {
             openUserEntry = entry.id
+            exchangeUserEntry = entry.id
             // The user speaking starts a new exchange.
             openAssistantEntry = nil
         } else {
@@ -752,6 +764,7 @@ final class GeminiLiveConversationController: ObservableObject {
 
     private func closeOpenEntries() {
         openUserEntry = nil
+        exchangeUserEntry = nil
         openAssistantEntry = nil
     }
 }
