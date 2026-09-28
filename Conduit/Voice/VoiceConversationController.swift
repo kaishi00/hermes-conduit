@@ -88,6 +88,9 @@ final class VoiceConversationController: ObservableObject {
     var backgroundHandBackStartTimeout: Duration = .seconds(60)
     private var captureEventsTask: Task<Void, Never>?
     private var speechDeltas: [String] = []
+    /// Keeps a persona's emoji and *narrated actions* out of speech; the
+    /// transcript still shows the full reply.
+    private var spokenTextFilter = SpokenTextFilter()
     private var isDrainingSpeech = false
     private var speechStream: VoiceSpeechStream?
     private var assistantFinished = false
@@ -402,7 +405,7 @@ final class VoiceConversationController: ObservableObject {
         let generation = operationGeneration
         playback.stop()
         cancelSpeechDrainAndStream()
-        speechDeltas.removeAll()
+        clearSpeechQueue()
         assistantFinished = false
         // The in-flight assistant response is intentionally interrupted; its
         // terminal event belongs to the retired turn, not the next one.
@@ -488,7 +491,7 @@ final class VoiceConversationController: ObservableObject {
         capture.stop()
         deviceTranscriber.cancel()
         playback.stop()
-        speechDeltas.removeAll()
+        clearSpeechQueue()
         assistantFinished = false
         isPlaybackCaptureSuspended = false
         speechDetector.reset()
@@ -500,7 +503,7 @@ final class VoiceConversationController: ObservableObject {
         if muted {
             playback.stop()
             cancelSpeechDrainAndStream()
-            speechDeltas.removeAll()
+            clearSpeechQueue()
             if state == .speaking { state = .muted }
             endPlaybackCaptureSuspensionAfterMute()
         } else if state == .muted {
@@ -717,7 +720,7 @@ final class VoiceConversationController: ObservableObject {
             activeAssistantTranscriptEntryID = nil
             receivedAssistantDelta = false
             assistantFinished = false
-            speechDeltas.removeAll()
+            clearSpeechQueue()
             cancelSpeechDrainAndStream()
             if state == .thinking || state == .muted { beginBargeInMonitoring() }
         case .delta(_, let text):
@@ -726,7 +729,8 @@ final class VoiceConversationController: ObservableObject {
             receivedAssistantDelta = true
             appendAssistantTranscriptDelta(text)
             guard !isOutputMuted else { return }
-            speechDeltas.append(text)
+            let spoken = spokenTextFilter.feed(text)
+            if !spoken.isEmpty { speechDeltas.append(spoken) }
             startSpeechDrainIfNeeded()
         case .completed(_, let content):
             // The gateway emits messageStart before a completion. Ignore a
@@ -736,7 +740,12 @@ final class VoiceConversationController: ObservableObject {
             completeAssistantTranscript(content)
             // Hermes normally supplies both deltas and a final snapshot. The
             // final snapshot is a recovery value, not another utterance.
-            if !receivedAssistantDelta, let content, !isOutputMuted { speechDeltas.append(content) }
+            // The filter's held tail is spoken with it.
+            if !isOutputMuted {
+                let spoken = (!receivedAssistantDelta ? spokenTextFilter.feed(content ?? "") : "")
+                    + spokenTextFilter.finish()
+                if !spoken.isEmpty { speechDeltas.append(spoken) }
+            }
             assistantFinished = true
             isAwaitingVoiceAssistant = false
             awaitedAssistantResponseStarted = false
@@ -1040,7 +1049,7 @@ final class VoiceConversationController: ObservableObject {
         capture.stop()
         deviceTranscriber.cancel()
         playback.stop()
-        speechDeltas.removeAll()
+        clearSpeechQueue()
         assistantFinished = false
         isMicrophonePaused = false
         isPlaybackCaptureSuspended = false
@@ -1087,7 +1096,7 @@ final class VoiceConversationController: ObservableObject {
         lastBargeInState = state
         playback.stop()
         cancelSpeechDrainAndStream()
-        speechDeltas.removeAll()
+        clearSpeechQueue()
         assistantFinished = false
         // The in-flight assistant response is intentionally being interrupted.
         // Its terminal event belongs to the retired turn, not the next one.
@@ -1235,7 +1244,7 @@ final class VoiceConversationController: ObservableObject {
             beginBargeInMonitoring()
         }
         cancelSpeechDrainAndStream()
-        speechDeltas.removeAll()
+        clearSpeechQueue()
         if !isOutputMuted { speechDeltas.append(text) }
         assistantFinished = true
         startSpeechDrainIfNeeded()
@@ -1272,6 +1281,11 @@ final class VoiceConversationController: ObservableObject {
             }
         }
         activeAssistantTranscriptEntryID = nil
+    }
+
+    private func clearSpeechQueue() {
+        speechDeltas.removeAll()
+        spokenTextFilter.reset()
     }
 
     private func startSpeechDrainIfNeeded() {

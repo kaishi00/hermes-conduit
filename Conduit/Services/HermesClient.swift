@@ -1281,11 +1281,18 @@ final class HermesClient: ObservableObject {
     /// socket death after the bytes reached Hermes) leaves the turn running
     /// server-side; upstream's own clients recover that case by querying the
     /// authoritative session state instead of blindly re-submitting.
-    func sendPrompt(_ sessionId: String, text: String) async throws -> PromptSubmissionOutcome {
-        let result = try await rpc("prompt.submit", params: [
+    ///
+    /// `surface` names where the turn came from (`voice-live` for a spoken
+    /// turn). Hermes adds its spoken-reply note to the model input only, so
+    /// the persisted user row stays what the user said; older gateways
+    /// ignore the key.
+    func sendPrompt(_ sessionId: String, text: String, surface: String? = nil) async throws -> PromptSubmissionOutcome {
+        var params: [String: Any] = [
             "session_id": sessionId,
             "text": text
-        ], timeout: Self.promptSubmitTimeout)
+        ]
+        if let surface { params["surface"] = surface }
+        let result = try await rpc("prompt.submit", params: params, timeout: Self.promptSubmitTimeout)
         return PromptSubmissionOutcome(
             gatewayStatus: result.objectValue?["status"]?.stringValue
         )

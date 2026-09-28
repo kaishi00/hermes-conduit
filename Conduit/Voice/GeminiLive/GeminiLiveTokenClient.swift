@@ -137,6 +137,7 @@ final class GeminiLiveTokenClient: GeminiLiveTokenProviding, GeminiLiveWebSearch
     static let webSearchPath = "/api/plugins/conduit_push/web-search"
     static let memoryContextPath = "/api/plugins/conduit_push/memory/context"
     static let memoryRecallPath = "/api/plugins/conduit_push/memory/recall"
+    static let personalityPath = "/api/plugins/conduit_push/personality"
     /// Results a lookup asks for: enough to answer, short enough to read.
     static let webSearchLimit = 3
 
@@ -216,6 +217,21 @@ final class GeminiLiveTokenClient: GeminiLiveTokenProviding, GeminiLiveWebSearch
         }
     }
 
+    /// The profile's SOUL.md persona for a new conversation. Nil when it
+    /// has none or the plugin predates the route.
+    func personality() async -> String? {
+        do {
+            let response = try await request(scoped(Self.personalityPath), "GET", nil)
+            return Self.personality(from: response)
+        } catch let error as DashboardTicketBridgeError where Self.isMissingRoute(error) {
+            geminiLiveMemoryLogger.notice("Hermes plugin has no personality route; Gemini Live starts without a persona")
+            return nil
+        } catch {
+            geminiLiveMemoryLogger.error("Hermes personality failed: \(String(describing: error), privacy: .public)")
+            return nil
+        }
+    }
+
     func recallMemory(query: String) async throws -> String {
         let response = try await request(scoped(Self.memoryRecallPath), "POST", ["query": query])
         return try Self.memoryRecall(from: response)
@@ -236,6 +252,17 @@ final class GeminiLiveTokenClient: GeminiLiveTokenProviding, GeminiLiveWebSearch
         let canRecall = response["recall"] as? Bool == true
         guard !text.isEmpty || canRecall else { return nil }
         return GeminiLiveMemoryContext(text: text, canRecall: canRecall)
+    }
+
+    /// The most persona a conversation's instructions carry.
+    static let personalityLimit = 8000
+
+    static func personality(from response: [String: Any]) -> String? {
+        guard response["ok"] as? Bool == true, response["available"] as? Bool == true else { return nil }
+        let text = String((response["text"] as? String ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .prefix(personalityLimit))
+        return text.isEmpty ? nil : text
     }
 
     static func memoryRecall(from response: [String: Any]) throws -> String {

@@ -558,7 +558,9 @@ struct SettingsView: View {
                         voice: appState.geminiLiveVoice,
                         setVoice: { appState.setGeminiLiveVoice($0) },
                         memory: appState.geminiLiveMemoryEnabled,
-                        setMemory: { appState.setGeminiLiveMemoryEnabled($0) }
+                        setMemory: { appState.setGeminiLiveMemoryEnabled($0) },
+                        personality: appState.geminiLivePersonalityEnabled,
+                        setPersonality: { appState.setGeminiLivePersonalityEnabled($0) }
                     ),
                     voiceJobs: VoiceJobModelSettingsModel(
                         provider: voicePreferences.voiceJobProvider,

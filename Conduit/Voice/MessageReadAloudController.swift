@@ -164,7 +164,10 @@ final class MessageReadAloudController: ObservableObject {
                 return
             }
             speechStream = stream
-            try await stream.append(content)
+            // A reply that is all action or emoji is read as written rather
+            // than not at all.
+            let spoken = SpokenTextFilter.filter(content)
+            try await stream.append(spoken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? content : spoken)
             guard isCurrent(generation) else { return }
             _ = try await stream.finish()
             guard isCurrent(generation) else { return }
