@@ -209,6 +209,13 @@ struct ChatViewportController: Equatable {
     /// Armed while an older-page backfill is in flight; consumed by the
     /// transcript change that carries the prepend.
     private(set) var pendingPrependAnchor: ChatPrependAnchorRequest?
+    /// Set by a real session switch, consumed by the first transcript change
+    /// that brings rows for it. That landing replaces the whole transcript,
+    /// so it snaps to the latest row instead of animating: an animated
+    /// scroll across rows whose heights LazyVStack has only estimated
+    /// overshoots, and the follow correction that fixes it reads as a jump.
+    private var sessionLandingKey: ChatScrollSessionKey?
+    var awaitingSessionLanding: Bool { sessionLandingKey != nil }
 
     let nearBottomTolerance: CGFloat
     let followDriftTolerance: CGFloat
@@ -354,8 +361,9 @@ struct ChatViewportController: Equatable {
         // Ports ChatFollowLatestRelatchPolicy.shouldFollowLatestAfterTransition.
         let shouldFollowLatest = !dragGestureActive
         mode = shouldFollowLatest ? .followingLatest : .browsing
+        sessionLandingKey = key
         if shouldFollowLatest {
-            effects.append(.scroll(latestCommand(animated: true)))
+            effects.append(.scroll(latestCommand(animated: false)))
         }
         return effects
     }
@@ -489,7 +497,28 @@ struct ChatViewportController: Equatable {
                 effects.append(.scroll(prependAnchorCommand(id: messageID)))
             }
         }
+        // The first non-empty change after a switch consumes the flag. Only
+        // a multi-row load is a transcript landing; a single row is the
+        // first message of a new conversation and animates like any send.
+        // Mirror syncs never consume it, nor does a change while another
+        // conversation is active. (The transcript carries no session of its
+        // own, so a late publish for the previous conversation that arrives
+        // after the switch cannot be told apart; the chat rebuild replaces
+        // this whole mechanism.)
+        var landsSwitchedSession = false
+        if let landingKey = sessionLandingKey,
+           !isInitialSync,
+           update != .unchanged,
+           !messages.isEmpty,
+           identity.areEquivalent(landingKey, activeSessionKey ?? renderedSessionKey) {
+            sessionLandingKey = nil
+            landsSwitchedSession = messages.count > 1
+        }
+        // The switch already snapped to the bottom; the cleared transcript
+        // before its rows arrive has nothing to follow.
+        let clearsBeforeLanding = sessionLandingKey != nil && messages.isEmpty
         guard !isInitialSync,
+              !clearsBeforeLanding,
               update != .unchanged,
               mode == .followingLatest,
               restoration == nil,
@@ -503,7 +532,7 @@ struct ChatViewportController: Equatable {
         followCorrectionOvershootFacts = nil
         followCorrectionLastExecutionAt = nil
         followRecheckArmed = false
-        return [.scroll(latestCommand(animated: true))]
+        return [.scroll(latestCommand(animated: !landsSwitchedSession))]
     }
 
     // MARK: - Layout facts
@@ -1141,6 +1170,7 @@ struct ChatViewportController: Equatable {
     // MARK: - View lifecycle
 
     mutating func viewDisappeared() -> [ChatViewportEffect] {
+        sessionLandingKey = nil
         pendingFollowCorrection = nil
         pendingPrependAnchor = nil
         followCorrectionContentBottom = nil
@@ -1190,6 +1220,7 @@ struct ChatViewportController: Equatable {
     // MARK: - Private
 
     private mutating func effectsForExplicitOwnershipChange() {
+        sessionLandingKey = nil
         _ = invalidateDrag(hasActiveGesture: dragGestureActive)
         generation &+= 1
         pendingFollowCorrection = nil
@@ -1201,6 +1232,7 @@ struct ChatViewportController: Equatable {
     }
 
     private mutating func beginHandoffOwnership() -> [ChatViewportEffect] {
+        sessionLandingKey = nil
         _ = invalidateDrag(hasActiveGesture: dragGestureActive)
         generation &+= 1
         pendingFollowCorrection = nil
