@@ -1126,9 +1126,10 @@ final class ChatViewportControllerTests: XCTestCase {
         XCTAssertEqual(switchCommands[0].animated, false)
 
         // The cleared transcript before the load is not the landing.
-        _ = controller.transcriptChanged(
+        let cleared = controller.transcriptChanged(
             messages: [], transcriptRevision: 2, viewportTransitionGeneration: 2
         )
+        XCTAssertTrue(scrollCommands(cleared).isEmpty, "the cleared pre-load transcript does not scroll")
         XCTAssertTrue(controller.awaitingSessionLanding)
 
         let landing = scrollCommands(controller.transcriptChanged(

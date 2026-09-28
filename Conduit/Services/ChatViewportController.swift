@@ -500,8 +500,11 @@ struct ChatViewportController: Equatable {
         // The first non-empty change after a switch consumes the flag. Only
         // a multi-row load is a transcript landing; a single row is the
         // first message of a new conversation and animates like any send.
-        // Only a change for the switched-to conversation counts; a mirror
-        // sync or a late publish for the previous one leaves the flag armed.
+        // Mirror syncs never consume it, nor does a change while another
+        // conversation is active. (The transcript carries no session of its
+        // own, so a late publish for the previous conversation that arrives
+        // after the switch cannot be told apart; the chat rebuild replaces
+        // this whole mechanism.)
         var landsSwitchedSession = false
         if let landingKey = sessionLandingKey,
            !isInitialSync,
@@ -511,7 +514,11 @@ struct ChatViewportController: Equatable {
             sessionLandingKey = nil
             landsSwitchedSession = messages.count > 1
         }
+        // The switch already snapped to the bottom; the cleared transcript
+        // before its rows arrive has nothing to follow.
+        let clearsBeforeLanding = sessionLandingKey != nil && messages.isEmpty
         guard !isInitialSync,
+              !clearsBeforeLanding,
               update != .unchanged,
               mode == .followingLatest,
               restoration == nil,
