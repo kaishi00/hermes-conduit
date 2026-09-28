@@ -1221,13 +1221,20 @@ extension HermesVoiceGatewayTimeoutTests {
 
 // MARK: - Hands-free end
 
+/// Counts onEndConversation calls (a main-actor closure is Sendable, so it
+/// can't mutate a captured local).
+@MainActor
+private final class EndCounter {
+    var count = 0
+}
+
 @MainActor
 extension HermesVoiceGatewayTimeoutTests {
     func testGeminiLiveEndConversationCallClosesAfterTheGoodbyePlays() async {
         var current = Date(timeIntervalSince1970: 1_000)
         let (controller, session, input, output, _) = makeGeminiController(clock: { current })
-        var closed = 0
-        controller.onEndConversation = { closed += 1 }
+        let closed = EndCounter()
+        controller.onEndConversation = { closed.count += 1 }
         await controller.start()
         session.becomeReady()
 
@@ -1242,13 +1249,13 @@ extension HermesVoiceGatewayTimeoutTests {
         // Still playing the goodbye: nothing closes yet.
         current += GeminiLiveConversationController.endGrace + 0.5
         XCTAssertFalse(controller.finishEndIfDrained())
-        XCTAssertEqual(closed, 0)
+        XCTAssertEqual(closed.count, 0)
 
         // The goodbye finishes: the conversation closes.
         session.onEvent?(.turnComplete)
         output.isPlaying = false
         XCTAssertTrue(controller.finishEndIfDrained())
-        XCTAssertEqual(closed, 1)
+        XCTAssertEqual(closed.count, 1)
         XCTAssertEqual(controller.phase, .idle)
         XCTAssertEqual(session.stopped, 1)
     }
@@ -1256,22 +1263,22 @@ extension HermesVoiceGatewayTimeoutTests {
     func testGeminiLiveEndClosesAfterTheTimeoutEvenIfTheModelKeepsTalking() async {
         var current = Date(timeIntervalSince1970: 1_000)
         let (controller, session, _, _, _) = makeGeminiController(clock: { current })
-        var closed = 0
-        controller.onEndConversation = { closed += 1 }
+        let closed = EndCounter()
+        controller.onEndConversation = { closed.count += 1 }
         await controller.start()
         session.becomeReady()
         session.onEvent?(.audio(Data([0, 0]), sampleRate: 24_000))
         controller.requestEnd()
         current += GeminiLiveConversationController.endTimeout + 0.1
         XCTAssertTrue(controller.finishEndIfDrained())
-        XCTAssertEqual(closed, 1)
+        XCTAssertEqual(closed.count, 1)
     }
 
     func testGeminiLiveUsersGoodbyePhraseEndsTheConversation() async {
         var current = Date(timeIntervalSince1970: 1_000)
         let (controller, session, input, _, _) = makeGeminiController(endPhrases: ["goodbye", "that's all"], clock: { current })
-        var closed = 0
-        controller.onEndConversation = { closed += 1 }
+        let closed = EndCounter()
+        controller.onEndConversation = { closed.count += 1 }
         await controller.start()
         session.becomeReady()
 
@@ -1290,7 +1297,7 @@ extension HermesVoiceGatewayTimeoutTests {
         session.onEvent?(.turnComplete)
         current += GeminiLiveConversationController.endGrace + 0.1
         XCTAssertTrue(controller.finishEndIfDrained())
-        XCTAssertEqual(closed, 1)
+        XCTAssertEqual(closed.count, 1)
     }
 
     func testGeminiLiveEndingHoldsJobUpdatesAndKeepsTheMicrophoneClosed() async {
