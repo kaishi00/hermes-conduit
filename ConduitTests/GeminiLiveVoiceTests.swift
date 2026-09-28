@@ -1343,12 +1343,12 @@ extension VoiceConversationControllerTests {
 @MainActor
 extension VoiceConversationControllerTests {
     func testCarPlayShowsTheGeminiLivePhase() {
-        XCTAssertEqual(CarPlayVoiceState.map(GeminiLiveConversationController.Phase.idle), .ready)
-        XCTAssertEqual(CarPlayVoiceState.map(GeminiLiveConversationController.Phase.connecting), .processing)
-        XCTAssertEqual(CarPlayVoiceState.map(GeminiLiveConversationController.Phase.reconnecting), .processing)
-        XCTAssertEqual(CarPlayVoiceState.map(GeminiLiveConversationController.Phase.listening), .listening)
-        XCTAssertEqual(CarPlayVoiceState.map(GeminiLiveConversationController.Phase.speaking), .responding)
-        XCTAssertEqual(CarPlayVoiceState.map(GeminiLiveConversationController.Phase.failed("x")), .error)
+        XCTAssertEqual(CarPlayVoiceState.map(geminiLive: .idle), .ready)
+        XCTAssertEqual(CarPlayVoiceState.map(geminiLive: .connecting), .processing)
+        XCTAssertEqual(CarPlayVoiceState.map(geminiLive: .reconnecting), .processing)
+        XCTAssertEqual(CarPlayVoiceState.map(geminiLive: .listening), .listening)
+        XCTAssertEqual(CarPlayVoiceState.map(geminiLive: .speaking), .responding)
+        XCTAssertEqual(CarPlayVoiceState.map(geminiLive: .failed("x")), .error)
     }
 
     func testCarPlayListenStartsInterruptsOrLeavesGeminiLiveAlone() {

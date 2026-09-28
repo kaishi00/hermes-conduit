@@ -47,7 +47,7 @@ enum CarPlayVoiceState: String, CaseIterable, Equatable {
 
     /// The same mapping for a Gemini Live conversation, when the profile
     /// uses Gemini Live instead of the classic Voice pipeline.
-    static func map(_ phase: GeminiLiveConversationController.Phase) -> CarPlayVoiceState {
+    static func map(geminiLive phase: GeminiLiveConversationController.Phase) -> CarPlayVoiceState {
         switch phase {
         case .idle: return .ready
         case .connecting, .reconnecting: return .processing

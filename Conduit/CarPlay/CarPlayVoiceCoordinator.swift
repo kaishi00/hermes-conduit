@@ -221,7 +221,7 @@ final class CarPlayVoiceCoordinator {
         stateObservation?.cancel()
         stateObservation = controller.$phase
             .sink { [weak self] phase in
-                self?.forward(CarPlayVoiceState.map(phase))
+                self?.forward(CarPlayVoiceState.map(geminiLive: phase))
             }
     }
 
