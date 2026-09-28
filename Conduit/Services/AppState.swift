@@ -2047,6 +2047,22 @@ final class AppState: ObservableObject {
 
     /// Flushes any pending presentation-cache write immediately (used on
     /// session switch, completion, and scene-phase change).
+    /// Keeps the process alive after suspension begins until the
+    /// presentation cache's queued disk writes have landed.
+    private func holdBackgroundTaskUntilPresentationCacheWritesLand() {
+        var taskID = UIBackgroundTaskIdentifier.invalid
+        let end = {
+            guard taskID != .invalid else { return }
+            UIApplication.shared.endBackgroundTask(taskID)
+            taskID = .invalid
+        }
+        taskID = UIApplication.shared.beginBackgroundTask(
+            withName: "conduit.sessionPresentationCache.flush",
+            expirationHandler: end
+        )
+        sessionPresentationCache.notifyWhenPendingWritesLand(end)
+    }
+
     private func flushPendingPresentationCache(for sessionIDs: [String] = []) {
         presentationCacheFlushTask?.cancel()
         presentationCacheFlushTask = nil
@@ -8940,10 +8956,11 @@ final class AppState: ObservableObject {
             recoverTransportForCarPlayIfNeeded()
             // Flush any pending coalesced cache writes before the app
             // suspends — iOS may kill the process before the debounce fires.
-            // The cache writes on a background queue, so wait for it to
-            // land before letting the app suspend.
+            // The cache writes on a background queue: hold a background task
+            // until those writes land. Never block the main thread on that
+            // queue here (see SessionPresentationCache.waitForPendingWrites).
             flushPendingPresentationCache()
-            sessionPresentationCache.waitForPendingWrites()
+            holdBackgroundTaskUntilPresentationCacheWritesLand()
             // A suspended socket may still look open. Invalidate incomplete
             // snapshots so foreground always obtains a fresh authoritative one.
             invalidateReconciliation()

@@ -3445,6 +3445,29 @@ extension SessionPresentationCacheTests {
         )
     }
 
+    /// The suspend path must not block the main thread on the write queue
+    /// (a UserDefaults write there can wait on SwiftUI's lock, which the
+    /// main thread holds during a view update: a watchdog-killed deadlock).
+    /// It is told on the main queue once the writes queued before it land.
+    func testPendingWriteNotificationArrivesOnMainAfterQueuedWrites() throws {
+        let suiteName = "conduit.tests.presentation-notify-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let cache = SessionPresentationCache(defaults: defaults, writesAsynchronously: true)
+        cache.save(
+            [ChatMessage(id: "row-1", role: .assistant, content: "Hello", timestamp: "2024-01-01T10:00:00Z")],
+            profile: "default",
+            sessionIDs: ["session-a"]
+        )
+        let landed = expectation(description: "queued writes landed")
+        cache.notifyWhenPendingWritesLand {
+            XCTAssertTrue(Thread.isMainThread)
+            XCTAssertNotNil(defaults.data(forKey: "conduit.sessionPresentation.v1"))
+            landed.fulfill()
+        }
+        wait(for: [landed], timeout: 5)
+    }
+
     /// Synchronous instances reuse their decoded store only while the bytes
     /// on disk are the ones they read or wrote, so another writer's change
     /// is still seen.

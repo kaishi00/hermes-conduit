@@ -161,6 +161,10 @@ final class SessionPresentationCache {
     private let memoryLock = NSLock()
     /// When set, encoding and UserDefaults writes run on `writeQueue` and the
     /// memory copies are authoritative (defaults may briefly lag behind).
+    /// Writes land in order, so a clear or delete can't be overtaken by an
+    /// older save. The app keeps itself alive through suspension until the
+    /// queue drains (see AppState's background handling); nothing on the
+    /// main thread may block on this queue.
     private let writeQueue: DispatchQueue?
 
     init(
@@ -176,10 +180,26 @@ final class SessionPresentationCache {
     }
 
     /// Blocks until every queued disk write has landed. No-op in
-    /// synchronous mode. Callers that need a write durable before they
-    /// return (suspension, clears, deletes) call this.
+    /// synchronous mode. Test-only: never call this on the main thread in
+    /// the app. A UserDefaults write posts its change notification on the
+    /// writing thread, SwiftUI's observer takes SwiftUI's lock there, and a
+    /// main thread holding that lock (any view update) while waiting here
+    /// deadlocks until the watchdog kills the app.
     func waitForPendingWrites() {
         writeQueue?.sync {}
+    }
+
+    /// Calls `completion` on the main queue once every disk write queued so
+    /// far has landed, without blocking the caller. Immediate in synchronous
+    /// mode.
+    func notifyWhenPendingWritesLand(_ completion: @escaping () -> Void) {
+        guard let writeQueue else {
+            completion()
+            return
+        }
+        writeQueue.async {
+            DispatchQueue.main.async(execute: completion)
+        }
     }
 
     func unconfirmedPendingDecisionDate(
@@ -971,9 +991,6 @@ final class SessionPresentationCache {
                 defaults.removeObject(forKey: storageKey)
                 defaults.removeObject(forKey: pendingToolsStorageKey)
             }
-            // A clear protects another account's data (sign-out, server
-            // switch): it must be on disk before this returns.
-            waitForPendingWrites()
             return
         }
 
@@ -984,7 +1001,6 @@ final class SessionPresentationCache {
         var pendingStore = loadPendingTools()
         pendingStore.keys.filter { $0.hasPrefix(prefix) }.forEach { pendingStore.removeValue(forKey: $0) }
         persistPendingTools(pendingStore)
-        waitForPendingWrites()
     }
 
     /// Removes the cached records for the given sessions inside `profile`,
@@ -1008,8 +1024,6 @@ final class SessionPresentationCache {
         }
         if changed { persist(store) }
         removePendingToolSideRecords(profile: profile, sessionIDs: Array(ids))
-        // A deleted conversation must not come back after a relaunch.
-        waitForPendingWrites()
     }
 
     /// Durable-owned persistence: once this conversation's durable identity
