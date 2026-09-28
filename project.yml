@@ -18,6 +18,12 @@ settings:
     CODE_SIGN_STYLE: Manual
     MARKETING_VERSION: "0.1.4"
     CURRENT_PROJECT_VERSION: "131"
+packages:
+  # GPT-Live voice runs over WebRTC; Apple ships no WebRTC stack. Prebuilt
+  # Google WebRTC as a binary xcframework, pinned to an exact release.
+  WebRTC:
+    url: https://github.com/stasel/WebRTC
+    exactVersion: 153.0.0
 targets:
   Conduit:
     type: application
@@ -39,6 +45,8 @@ targets:
         CODE_SIGN_IDENTITY: "Apple Distribution"
         CODE_SIGN_ENTITLEMENTS: Conduit/Conduit.entitlements
         PROVISIONING_PROFILE_SPECIFIER: "Conduit App Store"
+    dependencies:
+      - package: WebRTC
   ConduitTests:
     type: bundle.unit-test
     platform: iOS
