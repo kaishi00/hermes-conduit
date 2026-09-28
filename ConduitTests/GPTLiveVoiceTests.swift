@@ -311,6 +311,25 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(text.contains("All green."))
     }
 
+    func testGPTLiveDelegationWhoseCallEndsWhileTheJobStartsNeverAnswersTheNextCall() async {
+        let (supervisor, fake, bridge) = makeGPTJobs()
+        fake.parksCreate = true
+        let started = Task { await bridge.handleDelegation(id: "del_1", request: "check the server") }
+        await fake.createParked.waitUntil(1)
+        bridge.connectionReplaced()
+        fake.releaseCreate()
+        let reply = await started.value
+        XCTAssertEqual(reply, [])
+        XCTAssertEqual(bridge.openDelegationCount, 0)
+
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "All green.", reasoning: nil))
+        let updates = bridge.pendingUpdates()
+        guard case .sessionContext(let text, .speakable, true)? = updates.first, updates.count == 1 else {
+            return XCTFail("The outcome arrives as a job notice, got \(updates)")
+        }
+        XCTAssertTrue(text.contains("All green."))
+    }
+
     func testGPTLiveDelegationWithNothingToDoAsksInsteadOfStartingAJob() async {
         let (_, fake, bridge) = makeGPTJobs()
         let reply = await bridge.handleDelegation(id: "del_1", request: "  ")

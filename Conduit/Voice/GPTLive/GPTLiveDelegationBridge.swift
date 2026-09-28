@@ -33,6 +33,8 @@ final class GPTLiveDelegationBridge {
     /// Delegations already seen, so a repeated event never starts a second job.
     private var seenDelegations: Set<String> = []
     private(set) var isEnding = false
+    /// Bumped whenever the call is replaced.
+    private var callGeneration: UInt64 = 0
 
     init(supervisor: GeminiLiveJobSupervising) {
         self.supervisor = supervisor
@@ -51,10 +53,18 @@ final class GPTLiveDelegationBridge {
             return [.delegationReply(delegationID: id, text: Self.relay("Hermes didn't get a request to work on. Ask the user what they want done."), channel: .speakable)]
         }
         var createdJobID: UUID?
+        // A call that ends while Hermes creates the job must not leave this
+        // delegation in the next call's table.
+        let call = callGeneration
         let reply = await supervisor.startJob(instructions: instructions) { [weak self] jobID in
             createdJobID = jobID
-            guard self?.isEnding == false else { return }
-            self?.openDelegations[jobID] = id
+            guard let self, !self.isEnding, self.callGeneration == call else { return }
+            self.openDelegations[jobID] = id
+        }
+        guard callGeneration == call else {
+            // Its outcome is reported as a job notice instead.
+            if let jobID = createdJobID, openDelegations[jobID] == id { openDelegations[jobID] = nil }
+            return []
         }
         if isEnding {
             // Ending while it started: its outcome stays pending for Hermes.
@@ -80,6 +90,7 @@ final class GPTLiveDelegationBridge {
     /// The call ended or was replaced: open delegations can no longer be
     /// answered, so their outcomes go out as session context later.
     func connectionReplaced() {
+        callGeneration &+= 1
         openDelegations.removeAll()
         seenDelegations.removeAll()
         isEnding = false
