@@ -82,8 +82,9 @@ final class ChatScrollEngineTests: XCTestCase {
     /// An engine showing session "a" with ten messages, attached to a
     /// surface that has already laid them out.
     private func makeEngine(
-        surface: FakeChatScrollSurface = FakeChatScrollSurface()
+        surface providedSurface: FakeChatScrollSurface? = nil
     ) -> (ChatScrollEngine, FakeChatScrollSurface) {
+        let surface = providedSurface ?? FakeChatScrollSurface()
         let engine = ChatScrollEngine(now: { [unowned self] in self.clock })
         engine.onEvent = { [unowned self] event in self.events.append(event) }
         surface.engine = engine
