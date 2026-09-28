@@ -1372,13 +1372,11 @@ final class SessionPresentationCache {
             encoded = snapshot.map { $0.isEmpty ? nil : (try? JSONEncoder().encode($0)) }
             if let snapshot, !snapshot.isEmpty, encoded == .some(nil) { return }
         }
-        if let encoded {
-            guard memoryLock.withLock({ isNewest() }) else { return }
-            if let data = encoded {
-                defaults.set(data, forKey: key)
-            } else {
-                defaults.removeObject(forKey: key)
-            }
+        guard let encoded, memoryLock.withLock({ isNewest() }) else { return }
+        if let data = encoded {
+            defaults.set(data, forKey: key)
+        } else {
+            defaults.removeObject(forKey: key)
         }
         let canRetireTombstones = memoryLock.withLock { () -> Bool in
             landedWriteTicket[kind] = max(landedWriteTicket[kind] ?? 0, ticket)
@@ -1413,6 +1411,9 @@ final class SessionPresentationCache {
             return current.map(\.tombstone)
         }
         storeTombstones(stored)
+        // The removal's writes may already have landed before the
+        // tombstones were recorded, in which case no write will retire them.
+        retireLandedTombstones()
     }
 
     /// Drops tombstones whose removal both stores on disk now reflect.
