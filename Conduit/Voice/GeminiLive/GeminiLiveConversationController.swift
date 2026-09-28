@@ -25,12 +25,16 @@ protocol GeminiLiveSessionControlling: AnyObject {
     var isReady: Bool { get }
     func start()
     func stop()
-    /// `onFailure` runs when the message never reached the socket.
-    func send(_ message: [String: Any], onFailure: (@MainActor () -> Void)?)
+    /// `onSent` runs once the socket took the message; `onFailure` when it
+    /// never reached the socket.
+    func send(_ message: [String: Any], onSent: (@MainActor () -> Void)?, onFailure: (@MainActor () -> Void)?)
 }
 
 extension GeminiLiveSessionControlling {
-    func send(_ message: [String: Any]) { send(message, onFailure: nil) }
+    func send(_ message: [String: Any]) { send(message, onSent: nil, onFailure: nil) }
+    func send(_ message: [String: Any], onFailure: (@MainActor () -> Void)?) {
+        send(message, onSent: nil, onFailure: onFailure)
+    }
 }
 
 extension GeminiLiveSession: GeminiLiveSessionControlling {}
@@ -128,6 +132,9 @@ final class GeminiLiveConversationController: ObservableObject {
         case listening
         case speaking
         case reconnecting
+        /// Saying goodbye: the microphone is closed and the conversation
+        /// closes once Gemini goes quiet.
+        case ending
         case failed(String)
     }
 
@@ -177,7 +184,7 @@ final class GeminiLiveConversationController: ObservableObject {
     var isActive: Bool {
         switch phase {
         case .idle, .failed: return false
-        case .connecting, .listening, .speaking, .reconnecting: return true
+        case .connecting, .listening, .speaking, .reconnecting, .ending: return true
         }
     }
 
@@ -254,7 +261,7 @@ final class GeminiLiveConversationController: ObservableObject {
         lastModelTurnEndedAt = now()
         lastPlaybackAt = nil
         openAssistantEntry = nil
-        phase = .listening
+        if endRequestedAt == nil { phase = .listening }
     }
 
     // MARK: Lifecycle
@@ -373,6 +380,7 @@ final class GeminiLiveConversationController: ObservableObject {
     func requestEnd() {
         guard isActive, endRequestedAt == nil else { return }
         endRequestedAt = now()
+        phase = .ending
         stopInput()
         tools.returnUnsent(pendingTextTurns)
         pendingTextTurns = []
@@ -438,13 +446,13 @@ final class GeminiLiveConversationController: ObservableObject {
             // A microphone that fails to start leaves the phase failed.
             if !isMicrophoneMuted, !startInput() { return }
             // Ending: the microphone is closed, so it isn't listening.
-            if endRequestedAt == nil { phase = modelTurnActive ? .speaking : .listening }
+            phase = endRequestedAt != nil ? .ending : modelTurnActive ? .speaking : .listening
             // Anything that settled while (re)connecting goes out now,
             // unless the conversation is ending: then it stays pending.
             if endRequestedAt == nil { dispatch(tools.pendingUpdates()) }
             scheduleIdleFlush()
         case .reconnecting:
-            phase = .reconnecting
+            if endRequestedAt == nil { phase = .reconnecting }
             output.interrupt()
             modelTurnActive = false
         case .failed(let message):
@@ -453,9 +461,11 @@ final class GeminiLiveConversationController: ObservableObject {
             // Close the socket too, so nothing from it reaches a failed
             // conversation.
             retireSession()
-            phase = .failed(message)
+            // Ending: the goodbye finishes closing instead of offering a
+            // retry (the end task closes the conversation).
+            if endRequestedAt == nil { phase = .failed(message) }
         case .connecting:
-            phase = .connecting
+            if endRequestedAt == nil { phase = .connecting }
         case .idle, .stopped:
             break
         }
@@ -467,7 +477,7 @@ final class GeminiLiveConversationController: ObservableObject {
             guard !suppressingModelTurn else { return }
             modelTurnActive = true
             lastModelAudioAt = now()
-            phase = .speaking
+            if endRequestedAt == nil { phase = .speaking }
             do {
                 try output.play(pcm, sampleRate: sampleRate)
             } catch {
@@ -622,12 +632,14 @@ final class GeminiLiveConversationController: ObservableObject {
     func flushPendingTextIfIdle() {
         guard !pendingTextTurns.isEmpty, endRequestedAt == nil, isConversationIdle, let session else { return }
         let text = pendingTextTurns.removeFirst()
-        let noticeJobID = tools.textUpdateSent(text)
+        let noticeJobID = tools.textUpdateSending(text)
         modelTurnActive = true
         // An update that never reached the socket waits for the next
         // connection instead of being lost; a job notice whose conversation
         // is gone goes back to the supervisor.
-        session.send(GeminiLiveProtocol.textTurnMessage(text), onFailure: { [weak self, weak session] in
+        session.send(GeminiLiveProtocol.textTurnMessage(text), onSent: { [weak self] in
+            self?.tools.textUpdateDelivered(jobID: noticeJobID)
+        }, onFailure: { [weak self, weak session] in
             guard let self else { return }
             guard self.isActive, self.endRequestedAt == nil, let session, self.session === session else {
                 self.tools.returnNotice(jobID: noticeJobID)

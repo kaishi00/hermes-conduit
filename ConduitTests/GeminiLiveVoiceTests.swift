@@ -121,9 +121,9 @@ final class FakeGeminiLiveSessionControl: GeminiLiveSessionControlling {
     /// When set, sends are recorded but reported as failed.
     var failSends = false
 
-    func send(_ message: [String: Any], onFailure: (@MainActor () -> Void)?) {
+    func send(_ message: [String: Any], onSent: (@MainActor () -> Void)?, onFailure: (@MainActor () -> Void)?) {
         sent.append(message)
-        if failSends { onFailure?() }
+        if failSends { onFailure?() } else { onSent?() }
     }
 
     func becomeReady() {
@@ -762,6 +762,24 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertFalse(appState.showGeminiLiveSheet)
         XCTAssertFalse(appState.geminiLiveController.isActive)
     }
+
+    func testCarPlayFollowsTheGeminiLiveSettingWhileConnected() {
+        let appState = makeGeminiAppState()
+        let coordinator = CarPlayVoiceCoordinator()
+        coordinator.appStateProvider = { appState }
+        coordinator.autoEstablishOnConnect = false
+        coordinator.handleConnect(InterfacingSpy())
+        XCTAssertEqual(coordinator.observesGeminiLive, false)
+
+        appState.setGeminiLiveEnabled(true)
+        coordinator.voiceModeChanged(in: appState)
+        XCTAssertEqual(coordinator.observesGeminiLive, true, "the car shows the controller now in use")
+
+        appState.setGeminiLiveEnabled(false)
+        coordinator.voiceModeChanged(in: appState)
+        XCTAssertEqual(coordinator.observesGeminiLive, false)
+        coordinator.handleDisconnect()
+    }
 }
 
 // MARK: - Speaker echo, acknowledgement, voice-job model
@@ -1243,6 +1261,7 @@ extension VoiceConversationControllerTests {
         session.onEvent?(.toolCall([.init(id: "e1", name: "end_conversation", arguments: [:])]))
         await settle(40)
         XCTAssertTrue(controller.isEnding)
+        XCTAssertEqual(controller.phase, .ending)
         XCTAssertFalse(input.running, "the microphone closes as soon as the end is asked for")
         XCTAssertTrue(session.sent.isEmpty, "the call is left unanswered so no new turn starts")
 
@@ -1348,6 +1367,7 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(CarPlayVoiceState.map(geminiLive: .reconnecting), .processing)
         XCTAssertEqual(CarPlayVoiceState.map(geminiLive: .listening), .listening)
         XCTAssertEqual(CarPlayVoiceState.map(geminiLive: .speaking), .responding)
+        XCTAssertEqual(CarPlayVoiceState.map(geminiLive: .ending), .processing)
         XCTAssertEqual(CarPlayVoiceState.map(geminiLive: .failed("x")), .error)
     }
 
@@ -1357,6 +1377,7 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(CarPlayGeminiLiveListenAction.forPhase(.speaking), .interrupt)
         XCTAssertEqual(CarPlayGeminiLiveListenAction.forPhase(.listening), .nothing)
         XCTAssertEqual(CarPlayGeminiLiveListenAction.forPhase(.connecting), .nothing)
+        XCTAssertEqual(CarPlayGeminiLiveListenAction.forPhase(.ending), .nothing)
     }
 }
 

@@ -29,6 +29,7 @@ protocol GeminiLiveJobSupervising: AnyObject {
     func markOutcomeDelivered(jobID: UUID)
     func takePendingNoticeForJob() -> (notice: VoiceBackgroundJobNotice, jobID: UUID)?
     func returnUndeliveredNotice(jobID: UUID)
+    func noticeSent(jobID: UUID)
 }
 
 extension VoiceBackgroundJobSupervisor: GeminiLiveJobSupervising {}
@@ -258,12 +259,19 @@ final class GeminiLiveToolBridge {
     /// be handed back if the conversation closes first.
     private var queuedNotices: [(text: String, jobID: UUID)] = []
 
-    /// A queued text update went out. Returns the job whose notice it
-    /// carried, if any, in case the send fails after all.
+    /// A queued text update is being sent. Returns the job whose notice it
+    /// carries, if any: the supervisor keeps that job until the send is
+    /// confirmed (`textUpdateDelivered`) or fails and is handed back.
     @discardableResult
-    func textUpdateSent(_ text: String) -> UUID? {
+    func textUpdateSending(_ text: String) -> UUID? {
         guard let index = queuedNotices.firstIndex(where: { $0.text == text }) else { return nil }
         return queuedNotices.remove(at: index).jobID
+    }
+
+    /// The socket took the update: its job notice is spoken for.
+    func textUpdateDelivered(jobID: UUID?) {
+        guard let jobID else { return }
+        supervisor.noticeSent(jobID: jobID)
     }
 
     /// A send that failed: the text waits again for the next connection.

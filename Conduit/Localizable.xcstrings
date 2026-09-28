@@ -11,6 +11,16 @@
         }
       }
     },
+    "Ending conversation…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在结束对话…"
+          }
+        }
+      }
+    },
     "You: %@" : {
       "localizations" : {
         "zh-Hans" : {
