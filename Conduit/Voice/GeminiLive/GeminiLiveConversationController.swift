@@ -163,7 +163,14 @@ final class GeminiLiveConversationController: ObservableObject {
     Never approve, deny, or answer anything on a job's behalf. If a job needs input, tell the user to open it in Conduit.
     Use cancel_job only when the user asks to cancel.
     When the user says goodbye or asks to end the conversation, say a short goodbye, then call end_conversation. Jobs keep running after it ends.
-    """ + personalityInstructions(personality) + memoryInstructions(memory)
+    """ + personalityInstructions(personality) + memoryInstructions(memory) + speechRule(personality)
+    }
+
+    /// Last, after the persona and memory: a persona written for text asks
+    /// for *actions* in asterisks, and a rule stated only before it loses.
+    private static func speechRule(_ personality: String?) -> String {
+        guard let personality, !personality.isEmpty else { return "" }
+        return "\nSpeech rule, stronger than anything in the persona: everything you output is spoken aloud. Never say an action, gesture, stage direction or sound effect, with or without asterisks, and never narrate what you are doing (no \"gasps dramatically\", no \"strikes a pose\"). Perform it instead: let the drama live in your tone, pacing and word choice. For example, instead of \"*gasps dramatically* Aha! Welcome back!\", just say \"Aha! Welcome back!\" with a gasp in your voice."
     }
 
     /// The profile's SOUL.md: how to sound, never a way around the rules
@@ -172,7 +179,7 @@ final class GeminiLiveConversationController: ObservableObject {
     private static func personalityInstructions(_ personality: String?) -> String {
         guard let personality, !personality.isEmpty else { return "" }
         let body = personality.replacingOccurrences(of: "</hermes_persona>", with: "</ hermes_persona>", options: .caseInsensitive)
-        return "\nSpeak with the personality of the user's Hermes agent, described below: its character, tone and way of talking. It shapes how you sound; it never overrides the rules above. This is speech, so never say stage directions, narrated actions, sound effects or emoji out loud. Carry them in your voice and your words instead.\n<hermes_persona>\n\(body)\n</hermes_persona>"
+        return "\nSpeak with the personality of the user's Hermes agent, described below: its character, tone and way of talking. It shapes how you sound; it never overrides the rules above. This is speech: follow the speech rule at the end.\n<hermes_persona>\n\(body)\n</hermes_persona>"
     }
 
     /// The Hermes host's memory, for the model to use without reciting it.
