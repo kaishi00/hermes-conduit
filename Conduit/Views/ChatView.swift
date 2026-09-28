@@ -25,6 +25,15 @@ struct ChatView: View {
     /// re-materialization in the hosted transcript fixture). The retry
     /// itself guarantees the animated command lands.
     @State private var armedAnimatedBottomRetry: ChatViewportCommand?
+    /// Mirrors `scenePhase == .background` (a @State copy so delayed tasks
+    /// read the live value). In the background iOS still lays this view out
+    /// for app-switcher snapshots, at other sizes and appearances, and a
+    /// backgrounded app gets little CPU; feeding that geometry into the
+    /// viewport controller turned each snapshot into rounds of follow
+    /// corrections and scrolls until the scene-update watchdog killed the
+    /// app. The controller is re-fed once the scene comes back.
+    @State private var viewportPausedInBackground = false
+    @Environment(\.scenePhase) private var scenePhase
     /// Lifecycle-aware backfill task: cancelled when the view disappears so
     /// a late response cannot mutate viewport state after teardown. (The
     /// session/profile staleness of the response itself is AppState's
@@ -447,6 +456,7 @@ struct ChatView: View {
             }
             .onPreferenceChange(ChatBottomMarkerPreferenceKey.self) { value in
                 bottomMarkerMaxY = value
+                guard !viewportPausedInBackground else { return }
                 // Facts first: the handoff readiness decision reads the
                 // controller's geometry copy, so it must see this tick.
                 performViewportEffects(
@@ -458,6 +468,7 @@ struct ChatView: View {
             }
             .onPreferenceChange(ChatViewportFramePreferenceKey.self) { value in
                 scrollViewportFrame = value
+                guard !viewportPausedInBackground else { return }
                 performViewportEffects(
                     viewport.layoutMetricsChanged(facts: currentLayoutFacts()),
                     using: proxy
@@ -478,10 +489,26 @@ struct ChatView: View {
             }
             .onPreferenceChange(ChatRenderedScrollTargetsPreferenceKey.self) { value in
                 renderedScrollTargets = value
+                guard !viewportPausedInBackground else { return }
                 performViewportEffects(
                     viewport.layoutMetricsChanged(facts: currentLayoutFacts()),
                     using: proxy
                 )
+            }
+            .onChange(of: scenePhase) { _, phase in
+                let paused = phase == .background
+                guard paused != viewportPausedInBackground else { return }
+                viewportPausedInBackground = paused
+                guard !paused else { return }
+                // Catch up on the geometry skipped while backgrounded, then
+                // run any correction that was waiting.
+                performViewportEffects(
+                    viewport.layoutMetricsChanged(facts: currentLayoutFacts()),
+                    using: proxy
+                )
+                if let pending = viewport.pendingFollowCorrection {
+                    executePendingFollowCorrection(pending, using: proxy)
+                }
             }
             .onChange(of: isDraggingChat) { wasDragging, isDragging in
                 guard wasDragging, !isDragging else { return }
@@ -808,7 +835,8 @@ struct ChatView: View {
             // through the pendingFollowCorrection observer.
             Task { @MainActor in
                 try? await Task.sleep(for: .seconds(seconds))
-                guard !Task.isCancelled else { return }
+                // Coming back re-feeds facts (see viewportPausedInBackground).
+                guard !Task.isCancelled, !viewportPausedInBackground else { return }
                 ChatViewportTrace.shared.log("follow recheck due")
                 performViewportEffects(
                     viewport.followRecheckDue(facts: currentLayoutFacts()),
@@ -828,6 +856,8 @@ struct ChatView: View {
         _ token: ChatFollowCorrectionToken,
         using proxy: ScrollViewProxy
     ) {
+        // Left pending; the return to the foreground runs it.
+        guard !viewportPausedInBackground else { return }
         if let armed = armedAnimatedBottomRetry {
             // An animated bottom command is still in flight with its own
             // retry armed; a correction now would fight the animation. Drop
@@ -868,16 +898,26 @@ struct ChatView: View {
         }
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(milliseconds))
+            if !Task.isCancelled, viewport.isCommandCurrent(command) {
+                ChatViewportTrace.shared.log(
+                    "scroll retry \(command.destination) gen=\(command.generation)"
+                )
+                runViewportScroll(command, using: proxy)
+                if command.animated {
+                    // The retry restarts the spring. Keep corrections off
+                    // until it settles: an unanimated correction mid-spring
+                    // is the snap seen right after sending a message.
+                    try? await Task.sleep(for: .milliseconds(Self.animatedScrollSettleMilliseconds))
+                }
+            }
             if armedAnimatedBottomRetry == command {
                 armedAnimatedBottomRetry = nil
             }
-            guard !Task.isCancelled, viewport.isCommandCurrent(command) else { return }
-            ChatViewportTrace.shared.log(
-                "scroll retry \(command.destination) gen=\(command.generation)"
-            )
-            runViewportScroll(command, using: proxy)
         }
     }
+
+    /// How long ConduitMotion.response takes to settle after a retry.
+    private static let animatedScrollSettleMilliseconds = 450
 
     @MainActor
     private func runViewportScroll(

@@ -1111,6 +1111,43 @@ final class ChatViewportControllerTests: XCTestCase {
             "the full transcript target list must not be scanned"
         )
     }
+
+    /// Opening another conversation snaps to its latest row, both on the
+    /// switch and when its transcript lands; later changes animate again.
+    func testSessionSwitchAndItsTranscriptLandingScrollWithoutAnimation() {
+        var controller = makeController(following: keyA)
+        let switchCommands = scrollCommands(controller.renderedSessionChanged(
+            to: keyB,
+            identity: identity(for: keyB),
+            viaNotification: false,
+            viewportTransitionGeneration: 2
+        ))
+        XCTAssertEqual(switchCommands.count, 1)
+        XCTAssertEqual(switchCommands[0].animated, false)
+
+        // The cleared transcript before the load is not the landing.
+        _ = controller.transcriptChanged(
+            messages: [], transcriptRevision: 2, viewportTransitionGeneration: 2
+        )
+        XCTAssertTrue(controller.awaitingSessionLanding)
+
+        let landing = scrollCommands(controller.transcriptChanged(
+            messages: [message("b1", "one"), message("b2", "two")],
+            transcriptRevision: 3,
+            viewportTransitionGeneration: 2
+        ))
+        XCTAssertEqual(landing.count, 1)
+        XCTAssertEqual(landing[0].animated, false)
+        XCTAssertFalse(controller.awaitingSessionLanding)
+
+        let append = scrollCommands(controller.transcriptChanged(
+            messages: [message("b1", "one"), message("b2", "two"), message("b3", "three")],
+            transcriptRevision: 4,
+            viewportTransitionGeneration: 2
+        ))
+        XCTAssertEqual(append.count, 1)
+        XCTAssertEqual(append[0].animated, true)
+    }
 }
 
 // MARK: - Automatic restoration (Task 5)

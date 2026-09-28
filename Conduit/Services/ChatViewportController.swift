@@ -209,6 +209,12 @@ struct ChatViewportController: Equatable {
     /// Armed while an older-page backfill is in flight; consumed by the
     /// transcript change that carries the prepend.
     private(set) var pendingPrependAnchor: ChatPrependAnchorRequest?
+    /// Set by a real session switch, consumed by the first transcript change
+    /// that brings rows for it. That landing replaces the whole transcript,
+    /// so it snaps to the latest row instead of animating: an animated
+    /// scroll across rows whose heights LazyVStack has only estimated
+    /// overshoots, and the follow correction that fixes it reads as a jump.
+    private(set) var awaitingSessionLanding = false
 
     let nearBottomTolerance: CGFloat
     let followDriftTolerance: CGFloat
@@ -354,8 +360,9 @@ struct ChatViewportController: Equatable {
         // Ports ChatFollowLatestRelatchPolicy.shouldFollowLatestAfterTransition.
         let shouldFollowLatest = !dragGestureActive
         mode = shouldFollowLatest ? .followingLatest : .browsing
+        awaitingSessionLanding = true
         if shouldFollowLatest {
-            effects.append(.scroll(latestCommand(animated: true)))
+            effects.append(.scroll(latestCommand(animated: false)))
         }
         return effects
     }
@@ -489,6 +496,12 @@ struct ChatViewportController: Equatable {
                 effects.append(.scroll(prependAnchorCommand(id: messageID)))
             }
         }
+        let landsSwitchedSession = awaitingSessionLanding
+            && update != .unchanged
+            && !messages.isEmpty
+        if landsSwitchedSession {
+            awaitingSessionLanding = false
+        }
         guard !isInitialSync,
               update != .unchanged,
               mode == .followingLatest,
@@ -503,7 +516,7 @@ struct ChatViewportController: Equatable {
         followCorrectionOvershootFacts = nil
         followCorrectionLastExecutionAt = nil
         followRecheckArmed = false
-        return [.scroll(latestCommand(animated: true))]
+        return [.scroll(latestCommand(animated: !landsSwitchedSession))]
     }
 
     // MARK: - Layout facts
