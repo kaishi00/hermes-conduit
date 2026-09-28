@@ -413,7 +413,9 @@ final class ChatScrollEngine: ObservableObject {
         prependAnchor = nil
         emit(.cancelAutomaticRestoration)
         setMode(.following)
-        guard let surface, !isPaused else {
+        // In the background, setPaused(false) catches up and pins.
+        guard !isPaused else { return }
+        guard let surface else {
             emit(.revealLatest)
             return
         }
@@ -445,12 +447,19 @@ final class ChatScrollEngine: ObservableObject {
         latestAnimationUntil = nil
         emit(.cancelAutomaticRestoration)
         setMode(.browsing)
-        guard let surface, !isPaused else {
+        guard !isPaused else { return }
+        guard let surface else {
             emit(.revealTop)
             return
         }
-        surface.setContentOffsetY(surface.minOffsetY, animated: false)
-        surfaceScrolled()
+        if abs(surface.contentOffsetY - surface.minOffsetY) > 0.5 {
+            // The offset change reports back through surfaceScrolled().
+            surface.setContentOffsetY(surface.minOffsetY, animated: false)
+        } else {
+            // Already there (a short chat): no offset change will report,
+            // so re-evaluate following here.
+            surfaceScrolled()
+        }
     }
 
     // MARK: - Automatic restoration
@@ -539,6 +548,9 @@ final class ChatScrollEngine: ObservableObject {
     // MARK: - Lifecycle
 
     func viewDisappeared() {
+        // The restoration loop stops with the view. If the request is still
+        // published on return, the view's task installs it again.
+        restorationSystemCancelled()
         isDragging = false
         prependAnchor = nil
         latestAnimationUntil = nil

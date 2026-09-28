@@ -449,6 +449,15 @@ final class ChatScrollEngineTests: XCTestCase {
         XCTAssertTrue(events.contains(.completeRestoration(generation: 3)))
     }
 
+    func testDisappearingEndsAnInstalledRestoration() {
+        let (engine, _) = makeEngine()
+        engine.restorationRequested(anchorRequest(engine, row: 5))
+        XCTAssertEqual(engine.mode, .restoring)
+        engine.viewDisappeared()
+        XCTAssertNil(engine.restoration)
+        XCTAssertNotEqual(engine.mode, .restoring)
+    }
+
     func testAReplacementRestorationPublishesItsGeneration() {
         let (engine, _) = makeEngine()
         engine.restorationRequested(anchorRequest(engine, row: 5))
@@ -495,6 +504,20 @@ final class ChatScrollEngineTests: XCTestCase {
 
         engine.setPaused(false)
         XCTAssertEqual(surface.contentOffsetY, 4200)
+    }
+
+    func testJumpToLatestInTheBackgroundWaitsForTheForeground() {
+        let (engine, surface) = makeEngine()
+        surface.userScroll(to: 1000)
+        engine.setPaused(true)
+        events.removeAll()
+        engine.explicitLatestRequested(animated: false)
+        XCTAssertEqual(surface.contentOffsetY, 1000)
+        XCTAssertFalse(events.contains(.revealLatest))
+        XCTAssertTrue(engine.isFollowingLatest)
+
+        engine.setPaused(false)
+        XCTAssertEqual(surface.contentOffsetY, 3200)
     }
 
     func testASessionSwitchInTheBackgroundDoesNotScroll() {
