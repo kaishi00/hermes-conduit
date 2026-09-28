@@ -160,13 +160,20 @@ final class SessionPresentationCache {
     /// actor, but the type itself doesn't enforce that.
     private let memoryLock = NSLock()
     /// Nonzero while a clear or delete runs; see `performingDurably`.
+    /// Guarded by `memoryLock`.
     private var durableWriteDepth = 0
+    /// Ticket of the newest write scheduled for each store, guarded by
+    /// `memoryLock`. A queued write whose ticket is no longer the newest
+    /// skips itself: a later write is queued behind it and will store the
+    /// newer memory copy, so an older snapshot never lands after a newer one.
+    private var writeTicket = 0
+    private var newestWriteTicket: [StoreKind: Int] = [:]
     /// When set, encoding and UserDefaults writes run on `writeQueue` and the
     /// memory copies are authoritative (defaults may briefly lag behind).
-    /// Writes land in order, so a clear or delete can't be overtaken by an
-    /// older save. The app keeps itself alive through suspension until the
-    /// queue drains (see AppState's background handling); nothing on the
-    /// main thread may block on this queue.
+    /// Each queued write stores the memory copy as it is when the write
+    /// runs, not as it was when it was queued. The app keeps itself alive
+    /// through suspension until the queue drains (see AppState's background
+    /// handling); nothing on the main thread may block on this queue.
     private let writeQueue: DispatchQueue?
 
     init(
@@ -992,13 +999,13 @@ final class SessionPresentationCache {
                 memoryStoreData = nil
                 memoryPendingToolsData = nil
             }
-            let defaults = defaults
-            let storageKey = storageKey
-            let pendingToolsStorageKey = pendingToolsStorageKey
-            performWrite {
+            guard writeQueue != nil else {
                 defaults.removeObject(forKey: storageKey)
                 defaults.removeObject(forKey: pendingToolsStorageKey)
+                return
             }
+            scheduleWrite(.sessions)
+            scheduleWrite(.pendingTools)
             return
         }
 
@@ -1246,18 +1253,14 @@ final class SessionPresentationCache {
     }
 
     private func persist(_ store: [String: CachedSession]) {
+        guard writeQueue == nil else {
+            memoryLock.withLock { memoryStore = store }
+            scheduleWrite(.sessions)
+            return
+        }
         memoryLock.lock()
         defer { memoryLock.unlock() }
         memoryStore = store
-        let defaults = defaults
-        let storageKey = storageKey
-        if writeQueue != nil {
-            performWrite {
-                guard let data = try? JSONEncoder().encode(store) else { return }
-                defaults.set(data, forKey: storageKey)
-            }
-            return
-        }
         guard let data = try? JSONEncoder().encode(store) else {
             memoryStore = nil
             return
@@ -1279,22 +1282,15 @@ final class SessionPresentationCache {
     }
 
     private func persistPendingTools(_ store: [String: [CachedMessage]]) {
+        guard writeQueue == nil else {
+            memoryLock.withLock { memoryPendingTools = store }
+            scheduleWrite(.pendingTools)
+            return
+        }
         memoryLock.lock()
         defer { memoryLock.unlock() }
         memoryPendingTools = store
-        let defaults = defaults
         let key = pendingToolsStorageKey
-        if writeQueue != nil {
-            performWrite {
-                guard !store.isEmpty else {
-                    defaults.removeObject(forKey: key)
-                    return
-                }
-                guard let data = try? JSONEncoder().encode(store) else { return }
-                defaults.set(data, forKey: key)
-            }
-            return
-        }
         guard !store.isEmpty else {
             defaults.removeObject(forKey: key)
             memoryPendingToolsData = nil
@@ -1308,29 +1304,68 @@ final class SessionPresentationCache {
         memoryPendingToolsData = data
     }
 
-    /// Runs a disk write on the write queue (in order with every earlier
-    /// write, so a clear can never be overtaken by an older save), or inline
-    /// in synchronous mode.
-    private func performWrite(_ write: @escaping () -> Void) {
-        guard let writeQueue else {
-            write()
-            return
+    private enum StoreKind {
+        case sessions, pendingTools
+    }
+
+    /// Queues a write of `kind`'s current memory copy (asynchronous mode
+    /// only). Inside `performingDurably` the write also lands right away on
+    /// the caller's thread, so a clear or delete survives a kill even while
+    /// older saves are still queued; those older saves then skip themselves
+    /// (see `newestWriteTicket`) instead of writing the removed rows back.
+    private func scheduleWrite(_ kind: StoreKind) {
+        guard let writeQueue else { return }
+        let (ticket, durable) = memoryLock.withLock { () -> (Int, Bool) in
+            writeTicket += 1
+            newestWriteTicket[kind] = writeTicket
+            return (writeTicket, durableWriteDepth > 0)
         }
-        if durableWriteDepth > 0 {
-            // Destructive paths (see `performingDurably`) also land now, on
-            // the caller's thread, so nothing they remove survives a kill.
-            // The queued copy still runs after every earlier save, so an
-            // older save can't leave the removed rows behind.
-            write()
+        if durable {
+            writeLatest(kind, ticket: ticket)
         }
-        writeQueue.async(execute: write)
+        writeQueue.async { self.writeLatest(kind, ticket: ticket) }
+    }
+
+    /// Encodes and stores `kind`'s memory copy, unless a newer write was
+    /// scheduled since `ticket` (that one will store newer state). The copy
+    /// is taken under `memoryLock`; encoding and the UserDefaults write
+    /// happen outside it, so a UserDefaults change notification can never
+    /// re-enter the lock. A newer write can still be scheduled between the
+    /// last check and `defaults.set`; it is queued behind this one, so the
+    /// older bytes stand only until it runs.
+    private func writeLatest(_ kind: StoreKind, ticket: Int) {
+        func isNewest() -> Bool { newestWriteTicket[kind] == ticket }
+        let key: String
+        let data: Data?
+        switch kind {
+        case .sessions:
+            key = storageKey
+            let snapshot: [String: CachedSession]? = memoryLock.withLock { isNewest() ? (memoryStore ?? [:]) : nil }
+            guard let store = snapshot else { return }
+            data = store.isEmpty ? nil : (try? JSONEncoder().encode(store))
+            if !store.isEmpty, data == nil { return }
+        case .pendingTools:
+            key = pendingToolsStorageKey
+            let snapshot: [String: [CachedMessage]]? = memoryLock.withLock { isNewest() ? (memoryPendingTools ?? [:]) : nil }
+            guard let store = snapshot else { return }
+            data = store.isEmpty ? nil : (try? JSONEncoder().encode(store))
+            if !store.isEmpty, data == nil { return }
+        }
+        guard memoryLock.withLock({ isNewest() }) else { return }
+        if let data {
+            defaults.set(data, forKey: key)
+        } else {
+            defaults.removeObject(forKey: key)
+        }
     }
 
     /// Runs `body` so that every write it makes is on disk before this
-    /// returns, without waiting on the write queue.
+    /// returns, without waiting on the write queue. Destructive paths are
+    /// rare (sign-out, conversation delete), so the inline write is cheap
+    /// next to a resurrected conversation.
     private func performingDurably(_ body: () -> Void) {
-        durableWriteDepth += 1
-        defer { durableWriteDepth -= 1 }
+        memoryLock.withLock { durableWriteDepth += 1 }
+        defer { memoryLock.withLock { durableWriteDepth -= 1 } }
         body()
     }
 

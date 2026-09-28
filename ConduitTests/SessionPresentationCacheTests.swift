@@ -3425,13 +3425,35 @@ extension SessionPresentationCacheTests {
             "2024-01-01T10:00:00Z"
         )
 
-        // A clear queued behind a save is never overtaken by it.
+        // A delete is on disk before it returns, and saves queued before it
+        // never write the removed session back.
+        cache.save(
+            [ChatMessage(id: "row-3", role: .assistant, content: "Doomed", timestamp: "2024-01-03T10:00:00Z")],
+            profile: "default",
+            sessionIDs: ["session-c"]
+        )
+        cache.removeSessions(profile: "default", sessionIDs: ["session-c"])
+        let doomedRow = [ChatMessage(id: "row-3", role: .assistant, content: "Doomed", timestamp: "")]
+        XCTAssertEqual(
+            SessionPresentationCache(defaults: defaults)
+                .merge(doomedRow, profile: "default", sessionIDs: ["session-c"]).first?.timestamp,
+            ""
+        )
+        cache.waitForPendingWrites()
+        XCTAssertEqual(
+            SessionPresentationCache(defaults: defaults)
+                .merge(doomedRow, profile: "default", sessionIDs: ["session-c"]).first?.timestamp,
+            ""
+        )
+
+        // Same for a clear queued behind a save.
         cache.save(
             [ChatMessage(id: "row-2", role: .assistant, content: "Again", timestamp: "2024-01-02T10:00:00Z")],
             profile: "default",
             sessionIDs: ["session-b"]
         )
         cache.clear()
+        XCTAssertNil(defaults.data(forKey: "conduit.sessionPresentation.v1"))
         cache.waitForPendingWrites()
         XCTAssertNil(defaults.data(forKey: "conduit.sessionPresentation.v1"))
         XCTAssertNil(defaults.data(forKey: "conduit.sessionPresentation.pendingTools.v1"))
