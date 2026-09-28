@@ -26,8 +26,9 @@ final class GPTLiveSession {
 
     /// How long GPT-Live has, after the answer, to start the session.
     nonisolated static let startTimeout: Duration = .seconds(15)
-    /// How long a graceful close waits for `session.closed`.
-    nonisolated static let closeTimeout: Duration = .seconds(2)
+    /// How long a call may stay in WebRTC's temporary `.disconnected`
+    /// state (a network handoff) before it counts as lost.
+    nonisolated static let reconnectGrace: Duration = .seconds(6)
 
     private(set) var state: State = .idle {
         didSet { if state != oldValue { onStateChange?(state) } }
@@ -41,21 +42,26 @@ final class GPTLiveSession {
     private let history: [[String: Any]]
     private let makePeer: @MainActor () -> GPTLivePeer
     private let startTimeout: Duration
+    private let reconnectGrace: Duration
     private var peer: GPTLivePeer?
     private var connectTask: Task<Void, Never>?
     private var startWatchdog: Task<Void, Never>?
-    private var closeTask: Task<Void, Never>?
+    /// Runs while the connection is interrupted; fails the call if it
+    /// doesn't come back in time.
+    private var reconnectWatchdog: Task<Void, Never>?
 
     init(
         client: GPTLiveSessionProviding,
         history: [[String: Any]] = [],
         makePeer: @escaping @MainActor () -> GPTLivePeer = { WebRTCGPTLivePeer() },
-        startTimeout: Duration = GPTLiveSession.startTimeout
+        startTimeout: Duration = GPTLiveSession.startTimeout,
+        reconnectGrace: Duration = GPTLiveSession.reconnectGrace
     ) {
         self.client = client
         self.history = history
         self.makePeer = makePeer
         self.startTimeout = startTimeout
+        self.reconnectGrace = reconnectGrace
     }
 
     var isReady: Bool { state == .ready }
@@ -74,6 +80,10 @@ final class GPTLiveSession {
             guard let self, let peer, self.peer === peer else { return }
             self.connectionLost()
         }
+        peer.onConnectionInterrupted = { [weak self, weak peer] interrupted in
+            guard let self, let peer, self.peer === peer else { return }
+            self.connectionInterrupted(interrupted, peer: peer)
+        }
         peer.onAudioLost = { [weak self, weak peer] message in
             guard let self, let peer, self.peer === peer, self.state == .ready || self.state == .connecting else { return }
             self.fail(message)
@@ -81,7 +91,10 @@ final class GPTLiveSession {
         connectTask = Task { [weak self] in await self?.connect(peer) }
     }
 
-    /// Ends the call now, without waiting for GPT-Live.
+    /// Ends the call now: GPT-Live is told (`session.close`, best effort)
+    /// and the peer closes without waiting for its answer. The controller
+    /// only ends a call once the goodbye has played, so nothing is left to
+    /// wait for.
     func stop() {
         guard state != .stopped else { return }
         if let peer, state == .ready {
@@ -94,6 +107,7 @@ final class GPTLiveSession {
 
     /// Sends `text` as context appends (chunked). True once any of it went
     /// out, so a caller never sends it twice; false only when none did.
+    /// Empty text has nothing to deliver and counts as delivered.
     @discardableResult
     func appendContext(_ text: String, channel: GPTLiveProtocol.Channel, delegationID: String?) -> Bool {
         guard state == .ready, let peer else { return false }
@@ -169,8 +183,6 @@ final class GPTLiveSession {
                 return
             }
         case .sessionClosed:
-            closeTask?.cancel()
-            closeTask = nil
             onEvent?(event)
             if state != .stopped, !isFailed {
                 tearDown()
@@ -183,41 +195,25 @@ final class GPTLiveSession {
         onEvent?(event)
     }
 
-    /// Asks GPT-Live to end the call and tears down once it confirms (or
-    /// after `closeTimeout`). `session.closed` still reaches `onEvent`.
-    func close() {
-        guard state == .ready, let peer, closeTask == nil else {
-            stop()
-            return
-        }
-        guard let message = try? GPTLiveProtocol.encode(GPTLiveProtocol.sessionCloseMessage()), peer.send(message) else {
-            stop()
-            return
-        }
-        closeTask = Task { [weak self] in
-            do { try await Task.sleep(for: GPTLiveSession.closeTimeout) } catch { return }
-            guard let self, self.peer === peer else { return }
-            self.closeTask = nil
-            self.onEvent?(.sessionClosed(reason: "close_requested"))
-            if self.state != .stopped {
-                self.tearDown()
-                self.state = .stopped
-            }
+    /// WebRTC dropped to `.disconnected`, which usually recovers: the call
+    /// is kept for `reconnectGrace` and only then counted as lost.
+    private func connectionInterrupted(_ interrupted: Bool, peer: GPTLivePeer) {
+        reconnectWatchdog?.cancel()
+        reconnectWatchdog = nil
+        guard interrupted, state == .ready || state == .connecting else { return }
+        let grace = reconnectGrace
+        reconnectWatchdog = Task { [weak self, weak peer] in
+            do { try await Task.sleep(for: grace) } catch { return }
+            guard let self, let peer, self.peer === peer else { return }
+            self.reconnectWatchdog = nil
+            gptLiveLogger.notice("GPT-Live connection didn't come back")
+            self.connectionLost()
         }
     }
 
     private func connectionLost() {
         guard state == .ready || state == .connecting else { return }
         gptLiveLogger.notice("GPT-Live connection lost")
-        if closeTask != nil {
-            // Closing anyway: the drop is the close.
-            closeTask?.cancel()
-            closeTask = nil
-            onEvent?(.sessionClosed(reason: "connection_lost"))
-            tearDown()
-            state = .stopped
-            return
-        }
         fail(AppLocalization.string("The GPT-Live connection was lost."))
     }
 
@@ -231,10 +227,11 @@ final class GPTLiveSession {
         connectTask = nil
         startWatchdog?.cancel()
         startWatchdog = nil
-        closeTask?.cancel()
-        closeTask = nil
+        reconnectWatchdog?.cancel()
+        reconnectWatchdog = nil
         peer?.onMessage = nil
         peer?.onDisconnected = nil
+        peer?.onConnectionInterrupted = nil
         peer?.onAudioLost = nil
         peer?.close()
         peer = nil

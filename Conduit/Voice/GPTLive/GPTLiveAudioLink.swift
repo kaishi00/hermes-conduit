@@ -28,8 +28,6 @@ protocol GPTLiveAudioSessionControlling: AnyObject {
     /// Re-applies the leased policy after the system changed the session.
     func reassert() throws
     func release()
-    /// Whether the system session still has the conversation policy.
-    var hasConversationPolicy: Bool { get }
     /// Lets WebRTC start its audio unit on the active session.
     func enableWebRTCAudio()
     /// Stops WebRTC's audio unit; the session is no longer usable.
@@ -110,15 +108,19 @@ final class GPTLiveAudioLink {
         audio.enableWebRTCAudio()
     }
 
+    /// The system may have torn the session down with the old route (a
+    /// Bluetooth headset dropping) even when its category looks unchanged,
+    /// so every route change reasserts the lease, as the classic capture
+    /// service does; the coordinator makes a redundant one cheap.
     func routeChanged(_ reason: AVAudioSession.RouteChangeReason?) {
         // Our own policy changes post category changes: never loop on them.
-        guard isRunning, !isInterrupted, reason != .categoryChange, !audio.hasConversationPolicy else { return }
+        guard isRunning, !isInterrupted, reason != .categoryChange else { return }
         do {
             try audio.reassert()
         } catch {
             gptLiveAudioLogger.error("GPT-Live audio couldn't reapply after a route change: \(String(describing: error), privacy: .public)")
             audio.disableWebRTCAudio()
-            onAudioLost?(AppLocalization.string("GPT-Live's audio couldn't resume after the interruption."))
+            onAudioLost?(AppLocalization.string("GPT-Live's audio couldn't resume after the audio route changed."))
         }
     }
 }
@@ -154,12 +156,6 @@ final class SystemGPTLiveAudioSession: GPTLiveAudioSessionControlling {
         guard let lease else { return }
         self.lease = nil
         coordinator.release(lease)
-    }
-
-    var hasConversationPolicy: Bool {
-        let session = AVAudioSession.sharedInstance()
-        return session.category == VoiceAudioSessionConfiguration.capture.category
-            && session.mode == VoiceAudioSessionConfiguration.capture.mode
     }
 
     func enableWebRTCAudio() {

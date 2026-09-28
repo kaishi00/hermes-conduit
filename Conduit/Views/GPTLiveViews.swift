@@ -143,11 +143,12 @@ struct GPTLiveVoiceSheet: View {
             .onChange(of: controller.phase) { _, _ in
                 AccessibilityNotification.Announcement(statusText).post()
             }
-            .onChange(of: controller.transcript.count) { oldCount, newCount in
-                guard newCount > oldCount, let entry = controller.transcript.last else { return }
-                AccessibilityNotification.Announcement(entry.speaker == .user
-                    ? AppLocalization.string("You: \(entry.text)")
-                    : AppLocalization.string("GPT-Live: \(entry.text)")).post()
+            // Each turn once, with its final text (not the first fragment).
+            .onChange(of: controller.finishedTurn) { _, turn in
+                guard let turn else { return }
+                AccessibilityNotification.Announcement(turn.speaker == .user
+                    ? AppLocalization.string("You: \(turn.text)")
+                    : AppLocalization.string("GPT-Live: \(turn.text)")).post()
             }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

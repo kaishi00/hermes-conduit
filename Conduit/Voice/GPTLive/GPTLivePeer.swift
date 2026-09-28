@@ -26,6 +26,10 @@ protocol GPTLivePeer: AnyObject {
     var onMessage: (@MainActor (String) -> Void)? { get set }
     /// The connection failed or closed underneath the session.
     var onDisconnected: (@MainActor () -> Void)? { get set }
+    /// ICE lost the path for now (a network handoff, a packet-loss blip):
+    /// `true` when it drops, `false` once it is connected again. It often
+    /// recovers on its own; the session decides how long to wait.
+    var onConnectionInterrupted: (@MainActor (Bool) -> Void)? { get set }
     /// The call's audio couldn't be brought back (after an interruption).
     var onAudioLost: (@MainActor (String) -> Void)? { get set }
     /// Opens the microphone and the data channel and returns the local SDP
@@ -57,7 +61,9 @@ enum GPTLivePeerError: LocalizedError {
 final class WebRTCGPTLivePeer: NSObject, GPTLivePeer {
     var onMessage: (@MainActor (String) -> Void)?
     var onDisconnected: (@MainActor () -> Void)?
+    var onConnectionInterrupted: (@MainActor (Bool) -> Void)?
     var onAudioLost: (@MainActor (String) -> Void)?
+    private var isInterrupted = false
 
     /// How long ICE gathering may take before the offer goes out with the
     /// candidates it has (host candidates come almost at once).
@@ -177,9 +183,20 @@ final class WebRTCGPTLivePeer: NSObject, GPTLivePeer {
     fileprivate func connectionStateChanged(_ state: RTCPeerConnectionState) {
         guard !isClosed else { return }
         switch state {
-        case .failed, .closed, .disconnected:
+        case .failed, .closed:
             gptLivePeerLogger.notice("GPT-Live peer connection ended: state=\(state.rawValue, privacy: .public)")
             onDisconnected?()
+        case .disconnected:
+            // WebRTC's temporary state: it usually returns to connected.
+            guard !isInterrupted else { return }
+            gptLivePeerLogger.notice("GPT-Live peer connection interrupted")
+            isInterrupted = true
+            onConnectionInterrupted?(true)
+        case .connected:
+            guard isInterrupted else { return }
+            gptLivePeerLogger.notice("GPT-Live peer connection restored")
+            isInterrupted = false
+            onConnectionInterrupted?(false)
         default:
             break
         }

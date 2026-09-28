@@ -35,6 +35,7 @@ final class FakeGPTLiveClient: GPTLiveSessionProviding {
 final class FakeGPTLivePeer: GPTLivePeer {
     var onMessage: (@MainActor (String) -> Void)?
     var onDisconnected: (@MainActor () -> Void)?
+    var onConnectionInterrupted: (@MainActor (Bool) -> Void)?
     var onAudioLost: (@MainActor (String) -> Void)?
     var offerError: Error?
     var channelOpen = true
@@ -103,13 +104,11 @@ final class FakeGPTLiveSessionControl: GPTLiveSessionControlling {
 @MainActor
 final class FakeGPTLiveAudio: GPTLiveAudioSessionControlling {
     private(set) var events: [String] = []
-    var hasConversationPolicy = true
     var reassertError: Error?
     func acquire() throws { events.append("acquire") }
     func reassert() throws {
         events.append("reassert")
         if let reassertError { throw reassertError }
-        hasConversationPolicy = true
     }
     func release() { events.append("release") }
     func enableWebRTCAudio() { events.append("enable") }
@@ -220,10 +219,38 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(missing, .pluginMissing)
     }
 
-    private func makeGPTSession(client: FakeGPTLiveClient, startTimeout: Duration = .seconds(60)) -> (GPTLiveSession, FakeGPTLivePeer) {
+    private func makeGPTSession(
+        client: FakeGPTLiveClient,
+        startTimeout: Duration = .seconds(60),
+        reconnectGrace: Duration = .seconds(60)
+    ) -> (GPTLiveSession, FakeGPTLivePeer) {
         let peer = FakeGPTLivePeer()
-        let session = GPTLiveSession(client: client, makePeer: { peer }, startTimeout: startTimeout)
+        let session = GPTLiveSession(client: client, makePeer: { peer }, startTimeout: startTimeout, reconnectGrace: reconnectGrace)
         return (session, peer)
+    }
+
+    func testGPTLiveKeepsTheCallThroughABriefNetworkDropButNotALongOne() async throws {
+        let (session, peer) = makeGPTSession(client: FakeGPTLiveClient(), reconnectGrace: .milliseconds(80))
+        session.start()
+        await settle()
+        peer.deliver(["type": "session.started"])
+
+        // A Wi-Fi/cellular handoff that recovers within the grace period.
+        peer.onConnectionInterrupted?(true)
+        XCTAssertEqual(session.state, .ready, "WebRTC's .disconnected is temporary")
+        try await Task.sleep(for: .milliseconds(20))
+        peer.onConnectionInterrupted?(false)
+        try await Task.sleep(for: .milliseconds(150))
+        XCTAssertEqual(session.state, .ready, "Recovered in time: the call goes on")
+        XCTAssertFalse(peer.closed)
+
+        // One that doesn't come back ends the call.
+        peer.onConnectionInterrupted?(true)
+        for _ in 0..<50 where session.state == .ready {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(session.state, .failed(AppLocalization.string("The GPT-Live connection was lost.")))
+        XCTAssertTrue(peer.closed)
     }
 
     func testGPTLiveSessionExchangesTheOfferThroughHermesAndIsReadyOnSessionStarted() async throws {
@@ -283,21 +310,25 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertFalse(link.isInterrupted)
         XCTAssertEqual(Array(audio.events.suffix(2)), ["reassert", "enable"], "The lease is reapplied before WebRTC resumes")
 
-        // A route change that kept our policy is left alone; one that lost it is reapplied.
+        // Every real route change reasserts the lease (a dropped headset can
+        // tear the session down with its category unchanged); our own
+        // category changes never loop.
         let before = audio.events.count
-        link.routeChanged(.newDeviceAvailable)
-        XCTAssertEqual(audio.events.count, before)
-        audio.hasConversationPolicy = false
         link.routeChanged(.categoryChange)
         XCTAssertEqual(audio.events.count, before, "Our own category changes never loop")
         link.routeChanged(.oldDeviceUnavailable)
         XCTAssertEqual(audio.events.last, "reassert")
+        audio.reassertError = URLError(.cannotConnectToHost)
+        link.routeChanged(.newDeviceAvailable)
+        XCTAssertEqual(lost, [AppLocalization.string("GPT-Live's audio couldn't resume after the audio route changed.")])
+        audio.reassertError = nil
 
         // Resuming can fail: the call is reported lost rather than left mute.
         link.interruptionBegan()
         audio.reassertError = URLError(.cannotConnectToHost)
         link.interruptionEnded()
-        XCTAssertEqual(lost.count, 1)
+        XCTAssertEqual(lost.count, 2)
+        XCTAssertEqual(lost.last, AppLocalization.string("GPT-Live's audio couldn't resume after the interruption."))
 
         link.stop()
         XCTAssertEqual(audio.events.last, "release")
@@ -411,7 +442,7 @@ extension VoiceConversationControllerTests {
         bridge.connectionReplaced()
         supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "All green.", reasoning: nil))
         let updates = bridge.pendingUpdates()
-        guard case .sessionContext(let text, .speakable, true)? = updates.first, updates.count == 1 else {
+        guard case .sessionContext(let text, .speakable, true, _)? = updates.first, updates.count == 1 else {
             return XCTFail("\(updates)")
         }
         XCTAssertTrue(text.contains("All green."))
@@ -430,10 +461,34 @@ extension VoiceConversationControllerTests {
 
         supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "All green.", reasoning: nil))
         let updates = bridge.pendingUpdates()
-        guard case .sessionContext(let text, .speakable, true)? = updates.first, updates.count == 1 else {
+        guard case .sessionContext(let text, .speakable, true, _)? = updates.first, updates.count == 1 else {
             return XCTFail("The outcome arrives as a job notice, got \(updates)")
         }
         XCTAssertTrue(text.contains("All green."))
+    }
+
+    func testGPTLiveIdenticalNoticesFromTwoJobsAreTrackedByJob() async throws {
+        let (supervisor, _, bridge) = makeGPTJobs()
+        // Two jobs with the same title that both fail: the same notice text.
+        _ = await supervisor.startJob(instructions: "check the server")
+        _ = await supervisor.startJob(instructions: "check the server")
+        supervisor.observe(.messageError(sessionId: "rt-1", message: "boom"))
+        supervisor.observe(.messageError(sessionId: "rt-2", message: "boom"))
+        let updates = bridge.pendingUpdates()
+        let items: [(String, UUID?)] = updates.compactMap {
+            if case .sessionContext(let text, _, _, let jobID) = $0 { return (text, jobID) }
+            return nil
+        }
+        XCTAssertEqual(items.count, 2)
+        XCTAssertEqual(items[0].0, items[1].0, "Same text")
+        XCTAssertNotEqual(items[0].1, items[1].1, "Different jobs")
+
+        // The second one is sent, the first handed back: only the first is pending again.
+        bridge.contextDelivered(jobID: items[1].1)
+        bridge.returnUnsent(jobIDs: [items[0].1])
+        let again = bridge.pendingUpdates()
+        guard case .sessionContext(_, _, _, let jobID)? = again.first, again.count == 1 else { return XCTFail("\(again)") }
+        XCTAssertEqual(jobID, items[0].1)
     }
 
     func testGPTLiveDelegationWithNothingToDoAsksInsteadOfStartingAJob() async {
@@ -587,6 +642,21 @@ extension VoiceConversationControllerTests {
         session.onEvent?(.turnDone(role: "assistant", transcript: "Let me check."))
         XCTAssertEqual(controller.transcript.map(\.text), ["What's the weather?", "Let me check."])
         XCTAssertEqual(controller.transcript.map(\.speaker), [.user, .assistant])
+        controller.stop()
+    }
+
+    func testGPTLiveIgnoresTurnsFromRolesItDoesNotKnow() async {
+        let (controller, session, _, _) = makeGPTController(clock: Date.init)
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.outputTranscript("Working on"))
+        session.onEvent?(.turnDone(role: "system", transcript: "internal"))
+        XCTAssertEqual(controller.phase, .speaking, "An unknown role doesn't end the model's turn")
+        XCTAssertFalse(controller.transcript.contains { $0.text == "internal" })
+        XCTAssertNil(controller.finishedTurn)
+        session.onEvent?(.turnDone(role: "assistant", transcript: "Working on it."))
+        XCTAssertEqual(controller.finishedTurn?.speaker, .assistant)
+        XCTAssertEqual(controller.finishedTurn?.text, "Working on it.")
         controller.stop()
     }
 

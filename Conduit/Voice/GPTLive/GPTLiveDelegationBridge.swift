@@ -24,7 +24,8 @@ final class GPTLiveDelegationBridge {
         /// An answer on an open delegation.
         case delegationReply(delegationID: String, text: String, channel: GPTLiveProtocol.Channel)
         /// Session-wide context. `whenIdle` ones wait until nobody speaks.
-        case sessionContext(text: String, channel: GPTLiveProtocol.Channel, whenIdle: Bool)
+        /// `jobID` is the job whose notice it carries, if any.
+        case sessionContext(text: String, channel: GPTLiveProtocol.Channel, whenIdle: Bool, jobID: UUID?)
     }
 
     private let supervisor: GeminiLiveJobSupervising
@@ -116,27 +117,27 @@ final class GPTLiveDelegationBridge {
             case .speak(let spoken): text = Self.relay(spoken)
             case .submit(let prompt, _): text = prompt
             }
-            queuedNotices.append((text, item.jobID))
-            outgoing.append(.sessionContext(text: text, channel: .speakable, whenIdle: true))
+            queuedNotices.insert(item.jobID)
+            outgoing.append(.sessionContext(text: text, channel: .speakable, whenIdle: true, jobID: item.jobID))
         }
         return outgoing
     }
 
-    /// Job notices handed out but not yet sent, so they can be handed back
-    /// if the conversation closes first.
-    private var queuedNotices: [(text: String, jobID: UUID)] = []
+    /// Jobs whose notice was handed out but not yet sent, so it can be
+    /// handed back if the conversation closes first. Matched by job, never
+    /// by text: two jobs can produce the same notice.
+    private var queuedNotices: Set<UUID> = []
 
     /// A queued notice went out: its job is spoken for.
-    func contextDelivered(_ text: String) {
-        guard let index = queuedNotices.firstIndex(where: { $0.text == text }) else { return }
-        supervisor.noticeSent(jobID: queuedNotices.remove(at: index).jobID)
+    func contextDelivered(jobID: UUID?) {
+        guard let jobID, queuedNotices.remove(jobID) != nil else { return }
+        supervisor.noticeSent(jobID: jobID)
     }
 
     /// These notices will never be sent: their jobs become pending again.
-    func returnUnsent(_ texts: [String]) {
-        for text in texts {
-            guard let index = queuedNotices.firstIndex(where: { $0.text == text }) else { continue }
-            supervisor.returnUndeliveredNotice(jobID: queuedNotices.remove(at: index).jobID)
+    func returnUnsent(jobIDs: [UUID?]) {
+        for case let jobID? in jobIDs where queuedNotices.remove(jobID) != nil {
+            supervisor.returnUndeliveredNotice(jobID: jobID)
         }
     }
 

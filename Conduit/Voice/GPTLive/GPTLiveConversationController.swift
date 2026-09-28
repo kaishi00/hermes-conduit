@@ -87,6 +87,15 @@ final class GPTLiveConversationController: ObservableObject {
     @Published private(set) var transcript: [VoiceConversationTranscriptEntry] = []
     @Published private(set) var isMicrophoneMuted = false
 
+    /// A turn `turn.done` just completed, with its final text: what
+    /// VoiceOver announces (the streamed fragments before it aren't).
+    struct FinishedTurn: Equatable {
+        let id = UUID()
+        let speaker: VoiceConversationTranscriptEntry.Speaker
+        let text: String
+    }
+    @Published private(set) var finishedTurn: FinishedTurn?
+
     var isActive: Bool {
         switch phase {
         case .idle, .failed: return false
@@ -115,7 +124,7 @@ final class GPTLiveConversationController: ObservableObject {
     private var lastModelOutputAt: Date?
     private var lastModelTurnEndedAt: Date?
     /// Idle-only session context (job notices) waiting to be sent.
-    private var pendingContext: [String] = []
+    private var pendingContext: [(text: String, jobID: UUID?)] = []
     private var idleFlushTask: Task<Void, Never>?
     /// Entries still taking streamed fragments. The other speaker starting
     /// closes one, as in Gemini Live.
@@ -163,7 +172,7 @@ final class GPTLiveConversationController: ObservableObject {
         endTask?.cancel()
         endTask = nil
         endRequestedAt = nil
-        bridge.returnUnsent(pendingContext)
+        bridge.returnUnsent(jobIDs: pendingContext.map(\.jobID))
         pendingContext = []
         modelTurnActive = false
         lastUserSpeechAt = nil
@@ -208,7 +217,7 @@ final class GPTLiveConversationController: ObservableObject {
         retireSession()
         modelTurnActive = false
         // Unspoken job notices go back to the supervisor, not the bin.
-        bridge.returnUnsent(pendingContext)
+        bridge.returnUnsent(jobIDs: pendingContext.map(\.jobID))
         pendingContext = []
         bridge.connectionReplaced()
         closeOpenEntries()
@@ -241,7 +250,7 @@ final class GPTLiveConversationController: ObservableObject {
         endRequestedAt = now()
         phase = .ending
         session?.setMicrophoneEnabled(false)
-        bridge.returnUnsent(pendingContext)
+        bridge.returnUnsent(jobIDs: pendingContext.map(\.jobID))
         pendingContext = []
         // Job outcomes stay pending for Hermes to report instead of being
         // spent on a conversation that is closing.
@@ -324,20 +333,29 @@ final class GPTLiveConversationController: ObservableObject {
             if endRequestedAt == nil { phase = .speaking }
             appendTranscript(text, speaker: .assistant)
         case .turnDone(let role, let text):
-            if role == "user" {
+            switch role {
+            case "user":
                 lastUserSpeechAt = now()
                 let finished = finishTurn(userTurnEntries, speaker: .user, text: text)
                 openUserEntry = nil
                 userTurnEntries = []
-                if let finished { userFinished(finished) }
-            } else {
+                if let finished {
+                    finishedTurn = FinishedTurn(speaker: .user, text: finished)
+                    userFinished(finished)
+                }
+            case "assistant":
                 modelTurnActive = false
                 lastModelTurnEndedAt = now()
-                _ = finishTurn(assistantTurnEntries, speaker: .assistant, text: text)
+                if let finished = finishTurn(assistantTurnEntries, speaker: .assistant, text: text) {
+                    finishedTurn = FinishedTurn(speaker: .assistant, text: finished)
+                }
                 openAssistantEntry = nil
                 assistantTurnEntries = []
                 if endRequestedAt == nil { phase = .listening }
                 scheduleIdleFlush()
+            default:
+                // A role Conduit doesn't know is neither the user nor the model.
+                break
             }
         case .delegation(let id, let text):
             let request = delegationRequest(itemText: text)
@@ -419,9 +437,9 @@ final class GPTLiveConversationController: ObservableObject {
                     // The call dropped: the outcome goes back to the supervisor.
                     bridge.replyUndelivered(delegationID: id)
                 }
-            case .sessionContext(let text, let channel, let whenIdle):
+            case .sessionContext(let text, let channel, let whenIdle, let jobID):
                 if whenIdle {
-                    pendingContext.append(text)
+                    pendingContext.append((text, jobID))
                 } else {
                     session?.appendContext(text, channel: channel, delegationID: nil)
                 }
@@ -443,14 +461,14 @@ final class GPTLiveConversationController: ObservableObject {
     /// Sends at most one queued update, and only while idle.
     func flushPendingContextIfIdle() {
         guard !pendingContext.isEmpty, endRequestedAt == nil, isConversationIdle, let session else { return }
-        let text = pendingContext.removeFirst()
-        if session.appendContext(text, channel: .speakable, delegationID: nil) {
-            bridge.contextDelivered(text)
+        let item = pendingContext.removeFirst()
+        if session.appendContext(item.text, channel: .speakable, delegationID: nil) {
+            bridge.contextDelivered(jobID: item.jobID)
             // The model speaks it next: wait for that turn before another.
             modelTurnActive = true
             lastModelOutputAt = now()
         } else {
-            pendingContext.insert(text, at: 0)
+            pendingContext.insert(item, at: 0)
         }
     }
 
