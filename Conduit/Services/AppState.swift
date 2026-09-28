@@ -1395,6 +1395,24 @@ final class AppState: ObservableObject {
         return true
     }
 
+    /// Starts Gemini Live for the CarPlay surface. CarPlay presents it, so
+    /// no phone sheet opens; the classic conversation and read aloud stop
+    /// first, as on the phone.
+    func startGeminiLiveForCarPlay() async {
+        guard isConnected else { return }
+        messageReadAloudController.stop()
+        if showVoiceSheet || voiceConversationController.hasLiveVoiceSession { closeVoiceConversation() }
+        guard !geminiLiveController.isActive else { return }
+        await geminiLiveController.start()
+    }
+
+    /// CarPlay went away. A Gemini Live conversation only CarPlay was
+    /// presenting ends; one the phone's sheet shows keeps going.
+    func releaseCarPlayGeminiLive() {
+        guard isGeminiLiveActive, !(isSceneActive && showGeminiLiveSheet) else { return }
+        closeGeminiLiveConversation()
+    }
+
     func closeGeminiLiveConversation() {
         if geminiLiveControllerCreated { geminiLiveController.stop() }
         showGeminiLiveSheet = false
@@ -18759,8 +18777,9 @@ final class AppState: ObservableObject {
     /// The phone's voice entry points (composer mic, Siri/intents that open
     /// the sheet): Gemini Live brings its own speech in and out, so it only
     /// needs a connection (the host's plugin is checked, and any refusal
-    /// reported, when the sheet opens). Classic-only surfaces — CarPlay,
-    /// suspension restore, provider tests — keep `voiceUnavailableReason`.
+    /// reported, when the sheet opens). CarPlay routes to Gemini Live on its
+    /// own; classic-only surfaces (suspension restore, provider tests) keep
+    /// `voiceUnavailableReason`.
     var phoneVoiceUnavailableReason: String? {
         if isGeminiLiveEnabled {
             return isConnected ? nil : "Connect to Hermes before starting voice."
