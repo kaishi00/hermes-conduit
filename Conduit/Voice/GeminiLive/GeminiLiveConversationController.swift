@@ -262,6 +262,7 @@ final class GeminiLiveConversationController: ObservableObject {
         guard !isActive else { return }
         phase = .connecting
         transcript = []
+        tools.returnUnsent(pendingTextTurns)
         pendingTextTurns = []
         // Nothing from a previous attempt may gate or attach to this one.
         modelTurnActive = false
@@ -322,6 +323,8 @@ final class GeminiLiveConversationController: ObservableObject {
         suppressingModelTurn = false
         lastPlaybackAt = nil
         lastModelAudioAt = nil
+        // Unspoken job notices go back to the supervisor, not the bin.
+        tools.returnUnsent(pendingTextTurns)
         pendingTextTurns = []
         tools.connectionReplaced()
         closeOpenEntries()
@@ -362,6 +365,7 @@ final class GeminiLiveConversationController: ObservableObject {
         guard isActive, endRequestedAt == nil else { return }
         endRequestedAt = now()
         stopInput()
+        tools.returnUnsent(pendingTextTurns)
         pendingTextTurns = []
         // Job outcomes stay pending for Hermes to report instead of being
         // spent on a conversation that is closing.
@@ -424,7 +428,8 @@ final class GeminiLiveConversationController: ObservableObject {
         case .ready:
             // A microphone that fails to start leaves the phase failed.
             if !isMicrophoneMuted, !startInput() { return }
-            phase = modelTurnActive ? .speaking : .listening
+            // Ending: the microphone is closed, so it isn't listening.
+            if endRequestedAt == nil { phase = modelTurnActive ? .speaking : .listening }
             // Anything that settled while (re)connecting goes out now,
             // unless the conversation is ending: then it stays pending.
             if endRequestedAt == nil { dispatch(tools.pendingUpdates()) }
@@ -606,13 +611,20 @@ final class GeminiLiveConversationController: ObservableObject {
     func flushPendingTextIfIdle() {
         guard !pendingTextTurns.isEmpty, endRequestedAt == nil, isConversationIdle, let session else { return }
         let text = pendingTextTurns.removeFirst()
+        let noticeJobID = tools.textUpdateSent(text)
         modelTurnActive = true
         // An update that never reached the socket waits for the next
-        // connection instead of being lost.
+        // connection instead of being lost; a job notice whose conversation
+        // is gone goes back to the supervisor.
         session.send(GeminiLiveProtocol.textTurnMessage(text), onFailure: { [weak self, weak session] in
-            guard let self, self.isActive, let session, self.session === session else { return }
+            guard let self else { return }
+            guard self.isActive, self.endRequestedAt == nil, let session, self.session === session else {
+                self.tools.returnNotice(jobID: noticeJobID)
+                return
+            }
             self.modelTurnActive = false
             self.pendingTextTurns.insert(text, at: 0)
+            self.tools.textUpdateRequeued(text, jobID: noticeJobID)
             self.scheduleIdleFlush()
         })
     }

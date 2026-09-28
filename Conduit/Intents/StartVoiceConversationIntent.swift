@@ -96,10 +96,10 @@ struct ConduitVoiceShortcuts: AppShortcutsProvider {
             // so the first (suggested) phrases avoid it.
             phrases: [
                 "Start \(.applicationName) voice",
-                "\(.applicationName) voice",
                 "Start voice in \(.applicationName)",
                 "Voice chat in \(.applicationName)",
                 "Start a voice conversation in \(.applicationName)",
+                "\(.applicationName) voice",
                 "Talk to \(.applicationName)"
             ],
             shortTitle: "Talk to Conduit",

@@ -124,6 +124,8 @@ struct MainView: View {
         ) { _, holds in
             UIApplication.shared.isIdleTimerDisabled = holds
         }
+        // Sign-out swaps this view out with a sheet possibly still up.
+        .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
         .sheet(isPresented: $appState.showGeminiLiveSheet, onDismiss: appState.closeGeminiLiveConversation) {
             GeminiLiveVoiceSheet(
                 controller: appState.geminiLiveController,

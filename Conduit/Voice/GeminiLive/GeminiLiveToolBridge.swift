@@ -27,7 +27,8 @@ protocol GeminiLiveJobSupervising: AnyObject {
     func cancelAll() async -> String
     func cancel(jobID: UUID) async -> String?
     func markOutcomeDelivered(jobID: UUID)
-    func takePendingNotice() -> VoiceBackgroundJobNotice?
+    func takePendingNoticeForJob() -> (notice: VoiceBackgroundJobNotice, jobID: UUID)?
+    func returnUndeliveredNotice(jobID: UUID)
 }
 
 extension VoiceBackgroundJobSupervisor: GeminiLiveJobSupervising {}
@@ -240,15 +241,50 @@ final class GeminiLiveToolBridge {
     /// text update.
     func pendingUpdates() -> [Outgoing] {
         var outgoing = settleOpenCalls()
-        while let notice = supervisor.takePendingNotice() {
-            switch notice {
-            case .speak(let text):
-                outgoing.append(.textWhenIdle(Self.relayPrompt(text)))
-            case .submit(let prompt, _):
-                outgoing.append(.textWhenIdle(prompt))
+        guard !isEnding else { return outgoing }
+        while let item = supervisor.takePendingNoticeForJob() {
+            let text: String
+            switch item.notice {
+            case .speak(let spoken): text = Self.relayPrompt(spoken)
+            case .submit(let prompt, _): text = prompt
             }
+            queuedNotices.append((text, item.jobID))
+            outgoing.append(.textWhenIdle(text))
         }
         return outgoing
+    }
+
+    /// Job notices handed out as text updates but not yet sent, so they can
+    /// be handed back if the conversation closes first.
+    private var queuedNotices: [(text: String, jobID: UUID)] = []
+
+    /// A queued text update went out. Returns the job whose notice it
+    /// carried, if any, in case the send fails after all.
+    @discardableResult
+    func textUpdateSent(_ text: String) -> UUID? {
+        guard let index = queuedNotices.firstIndex(where: { $0.text == text }) else { return nil }
+        return queuedNotices.remove(at: index).jobID
+    }
+
+    /// A send that failed: the text waits again for the next connection.
+    func textUpdateRequeued(_ text: String, jobID: UUID?) {
+        guard let jobID else { return }
+        queuedNotices.insert((text, jobID), at: 0)
+    }
+
+    /// A job notice that will never be sent becomes pending again.
+    func returnNotice(jobID: UUID?) {
+        guard let jobID else { return }
+        supervisor.returnUndeliveredNotice(jobID: jobID)
+    }
+
+    /// The conversation is closing with these text updates unsent: any job
+    /// notice among them becomes pending again for Hermes to report.
+    func returnUnsent(_ texts: [String]) {
+        for text in texts {
+            guard let index = queuedNotices.firstIndex(where: { $0.text == text }) else { continue }
+            supervisor.returnUndeliveredNotice(jobID: queuedNotices.remove(at: index).jobID)
+        }
     }
 
     private func settleOpenCalls() -> [Outgoing] {
