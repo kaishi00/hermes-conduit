@@ -13768,7 +13768,13 @@ final class AppState: ObservableObject {
             if let context {
                 guard isCurrentComposerSubmission(context) else { throw error }
             }
-            guard let parsed = Self.parseSlashCommand(command) else { throw error }
+            // `command` arrives already stripped of its leading slash (the
+            // `cleaned` form, or an alias target), so re-slash it before
+            // parsing: `parseSlashCommand` only accepts `/`-prefixed text,
+            // and a nil parse here rethrew slash.exec's own error instead of
+            // falling back — skill commands answer slash.exec with "skill
+            // command: use command.dispatch for /<name>" (#244).
+            guard let parsed = Self.parseSlashCommand("/" + command) else { throw error }
             if let dispatchCommand = chatResumeLifecycleOperations.dispatchCommand {
                 return try await dispatchCommand(
                     client,

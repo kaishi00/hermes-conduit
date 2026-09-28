@@ -1344,6 +1344,33 @@ final class AppStateSessionCompressTests: XCTestCase {
         ]))
     }
 
+    // MARK: - Generic slash fallback
+
+    func testSkillCommandFallsBackToCommandDispatch() async throws {
+        let recorder = SlashCallRecorder()
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            executeSlash: { _, _, command in
+                recorder.recordSlashExec(command: command)
+                throw RpcError(code: 4018, message: "skill command: use command.dispatch for /ghost-new")
+            },
+            dispatchCommand: { _, _, name, arg in
+                recorder.recordDispatch(name: name, arg: arg)
+                return .object(["type": .string("exec"), "output": .string("skill ran")])
+            }
+        ))
+        installComposerClient(in: harness)
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+
+        _ = await harness.appState.submitComposer(text: "/ghost-new draft a post")
+        XCTAssertEqual(recorder.slashExecCommands, ["ghost-new draft a post"])
+        XCTAssertEqual(recorder.dispatchCount, 1, "A slash.exec rejection must fall back to command.dispatch (#244)")
+        XCTAssertEqual(recorder.dispatchCalls.first?.name, "ghost-new")
+        XCTAssertEqual(recorder.dispatchCalls.first?.arg, "draft a post")
+        XCTAssertEqual(harness.appState.messages.last?.content, "skill ran")
+    }
+
     private func makeHarness(
         lifecycleOperations: ChatResumeLifecycleOperations = .live,
         conversationIdentityIndex: ConversationIdentityIndex? = nil
@@ -1450,8 +1477,11 @@ private final class SlashCallRecorder {
         slashExecCommands.append(command)
     }
 
-    func recordDispatch() {
+    private(set) var dispatchCalls: [(name: String, arg: String)] = []
+
+    func recordDispatch(name: String = "", arg: String = "") {
         dispatchCount += 1
+        dispatchCalls.append((name, arg))
     }
 }
 
