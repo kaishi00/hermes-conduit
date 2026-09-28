@@ -66,6 +66,10 @@ struct ChatScrollRenderInputs: Equatable {
     var isFollowingLatest = true
     var renderedScrollScope: ChatRenderedScrollScope?
     var showsJumpToLatest = false
+    /// The target cache's rendering revision. The scope above carries it
+    /// too, but only while a session is rendered; rows without a session
+    /// key must still re-run the body when they change.
+    var targetsRevision: UInt64 = 0
 }
 
 /// Owns the chat viewport. Three rules replace the old follow-correction
@@ -104,6 +108,15 @@ final class ChatScrollEngine: ObservableObject {
         /// distance from the content bottom to the viewport top. Keeping it
         /// constant keeps every row below the prepended page in place.
         let bottomDistance: CGFloat
+        /// The row at the top of the viewport and its distance from the
+        /// viewport top. The bottom distance counts estimated heights of
+        /// rows not laid out yet, which change after a prepend; once the
+        /// row's own frame is believable it gives the exact position.
+        var rowID: String? = nil
+        var rowScreenY: CGFloat? = nil
+        /// The row's top when the backfill was requested. A prepend always
+        /// moves it down, so a frame still reporting it is the old layout.
+        var rowMinY: CGFloat? = nil
         var landedAt: TimeInterval?
     }
 
@@ -217,6 +230,12 @@ final class ChatScrollEngine: ObservableObject {
         surfaceCallbackDepth += 1
         defer { surfaceCallbackDepth -= 1 }
         guard let surface, !isPaused else { return }
+        // SwiftUI's ScrollView can write its own offset back after the pass
+        // that held a prepend; within the hold window that is not the
+        // reader's doing, so the hold is reapplied (a no-op once it sticks).
+        if prependAnchor?.landedAt != nil, !surface.isTracking, !surface.isDecelerating {
+            holdPrependAnchor(on: surface)
+        }
         let previousOffsetY = lastObservedOffsetY
         lastObservedOffsetY = surface.contentOffsetY
         // Momentum carrying the content toward older messages. A flick can
@@ -244,6 +263,9 @@ final class ChatScrollEngine: ObservableObject {
     func rowFramesChanged(_ frames: [String: ChatScrollRowFrame]) {
         rowFrames = frames
         guard mode == .browsing, !isPaused else { return }
+        if prependAnchor?.landedAt != nil, let surface {
+            holdPrependAnchor(on: surface)
+        }
         refreshTopVisibleRow(persist: true)
     }
 
@@ -403,9 +425,13 @@ final class ChatScrollEngine: ObservableObject {
     /// middle keeps their distance from the content bottom.
     func olderPageBackfillRequested(sessionKey: ChatScrollSessionKey?) {
         guard mode == .browsing, let surface else { return }
+        let row = topVisibleMessageID.flatMap { id in rowFrames[id].map { (id, $0.minY) } }
         prependAnchor = PrependAnchor(
             sessionKey: sessionKey,
-            bottomDistance: surface.contentHeight - surface.contentOffsetY
+            bottomDistance: surface.contentHeight - surface.contentOffsetY,
+            rowID: row?.0,
+            rowScreenY: row.map { surface.transcriptOriginY + $0.1 - surface.contentOffsetY },
+            rowMinY: row?.1
         )
     }
 
@@ -633,7 +659,8 @@ final class ChatScrollEngine: ObservableObject {
             renderedSessionKey: renderedSessionKey,
             isFollowingLatest: isFollowingLatest,
             renderedScrollScope: renderedScrollScope,
-            showsJumpToLatest: showsJumpToLatest
+            showsJumpToLatest: showsJumpToLatest,
+            targetsRevision: targetCache.renderingRevision
         )
         if inputs != renderInputs {
             renderInputs = inputs
@@ -675,6 +702,13 @@ final class ChatScrollEngine: ObservableObject {
         var landed = anchor
         landed.landedAt = now()
         prependAnchor = landed
+        // SwiftUI can lay out the prepended rows (and report the new content
+        // size) before its onChange hands over the new transcript, so the
+        // layout pass that should hold the reader may already be over. Hold
+        // now; later size changes keep holding for the rest of the window.
+        if let surface, !isPaused {
+            holdPrependAnchor(on: surface)
+        }
     }
 
     private func holdPrependAnchor(on surface: ChatScrollSurface) {
@@ -685,7 +719,19 @@ final class ChatScrollEngine: ObservableObject {
         }
         // A flick after the prepend belongs to the reader.
         guard !surface.isTracking, !surface.isDecelerating else { return }
-        let target = surface.clampedOffsetY(surface.contentHeight - anchor.bottomDistance)
+        var target = surface.clampedOffsetY(surface.contentHeight - anchor.bottomDistance)
+        // The row's frame refines the estimate only once it describes the
+        // new layout (a prepend moved the row down) and is believable: right
+        // after a prepend LazyVStack reports provisional frames that can be
+        // thousands of points off, so it must agree with the bottom-distance
+        // estimate to within a viewport.
+        if let id = anchor.rowID, let screenY = anchor.rowScreenY, let requestedMinY = anchor.rowMinY,
+           let frame = rowFrames[id], frame.minY > requestedMinY + 0.5 {
+            let rowTarget = surface.clampedOffsetY(surface.transcriptOriginY + frame.minY - screenY)
+            if abs(rowTarget - target) < surface.viewportHeight {
+                target = rowTarget
+            }
+        }
         if abs(surface.contentOffsetY - target) > 0.5 {
             surface.setContentOffsetY(target, animated: false)
         }
