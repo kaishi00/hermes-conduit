@@ -1,0 +1,528 @@
+//
+//  GPTLiveVoiceTests.swift
+//  Conduit
+//
+//  GPT-Live voice mode: the frameless wire format, the Hermes-hosted
+//  session exchange, the WebRTC session over a fake peer, delegations as
+//  Hermes background jobs, and the controller's rules. Written as
+//  extensions of existing Voice suites, like the Gemini Live tests: the CI
+//  test planner is at capacity for new XCTestCase classes.
+//
+
+import XCTest
+@testable import Conduit
+
+// MARK: - Fakes
+
+@MainActor
+final class FakeGPTLiveClient: GPTLiveSessionProviding {
+    var availabilityResult: Result<GPTLiveAvailability, Error> = .success(.available(model: "gpt-live-1-codex", voice: "cove"))
+    var answerResult: Result<GPTLiveSessionAnswer, Error> = .success(GPTLiveSessionAnswer(sessionID: "rtc_1", sdp: "v=0 answer"))
+    private(set) var offers: [String] = []
+    private(set) var histories: [[[String: Any]]] = []
+
+    func availability() async throws -> GPTLiveAvailability { try availabilityResult.get() }
+
+    func createSession(offer: String, history: [[String: Any]]) async throws -> GPTLiveSessionAnswer {
+        offers.append(offer)
+        histories.append(history)
+        return try answerResult.get()
+    }
+}
+
+@MainActor
+final class FakeGPTLivePeer: GPTLivePeer {
+    var onMessage: (@MainActor (String) -> Void)?
+    var onChannelOpen: (@MainActor () -> Void)?
+    var onDisconnected: (@MainActor () -> Void)?
+    var offerError: Error?
+    var channelOpen = true
+    private(set) var acceptedAnswers: [String] = []
+    private(set) var sent: [[String: Any]] = []
+    private(set) var microphoneEnabled = true
+    private(set) var closed = false
+
+    func makeOffer() async throws -> String {
+        if let offerError { throw offerError }
+        return "v=0 offer"
+    }
+
+    func acceptAnswer(_ sdp: String) async throws { acceptedAnswers.append(sdp) }
+
+    func send(_ text: String) -> Bool {
+        guard channelOpen, !closed else { return false }
+        sent.append((try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any]) ?? [:])
+        return true
+    }
+
+    func setMicrophoneEnabled(_ enabled: Bool) { microphoneEnabled = enabled }
+    func close() { closed = true }
+
+    func deliver(_ object: [String: Any]) {
+        let data = try! JSONSerialization.data(withJSONObject: object)
+        onMessage?(String(decoding: data, as: UTF8.self))
+    }
+}
+
+@MainActor
+final class FakeGPTLiveSessionControl: GPTLiveSessionControlling {
+    var onEvent: (@MainActor (GPTLiveProtocol.ServerEvent) -> Void)?
+    var onStateChange: (@MainActor (GPTLiveSession.State) -> Void)?
+    var isReady = false
+    var failAppends = false
+    private(set) var started = 0
+    private(set) var stopped = 0
+    private(set) var appended: [(text: String, channel: GPTLiveProtocol.Channel, delegationID: String?)] = []
+    private(set) var microphoneEnabled: Bool?
+
+    func start() { started += 1 }
+    func stop() { stopped += 1; isReady = false }
+
+    func appendContext(_ text: String, channel: GPTLiveProtocol.Channel, delegationID: String?) -> Bool {
+        guard !failAppends else { return false }
+        appended.append((text, channel, delegationID))
+        return true
+    }
+
+    func setMicrophoneEnabled(_ enabled: Bool) { microphoneEnabled = enabled }
+
+    func becomeReady() {
+        isReady = true
+        onStateChange?(.ready)
+    }
+
+    var speakable: [(text: String, delegationID: String?)] {
+        appended.filter { $0.channel == .speakable }.map { ($0.text, $0.delegationID) }
+    }
+}
+
+@MainActor
+private func settle(_ iterations: Int = 20) async {
+    for _ in 0..<iterations { await Task.yield() }
+}
+
+// MARK: - Wire format, host client, session
+
+@MainActor
+extension HermesVoiceGatewayTimeoutTests {
+    func testGPTLiveDecodesTheFramelessEventsConduitUses() {
+        XCTAssertEqual(GPTLiveProtocol.decode(#"{"type":"session.started","session":{"id":"sess_1"}}"#), .sessionStarted(id: "sess_1"))
+        XCTAssertEqual(GPTLiveProtocol.decode(#"{"type":"input_transcript.added","item":{"text":"hello"}}"#), .inputTranscript("hello"))
+        XCTAssertEqual(GPTLiveProtocol.decode(#"{"type":"output_transcript.added","item":{"text":"hi"}}"#), .outputTranscript("hi"))
+        XCTAssertEqual(GPTLiveProtocol.decode(#"{"type":"turn.done","turn":{"role":"user","transcript":"check the build"}}"#), .turnDone(role: "user", transcript: "check the build"))
+        XCTAssertEqual(
+            GPTLiveProtocol.decode(#"{"type":"delegation.created","item":{"id":"del_1","type":"delegation","target":"client","content":[{"type":"input_text","text":"check "},{"type":"other","text":"x"},{"type":"input_text","text":"the build"}]}}"#),
+            .delegation(id: "del_1", text: "check the build")
+        )
+        XCTAssertEqual(
+            GPTLiveProtocol.decode(#"{"type":"delegation.created","item":{"id":"del_2","type":"delegation","target":"client"}}"#),
+            .delegation(id: "del_2", text: ""),
+            "A delegation may carry no text; the request is then in the transcript"
+        )
+        XCTAssertNil(GPTLiveProtocol.decode(#"{"type":"delegation.created","item":{"id":"del_3","type":"delegation","target":"server"}}"#))
+        XCTAssertEqual(GPTLiveProtocol.decode(#"{"type":"error","error":{"code":"quota","message":"No voice minutes left"}}"#), .error(code: "quota", message: "No voice minutes left"))
+        XCTAssertNil(GPTLiveProtocol.decode(#"{"type":"output_audio.delta","audio":"AAAA"}"#), "Audio is a WebRTC track, not an event")
+        XCTAssertNil(GPTLiveProtocol.decode("not json"))
+    }
+
+    func testGPTLiveContextAppendsAreChunkedToFiveHundredBytesOnCharacterBoundaries() throws {
+        let reply = GPTLiveProtocol.contextAppendMessages("All green.", channel: .speakable, delegationID: "del_1")
+        XCTAssertEqual(reply.count, 1)
+        XCTAssertEqual(reply[0]["type"] as? String, "delegation.context.append")
+        XCTAssertEqual(reply[0]["delegation_item_id"] as? String, "del_1")
+        XCTAssertEqual(reply[0]["channel"] as? String, "speakable")
+        XCTAssertEqual((reply[0]["content"] as? [[String: Any]])?.first?["type"] as? String, "input_text")
+
+        let session = GPTLiveProtocol.contextAppendMessages("note", channel: .commentary)
+        XCTAssertEqual(session.first?["type"] as? String, "session.context.append")
+        XCTAssertNil(session.first?["delegation_item_id"])
+
+        // 3-byte CJK characters and 4-byte emoji never split.
+        let text = String(repeating: "界", count: 400) + String(repeating: "👍🏽", count: 50)
+        let chunks = GPTLiveProtocol.chunks(text)
+        XCTAssertGreaterThan(chunks.count, 1)
+        XCTAssertTrue(chunks.allSatisfy { $0.utf8.count <= GPTLiveProtocol.contextAppendMaxBytes })
+        XCTAssertEqual(chunks.joined(), text)
+        XCTAssertEqual(GPTLiveProtocol.chunks("   "), [])
+    }
+
+    func testGPTLiveStatusOnlyCountsTheSubscriptionAsAvailable() {
+        XCTAssertEqual(
+            GPTLiveClient.availability(from: ["ok": true, "auth": "subscription", "available": true, "model": "gpt-live-1-codex", "voice": "cove"]),
+            .available(model: "gpt-live-1-codex", voice: "cove")
+        )
+        XCTAssertEqual(
+            GPTLiveClient.availability(from: ["ok": true, "auth": "subscription", "available": false, "reason": "GPT-Live needs a working Codex sign-in on the Hermes host."]),
+            .unavailable(reason: "GPT-Live needs a working Codex sign-in on the Hermes host.")
+        )
+        XCTAssertFalse(GPTLiveClient.availability(from: ["ok": true, "auth": "api", "available": true]).isAvailable, "Never an API-billed session")
+    }
+
+    func testGPTLiveSessionPostsTheOfferToTheProfileScopedRouteAndSurfacesHostErrorsAsIs() async throws {
+        var requests: [(path: String, method: String, body: [String: Any]?, timeout: Int)] = []
+        var reply: Result<[String: Any], Error> = .success([
+            "ok": true, "auth": "subscription", "session": ["id": "rtc_abc"],
+            "transport": ["type": "webrtc", "sdp": "v=0 answer"], "source": "plugin",
+        ])
+        let client = GPTLiveClient(profile: { "coder" }, request: { path, method, body, timeout in
+            requests.append((path, method, body, timeout))
+            return try reply.get()
+        })
+        let answer = try await client.createSession(offer: "v=0 offer", history: [GPTLiveProtocol.historyItem(role: "user", text: "hi")])
+        XCTAssertEqual(answer, GPTLiveSessionAnswer(sessionID: "rtc_abc", sdp: "v=0 answer"))
+        XCTAssertEqual(requests.first?.path, DashboardPath.withProfile(GPTLiveClient.sessionPath, profile: "coder"))
+        XCTAssertEqual(requests.first?.method, "POST")
+        XCTAssertEqual(requests.first?.body?["sdp"] as? String, "v=0 offer")
+        XCTAssertEqual((requests.first?.body?["history"] as? [[String: Any]])?.count, 1)
+        XCTAssertGreaterThan(requests.first?.timeout ?? 0, 32_000, "Longer than the host's own timeout")
+
+        let detail = "GPT-Live session was rejected (HTTP 403); check the Codex sign-in and the account's voice access. No API fallback was used."
+        reply = .failure(DashboardTicketBridgeError.http(status: 502, detail: detail))
+        do {
+            _ = try await client.createSession(offer: "v=0 offer", history: [])
+            XCTFail("Expected the host's error")
+        } catch {
+            XCTAssertEqual(error.localizedDescription, detail)
+        }
+        XCTAssertNil(requests.last?.body?["history"], "No history is sent when there is none")
+
+        reply = .success(["ok": true, "auth": "api", "transport": ["type": "webrtc", "sdp": "v=0 answer"]])
+        do {
+            _ = try await client.createSession(offer: "v=0 offer", history: [])
+            XCTFail("An answer that isn't on the subscription is refused")
+        } catch {
+            XCTAssertEqual(error as? GPTLiveClientError, .notSubscription("api"))
+        }
+
+        reply = .failure(DashboardTicketBridgeError.http(status: 404, detail: "Not Found"))
+        let missing = try await client.availability()
+        XCTAssertEqual(missing, .pluginMissing)
+    }
+
+    private func makeGPTSession(client: FakeGPTLiveClient, startTimeout: Duration = .seconds(60)) -> (GPTLiveSession, FakeGPTLivePeer) {
+        let peer = FakeGPTLivePeer()
+        let session = GPTLiveSession(client: client, makePeer: { peer }, startTimeout: startTimeout)
+        return (session, peer)
+    }
+
+    func testGPTLiveSessionExchangesTheOfferThroughHermesAndIsReadyOnSessionStarted() async throws {
+        let client = FakeGPTLiveClient()
+        let (session, peer) = makeGPTSession(client: client)
+        session.start()
+        await settle()
+        XCTAssertEqual(client.offers, ["v=0 offer"])
+        XCTAssertEqual(peer.acceptedAnswers, ["v=0 answer"])
+        XCTAssertEqual(session.state, .connecting)
+        XCTAssertFalse(session.appendContext("too early", channel: .commentary, delegationID: nil))
+
+        peer.deliver(["type": "session.started", "session": ["id": "sess_9"]])
+        XCTAssertEqual(session.state, .ready)
+        XCTAssertEqual(session.sessionID, "sess_9")
+        XCTAssertTrue(session.appendContext(String(repeating: "a", count: 1_200), channel: .speakable, delegationID: "del_1"))
+        XCTAssertEqual(peer.sent.count, 3, "1,200 bytes go out as three appends")
+        XCTAssertTrue(peer.sent.allSatisfy { $0["delegation_item_id"] as? String == "del_1" })
+
+        session.setMicrophoneEnabled(false)
+        XCTAssertFalse(peer.microphoneEnabled, "Mute disables the local track")
+
+        session.stop()
+        XCTAssertEqual(peer.sent.last?["type"] as? String, "session.close")
+        XCTAssertTrue(peer.closed)
+        XCTAssertEqual(session.state, .stopped)
+    }
+
+    func testGPTLiveSessionFailsWithTheHostsReasonAndClosesThePeer() async {
+        let client = FakeGPTLiveClient()
+        client.answerResult = .failure(GPTLiveClientError.host("GPT-Live needs a Codex sign-in with a ChatGPT account. No API fallback was used."))
+        let (session, peer) = makeGPTSession(client: client)
+        session.start()
+        await settle()
+        XCTAssertEqual(session.state, .failed("GPT-Live needs a Codex sign-in with a ChatGPT account. No API fallback was used."))
+        XCTAssertTrue(peer.closed)
+    }
+
+    func testGPTLiveSessionFailsWhenTheConnectionDropsOrNeverStarts() async throws {
+        let client = FakeGPTLiveClient()
+        let (session, peer) = makeGPTSession(client: client)
+        session.start()
+        await settle()
+        peer.deliver(["type": "session.started"])
+        peer.onDisconnected?()
+        guard case .failed = session.state else { return XCTFail("Expected failed, got \(session.state)") }
+        XCTAssertTrue(peer.closed)
+
+        let (silent, silentPeer) = makeGPTSession(client: FakeGPTLiveClient(), startTimeout: .milliseconds(10))
+        silent.start()
+        for _ in 0..<50 where silent.state == .connecting {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        guard case .failed = silent.state else { return XCTFail("Expected failed, got \(silent.state)") }
+        XCTAssertTrue(silentPeer.closed)
+    }
+}
+
+// MARK: - Delegations and the controller
+
+@MainActor
+extension VoiceConversationControllerTests {
+    private func makeGPTJobs() -> (VoiceBackgroundJobSupervisor, FakeVoiceJobBackend, GPTLiveDelegationBridge) {
+        let fake = FakeVoiceJobBackend()
+        let supervisor = VoiceBackgroundJobSupervisor(backend: fake.backend, pollInterval: .seconds(3_600))
+        return (supervisor, fake, GPTLiveDelegationBridge(supervisor: supervisor))
+    }
+
+    func testGPTLiveDelegationRunsAsAHermesJobAndItsResultAnswersTheDelegation() async {
+        let (supervisor, fake, bridge) = makeGPTJobs()
+        let immediate = await bridge.handleDelegation(id: "del_1", request: "check the server")
+        XCTAssertEqual(fake.submissions.count, 1)
+        XCTAssertTrue(fake.submissions[0].1.contains("check the server"))
+        guard case .delegationReply(let id, _, let channel)? = immediate.first, immediate.count == 1 else {
+            return XCTFail("Expected quiet progress, got \(immediate)")
+        }
+        XCTAssertEqual(id, "del_1")
+        XCTAssertEqual(channel, .commentary, "Progress is quiet context, not speech")
+        XCTAssertEqual(bridge.openDelegationCount, 1)
+        XCTAssertEqual(bridge.pendingUpdates(), [])
+
+        let repeated = await bridge.handleDelegation(id: "del_1", request: "check the server")
+        XCTAssertEqual(repeated, [], "A repeated delegation never starts a second job")
+        XCTAssertEqual(fake.submissions.count, 1)
+
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "All green.", reasoning: nil))
+        let updates = bridge.pendingUpdates()
+        guard case .delegationReply(let settledID, let text, let settledChannel)? = updates.first, updates.count == 1 else {
+            return XCTFail("Expected one reply, got \(updates)")
+        }
+        XCTAssertEqual(settledID, "del_1")
+        XCTAssertEqual(settledChannel, .speakable)
+        XCTAssertTrue(text.contains("All green."))
+        XCTAssertNil(supervisor.takePendingNotice(), "The result is announced once, on the delegation")
+    }
+
+    func testGPTLiveResultOfAJobWhoseCallEndedArrivesAsIdleSessionContext() async {
+        let (supervisor, _, bridge) = makeGPTJobs()
+        _ = await bridge.handleDelegation(id: "del_1", request: "check the server")
+        bridge.connectionReplaced()
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "All green.", reasoning: nil))
+        let updates = bridge.pendingUpdates()
+        guard case .sessionContext(let text, .speakable, true)? = updates.first, updates.count == 1 else {
+            return XCTFail("\(updates)")
+        }
+        XCTAssertTrue(text.contains("All green."))
+    }
+
+    func testGPTLiveDelegationWithNothingToDoAsksInsteadOfStartingAJob() async {
+        let (_, fake, bridge) = makeGPTJobs()
+        let reply = await bridge.handleDelegation(id: "del_1", request: "  ")
+        XCTAssertEqual(fake.submissions.count, 0)
+        guard case .delegationReply("del_1", _, .speakable)? = reply.first else { return XCTFail("\(reply)") }
+    }
+
+    private func makeGPTController(
+        client providedClient: FakeGPTLiveClient? = nil,
+        endPhrases: [String] = [],
+        permission: Bool = true,
+        clock: @escaping () -> Date
+    ) -> (GPTLiveConversationController, FakeGPTLiveSessionControl, VoiceBackgroundJobSupervisor, FakeVoiceJobBackend) {
+        let client = providedClient ?? FakeGPTLiveClient()
+        let session = FakeGPTLiveSessionControl()
+        let fake = FakeVoiceJobBackend()
+        let supervisor = VoiceBackgroundJobSupervisor(backend: fake.backend, pollInterval: .seconds(3_600))
+        let controller = GPTLiveConversationController(
+            makeSession: { session },
+            availability: { try await client.availability() },
+            briefing: { "[rules]" },
+            supervisor: supervisor,
+            requestPermission: { permission },
+            now: clock,
+            endConversationPhrases: { endPhrases }
+        )
+        return (controller, session, supervisor, fake)
+    }
+
+    func testGPTLiveUnavailableHostFailsWithTheReasonAndNeverCalls() async {
+        let client = FakeGPTLiveClient()
+        client.availabilityResult = .success(.unavailable(reason: "GPT-Live needs a working Codex sign-in on the Hermes host."))
+        let (controller, session, _, _) = makeGPTController(client: client, clock: Date.init)
+        await controller.start()
+        XCTAssertEqual(controller.phase, .failed(GPTLiveAvailability.unavailable(reason: "GPT-Live needs a working Codex sign-in on the Hermes host.").userFacingReason!))
+        XCTAssertEqual(session.started, 0)
+
+        let (denied, deniedSession, _, _) = makeGPTController(permission: false, clock: Date.init)
+        await denied.start()
+        XCTAssertEqual(denied.phase, .failed(VoiceAudioError.microphonePermissionDenied.localizedDescription))
+        XCTAssertEqual(deniedSession.started, 0)
+    }
+
+    func testGPTLiveBriefsTheModelOnStartAndMutesWithTheLocalTrack() async {
+        let (controller, session, _, _) = makeGPTController(clock: Date.init)
+        await controller.start()
+        XCTAssertEqual(session.started, 1)
+        XCTAssertEqual(controller.phase, .connecting)
+        session.becomeReady()
+        XCTAssertEqual(controller.phase, .listening)
+        XCTAssertEqual(session.microphoneEnabled, true)
+        XCTAssertEqual(session.appended.first?.text, "[rules]")
+        XCTAssertEqual(session.appended.first?.channel, .commentary)
+
+        controller.setMicrophoneMuted(true)
+        XCTAssertEqual(session.microphoneEnabled, false)
+        controller.setMicrophoneMuted(false)
+        XCTAssertEqual(session.microphoneEnabled, true)
+        controller.stop()
+        XCTAssertEqual(session.stopped, 1)
+        XCTAssertEqual(controller.phase, .idle)
+    }
+
+    func testGPTLiveDelegationWithoutTextHandsHermesTheUsersWords() async {
+        let (controller, session, supervisor, fake) = makeGPTController(clock: Date.init)
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.inputTranscript("can you check"))
+        session.onEvent?(.inputTranscript(" whether the build passed"))
+        session.onEvent?(.turnDone(role: "user", transcript: "Can you check whether the build passed?"))
+        XCTAssertEqual(controller.transcript.map(\.text), ["Can you check whether the build passed?"])
+        session.onEvent?(.outputTranscript("On it."))
+        session.onEvent?(.delegation(id: "del_1", text: ""))
+        await settle(40)
+
+        XCTAssertEqual(fake.submissions.count, 1)
+        XCTAssertTrue(fake.submissions[0].1.contains("Can you check whether the build passed?"))
+        XCTAssertTrue(session.appended.contains { $0.delegationID == "del_1" && $0.channel == .commentary })
+
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "The build passed.", reasoning: nil))
+        controller.deliverPendingJobUpdates()
+        XCTAssertTrue(session.speakable.contains { $0.delegationID == "del_1" && $0.text.contains("The build passed.") })
+        controller.stop()
+    }
+
+    func testGPTLiveNeverTalksOverTheUser() async {
+        var current = Date(timeIntervalSince1970: 1_000)
+        let (controller, session, supervisor, _) = makeGPTController(clock: { current })
+        await controller.start()
+        session.becomeReady()
+
+        // A job with no open delegation settles while the user is talking.
+        session.onEvent?(.inputTranscript("so what I was saying"))
+        _ = await supervisor.startJob(instructions: "check the server")
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "All green.", reasoning: nil))
+        controller.deliverPendingJobUpdates()
+        controller.flushPendingContextIfIdle()
+        XCTAssertTrue(session.speakable.isEmpty, "Nothing is said while the user is speaking")
+        XCTAssertEqual(controller.pendingContextCountForTesting, 1)
+
+        // The model answers the user; still its quiet period.
+        current += GPTLiveConversationController.userQuietInterval + 0.5
+        session.onEvent?(.outputTranscript("Sure."))
+        XCTAssertEqual(controller.phase, .speaking)
+        session.onEvent?(.turnDone(role: "assistant", transcript: "Sure."))
+        XCTAssertEqual(controller.phase, .listening)
+        controller.flushPendingContextIfIdle()
+        XCTAssertTrue(session.speakable.isEmpty)
+
+        current += GPTLiveConversationController.modelQuietInterval + 0.5
+        controller.flushPendingContextIfIdle()
+        XCTAssertEqual(session.speakable.count, 1)
+        XCTAssertNil(session.speakable[0].delegationID)
+        XCTAssertTrue(session.speakable[0].text.contains("All green."))
+        controller.stop()
+    }
+
+    func testGPTLiveEndPhraseClosesTheCallOnceTheGoodbyeIsDone() async {
+        var current = Date(timeIntervalSince1970: 1_000)
+        let (controller, session, _, _) = makeGPTController(endPhrases: ["goodbye"], clock: { current })
+        var closed = 0
+        controller.onEndConversation = { closed += 1 }
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.turnDone(role: "user", transcript: "Goodbye!"))
+        XCTAssertEqual(controller.phase, .ending)
+        XCTAssertEqual(session.microphoneEnabled, false, "The microphone closes at once")
+
+        session.onEvent?(.outputTranscript("Bye!"))
+        XCTAssertFalse(controller.finishEndIfDrained(), "Not while GPT-Live is still talking")
+        session.onEvent?(.turnDone(role: "assistant", transcript: "Bye!"))
+        current += GPTLiveConversationController.endGrace + 0.1
+        XCTAssertTrue(controller.finishEndIfDrained())
+        XCTAssertEqual(closed, 1)
+        XCTAssertEqual(controller.phase, .idle)
+        XCTAssertEqual(session.stopped, 1)
+    }
+
+    func testGPTLiveCallThatEndsOnItsOwnShowsWhy() async {
+        let (controller, session, _, _) = makeGPTController(clock: Date.init)
+        await controller.start()
+        session.becomeReady()
+        session.onStateChange?(.failed("The GPT-Live connection was lost."))
+        XCTAssertEqual(controller.phase, .failed("The GPT-Live connection was lost."))
+        XCTAssertFalse(controller.isActive)
+    }
+}
+
+// MARK: - Preference and AppState
+
+@MainActor
+extension ContinuousConversationPreferenceTests {
+    func testGPTLiveIsOffByDefaultAndOlderPreferencesDecodeOff() throws {
+        XCTAssertFalse(VoiceProfilePreferences().gptLiveEnabled)
+        let legacy = try JSONDecoder().decode(VoiceProfilePreferences.self, from: Data(#"{"geminiLiveEnabled":true}"#.utf8))
+        XCTAssertFalse(legacy.gptLiveEnabled)
+        var enabled = VoiceProfilePreferences()
+        enabled.gptLiveEnabled = true
+        enabled.gptLiveMemory = true
+        let roundTrip = try JSONDecoder().decode(VoiceProfilePreferences.self, from: JSONEncoder().encode(enabled))
+        XCTAssertTrue(roundTrip.gptLiveEnabled)
+        XCTAssertEqual(roundTrip.gptLiveMemory, true)
+    }
+}
+
+@MainActor
+extension AppStateVoiceCapabilityTests {
+    private func makeGPTLiveAppState() -> AppState {
+        let suite = "GPTLiveAppState.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        appState.connection = HermesConnection(baseUrl: "https://example.com", ticket: "test-ticket")
+        appState.isConnected = true
+        appState.installVoiceCapabilityStateForTesting(
+            bridge: DashboardTicketBridge(baseURL: "https://example.com"),
+            snapshot: VoiceCapabilitySnapshot(isGatewayConnected: true, supportsTranscription: false, supportsSpeech: false, unavailableReason: "No STT"),
+            isVoiceEnabled: false,
+            transcriptionMode: .hermes,
+            appleSpeechAvailability: .ready(localeIdentifier: "en-US")
+        )
+        return appState
+    }
+
+    func testGPTLiveAndGeminiLiveAreNeverOnTogether() {
+        let appState = makeGPTLiveAppState()
+        XCTAssertFalse(appState.isGPTLiveEnabled, "Off by default")
+        appState.setGeminiLiveEnabled(true)
+        appState.setGPTLiveEnabled(true)
+        XCTAssertTrue(appState.isGPTLiveEnabled)
+        XCTAssertFalse(appState.isGeminiLiveEnabled, "Turning GPT-Live on turns Gemini Live off")
+        XCTAssertNil(appState.phoneVoiceUnavailableReason, "GPT-Live does not need Hermes speech providers")
+        XCTAssertTrue(appState.showsComposerVoiceButton)
+
+        appState.setGeminiLiveEnabled(true)
+        XCTAssertTrue(appState.isGeminiLiveEnabled)
+        XCTAssertFalse(appState.isGPTLiveEnabled, "And the other way round")
+    }
+
+    func testGPTLiveModeOpensItsOwnSheetAndDisconnectClosesIt() async {
+        let appState = makeGPTLiveAppState()
+        appState.setGPTLiveEnabled(true)
+        let opened = await appState.openVoiceConversation(
+            PendingVoiceIntent(profile: appState.activeProfile, startsFreshConversation: false, source: .composer)
+        )
+        XCTAssertTrue(opened)
+        XCTAssertTrue(appState.showGPTLiveSheet)
+        XCTAssertFalse(appState.showVoiceSheet, "The voice modes never run at once")
+        XCTAssertFalse(appState.showGeminiLiveSheet)
+
+        appState.disconnect()
+        XCTAssertFalse(appState.showGPTLiveSheet)
+        XCTAssertFalse(appState.gptLiveController.isActive)
+    }
+}

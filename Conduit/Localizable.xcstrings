@@ -16931,6 +16931,216 @@
           }
         }
       }
+    },
+    "Couldn't prepare the GPT-Live call." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法准备 GPT-Live 通话。"
+          }
+        }
+      }
+    },
+    "GPT-Live didn't start the conversation. Try again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live 没有开始对话。请重试。"
+          }
+        }
+      }
+    },
+    "GPT-Live talks with the personality in this profile's SOUL.md. SOUL.md is sent to OpenAI with the conversation. Applies to the next conversation." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live 会以此配置文件 SOUL.md 中的个性说话。SOUL.md 会随对话发送给 OpenAI。从下一次对话开始生效。"
+          }
+        }
+      }
+    },
+    "GPT-Live's call answer couldn't be used." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法使用 GPT-Live 的通话应答。"
+          }
+        }
+      }
+    },
+    "The model and voice are set on your Hermes server (voice.gpt_live in the profile's config)." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "模型和声音在你的 Hermes 服务器上设置（配置文件中的 voice.gpt_live）。"
+          }
+        }
+      }
+    },
+    "Available (%@, voice %@)" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可用（%1$@，声音 %2$@）"
+          }
+        }
+      }
+    },
+    "Check GPT-Live" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "检查 GPT-Live"
+          }
+        }
+      }
+    },
+    "Connecting to GPT-Live…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在连接 GPT-Live…"
+          }
+        }
+      }
+    },
+    "GPT-Live ended the conversation." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live 结束了对话。"
+          }
+        }
+      }
+    },
+    "GPT-Live gets what your Hermes agent remembers about you. That memory is sent to OpenAI with the conversation. Applies to the next conversation." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live 会获得你的 Hermes 智能体记住的关于你的内容。这些记忆会随对话发送给 OpenAI。从下一次对话开始生效。"
+          }
+        }
+      }
+    },
+    "GPT-Live is not available on this Hermes server." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 Hermes 服务器上无法使用 GPT-Live。"
+          }
+        }
+      }
+    },
+    "GPT-Live is not available on this Hermes server: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 Hermes 服务器上无法使用 GPT-Live：%@"
+          }
+        }
+      }
+    },
+    "GPT-Live is not available: the Conduit plugin on this Hermes server does not support it yet." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法使用 GPT-Live：此 Hermes 服务器上的 Conduit 插件尚不支持它。"
+          }
+        }
+      }
+    },
+    "GPT-Live refused the conversation: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live 拒绝了对话：%@"
+          }
+        }
+      }
+    },
+    "GPT-Live" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live"
+          }
+        }
+      }
+    },
+    "GPT-Live: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live：%@"
+          }
+        }
+      }
+    },
+    "Hermes did not start GPT-Live on the ChatGPT subscription, so Conduit did not connect." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 没有使用 ChatGPT 订阅启动 GPT-Live，因此 Conduit 没有连接。"
+          }
+        }
+      }
+    },
+    "Hermes returned an invalid GPT-Live answer." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 返回了无效的 GPT-Live 应答。"
+          }
+        }
+      }
+    },
+    "Talk with GPT-Live on the ChatGPT subscription your Hermes server is signed in to, instead of the Hermes speech pipeline. Hermes still does the work: GPT-Live hands requests to background jobs on this profile. The sign-in stays on your Hermes server, and it never falls back to API billing. Turning this on turns Gemini Live off." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用你的 Hermes 服务器所登录的 ChatGPT 订阅与 GPT-Live 对话，而不是使用 Hermes 语音流程。工作仍由 Hermes 完成：GPT-Live 会把请求交给此配置文件上的后台任务。登录信息保留在你的 Hermes 服务器上，并且绝不会回退到 API 计费。开启此项会关闭 Gemini Live。"
+          }
+        }
+      }
+    },
+    "The GPT-Live connection was lost." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live 连接已断开。"
+          }
+        }
+      }
+    },
+    "Use GPT-Live for voice" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用 GPT-Live 进行语音对话"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

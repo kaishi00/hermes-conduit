@@ -153,6 +153,13 @@ struct VoiceProfilePreferences: Codable, Equatable {
     var geminiLiveMemory: Bool? = nil
     /// Whether Gemini Live speaks as the profile's SOUL.md persona. Nil is off.
     var geminiLivePersonality: Bool? = nil
+    /// Opt-in GPT-Live voice mode on the host's ChatGPT subscription (off by
+    /// default; older blobs decode off). Never on together with Gemini Live.
+    var gptLiveEnabled: Bool = false
+    /// Whether GPT-Live gets the Hermes host's memory. Nil is off.
+    var gptLiveMemory: Bool? = nil
+    /// Whether GPT-Live speaks as the profile's SOUL.md persona. Nil is off.
+    var gptLivePersonality: Bool? = nil
     /// Model for the Hermes sessions voice background jobs create. Nil keeps
     /// the profile's current model (the pre-existing behavior).
     var voiceJobModel: String? = nil
@@ -204,6 +211,9 @@ struct VoiceProfilePreferences: Codable, Equatable {
         geminiLiveVoice = (try? container.decodeIfPresent(String.self, forKey: .geminiLiveVoice)) ?? nil
         geminiLiveMemory = (try? container.decodeIfPresent(Bool.self, forKey: .geminiLiveMemory)) ?? nil
         geminiLivePersonality = (try? container.decodeIfPresent(Bool.self, forKey: .geminiLivePersonality)) ?? nil
+        gptLiveEnabled = (try? container.decodeIfPresent(Bool.self, forKey: .gptLiveEnabled)) ?? false
+        gptLiveMemory = (try? container.decodeIfPresent(Bool.self, forKey: .gptLiveMemory)) ?? nil
+        gptLivePersonality = (try? container.decodeIfPresent(Bool.self, forKey: .gptLivePersonality)) ?? nil
         voiceJobModel = try container.decodeIfPresent(String.self, forKey: .voiceJobModel)
         voiceJobProvider = try container.decodeIfPresent(String.self, forKey: .voiceJobProvider)
         voiceJobReasoningEffort = try container.decodeIfPresent(String.self, forKey: .voiceJobReasoningEffort)

@@ -562,6 +562,21 @@ struct SettingsView: View {
                         personality: appState.geminiLivePersonalityEnabled,
                         setPersonality: { appState.setGeminiLivePersonalityEnabled($0) }
                     ),
+                    gptLive: GPTLiveSettingsModel(
+                        enabled: appState.isGPTLiveEnabled,
+                        setEnabled: { appState.setGPTLiveEnabled($0) },
+                        checkAvailability: {
+                            do {
+                                return .success(try await appState.gptLiveClient.availability())
+                            } catch {
+                                return .failure(error)
+                            }
+                        },
+                        memory: appState.gptLiveMemoryEnabled,
+                        setMemory: { appState.setGPTLiveMemoryEnabled($0) },
+                        personality: appState.gptLivePersonalityEnabled,
+                        setPersonality: { appState.setGPTLivePersonalityEnabled($0) }
+                    ),
                     voiceJobs: VoiceJobModelSettingsModel(
                         provider: voicePreferences.voiceJobProvider,
                         model: voicePreferences.voiceJobModel,

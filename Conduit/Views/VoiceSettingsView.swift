@@ -24,6 +24,7 @@ struct VoiceSettingsRoute: View {
     let setStopPhrases: ([String]) -> Void
     let setEndConversationPhrases: ([String]) -> Void
     let geminiLive: GeminiLiveSettingsModel?
+    let gptLive: GPTLiveSettingsModel?
     let voiceJobs: VoiceJobModelSettingsModel?
 
     init(
@@ -43,9 +44,11 @@ struct VoiceSettingsRoute: View {
         setStopPhrases: @escaping ([String]) -> Void = { _ in },
         setEndConversationPhrases: @escaping ([String]) -> Void = { _ in },
         geminiLive: GeminiLiveSettingsModel? = nil,
+        gptLive: GPTLiveSettingsModel? = nil,
         voiceJobs: VoiceJobModelSettingsModel? = nil
     ) {
         self.geminiLive = geminiLive
+        self.gptLive = gptLive
         self.voiceJobs = voiceJobs
         _service = StateObject(wrappedValue: HermesVoiceConfigurationService(bridge: bridge, profile: profile))
         _conversationController = ObservedObject(wrappedValue: conversationController)
@@ -80,6 +83,7 @@ struct VoiceSettingsRoute: View {
             setStopPhrases: setStopPhrases,
             setEndConversationPhrases: setEndConversationPhrases,
             geminiLive: geminiLive,
+            gptLive: gptLive,
             voiceJobs: voiceJobs
         )
     }
@@ -129,6 +133,7 @@ struct VoiceSettingsView: View {
     let setStopPhrases: ([String]) -> Void
     let setEndConversationPhrases: ([String]) -> Void
     var geminiLive: GeminiLiveSettingsModel?
+    var gptLive: GPTLiveSettingsModel?
     var voiceJobs: VoiceJobModelSettingsModel?
 
     init(
@@ -147,9 +152,11 @@ struct VoiceSettingsView: View {
         setStopPhrases: @escaping ([String]) -> Void = { _ in },
         setEndConversationPhrases: @escaping ([String]) -> Void = { _ in },
         geminiLive: GeminiLiveSettingsModel? = nil,
+        gptLive: GPTLiveSettingsModel? = nil,
         voiceJobs: VoiceJobModelSettingsModel? = nil
     ) {
         self.geminiLive = geminiLive
+        self.gptLive = gptLive
         self.voiceJobs = voiceJobs
         self.service = service
         _conversationController = ObservedObject(wrappedValue: conversationController)
@@ -175,6 +182,9 @@ struct VoiceSettingsView: View {
                     capabilitySection
                     if let geminiLive {
                         GeminiLiveSettingsSection(model: geminiLive)
+                    }
+                    if let gptLive {
+                        GPTLiveSettingsSection(model: gptLive)
                     }
                     if let voiceJobs {
                         VoiceJobModelSettingsSection(settings: voiceJobs)
