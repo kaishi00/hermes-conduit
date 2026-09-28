@@ -12,7 +12,11 @@
 import Foundation
 
 final class SessionPresentationCache {
-    static let shared = SessionPresentationCache()
+    /// The app's instance writes to disk off the main thread: every caller
+    /// is AppState (main actor), and a full-store encode plus UserDefaults
+    /// write used to run there on each streaming flush and turn completion,
+    /// a cost that grew with the length of the chat.
+    static let shared = SessionPresentationCache(writesAsynchronously: true)
     static let maxUnconfirmedPendingDecisionAge: TimeInterval = 24 * 60 * 60
 
     /// Returns whether a clarification presentation still needs a user
@@ -103,9 +107,7 @@ final class SessionPresentationCache {
             let tool = message.tool
             let preview = tool.flatMap { tool -> String? in
                 let value = tool.input?.isEmpty == false ? tool.input! : (tool.output ?? "")
-                let oneLine = value
-                    .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let oneLine = SessionPresentationCache.collapsingWhitespace(value)
                 return oneLine.isEmpty ? nil : String(oneLine.prefix(600))
             }
 
@@ -143,9 +145,41 @@ final class SessionPresentationCache {
     private let maxSessions = 32
     private let maxMessagesPerSession = 320
 
-    init(defaults: UserDefaults = .standard, now: @escaping () -> Date = { Date() }) {
+    /// Decoded copies of the two stores. Every public operation used to
+    /// decode the whole JSON blob from UserDefaults (often two or three
+    /// times per save); the decoded value is now kept and reused.
+    private var memoryStore: [String: CachedSession]?
+    private var memoryPendingTools: [String: [CachedMessage]]?
+    /// Bytes each memory copy was decoded from or encoded to. In synchronous
+    /// mode the copy is reused only while UserDefaults still holds exactly
+    /// these bytes, so a write made behind this instance's back (another
+    /// instance on the same defaults, a test fixture) is still picked up.
+    private var memoryStoreData: Data?
+    private var memoryPendingToolsData: Data?
+    /// Guards the memory copies above. Today every caller is on the main
+    /// actor, but the type itself doesn't enforce that.
+    private let memoryLock = NSLock()
+    /// When set, encoding and UserDefaults writes run on `writeQueue` and the
+    /// memory copies are authoritative (defaults may briefly lag behind).
+    private let writeQueue: DispatchQueue?
+
+    init(
+        defaults: UserDefaults = .standard,
+        now: @escaping () -> Date = { Date() },
+        writesAsynchronously: Bool = false
+    ) {
         self.defaults = defaults
         self.now = now
+        self.writeQueue = writesAsynchronously
+            ? DispatchQueue(label: "conduit.sessionPresentationCache.write", qos: .utility)
+            : nil
+    }
+
+    /// Blocks until every queued disk write has landed. No-op in
+    /// synchronous mode. Callers that need a write durable before they
+    /// return (suspension, clears, deletes) call this.
+    func waitForPendingWrites() {
+        writeQueue?.sync {}
     }
 
     func unconfirmedPendingDecisionDate(
@@ -655,8 +689,8 @@ final class SessionPresentationCache {
             }
         }
         if pendingChanged { persistPendingTools(pendingStore) }
-        guard defaults.data(forKey: storageKey) != nil else { return }
         var store = load()
+        guard !store.isEmpty else { return }
         var changed = false
         for id in ids {
             let cacheKey = key(profile: profile, sessionID: id)
@@ -924,8 +958,22 @@ final class SessionPresentationCache {
 
     func clear(profile: String? = nil) {
         guard let profile else {
-            defaults.removeObject(forKey: storageKey)
-            defaults.removeObject(forKey: pendingToolsStorageKey)
+            memoryLock.withLock {
+                memoryStore = [:]
+                memoryPendingTools = [:]
+                memoryStoreData = nil
+                memoryPendingToolsData = nil
+            }
+            let defaults = defaults
+            let storageKey = storageKey
+            let pendingToolsStorageKey = pendingToolsStorageKey
+            performWrite {
+                defaults.removeObject(forKey: storageKey)
+                defaults.removeObject(forKey: pendingToolsStorageKey)
+            }
+            // A clear protects another account's data (sign-out, server
+            // switch): it must be on disk before this returns.
+            waitForPendingWrites()
             return
         }
 
@@ -936,6 +984,7 @@ final class SessionPresentationCache {
         var pendingStore = loadPendingTools()
         pendingStore.keys.filter { $0.hasPrefix(prefix) }.forEach { pendingStore.removeValue(forKey: $0) }
         persistPendingTools(pendingStore)
+        waitForPendingWrites()
     }
 
     /// Removes the cached records for the given sessions inside `profile`,
@@ -959,6 +1008,8 @@ final class SessionPresentationCache {
         }
         if changed { persist(store) }
         removePendingToolSideRecords(profile: profile, sessionIDs: Array(ids))
+        // A deleted conversation must not come back after a relaunch.
+        waitForPendingWrites()
     }
 
     /// Durable-owned persistence: once this conversation's durable identity
@@ -1157,33 +1208,89 @@ final class SessionPresentationCache {
     }
 
     private func load() -> [String: CachedSession] {
-        guard let data = defaults.data(forKey: storageKey),
-              let decoded = try? JSONDecoder().decode([String: CachedSession].self, from: data) else {
-            return [:]
-        }
+        memoryLock.lock()
+        defer { memoryLock.unlock() }
+        if writeQueue != nil, let memoryStore { return memoryStore }
+        let data = defaults.data(forKey: storageKey)
+        if let memoryStore, data == memoryStoreData { return memoryStore }
+        let decoded = data.flatMap { try? JSONDecoder().decode([String: CachedSession].self, from: $0) } ?? [:]
+        memoryStore = decoded
+        memoryStoreData = data
         return decoded
     }
 
     private func persist(_ store: [String: CachedSession]) {
-        guard let data = try? JSONEncoder().encode(store) else { return }
+        memoryLock.lock()
+        defer { memoryLock.unlock() }
+        memoryStore = store
+        let defaults = defaults
+        let storageKey = storageKey
+        if writeQueue != nil {
+            performWrite {
+                guard let data = try? JSONEncoder().encode(store) else { return }
+                defaults.set(data, forKey: storageKey)
+            }
+            return
+        }
+        guard let data = try? JSONEncoder().encode(store) else {
+            memoryStore = nil
+            return
+        }
         defaults.set(data, forKey: storageKey)
+        memoryStoreData = data
     }
 
     private func loadPendingTools() -> [String: [CachedMessage]] {
-        guard let data = defaults.data(forKey: pendingToolsStorageKey),
-              let decoded = try? JSONDecoder().decode([String: [CachedMessage]].self, from: data) else {
-            return [:]
-        }
+        memoryLock.lock()
+        defer { memoryLock.unlock() }
+        if writeQueue != nil, let memoryPendingTools { return memoryPendingTools }
+        let data = defaults.data(forKey: pendingToolsStorageKey)
+        if let memoryPendingTools, data == memoryPendingToolsData { return memoryPendingTools }
+        let decoded = data.flatMap { try? JSONDecoder().decode([String: [CachedMessage]].self, from: $0) } ?? [:]
+        memoryPendingTools = decoded
+        memoryPendingToolsData = data
         return decoded
     }
 
     private func persistPendingTools(_ store: [String: [CachedMessage]]) {
-        guard !store.isEmpty else {
-            defaults.removeObject(forKey: pendingToolsStorageKey)
+        memoryLock.lock()
+        defer { memoryLock.unlock() }
+        memoryPendingTools = store
+        let defaults = defaults
+        let key = pendingToolsStorageKey
+        if writeQueue != nil {
+            performWrite {
+                guard !store.isEmpty else {
+                    defaults.removeObject(forKey: key)
+                    return
+                }
+                guard let data = try? JSONEncoder().encode(store) else { return }
+                defaults.set(data, forKey: key)
+            }
             return
         }
-        guard let data = try? JSONEncoder().encode(store) else { return }
-        defaults.set(data, forKey: pendingToolsStorageKey)
+        guard !store.isEmpty else {
+            defaults.removeObject(forKey: key)
+            memoryPendingToolsData = nil
+            return
+        }
+        guard let data = try? JSONEncoder().encode(store) else {
+            memoryPendingTools = nil
+            return
+        }
+        defaults.set(data, forKey: key)
+        memoryPendingToolsData = data
+    }
+
+    /// Runs a disk write on the write queue (in order with every earlier
+    /// write, so a clear can never be overtaken by an older save), or inline
+    /// in synchronous mode.
+    private func performWrite(_ write: @escaping () -> Void) {
+        if let writeQueue {
+            writeQueue.async(execute: write)
+        } else {
+            write()
+        }
     }
 
     private func pendingToolRecords(profile: String, sessionIDs: [String]) -> [CachedMessage] {
@@ -1230,7 +1337,17 @@ final class SessionPresentationCache {
         // score. Equal-scoring rows (repeated content, repeated tool calls)
         // must resolve deterministically to the earliest row; iterating the
         // `remaining` set unordered made enrichment order arbitrary.
-        for index in remaining.sorted() {
+        //
+        // The message's own fingerprints are computed once here, not
+        // once per candidate: this runs for every transcript row against
+        // every cached row on each resume, so recomputing them per candidate
+        // made a resume cost grow with the square of the chat's length.
+        let contentSignature = message.tool == nil ? Self.fingerprint(message.content) : nil
+        let toolInputSignature = message.tool?.input.map(Self.fingerprint)
+        let toolOutputSignature = message.tool?.output.map(Self.fingerprint)
+        let toolName = message.tool.map { normalized($0.name) }
+        let gatewayToolID = stableToolID(message.tool?.id)
+        for index in cached.indices where remaining.contains(index) {
             let candidate = cached[index]
             guard candidate.role == message.role else { continue }
             var score = Int.min
@@ -1238,9 +1355,8 @@ final class SessionPresentationCache {
             if candidate.id == message.id {
                 // Absolute maximum; no later candidate can outrank it.
                 return index
-            } else if let tool = message.tool {
+            } else if message.tool != nil {
                 let cachedToolID = stableToolID(candidate.toolID)
-                let gatewayToolID = stableToolID(tool.id)
                 let hasStableMatch: Bool
                 if let cachedToolID, let gatewayToolID {
                     guard cachedToolID == gatewayToolID else { continue }
@@ -1249,7 +1365,7 @@ final class SessionPresentationCache {
                     // ID-bearing tools must not fall back to name matching.
                     continue
                 } else {
-                    guard candidate.toolName == normalized(tool.name) else { continue }
+                    guard candidate.toolName == toolName else { continue }
                     // A locally recorded start belongs after the cached history.
                     // Do not let any generic same-name gateway row consume it:
                     // without a shared row or tool id, it can be a distinct
@@ -1260,11 +1376,11 @@ final class SessionPresentationCache {
                     hasStableMatch = false
                 }
                 score = hasStableMatch ? 80 : 50
-                if candidate.toolName == normalized(tool.name) { score += 10 }
-                if let input = tool.input, candidate.toolInputSignature == Self.fingerprint(input) { score += 30 }
-                if let output = tool.output, candidate.toolOutputSignature == Self.fingerprint(output) { score += 30 }
-                if (tool.input ?? "").isEmpty, candidate.toolPreview?.isEmpty == false { score += 5 }
-            } else if candidate.signature == Self.fingerprint(message.content) {
+                if candidate.toolName == toolName { score += 10 }
+                if let toolInputSignature, candidate.toolInputSignature == toolInputSignature { score += 30 }
+                if let toolOutputSignature, candidate.toolOutputSignature == toolOutputSignature { score += 30 }
+                if (message.tool?.input ?? "").isEmpty, candidate.toolPreview?.isEmpty == false { score += 5 }
+            } else if candidate.signature == contentSignature {
                 score = 100
             } else {
                 // Hermes can re-render a completed response before placing it in
@@ -1339,14 +1455,40 @@ final class SessionPresentationCache {
 
     private static func fingerprint(_ value: String) -> String {
         var hash: UInt64 = 14_695_981_039_346_656_037
-        let normalized = value
-            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalized = collapsingWhitespace(value)
         for byte in normalized.utf8 {
             hash ^= UInt64(byte)
             hash &*= 1_099_511_628_211
         }
         return String(hash, radix: 16)
+    }
+
+    /// Collapses every run of whitespace to one space and drops leading and
+    /// trailing whitespace: the same result as replacing the regex `\s+`
+    /// with " " and trimming `.whitespacesAndNewlines`, which this replaces.
+    /// That regex ran over the full text of every cached row (tool output
+    /// included) on each save, on the main thread; a single scalar pass is
+    /// many times cheaper. ICU's `\s` is the Unicode White_Space property,
+    /// and every trimmed character is White_Space, so outputs match exactly
+    /// and stored signatures stay valid.
+    static func collapsingWhitespace(_ value: String) -> String {
+        var result = String.UnicodeScalarView()
+        var pendingSpace = false
+        for scalar in value.unicodeScalars {
+            let isWhitespace = scalar.isASCII
+                ? scalar == " " || (scalar.value >= 0x09 && scalar.value <= 0x0D)
+                : scalar.properties.isWhitespace
+            if isWhitespace {
+                pendingSpace = true
+                continue
+            }
+            if pendingSpace, !result.isEmpty {
+                result.append(" ")
+            }
+            pendingSpace = false
+            result.append(scalar)
+        }
+        return String(result)
     }
 
     /// Stable logical identity of one cached snapshot: the (role, id,
