@@ -14,19 +14,41 @@ Start a conversation on desktop, pick it up on your phone. The session list is t
 
 ## Features
 
-- **Streaming chat** with full Markdown (code blocks, math, Mermaid, task lists)
-- **Tool call inspection** and reasoning traces
-- **Voice mode** with push-to-talk, on-device speech recognition, server-side Whisper
-- **Image, PDF, and text attachments**
-- **Model switching** and reasoning effort controls
-- **Slash commands** and workspace file browsing
-- **Session branching, pinning, and archiving**
-- **Capabilities tab** to toggle skills, tools, and MCP servers
-- **Scheduled jobs** viewer and connector monitoring
-- **Multi-profile support** with per-profile settings
-- **Push notifications** for approvals, completed turns, failures, and background tasks
-- **Inline approvals** so you can approve or reject tool calls without typing
-- **Face ID** lock and credential storage
+**Chat**
+
+- Streaming responses with full Markdown — syntax-highlighted code, math, Mermaid diagrams, task lists
+- Tool call inspection, reasoning traces, and delegated-agent progress
+- Image, PDF, and text attachments, or paste an image straight into the composer
+- Steer or interrupt an active turn mid-flight
+- Context usage meter with token counts and a progress ring
+- Slash commands and workspace file browsing
+- Session branching, pinning, archiving, refresh, and delete
+
+**Voice**
+
+- Push-to-talk voice mode with on-device speech recognition or server-side Whisper
+- Live voice conversations via GPT-Live (OpenAI Realtime) and Gemini Live, including web search through Gemini's tool bridge
+- CarPlay support — talk to Hermes from the car
+- Spoken stop/end commands, continuous-conversation controls, and background audio
+
+**Agents and control**
+
+- Bot Mode — browse your Hermes bots and open their dedicated Bot Chat conversations
+- Multiple dashboards — save and switch between Hermes servers with isolated credentials, sessions, and connection state
+- Provider and model switching without leaving the conversation, plus reasoning effort controls
+- Capabilities tab to toggle skills, tools, and MCP servers
+- Scheduled jobs viewer, connector monitoring, and recent gateway logs
+- Multi-profile support with per-profile settings
+
+**Sign-in, notifications, platform**
+
+- Native OAuth sign-in for dashboards using Google or other OIDC providers
+- Cloudflare Access service-token support
+- Push notifications for approvals, input requests, completed responses, failed turns, and background tasks
+- Inline approvals so you can approve or reject tool calls without typing
+- Face ID lock and Keychain credential storage
+- iPhone and iPad (iOS 17+)
+- Simplified Chinese localization
 
 ## Requirements
 
@@ -96,7 +118,7 @@ Key files:
 - `Conduit/Services/AppState.swift` - Main state management and session lifecycle
 - `Conduit/Services/DashboardTicketBridge.swift` - Authentication bridge
 - `Conduit/Views/ChatView.swift` - Chat interface with streaming
-- `Conduit/Voice/` - Voice mode pipeline
+- `Conduit/Voice/` - Voice pipeline: push-to-talk plus GPT-Live and Gemini Live conversations
 
 ## Privacy
 
