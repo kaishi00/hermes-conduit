@@ -70,6 +70,21 @@ struct GeminiLiveWebSearchError: LocalizedError, Equatable {
     var errorDescription: String? { reason }
 }
 
+/// A memory recall the host couldn't answer. Its text goes to the model,
+/// not the screen.
+struct GeminiLiveMemoryError: LocalizedError, Equatable {
+    let reason: String
+    var errorDescription: String? { reason }
+}
+
+/// What the Hermes host remembers, for a Gemini Live conversation: the
+/// memory it gives its own agent, and whether its memory provider can be
+/// searched for more.
+struct GeminiLiveMemoryContext: Equatable {
+    let text: String
+    let canRecall: Bool
+}
+
 enum GeminiLiveTokenError: LocalizedError, Equatable {
     case unavailable(GeminiLiveAvailability)
     case malformedResponse
@@ -105,12 +120,20 @@ protocol GeminiLiveWebSearching: AnyObject {
     func webSearch(query: String) async throws -> [GeminiLiveWebResult]
 }
 
+/// Searches the Hermes host's memory provider, whichever one it runs.
 @MainActor
-final class GeminiLiveTokenClient: GeminiLiveTokenProviding, GeminiLiveWebSearching {
+protocol GeminiLiveMemoryRecalling: AnyObject {
+    func recallMemory(query: String) async throws -> String
+}
+
+@MainActor
+final class GeminiLiveTokenClient: GeminiLiveTokenProviding, GeminiLiveWebSearching, GeminiLiveMemoryRecalling {
     static let statusPath = "/api/plugins/conduit_push/gemini-live/status"
     static let tokenPath = "/api/plugins/conduit_push/gemini-live/token"
     static let webSearchStatusPath = "/api/plugins/conduit_push/web-search/status"
     static let webSearchPath = "/api/plugins/conduit_push/web-search"
+    static let memoryContextPath = "/api/plugins/conduit_push/memory/context"
+    static let memoryRecallPath = "/api/plugins/conduit_push/memory/recall"
     /// Results a lookup asks for: enough to answer, short enough to read.
     static let webSearchLimit = 3
 
@@ -173,7 +196,41 @@ final class GeminiLiveTokenClient: GeminiLiveTokenProviding, GeminiLiveWebSearch
         return try Self.webResults(from: response)
     }
 
+    /// The host's memory for a new conversation. Nil when there is none
+    /// or the plugin predates the route: the conversation goes on without.
+    func memoryContext() async -> GeminiLiveMemoryContext? {
+        guard let response = try? await request(scoped(Self.memoryContextPath), "GET", nil) else { return nil }
+        return Self.memoryContext(from: response)
+    }
+
+    func recallMemory(query: String) async throws -> String {
+        let response = try await request(scoped(Self.memoryRecallPath), "POST", ["query": query])
+        return try Self.memoryRecall(from: response)
+    }
+
     // MARK: Parsing (static for tests)
+
+    /// The most memory a conversation's instructions carry.
+    static let memoryContextLimit = 8000
+
+    static func memoryContext(from response: [String: Any]) -> GeminiLiveMemoryContext? {
+        guard response["ok"] as? Bool == true, response["available"] as? Bool == true else { return nil }
+        let text = String((response["context"] as? String ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .prefix(memoryContextLimit))
+        let canRecall = response["recall"] as? Bool == true
+        guard !text.isEmpty || canRecall else { return nil }
+        return GeminiLiveMemoryContext(text: text, canRecall: canRecall)
+    }
+
+    static func memoryRecall(from response: [String: Any]) throws -> String {
+        guard response["ok"] as? Bool == true, response["available"] as? Bool != false,
+              let results = response["results"] as? String else {
+            let reason = response["detail"] as? String ?? response["error"] as? String ?? response["reason"] as? String
+            throw GeminiLiveMemoryError(reason: reason.flatMap { $0.isEmpty ? nil : $0 } ?? "Hermes memory is not available")
+        }
+        return results.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 
     static func webResults(from response: [String: Any]) throws -> [GeminiLiveWebResult] {
         guard response["ok"] as? Bool == true, let items = response["results"] as? [[String: Any]] else {
