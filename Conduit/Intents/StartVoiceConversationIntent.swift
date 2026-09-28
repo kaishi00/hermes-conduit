@@ -92,9 +92,15 @@ struct ConduitVoiceShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(
             intent: StartVoiceConversationIntent(),
+            // "Talk to …" alone reads to Siri as a phone call to a contact,
+            // so the first (suggested) phrases avoid it.
             phrases: [
-                "Talk to \(.applicationName)",
-                "Start a voice conversation in \(.applicationName)"
+                "Start \(.applicationName) voice",
+                "Start voice in \(.applicationName)",
+                "Voice chat in \(.applicationName)",
+                "Start a voice conversation in \(.applicationName)",
+                "\(.applicationName) voice",
+                "Talk to \(.applicationName)"
             ],
             shortTitle: "Talk to Conduit",
             systemImageName: "mic.fill"

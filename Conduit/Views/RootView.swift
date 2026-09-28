@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 struct RootView: View {
     @EnvironmentObject var appState: AppState
@@ -68,6 +69,7 @@ struct RootView: View {
 struct MainView: View {
     @EnvironmentObject var appState: AppState
     @AppStorage("conduit.ipadPersistentSidebar") private var prefersPersistentSidebar = false
+    @AppStorage(VoiceScreenAwake.preferenceKey) private var keepScreenAwake = false
     @State private var availableWindowWidth: CGFloat = 0
     @State private var settingsPresentation: SettingsSnapshot?
     @State private var shouldPresentSettingsAfterSidebarDismissal = false
@@ -110,6 +112,20 @@ struct MainView: View {
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }
+        // "Keep phone awake during voice conversations": hold off auto-lock
+        // only while a voice conversation is on screen.
+        .onChange(
+            of: VoiceScreenAwake.holdsScreenAwake(
+                enabled: keepScreenAwake,
+                voiceSheetShown: appState.showVoiceSheet,
+                geminiLiveSheetShown: appState.showGeminiLiveSheet
+            ),
+            initial: true
+        ) { _, holds in
+            UIApplication.shared.isIdleTimerDisabled = holds
+        }
+        // Sign-out swaps this view out with a sheet possibly still up.
+        .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
         .sheet(isPresented: $appState.showGeminiLiveSheet, onDismiss: appState.closeGeminiLiveConversation) {
             GeminiLiveVoiceSheet(
                 controller: appState.geminiLiveController,

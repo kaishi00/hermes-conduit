@@ -151,6 +151,7 @@ final class GeminiLiveConversationController: ObservableObject {
     Do not comment on how a job is progressing unless the user asks; use list_jobs when they do. When a job's result arrives, tell the user the outcome once, in a few spoken sentences, when the conversation is quiet.
     Never approve, deny, or answer anything on a job's behalf. If a job needs input, tell the user to open it in Conduit.
     Use cancel_job only when the user asks to cancel.
+    When the user says goodbye or asks to end the conversation, say a short goodbye, then call end_conversation. Jobs keep running after it ends.
     """
     }
 
@@ -159,6 +160,15 @@ final class GeminiLiveConversationController: ObservableObject {
     static let userQuietInterval: TimeInterval = 2
     /// Quiet time after the model's last turn before a job update.
     static let modelQuietInterval: TimeInterval = 1
+    /// An end closes the conversation once the model has made no sound for
+    /// this long (counted from the request or its last audio, whichever is
+    /// later) and playback has drained. Audio, not the server's
+    /// turnComplete, decides: the end_conversation call is left unanswered,
+    /// so a turnComplete may never come.
+    static let endGrace: TimeInterval = 1
+    /// An end closes the conversation after this long even if the model is
+    /// still talking.
+    static let endTimeout: TimeInterval = 8
 
     @Published private(set) var phase: Phase = .idle
     @Published private(set) var transcript: [VoiceConversationTranscriptEntry] = []
@@ -178,6 +188,11 @@ final class GeminiLiveConversationController: ObservableObject {
     private let output: GeminiLiveAudioOutput
     private let now: () -> Date
     private let routePolicy: @MainActor () -> VoiceBargeInRoutePolicy
+    /// The profile's spoken end phrases ("goodbye", "that's all"…).
+    private let endConversationPhrases: @MainActor () -> [String]
+    /// Closes the conversation's surface once a hands-free end finishes.
+    /// Without one the controller just stops.
+    var onEndConversation: (@MainActor () -> Void)?
 
     /// After the model stops playing on an open speaker, the mic stays
     /// closed this long so the room's echo tail can't read as user speech.
@@ -199,7 +214,15 @@ final class GeminiLiveConversationController: ObservableObject {
     private var pendingTextTurns: [String] = []
     private var idleFlushTask: Task<Void, Never>?
     private var openUserEntry: UUID?
+    /// The user's latest utterance in this exchange. Unlike openUserEntry,
+    /// the model's reply doesn't clear it, so turnComplete can still check
+    /// it for an end phrase.
+    private var exchangeUserEntry: UUID?
     private var openAssistantEntry: UUID?
+    /// When a hands-free end was requested; the conversation closes once
+    /// the model's goodbye has played.
+    private var endRequestedAt: Date?
+    private var endTask: Task<Void, Never>?
 
     init(
         makeSession: @escaping @MainActor () -> GeminiLiveSessionControlling,
@@ -208,7 +231,8 @@ final class GeminiLiveConversationController: ObservableObject {
         input: GeminiLiveAudioInput,
         output: GeminiLiveAudioOutput,
         now: @escaping () -> Date = Date.init,
-        routePolicy: @escaping @MainActor () -> VoiceBargeInRoutePolicy = { VoiceBargeInRoutePolicy.current() }
+        routePolicy: @escaping @MainActor () -> VoiceBargeInRoutePolicy = { VoiceBargeInRoutePolicy.current() },
+        endConversationPhrases: @escaping @MainActor () -> [String] = { [] }
     ) {
         self.makeSession = makeSession
         self.availability = availability
@@ -217,6 +241,7 @@ final class GeminiLiveConversationController: ObservableObject {
         self.output = output
         self.now = now
         self.routePolicy = routePolicy
+        self.endConversationPhrases = endConversationPhrases
     }
 
     /// The Interrupt button: stop the model now. On an open speaker this is
@@ -241,6 +266,12 @@ final class GeminiLiveConversationController: ObservableObject {
         guard !isActive else { return }
         phase = .connecting
         transcript = []
+        // A retry after a failure mid-goodbye starts clean: the old end
+        // must not close this conversation or keep its microphone shut.
+        endTask?.cancel()
+        endTask = nil
+        endRequestedAt = nil
+        tools.returnUnsent(pendingTextTurns)
         pendingTextTurns = []
         // Nothing from a previous attempt may gate or attach to this one.
         modelTurnActive = false
@@ -250,6 +281,7 @@ final class GeminiLiveConversationController: ObservableObject {
         lastPlaybackAt = nil
         lastModelAudioAt = nil
         closeOpenEntries()
+        activeEndPhrases = endConversationPhrases()
         do {
             let status = try await availability()
             guard phase == .connecting else { return }
@@ -288,6 +320,9 @@ final class GeminiLiveConversationController: ObservableObject {
     func stop() {
         idleFlushTask?.cancel()
         idleFlushTask = nil
+        endTask?.cancel()
+        endTask = nil
+        endRequestedAt = nil
         session?.stop()
         session = nil
         stopInput()
@@ -297,6 +332,8 @@ final class GeminiLiveConversationController: ObservableObject {
         suppressingModelTurn = false
         lastPlaybackAt = nil
         lastModelAudioAt = nil
+        // Unspoken job notices go back to the supervisor, not the bin.
+        tools.returnUnsent(pendingTextTurns)
         pendingTextTurns = []
         tools.connectionReplaced()
         closeOpenEntries()
@@ -321,8 +358,63 @@ final class GeminiLiveConversationController: ObservableObject {
         // Only on a live connection: settling an open call marks the job
         // announced, so it must never happen while nothing can be sent. The
         // updates stay pending and go out when the session is ready again.
-        guard isActive, session?.isReady == true else { return }
+        guard isActive, endRequestedAt == nil, session?.isReady == true else { return }
         dispatch(tools.pendingUpdates())
+    }
+
+    // MARK: Hands-free end
+
+    var isEnding: Bool { endRequestedAt != nil }
+
+    /// Ends the conversation hands-free: the model called end_conversation,
+    /// or the user's whole utterance was one of their end phrases. The
+    /// microphone closes now; the conversation closes once the model's
+    /// goodbye has played (or after `endTimeout`).
+    func requestEnd() {
+        guard isActive, endRequestedAt == nil else { return }
+        endRequestedAt = now()
+        stopInput()
+        tools.returnUnsent(pendingTextTurns)
+        pendingTextTurns = []
+        // Job outcomes stay pending for Hermes to report instead of being
+        // spent on a conversation that is closing.
+        tools.beginEnding()
+        endTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(200))
+                guard let self, !Task.isCancelled else { return }
+                if self.finishEndIfDrained() { return }
+            }
+        }
+    }
+
+    /// Closes a requested end once the model is quiet. True when there is
+    /// no end left to finish.
+    @discardableResult
+    func finishEndIfDrained() -> Bool {
+        guard let requestedAt = endRequestedAt else { return true }
+        let current = now()
+        let elapsed = current.timeIntervalSince(requestedAt)
+        let lastSound = max(requestedAt, lastModelAudioAt ?? requestedAt)
+        let drained = !output.isPlaying && current.timeIntervalSince(lastSound) >= Self.endGrace
+        guard drained || elapsed >= Self.endTimeout else { return false }
+        let close = onEndConversation
+        endTask = nil
+        stop()
+        close?()
+        return true
+    }
+
+    /// The profile's end phrases, read once when the conversation starts.
+    private var activeEndPhrases: [String] = []
+
+    /// A finished user utterance that is exactly one of the profile's end
+    /// phrases ends the conversation, even if the model doesn't call
+    /// end_conversation.
+    private func endIfUserSaidGoodbye(_ entryID: UUID) {
+        guard endRequestedAt == nil, let entry = transcript.first(where: { $0.id == entryID }) else { return }
+        guard VoiceSpokenCommands.matches(entry.text, phrases: activeEndPhrases) else { return }
+        requestEnd()
     }
 
     /// An audio interruption stopped the microphone. Restart it once the
@@ -345,9 +437,11 @@ final class GeminiLiveConversationController: ObservableObject {
         case .ready:
             // A microphone that fails to start leaves the phase failed.
             if !isMicrophoneMuted, !startInput() { return }
-            phase = modelTurnActive ? .speaking : .listening
-            // Anything that settled while (re)connecting goes out now.
-            dispatch(tools.pendingUpdates())
+            // Ending: the microphone is closed, so it isn't listening.
+            if endRequestedAt == nil { phase = modelTurnActive ? .speaking : .listening }
+            // Anything that settled while (re)connecting goes out now,
+            // unless the conversation is ending: then it stays pending.
+            if endRequestedAt == nil { dispatch(tools.pendingUpdates()) }
             scheduleIdleFlush()
         case .reconnecting:
             phase = .reconnecting
@@ -393,13 +487,17 @@ final class GeminiLiveConversationController: ObservableObject {
             modelTurnActive = false
             lastModelTurnEndedAt = now()
             openAssistantEntry = nil
-            phase = .listening
+            // Ending: the microphone is closed, so it isn't listening.
+            if endRequestedAt == nil { phase = .listening }
         case .turnComplete:
             suppressingModelTurn = false
             modelTurnActive = false
             lastModelTurnEndedAt = now()
+            if let exchangeUserEntry { endIfUserSaidGoodbye(exchangeUserEntry) }
+            exchangeUserEntry = nil
             closeOpenEntries()
-            phase = .listening
+            // Ending: the microphone is closed, so it isn't listening.
+            if endRequestedAt == nil { phase = .listening }
             scheduleIdleFlush()
         case .toolCall(let calls):
             for call in calls {
@@ -502,6 +600,8 @@ final class GeminiLiveConversationController: ObservableObject {
                 ), onFailure: onFailure)
             case .textWhenIdle(let text):
                 pendingTextTurns.append(text)
+            case .endConversation:
+                requestEnd()
             }
         }
         if !pendingTextTurns.isEmpty { scheduleIdleFlush() }
@@ -520,15 +620,22 @@ final class GeminiLiveConversationController: ObservableObject {
     /// Sends at most one queued update, and only while idle; the model's
     /// reply to it ends a turn, which schedules the next check.
     func flushPendingTextIfIdle() {
-        guard !pendingTextTurns.isEmpty, isConversationIdle, let session else { return }
+        guard !pendingTextTurns.isEmpty, endRequestedAt == nil, isConversationIdle, let session else { return }
         let text = pendingTextTurns.removeFirst()
+        let noticeJobID = tools.textUpdateSent(text)
         modelTurnActive = true
         // An update that never reached the socket waits for the next
-        // connection instead of being lost.
+        // connection instead of being lost; a job notice whose conversation
+        // is gone goes back to the supervisor.
         session.send(GeminiLiveProtocol.textTurnMessage(text), onFailure: { [weak self, weak session] in
-            guard let self, self.isActive, let session, self.session === session else { return }
+            guard let self else { return }
+            guard self.isActive, self.endRequestedAt == nil, let session, self.session === session else {
+                self.tools.returnNotice(jobID: noticeJobID)
+                return
+            }
             self.modelTurnActive = false
             self.pendingTextTurns.insert(text, at: 0)
+            self.tools.textUpdateRequeued(text, jobID: noticeJobID)
             self.scheduleIdleFlush()
         })
     }
@@ -567,6 +674,8 @@ final class GeminiLiveConversationController: ObservableObject {
     @discardableResult
     private func startInput() -> Bool {
         guard !inputRunning else { return true }
+        // Ending: the microphone stays closed.
+        guard endRequestedAt == nil else { return true }
         do {
             try input.start()
             inputRunning = true
@@ -609,6 +718,7 @@ final class GeminiLiveConversationController: ObservableObject {
         transcript.append(entry)
         if speaker == .user {
             openUserEntry = entry.id
+            exchangeUserEntry = entry.id
             // The user speaking starts a new exchange.
             openAssistantEntry = nil
         } else {
@@ -654,6 +764,7 @@ final class GeminiLiveConversationController: ObservableObject {
 
     private func closeOpenEntries() {
         openUserEntry = nil
+        exchangeUserEntry = nil
         openAssistantEntry = nil
     }
 }

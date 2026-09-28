@@ -456,12 +456,19 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     // MARK: Delivery
 
     func takePendingNotice() -> VoiceBackgroundJobNotice? {
+        takePendingNoticeForJob()?.notice
+    }
+
+    /// `takePendingNotice` plus the job it came from, so a channel that
+    /// queues the notice and then can't speak it (the conversation closed
+    /// first) can hand it back with `returnUndeliveredNotice(jobID:)`.
+    func takePendingNoticeForJob() -> (notice: VoiceBackgroundJobNotice, jobID: UUID)? {
         defer { pruneSettledJobs() }
         for index in jobs.indices {
             let job = jobs[index]
             if job.status == .needsInput, !job.inputRequestDelivered {
                 jobs[index].inputRequestDelivered = true
-                return .speak(AppLocalization.string("\(job.title) is waiting for your approval or an answer. Open it in Conduit to respond."))
+                return (.speak(AppLocalization.string("\(job.title) is waiting for your approval or an answer. Open it in Conduit to respond.")), job.id)
             }
             guard !job.status.isActive, !job.outcomeDelivered else { continue }
             jobs[index].outcomeDelivered = true
@@ -470,18 +477,31 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 let openChat = AppLocalization.string("\(job.title) has finished. Open it in Conduit to read the result.")
                 guard let result = job.result?.trimmingCharacters(in: .whitespacesAndNewlines),
                       !result.isEmpty else {
-                    return .speak(openChat)
+                    return (.speak(openChat), job.id)
                 }
-                return .submit(prompt: Self.completionPrompt(title: job.title, result: result), fallback: openChat)
+                return (.submit(prompt: Self.completionPrompt(title: job.title, result: result), fallback: openChat), job.id)
             case .failed:
-                return .speak(AppLocalization.string("\(job.title) failed. Open it in Conduit for details."))
+                return (.speak(AppLocalization.string("\(job.title) failed. Open it in Conduit for details.")), job.id)
             case .cancelled:
-                return .speak(AppLocalization.string("\(job.title) was cancelled."))
+                return (.speak(AppLocalization.string("\(job.title) was cancelled.")), job.id)
             case .starting, .running, .needsInput:
                 continue
             }
         }
         return nil
+    }
+
+    /// A notice taken with `takePendingNoticeForJob` never reached the user:
+    /// make it pending again.
+    func returnUndeliveredNotice(jobID: UUID) {
+        update(jobID) { job in
+            if job.status == .needsInput {
+                job.inputRequestDelivered = false
+            } else if !job.status.isActive {
+                job.outcomeDelivered = false
+            }
+        }
+        noticeMayBePending()
     }
 
     private func noticeMayBePending() {

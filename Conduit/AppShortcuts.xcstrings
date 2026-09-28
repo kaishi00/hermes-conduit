@@ -1,6 +1,40 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "${applicationName} voice" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "${applicationName} voice"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "${applicationName}语音"
+          }
+        }
+      }
+    },
+    "Start ${applicationName} voice" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Start ${applicationName} voice"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "启动${applicationName}语音"
+          }
+        }
+      }
+    },
     "Start a voice conversation in ${applicationName}" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -14,6 +48,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在${applicationName}中开始语音对话"
+          }
+        }
+      }
+    },
+    "Start voice in ${applicationName}" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Start voice in ${applicationName}"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在${applicationName}中开始语音"
+          }
+        }
+      }
+    },
+    "Talk to ${applicationName}" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Talk to ${applicationName}"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "与${applicationName}对话"
           }
         }
       }
@@ -35,19 +103,19 @@
         }
       }
     },
-    "Talk to ${applicationName}" : {
+    "Voice chat in ${applicationName}" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Talk to ${applicationName}"
+            "value" : "Voice chat in ${applicationName}"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "与${applicationName}对话"
+            "value" : "在${applicationName}中语音聊天"
           }
         }
       }

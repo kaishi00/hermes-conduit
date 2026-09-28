@@ -27,7 +27,8 @@ protocol GeminiLiveJobSupervising: AnyObject {
     func cancelAll() async -> String
     func cancel(jobID: UUID) async -> String?
     func markOutcomeDelivered(jobID: UUID)
-    func takePendingNotice() -> VoiceBackgroundJobNotice?
+    func takePendingNoticeForJob() -> (notice: VoiceBackgroundJobNotice, jobID: UUID)?
+    func returnUndeliveredNotice(jobID: UUID)
 }
 
 extension VoiceBackgroundJobSupervisor: GeminiLiveJobSupervising {}
@@ -39,6 +40,7 @@ final class GeminiLiveToolBridge {
         case listJobs = "list_jobs"
         case cancelJob = "cancel_job"
         case webSearch = "web_search"
+        case endConversation = "end_conversation"
     }
 
     /// What the bridge asks the session to send.
@@ -48,6 +50,8 @@ final class GeminiLiveToolBridge {
         /// A text turn for an update with no open call to answer on. The
         /// host sends it only while the conversation is idle.
         case textWhenIdle(String)
+        /// Close the conversation once the model's goodbye has played.
+        case endConversation
 
         /// Whether this answers the function call `id`.
         func answers(_ id: String) -> Bool {
@@ -114,6 +118,12 @@ final class GeminiLiveToolBridge {
             ],
             behavior: .blocking
         ),
+        .init(
+            name: Tool.endConversation.rawValue,
+            description: "End this voice conversation and close it. Call only when the user says goodbye or asks to end, hang up, or close the conversation, after you have said a short goodbye. Background jobs keep running on Hermes.",
+            parameters: ["type": "OBJECT", "properties": [String: Any]()],
+            behavior: .blocking
+        ),
     ]
 
     private let supervisor: GeminiLiveJobSupervising
@@ -145,7 +155,13 @@ final class GeminiLiveToolBridge {
             // withdrawal arriving during Hermes' session setup is honored.
             let reply = await supervisor.startJob(instructions: instructions) { [weak self] jobID in
                 createdJobID = jobID
+                guard self?.isEnding == false else { return }
                 self?.openCalls[jobID] = call.id
+            }
+            if isEnding {
+                // Ending while it started: its outcome stays pending.
+                if let jobID = createdJobID { openCalls[jobID] = nil }
+                return []
             }
             guard let jobID = createdJobID else {
                 // Refused (too many jobs): answer now.
@@ -180,6 +196,10 @@ final class GeminiLiveToolBridge {
             return outgoing
         case .webSearch:
             return [.toolResponse(id: call.id, name: call.name, result: await searchResult(call.arguments["query"]), scheduling: nil)]
+        case .endConversation:
+            // Deliberately unanswered: a response would prompt another turn
+            // after the goodbye, and the connection closes anyway.
+            return [.endConversation]
         case nil:
             return [.toolResponse(id: call.id, name: call.name, result: ["error": "unknown function"], scheduling: .whenIdle)]
         }
@@ -200,7 +220,19 @@ final class GeminiLiveToolBridge {
     func connectionReplaced() {
         openCalls.removeAll()
         withdrawnCallIDs.removeAll()
+        isEnding = false
     }
+
+    /// The conversation is ending: open calls are dropped and nothing is
+    /// settled, so every outcome stays pending (and unannounced) for
+    /// Hermes to report. Cleared by the next connection.
+    func beginEnding() {
+        openCalls.removeAll()
+        withdrawnCallIDs.removeAll()
+        isEnding = true
+    }
+
+    private(set) var isEnding = false
 
     // MARK: Job updates
 
@@ -209,18 +241,54 @@ final class GeminiLiveToolBridge {
     /// text update.
     func pendingUpdates() -> [Outgoing] {
         var outgoing = settleOpenCalls()
-        while let notice = supervisor.takePendingNotice() {
-            switch notice {
-            case .speak(let text):
-                outgoing.append(.textWhenIdle(Self.relayPrompt(text)))
-            case .submit(let prompt, _):
-                outgoing.append(.textWhenIdle(prompt))
+        guard !isEnding else { return outgoing }
+        while let item = supervisor.takePendingNoticeForJob() {
+            let text: String
+            switch item.notice {
+            case .speak(let spoken): text = Self.relayPrompt(spoken)
+            case .submit(let prompt, _): text = prompt
             }
+            queuedNotices.append((text, item.jobID))
+            outgoing.append(.textWhenIdle(text))
         }
         return outgoing
     }
 
+    /// Job notices handed out as text updates but not yet sent, so they can
+    /// be handed back if the conversation closes first.
+    private var queuedNotices: [(text: String, jobID: UUID)] = []
+
+    /// A queued text update went out. Returns the job whose notice it
+    /// carried, if any, in case the send fails after all.
+    @discardableResult
+    func textUpdateSent(_ text: String) -> UUID? {
+        guard let index = queuedNotices.firstIndex(where: { $0.text == text }) else { return nil }
+        return queuedNotices.remove(at: index).jobID
+    }
+
+    /// A send that failed: the text waits again for the next connection.
+    func textUpdateRequeued(_ text: String, jobID: UUID?) {
+        guard let jobID else { return }
+        queuedNotices.insert((text, jobID), at: 0)
+    }
+
+    /// A job notice that will never be sent becomes pending again.
+    func returnNotice(jobID: UUID?) {
+        guard let jobID else { return }
+        supervisor.returnUndeliveredNotice(jobID: jobID)
+    }
+
+    /// The conversation is closing with these text updates unsent: any job
+    /// notice among them becomes pending again for Hermes to report.
+    func returnUnsent(_ texts: [String]) {
+        for text in texts {
+            guard let index = queuedNotices.firstIndex(where: { $0.text == text }) else { continue }
+            supervisor.returnUndeliveredNotice(jobID: queuedNotices.remove(at: index).jobID)
+        }
+    }
+
     private func settleOpenCalls() -> [Outgoing] {
+        guard !isEnding else { return [] }
         var outgoing: [Outgoing] = []
         for (jobID, callID) in openCalls.sorted(by: { $0.value < $1.value }) {
             guard let job = supervisor.jobs.first(where: { $0.id == jobID }) else {

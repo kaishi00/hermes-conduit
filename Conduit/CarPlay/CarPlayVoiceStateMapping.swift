@@ -44,6 +44,38 @@ enum CarPlayVoiceState: String, CaseIterable, Equatable {
         case .failed: return .error
         }
     }
+
+    /// The same mapping for a Gemini Live conversation, when the profile
+    /// uses Gemini Live instead of the classic Voice pipeline.
+    static func map(geminiLive phase: GeminiLiveConversationController.Phase) -> CarPlayVoiceState {
+        switch phase {
+        case .idle: return .ready
+        case .connecting, .reconnecting: return .processing
+        case .listening: return .listening
+        case .speaking: return .responding
+        case .failed: return .error
+        }
+    }
+}
+
+/// What the CarPlay Listen button does in a Gemini Live conversation, which
+/// listens continuously instead of turn by turn.
+enum CarPlayGeminiLiveListenAction: Equatable {
+    /// Nothing running (or it failed): start a conversation.
+    case start
+    /// Gemini is talking: stop it so the driver can speak (on the car's
+    /// speakers the microphone is closed while Gemini talks).
+    case interrupt
+    /// Already listening or connecting: nothing to do.
+    case nothing
+
+    static func forPhase(_ phase: GeminiLiveConversationController.Phase) -> CarPlayGeminiLiveListenAction {
+        switch phase {
+        case .idle, .failed: return .start
+        case .speaking: return .interrupt
+        case .connecting, .reconnecting, .listening: return .nothing
+        }
+    }
 }
 
 /// Duplicate-suppression policy for CarPlay state activation. The template
