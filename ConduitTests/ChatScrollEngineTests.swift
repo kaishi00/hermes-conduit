@@ -176,6 +176,33 @@ final class ChatScrollEngineTests: XCTestCase {
         XCTAssertEqual(surface.contentOffsetY, 3700)
     }
 
+    func testAFlickAwayThatEndsNearTheBottomStopsFollowingOnceItLeaves() {
+        let (engine, surface) = makeEngine()
+        surface.userScroll(to: 3180)
+        XCTAssertTrue(engine.isFollowingLatest, "let go within the relatch distance")
+
+        surface.isDecelerating = true
+        surface.contentOffsetY = 3150
+        engine.surfaceScrolled()
+        XCTAssertEqual(engine.mode, .browsing, "momentum carried the reader away")
+        surface.contentOffsetY = 2600
+        engine.surfaceScrolled()
+        surface.isDecelerating = false
+
+        surface.layOut(contentHeight: 4600)
+        XCTAssertEqual(surface.contentOffsetY, 2600, "new content does not pull the reader back")
+    }
+
+    func testMomentumAwayNeverRelatches() {
+        let (engine, surface) = makeEngine()
+        surface.userScroll(to: 3100)
+        XCTAssertEqual(engine.mode, .browsing)
+        surface.isDecelerating = true
+        surface.contentOffsetY = 3090
+        engine.surfaceScrolled()
+        XCTAssertEqual(engine.mode, .browsing)
+    }
+
     func testTopVisibleRowIsTrackedAndPersistedWhileBrowsing() throws {
         let (engine, surface) = makeEngine()
         engine.rowFramesChanged([

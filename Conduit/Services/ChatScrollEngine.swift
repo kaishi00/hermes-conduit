@@ -138,6 +138,7 @@ final class ChatScrollEngine: ObservableObject {
     private var rowFrames: [String: ChatScrollRowFrame] = [:]
     private(set) weak var surface: ChatScrollSurface?
     private var surfaceCallbackDepth = 0
+    private var lastObservedOffsetY: CGFloat?
     private let now: () -> TimeInterval
     private let prefersReducedMotion: @MainActor () -> Bool
 
@@ -185,6 +186,7 @@ final class ChatScrollEngine: ObservableObject {
 
     func attach(_ surface: ChatScrollSurface) {
         self.surface = surface
+        lastObservedOffsetY = nil
         surfaceLayoutChanged()
     }
 
@@ -215,13 +217,25 @@ final class ChatScrollEngine: ObservableObject {
         surfaceCallbackDepth += 1
         defer { surfaceCallbackDepth -= 1 }
         guard let surface, !isPaused else { return }
+        let previousOffsetY = lastObservedOffsetY
+        lastObservedOffsetY = surface.contentOffsetY
+        // Momentum carrying the content toward older messages. A flick can
+        // end within the relatch distance and still travel far.
+        let deceleratingAway = surface.isDecelerating
+            && previousOffsetY.map { surface.contentOffsetY < $0 - 0.5 } == true
         if mode != .following {
             refreshTopVisibleRow(persist: mode == .browsing)
         }
         if mode == .browsing,
            !surface.isTracking,
+           !deceleratingAway,
            surface.distanceFromBottom <= Self.nearBottomTolerance {
             setMode(.following)
+            emit(.persistSnapshot(renderedSessionKey))
+        } else if mode == .following,
+                  deceleratingAway,
+                  surface.distanceFromBottom > Self.nearBottomTolerance {
+            setMode(.browsing)
             emit(.persistSnapshot(renderedSessionKey))
         }
         refreshJumpButton()
@@ -535,6 +549,7 @@ final class ChatScrollEngine: ObservableObject {
                 restoration = nil
                 topVisibleMessageID = id
                 setMode(surface.distanceFromBottom <= Self.nearBottomTolerance ? .following : .browsing)
+                emit(.persistSnapshot(state.request.sessionKey))
                 emit(.completeRestoration(generation: state.request.generation))
                 return false
             }
@@ -576,7 +591,7 @@ final class ChatScrollEngine: ObservableObject {
 
     // MARK: - Private
 
-    private var latestAnimationInFlight: Bool {
+    var latestAnimationInFlight: Bool {
         latestAnimationUntil.map { now() < $0 } ?? false
     }
 

@@ -8,12 +8,28 @@ import XCTest
 @MainActor
 final class ChatScrollHostedTests: XCTestCase {
     private var window: UIWindow?
+    private var host: UIViewController?
+    private var appState: AppState?
 
     override func tearDown() {
-        window?.isHidden = true
-        window?.rootViewController = nil
-        RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+        // Stop streaming, remove the hosted view synchronously and drain
+        // until SwiftUI has torn it down, so no deferred work from this
+        // suite lands in the next one (the reason the deleted follow
+        // correction suite tore down the same way).
+        appState?.streamingText = ""
+        if let window {
+            window.isHidden = true
+            window.rootViewController = nil
+            host?.view.removeFromSuperview()
+            let deadline = Date().addingTimeInterval(1.5)
+            while Date() < deadline {
+                RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+                if let host, host.view.subviews.isEmpty { break }
+            }
+        }
         window = nil
+        host = nil
+        appState = nil
         super.tearDown()
     }
 
@@ -54,6 +70,8 @@ final class ChatScrollHostedTests: XCTestCase {
         window.rootViewController = host
         window.makeKeyAndVisible()
         self.window = window
+        self.host = host
+        self.appState = appState
 
         var locator: ChatScrollSurfaceLocatorView?
         XCTAssertTrue(
@@ -196,8 +214,11 @@ final class ChatScrollHostedTests: XCTestCase {
 
     func testJumpToLatestReturnsToTheBottomAndFollowsAgain() throws {
         let mounted = try mount(Self.transcript(0..<120))
-        browse(mounted, to: 200)
+        // Within three viewports, so the jump animates and gets its final pin.
+        browse(mounted, to: maxOffset(mounted.scrollView) - mounted.scrollView.bounds.height * 2)
+        XCTAssertEqual(mounted.engine.mode, .browsing)
         mounted.engine.explicitLatestRequested(animated: true)
+        XCTAssertTrue(mounted.engine.latestAnimationInFlight, "a short jump animates")
         settle(mounted.host.view, seconds: ChatScrollEngine.latestAnimationDuration + 0.2)
         mounted.engine.latestAnimationFinished()
         settle(mounted.host.view, seconds: 0.2)
