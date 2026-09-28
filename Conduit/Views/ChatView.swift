@@ -11,88 +11,45 @@ import ImageIO
 
 struct ChatView: View {
     @EnvironmentObject var appState: AppState
-    @State private var renderedScrollContent: ChatRenderedScrollContent?
     @State private var viewportSnapshotProviderID = UUID()
-    /// The viewport controller and the raw geometry it is fed live in a
-    /// reference box, not in @State: geometry preferences fire many times
-    /// per layout pass, and every @State write re-ran this body, which
-    /// hands the whole transcript to ForEach again for SwiftUI to compare
-    /// row by row. In a long chat that per-tick comparison is what kept the
-    /// main thread inside layout for seconds (the frozen-chat reports and
-    /// the 0x8BADF00D logs). The body re-runs only when `viewportInputs`,
-    /// the few values it actually renders from, change.
-    @State private var viewportStore = ChatViewportStore()
+    /// Owns the viewport: follows the latest message, holds the reader's
+    /// place while browsing, restores saved positions. It reads and sets the
+    /// transcript's UIScrollView directly (ChatScrollSurfaceLocator), so
+    /// scrolling never writes view state. The body re-runs only when
+    /// `viewportInputs`, the few values it renders from, change.
+    @State private var scrollEngine = ChatScrollEngine()
     @State private var viewportInputs = ChatViewportRenderInputs()
-
-    private var viewport: ChatViewportController {
-        get { viewportStore.controller }
-        nonmutating set {
-            viewportStore.controller = newValue
-            publishViewportInputs()
-        }
-    }
-
-    private var bottomMarkerMaxY: CGFloat? {
-        get { viewportStore.bottomMarkerMaxY }
-        nonmutating set {
-            viewportStore.bottomMarkerMaxY = newValue
-            publishViewportInputs()
-        }
-    }
-
-    private var scrollViewportFrame: CGRect? {
-        get { viewportStore.scrollViewportFrame }
-        nonmutating set {
-            viewportStore.scrollViewportFrame = newValue
-            publishViewportInputs()
-        }
-    }
-
-    private var renderedScrollTargets: ChatRenderedScrollTargets {
-        get { viewportStore.renderedScrollTargets }
-        nonmutating set { viewportStore.renderedScrollTargets = newValue }
-    }
-
-    private func publishViewportInputs() {
-        let inputs = ChatViewportRenderInputs(
-            controller: viewportStore.controller,
-            isNearBottom: isNearBottom
-        )
-        if inputs != viewportInputs {
-            viewportInputs = inputs
-        }
-    }
-    /// The animated bottom command whose delayed retry is still armed. A
-    /// coalesced follow correction must not execute while this is set: the
-    /// animation is mid-flight toward the bottom, the measured drift is
-    /// transient, and a second scrollTo against the same anchor mid-
-    /// animation churns the lazy realization (observed as settled-row
-    /// re-materialization in the hosted transcript fixture). The retry
-    /// itself guarantees the animated command lands.
-    @State private var armedAnimatedBottomRetry: ChatViewportCommand?
-    /// Mirrors `scenePhase == .background` (a @State copy so delayed tasks
-    /// read the live value). In the background iOS still lays this view out
-    /// for app-switcher snapshots, at other sizes and appearances, and a
-    /// backgrounded app gets little CPU; feeding that geometry into the
-    /// viewport controller turned each snapshot into rounds of follow
-    /// corrections and scrolls until the scene-update watchdog killed the
-    /// app. The controller is re-fed once the scene comes back.
-    @State private var viewportPausedInBackground = false
+    @State private var viewportPublishGate = ChatViewportPublishGate()
     @Environment(\.scenePhase) private var scenePhase
     /// Lifecycle-aware backfill task: cancelled when the view disappears so
     /// a late response cannot mutate viewport state after teardown. (The
     /// session/profile staleness of the response itself is AppState's
     /// concern — this is view-lifetime only.)
     @State private var backfillViewportTask: Task<Void, Never>?
-    @GestureState private var isDraggingChat = false
+    @State private var latestAnimationTask: Task<Void, Never>?
+
+    private func publishViewportInputs() {
+        let inputs = ChatViewportRenderInputs(engine: scrollEngine)
+        if inputs != viewportInputs {
+            viewportInputs = inputs
+        }
+    }
+
+    /// Engine changes that come from UIKit callbacks can land in the middle
+    /// of a SwiftUI update, where writing view state is not allowed; those
+    /// publish on the next main-queue turn, coalesced.
+    private func scheduleViewportInputsPublish() {
+        guard !viewportPublishGate.isScheduled else { return }
+        viewportPublishGate.isScheduled = true
+        DispatchQueue.main.async {
+            viewportPublishGate.isScheduled = false
+            publishViewportInputs()
+        }
+    }
 
     private var renderedScrollSessionKey: ChatScrollSessionKey? { viewportInputs.renderedSessionKey }
 
-    private var scrollViewportMaxY: CGFloat? { scrollViewportFrame?.maxY }
-
-    private var scrollViewportMinY: CGFloat? { scrollViewportFrame?.minY }
-
-    /// Single source of follow-latest truth: the controller's mode.
+    /// Single source of follow-latest truth: the engine's mode.
     private var followsLatest: Bool { viewportInputs.isFollowingLatest }
 
     private var activeScrollSessionKey: ChatScrollSessionKey? {
@@ -124,21 +81,16 @@ struct ChatView: View {
         )
     }
 
-    /// Read from the box; `viewportInputs.renderedScrollScope` carries the
+    /// Read from the engine; `viewportInputs.renderedScrollScope` carries the
     /// cache's rendering revision, so any target change re-runs the body.
     private var chatMessageScrollTargets: [ChatMessageScrollTarget] {
         _ = viewportInputs.renderedScrollScope
-        return viewportStore.controller.targets
+        return scrollEngine.targets
     }
 
     private var bottomAnchor: String {
         let scope = activeOrFallbackScrollSessionKey
         return "chat-latest-\(scope.profile)-\(scope.sessionID)"
-    }
-
-    private var isNearBottom: Bool {
-        guard let bottomMarkerMaxY, let scrollViewportMaxY else { return true }
-        return bottomMarkerMaxY <= scrollViewportMaxY + 40
     }
 
     private var hasPendingRestoration: Bool {
@@ -186,10 +138,7 @@ struct ChatView: View {
                     guard !transcriptBackfillIsLoading else { return }
                     ChatViewportTrace.shared.log("event loadEarlier")
                     let armedKey = renderedScrollSessionKey ?? activeScrollSessionKey
-                    viewport.olderPageBackfillRequested(
-                        anchorMessageID: viewport.stableTopMessageID,
-                        sessionKey: armedKey
-                    )
+                    scrollEngine.olderPageBackfillRequested(sessionKey: armedKey)
                     backfillViewportTask?.cancel()
                     backfillViewportTask = Task { @MainActor in
                         let didPrepend = await appState.loadEarlierMessages()
@@ -201,7 +150,7 @@ struct ChatView: View {
                             // Scoped to the session this tap armed — a stale
                             // task must not clobber a newer conversation's
                             // anchor.
-                            viewport.prependAnchorDischarged(matching: armedKey)
+                            scrollEngine.prependAnchorDischarged(matching: armedKey)
                         }
                     }
                 } label: {
@@ -217,15 +166,6 @@ struct ChatView: View {
                 .padding(.vertical, 4)
             }
         }
-    }
-
-    /// Latest global frames + transcript order of rendered stable rows for
-    /// the current scope. Only message rows report frames (streaming/typing/
-    /// markers never do), so ephemeral identifiers cannot enter stable-top
-    /// observation.
-    private var renderedRowFrames: [String: ChatRenderedRowGeometry] {
-        guard let scope = renderedScrollScope else { return [:] }
-        return renderedScrollTargets.rowFrames(in: scope)
     }
 
     private var renderedScrollScope: ChatRenderedScrollScope? {
@@ -336,17 +276,22 @@ struct ChatView: View {
                     MessageBubble(message: target.message, gatewayResolver: appState.gatewayMediaResolver)
                         .id(target.id)
                         .background {
+                            // Measured in the stack's own coordinate space,
+                            // so the value changes only when layout does,
+                            // never on a scroll tick.
                             GeometryReader { geometry in
+                                let frame = geometry.frame(
+                                    in: CoordinateSpace.named(ChatScrollEngine.coordinateSpaceName)
+                                )
                                 Color.clear.preference(
-                                    key: ChatRenderedScrollTargetsPreferenceKey.self,
-                                    value: renderedScrollScope.map {
-                                        ChatRenderedScrollTargets.row(
-                                            semanticID: target.id,
-                                            scope: $0,
-                                            frame: geometry.frame(in: .global),
+                                    key: ChatScrollRowFramesPreferenceKey.self,
+                                    value: [
+                                        target.id: ChatScrollRowFrame(
+                                            minY: frame.minY,
+                                            maxY: frame.maxY,
                                             order: target.order
-                                        )
-                                    } ?? ChatRenderedScrollTargets()
+                                        ),
+                                    ]
                                 )
                             }
                         }
@@ -382,45 +327,25 @@ struct ChatView: View {
                     TypingIndicator().id("typing")
                 }
 
-                // Keep the scroll target in the lazy layout itself.
-                // A notification can replace the entire transcript at
-                // once; a sibling target can otherwise be measured
-                // against stale content while LazyVStack catches up.
+                // Fallback target for ScrollViewProxy before the engine has
+                // found the scroll view.
                 Color.clear
                     .frame(height: 1)
                     .padding(.bottom, 126)
                     .id(bottomAnchor)
-                    .background {
-                        GeometryReader { _ in
-                            Color.clear.preference(
-                                key: ChatRenderedScrollTargetsPreferenceKey.self,
-                                value: renderedScrollScope.map {
-                                    ChatRenderedScrollTargets.bottom(
-                                        anchorID: bottomAnchor,
-                                        scope: $0
-                                    )
-                                } ?? ChatRenderedScrollTargets()
-                            )
-                        }
-                    }
+            }
+            .coordinateSpace(.named(ChatScrollEngine.coordinateSpaceName))
+            .background {
+                ChatScrollSurfaceLocator(engine: scrollEngine)
             }
             .padding(.horizontal, 18)
             .padding(.top, 18)
             .background {
-                // Measure the lazy stack itself, not its final child.
-                // SwiftUI can unload that child after the user scrolls
-                // away, leaving the old "at bottom" value stuck and
-                // suppressing the scroll-to-latest button.
-                GeometryReader { geometry in
-                    Color.clear
-                        .preference(
-                            key: ChatBottomMarkerPreferenceKey.self,
-                            value: geometry.frame(in: .global).maxY
-                        )
-                        .preference(
-                            key: ChatRenderedScrollContentPreferenceKey.self,
-                            value: renderedScrollScope.map(ChatRenderedScrollContent.init(scope:))
-                        )
+                GeometryReader { _ in
+                    Color.clear.preference(
+                        key: ChatRenderedScrollContentPreferenceKey.self,
+                        value: renderedScrollScope.map(ChatRenderedScrollContent.init(scope:))
+                    )
                 }
             }
         }
@@ -433,23 +358,11 @@ struct ChatView: View {
                 for: nil
             )
         }
-        .background {
-            GeometryReader { geometry in
-                Color.clear.preference(
-                    key: ChatViewportFramePreferenceKey.self,
-                    value: geometry.frame(in: .global)
-                )
-            }
-        }
-        .simultaneousGesture(chatDragGesture(proxy: proxy))
         .overlay(alignment: .bottomTrailing) {
-            if !followsLatest && !viewportInputs.isNearBottom {
+            if viewportInputs.showsJumpToLatest {
                 Button {
                     ChatViewportTrace.shared.log("event explicitLatest (button)")
-                    performViewportEffects(
-                        viewport.explicitLatestRequested(),
-                        using: proxy
-                    )
+                    requestLatest(animated: true)
                 } label: {
                     Image(systemName: "arrow.down")
                         .font(.system(size: 15, weight: .bold))
@@ -466,74 +379,42 @@ struct ChatView: View {
     private func lifecycleObservers(proxy: ScrollViewProxy, content: some View) -> some View {
         content
             .onAppear {
-                performViewportEffects(
-                    viewport.renderedSessionChanged(
-                        to: activeScrollSessionKey,
-                        identity: appState.activeChatScrollSessionIdentity,
-                        viaNotification: false,
-                        viewportTransitionGeneration: appState.chatViewportTransitionGeneration
-                    ),
-                    using: proxy
+                installScrollEngineCallbacks(proxy: proxy)
+                scrollEngine.setPaused(scenePhase == .background)
+                scrollEngine.renderedSessionChanged(
+                    to: activeScrollSessionKey,
+                    identity: appState.activeChatScrollSessionIdentity,
+                    viaNotification: false,
+                    viewportTransitionGeneration: appState.chatViewportTransitionGeneration
                 )
-                performViewportEffects(
-                    viewport.transcriptChanged(
-                        messages: appState.messages,
-                        transcriptRevision: appState.chatTranscriptRevision,
-                        viewportTransitionGeneration: appState.chatViewportTransitionGeneration,
-                        isInitialSync: true
-                    ),
-                    using: proxy
+                scrollEngine.transcriptChanged(
+                    messages: appState.messages,
+                    transcriptRevision: appState.chatTranscriptRevision,
+                    viewportTransitionGeneration: appState.chatViewportTransitionGeneration,
+                    isInitialSync: true
                 )
                 appState.installChatViewportSnapshotProvider(
                     id: viewportSnapshotProviderID,
-                    capture: {
-                        // @State reads through the captured view struct see
-                        // current values (State storage is a reference box).
-                        self.viewport.renderedViewportSnapshot()
+                    capture: { [weak engine = scrollEngine] in
+                        engine?.renderedViewportSnapshot()
                     }
                 )
             }
             .onDisappear {
-                performViewportEffects(viewport.viewDisappeared(), using: proxy)
+                scrollEngine.viewDisappeared()
+                // Breaks the engine -> closure -> view state cycle; onAppear
+                // installs fresh callbacks.
+                scrollEngine.onEvent = nil
+                scrollEngine.onRenderInputsChanged = nil
                 backfillViewportTask?.cancel()
+                latestAnimationTask?.cancel()
                 appState.removeChatViewportSnapshotProvider(id: viewportSnapshotProviderID)
             }
             .task(id: appState.chatResumeRestorationRequest?.generation) {
                 guard let request = appState.chatResumeRestorationRequest else { return }
-                await runViewportRestoration(request, using: proxy)
-            }
-            .onPreferenceChange(ChatBottomMarkerPreferenceKey.self) { value in
-                guard !viewportPausedInBackground else {
-                    // Recorded without republishing: no body update while
-                    // backgrounded. The return to the foreground publishes.
-                    viewportStore.bottomMarkerMaxY = value
-                    return
-                }
-                bottomMarkerMaxY = value
-                // Facts first: the handoff readiness decision reads the
-                // controller's geometry copy, so it must see this tick.
-                performViewportEffects(
-                    viewport.layoutMetricsChanged(facts: currentLayoutFacts()),
-                    using: proxy
-                )
-                recordNotificationHandoffLayout()
-                finishNotificationHandoffIfReady(using: proxy)
-            }
-            .onPreferenceChange(ChatViewportFramePreferenceKey.self) { value in
-                guard !viewportPausedInBackground else {
-                    viewportStore.scrollViewportFrame = value
-                    return
-                }
-                scrollViewportFrame = value
-                performViewportEffects(
-                    viewport.layoutMetricsChanged(facts: currentLayoutFacts()),
-                    using: proxy
-                )
-                recordNotificationHandoffLayout()
-                finishNotificationHandoffIfReady(using: proxy)
+                await runViewportRestoration(request)
             }
             .onPreferenceChange(ChatRenderedScrollContentPreferenceKey.self) { value in
-                renderedScrollContent = value
                 guard let value else { return }
                 appState.chatViewportLayoutDidSettle(
                     sessionKey: value.scope.sessionKey,
@@ -543,72 +424,32 @@ struct ChatView: View {
                     receivedScopedPreference: true
                 )
             }
-            .onPreferenceChange(ChatRenderedScrollTargetsPreferenceKey.self) { value in
-                renderedScrollTargets = value
-                guard !viewportPausedInBackground else { return }
-                performViewportEffects(
-                    viewport.layoutMetricsChanged(facts: currentLayoutFacts()),
-                    using: proxy
-                )
+            .onPreferenceChange(ChatScrollRowFramesPreferenceKey.self) { frames in
+                scrollEngine.rowFramesChanged(frames)
             }
             .onChange(of: scenePhase) { _, phase in
-                let paused = phase == .background
-                guard paused != viewportPausedInBackground else { return }
-                viewportPausedInBackground = paused
-                guard !paused else { return }
-                // Catch up on the geometry skipped while backgrounded. A
-                // correction deferred meanwhile left its recheck armed; any
-                // correction this schedules drains through the observer.
-                let facts = currentLayoutFacts()
-                performViewportEffects(
-                    viewport.followRecheckArmed
-                        ? viewport.followRecheckDue(facts: facts)
-                        : viewport.layoutMetricsChanged(facts: facts),
-                    using: proxy
-                )
-                publishViewportInputs()
-                // A handoff that became ready while paused had its scroll
-                // skipped; finish it now.
-                recordNotificationHandoffLayout()
-                finishNotificationHandoffIfReady(using: proxy)
-            }
-            .onChange(of: isDraggingChat) { wasDragging, isDragging in
-                guard wasDragging, !isDragging else { return }
-                performViewportEffects(viewport.userDragGestureEnded(), using: proxy)
-            }
-            .onChange(of: viewportInputs.pendingFollowCorrection) { _, pending in
-                // The coalesced follow-correction executor: the controller
-                // scheduled (state changed) from a geometry preference
-                // callback; SwiftUI delivers this observer on the update
-                // turn that change created — after the layout pass, riding
-                // its transaction, at most once per pending token.
-                guard let pending else { return }
-                executePendingFollowCorrection(pending, using: proxy)
+                // In the background iOS still lays this view out for
+                // app-switcher snapshots, and a backgrounded app gets little
+                // CPU; the engine leaves the offset alone until it is back.
+                scrollEngine.setPaused(phase == .background)
             }
     }
 
     private func transcriptObservers(proxy: ScrollViewProxy, content: some View) -> some View {
         content
             .onChange(of: appState.messages) { _, _ in
-                performViewportEffects(
-                    viewport.transcriptChanged(
-                        messages: appState.messages,
-                        transcriptRevision: appState.chatTranscriptRevision,
-                        viewportTransitionGeneration: appState.chatViewportTransitionGeneration,
-                        activeSessionKey: activeScrollSessionKey,
-                        isOpeningNotificationSession: appState.isOpeningNotificationSession
-                    ),
-                    using: proxy
+                scrollEngine.transcriptChanged(
+                    messages: appState.messages,
+                    transcriptRevision: appState.chatTranscriptRevision,
+                    viewportTransitionGeneration: appState.chatViewportTransitionGeneration,
+                    activeSessionKey: activeScrollSessionKey
                 )
             }
             .onChange(of: appState.chatResumeRestorationRequest) { oldRequest, newRequest in
                 guard oldRequest != nil, newRequest == nil else { return }
                 // The published request disappeared on the AppState side
                 // (completed/abandoned/cancelled elsewhere).
-                performViewportEffects(
-                    viewport.restorationSystemCancelled(),
-                    using: proxy
-                )
+                scrollEngine.restorationSystemCancelled()
             }
             .onChange(of: followsLatest) { _, _ in
                 saveChatScrollPosition(for: renderedScrollSessionKey)
@@ -619,78 +460,53 @@ struct ChatView: View {
         content
             .onChange(of: appState.chatScrollRequest) { _, _ in
                 ChatViewportTrace.shared.log("event explicitLatest (send pulse)")
-                performViewportEffects(viewport.explicitLatestRequested(), using: proxy)
+                requestLatest(animated: false)
             }
             .onChange(of: appState.chatScrollToTopRequest) { _, request in
                 ChatViewportTrace.shared.log("event explicitTop request=\(request)")
-                performViewportEffects(
-                    viewport.explicitTopRequested(request: request),
-                    using: proxy
-                )
+                scrollEngine.explicitTopRequested()
             }
             .onChange(of: appState.activeSessionId) { _, _ in
                 ChatViewportTrace.shared.log(
                     "event sessionChanged viaNotification=\(appState.isOpeningNotificationSession)"
                 )
-                performViewportEffects(
-                    viewport.renderedSessionChanged(
-                        to: activeScrollSessionKey,
-                        identity: appState.activeChatScrollSessionIdentity,
-                        viaNotification: appState.isOpeningNotificationSession,
-                        viewportTransitionGeneration: appState.chatViewportTransitionGeneration
-                    ),
-                    using: proxy
+                scrollEngine.renderedSessionChanged(
+                    to: activeScrollSessionKey,
+                    identity: appState.activeChatScrollSessionIdentity,
+                    viaNotification: appState.isOpeningNotificationSession,
+                    viewportTransitionGeneration: appState.chatViewportTransitionGeneration
                 )
             }
             .onChange(of: appState.activeProfile) { _, _ in
                 ChatViewportTrace.shared.log(
                     "event profileChanged viaNotification=\(appState.isOpeningNotificationSession)"
                 )
-                // Mirror-only transcript sync: the session-change event below
-                // owns the single follow scroll for a real switch, so a
-                // profile change cannot emit a duplicate latest command.
-                performViewportEffects(
-                    viewport.transcriptChanged(
-                        messages: appState.messages,
-                        transcriptRevision: appState.chatTranscriptRevision,
-                        viewportTransitionGeneration: appState.chatViewportTransitionGeneration,
-                        isInitialSync: true,
-                        activeSessionKey: activeScrollSessionKey,
-                        isOpeningNotificationSession: appState.isOpeningNotificationSession
-                    ),
-                    using: proxy
+                scrollEngine.transcriptChanged(
+                    messages: appState.messages,
+                    transcriptRevision: appState.chatTranscriptRevision,
+                    viewportTransitionGeneration: appState.chatViewportTransitionGeneration,
+                    isInitialSync: true,
+                    activeSessionKey: activeScrollSessionKey
                 )
-                performViewportEffects(
-                    viewport.renderedSessionChanged(
-                        to: activeScrollSessionKey,
-                        identity: appState.activeChatScrollSessionIdentity,
-                        viaNotification: appState.isOpeningNotificationSession,
-                        viewportTransitionGeneration: appState.chatViewportTransitionGeneration
-                    ),
-                    using: proxy
+                scrollEngine.renderedSessionChanged(
+                    to: activeScrollSessionKey,
+                    identity: appState.activeChatScrollSessionIdentity,
+                    viaNotification: appState.isOpeningNotificationSession,
+                    viewportTransitionGeneration: appState.chatViewportTransitionGeneration
                 )
             }
             .onChange(of: appState.activeChatScrollSessionIdentity) { _, _ in
-                performViewportEffects(
-                    viewport.activeIdentityRefreshed(
-                        identity: appState.activeChatScrollSessionIdentity,
-                        key: activeScrollSessionKey
-                    ),
-                    using: proxy
+                scrollEngine.activeIdentityRefreshed(
+                    identity: appState.activeChatScrollSessionIdentity,
+                    key: activeScrollSessionKey
                 )
             }
             .onChange(of: appState.isOpeningNotificationSession) { _, isOpening in
                 if isOpening {
                     ChatViewportTrace.shared.log("event notificationHandoffBegan")
-                    performViewportEffects(
-                        viewport.notificationHandoffBegan(destination: nil),
-                        using: proxy
-                    )
+                    scrollEngine.notificationHandoffBegan()
                 } else {
-                    performViewportEffects(
-                        viewport.notificationHandoffDestinationReady(activeKey: activeScrollSessionKey),
-                        using: proxy
-                    )
+                    scrollEngine.notificationHandoffFinished()
                 }
             }
     }
@@ -701,76 +517,33 @@ struct ChatView: View {
             currentKey: currentKey,
             identity: appState.activeChatScrollSessionIdentity
         ) else { return }
-        guard let snapshot = currentChatViewportSnapshot() else { return }
+        guard let snapshot = scrollEngine.renderedViewportSnapshot()?.snapshot else { return }
         appState.recordChatViewport(snapshot, for: sessionKey)
     }
 
-    private func currentChatViewportSnapshot() -> ChatScrollSnapshot? {
-        viewport.renderedViewportSnapshot()?.snapshot
+    /// Send and the jump-to-latest button. An animated jump gets one final
+    /// pin once the animation has had time to land.
+    private func requestLatest(animated: Bool) {
+        scrollEngine.explicitLatestRequested(animated: animated)
+        latestAnimationTask?.cancel()
+        guard animated else { return }
+        latestAnimationTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(ChatScrollEngine.latestAnimationDuration))
+            guard !Task.isCancelled else { return }
+            scrollEngine.latestAnimationFinished()
+        }
     }
 
-    private func cancelAutomaticRestoration() {
-        appState.cancelChatResumeRestoration()
-    }
-
-    private func chatDragGesture(proxy: ScrollViewProxy) -> some Gesture {
-        DragGesture(minimumDistance: 3)
-            .updating($isDraggingChat) { _, isDragging, _ in
-                isDragging = true
-            }
-            .onChanged { _ in
-                beginChatDragIfNeeded(using: proxy)
-            }
-    }
-
-    private func beginChatDragIfNeeded(using proxy: ScrollViewProxy) {
-        // Only a deliberate user drag opts out of stream following; the
-        // controller captures the session and transition that owned the
-        // gesture and owns the completion lineage.
-        performViewportEffects(
-            viewport.userDragBegan(
-                sessionKey: renderedScrollSessionKey ?? activeScrollSessionKey,
-                viewportTransitionGeneration: appState.chatViewportTransitionGeneration
-            ),
-            using: proxy
-        )
-    }
-
-    private func invalidateChatDrag(using proxy: ScrollViewProxy) {
-        performViewportEffects(
-            viewport.invalidateDrag(hasActiveGesture: isDraggingChat),
-            using: proxy
-        )
-    }
-
-    private func abandonChatDrag(using proxy: ScrollViewProxy) {
-        performViewportEffects(viewport.abandonDrag(), using: proxy)
-    }
-
-    /// Controller-driven restoration: the .task restarts whenever the
-    /// published request generation changes; each tick feeds the controller
-    /// current observations and executes its effects. Cancellation comes
-    /// from task identity (generation change / view teardown) or the
-    /// system-cancel onChange; identity drift cancels via the session-change
-    /// event. All retries are bounded inside the controller.
+    /// Engine-driven restoration: the .task restarts whenever the published
+    /// request generation changes and ticks every 25 ms until the engine has
+    /// placed the saved row, given up, or been cancelled (a drag, a session
+    /// switch, or the request going away). All retries are bounded inside
+    /// the engine.
     @MainActor
-    private func runViewportRestoration(
-        _ request: ChatResumeRestorationRequest,
-        using proxy: ScrollViewProxy
-    ) async {
-        performViewportEffects(viewport.restorationRequested(request), using: proxy)
-        while !Task.isCancelled, viewport.restorationIsActive {
-            let effects = viewport.restorationTick(
-                messages: appState.messages,
-                transcriptRevision: appState.chatTranscriptRevision,
-                viewportTransitionGeneration: appState.chatViewportTransitionGeneration,
-                renderedContent: renderedScrollContent,
-                installedTargets: renderedScrollTargets,
-                topVisibleID: viewport.stableTopMessageID,
-                isNearBottom: viewport.isNearBottom
-            )
-            performViewportEffects(effects, using: proxy)
-            guard viewport.restorationIsActive else { return }
+    private func runViewportRestoration(_ request: ChatResumeRestorationRequest) async {
+        scrollEngine.restorationRequested(request)
+        while !Task.isCancelled,
+              scrollEngine.restorationTick(transcriptRevision: appState.chatTranscriptRevision) {
             do {
                 try await Task.sleep(for: .milliseconds(25))
             } catch {
@@ -779,243 +552,55 @@ struct ChatView: View {
         }
     }
 
-    /// A notification handoff completes only after the destination transcript
-    /// has emitted its own geometry. This is a layout fact rather than a
-    /// timer, so a long lazy transcript cannot inherit the old conversation's
-    /// offset. The controller owns the handoff state; these helpers feed it
-    /// facts and ask for the completion decision.
-    private func recordNotificationHandoffLayout() {
-        guard viewport.notificationHandoffAwaitingLayout,
-              let handoffKey = viewport.notificationHandoff?.sessionKey,
-              appState.activeChatScrollSessionIdentity.areEquivalent(
-                handoffKey,
-                activeScrollSessionKey
-              ),
-              bottomMarkerMaxY != nil,
-              scrollViewportMaxY != nil else { return }
-        _ = viewport.notificationHandoffLayoutMeasured()
-    }
+    // MARK: - Scroll engine wiring
 
-    private func finishNotificationHandoffIfReady(using proxy: ScrollViewProxy) {
-        guard !appState.isOpeningNotificationSession else { return }
-        performViewportEffects(
-            viewport.notificationHandoffDestinationReady(activeKey: activeScrollSessionKey),
-            using: proxy
-        )
-    }
-
-    // MARK: - Viewport controller wiring
-
-    private func currentLayoutFacts() -> ChatViewportLayoutFacts {
-        let scope = renderedScrollScope
-        let frames = renderedRowFrames.map { id, geometry in
-            ChatRenderedRowFrame(
-                id: id,
-                minY: geometry.frame.minY,
-                maxY: geometry.frame.maxY,
-                order: geometry.order,
-                scope: scope ?? ChatRenderedScrollScope(
-                    sessionKey: activeOrFallbackScrollSessionKey,
-                    cacheRevision: 0,
-                    restorationGeneration: nil,
-                    transcriptRevision: 0,
-                    viewportTransitionGeneration: 0
-                )
-            )
+    private func installScrollEngineCallbacks(proxy: ScrollViewProxy) {
+        let engine = scrollEngine
+        engine.onEvent = { [weak engine] event in
+            if engine?.isHandlingSurfaceCallback == true {
+                DispatchQueue.main.async {
+                    handleScrollEngineEvent(event, proxy: proxy)
+                }
+            } else {
+                handleScrollEngineEvent(event, proxy: proxy)
+            }
         }
-        return ChatViewportLayoutFacts(
-            bottomMarkerMaxY: bottomMarkerMaxY,
-            viewportMinY: scrollViewportMinY,
-            viewportMaxY: scrollViewportMaxY,
-            rowFrames: frames,
-            renderedScope: scope,
-            timestamp: CFAbsoluteTimeGetCurrent()
-        )
-    }
-
-    /// The ONLY boundary that executes viewport effects. `runScroll` is the
-    /// only place in ChatView that calls ScrollViewProxy.scrollTo.
-    @MainActor
-    private func performViewportEffects(
-        _ effects: [ChatViewportEffect],
-        using proxy: ScrollViewProxy
-    ) {
-        for effect in effects {
-            performViewportEffect(effect, using: proxy)
+        engine.onRenderInputsChanged = { [weak engine] in
+            if engine?.isHandlingSurfaceCallback == true {
+                scheduleViewportInputsPublish()
+            } else {
+                publishViewportInputs()
+            }
         }
+        publishViewportInputs()
     }
 
     @MainActor
-    private func performViewportEffect(
-        _ effect: ChatViewportEffect,
-        using proxy: ScrollViewProxy
-    ) {
-        switch effect {
-        case .scroll(let command):
-            executeViewportScrollCommand(command, using: proxy)
+    private func handleScrollEngineEvent(_ event: ChatScrollEngineEvent, proxy: ScrollViewProxy) {
+        switch event {
+        case .persistSnapshot(let key):
+            saveChatScrollPosition(for: key)
+        case .flushPersistence:
+            appState.flushChatResumeViewport()
         case .cancelAutomaticRestoration:
             appState.cancelChatResumeRestoration()
-        case .persistViewportSnapshot(let key):
-            saveChatScrollPosition(for: key)
-        case .flushViewportPersistence:
-            appState.flushChatResumeViewport()
         case .completeRestoration(let generation):
             appState.completeChatResumeRestoration(generation: generation)
         case .abandonRestoration(let generation):
             appState.abandonChatResumeRestoration(generation: generation)
-        case .scheduleDragEvaluation(let token):
-            Task { @MainActor in
-                await ChatViewportPersistenceSupport.waitForNextMainActorTurn()
-                guard !Task.isCancelled else { return }
-                ChatViewportTrace.shared.log(
-                    "drag completion evaluate gen=\(token.dragGeneration)"
-                )
-                performViewportEffects(
-                    viewport.evaluateDragCompletion(
-                        token,
-                        viewportTransitionGeneration: appState.chatViewportTransitionGeneration
-                    ),
-                    using: proxy
-                )
-            }
-        case .scheduleFollowCorrection(let token):
-            ChatViewportTrace.shared.log(
-                "follow correction scheduled seq=\(token.sequence) gen=\(token.generation)"
-            )
-            // Executed by the pendingFollowCorrection observer below: the
-            // correction must ride the SwiftUI update turn that the
-            // scheduling state change already created — never its own
-            // MainActor task (a standalone task commits a separate layout
-            // transaction, which re-materializes lazy rows the transcript
-            // fixtures measure), and never synchronously inside the geometry
-            // preference callback that scheduled it (that
-            // scrollTo → layout → preference → scrollTo loop is the
-            // ScrollViewCommitMutation watchdog storm).
-            break
-        case .scheduleFollowRecheck(let seconds):
-            // Only re-feeds facts; any correction it arms still drains
-            // through the pendingFollowCorrection observer.
-            Task { @MainActor in
-                try? await Task.sleep(for: .seconds(seconds))
-                // Coming back re-feeds facts (see viewportPausedInBackground).
-                guard !Task.isCancelled, !viewportPausedInBackground else { return }
-                ChatViewportTrace.shared.log("follow recheck due")
-                performViewportEffects(
-                    viewport.followRecheckDue(facts: currentLayoutFacts()),
-                    using: proxy
-                )
-            }
+        case .revealRow(let id):
+            scrollWithoutAnimation { proxy.scrollTo(id, anchor: .top) }
+        case .revealLatest:
+            scrollWithoutAnimation { proxy.scrollTo(bottomAnchor, anchor: .bottom) }
+        case .revealTop:
+            scrollWithoutAnimation { proxy.scrollTo(topAnchor, anchor: .top) }
         }
     }
 
-    /// Executes the coalesced bottom-follow correction on the update turn
-    /// that the controller's pending-correction state change created. This
-    /// is the ONLY place a follow correction scrolls. MainActor-isolated to
-    /// match the neighboring scroll-execution entry points: it mutates
-    /// viewport state, writes the trace ring, and drives ScrollViewProxy.
-    @MainActor
-    private func executePendingFollowCorrection(
-        _ token: ChatFollowCorrectionToken,
-        using proxy: ScrollViewProxy
-    ) {
-        guard !viewportPausedInBackground else {
-            // Deferred with its recheck armed; the return to the foreground
-            // runs that recheck against fresh geometry.
-            performViewportEffects(
-                viewport.followCorrectionDeferred(token, recheckAfter: 0.2),
-                using: proxy
-            )
-            return
-        }
-        if let armed = armedAnimatedBottomRetry {
-            // An animated bottom command is still in flight with its own
-            // retry armed; a correction now would fight the animation. Drop
-            // this cycle and recheck once the animation would have landed
-            // (a drag can invalidate it mid-flight).
-            ChatViewportTrace.shared.log(
-                "follow correction skipped, animated retry armed gen=\(armed.generation)"
-            )
-            performViewportEffects(
-                viewport.followCorrectionDeferred(token, recheckAfter: 0.2),
-                using: proxy
-            )
-            return
-        }
-        ChatViewportTrace.shared.log(
-            "follow correction due gen=\(token.generation)"
-        )
-        performViewportEffects(
-            viewport.followCorrectionDue(token),
-            using: proxy
-        )
-    }
-
-    @MainActor
-    private func executeViewportScrollCommand(
-        _ command: ChatViewportCommand,
-        using proxy: ScrollViewProxy
-    ) {
-        // Immediate execution: the controller issued this command in the
-        // current turn, so it is current by construction. Only the delayed
-        // retry re-validates below.
-        runViewportScroll(command, using: proxy)
-        guard case .delayed(let milliseconds) = command.retry else { return }
-        if case .bottom = command.destination {
-            // Mark the flight window: the retry disarms below, and follow
-            // corrections defer to the animation meanwhile.
-            armedAnimatedBottomRetry = command
-        }
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(milliseconds))
-            if !Task.isCancelled, viewport.isCommandCurrent(command) {
-                ChatViewportTrace.shared.log(
-                    "scroll retry \(command.destination) gen=\(command.generation)"
-                )
-                runViewportScroll(command, using: proxy)
-                if command.animated {
-                    // The retry restarts the spring. Keep corrections off
-                    // until it settles: an unanimated correction mid-spring
-                    // is the snap seen right after sending a message.
-                    try? await Task.sleep(for: .milliseconds(Self.animatedScrollSettleMilliseconds))
-                }
-            }
-            if armedAnimatedBottomRetry == command {
-                armedAnimatedBottomRetry = nil
-            }
-        }
-    }
-
-    /// How long ConduitMotion.response takes to settle after a retry.
-    private static let animatedScrollSettleMilliseconds = 450
-
-    @MainActor
-    private func runViewportScroll(
-        _ command: ChatViewportCommand,
-        using proxy: ScrollViewProxy
-    ) {
-        // No scrolling while backgrounded (see viewportPausedInBackground);
-        // following resumes from fresh geometry on return.
-        guard !viewportPausedInBackground else {
-            ChatViewportTrace.shared.log("scroll skipped in background \(command.destination)")
-            return
-        }
-        ChatViewportTrace.shared.log(
-            "scroll \(command.destination) gen=\(command.generation) animated=\(command.animated)"
-        )
+    private func scrollWithoutAnimation(_ body: () -> Void) {
         var transaction = Transaction()
-        transaction.animation = command.animated ? ConduitMotion.response : nil
-        withTransaction(transaction) {
-            switch command.destination {
-            case .bottom(let anchorID):
-                proxy.scrollTo(anchorID, anchor: .bottom)
-            case .top(let anchorID, _):
-                proxy.scrollTo(anchorID, anchor: .top)
-            case .message(let id):
-                proxy.scrollTo(id, anchor: .top)
-            case .prependAnchor(let id):
-                proxy.scrollTo(id, anchor: .top)
-            }
-        }
+        transaction.disablesAnimations = true
+        withTransaction(transaction, body)
     }
 }
 
@@ -1065,20 +650,6 @@ enum ChatTitleScrollViewportSnapshot {
     }
 }
 
-private struct ChatBottomMarkerPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat? = nil
-    static func reduce(value: inout CGFloat?, nextValue: () -> CGFloat?) {
-        value = nextValue() ?? value
-    }
-}
-
-private struct ChatViewportFramePreferenceKey: PreferenceKey {
-    static var defaultValue: CGRect? = nil
-    static func reduce(value: inout CGRect?, nextValue: () -> CGRect?) {
-        value = nextValue() ?? value
-    }
-}
-
 private struct ChatRenderedScrollContentPreferenceKey: PreferenceKey {
     static var defaultValue: ChatRenderedScrollContent? = nil
     static func reduce(
@@ -1089,14 +660,15 @@ private struct ChatRenderedScrollContentPreferenceKey: PreferenceKey {
     }
 }
 
-private struct ChatRenderedScrollTargetsPreferenceKey: PreferenceKey {
-    static var defaultValue = ChatRenderedScrollTargets()
+/// Frames of the message rows SwiftUI has laid out, keyed by message id.
+private struct ChatScrollRowFramesPreferenceKey: PreferenceKey {
+    static var defaultValue: [String: ChatScrollRowFrame] = [:]
 
     static func reduce(
-        value: inout ChatRenderedScrollTargets,
-        nextValue: () -> ChatRenderedScrollTargets
+        value: inout [String: ChatScrollRowFrame],
+        nextValue: () -> [String: ChatScrollRowFrame]
     ) {
-        ChatRenderedScrollTargets.reduce(value: &value, nextValue: nextValue())
+        value.merge(nextValue()) { _, new in new }
     }
 }
 // MARK: - Message Bubble
@@ -2995,34 +2567,28 @@ struct ConduitAgentMark: View {
     }
 }
 
-/// Mutable viewport state ChatView keeps out of SwiftUI's diffing; see
-/// `ChatView.viewportStore`.
-private final class ChatViewportStore {
-    var controller = ChatViewportController()
-    var bottomMarkerMaxY: CGFloat?
-    var scrollViewportFrame: CGRect?
-    var renderedScrollTargets = ChatRenderedScrollTargets()
+/// Coalesces deferred viewport-input publishes; see
+/// `ChatView.scheduleViewportInputsPublish`.
+private final class ChatViewportPublishGate {
+    var isScheduled = false
 }
 
 /// The viewport values ChatView's body renders from or observes. Small and
-/// cheap to compare; a geometry tick that changes none of them does not
-/// re-run the body.
+/// cheap to compare; a scroll tick that changes none of them does not re-run
+/// the body.
 private struct ChatViewportRenderInputs: Equatable {
     var renderedSessionKey: ChatScrollSessionKey?
     var isFollowingLatest = true
     var renderedScrollScope: ChatRenderedScrollScope?
-    var pendingFollowCorrection: ChatFollowCorrectionToken?
-    var targetCount = 0
-    var isNearBottom = true
+    var showsJumpToLatest = false
 
     init() {}
 
-    init(controller: ChatViewportController, isNearBottom: Bool) {
-        renderedSessionKey = controller.renderedSessionKey
-        isFollowingLatest = controller.isFollowingLatest
-        renderedScrollScope = controller.renderedScrollScope
-        pendingFollowCorrection = controller.pendingFollowCorrection
-        targetCount = controller.targets.count
-        self.isNearBottom = isNearBottom
+    @MainActor
+    init(engine: ChatScrollEngine) {
+        renderedSessionKey = engine.renderedSessionKey
+        isFollowingLatest = engine.isFollowingLatest
+        renderedScrollScope = engine.renderedScrollScope
+        showsJumpToLatest = engine.showsJumpToLatest
     }
 }

@@ -1,10 +1,9 @@
 import Foundation
 import os
 
-/// Ring-buffer recorder for viewport decisions. ChatView logs every event
-/// sent to ChatViewportController and every effect executed; the dump is the
-/// Phase-0/Phase-8 evidence trail for "never more than one current scroll
-/// owner/command generation". Recording exists only in DEBUG builds; the
+/// Ring-buffer recorder for viewport decisions. ChatView logs the explicit
+/// scroll commands and session events it sends to ChatScrollEngine.
+/// Recording exists only in DEBUG builds; the
 /// type stays visible in all configurations so call sites compile clean.
 @MainActor
 final class ChatViewportTrace {

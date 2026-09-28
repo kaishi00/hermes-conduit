@@ -3259,7 +3259,11 @@ final class AppState: ObservableObject {
         cancelOwnedAutomaticSyncOperation()
         activeAutomaticChatResumeWork = nil
         recoverySequence.preserveTransportAfterAutomaticIntentCancellation()
-        chatResumeRestorationRequest = nil
+        // Every chat drag lands here; republishing an already-nil request
+        // would re-evaluate the whole chat view for nothing.
+        if chatResumeRestorationRequest != nil {
+            chatResumeRestorationRequest = nil
+        }
     }
 
     /// A genuine composer edit is explicit ownership of the visible
