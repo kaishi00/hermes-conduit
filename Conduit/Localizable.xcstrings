@@ -21,6 +21,26 @@
         }
       }
     },
+    "Gemini gets what your Hermes agent remembers about you, from whichever memory Hermes is set up with, and can search it for more. That memory is sent to Google with the conversation. Applies to the next conversation." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini 会获得 Hermes 智能体记住的关于你的信息（来自 Hermes 所配置的记忆），并可搜索更多内容。这些记忆会随对话发送给 Google。从下一次对话开始生效。"
+          }
+        }
+      }
+    },
+    "Use Hermes memory" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用 Hermes 记忆"
+          }
+        }
+      }
+    },
     "You: %@" : {
       "localizations" : {
         "zh-Hans" : {

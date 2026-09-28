@@ -41,6 +41,7 @@ final class GeminiLiveToolBridge {
         case listJobs = "list_jobs"
         case cancelJob = "cancel_job"
         case webSearch = "web_search"
+        case recallMemory = "recall_memory"
         case endConversation = "end_conversation"
     }
 
@@ -62,10 +63,29 @@ final class GeminiLiveToolBridge {
     }
 
     /// The declarations for a session, with web_search when its lookups run
-    /// on the Hermes host.
-    static func declarations(webSearch: Bool) -> [GeminiLiveProtocol.FunctionDeclaration] {
-        webSearch ? functionDeclarations + [webSearchDeclaration] : functionDeclarations
+    /// on the Hermes host and recall_memory when its memory provider can be
+    /// searched.
+    static func declarations(webSearch: Bool, memoryRecall: Bool = false) -> [GeminiLiveProtocol.FunctionDeclaration] {
+        functionDeclarations
+            + (webSearch ? [webSearchDeclaration] : [])
+            + (memoryRecall ? [recallMemoryDeclaration] : [])
     }
+
+    static let recallMemoryDeclaration = GeminiLiveProtocol.FunctionDeclaration(
+        name: Tool.recallMemory.rawValue,
+        description: "Search the user's Hermes memory: what Hermes knows about them, their preferences, projects and past conversations. Use it when the user mentions something from before that you don't know, or asks what Hermes remembers. Answer from it naturally; don't read it out.",
+        parameters: [
+            "type": "OBJECT",
+            "properties": [
+                "query": [
+                    "type": "STRING",
+                    "description": "What to look up, in a few words.",
+                ],
+            ],
+            "required": ["query"],
+        ],
+        behavior: .blocking
+    )
 
     static let webSearchDeclaration = GeminiLiveProtocol.FunctionDeclaration(
         name: Tool.webSearch.rawValue,
@@ -129,14 +149,16 @@ final class GeminiLiveToolBridge {
 
     private let supervisor: GeminiLiveJobSupervising
     private let webSearch: GeminiLiveWebSearching?
+    private let memory: GeminiLiveMemoryRecalling?
     /// Open start_job calls, keyed by the job they started.
     private var openCalls: [UUID: String] = [:]
     /// Calls the model withdrew before their start_job finished starting.
     private var withdrawnCallIDs: Set<String> = []
 
-    init(supervisor: GeminiLiveJobSupervising, webSearch: GeminiLiveWebSearching? = nil) {
+    init(supervisor: GeminiLiveJobSupervising, webSearch: GeminiLiveWebSearching? = nil, memory: GeminiLiveMemoryRecalling? = nil) {
         self.supervisor = supervisor
         self.webSearch = webSearch
+        self.memory = memory
     }
 
     var openCallCount: Int { openCalls.count }
@@ -197,6 +219,8 @@ final class GeminiLiveToolBridge {
             return outgoing
         case .webSearch:
             return [.toolResponse(id: call.id, name: call.name, result: await searchResult(call.arguments["query"]), scheduling: nil)]
+        case .recallMemory:
+            return [.toolResponse(id: call.id, name: call.name, result: await recallResult(call.arguments["query"]), scheduling: nil)]
         case .endConversation:
             // Deliberately unanswered: a response would prompt another turn
             // after the goodbye, and the connection closes anyway.
@@ -340,6 +364,18 @@ final class GeminiLiveToolBridge {
         } catch {
             // The host's own reason ("No web search provider configured…")
             // lets the model tell the user what's wrong.
+            return ["error": error.localizedDescription]
+        }
+    }
+
+    private func recallResult(_ rawQuery: String?) async -> [String: String] {
+        let query = rawQuery?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !query.isEmpty else { return ["error": "query is required"] }
+        guard let memory else { return ["error": "Hermes memory is not available"] }
+        do {
+            let results = try await memory.recallMemory(query: query)
+            return ["results": results.isEmpty ? "Nothing in memory about that." : results]
+        } catch {
             return ["error": error.localizedDescription]
         }
     }

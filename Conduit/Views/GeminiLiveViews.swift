@@ -18,6 +18,8 @@ struct GeminiLiveSettingsModel {
     /// Prebuilt voice name; nil is Gemini's default voice.
     var voice: String? = nil
     var setVoice: (String?) -> Void = { _ in }
+    var memory: Bool = false
+    var setMemory: (Bool) -> Void = { _ in }
 }
 
 struct GeminiLiveSettingsSection: View {
@@ -26,6 +28,7 @@ struct GeminiLiveSettingsSection: View {
     @State private var search: GeminiLiveSearchMode
     /// Empty is Gemini's default voice (a Picker tag can't be nil).
     @State private var voice: String
+    @State private var memory: Bool
     @State private var status: String?
     @State private var isAvailable: Bool?
     @State private var isChecking = false
@@ -35,6 +38,7 @@ struct GeminiLiveSettingsSection: View {
         _enabled = State(initialValue: model.enabled)
         _search = State(initialValue: model.search)
         _voice = State(initialValue: model.voice ?? "")
+        _memory = State(initialValue: model.memory)
     }
 
     var body: some View {
@@ -106,6 +110,16 @@ struct GeminiLiveSettingsSection: View {
                 Text("The voice Gemini speaks with. Applies to the next conversation.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Toggle("Use Hermes memory", isOn: Binding(
+                    get: { memory },
+                    set: { requested in
+                        memory = requested
+                        model.setMemory(requested)
+                    }
+                ))
+                Text("Gemini gets what your Hermes agent remembers about you, from whichever memory Hermes is set up with, and can search it for more. That memory is sent to Google with the conversation. Applies to the next conversation.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
         .task { if enabled { await check() } }
@@ -113,6 +127,7 @@ struct GeminiLiveSettingsSection: View {
         .onChange(of: model.enabled) { _, newValue in enabled = newValue }
         .onChange(of: model.search) { _, newValue in search = newValue }
         .onChange(of: model.voice) { _, newValue in voice = newValue ?? "" }
+        .onChange(of: model.memory) { _, newValue in memory = newValue }
     }
 
     private func check() async {

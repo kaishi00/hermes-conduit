@@ -1309,6 +1309,26 @@ final class AppState: ObservableObject {
     /// starts (automatic asks the host whether it has a search backend).
     private var geminiLiveSearchSource: GeminiLiveSearchSource = .google
 
+    /// Whether Gemini Live gets the Hermes host's memory on this profile.
+    /// Off until the user turns it on: it sends that memory to Google.
+    var geminiLiveMemoryEnabled: Bool {
+        loadVoiceProfilePreferences(profile: activeProfile).geminiLiveMemory ?? false
+    }
+
+    /// Applies from the next Gemini Live conversation.
+    func setGeminiLiveMemoryEnabled(_ enabled: Bool) {
+        var preferences = loadVoiceProfilePreferences(profile: activeProfile)
+        let stored: Bool? = enabled ? true : nil
+        guard preferences.geminiLiveMemory != stored else { return }
+        objectWillChange.send()
+        preferences.geminiLiveMemory = stored
+        saveVoiceProfilePreferences(preferences, profile: activeProfile)
+    }
+
+    /// The host's memory for the next Gemini Live session, read when it
+    /// starts so it reflects what Hermes has learned since the last one.
+    private var geminiLiveMemoryContext: GeminiLiveMemoryContext?
+
     private func resolveGeminiLiveSearchSource() async -> GeminiLiveSearchSource {
         let mode = geminiLiveSearchMode
         let hermesAvailable = mode == .automatic ? await geminiLiveTokenClient.webSearchAvailable() : false
@@ -1349,10 +1369,11 @@ final class AppState: ObservableObject {
         let controller = GeminiLiveConversationController(
             makeSession: { [weak self] in
                 let search = self?.geminiLiveSearchSource ?? .google
+                let memory = self?.geminiLiveMemoryContext
                 return GeminiLiveSession(
                     tokens: tokens,
-                    systemInstruction: GeminiLiveConversationController.instructions(search: search),
-                    functions: GeminiLiveToolBridge.declarations(webSearch: search == .hermes),
+                    systemInstruction: GeminiLiveConversationController.instructions(search: search, memory: memory),
+                    functions: GeminiLiveToolBridge.declarations(webSearch: search == .hermes, memoryRecall: memory?.canRecall == true),
                     googleSearch: search == .google,
                     voice: self?.geminiLiveVoice
                 )
@@ -1363,10 +1384,11 @@ final class AppState: ObservableObject {
                 // a newly configured host backend applies on the next one.
                 if status.isAvailable, let self {
                     self.geminiLiveSearchSource = await self.resolveGeminiLiveSearchSource()
+                    self.geminiLiveMemoryContext = self.geminiLiveMemoryEnabled ? await tokens.memoryContext() : nil
                 }
                 return status
             },
-            tools: GeminiLiveToolBridge(supervisor: self.voiceBackgroundJobSupervisor, webSearch: tokens),
+            tools: GeminiLiveToolBridge(supervisor: self.voiceBackgroundJobSupervisor, webSearch: tokens, memory: tokens),
             input: CaptureServiceGeminiLiveInput(capture: AVAudioCaptureService()),
             output: PlaybackServiceGeminiLiveOutput(playback: AVSpeechPlaybackService()),
             // The same "End conversation" phrases as the classic Voice mode.
@@ -1417,6 +1439,8 @@ final class AppState: ObservableObject {
     func closeGeminiLiveConversation() {
         if geminiLiveControllerCreated { geminiLiveController.stop() }
         showGeminiLiveSheet = false
+        // Personal text isn't kept around between conversations.
+        geminiLiveMemoryContext = nil
     }
 
     /// Boundary teardown (disconnect, server/profile change, forced
