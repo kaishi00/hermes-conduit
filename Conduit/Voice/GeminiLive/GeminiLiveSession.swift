@@ -294,7 +294,7 @@ final class GeminiLiveSession {
         connectionID = UUID()
     }
 
-    func send(_ message: [String: Any], onFailure: (@MainActor () -> Void)?) {
+    func send(_ message: [String: Any], onSent: (@MainActor () -> Void)?, onFailure: (@MainActor () -> Void)?) {
         guard state == .ready, let socket, let text = try? GeminiLiveProtocol.encode(message) else {
             onFailure?()
             return
@@ -303,6 +303,7 @@ final class GeminiLiveSession {
         Task { [weak self] in
             do {
                 try await socket.send(text)
+                onSent?()
             } catch {
                 onFailure?()
                 self?.connectionFailed(id, error: error)

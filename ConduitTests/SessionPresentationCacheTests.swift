@@ -3425,16 +3425,51 @@ extension SessionPresentationCacheTests {
             "2024-01-01T10:00:00Z"
         )
 
-        // A clear queued behind a save is never overtaken by it.
+        // A delete holds across a relaunch as soon as it returns, even with
+        // the save queued before it still unwritten or landing after it.
+        cache.save(
+            [ChatMessage(id: "row-3", role: .assistant, content: "Doomed", timestamp: "2024-01-03T10:00:00Z")],
+            profile: "default",
+            sessionIDs: ["session-c"]
+        )
+        cache.removeSessions(profile: "default", sessionIDs: ["session-c"])
+        let doomedRow = [ChatMessage(id: "row-3", role: .assistant, content: "Doomed", timestamp: "")]
+        XCTAssertEqual(
+            SessionPresentationCache(defaults: defaults)
+                .merge(doomedRow, profile: "default", sessionIDs: ["session-c"]).first?.timestamp,
+            ""
+        )
+        cache.waitForPendingWrites()
+        XCTAssertEqual(
+            SessionPresentationCache(defaults: defaults)
+                .merge(doomedRow, profile: "default", sessionIDs: ["session-c"]).first?.timestamp,
+            ""
+        )
+
+        // Same for a clear queued behind a save.
         cache.save(
             [ChatMessage(id: "row-2", role: .assistant, content: "Again", timestamp: "2024-01-02T10:00:00Z")],
             profile: "default",
             sessionIDs: ["session-b"]
         )
         cache.clear()
+        let againRow = [ChatMessage(id: "row-2", role: .assistant, content: "Again", timestamp: "")]
+        XCTAssertEqual(
+            SessionPresentationCache(defaults: defaults)
+                .merge(againRow, profile: "default", sessionIDs: ["session-b"]).first?.timestamp,
+            ""
+        )
         cache.waitForPendingWrites()
         XCTAssertNil(defaults.data(forKey: "conduit.sessionPresentation.v1"))
         XCTAssertNil(defaults.data(forKey: "conduit.sessionPresentation.pendingTools.v1"))
+
+        // Once both stores on disk reflect the removals, the tombstones go.
+        let retired = expectation(description: "tombstones retired")
+        cache.notifyWhenPendingWritesLand {
+            XCTAssertNil(defaults.data(forKey: "conduit.sessionPresentation.tombstones.v1"))
+            retired.fulfill()
+        }
+        wait(for: [retired], timeout: 5)
         XCTAssertEqual(
             cache.merge(
                 [ChatMessage(id: "row-2", role: .assistant, content: "Again", timestamp: "")],
@@ -3443,6 +3478,29 @@ extension SessionPresentationCacheTests {
             ).first?.timestamp,
             ""
         )
+    }
+
+    /// The suspend path must not block the main thread on the write queue
+    /// (a UserDefaults write there can wait on SwiftUI's lock, which the
+    /// main thread holds during a view update: a watchdog-killed deadlock).
+    /// It is told on the main queue once the writes queued before it land.
+    func testPendingWriteNotificationArrivesOnMainAfterQueuedWrites() throws {
+        let suiteName = "conduit.tests.presentation-notify-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let cache = SessionPresentationCache(defaults: defaults, writesAsynchronously: true)
+        cache.save(
+            [ChatMessage(id: "row-1", role: .assistant, content: "Hello", timestamp: "2024-01-01T10:00:00Z")],
+            profile: "default",
+            sessionIDs: ["session-a"]
+        )
+        let landed = expectation(description: "queued writes landed")
+        cache.notifyWhenPendingWritesLand {
+            XCTAssertTrue(Thread.isMainThread)
+            XCTAssertNotNil(defaults.data(forKey: "conduit.sessionPresentation.v1"))
+            landed.fulfill()
+        }
+        wait(for: [landed], timeout: 5)
     }
 
     /// Synchronous instances reuse their decoded store only while the bytes

@@ -240,6 +240,18 @@ enum GeminiLiveSearchMode: String, Codable, Equatable, CaseIterable {
     }
 }
 
+/// "Keep phone awake during voice conversations": a device-wide choice
+/// (not per profile) to stop auto-lock while a voice conversation is open.
+enum VoiceScreenAwake {
+    static let preferenceKey = "conduit.voice.keepScreenAwake"
+
+    /// Auto-lock is held off only while the setting is on and a voice
+    /// conversation (classic or Gemini Live) is on screen.
+    static func holdsScreenAwake(enabled: Bool, voiceSheetShown: Bool, geminiLiveSheetShown: Bool) -> Bool {
+        enabled && (voiceSheetShown || geminiLiveSheetShown)
+    }
+}
+
 /// A prebuilt Gemini Live voice: its API name and Google's one-word
 /// description of how it sounds.
 struct GeminiLiveVoice: Equatable, Identifiable {

@@ -1322,6 +1322,7 @@ final class AppState: ObservableObject {
         preferences.geminiLiveEnabled = enabled
         saveVoiceProfilePreferences(preferences, profile: activeProfile)
         if !enabled { closeGeminiLiveConversation() }
+        CarPlayVoiceCoordinator.shared.voiceModeChanged(in: self)
     }
 
     /// Hermes-hosted Gemini Live credentials (the conduit_push plugin), read
@@ -1345,7 +1346,7 @@ final class AppState: ObservableObject {
     lazy var geminiLiveController: GeminiLiveConversationController = {
         geminiLiveControllerCreated = true
         let tokens = geminiLiveTokenClient
-        return GeminiLiveConversationController(
+        let controller = GeminiLiveConversationController(
             makeSession: { [weak self] in
                 let search = self?.geminiLiveSearchSource ?? .google
                 return GeminiLiveSession(
@@ -1367,8 +1368,16 @@ final class AppState: ObservableObject {
             },
             tools: GeminiLiveToolBridge(supervisor: self.voiceBackgroundJobSupervisor, webSearch: tokens),
             input: CaptureServiceGeminiLiveInput(capture: AVAudioCaptureService()),
-            output: PlaybackServiceGeminiLiveOutput(playback: AVSpeechPlaybackService())
+            output: PlaybackServiceGeminiLiveOutput(playback: AVSpeechPlaybackService()),
+            // The same "End conversation" phrases as the classic Voice mode.
+            endConversationPhrases: { [weak self] in
+                guard let self else { return [] }
+                return self.loadVoiceProfilePreferences(profile: self.activeProfile).spokenEndConversationPhrases
+            }
         )
+        // A hands-free goodbye closes the sheet like the Close button.
+        controller.onEndConversation = { [weak self] in self?.closeGeminiLiveConversation() }
+        return controller
     }()
 
     /// Opens Gemini Live instead of the classic Voice conversation. The
@@ -1385,6 +1394,24 @@ final class AppState: ObservableObject {
             Task { await geminiLiveController.start() }
         }
         return true
+    }
+
+    /// Starts Gemini Live for the CarPlay surface. CarPlay presents it, so
+    /// no phone sheet opens; the classic conversation and read aloud stop
+    /// first, as on the phone.
+    func startGeminiLiveForCarPlay() async {
+        guard isConnected else { return }
+        messageReadAloudController.stop()
+        if showVoiceSheet || voiceConversationController.hasLiveVoiceSession { closeVoiceConversation() }
+        guard !geminiLiveController.isActive else { return }
+        await geminiLiveController.start()
+    }
+
+    /// CarPlay went away. A Gemini Live conversation only CarPlay was
+    /// presenting ends; one the phone's sheet shows keeps going.
+    func releaseCarPlayGeminiLive() {
+        guard isGeminiLiveActive, !(isSceneActive && showGeminiLiveSheet) else { return }
+        closeGeminiLiveConversation()
     }
 
     func closeGeminiLiveConversation() {
@@ -2017,6 +2044,23 @@ final class AppState: ObservableObject {
             self.lastPresentationCacheFlushDate = Date()
             self.presentationCacheFlushTask = nil
         }
+    }
+
+    /// Keeps the process alive after suspension begins until the
+    /// presentation cache's queued disk writes have landed. Main actor only:
+    /// both callbacks that end the task arrive on the main queue.
+    private func holdBackgroundTaskUntilPresentationCacheWritesLand() {
+        var taskID = UIBackgroundTaskIdentifier.invalid
+        let end = {
+            guard taskID != .invalid else { return }
+            UIApplication.shared.endBackgroundTask(taskID)
+            taskID = .invalid
+        }
+        taskID = UIApplication.shared.beginBackgroundTask(
+            withName: "conduit.sessionPresentationCache.flush",
+            expirationHandler: end
+        )
+        sessionPresentationCache.notifyWhenPendingWritesLand(end)
     }
 
     /// Flushes any pending presentation-cache write immediately (used on
@@ -8914,10 +8958,11 @@ final class AppState: ObservableObject {
             recoverTransportForCarPlayIfNeeded()
             // Flush any pending coalesced cache writes before the app
             // suspends — iOS may kill the process before the debounce fires.
-            // The cache writes on a background queue, so wait for it to
-            // land before letting the app suspend.
+            // The cache writes on a background queue: hold a background task
+            // until those writes land. Never block the main thread on that
+            // queue here (see SessionPresentationCache.waitForPendingWrites).
             flushPendingPresentationCache()
-            sessionPresentationCache.waitForPendingWrites()
+            holdBackgroundTaskUntilPresentationCacheWritesLand()
             // A suspended socket may still look open. Invalidate incomplete
             // snapshots so foreground always obtains a fresh authoritative one.
             invalidateReconciliation()
@@ -18751,8 +18796,9 @@ final class AppState: ObservableObject {
     /// The phone's voice entry points (composer mic, Siri/intents that open
     /// the sheet): Gemini Live brings its own speech in and out, so it only
     /// needs a connection (the host's plugin is checked, and any refusal
-    /// reported, when the sheet opens). Classic-only surfaces — CarPlay,
-    /// suspension restore, provider tests — keep `voiceUnavailableReason`.
+    /// reported, when the sheet opens). CarPlay routes to Gemini Live on its
+    /// own; classic-only surfaces (suspension restore, provider tests) keep
+    /// `voiceUnavailableReason`.
     var phoneVoiceUnavailableReason: String? {
         if isGeminiLiveEnabled {
             return isConnected ? nil : "Connect to Hermes before starting voice."

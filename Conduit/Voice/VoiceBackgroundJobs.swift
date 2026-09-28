@@ -400,6 +400,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         pollTask?.cancel()
         pollTask = nil
         jobs.removeAll()
+        noticesInFlight.removeAll()
     }
 
     // MARK: Events
@@ -457,11 +458,36 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
 
     func takePendingNotice() -> VoiceBackgroundJobNotice? {
         defer { pruneSettledJobs() }
+        return takeNotice()?.notice
+    }
+
+    /// `takePendingNotice` plus the job it came from, for a channel that
+    /// queues the notice before speaking it. The job is kept (never pruned)
+    /// until the channel reports the notice sent with `noticeSent(jobID:)`
+    /// or hands it back with `returnUndeliveredNotice(jobID:)`.
+    func takePendingNoticeForJob() -> (notice: VoiceBackgroundJobNotice, jobID: UUID)? {
+        defer { pruneSettledJobs() }
+        guard let item = takeNotice() else { return nil }
+        noticesInFlight.insert(item.jobID)
+        return item
+    }
+
+    /// Job notices handed out by `takePendingNoticeForJob` and not yet
+    /// sent or handed back.
+    private var noticesInFlight: Set<UUID> = []
+
+    /// A notice taken with `takePendingNoticeForJob` went out.
+    func noticeSent(jobID: UUID) {
+        guard noticesInFlight.remove(jobID) != nil else { return }
+        pruneSettledJobs()
+    }
+
+    private func takeNotice() -> (notice: VoiceBackgroundJobNotice, jobID: UUID)? {
         for index in jobs.indices {
             let job = jobs[index]
             if job.status == .needsInput, !job.inputRequestDelivered {
                 jobs[index].inputRequestDelivered = true
-                return .speak(AppLocalization.string("\(job.title) is waiting for your approval or an answer. Open it in Conduit to respond."))
+                return (.speak(AppLocalization.string("\(job.title) is waiting for your approval or an answer. Open it in Conduit to respond.")), job.id)
             }
             guard !job.status.isActive, !job.outcomeDelivered else { continue }
             jobs[index].outcomeDelivered = true
@@ -470,18 +496,32 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 let openChat = AppLocalization.string("\(job.title) has finished. Open it in Conduit to read the result.")
                 guard let result = job.result?.trimmingCharacters(in: .whitespacesAndNewlines),
                       !result.isEmpty else {
-                    return .speak(openChat)
+                    return (.speak(openChat), job.id)
                 }
-                return .submit(prompt: Self.completionPrompt(title: job.title, result: result), fallback: openChat)
+                return (.submit(prompt: Self.completionPrompt(title: job.title, result: result), fallback: openChat), job.id)
             case .failed:
-                return .speak(AppLocalization.string("\(job.title) failed. Open it in Conduit for details."))
+                return (.speak(AppLocalization.string("\(job.title) failed. Open it in Conduit for details.")), job.id)
             case .cancelled:
-                return .speak(AppLocalization.string("\(job.title) was cancelled."))
+                return (.speak(AppLocalization.string("\(job.title) was cancelled.")), job.id)
             case .starting, .running, .needsInput:
                 continue
             }
         }
         return nil
+    }
+
+    /// A notice taken with `takePendingNoticeForJob` never reached the user:
+    /// make it pending again.
+    func returnUndeliveredNotice(jobID: UUID) {
+        noticesInFlight.remove(jobID)
+        update(jobID) { job in
+            if job.status == .needsInput {
+                job.inputRequestDelivered = false
+            } else if !job.status.isActive {
+                job.outcomeDelivered = false
+            }
+        }
+        noticeMayBePending()
     }
 
     private func noticeMayBePending() {
@@ -547,7 +587,9 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// recent settled-and-announced jobs stay listed. Active jobs and
     /// outcomes still waiting to be delivered are never dropped.
     private func pruneSettledJobs() {
-        let settled = jobs.filter { !$0.status.isActive && $0.outcomeDelivered }
+        // A notice still waiting to be spoken may be handed back, so its
+        // job must still be here.
+        let settled = jobs.filter { !$0.status.isActive && $0.outcomeDelivered && !noticesInFlight.contains($0.id) }
         let excess = settled.count - Self.maximumSettledJobs
         guard excess > 0 else { return }
         let dropped = Set(settled.prefix(excess).map(\.id))

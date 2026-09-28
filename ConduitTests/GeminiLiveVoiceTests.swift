@@ -121,9 +121,9 @@ final class FakeGeminiLiveSessionControl: GeminiLiveSessionControlling {
     /// When set, sends are recorded but reported as failed.
     var failSends = false
 
-    func send(_ message: [String: Any], onFailure: (@MainActor () -> Void)?) {
+    func send(_ message: [String: Any], onSent: (@MainActor () -> Void)?, onFailure: (@MainActor () -> Void)?) {
         sent.append(message)
-        if failSends { onFailure?() }
+        if failSends { onFailure?() } else { onSent?() }
     }
 
     func becomeReady() {
@@ -186,7 +186,7 @@ extension HermesVoiceGatewayTimeoutTests {
         let behaviors = Dictionary(uniqueKeysWithValues: declarations.map { ($0["name"] as! String, $0["behavior"] as! String) })
         // Quick web lookups (weather, news) go to Gemini's own Search, not a Hermes job.
         XCTAssertTrue((body["tools"] as? [[String: Any]])?.contains { $0["googleSearch"] != nil } == true)
-        XCTAssertEqual(behaviors, ["start_job": "NON_BLOCKING", "list_jobs": "BLOCKING", "cancel_job": "BLOCKING"])
+        XCTAssertEqual(behaviors, ["start_job": "NON_BLOCKING", "list_jobs": "BLOCKING", "cancel_job": "BLOCKING", "end_conversation": "BLOCKING"])
 
         // A first connection opts in to resumption without a handle.
         let fresh = GeminiLiveProtocol.setupMessage(systemInstruction: "", functions: [], resumptionHandle: nil)["setup"] as? [String: Any]
@@ -603,6 +603,7 @@ extension VoiceConversationControllerTests {
     private func makeGeminiController(
         tokens providedTokens: FakeGeminiLiveTokens? = nil,
         route: VoiceBargeInRoutePolicy = .fullDuplex,
+        endPhrases: [String] = [],
         clock: @escaping () -> Date
     ) -> (GeminiLiveConversationController, FakeGeminiLiveSessionControl, FakeGeminiLiveInput, FakeGeminiLiveOutput, VoiceBackgroundJobSupervisor) {
         let tokens = providedTokens ?? FakeGeminiLiveTokens()
@@ -617,7 +618,8 @@ extension VoiceConversationControllerTests {
             input: input,
             output: output,
             now: clock,
-            routePolicy: { route }
+            routePolicy: { route },
+            endConversationPhrases: { endPhrases }
         )
         return (controller, session, input, output, supervisor)
     }
@@ -759,6 +761,24 @@ extension AppStateVoiceCapabilityTests {
 
         XCTAssertFalse(appState.showGeminiLiveSheet)
         XCTAssertFalse(appState.geminiLiveController.isActive)
+    }
+
+    func testCarPlayFollowsTheGeminiLiveSettingWhileConnected() {
+        let appState = makeGeminiAppState()
+        let coordinator = CarPlayVoiceCoordinator()
+        coordinator.appStateProvider = { appState }
+        coordinator.autoEstablishOnConnect = false
+        coordinator.handleConnect(InterfacingSpy())
+        XCTAssertEqual(coordinator.observesGeminiLive, false)
+
+        appState.setGeminiLiveEnabled(true)
+        coordinator.voiceModeChanged(in: appState)
+        XCTAssertEqual(coordinator.observesGeminiLive, true, "the car shows the controller now in use")
+
+        appState.setGeminiLiveEnabled(false)
+        coordinator.voiceModeChanged(in: appState)
+        XCTAssertEqual(coordinator.observesGeminiLive, false)
+        coordinator.handleDisconnect()
     }
 }
 
@@ -1214,5 +1234,161 @@ extension HermesVoiceGatewayTimeoutTests {
         let roundTrip = try JSONDecoder().decode(VoiceProfilePreferences.self, from: JSONEncoder().encode(preferences))
         XCTAssertEqual(roundTrip.geminiLiveVoice, "Puck")
         XCTAssertEqual(Set(GeminiLiveVoice.all.map(\.name)).count, GeminiLiveVoice.all.count)
+    }
+}
+
+// MARK: - Hands-free end
+
+/// Counts onEndConversation calls (a main-actor closure is Sendable, so it
+/// can't mutate a captured local).
+@MainActor
+private final class EndCounter {
+    var count = 0
+}
+
+@MainActor
+extension VoiceConversationControllerTests {
+    func testGeminiLiveEndConversationCallClosesAfterTheGoodbyePlays() async {
+        var current = Date(timeIntervalSince1970: 1_000)
+        let (controller, session, input, output, _) = makeGeminiController(clock: { current })
+        let closed = EndCounter()
+        controller.onEndConversation = { closed.count += 1 }
+        await controller.start()
+        session.becomeReady()
+
+        // The model says goodbye, then calls end_conversation.
+        session.onEvent?(.audio(Data([0, 0]), sampleRate: 24_000))
+        session.onEvent?(.toolCall([.init(id: "e1", name: "end_conversation", arguments: [:])]))
+        await settle(40)
+        XCTAssertTrue(controller.isEnding)
+        XCTAssertEqual(controller.phase, .ending)
+        XCTAssertFalse(input.running, "the microphone closes as soon as the end is asked for")
+        XCTAssertTrue(session.sent.isEmpty, "the call is left unanswered so no new turn starts")
+
+        // Still playing the goodbye: nothing closes yet.
+        current += GeminiLiveConversationController.endGrace + 0.5
+        XCTAssertFalse(controller.finishEndIfDrained())
+        XCTAssertEqual(closed.count, 0)
+
+        // The goodbye finishes playing: the conversation closes without
+        // waiting for a turnComplete the unanswered call may never get.
+        output.isPlaying = false
+        XCTAssertTrue(controller.finishEndIfDrained())
+        XCTAssertEqual(closed.count, 1)
+        XCTAssertEqual(controller.phase, .idle)
+        XCTAssertEqual(session.stopped, 1)
+    }
+
+    func testGeminiLiveEndClosesAfterTheTimeoutEvenIfTheModelKeepsTalking() async {
+        var current = Date(timeIntervalSince1970: 1_000)
+        let (controller, session, _, _, _) = makeGeminiController(clock: { current })
+        let closed = EndCounter()
+        controller.onEndConversation = { closed.count += 1 }
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.audio(Data([0, 0]), sampleRate: 24_000))
+        controller.requestEnd()
+        current += GeminiLiveConversationController.endTimeout + 0.1
+        XCTAssertTrue(controller.finishEndIfDrained())
+        XCTAssertEqual(closed.count, 1)
+    }
+
+    func testGeminiLiveUsersGoodbyePhraseEndsTheConversation() async {
+        var current = Date(timeIntervalSince1970: 1_000)
+        let (controller, session, input, _, _) = makeGeminiController(endPhrases: ["goodbye", "that's all"], clock: { current })
+        let closed = EndCounter()
+        controller.onEndConversation = { closed.count += 1 }
+        await controller.start()
+        session.becomeReady()
+
+        // Not an end phrase on its own: the conversation carries on.
+        session.onEvent?(.inputTranscription("goodbye to the old server"))
+        session.onEvent?(.outputTranscription("Got it."))
+        session.onEvent?(.turnComplete)
+        XCTAssertFalse(controller.isEnding)
+
+        // The whole utterance is an end phrase: the model's reply closes it.
+        session.onEvent?(.inputTranscription("That's all."))
+        XCTAssertFalse(controller.isEnding, "the utterance may still be going")
+        session.onEvent?(.outputTranscription("Bye!"))
+        XCTAssertFalse(controller.isEnding, "only the finished utterance counts")
+        session.onEvent?(.turnComplete)
+        XCTAssertTrue(controller.isEnding)
+        XCTAssertFalse(input.running)
+        current += GeminiLiveConversationController.endGrace + 0.1
+        XCTAssertTrue(controller.finishEndIfDrained())
+        XCTAssertEqual(closed.count, 1)
+    }
+
+    func testGeminiLiveEndingHoldsJobUpdatesAndKeepsTheMicrophoneClosed() async {
+        let (controller, session, input, _, supervisor) = makeGeminiController(clock: Date.init)
+        await controller.start()
+        session.becomeReady()
+        _ = await supervisor.startJob(instructions: "check the server")
+        controller.requestEnd()
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "All green.", reasoning: nil))
+        controller.deliverPendingJobUpdates()
+        XCTAssertEqual(controller.pendingTextTurnCountForTesting, 0)
+        XCTAssertFalse(supervisor.jobs[0].outcomeDelivered, "the result stays pending for Hermes to report")
+        controller.setMicrophoneMuted(true)
+        controller.setMicrophoneMuted(false)
+        XCTAssertFalse(input.running)
+        controller.stop()
+    }
+
+    func testGeminiLiveJobThatFinishesWhileEndingIsNotSpentOnTheClosingCall() async {
+        let (controller, session, _, _, supervisor) = makeGeminiController(clock: Date.init)
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.toolCall([.init(id: "c1", name: "start_job", arguments: ["instructions": "check the server"])]))
+        await settle(40)
+        XCTAssertEqual(supervisor.jobs.count, 1)
+
+        controller.requestEnd()
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "All green.", reasoning: nil))
+        controller.deliverPendingJobUpdates()
+        let answered = session.sent.contains { message in
+            ((message["toolResponse"] as? [String: Any])?["functionResponses"] as? [[String: Any]])?
+                .contains { $0["id"] as? String == "c1" } == true
+        }
+        XCTAssertFalse(answered, "the result must not go to a conversation that is closing")
+        XCTAssertFalse(supervisor.jobs[0].outcomeDelivered)
+        controller.stop()
+    }
+}
+
+// MARK: - CarPlay
+
+@MainActor
+extension VoiceConversationControllerTests {
+    func testCarPlayShowsTheGeminiLivePhase() {
+        XCTAssertEqual(CarPlayVoiceState.map(geminiLive: .idle), .ready)
+        XCTAssertEqual(CarPlayVoiceState.map(geminiLive: .connecting), .processing)
+        XCTAssertEqual(CarPlayVoiceState.map(geminiLive: .reconnecting), .processing)
+        XCTAssertEqual(CarPlayVoiceState.map(geminiLive: .listening), .listening)
+        XCTAssertEqual(CarPlayVoiceState.map(geminiLive: .speaking), .responding)
+        XCTAssertEqual(CarPlayVoiceState.map(geminiLive: .ending), .processing)
+        XCTAssertEqual(CarPlayVoiceState.map(geminiLive: .failed("x")), .error)
+    }
+
+    func testCarPlayListenStartsInterruptsOrLeavesGeminiLiveAlone() {
+        XCTAssertEqual(CarPlayGeminiLiveListenAction.forPhase(.idle), .start)
+        XCTAssertEqual(CarPlayGeminiLiveListenAction.forPhase(.failed("x")), .start)
+        XCTAssertEqual(CarPlayGeminiLiveListenAction.forPhase(.speaking), .interrupt)
+        XCTAssertEqual(CarPlayGeminiLiveListenAction.forPhase(.listening), .nothing)
+        XCTAssertEqual(CarPlayGeminiLiveListenAction.forPhase(.connecting), .nothing)
+        XCTAssertEqual(CarPlayGeminiLiveListenAction.forPhase(.ending), .nothing)
+    }
+}
+
+// MARK: - Keep phone awake
+
+@MainActor
+extension VoiceConversationControllerTests {
+    func testKeepPhoneAwakeHoldsAutoLockOnlyWhileAVoiceConversationIsOpen() {
+        XCTAssertFalse(VoiceScreenAwake.holdsScreenAwake(enabled: false, voiceSheetShown: true, geminiLiveSheetShown: true))
+        XCTAssertFalse(VoiceScreenAwake.holdsScreenAwake(enabled: true, voiceSheetShown: false, geminiLiveSheetShown: false))
+        XCTAssertTrue(VoiceScreenAwake.holdsScreenAwake(enabled: true, voiceSheetShown: true, geminiLiveSheetShown: false))
+        XCTAssertTrue(VoiceScreenAwake.holdsScreenAwake(enabled: true, voiceSheetShown: false, geminiLiveSheetShown: true))
     }
 }
