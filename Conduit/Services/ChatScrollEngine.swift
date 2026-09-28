@@ -59,6 +59,15 @@ enum ChatScrollEngineEvent: Equatable {
     case revealTop
 }
 
+/// The viewport values ChatView renders from. Published only when one of
+/// them changes, so scrolling itself never re-evaluates the chat.
+struct ChatScrollRenderInputs: Equatable {
+    var renderedSessionKey: ChatScrollSessionKey?
+    var isFollowingLatest = true
+    var renderedScrollScope: ChatRenderedScrollScope?
+    var showsJumpToLatest = false
+}
+
 /// Owns the chat viewport. Three rules replace the old follow-correction
 /// machinery:
 ///
@@ -74,7 +83,7 @@ enum ChatScrollEngineEvent: Equatable {
 /// 3. Only the user leaves following (a drag), and only being near the
 ///    bottom (or an explicit command) returns to it.
 @MainActor
-final class ChatScrollEngine {
+final class ChatScrollEngine: ObservableObject {
     enum Mode: Equatable {
         case following
         case browsing
@@ -109,9 +118,8 @@ final class ChatScrollEngine {
     static let coordinateSpaceName = "chat-transcript-stack"
 
     var onEvent: (@MainActor (ChatScrollEngineEvent) -> Void)?
-    /// Called after any change to a value ChatView renders from (mode,
-    /// session, scope, jump button). The view compares and republishes.
-    var onRenderInputsChanged: (@MainActor () -> Void)?
+    @Published private(set) var renderInputs = ChatScrollRenderInputs()
+    private var renderInputsPublishScheduled = false
 
     private(set) var mode: Mode = .following
     private(set) var identity: ChatScrollSessionIdentity = .none
@@ -131,9 +139,14 @@ final class ChatScrollEngine {
     private(set) weak var surface: ChatScrollSurface?
     private var surfaceCallbackDepth = 0
     private let now: () -> TimeInterval
+    private let prefersReducedMotion: @MainActor () -> Bool
 
-    init(now: @escaping () -> TimeInterval = { CACurrentMediaTime() }) {
+    init(
+        now: @escaping () -> TimeInterval = { CACurrentMediaTime() },
+        prefersReducedMotion: @escaping @MainActor () -> Bool = { UIAccessibility.isReduceMotionEnabled }
+    ) {
         self.now = now
+        self.prefersReducedMotion = prefersReducedMotion
     }
 
     // MARK: - Derived facts
@@ -273,7 +286,7 @@ final class ChatScrollEngine {
         self.identity = identity
         activeSessionKey = key
         mirroredViewportTransitionGeneration = viewportTransitionGeneration
-        defer { onRenderInputsChanged?() }
+        defer { renderInputsMayHaveChanged() }
 
         if let request = restoration?.request,
            viaNotification || !identity.areEquivalent(request.sessionKey, key) {
@@ -293,6 +306,7 @@ final class ChatScrollEngine {
         prependAnchor = nil
         latestAnimationUntil = nil
         topVisibleMessageID = nil
+        rowFrames = [:]
         guard !isDragging else {
             mode = .browsing
             return
@@ -311,7 +325,7 @@ final class ChatScrollEngine {
         if let key, identity.areEquivalent(renderedSessionKey, key) {
             renderedSessionKey = key
         }
-        onRenderInputsChanged?()
+        renderInputsMayHaveChanged()
     }
 
     /// A notification is opening a conversation: it lands on the latest
@@ -349,7 +363,7 @@ final class ChatScrollEngine {
         let update = targetCache.update(for: messages)
         renderedTranscriptRevision = transcriptRevision
         mirroredViewportTransitionGeneration = viewportTransitionGeneration
-        defer { onRenderInputsChanged?() }
+        defer { renderInputsMayHaveChanged() }
         guard update != .unchanged else { return }
 
         if let anchor = prependAnchor, anchor.landedAt == nil {
@@ -404,7 +418,7 @@ final class ChatScrollEngine {
             return
         }
         let distance = surface.distanceFromBottom
-        if animated, distance > 0.5, distance <= surface.viewportHeight * 3 {
+        if animated, !prefersReducedMotion(), distance > 0.5, distance <= surface.viewportHeight * 3 {
             latestAnimationUntil = now() + Self.latestAnimationDuration
             surface.setContentOffsetY(surface.maxOffsetY, animated: true)
         } else {
@@ -555,11 +569,41 @@ final class ChatScrollEngine {
         guard mode != newMode else { return }
         mode = newMode
         refreshJumpButton()
-        onRenderInputsChanged?()
+        renderInputsMayHaveChanged()
     }
 
     private func emit(_ event: ChatScrollEngineEvent) {
         onEvent?(event)
+    }
+
+    /// Publishes `renderInputs` if any of them changed. A change made while
+    /// handling a UIKit callback can land in the middle of a SwiftUI update,
+    /// where publishing is not allowed, so it goes out on the next main-queue
+    /// turn instead (coalesced).
+    private func renderInputsMayHaveChanged() {
+        guard isHandlingSurfaceCallback else {
+            publishRenderInputs()
+            return
+        }
+        guard !renderInputsPublishScheduled else { return }
+        renderInputsPublishScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.renderInputsPublishScheduled = false
+            self.publishRenderInputs()
+        }
+    }
+
+    private func publishRenderInputs() {
+        let inputs = ChatScrollRenderInputs(
+            renderedSessionKey: renderedSessionKey,
+            isFollowingLatest: isFollowingLatest,
+            renderedScrollScope: renderedScrollScope,
+            showsJumpToLatest: showsJumpToLatest
+        )
+        if inputs != renderInputs {
+            renderInputs = inputs
+        }
     }
 
     private func pin(_ surface: ChatScrollSurface) {
@@ -633,7 +677,7 @@ final class ChatScrollEngine {
             && (surface?.distanceFromBottom ?? 0) > Self.nearBottomTolerance
         guard shows != showsJumpToLatest else { return }
         showsJumpToLatest = shows
-        onRenderInputsChanged?()
+        renderInputsMayHaveChanged()
     }
 
     private func resolveRestorationDestination(

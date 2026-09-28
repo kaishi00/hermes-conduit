@@ -488,18 +488,47 @@ final class ChatScrollEngineTests: XCTestCase {
         XCTAssertEqual(surface.contentOffsetY, 4200)
     }
 
-    func testChangesFromUIKitCallbacksAreFlagged() {
+    func testRenderInputsFromUIKitCallbacksPublishOnTheNextTurn() {
         let (engine, surface) = makeEngine()
-        var flags: [Bool] = []
-        engine.onRenderInputsChanged = { [unowned engine] in
-            flags.append(engine.isHandlingSurfaceCallback)
-        }
-        surface.userScroll(to: 1000)
-        XCTAssertFalse(flags.isEmpty)
-        XCTAssertTrue(flags.allSatisfy { $0 })
+        XCTAssertFalse(engine.renderInputs.showsJumpToLatest)
 
-        flags = []
+        surface.userScroll(to: 1000)
+        XCTAssertTrue(engine.showsJumpToLatest)
+        XCTAssertFalse(
+            engine.renderInputs.showsJumpToLatest,
+            "a change made inside a UIKit callback must not publish during the SwiftUI update"
+        )
+
+        let published = expectation(description: "published on the next main-queue turn")
+        DispatchQueue.main.async { published.fulfill() }
+        wait(for: [published], timeout: 1)
+        XCTAssertTrue(engine.renderInputs.showsJumpToLatest)
+        XCTAssertFalse(engine.renderInputs.isFollowingLatest)
+
         engine.explicitLatestRequested(animated: false)
-        XCTAssertTrue(flags.contains(false), "a SwiftUI-driven command publishes directly")
+        XCTAssertTrue(engine.renderInputs.isFollowingLatest, "a SwiftUI-driven command publishes directly")
+    }
+
+    func testReduceMotionSnapsTheJumpToLatest() {
+        let engine = ChatScrollEngine(now: { [unowned self] in self.clock }, prefersReducedMotion: { true })
+        let surface = FakeChatScrollSurface()
+        surface.engine = engine
+        engine.attach(surface)
+        surface.userScroll(to: 2400)
+        engine.explicitLatestRequested(animated: true)
+        XCTAssertEqual(surface.sets.last?.animated, false)
+        XCTAssertEqual(surface.contentOffsetY, 3200)
+    }
+
+    func testSessionSwitchForgetsThePreviousRowFrames() {
+        let (engine, _) = makeEngine()
+        engine.rowFramesChanged(["m5": ChatScrollRowFrame(minY: 1000, maxY: 1200, order: 5)])
+        engine.renderedSessionChanged(
+            to: keyB,
+            identity: identity("b"),
+            viaNotification: false,
+            viewportTransitionGeneration: 2
+        )
+        XCTAssertNil(engine.rowFrame(for: "m5"))
     }
 }

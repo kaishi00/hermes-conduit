@@ -63,6 +63,9 @@ final class ChatScrollSurfaceLocatorView: UIView {
         super.layoutSubviews()
         // The superview chain can be completed after the move to a window.
         connectIfNeeded()
+        // adjustedContentInset (safe area) is not KVO-observable; a change
+        // to it re-lays out the content, which lands here.
+        surface?.checkAdjustedInsets()
     }
 
     func disconnect() {
@@ -92,33 +95,51 @@ final class UIScrollViewChatSurface: NSObject, ChatScrollSurface {
     private weak var locator: UIView?
     private weak var engine: ChatScrollEngine?
     private var observations: [NSKeyValueObservation] = []
+    private var lastAdjustedInsets: UIEdgeInsets
 
     init(scrollView: UIScrollView, locator: UIView, engine: ChatScrollEngine) {
         self.scrollView = scrollView
         self.locator = locator
         self.engine = engine
+        lastAdjustedInsets = scrollView.adjustedContentInset
         super.init()
         observations = [
             scrollView.observe(\.contentSize, options: [.old, .new]) { [weak self] _, change in
                 guard change.oldValue != change.newValue else { return }
-                MainActor.assumeIsolated { self?.engine?.surfaceLayoutChanged() }
+                Self.onMain { self?.engine?.surfaceLayoutChanged() }
             },
             scrollView.observe(\.bounds, options: [.old, .new]) { [weak self] _, change in
                 // Bounds origin is the content offset; only a size change is
                 // a layout change (keyboard, rotation, split view).
                 guard change.oldValue?.size != change.newValue?.size else { return }
-                MainActor.assumeIsolated { self?.engine?.surfaceLayoutChanged() }
+                Self.onMain { self?.engine?.surfaceLayoutChanged() }
             },
             scrollView.observe(\.contentInset, options: [.old, .new]) { [weak self] _, change in
                 guard change.oldValue != change.newValue else { return }
-                MainActor.assumeIsolated { self?.engine?.surfaceLayoutChanged() }
+                Self.onMain { self?.engine?.surfaceLayoutChanged() }
             },
             scrollView.observe(\.contentOffset, options: [.old, .new]) { [weak self] _, change in
                 guard change.oldValue != change.newValue else { return }
-                MainActor.assumeIsolated { self?.engine?.surfaceScrolled() }
+                Self.onMain { self?.engine?.surfaceScrolled() }
             },
         ]
         scrollView.panGestureRecognizer.addTarget(self, action: #selector(handlePan(_:)))
+    }
+
+    /// UIKit changes these on the main thread; should one ever arrive
+    /// elsewhere, hop instead of trapping.
+    private nonisolated static func onMain(_ body: @escaping @MainActor () -> Void) {
+        if Thread.isMainThread {
+            MainActor.assumeIsolated(body)
+        } else {
+            DispatchQueue.main.async { body() }
+        }
+    }
+
+    func checkAdjustedInsets() {
+        guard let scrollView, scrollView.adjustedContentInset != lastAdjustedInsets else { return }
+        lastAdjustedInsets = scrollView.adjustedContentInset
+        engine?.surfaceLayoutChanged()
     }
 
     func invalidate() {
