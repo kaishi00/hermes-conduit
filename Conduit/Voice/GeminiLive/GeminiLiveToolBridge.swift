@@ -39,6 +39,7 @@ final class GeminiLiveToolBridge {
         case listJobs = "list_jobs"
         case cancelJob = "cancel_job"
         case webSearch = "web_search"
+        case endConversation = "end_conversation"
     }
 
     /// What the bridge asks the session to send.
@@ -48,6 +49,8 @@ final class GeminiLiveToolBridge {
         /// A text turn for an update with no open call to answer on. The
         /// host sends it only while the conversation is idle.
         case textWhenIdle(String)
+        /// Close the conversation once the model's goodbye has played.
+        case endConversation
 
         /// Whether this answers the function call `id`.
         func answers(_ id: String) -> Bool {
@@ -112,6 +115,12 @@ final class GeminiLiveToolBridge {
                     ],
                 ],
             ],
+            behavior: .blocking
+        ),
+        .init(
+            name: Tool.endConversation.rawValue,
+            description: "End this voice conversation and close it. Call only when the user says goodbye or asks to end, hang up, or close the conversation, after you have said a short goodbye. Background jobs keep running on Hermes.",
+            parameters: ["type": "OBJECT", "properties": [String: Any]()],
             behavior: .blocking
         ),
     ]
@@ -180,6 +189,10 @@ final class GeminiLiveToolBridge {
             return outgoing
         case .webSearch:
             return [.toolResponse(id: call.id, name: call.name, result: await searchResult(call.arguments["query"]), scheduling: nil)]
+        case .endConversation:
+            // Deliberately unanswered: a response would prompt another turn
+            // after the goodbye, and the connection closes anyway.
+            return [.endConversation]
         case nil:
             return [.toolResponse(id: call.id, name: call.name, result: ["error": "unknown function"], scheduling: .whenIdle)]
         }

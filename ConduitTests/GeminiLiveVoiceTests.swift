@@ -186,7 +186,7 @@ extension HermesVoiceGatewayTimeoutTests {
         let behaviors = Dictionary(uniqueKeysWithValues: declarations.map { ($0["name"] as! String, $0["behavior"] as! String) })
         // Quick web lookups (weather, news) go to Gemini's own Search, not a Hermes job.
         XCTAssertTrue((body["tools"] as? [[String: Any]])?.contains { $0["googleSearch"] != nil } == true)
-        XCTAssertEqual(behaviors, ["start_job": "NON_BLOCKING", "list_jobs": "BLOCKING", "cancel_job": "BLOCKING"])
+        XCTAssertEqual(behaviors, ["start_job": "NON_BLOCKING", "list_jobs": "BLOCKING", "cancel_job": "BLOCKING", "end_conversation": "BLOCKING"])
 
         // A first connection opts in to resumption without a handle.
         let fresh = GeminiLiveProtocol.setupMessage(systemInstruction: "", functions: [], resumptionHandle: nil)["setup"] as? [String: Any]
@@ -603,6 +603,7 @@ extension VoiceConversationControllerTests {
     private func makeGeminiController(
         tokens providedTokens: FakeGeminiLiveTokens? = nil,
         route: VoiceBargeInRoutePolicy = .fullDuplex,
+        endPhrases: [String] = [],
         clock: @escaping () -> Date
     ) -> (GeminiLiveConversationController, FakeGeminiLiveSessionControl, FakeGeminiLiveInput, FakeGeminiLiveOutput, VoiceBackgroundJobSupervisor) {
         let tokens = providedTokens ?? FakeGeminiLiveTokens()
@@ -617,7 +618,8 @@ extension VoiceConversationControllerTests {
             input: input,
             output: output,
             now: clock,
-            routePolicy: { route }
+            routePolicy: { route },
+            endConversationPhrases: { endPhrases }
         )
         return (controller, session, input, output, supervisor)
     }
@@ -1214,5 +1216,96 @@ extension HermesVoiceGatewayTimeoutTests {
         let roundTrip = try JSONDecoder().decode(VoiceProfilePreferences.self, from: JSONEncoder().encode(preferences))
         XCTAssertEqual(roundTrip.geminiLiveVoice, "Puck")
         XCTAssertEqual(Set(GeminiLiveVoice.all.map(\.name)).count, GeminiLiveVoice.all.count)
+    }
+}
+
+// MARK: - Hands-free end
+
+@MainActor
+extension HermesVoiceGatewayTimeoutTests {
+    func testGeminiLiveEndConversationCallClosesAfterTheGoodbyePlays() async {
+        var current = Date(timeIntervalSince1970: 1_000)
+        let (controller, session, input, output, _) = makeGeminiController(clock: { current })
+        var closed = 0
+        controller.onEndConversation = { closed += 1 }
+        await controller.start()
+        session.becomeReady()
+
+        // The model says goodbye, then calls end_conversation.
+        session.onEvent?(.audio(Data([0, 0]), sampleRate: 24_000))
+        session.onEvent?(.toolCall([.init(id: "e1", name: "end_conversation", arguments: [:])]))
+        await settle(40)
+        XCTAssertTrue(controller.isEnding)
+        XCTAssertFalse(input.running, "the microphone closes as soon as the end is asked for")
+        XCTAssertTrue(session.sent.isEmpty, "the call is left unanswered so no new turn starts")
+
+        // Still playing the goodbye: nothing closes yet.
+        current += GeminiLiveConversationController.endGrace + 0.5
+        XCTAssertFalse(controller.finishEndIfDrained())
+        XCTAssertEqual(closed, 0)
+
+        // The goodbye finishes: the conversation closes.
+        session.onEvent?(.turnComplete)
+        output.isPlaying = false
+        XCTAssertTrue(controller.finishEndIfDrained())
+        XCTAssertEqual(closed, 1)
+        XCTAssertEqual(controller.phase, .idle)
+        XCTAssertEqual(session.stopped, 1)
+    }
+
+    func testGeminiLiveEndClosesAfterTheTimeoutEvenIfTheModelKeepsTalking() async {
+        var current = Date(timeIntervalSince1970: 1_000)
+        let (controller, session, _, _, _) = makeGeminiController(clock: { current })
+        var closed = 0
+        controller.onEndConversation = { closed += 1 }
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.audio(Data([0, 0]), sampleRate: 24_000))
+        controller.requestEnd()
+        current += GeminiLiveConversationController.endTimeout + 0.1
+        XCTAssertTrue(controller.finishEndIfDrained())
+        XCTAssertEqual(closed, 1)
+    }
+
+    func testGeminiLiveUsersGoodbyePhraseEndsTheConversation() async {
+        var current = Date(timeIntervalSince1970: 1_000)
+        let (controller, session, input, _, _) = makeGeminiController(endPhrases: ["goodbye", "that's all"], clock: { current })
+        var closed = 0
+        controller.onEndConversation = { closed += 1 }
+        await controller.start()
+        session.becomeReady()
+
+        // Not an end phrase on its own: the conversation carries on.
+        session.onEvent?(.inputTranscription("goodbye to the old server"))
+        session.onEvent?(.outputTranscription("Got it."))
+        session.onEvent?(.turnComplete)
+        XCTAssertFalse(controller.isEnding)
+
+        // The whole utterance is an end phrase: the model's reply closes it.
+        session.onEvent?(.inputTranscription("That's all."))
+        XCTAssertFalse(controller.isEnding, "the utterance may still be going")
+        session.onEvent?(.outputTranscription("Bye!"))
+        XCTAssertTrue(controller.isEnding)
+        XCTAssertFalse(input.running)
+        session.onEvent?(.turnComplete)
+        current += GeminiLiveConversationController.endGrace + 0.1
+        XCTAssertTrue(controller.finishEndIfDrained())
+        XCTAssertEqual(closed, 1)
+    }
+
+    func testGeminiLiveEndingHoldsJobUpdatesAndKeepsTheMicrophoneClosed() async {
+        let (controller, session, input, _, supervisor) = makeGeminiController(clock: Date.init)
+        await controller.start()
+        session.becomeReady()
+        _ = await supervisor.startJob(instructions: "check the server")
+        controller.requestEnd()
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "All green.", reasoning: nil))
+        controller.deliverPendingJobUpdates()
+        XCTAssertEqual(controller.pendingTextTurnCountForTesting, 0)
+        XCTAssertFalse(supervisor.jobs[0].outcomeDelivered, "the result stays pending for Hermes to report")
+        controller.setMicrophoneMuted(true)
+        controller.setMicrophoneMuted(false)
+        XCTAssertFalse(input.running)
+        controller.stop()
     }
 }

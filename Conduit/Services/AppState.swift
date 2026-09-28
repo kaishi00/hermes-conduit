@@ -1345,7 +1345,7 @@ final class AppState: ObservableObject {
     lazy var geminiLiveController: GeminiLiveConversationController = {
         geminiLiveControllerCreated = true
         let tokens = geminiLiveTokenClient
-        return GeminiLiveConversationController(
+        let controller = GeminiLiveConversationController(
             makeSession: { [weak self] in
                 let search = self?.geminiLiveSearchSource ?? .google
                 return GeminiLiveSession(
@@ -1367,8 +1367,16 @@ final class AppState: ObservableObject {
             },
             tools: GeminiLiveToolBridge(supervisor: self.voiceBackgroundJobSupervisor, webSearch: tokens),
             input: CaptureServiceGeminiLiveInput(capture: AVAudioCaptureService()),
-            output: PlaybackServiceGeminiLiveOutput(playback: AVSpeechPlaybackService())
+            output: PlaybackServiceGeminiLiveOutput(playback: AVSpeechPlaybackService()),
+            // The same "End conversation" phrases as the classic Voice mode.
+            endConversationPhrases: { [weak self] in
+                guard let self else { return [] }
+                return self.loadVoiceProfilePreferences(profile: self.activeProfile).spokenEndConversationPhrases
+            }
         )
+        // A hands-free goodbye closes the sheet like the Close button.
+        controller.onEndConversation = { [weak self] in self?.closeGeminiLiveConversation() }
+        return controller
     }()
 
     /// Opens Gemini Live instead of the classic Voice conversation. The
