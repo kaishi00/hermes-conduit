@@ -1251,8 +1251,8 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(controller.finishEndIfDrained())
         XCTAssertEqual(closed.count, 0)
 
-        // The goodbye finishes: the conversation closes.
-        session.onEvent?(.turnComplete)
+        // The goodbye finishes playing: the conversation closes without
+        // waiting for a turnComplete the unanswered call may never get.
         output.isPlaying = false
         XCTAssertTrue(controller.finishEndIfDrained())
         XCTAssertEqual(closed.count, 1)
@@ -1292,9 +1292,10 @@ extension VoiceConversationControllerTests {
         session.onEvent?(.inputTranscription("That's all."))
         XCTAssertFalse(controller.isEnding, "the utterance may still be going")
         session.onEvent?(.outputTranscription("Bye!"))
+        XCTAssertFalse(controller.isEnding, "only the finished utterance counts")
+        session.onEvent?(.turnComplete)
         XCTAssertTrue(controller.isEnding)
         XCTAssertFalse(input.running)
-        session.onEvent?(.turnComplete)
         current += GeminiLiveConversationController.endGrace + 0.1
         XCTAssertTrue(controller.finishEndIfDrained())
         XCTAssertEqual(closed.count, 1)
@@ -1313,6 +1314,26 @@ extension VoiceConversationControllerTests {
         controller.setMicrophoneMuted(true)
         controller.setMicrophoneMuted(false)
         XCTAssertFalse(input.running)
+        controller.stop()
+    }
+
+    func testGeminiLiveJobThatFinishesWhileEndingIsNotSpentOnTheClosingCall() async {
+        let (controller, session, _, _, supervisor) = makeGeminiController(clock: Date.init)
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.toolCall([.init(id: "c1", name: "start_job", arguments: ["instructions": "check the server"])]))
+        await settle(40)
+        XCTAssertEqual(supervisor.jobs.count, 1)
+
+        controller.requestEnd()
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "All green.", reasoning: nil))
+        controller.deliverPendingJobUpdates()
+        let answered = session.sent.contains { message in
+            ((message["toolResponse"] as? [String: Any])?["functionResponses"] as? [[String: Any]])?
+                .contains { $0["id"] as? String == "c1" } == true
+        }
+        XCTAssertFalse(answered, "the result must not go to a conversation that is closing")
+        XCTAssertFalse(supervisor.jobs[0].outcomeDelivered)
         controller.stop()
     }
 }

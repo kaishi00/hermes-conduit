@@ -160,9 +160,12 @@ final class GeminiLiveConversationController: ObservableObject {
     static let userQuietInterval: TimeInterval = 2
     /// Quiet time after the model's last turn before a job update.
     static let modelQuietInterval: TimeInterval = 1
-    /// After an end is requested, the model gets at least this long to
-    /// start its goodbye before a quiet conversation counts as finished.
-    static let endGrace: TimeInterval = 0.8
+    /// An end closes the conversation once the model has made no sound for
+    /// this long (counted from the request or its last audio, whichever is
+    /// later) and playback has drained. Audio, not the server's
+    /// turnComplete, decides: the end_conversation call is left unanswered,
+    /// so a turnComplete may never come.
+    static let endGrace: TimeInterval = 1
     /// An end closes the conversation after this long even if the model is
     /// still talking.
     static let endTimeout: TimeInterval = 8
@@ -268,6 +271,7 @@ final class GeminiLiveConversationController: ObservableObject {
         lastPlaybackAt = nil
         lastModelAudioAt = nil
         closeOpenEntries()
+        activeEndPhrases = endConversationPhrases()
         do {
             let status = try await availability()
             guard phase == .connecting else { return }
@@ -359,6 +363,9 @@ final class GeminiLiveConversationController: ObservableObject {
         endRequestedAt = now()
         stopInput()
         pendingTextTurns = []
+        // Job outcomes stay pending for Hermes to report instead of being
+        // spent on a conversation that is closing.
+        tools.beginEnding()
         endTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(200))
@@ -373,9 +380,11 @@ final class GeminiLiveConversationController: ObservableObject {
     @discardableResult
     func finishEndIfDrained() -> Bool {
         guard let requestedAt = endRequestedAt else { return true }
-        let elapsed = now().timeIntervalSince(requestedAt)
-        let drained = !modelTurnActive && !output.isPlaying
-        guard (drained && elapsed >= Self.endGrace) || elapsed >= Self.endTimeout else { return false }
+        let current = now()
+        let elapsed = current.timeIntervalSince(requestedAt)
+        let lastSound = max(requestedAt, lastModelAudioAt ?? requestedAt)
+        let drained = !output.isPlaying && current.timeIntervalSince(lastSound) >= Self.endGrace
+        guard drained || elapsed >= Self.endTimeout else { return false }
         let close = onEndConversation
         endTask = nil
         stop()
@@ -383,12 +392,15 @@ final class GeminiLiveConversationController: ObservableObject {
         return true
     }
 
+    /// The profile's end phrases, read once when the conversation starts.
+    private var activeEndPhrases: [String] = []
+
     /// A finished user utterance that is exactly one of the profile's end
     /// phrases ends the conversation, even if the model doesn't call
     /// end_conversation.
     private func endIfUserSaidGoodbye(_ entryID: UUID) {
         guard endRequestedAt == nil, let entry = transcript.first(where: { $0.id == entryID }) else { return }
-        guard VoiceSpokenCommands.matches(entry.text, phrases: endConversationPhrases()) else { return }
+        guard VoiceSpokenCommands.matches(entry.text, phrases: activeEndPhrases) else { return }
         requestEnd()
     }
 
@@ -468,7 +480,8 @@ final class GeminiLiveConversationController: ObservableObject {
             lastModelTurnEndedAt = now()
             if let openUserEntry { endIfUserSaidGoodbye(openUserEntry) }
             closeOpenEntries()
-            phase = .listening
+            // Ending: the microphone is closed, so it isn't listening.
+            if endRequestedAt == nil { phase = .listening }
             scheduleIdleFlush()
         case .toolCall(let calls):
             for call in calls {
@@ -678,8 +691,6 @@ final class GeminiLiveConversationController: ObservableObject {
                 : transcript[index].text + text
             return
         }
-        // The model answering closes the user's utterance.
-        if speaker == .assistant, let openUserEntry { endIfUserSaidGoodbye(openUserEntry) }
         let entry = VoiceConversationTranscriptEntry(speaker: speaker, text: text.trimmingCharacters(in: .whitespaces))
         transcript.append(entry)
         if speaker == .user {

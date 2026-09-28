@@ -154,7 +154,13 @@ final class GeminiLiveToolBridge {
             // withdrawal arriving during Hermes' session setup is honored.
             let reply = await supervisor.startJob(instructions: instructions) { [weak self] jobID in
                 createdJobID = jobID
+                guard self?.isEnding == false else { return }
                 self?.openCalls[jobID] = call.id
+            }
+            if isEnding {
+                // Ending while it started: its outcome stays pending.
+                if let jobID = createdJobID { openCalls[jobID] = nil }
+                return []
             }
             guard let jobID = createdJobID else {
                 // Refused (too many jobs): answer now.
@@ -213,7 +219,19 @@ final class GeminiLiveToolBridge {
     func connectionReplaced() {
         openCalls.removeAll()
         withdrawnCallIDs.removeAll()
+        isEnding = false
     }
+
+    /// The conversation is ending: open calls are dropped and nothing is
+    /// settled, so every outcome stays pending (and unannounced) for
+    /// Hermes to report. Cleared by the next connection.
+    func beginEnding() {
+        openCalls.removeAll()
+        withdrawnCallIDs.removeAll()
+        isEnding = true
+    }
+
+    private(set) var isEnding = false
 
     // MARK: Job updates
 
@@ -234,6 +252,7 @@ final class GeminiLiveToolBridge {
     }
 
     private func settleOpenCalls() -> [Outgoing] {
+        guard !isEnding else { return [] }
         var outgoing: [Outgoing] = []
         for (jobID, callID) in openCalls.sorted(by: { $0.value < $1.value }) {
             guard let job = supervisor.jobs.first(where: { $0.id == jobID }) else {
