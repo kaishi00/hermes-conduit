@@ -26,16 +26,7 @@ enum ChatMessageScrollTargetCacheUpdate: Equatable {
     case semanticsChanged
 }
 
-struct ChatDragCompletionToken: Hashable {
-    let dragGeneration: UInt64
-    let sessionKey: ChatScrollSessionKey?
-    let viewportTransitionGeneration: UInt64
-}
-
-/// Support helpers retained from the pre-controller policies: canonical
-/// persistence-key resolution and the main-actor-turn yield used by the
-/// drag-evaluation executor. Everything else lives in
-/// ChatViewportController now.
+/// Canonical persistence-key resolution for viewport snapshots.
 enum ChatViewportPersistenceSupport {
     static func persistenceSessionKey(
         currentKey: ChatScrollSessionKey?,
@@ -46,15 +37,6 @@ enum ChatViewportPersistenceSupport {
             return identity.canonicalSessionKey
         }
         return currentKey
-    }
-
-    @MainActor
-    static func waitForNextMainActorTurn() async {
-        await withCheckedContinuation { continuation in
-            DispatchQueue.main.async {
-                continuation.resume()
-            }
-        }
     }
 }
 
@@ -166,106 +148,6 @@ struct ChatRenderedScrollScope: Hashable {
 
 struct ChatRenderedScrollContent: Equatable {
     let scope: ChatRenderedScrollScope
-}
-
-/// Global-space frame of one rendered stable message row, scoped to the
-/// rendered scroll scope that produced it. Only rows SwiftUI actually laid
-/// out report frames; this is how the viewport controller learns which
-/// stable row intersects the viewport without .scrollPosition. `order` is
-/// the row's position in the transcript target list, so consumers can pick
-/// the semantic first visible row from the rendered subset alone — no scan
-/// of the full transcript.
-struct ChatRenderedRowFrame: Equatable {
-    let id: String        // ChatMessageScrollTarget.id == message.id
-    let minY: CGFloat
-    let maxY: CGFloat
-    let order: Int
-    let scope: ChatRenderedScrollScope
-}
-
-/// Frame + transcript order carried per rendered row inside the
-/// preference payload dictionaries.
-struct ChatRenderedRowGeometry: Equatable {
-    let frame: CGRect
-    let order: Int
-}
-
-/// A preference payload emitted only by targets SwiftUI has instantiated.
-/// The cache deliberately cannot populate this value: lazy offscreen rows
-/// become ready only when their own geometry participates in the layout pass.
-struct ChatRenderedScrollTargets: Equatable {
-    private(set) var rowsByScope: [ChatRenderedScrollScope: Set<String>] = [:]
-    private(set) var bottomsByScope: [ChatRenderedScrollScope: Set<String>] = [:]
-    private(set) var framesByScope: [ChatRenderedScrollScope: [String: ChatRenderedRowGeometry]] = [:]
-
-    static func row(
-        semanticID: String,
-        scope: ChatRenderedScrollScope,
-        frame: CGRect? = nil,
-        order: Int = 0
-    ) -> ChatRenderedScrollTargets {
-        var targets = ChatRenderedScrollTargets(rowsByScope: [scope: [semanticID]])
-        if let frame {
-            targets.framesByScope = [scope: [semanticID: ChatRenderedRowGeometry(frame: frame, order: order)]]
-        }
-        return targets
-    }
-
-    static func bottom(
-        anchorID: String,
-        scope: ChatRenderedScrollScope
-    ) -> ChatRenderedScrollTargets {
-        ChatRenderedScrollTargets(bottomsByScope: [scope: [anchorID]])
-    }
-
-    static func reduce(
-        value: inout ChatRenderedScrollTargets,
-        nextValue: ChatRenderedScrollTargets
-    ) {
-        // Merge new rows and bottoms into the accumulator.
-        for (scope, rows) in nextValue.rowsByScope {
-            value.rowsByScope[scope, default: []].formUnion(rows)
-        }
-        for (scope, bottoms) in nextValue.bottomsByScope {
-            value.bottomsByScope[scope, default: []].formUnion(bottoms)
-        }
-        for (scope, frames) in nextValue.framesByScope {
-            value.framesByScope[scope, default: [:]].merge(frames) { _, new in new }
-        }
-        // Prune: keep only scopes from the latest preference value plus
-        // a small overlap window. Each message update creates a new scope
-        // (different revision numbers), so without pruning the dictionaries
-        // grow one entry per update for the view's lifetime.
-        value.retainLatestScopes(from: nextValue)
-    }
-
-    func contains(row semanticID: String, in scope: ChatRenderedScrollScope) -> Bool {
-        rowsByScope[scope]?.contains(semanticID) == true
-    }
-
-    func contains(bottom anchorID: String, in scope: ChatRenderedScrollScope) -> Bool {
-        bottomsByScope[scope]?.contains(anchorID) == true
-    }
-
-    /// Global frames + transcript order of rendered stable rows for a scope
-    /// (rows that reported geometry this pass; offscreen lazy rows are absent).
-    func rowFrames(in scope: ChatRenderedScrollScope) -> [String: ChatRenderedRowGeometry] {
-        framesByScope[scope] ?? [:]
-    }
-
-    /// Remove scopes that are no longer in the latest preference value.
-    /// This prevents unbounded accumulation across message updates without
-    /// relying on ordering — we simply keep only scopes present in the
-    /// current frame.
-    mutating func retainLatestScopes(from latest: ChatRenderedScrollTargets) {
-        let activeScopes = Set(latest.rowsByScope.keys)
-            .union(latest.bottomsByScope.keys)
-            .union(latest.framesByScope.keys)
-        guard !activeScopes.isEmpty else { return }
-        rowsByScope = rowsByScope.filter { activeScopes.contains($0.key) }
-        bottomsByScope = bottomsByScope.filter { activeScopes.contains($0.key) }
-        framesByScope = framesByScope.filter { activeScopes.contains($0.key) }
-    }
 }
 
 enum ChatMessageScrollTargets {
