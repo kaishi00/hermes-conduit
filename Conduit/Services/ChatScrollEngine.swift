@@ -423,6 +423,8 @@ final class ChatScrollEngine: ObservableObject {
     /// short distance: a long animated scroll through lazily measured rows is
     /// what used to overshoot.
     func explicitLatestRequested(animated: Bool) {
+        // A finger on the transcript wins over a command.
+        if surface?.isTracking == true { return }
         restoration = nil
         prependAnchor = nil
         emit(.cancelAutomaticRestoration)
@@ -456,6 +458,7 @@ final class ChatScrollEngine: ObservableObject {
 
     /// Conversation-title tap: go to the top of the conversation.
     func explicitTopRequested() {
+        if surface?.isTracking == true { return }
         restoration = nil
         prependAnchor = nil
         latestAnimationUntil = nil
@@ -508,6 +511,8 @@ final class ChatScrollEngine: ObservableObject {
     @discardableResult
     func restorationTick(transcriptRevision: UInt64) -> Bool {
         guard var state = restoration else { return false }
+        // Backgrounded: keep the request and its budget for the return.
+        guard !isPaused else { return true }
         state.checks += 1
         guard state.checks <= Self.maximumRestorationChecks else {
             restoration = nil
@@ -516,7 +521,6 @@ final class ChatScrollEngine: ObservableObject {
             return false
         }
         guard let surface,
-              !isPaused,
               surface.contentHeight > 0,
               renderedTranscriptRevision == transcriptRevision,
               identity.areEquivalent(state.request.sessionKey, renderedSessionKey ?? activeSessionKey) else {
@@ -707,7 +711,7 @@ final class ChatScrollEngine: ObservableObject {
     }
 
     private func refreshJumpButton() {
-        let shows = mode != .following
+        let shows = mode == .browsing
             && (surface?.distanceFromBottom ?? 0) > Self.nearBottomTolerance
         guard shows != showsJumpToLatest else { return }
         showsJumpToLatest = shows

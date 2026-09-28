@@ -485,6 +485,34 @@ final class ChatScrollEngineTests: XCTestCase {
         XCTAssertNotEqual(engine.mode, .restoring)
     }
 
+    func testRestorationWaitsOutTheBackgroundWithoutSpendingItsBudget() {
+        let (engine, surface) = makeEngine()
+        surface.insetTop = 50
+        engine.rowFramesChanged(["m5": ChatScrollRowFrame(minY: 1000, maxY: 1200, order: 5)])
+        engine.restorationRequested(anchorRequest(engine, row: 5))
+        engine.setPaused(true)
+        for _ in 0..<(ChatScrollEngine.maximumRestorationChecks * 2) {
+            XCTAssertTrue(engine.restorationTick(transcriptRevision: 1))
+        }
+        XCTAssertFalse(events.contains(.abandonRestoration(generation: 9)))
+        XCTAssertFalse(engine.showsJumpToLatest, "no jump button while restoring")
+
+        engine.setPaused(false)
+        XCTAssertTrue(engine.restorationTick(transcriptRevision: 1))
+        XCTAssertFalse(engine.restorationTick(transcriptRevision: 1))
+        XCTAssertEqual(surface.contentOffsetY, 968)
+        XCTAssertEqual(events.last, .completeRestoration(generation: 9))
+    }
+
+    func testJumpToLatestDoesNotTakeTheScrollViewFromAFinger() {
+        let (engine, surface) = makeEngine()
+        surface.userScroll(to: 1000)
+        surface.isTracking = true
+        engine.explicitLatestRequested(animated: false)
+        XCTAssertEqual(surface.contentOffsetY, 1000)
+        XCTAssertEqual(engine.mode, .browsing)
+    }
+
     func testAReplacementRestorationPublishesItsGeneration() {
         let (engine, _) = makeEngine()
         engine.restorationRequested(anchorRequest(engine, row: 5))
