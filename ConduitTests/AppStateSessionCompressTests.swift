@@ -1396,6 +1396,49 @@ final class AppStateSessionCompressTests: XCTestCase {
         XCTAssertEqual(recorder.dispatchCalls.first?.arg, "")
     }
 
+    func testNonSkillRejectionSurfacesSlashExecErrorWhenDispatchAlsoFails() async throws {
+        let recorder = SlashCallRecorder()
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            executeSlash: { _, _, command in
+                recorder.recordSlashExec(command: command)
+                throw RpcError(code: 4009, message: "session busy")
+            },
+            dispatchCommand: { _, _, name, arg in
+                recorder.recordDispatch(name: name, arg: arg)
+                throw RpcError(code: 4018, message: "not a quick/plugin/skill command: status")
+            }
+        ))
+        installComposerClient(in: harness)
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+
+        _ = await harness.appState.submitComposer(text: "/status")
+        XCTAssertEqual(recorder.dispatchCount, 1, "Any gateway rejection may still be a plugin or quick command")
+        XCTAssertEqual(harness.appState.messages.last?.content, "⚠️ Command failed: session busy")
+    }
+
+    func testSkillRejectionSurfacesDispatchErrorWhenDispatchFails() async throws {
+        let recorder = SlashCallRecorder()
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            executeSlash: { _, _, command in
+                recorder.recordSlashExec(command: command)
+                throw RpcError(code: 4018, message: "skill command: use command.dispatch for /ghost-new")
+            },
+            dispatchCommand: { _, _, name, arg in
+                recorder.recordDispatch(name: name, arg: arg)
+                throw RpcError(code: 5000, message: "skill ghost-new failed to load")
+            }
+        ))
+        installComposerClient(in: harness)
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+
+        _ = await harness.appState.submitComposer(text: "/ghost-new")
+        XCTAssertEqual(harness.appState.messages.last?.content, "⚠️ Command failed: skill ghost-new failed to load")
+    }
+
     func testSlashExecTimeoutDoesNotFallBackToCommandDispatch() async throws {
         let recorder = SlashCallRecorder()
         let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(

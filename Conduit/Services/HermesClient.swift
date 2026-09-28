@@ -1531,9 +1531,8 @@ final class HermesClient: ObservableObject {
     /// Dedicated manual-compression RPC (`session.compress`) — the same path
     /// the TUI and Hermes Desktop use for `/compress`. It must NOT go through
     /// `slash.exec`: compressing a large session legitimately outlives the
-    /// generic request timeout, and the timed-out `slash.exec` error cascades
-    /// into `command.dispatch`'s misleading "not a quick/plugin/skill
-    /// command" failure (upstream #44456). `focusTopic` mirrors Desktop: it is
+    /// generic request timeout, which surfaces as a failure while the gateway
+    /// is still compressing (upstream #44456). `focusTopic` mirrors Desktop: it is
     /// omitted entirely when empty rather than sent as an empty string.
     func compressSession(
         sessionId: String,

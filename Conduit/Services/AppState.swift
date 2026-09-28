@@ -13772,7 +13772,7 @@ final class AppState: ObservableObject {
             // run the command. A timeout or dropped connection may mean it IS
             // running, and re-sending it through command.dispatch could run a
             // skill or plugin twice.
-            guard error is RpcError else { throw error }
+            guard let rejection = error as? RpcError else { throw error }
             // `command` arrives already stripped of its leading slash (the
             // `cleaned` form, or an alias target), so re-slash it before
             // parsing: `parseSlashCommand` only accepts `/`-prefixed text,
@@ -13780,15 +13780,24 @@ final class AppState: ObservableObject {
             // falling back — skill commands answer slash.exec with "skill
             // command: use command.dispatch for /<name>" (#244).
             guard let parsed = Self.parseSlashCommand("/" + command) else { throw error }
-            if let dispatchCommand = chatResumeLifecycleOperations.dispatchCommand {
-                return try await dispatchCommand(
-                    client,
-                    sessionID,
-                    parsed.name,
-                    parsed.argument
-                )
+            do {
+                if let dispatchCommand = chatResumeLifecycleOperations.dispatchCommand {
+                    return try await dispatchCommand(
+                        client,
+                        sessionID,
+                        parsed.name,
+                        parsed.argument
+                    )
+                }
+                return try await client.dispatchCommand(sessionId: sessionID, name: parsed.name, arg: parsed.argument)
+            } catch {
+                // When slash.exec pointed at command.dispatch, dispatch's own
+                // failure is the real one. Otherwise slash.exec's rejection
+                // (session busy, not found, …) is the meaningful error, not
+                // dispatch's generic "not a quick/plugin/skill command".
+                if rejection.message.contains("command.dispatch") { throw error }
+                throw rejection
             }
-            return try await client.dispatchCommand(sessionId: sessionID, name: parsed.name, arg: parsed.argument)
         }
     }
 
