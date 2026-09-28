@@ -1229,7 +1229,7 @@ private final class EndCounter {
 }
 
 @MainActor
-extension HermesVoiceGatewayTimeoutTests {
+extension VoiceConversationControllerTests {
     func testGeminiLiveEndConversationCallClosesAfterTheGoodbyePlays() async {
         var current = Date(timeIntervalSince1970: 1_000)
         let (controller, session, input, output, _) = makeGeminiController(clock: { current })
