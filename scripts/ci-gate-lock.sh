@@ -42,6 +42,7 @@ GATE_LOCK_OWNER=""
 # between them must not leave the marker behind (it would make the dead lock
 # unstealable) or the aside (a stray directory next to the lock).
 GATE_LOCK_MARKER=""
+GATE_LOCK_MARK_TEMP=""
 GATE_LOCK_ASIDE=""
 # Set on BUSY when the lock's owner is dead but another contender holds its
 # steal marker: the pid is readable, so "no readable owner" would mislead.
@@ -68,16 +69,35 @@ gate_is_main_process() {
   [ -z "$self" ] || [ "$self" = "$$" ]
 }
 
+# Remove this process's steal marker - and only ours. The marker carries its
+# creator's pid, so ownership is read from the marker itself rather than from
+# how far the steal got: GATE_LOCK_MARKER is set BEFORE the claim, and an
+# interrupt landing anywhere around it (before, during, or right after the
+# rename that creates the marker) finds either our pid in it - ours, removed
+# - or someone else's - left alone.
+gate_lock_drop_marker() {
+  if [ -n "$GATE_LOCK_MARK_TEMP" ]; then
+    rm -rf "$GATE_LOCK_MARK_TEMP" 2>/dev/null || true
+    if [ -n "$GATE_LOCK_MARKER" ]; then
+      # A claim that lost the race nested into the winner's marker.
+      rm -rf "$GATE_LOCK_MARKER/$(basename "$GATE_LOCK_MARK_TEMP")" 2>/dev/null || true
+    fi
+  fi
+  if [ -n "$GATE_LOCK_MARKER" ] \
+     && [ "$(cat "$GATE_LOCK_MARKER/pid" 2>/dev/null || true)" = "$$" ]; then
+    rm -rf "$GATE_LOCK_MARKER" 2>/dev/null || true
+  fi
+  GATE_LOCK_MARKER=""
+  GATE_LOCK_MARK_TEMP=""
+}
+
 gate_lock_release() {
   # Never remove a lock we do not own: if another process took ownership
   # between our acquisition and this release, its pid must survive.
   local owner=""
-  # An interrupted steal: our marker (only ever ours - nobody else can create
-  # it while it exists) and the dead lock we had already renamed aside.
-  if [ -n "$GATE_LOCK_MARKER" ]; then
-    rmdir "$GATE_LOCK_MARKER" 2>/dev/null || true
-    GATE_LOCK_MARKER=""
-  fi
+  # An interrupted steal: our marker and the dead lock we had already
+  # renamed aside.
+  gate_lock_drop_marker
   if [ -n "$GATE_LOCK_ASIDE" ]; then
     rm -rf "$GATE_LOCK_ASIDE" 2>/dev/null || true
     GATE_LOCK_ASIDE=""
@@ -158,36 +178,53 @@ acquire_gate_lock() { # $1 = canonical lock dir
     # contender can claim the empty path, so "restoring" the moved lock lands
     # it inside that one - two owners.
     #
-    # So the steal is claimed INSIDE the instance first: mkdir is atomic, so
-    # exactly one contender can create the marker in a given lock directory.
-    # Nobody else can then remove that directory - its owner is dead, other
-    # stealers fail the mkdir, and a claim cannot rename onto a non-empty
-    # path - so once the marker holder re-reads the same dead pid under its
-    # marker, the directory it renames aside is guaranteed to be the dead
-    # lock. A marker that lands in a NEWER lock (the path was replaced between
-    # the liveness check and the mkdir) sees a different pid on the re-read,
-    # removes itself and reports BUSY; no live lock is ever moved.
+    # So the steal is claimed INSIDE the instance first, with a marker that
+    # exactly one contender can create there: a directory holding its
+    # creator's pid, built aside and renamed into place (a rename onto a path
+    # that exists fails or nests - it never replaces). Nobody else can then
+    # remove that lock directory - its owner is dead, other stealers lose the
+    # marker rename, and a claim cannot rename onto a non-empty path - so once
+    # the marker holder re-reads the same dead pid under its marker, the
+    # directory it renames aside is guaranteed to be the dead lock. A marker
+    # that lands in a NEWER lock (the path was replaced between the liveness
+    # check and the claim) sees a different pid on the re-read, removes itself
+    # and reports BUSY; no live lock is ever moved.
     #
-    # The marker is removed on every way out of the steal, an interrupt
-    # included (gate_lock_release). Only a stealer SIGKILLed while holding it
-    # can leave a dead lock unstealable: BUSY, never stolen, and reported as
-    # such (GATE_LOCK_STEAL_BLOCKED) so an operator can remove it.
+    # The marker is created WITH its pid, and GATE_LOCK_MARKER is recorded
+    # before the claim, so gate_lock_release removes it on every way out of
+    # the steal - an interrupt at any point included (a separate mkdir and
+    # bookkeeping assignment would leave a one-command window where a trap
+    # finds a marker it does not know about). Only a stealer SIGKILLed while
+    # holding it can leave a dead lock unstealable: BUSY, never stolen, and
+    # reported as such (GATE_LOCK_STEAL_BLOCKED) so an operator can remove it.
     local marker="$canonical/steal"
-    if ! mkdir "$marker" 2>/dev/null; then
-      # Another contender is stealing this instance (or the lock is gone):
-      # its claim path decides the outcome.
+    local mark_temp="$canonical.mark.$$"
+    GATE_LOCK_MARKER="$marker"
+    GATE_LOCK_MARK_TEMP="$mark_temp"
+    rm -rf "$mark_temp" 2>/dev/null || true
+    if ! mkdir "$mark_temp" 2>/dev/null \
+       || ! printf '%s\n' "$$" > "$mark_temp/pid" 2>/dev/null; then
+      gate_lock_drop_marker
+      rm -rf "$temp"; GATE_LOCK_TEMP=""
+      return 1
+    fi
+    if ! mv "$mark_temp" "$marker" 2>/dev/null \
+       || [ "$(cat "$marker/pid" 2>/dev/null || true)" != "$$" ]; then
+      # Another contender is stealing this instance (our claim failed, or
+      # nested into its marker), or the lock is gone: its claim path decides
+      # the outcome.
+      gate_lock_drop_marker
       rm -rf "$temp"; GATE_LOCK_TEMP=""
       GATE_LOCK_OWNER=""
       [ -d "$marker" ] && GATE_LOCK_STEAL_BLOCKED="$holder"
       return 2
     fi
-    GATE_LOCK_MARKER="$marker"
+    GATE_LOCK_MARK_TEMP=""
     local judged="$holder"
     holder="$(cat "$canonical/pid" 2>/dev/null || true)"
     if [ "$holder" != "$judged" ] || { [ -n "$holder" ] && kill -0 "$holder" 2>/dev/null; }; then
       # The marker landed in a newer lock than the one judged dead.
-      rmdir "$marker" 2>/dev/null || true
-      GATE_LOCK_MARKER=""
+      gate_lock_drop_marker
       rm -rf "$temp"; GATE_LOCK_TEMP=""
       # Named as the running owner only while it is provably alive: a newer
       # owner that has died since is stealable, not "another gate".
@@ -204,8 +241,7 @@ acquire_gate_lock() { # $1 = canonical lock dir
     local aside="$canonical.stale.$$.$RANDOM.$(date +%s)"
     GATE_LOCK_ASIDE="$aside"
     if ! mv "$canonical" "$aside" 2>/dev/null; then
-      rmdir "$marker" 2>/dev/null || true
-      GATE_LOCK_MARKER=""
+      gate_lock_drop_marker
       GATE_LOCK_ASIDE=""
       rm -rf "$temp"; GATE_LOCK_TEMP=""
       GATE_LOCK_OWNER=""

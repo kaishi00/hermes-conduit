@@ -935,6 +935,11 @@ rm -f "$HOST_LEASE_WATCHDOG_CANCEL"
     # stdout/stderr keeps an SSH channel open until it expires.
     sleep 0.2 </dev/null >/dev/null 2>&1
   done
+  # One grace second before acting: the minute can run out in the instant
+  # between the helper opening the FIFO (the gate's exec returning) and the
+  # gate writing the cancel file or the helper its verdict - a helper that
+  # is progressing must not be killed on that boundary.
+  sleep 1 </dev/null >/dev/null 2>&1
   [ -e "$HOST_LEASE_WATCHDOG_CANCEL" ] && exit 0
   if [ ! -s "$HOST_LEASE_JSON" ]; then
     echo "local-ci-gate: the host-lease helper never completed acquisition (is ios-ci-host functional?)" >&2

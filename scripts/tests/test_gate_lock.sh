@@ -381,36 +381,57 @@ assert_eq "a dead newer owner is not reported as a running gate" \
   "$DEAD_REPLACED_OWNER" "rc=2 owner=none"
 rm -rf "$LOCK13"
 
-# (c) An interrupt between taking the marker and renaming the dead lock
-# aside: the stealer's trap releases, and the marker must go with it -
-# otherwise the dead lock is unstealable forever. `mv` is overridden to
-# deliver the TERM at exactly that point (sh's PPID is the subshell, which
-# keeps this bash 3.2 compatible).
-mkdir -p "$LOCK13"
-printf '999999999\n' > "$LOCK13/pid"
-( trap 'gate_lock_release; exit 143' TERM
-  mv() { sh -c 'kill -TERM "$PPID"'; sleep 5; }
-  acquire_gate_lock "$LOCK13" 2>/dev/null
-  exit 0 ) &
-INTERRUPTED13=$!
-wait "$INTERRUPTED13" 2>/dev/null
-INTERRUPTED13_RC=$?
-assert_eq "setup: the stealer was interrupted mid-steal" "$INTERRUPTED13_RC" "143"
-assert_eq "the interrupted stealer's marker was removed by its trap" \
-  "$([ -d "$LOCK13/steal" ] && echo yes || echo no)" "no"
-assert_eq "and the dead lock is still there to be taken over" \
-  "$(cat "$LOCK13/pid" 2>/dev/null)" "999999999"
-AFTER13_RC=0
-acquire_gate_lock "$LOCK13" 2>/dev/null || AFTER13_RC=$?
-assert_eq "so the next contender can take it over" "$AFTER13_RC" "0"
-gate_lock_release
-rm -rf "$LOCK13"
+# (c) An interrupt around the marker: the stealer's trap releases, and the
+# marker must go with it - otherwise the dead lock is unstealable forever.
+# `mv` is overridden to deliver a TERM at an exact point (sh's PPID is the
+# subshell, which keeps this bash 3.2 compatible); bash runs the trap as soon
+# as the current command returns.
+#   c1: right after the rename that CREATES the marker - the one-command
+#       window a separate mkdir + bookkeeping assignment used to leave open;
+#   c2: at the rename of the dead lock aside, with the marker held.
+for _when in claim aside; do
+  mkdir -p "$LOCK13"
+  printf '999999999\n' > "$LOCK13/pid"
+  ( trap 'gate_lock_release; exit 143' TERM
+    mv() {
+      case "$2" in
+        */steal)
+          command mv "$@"; _rc=$?
+          [ "$_when" = claim ] && sh -c 'kill -TERM "$PPID"'
+          return "$_rc" ;;
+        *) [ "$_when" = aside ] && sh -c 'kill -TERM "$PPID"'
+           command mv "$@" ;;
+      esac
+    }
+    acquire_gate_lock "$LOCK13" 2>/dev/null
+    exit 0 ) &
+  INTERRUPTED13=$!
+  wait "$INTERRUPTED13" 2>/dev/null
+  INTERRUPTED13_RC=$?
+  assert_eq "setup ($_when): the stealer was interrupted mid-steal" "$INTERRUPTED13_RC" "143"
+  assert_eq "an interrupt at the $_when rename leaves no marker behind" \
+    "$([ -d "$LOCK13/steal" ] && echo yes || echo no)" "no"
+  assert_eq "nor a half-built marker or aside ($_when)" \
+    "$(ls -d "$LOCK13".mark.* "$LOCK13".stale.* 2>/dev/null | wc -l | tr -d ' ')" "0"
+  assert_eq "and the dead lock is still there to be taken over ($_when)" \
+    "$(cat "$LOCK13/pid" 2>/dev/null)" "999999999"
+  AFTER13_RC=0
+  acquire_gate_lock "$LOCK13" 2>/dev/null || AFTER13_RC=$?
+  assert_eq "so the next contender can take it over ($_when)" "$AFTER13_RC" "0"
+  gate_lock_release
+  rm -rf "$LOCK13"
+done
 
 # (d) The rename aside itself fails: BUSY, and the marker is withdrawn.
 mkdir -p "$LOCK13"
 printf '999999999\n' > "$LOCK13/pid"
 FAILED13_RC="$(
-  mv() { return 1; }
+  mv() {
+    case "$2" in
+      */steal) command mv "$@" ;;
+      *) return 1 ;;
+    esac
+  }
   rc=0
   acquire_gate_lock "$LOCK13" 2>/dev/null || rc=$?
   echo "$rc"
@@ -418,7 +439,7 @@ FAILED13_RC="$(
 assert_eq "a failed rename aside reports BUSY" "$FAILED13_RC" "2"
 assert_eq "and withdraws the stealer's marker" \
   "$([ -d "$LOCK13/steal" ] && echo yes || echo no)" "no"
-rm -rf "$LOCK13" "$LOCK13".stale.*
+rm -rf "$LOCK13" "$LOCK13".stale.* "$LOCK13".mark.*
 
 echo "--- case 14: only the top-level process counts as the lock's process ---"
 # A subshell's `$$` is its parent's pid, so a teardown trap a subshell
@@ -439,9 +460,15 @@ assert_eq "without BASHPID (bash 3.2), a top-level script is still main" \
 assert_eq "and a background subshell still is not" \
   "$(bash -c '. "$1"; unset BASHPID; ( gate_is_main_process && echo main || echo sub ) & wait' _ "$MOD")" "sub"
 # The probe path in a child: BASH_SUBSHELL is forced back to 0 so only the
-# PPID probe can tell the subshell from the top level.
+# PPID probe can tell the subshell from the top level. A recording `sh` on
+# PATH proves the probe actually ran: a shell that ignored the BASH_SUBSHELL
+# assignment would answer "sub" from the first check and never reach it.
+mkdir -p "$WORK/probe-bin"
+printf '#!/bin/sh\necho probed >> "%s"\nexec /bin/sh "$@"\n' "$WORK/probe-ran" > "$WORK/probe-bin/sh"
+chmod +x "$WORK/probe-bin/sh"
+rm -f "$WORK/probe-ran"
 assert_eq "without BASHPID or BASH_SUBSHELL, the pid probe still spots a subshell" \
-  "$(bash -c '. "$1"; unset BASHPID; ( BASH_SUBSHELL=0; gate_is_main_process && echo main || echo sub )' _ "$MOD")" "sub"
+  "$(PROBE_PATH="$WORK/probe-bin:$PATH" bash -c '. "$1"; unset BASHPID; ( BASH_SUBSHELL=0; PATH="$PROBE_PATH"; gate_is_main_process && echo main || echo sub )' _ "$MOD")|$(cat "$WORK/probe-ran" 2>/dev/null)" "sub|probed"
 assert_eq "an unanswerable pid probe fails toward the teardown (main)" \
   "$(bash -c '. "$1"; unset BASHPID; PATH=/nonexistent; gate_is_main_process && echo main || echo sub' _ "$MOD" 2>/dev/null)" "main"
 
