@@ -1840,6 +1840,7 @@ final class HermesClient: ObservableObject {
     /// skipped (the tool then proceeds without the value).
     func respondToInputPrompt(requestId: String, value: String) async throws {
         try await sendServerRequestResult(id: requestId, result: ["value": value])
+        clarifySessions.removeValue(forKey: requestId)
     }
 
     func respondToApproval(
