@@ -258,28 +258,41 @@ printf '999999999
 ' > "$LOCK11/pid"
 _racers=0
 while [ "$_racers" -lt 4 ]; do
+  # A winner holds the lock (bounded) until EVERY racer has made its attempt:
+  # a winner that exits early leaves a dead-owner lock that a late-starting
+  # racer then takes over legitimately - a second, sequential winner that says
+  # nothing about the race. Winners APPEND, so two concurrent owners show up
+  # as two lines instead of one overwritten file.
   bash -c '
     . "$1"
-    if acquire_gate_lock "$2"; then
-      printf "%s
-" "$$" > "$2.winner"
-      sleep 1
+    if acquire_gate_lock "$2" 2>/dev/null; then
+      printf "%s\n" "$$" >> "$2.winner"
+      : > "$2.tried.$$"
+      _held=0
+      while [ "$(ls "$2".tried.* 2>/dev/null | wc -l | tr -d " ")" -lt 4 ] \
+          && [ "$_held" -lt 600 ]; do
+        sleep 0.1
+        _held=$(( _held + 1 ))
+      done
+    else
+      : > "$2.tried.$$"
     fi' _ "$MOD" "$LOCK11" &
   _racers=$(( _racers + 1 ))
 done
 wait
-# Diagnosis first: this is the suite's only genuine RACE, and a failure here
-# has been seen once on a loaded hosted runner (never locally, and not in the
-# same commit's self-test job). If it ever goes red again, the shape of the
-# failure - was the lock left behind, was an aside left behind, is the winner
-# file present but empty - is what says which contender went wrong.
-if [ "$(ls "$LOCK11.winner" 2>/dev/null | wc -l | tr -d ' ')" != "1" ]; then
-  echo "  (race diagnosis: $(ls -ld "$LOCK11" "$LOCK11".stale.* "$LOCK11.winner" 2>&1 | tr '\n' '|'))"
-  echo "  (lock pid: $(cat "$LOCK11/pid" 2>/dev/null || echo none))"
+# Diagnosis first: this is the suite's only genuine RACE. If it ever goes red
+# again, the shape of the failure - was the lock left behind, was an aside or a
+# steal marker left behind, how many winners were recorded - is what says
+# which contender went wrong.
+if [ "$(wc -l < "$LOCK11.winner" 2>/dev/null | tr -d ' ')" != "1" ]; then
+  echo "  (race diagnosis: $(ls -ld "$LOCK11" "$LOCK11"/* "$LOCK11".stale.* "$LOCK11.winner" 2>&1 | tr '\n' '|'))"
+  echo "  (lock pid: $(cat "$LOCK11/pid" 2>/dev/null || echo none); winners: $(tr '\n' ' ' < "$LOCK11.winner" 2>/dev/null))"
 fi
-assert_eq "exactly one contender wins the race"   "$(ls "$LOCK11.winner" 2>/dev/null | wc -l | tr -d ' ')" "1"
-assert_eq "and the lock carries the winner's pid"   "$(cat "$LOCK11/pid")" "$(cat "$LOCK11.winner" 2>/dev/null)"
-rm -rf "$LOCK11" "$LOCK11.winner"
+assert_eq "exactly one contender wins the race" \
+  "$(wc -l < "$LOCK11.winner" 2>/dev/null | tr -d ' ')" "1"
+assert_eq "and the lock carries the winner's pid" \
+  "$(cat "$LOCK11/pid" 2>/dev/null)" "$(cat "$LOCK11.winner" 2>/dev/null)"
+rm -rf "$LOCK11" "$LOCK11.winner" "$LOCK11".tried.*
 
 echo "--- case 12: a leftover rename-aside is never the steal's target ---"
 # A steal that was SIGKILLed after the rename-aside leaves that directory
@@ -301,6 +314,24 @@ assert_eq "the leftover aside is untouched (not nested into)"   "$(cat "$LEFTOVE
 assert_eq "and the leftover was not mistaken for the lock"   "$([ -d "$LOCK12" ] && echo yes || echo no)" "yes"
 gate_lock_release
 rm -rf "$LOCK12" "$LEFTOVER"
+
+echo "--- case 13: a steal in progress is BUSY, and never moves a live lock ---"
+# The steal of a dead-owner lock is claimed by a marker INSIDE that lock
+# instance. A second stealer that finds the marker must back off, and a marker
+# that lands in a LIVE lock (the path was replaced after the liveness check)
+# must never lead to that lock being moved.
+LOCK13="$WORK/lock-13"
+mkdir -p "$LOCK13/steal"
+printf '999999999\n' > "$LOCK13/pid"
+MARKED_RC=0
+acquire_gate_lock "$LOCK13" 2>/dev/null || MARKED_RC=$?
+assert_eq "a dead-owner lock that is being stolen refuses a second stealer" "$MARKED_RC" "2"
+assert_eq "and the lock and the other stealer's marker are untouched" \
+  "$(cat "$LOCK13/pid" 2>/dev/null)|$([ -d "$LOCK13/steal" ] && echo marker)" "999999999|marker"
+assert_eq "no rename-aside was made" \
+  "$(ls -d "$LOCK13".stale.* 2>/dev/null | wc -l | tr -d ' ')" "0"
+gate_lock_release
+rm -rf "$LOCK13"
 
 echo ""
 echo "=== $pass_count passed, $fail_count failed ==="

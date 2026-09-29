@@ -21,9 +21,10 @@
 # Semantics:
 #   * a lock exists with NO readable pid        -> BUSY (never stolen: it is
 #                                                  not provably stale)
-#   * a readable pid that is confirmed dead     -> steal (rename aside is not
-#                                                  needed: the loser of the
-#                                                  subsequent rename loses)
+#   * a readable pid that is confirmed dead     -> steal, claimed by an atomic
+#                                                  mkdir INSIDE that lock
+#                                                  instance, so no contender
+#                                                  can ever move a live lock
 #   * cleanup removes the canonical lock ONLY IF its pid is still ours
 #   * the trap must be installed before acquisition can leak state
 #
@@ -101,32 +102,58 @@ acquire_gate_lock() { # $1 = canonical lock dir
       GATE_LOCK_OWNER="$holder"
       return 2
     fi
-    # Confirmed dead owner: steal it ATOMICALLY by renaming the stale lock
-    # aside, then re-checking what we just moved. A destructive `rm -rf` here
-    # is the classic check-then-act race: a contender can pass the liveness
-    # check above, let the OTHER process complete its claim, and then delete
-    # that live lock - two owners, one Mac, corrupt Simulator state. Exactly
-    # one process can move the canonical directory aside, so the loser of that
-    # rename simply fails, and a moved-away lock that turns out to be LIVE is
-    # put back before we refuse.
-    # Unique per attempt: a leftover aside from a killed steal must never be
-    # THIS steal's target (mv into an existing directory nests instead of
-    # failing, and the cleanup would then delete a live lock alongside the
-    # stale one).
-    local aside="$canonical.stale.$$.$RANDOM.$(date +%s)"
-    if ! mv "$canonical" "$aside" 2>/dev/null; then
-      # Another contender moved it first; its claim path decides the outcome.
+    # Confirmed dead owner: steal THIS lock instance, and only this one.
+    #
+    # A destructive `rm -rf` here is the classic check-then-act race: a
+    # contender can pass the liveness check above, let ANOTHER contender steal
+    # and claim, and then delete that live lock - two owners, one Mac, corrupt
+    # Simulator state. Renaming the canonical path aside is not enough on its
+    # own either: the path is not the instance. A slow stealer that judged the
+    # dead lock can rename away the LIVE lock a faster contender has claimed
+    # in its place; while that lock is aside, its owner's verification finds
+    # no pid of its own (it reports BUSY, and the lock it leaves behind names
+    # a live process that believes it lost - no winner at all), and a third
+    # contender can claim the empty path, so "restoring" the moved lock lands
+    # it inside that one - two owners.
+    #
+    # So the steal is claimed INSIDE the instance first: mkdir is atomic, so
+    # exactly one contender can create the marker in a given lock directory.
+    # Nobody else can then remove that directory - its owner is dead, other
+    # stealers fail the mkdir, and a claim cannot rename onto a non-empty
+    # path - so once the marker holder re-reads the same dead pid under its
+    # marker, the directory it renames aside is guaranteed to be the dead
+    # lock. A marker that lands in a NEWER lock (the path was replaced between
+    # the liveness check and the mkdir) sees a different pid on the re-read,
+    # removes itself and reports BUSY; no live lock is ever moved.
+    #
+    # A stealer SIGKILLed while holding the marker leaves that dead lock
+    # unstealable: BUSY, never stolen, like a lock with no readable pid - an
+    # operator removes it.
+    local marker="$canonical/steal"
+    if ! mkdir "$marker" 2>/dev/null; then
+      # Another contender is stealing this instance (or the lock is gone):
+      # its claim path decides the outcome.
       rm -rf "$temp"; GATE_LOCK_TEMP=""
       GATE_LOCK_OWNER=""
       return 2
     fi
-    holder="$(cat "$aside/pid" 2>/dev/null || true)"
-    if [ -n "$holder" ] && kill -0 "$holder" 2>/dev/null; then
-      # The directory we moved aside holds a LIVE owner (it replaced the
-      # stale lock mid-steal): restore it and refuse.
-      mv "$aside" "$canonical" 2>/dev/null || true
+    local judged="$holder"
+    holder="$(cat "$canonical/pid" 2>/dev/null || true)"
+    if [ "$holder" != "$judged" ] || { [ -n "$holder" ] && kill -0 "$holder" 2>/dev/null; }; then
+      # The marker landed in a newer lock than the one judged dead.
+      rmdir "$marker" 2>/dev/null || true
       rm -rf "$temp"; GATE_LOCK_TEMP=""
       GATE_LOCK_OWNER="$holder"
+      case "$holder" in ''|*[!0-9]*) GATE_LOCK_OWNER="" ;; esac
+      return 2
+    fi
+    # Unique per attempt: a leftover aside from a killed steal must never be
+    # THIS steal's target (mv into an existing directory nests instead of
+    # failing).
+    local aside="$canonical.stale.$$.$RANDOM.$(date +%s)"
+    if ! mv "$canonical" "$aside" 2>/dev/null; then
+      rm -rf "$temp"; GATE_LOCK_TEMP=""
+      GATE_LOCK_OWNER=""
       return 2
     fi
     rm -rf "$aside" 2>/dev/null || true
