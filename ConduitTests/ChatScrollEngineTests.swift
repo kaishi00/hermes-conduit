@@ -293,8 +293,10 @@ final class ChatScrollEngineTests: XCTestCase {
         surface.layOut(contentHeight: 4600)
         XCTAssertEqual(surface.contentOffsetY, 1100, "bottom distance first")
 
-        // A provisional frame thousands of points off is ignored.
-        engine.rowFramesChanged(["m2": ChatScrollRowFrame(minY: 5000, maxY: 5200, order: 7)])
+        // A provisional frame more than a viewport off is ignored. It stays
+        // inside the scrollable range (target 2508 < max 3800), so the
+        // distance check rejects it, not clamping.
+        engine.rowFramesChanged(["m2": ChatScrollRowFrame(minY: 2500, maxY: 2700, order: 7)])
         XCTAssertEqual(surface.contentOffsetY, 1100)
 
         // The settled frame: the rows below were estimated 40 pt too tall.
