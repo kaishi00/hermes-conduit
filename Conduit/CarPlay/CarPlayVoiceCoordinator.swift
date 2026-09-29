@@ -39,6 +39,34 @@ protocol CarPlayInterfacing: AnyObject {
 
 extension CPInterfaceController: CarPlayInterfacing {}
 
+/// The Voice mode the profile uses, which decides the controller CarPlay
+/// presents and drives. AppState keeps at most one live mode enabled.
+enum CarPlayVoiceMode: Equatable {
+    case classic
+    case geminiLive
+    case gptLive
+
+    @MainActor
+    static func current(in appState: AppState) -> CarPlayVoiceMode {
+        if appState.isGeminiLiveEnabled { return .geminiLive }
+        if appState.isGPTLiveEnabled { return .gptLive }
+        return .classic
+    }
+}
+
+/// The live modes CarPlay starts itself, after waiting for Hermes.
+enum CarPlayLiveVoiceMode: Equatable {
+    case geminiLive
+    case gptLive
+
+    var voiceMode: CarPlayVoiceMode {
+        switch self {
+        case .geminiLive: return .geminiLive
+        case .gptLive: return .gptLive
+        }
+    }
+}
+
 @MainActor
 final class CarPlayVoiceCoordinator {
     static let shared = CarPlayVoiceCoordinator()
@@ -94,8 +122,8 @@ final class CarPlayVoiceCoordinator {
     private var connectionWaitTask: Task<Bool, Never>?
 
     private var stateObservation: AnyCancellable?
-    /// Which controller `stateObservation` follows: true for Gemini Live.
-    private(set) var observesGeminiLive: Bool?
+    /// Which mode's controller `stateObservation` follows.
+    private(set) var observedVoiceMode: CarPlayVoiceMode?
 
     internal init() {}
 
@@ -113,7 +141,7 @@ final class CarPlayVoiceCoordinator {
         // Defensive: never two live sinks, even for an unpaired re-connect.
         stateObservation?.cancel()
         stateObservation = nil
-        observesGeminiLive = nil
+        observedVoiceMode = nil
         self.interfacing = interfacing
         lastActivatedState = nil
         isTemplatePresented = false
@@ -153,7 +181,7 @@ final class CarPlayVoiceCoordinator {
         template = nil
         stateObservation?.cancel()
         stateObservation = nil
-        observesGeminiLive = nil
+        observedVoiceMode = nil
         lastActivatedState = nil
         isTemplatePresented = false
         pendingPresentationState = nil
@@ -162,6 +190,7 @@ final class CarPlayVoiceCoordinator {
         appState.setCarPlayVoiceSurfaceActive(false)
         appState.handleCarPlayVoiceSurfaceRemoved()
         appState.releaseCarPlayGeminiLive()
+        appState.releaseCarPlayGPTLive()
     }
 
     // MARK: - Template
@@ -208,20 +237,20 @@ final class CarPlayVoiceCoordinator {
     }
 
     /// Follows the controller for the profile's current Voice mode. The
-    /// Gemini Live setting can change while CarPlay is connected, so the
-    /// controls re-check it and AppState reports the change.
+    /// live mode settings can change while CarPlay is connected, so the
+    /// controls re-check them and AppState reports the change.
     private func observeCurrentVoiceMode(_ appState: AppState) {
-        let gemini = appState.isGeminiLiveEnabled
-        guard observesGeminiLive != gemini else { return }
-        observesGeminiLive = gemini
-        if gemini {
-            beginObservingGeminiLive(appState.geminiLiveController)
-        } else {
-            beginObservingController(appState.voiceConversationController)
+        let mode = CarPlayVoiceMode.current(in: appState)
+        guard observedVoiceMode != mode else { return }
+        observedVoiceMode = mode
+        switch mode {
+        case .classic: beginObservingController(appState.voiceConversationController)
+        case .geminiLive: beginObservingGeminiLive(appState.geminiLiveController)
+        case .gptLive: beginObservingGPTLive(appState.gptLiveController)
         }
     }
 
-    /// The Gemini Live setting changed: show the controller now in use.
+    /// A live mode setting changed: show the controller now in use.
     func voiceModeChanged(in appState: AppState) {
         guard isConnected, lastBoundAppState === appState else { return }
         observeCurrentVoiceMode(appState)
@@ -242,6 +271,15 @@ final class CarPlayVoiceCoordinator {
         stateObservation = controller.$phase
             .sink { [weak self] phase in
                 self?.forward(CarPlayVoiceState.map(geminiLive: phase))
+            }
+    }
+
+    /// GPT-Live mode: CarPlay shows the GPT-Live call's phase.
+    private func beginObservingGPTLive(_ controller: GPTLiveConversationController) {
+        stateObservation?.cancel()
+        stateObservation = controller.$phase
+            .sink { [weak self] phase in
+                self?.forward(CarPlayVoiceState.map(gptLive: phase))
             }
     }
 
@@ -286,11 +324,21 @@ final class CarPlayVoiceCoordinator {
         guard isCurrent(generation), isConnected else { return }
         let appState = lastBoundAppState ?? appStateProvider()
         observeCurrentVoiceMode(appState)
-        if appState.isGeminiLiveEnabled {
+        switch CarPlayVoiceMode.current(in: appState) {
+        case .classic:
+            break
+        case .geminiLive:
             let gemini = appState.geminiLiveController
             switch CarPlayGeminiLiveListenAction.forPhase(gemini.phase) {
-            case .start: await establishGeminiLive(appState: appState, generation: generation)
+            case .start: await establishLiveVoice(.geminiLive, appState: appState, generation: generation)
             case .interrupt: gemini.interruptSpeaking()
+            case .nothing: break
+            }
+            return
+        case .gptLive:
+            let gpt = appState.gptLiveController
+            switch CarPlayGPTLiveListenAction.forPhase(gpt.phase) {
+            case .start: await establishLiveVoice(.gptLive, appState: appState, generation: generation)
             case .nothing: break
             }
             return
@@ -315,10 +363,10 @@ final class CarPlayVoiceCoordinator {
     /// parallel CarPlay teardown exists.
     func endConversation() {
         let appState = lastBoundAppState ?? appStateProvider()
-        if appState.isGeminiLiveEnabled {
-            appState.closeGeminiLiveConversation()
-        } else {
-            appState.closeVoiceConversation()
+        switch CarPlayVoiceMode.current(in: appState) {
+        case .classic: appState.closeVoiceConversation()
+        case .geminiLive: appState.closeGeminiLiveConversation()
+        case .gptLive: appState.closeGPTLiveConversation()
         }
     }
 
@@ -334,11 +382,26 @@ final class CarPlayVoiceCoordinator {
         guard isCurrent(generation), isConnected else { return }
         let appState = lastBoundAppState ?? appStateProvider()
         observeCurrentVoiceMode(appState)
-        if appState.isGeminiLiveEnabled {
+        switch CarPlayVoiceMode.current(in: appState) {
+        case .classic:
+            break
+        case .geminiLive:
             // A conversation already running (started on the phone) is
             // just shown; otherwise the CarPlay launch starts one.
             guard !appState.geminiLiveController.isActive else { return }
-            await establishGeminiLive(appState: appState, generation: generation)
+            await establishLiveVoice(.geminiLive, appState: appState, generation: generation)
+            return
+        case .gptLive:
+            let gpt = appState.gptLiveController
+            guard !gpt.isActive else {
+                // A call running on the phone is shown, not restarted. The
+                // car has no mute control, so a call muted on the phone is
+                // opened up for the driver (End and Listen would otherwise
+                // be the only way back to a call they can be heard on).
+                gpt.setMicrophoneMuted(false)
+                return
+            }
+            await establishLiveVoice(.gptLive, appState: appState, generation: generation)
             return
         }
         let controller = appState.voiceConversationController
@@ -353,10 +416,10 @@ final class CarPlayVoiceCoordinator {
         await completeVoiceEstablishment(generation: generation, outcome: outcome)
     }
 
-    /// Starts Gemini Live for this CarPlay surface once Hermes is connected
-    /// (it fetches its credentials from the host), waiting the same bounded
-    /// time as the classic prepare path.
-    func establishGeminiLive(appState: AppState, generation: UInt64) async {
+    /// Starts a live mode (Gemini Live or GPT-Live) for this CarPlay surface
+    /// once Hermes is connected (both start through the host), waiting the
+    /// same bounded time as the classic prepare path.
+    func establishLiveVoice(_ mode: CarPlayLiveVoiceMode, appState: AppState, generation: UInt64) async {
         if !appState.isConnected {
             appState.recoverTransportForCarPlayIfNeeded()
             forward(.processing)
@@ -375,11 +438,21 @@ final class CarPlayVoiceCoordinator {
                 return
             }
         }
-        guard isCurrent(generation), isConnected else { return }
-        await appState.startGeminiLiveForCarPlay()
-        // The surface went away while connecting: nothing presents it now.
-        if !isCurrent(generation) || !isConnected {
-            appState.releaseCarPlayGeminiLive()
+        // The setting may have changed while Hermes was being reached; the
+        // controls start whichever mode is current on the next tap.
+        guard isCurrent(generation), isConnected, CarPlayVoiceMode.current(in: appState) == mode.voiceMode else { return }
+        switch mode {
+        case .geminiLive:
+            await appState.startGeminiLiveForCarPlay()
+            // The surface went away while connecting: nothing presents it now.
+            if !isCurrent(generation) || !isConnected {
+                appState.releaseCarPlayGeminiLive()
+            }
+        case .gptLive:
+            await appState.startGPTLiveForCarPlay()
+            if !isCurrent(generation) || !isConnected {
+                appState.releaseCarPlayGPTLive()
+            }
         }
     }
 

@@ -1604,6 +1604,25 @@ final class AppState: ObservableObject {
         return true
     }
 
+    /// Starts GPT-Live for the CarPlay surface. CarPlay presents it, so no
+    /// phone sheet opens; the other voice modes and read aloud stop first,
+    /// as on the phone.
+    func startGPTLiveForCarPlay() async {
+        guard isConnected else { return }
+        messageReadAloudController.stop()
+        if showVoiceSheet || voiceConversationController.hasLiveVoiceSession { closeVoiceConversation() }
+        stopGeminiLiveConversation()
+        guard !gptLiveController.isActive else { return }
+        await gptLiveController.start()
+    }
+
+    /// CarPlay went away. A GPT-Live call only CarPlay was presenting ends;
+    /// one the phone's sheet shows keeps going.
+    func releaseCarPlayGPTLive() {
+        guard isGPTLiveActive, !(isSceneActive && showGPTLiveSheet) else { return }
+        closeGPTLiveConversation()
+    }
+
     func closeGPTLiveConversation() {
         if gptLiveControllerCreated { gptLiveController.stop() }
         showGPTLiveSheet = false

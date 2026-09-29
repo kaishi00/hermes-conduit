@@ -673,6 +673,20 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(session.stopped, 1)
     }
 
+    func testGeminiLiveNewConversationStartsWithTheMicrophoneOpen() async {
+        let (controller, session, input, _, _) = makeGeminiController(clock: Date.init)
+        await controller.start()
+        session.becomeReady()
+        controller.setMicrophoneMuted(true)
+        controller.stop()
+
+        await controller.start()
+        session.becomeReady()
+        XCTAssertFalse(controller.isMicrophoneMuted, "a mute belongs to the conversation it was set in")
+        XCTAssertTrue(input.running)
+        controller.stop()
+    }
+
     func testGeminiLiveMuteStopsTheMicrophoneAndEndsTheUsersTurn() async {
         let (controller, session, input, _, _) = makeGeminiController(clock: Date.init)
         await controller.start()
@@ -769,15 +783,15 @@ extension AppStateVoiceCapabilityTests {
         coordinator.appStateProvider = { appState }
         coordinator.autoEstablishOnConnect = false
         coordinator.handleConnect(InterfacingSpy())
-        XCTAssertEqual(coordinator.observesGeminiLive, false)
+        XCTAssertEqual(coordinator.observedVoiceMode, .classic)
 
         appState.setGeminiLiveEnabled(true)
         coordinator.voiceModeChanged(in: appState)
-        XCTAssertEqual(coordinator.observesGeminiLive, true, "the car shows the controller now in use")
+        XCTAssertEqual(coordinator.observedVoiceMode, .geminiLive, "the car shows the controller now in use")
 
         appState.setGeminiLiveEnabled(false)
         coordinator.voiceModeChanged(in: appState)
-        XCTAssertEqual(coordinator.observesGeminiLive, false)
+        XCTAssertEqual(coordinator.observedVoiceMode, .classic)
         coordinator.handleDisconnect()
     }
 }

@@ -308,6 +308,9 @@ final class GeminiLiveConversationController: ObservableObject {
         guard !isActive else { return }
         phase = .connecting
         transcript = []
+        // A mute belongs to the conversation it was set in: a new one (one
+        // started from CarPlay, which has no mute control, included) is heard.
+        isMicrophoneMuted = false
         // A retry after a failure mid-goodbye starts clean: the old end
         // must not close this conversation or keep its microphone shut.
         endTask?.cancel()

@@ -3,7 +3,8 @@
 //  Conduit
 //
 //  Pure mapping from the shared VoiceConversationController's published state
-//  to the at-most-five states the CarPlay CPVoiceControlTemplate displays.
+//  (or a live mode's phase) to the at-most-five states the CarPlay
+//  CPVoiceControlTemplate displays.
 //  CarPlay is a state/control surface, never a mirrored chat window: no
 //  transcript text, reasoning, or failure detail ever crosses this boundary —
 //  the associated failure message of `.failed` is deliberately dropped here.
@@ -54,6 +55,35 @@ enum CarPlayVoiceState: String, CaseIterable, Equatable {
         case .listening: return .listening
         case .speaking: return .responding
         case .failed: return .error
+        }
+    }
+
+    /// The same mapping for a GPT-Live call.
+    static func map(gptLive phase: GPTLiveConversationController.Phase) -> CarPlayVoiceState {
+        switch phase {
+        case .idle: return .ready
+        case .connecting, .ending: return .processing
+        case .listening: return .listening
+        case .speaking: return .responding
+        case .failed: return .error
+        }
+    }
+}
+
+/// What the CarPlay Listen button does in a GPT-Live call. The call is full
+/// duplex (GPT-Live's own turn detection handles barge-in and WebRTC cancels
+/// the car speakers' echo), so there is nothing to interrupt: the driver
+/// just talks.
+enum CarPlayGPTLiveListenAction: Equatable {
+    /// Nothing running (or it failed): start a call.
+    case start
+    /// Already in a call the driver can talk into, or connecting/ending.
+    case nothing
+
+    static func forPhase(_ phase: GPTLiveConversationController.Phase) -> CarPlayGPTLiveListenAction {
+        switch phase {
+        case .idle, .failed: return .start
+        case .connecting, .listening, .speaking, .ending: return .nothing
         }
     }
 }
