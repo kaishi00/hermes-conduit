@@ -1269,6 +1269,14 @@ final class MessageNormalizerTests: XCTestCase {
             PushNotificationService.requestRelayURL(issuer: "", configured: configured),
             "an issuer that doesn't parse sends the credential nowhere, never to the configured relay"
         )
+        XCTAssertNil(
+            PushNotificationService.requestRelayURL(issuer: "https:", configured: configured),
+            "an issuer that parses but names no host is just as unusable"
+        )
+        XCTAssertFalse(
+            PushNotificationService.isSameRelay("https:", configured),
+            "an unusable issuer never matches, so Settings offers a move that recovers"
+        )
         XCTAssertFalse(
             RelayTransportPolicy.allowsCredentialTransport(PushNotificationService.unusableRelayURL),
             "the stand-in for an unusable issuer must be refused before any request is sent"

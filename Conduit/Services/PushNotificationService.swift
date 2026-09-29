@@ -443,12 +443,22 @@ final class PushNotificationService: ObservableObject {
     /// Where relay requests go: the relay that issued this phone's
     /// credential, so editing the Settings field never sends that
     /// credential to a different host. Only with no registration (nothing
-    /// to leak) does the configured relay apply. An issuer that doesn't
-    /// parse yields nil: its credential must not go anywhere, least of
-    /// all to the configured relay.
+    /// to leak) does the configured relay apply. An issuer that isn't a
+    /// usable relay URL yields nil: its credential must not go anywhere,
+    /// least of all to the configured relay.
     nonisolated static func requestRelayURL(issuer: String?, configured: URL) -> URL? {
         guard let issuer else { return configured }
-        return URL(string: issuer)
+        return usableIssuerURL(issuer)
+    }
+
+    /// A stored issuer as a relay URL: it must parse with the same parser
+    /// as `configuredRelayURL(from:)` and name a host, as saved relays
+    /// must. Anything else (e.g. "https:") is unusable.
+    nonisolated static func usableIssuerURL(_ issuer: String) -> URL? {
+        guard let url = URL(string: issuer), let host = url.host, !host.isEmpty else {
+            return nil
+        }
+        return url
     }
 
     /// Stands in for an unusable issuer. It fails the transport policy, so
@@ -458,8 +468,11 @@ final class PushNotificationService: ObservableObject {
     /// Whether two relay URLs name the same relay, ignoring cosmetic
     /// differences (case of scheme and host, default port, trailing
     /// slash) so an edit like adding "/" doesn't force a move and re-pair.
+    /// An unusable issuer is never "the same", so Settings offers a move,
+    /// which registers afresh and recovers.
     nonisolated static func isSameRelay(_ issuer: String?, _ configured: URL) -> Bool {
-        guard let issuer, let lhs = URLComponents(string: issuer),
+        guard let issuer, let issuerURL = usableIssuerURL(issuer),
+              let lhs = URLComponents(url: issuerURL, resolvingAgainstBaseURL: false),
               let rhs = URLComponents(url: configured, resolvingAgainstBaseURL: false) else {
             return false
         }
@@ -742,6 +755,10 @@ final class PushNotificationService: ObservableObject {
     }
 
     func disable() async {
+        // Same one-operation-at-a-time rule as enable(): otherwise an
+        // in-flight enable() could re-register after the user turned
+        // notifications off.
+        guard !isWorking else { return }
         lastError = nil
         relayNotice = nil
         isWorking = true
@@ -844,6 +861,9 @@ final class PushNotificationService: ObservableObject {
     /// pairings remain routable through the legacy compatibility policy —
     /// Conduit just never creates new ones.)
     func createPairingCode(dashboardID: UUID) async {
+        // Not mid-move: a code created against the old relay would be
+        // cleared (and useless) once the move lands.
+        guard !isWorking else { return }
         pairingCode = nil
         pairingExpiry = nil
         lastError = nil
