@@ -381,27 +381,27 @@ assert_eq "a dead newer owner is not reported as a running gate" \
   "$DEAD_REPLACED_OWNER" "rc=2 owner=none"
 rm -rf "$LOCK13"
 
-# (c) An interrupt around the marker: the stealer's trap releases, and the
-# marker must go with it - otherwise the dead lock is unstealable forever.
-# `mv` is overridden to deliver a TERM at an exact point (sh's PPID is the
-# subshell, which keeps this bash 3.2 compatible); bash runs the trap as soon
-# as the current command returns.
-#   c1: right after the rename that CREATES the marker - the one-command
-#       window a separate mkdir + bookkeeping assignment used to leave open;
-#   c2: at the rename of the dead lock aside, with the marker held.
+# (c) An interrupt around the marker: the stealer's trap releases, and it
+# must leave nothing behind that makes the lock unstealable. `mv` is
+# overridden to deliver a TERM right after a given rename has completed
+# (sh's PPID is the subshell, which keeps this bash 3.2 compatible); bash
+# runs the trap as soon as the override returns.
+#   claim: right after the rename that CREATES the marker - the one-command
+#          window a separate mkdir + bookkeeping assignment used to leave
+#          open. The dead lock must still be there, marker-free.
+#   aside: right after the dead lock (marker inside) was renamed aside. The
+#          aside must be removed, and the canonical path left free.
 for _when in claim aside; do
   mkdir -p "$LOCK13"
   printf '999999999\n' > "$LOCK13/pid"
   ( trap 'gate_lock_release; exit 143' TERM
     mv() {
+      command mv "$@"; _rc=$?
       case "$2" in
-        */steal)
-          command mv "$@"; _rc=$?
-          [ "$_when" = claim ] && sh -c 'kill -TERM "$PPID"'
-          return "$_rc" ;;
-        *) [ "$_when" = aside ] && sh -c 'kill -TERM "$PPID"'
-           command mv "$@" ;;
+        */steal) [ "$_when" = claim ] && sh -c 'kill -TERM "$PPID"' ;;
+        *.stale.*) [ "$_when" = aside ] && sh -c 'kill -TERM "$PPID"' ;;
       esac
+      return "$_rc"
     }
     acquire_gate_lock "$LOCK13" 2>/dev/null
     exit 0 ) &
@@ -409,15 +409,20 @@ for _when in claim aside; do
   wait "$INTERRUPTED13" 2>/dev/null
   INTERRUPTED13_RC=$?
   assert_eq "setup ($_when): the stealer was interrupted mid-steal" "$INTERRUPTED13_RC" "143"
-  assert_eq "an interrupt at the $_when rename leaves no marker behind" \
+  assert_eq "an interrupt after the $_when rename leaves no marker behind" \
     "$([ -d "$LOCK13/steal" ] && echo yes || echo no)" "no"
   assert_eq "nor a half-built marker or aside ($_when)" \
     "$(ls -d "$LOCK13".mark.* "$LOCK13".stale.* 2>/dev/null | wc -l | tr -d ' ')" "0"
-  assert_eq "and the dead lock is still there to be taken over ($_when)" \
-    "$(cat "$LOCK13/pid" 2>/dev/null)" "999999999"
+  if [ "$_when" = claim ]; then
+    assert_eq "and the dead lock is still there to be taken over (claim)" \
+      "$(cat "$LOCK13/pid" 2>/dev/null)" "999999999"
+  else
+    assert_eq "and the canonical path is free (aside)" \
+      "$([ -e "$LOCK13" ] && echo taken || echo free)" "free"
+  fi
   AFTER13_RC=0
   acquire_gate_lock "$LOCK13" 2>/dev/null || AFTER13_RC=$?
-  assert_eq "so the next contender can take it over ($_when)" "$AFTER13_RC" "0"
+  assert_eq "so the next contender acquires the lock ($_when)" "$AFTER13_RC" "0"
   gate_lock_release
   rm -rf "$LOCK13"
 done

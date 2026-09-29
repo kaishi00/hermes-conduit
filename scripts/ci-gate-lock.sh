@@ -56,7 +56,10 @@ GATE_LOCK_STEAL_BLOCKED=""
 # 3.2 has neither BASHPID nor a fork-free alternative, so a child that `exec`s
 # straight into sh reports its PPID - the shell asking. If even that cannot
 # answer, the answer is "main": failing toward the teardown leaks nothing,
-# while failing away from it would leak the very resources it releases.
+# while failing away from it would leak the very resources it releases. That
+# makes the guard best-effort in exactly one environment - bash 3.2 with no
+# usable `sh` - where a subshell caught by an inherited trap is taken for the
+# top level again; everywhere else (any bash 4+, or a working sh) it is exact.
 gate_is_main_process() {
   case "${BASH_SUBSHELL:-0}" in
     0) ;;
@@ -84,7 +87,7 @@ gate_lock_drop_marker() {
     fi
   fi
   if [ -n "$GATE_LOCK_MARKER" ] \
-     && [ "$(cat "$GATE_LOCK_MARKER/pid" 2>/dev/null || true)" = "$$" ]; then
+     && [ "$(cat "$GATE_LOCK_MARKER/pid" 2>/dev/null || true)" = "${BASHPID:-$$}" ]; then
     rm -rf "$GATE_LOCK_MARKER" 2>/dev/null || true
   fi
   GATE_LOCK_MARKER=""
@@ -197,19 +200,34 @@ acquire_gate_lock() { # $1 = canonical lock dir
     # finds a marker it does not know about). Only a stealer SIGKILLed while
     # holding it can leave a dead lock unstealable: BUSY, never stolen, and
     # reported as such (GATE_LOCK_STEAL_BLOCKED) so an operator can remove it.
+    #
+    # The marker's pid is NOT used to reclaim a marker whose creator looks
+    # dead, deliberately. Reclaiming means removing another contender's claim
+    # on the strength of a liveness check - the same check-then-act race this
+    # marker exists to close, one level down: a slow reclaimer can remove the
+    # LIVE marker of a contender that reclaimed first, and two stealers then
+    # both proceed, the second renaming away the fresh lock the first just
+    # claimed. The cost of refusing is the manual cleanup of a lock whose
+    # stealer was SIGKILLed inside a millisecond-long window, which the BUSY
+    # message names; the cost of reclaiming is two owners on one Mac.
     local marker="$canonical/steal"
-    local mark_temp="$canonical.mark.$$"
+    # The marker names its creator by BASHPID where bash has it: `$$` is the
+    # parent's pid in a subshell, so two sibling stealers would otherwise
+    # claim the same identity. (bash 3.2 falls back to `$$`; the gate calls
+    # acquire_gate_lock only from its top level, where the two agree.)
+    local me="${BASHPID:-$$}"
+    local mark_temp="$canonical.mark.$me"
     GATE_LOCK_MARKER="$marker"
     GATE_LOCK_MARK_TEMP="$mark_temp"
     rm -rf "$mark_temp" 2>/dev/null || true
     if ! mkdir "$mark_temp" 2>/dev/null \
-       || ! printf '%s\n' "$$" > "$mark_temp/pid" 2>/dev/null; then
+       || ! printf '%s\n' "$me" > "$mark_temp/pid" 2>/dev/null; then
       gate_lock_drop_marker
       rm -rf "$temp"; GATE_LOCK_TEMP=""
       return 1
     fi
     if ! mv "$mark_temp" "$marker" 2>/dev/null \
-       || [ "$(cat "$marker/pid" 2>/dev/null || true)" != "$$" ]; then
+       || [ "$(cat "$marker/pid" 2>/dev/null || true)" != "$me" ]; then
       # Another contender is stealing this instance (our claim failed, or
       # nested into its marker), or the lock is gone: its claim path decides
       # the outcome.
