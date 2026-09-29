@@ -735,6 +735,32 @@ final class SessionPresentationCacheTests: XCTestCase {
         cache.clear(profile: profile)
     }
 
+    // MARK: - Masked input prompts
+
+    func testSaveNeverPersistsMaskedInputPromptCards() throws {
+        let (cache, defaults, _, _) = try makeIsolatedCache()
+        let prompt = try XCTUnwrap(InputPromptActivity.from(
+            requestId: "srq-inputprompt1",
+            method: "sudo",
+            params: ["session_id": .string("runtime-1"), "command": .string("sudo apt install marker-command")]
+        ))
+        let messages = [
+            ChatMessage(id: "msg-1", role: .user, content: "Hello cache marker", timestamp: "2024-01-01"),
+            ChatMessage(id: "input-prompt-srq-inputprompt1", role: .inputPrompt, content: prompt.title,
+                        timestamp: "2024-01-01", inputPrompt: prompt)
+        ]
+        cache.save(messages, profile: "test", sessionIDs: ["runtime-1"])
+        cache.waitForPendingWrites()
+
+        let stored = defaults.dictionaryRepresentation().values.compactMap { value -> String? in
+            if let data = value as? Data { return String(decoding: data, as: UTF8.self) }
+            return value as? String
+        }.joined(separator: "\n")
+        XCTAssertTrue(stored.contains("msg-1"), "The ordinary row must still be cached")
+        XCTAssertFalse(stored.contains("srq-inputprompt1"), "A masked input card must never reach disk")
+        XCTAssertFalse(stored.contains("marker-command"))
+    }
+
     // MARK: - Multi-alias merge: logical-snapshot deduplication
 
     /// Isolated cache with a manually advanced clock so alias-write order

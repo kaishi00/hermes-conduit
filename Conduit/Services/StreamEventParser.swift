@@ -137,12 +137,19 @@ enum StreamEventParser {
             // approval card is keyed by its queue id and reconciles through
             // `approval.respond` / `approval.pending` as before. `resolved`
             // means the request was answered, never an expiry.
-            guard payload?["method"]?.stringValue == "clarify",
-                  payload?["reason"]?.stringValue != "resolved" else { return nil }
+            // Masked input prompts expire the same way.
+            let method = payload?["method"]?.stringValue ?? ""
+            guard payload?["reason"]?.stringValue != "resolved" else { return nil }
             let requestId = (payload?["id"]?.stringValue ?? "")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             guard !requestId.isEmpty else { return nil }
-            return .clarifyExpire(sessionId: sessionId, requestId: requestId)
+            if method == "clarify" {
+                return .clarifyExpire(sessionId: sessionId, requestId: requestId)
+            }
+            if InputPromptActivity.Kind(rawValue: method) != nil {
+                return .inputPromptExpire(sessionId: sessionId, requestId: requestId)
+            }
+            return nil
 
         case "approval.request":
             guard let payload,

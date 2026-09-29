@@ -1549,8 +1549,8 @@ final class HermesClientTests: XCTestCase {
         let sent = Gate()
         socket.onSend = { sent.signal() }
         try await deliverFrame([
-            "jsonrpc": "2.0", "id": "srq-cccccccccccc", "method": "sudo",
-            "params": ["session_id": "runtime-1", "command": "sudo ls"]
+            "jsonrpc": "2.0", "id": "srq-cccccccccccc", "method": "vault.code",
+            "params": ["session_id": "runtime-1", "site": "example.com"]
         ], to: socket)
         try await sent.wait("the decline to be sent")
 
@@ -1560,6 +1560,84 @@ final class HermesClientTests: XCTestCase {
         XCTAssertEqual(error["code"] as? Int, -32601)
         XCTAssertTrue(events.isEmpty)
         client.disconnect()
+    }
+
+    func testSudoServerRequestPresentsMaskedPromptAndAnswersWithValue() async throws {
+        let (client, socket) = try await connectedClientForServerRequests()
+        var events: [StreamEvent] = []
+        client.onEvent = { events.append($0) }
+        try await deliverFrame([
+            "jsonrpc": "2.0", "id": "srq-ffffffffffff", "method": "sudo",
+            "params": ["session_id": "runtime-1", "command": "sudo apt install jq"]
+        ], to: socket)
+        guard case .inputPrompt(let sessionId, let activity)? = events.first else {
+            return XCTFail("Expected an input prompt event, got \(events)")
+        }
+        XCTAssertEqual(sessionId, "runtime-1")
+        XCTAssertEqual(activity.requestId, "srq-ffffffffffff")
+        XCTAssertEqual(activity.kind, .sudo)
+        XCTAssertEqual(activity.command, "sudo apt install jq")
+        XCTAssertTrue(socket.sentTexts.isEmpty, "The request stays open until the user answers")
+
+        try await client.respondToInputPrompt(requestId: "srq-ffffffffffff", value: "hunter2")
+        let reply = try sentFrame(socket)
+        XCTAssertEqual(reply["id"] as? String, "srq-ffffffffffff")
+        XCTAssertNil(reply["method"])
+        let result = try XCTUnwrap(reply["result"] as? [String: Any])
+        XCTAssertEqual(result["value"] as? String, "hunter2")
+        client.disconnect()
+    }
+
+    func testSkippedInputPromptAnswersEmptyValue() async throws {
+        let (client, socket) = try await connectedClientForServerRequests()
+        try await client.respondToInputPrompt(requestId: "srq-111111111111", value: "")
+        let result = try XCTUnwrap(try sentFrame(socket)["result"] as? [String: Any])
+        XCTAssertEqual(result["value"] as? String, "", "An empty value is Hermes' skip")
+        client.disconnect()
+    }
+
+    func testResumeRestoresMaskedPromptsFromOpenRequests() async throws {
+        let (client, socket) = try await connectedClientForServerRequests()
+        let sent = Gate()
+        socket.onSend = { sent.signal() }
+        let openTask = Task<SessionResumeResult, Error> { try await client.openSession("runtime-1") }
+        try await sent.wait("the session.resume request to be sent")
+        let id = try XCTUnwrap(try sentFrame(socket)["id"] as? Int)
+        try await deliverFrame([
+            "jsonrpc": "2.0", "id": id,
+            "result": [
+                "session_id": "runtime-1",
+                "running": true,
+                "messages": [Any](),
+                "info": [String: Any](),
+                "open_requests": [
+                    ["id": "srq-222222222222", "method": "secret",
+                     "params": ["session_id": "runtime-1", "env_var": "OPENAI_API_KEY", "prompt": "Paste your key"]],
+                    ["id": "srq-333333333333", "method": "vault.unlock_prompt",
+                     "params": ["session_id": "runtime-1", "backend": "bitwarden", "display_name": "Bitwarden"]],
+                    ["id": "srq-444444444444", "method": "window.read",
+                     "params": ["session_id": "runtime-1"]]
+                ]
+            ]
+        ], to: socket)
+        let result = try await awaitResult(of: openTask, "the session.resume response")
+        let prompts = result.snapshot.pendingInputPrompts
+        XCTAssertEqual(prompts.map(\.requestId), ["srq-222222222222", "srq-333333333333"])
+        XCTAssertEqual(prompts.first?.envVar, "OPENAI_API_KEY")
+        XCTAssertEqual(prompts.first?.prompt, "Paste your key")
+        XCTAssertEqual(prompts.last?.kind, .vaultUnlock)
+        XCTAssertEqual(prompts.last?.displayName, "Bitwarden")
+        client.disconnect()
+    }
+
+    func testInputPromptRequiresSessionAndKnownMethod() {
+        XCTAssertNil(InputPromptActivity.from(requestId: "srq-1", method: "sudo", params: [:]))
+        XCTAssertNil(InputPromptActivity.from(
+            requestId: "srq-1", method: "vault.code", params: ["session_id": .string("s1")]
+        ))
+        XCTAssertNil(InputPromptActivity.from(
+            requestId: "", method: "sudo", params: ["session_id": .string("s1")]
+        ))
     }
 
     func testServerRequestDoesNotSettlePendingRPCWithCollidingID() async throws {

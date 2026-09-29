@@ -603,6 +603,17 @@ final class StreamEventParserTests: XCTestCase {
         XCTAssertNil(event, "An answered request must never read as timed out")
     }
 
+    func testRequestCancelForMaskedPromptExpiresIt() {
+        let event = parse(#"""
+        {"type": "request.cancel", "session_id": "s1", "payload": {"id": "srq-0123456789ab", "method": "sudo", "reason": "timeout"}}
+        """#)
+        guard case .inputPromptExpire(let sessionId, let requestId) = event else {
+            return XCTFail("Expected inputPromptExpire")
+        }
+        XCTAssertEqual(sessionId, "s1")
+        XCTAssertEqual(requestId, "srq-0123456789ab")
+    }
+
     func testRequestCancelForApprovalIsIgnored() {
         // Approval cards are keyed by the queue id, not the server request id.
         let event = parse(#"""

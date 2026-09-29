@@ -7809,6 +7809,12 @@ final class AppState: ObservableObject {
         if let pendingClarify = result.snapshot.pendingClarify {
             applyClarifyActivity(pendingClarify, source: .authoritativeSnapshot)
         }
+        // Masked input prompts are live-only (never cached), so the rebuilt
+        // transcript holds none: the gateway's open requests are the whole
+        // truth, and a prompt withdrawn while detached simply stays gone.
+        for prompt in result.snapshot.pendingInputPrompts {
+            applyInputPromptActivity(prompt)
+        }
         let authoritativePendingApproval = result.snapshot.pendingApprovalPayload.flatMap {
             MessageNormalizer.approvalActivity(from: $0, sessionId: result.sessionId)
         }
@@ -17713,6 +17719,7 @@ final class AppState: ObservableObject {
                 .toolStart(let sessionId, _, _, _),
                 .toolComplete(let sessionId, _, _, _), .reviewSummary(let sessionId, _), .clarify(let sessionId, _), .clarifyExpire(let sessionId, _),
                 .approval(let sessionId, _),
+                .inputPrompt(let sessionId, _), .inputPromptExpire(let sessionId, _),
                 .contextUpdate(let sessionId, _, _, _), .cwdUpdate(let sessionId, _),
                 .modelUpdate(let sessionId, _, _), .agentCount(let sessionId, _),
                 .delegateAgent(let sessionId, _), .statusUpdate(let sessionId, _, _):
@@ -18024,6 +18031,13 @@ final class AppState: ObservableObject {
         case .approval(_, let activity):
             applyApprovalActivity(activity, authoritative: false)
             setRunning(true)
+
+        case .inputPrompt(_, let activity):
+            applyInputPromptActivity(activity)
+            setRunning(true)
+
+        case .inputPromptExpire(_, let requestId):
+            expireInputPrompt(requestId: requestId)
 
         case .contextUpdate(_, let percent, let used, let max):
             runtime.contextPercent = normalizedContextPercent(percent, used: used, max: max)
@@ -18373,6 +18387,69 @@ final class AppState: ObservableObject {
         activity.error = Self.clarifyExpiredNotice(for: activity.questions.count)
         messages[index].clarify = activity
         cacheMessagePresentation()
+    }
+
+    /// Upserts one masked input card keyed by its server request id. A
+    /// re-delivery (resume replay) never re-arms a card this device already
+    /// answered, skipped or has in flight.
+    private func applyInputPromptActivity(_ activity: InputPromptActivity) {
+        if let index = messages.firstIndex(where: { $0.inputPrompt?.requestId == activity.requestId }) {
+            guard let existing = messages[index].inputPrompt, existing.isAnswerable else { return }
+            messages[index].content = activity.title
+            messages[index].inputPrompt = activity
+            return
+        }
+        settleReasoningSegmentIntoTranscript()
+        messages.append(ChatMessage(
+            id: "input-prompt-\(activity.requestId)",
+            role: .inputPrompt,
+            content: activity.title,
+            timestamp: Self.localTimestamp(),
+            inputPrompt: activity
+        ))
+    }
+
+    /// Applies `request.cancel` for a masked input prompt: the gateway
+    /// stopped waiting, so the card stops offering input.
+    private func expireInputPrompt(requestId: String) {
+        guard let index = messages.firstIndex(where: { $0.inputPrompt?.requestId == requestId }),
+              var activity = messages[index].inputPrompt,
+              activity.isAnswerable || activity.status == .submitting else { return }
+        activity.status = .expired
+        activity.error = nil
+        messages[index].inputPrompt = activity
+    }
+
+    /// Sends the value typed into a masked input card, or `nil` to skip.
+    /// The value is handed to the client and dropped; only the card's
+    /// status is recorded.
+    func respondToInputPrompt(messageId: String, value: String?) async {
+        guard let index = messages.firstIndex(where: { $0.id == messageId }),
+              let current = messages[index].inputPrompt,
+              current.isAnswerable else { return }
+        let skipped = value == nil
+        messages[index].inputPrompt?.status = .submitting
+        messages[index].inputPrompt?.error = nil
+        guard let client else {
+            messages[index].inputPrompt?.status = .error
+            messages[index].inputPrompt?.error = AppLocalization.string("Gateway connection is unavailable.")
+            return
+        }
+        // Same ownership fence as respondToApproval: a completion from a
+        // replaced client must not touch whatever card is current.
+        let profile = activeProfile
+        do {
+            try await client.respondToInputPrompt(requestId: current.requestId, value: value ?? "")
+            guard profile == activeProfile, self.client === client,
+                  let updated = messages.firstIndex(where: { $0.id == messageId }) else { return }
+            messages[updated].inputPrompt?.status = skipped ? .skipped : .submitted
+        } catch {
+            guard profile == activeProfile, self.client === client,
+                  let updated = messages.firstIndex(where: { $0.id == messageId }) else { return }
+            messages[updated].inputPrompt?.status = .error
+            messages[updated].inputPrompt?.error = AppLocalization.string("Hermes did not receive that answer.")
+            errorMessage = error.localizedDescription
+        }
     }
 
     private static func clarifyExpiredNotice(for questionCount: Int) -> String {
