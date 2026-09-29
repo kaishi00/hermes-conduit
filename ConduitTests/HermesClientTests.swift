@@ -1852,12 +1852,12 @@ final class HermesClientTests: XCTestCase {
         try await sent.wait("the approval.respond request to be sent")
         let id = try XCTUnwrap(try sentFrame(socket)["id"] as? Int)
 
-        // A request frame reusing the pending integer id must be treated as a
-        // request (declined here), never as that RPC's response.
+        // A request frame reusing the pending integer id must never settle
+        // that RPC. Hermes mints string ids only, so it is ignored outright.
         try await deliverFrame([
             "jsonrpc": "2.0", "id": id, "method": "vault.code", "params": ["session_id": "runtime-1"]
         ], to: socket)
-        XCTAssertEqual(socket.sentTexts.count, 2, "The colliding request is declined")
+        XCTAssertEqual(socket.sentTexts.count, 1, "An integer-id request is neither answered nor matched")
 
         try await deliverFrame(["jsonrpc": "2.0", "id": id, "result": ["resolved": 1]], to: socket)
         let accepted = try await awaitResult(of: respondTask, "the real approval.respond response")

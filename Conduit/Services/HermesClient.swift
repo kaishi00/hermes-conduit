@@ -924,6 +924,13 @@ final class HermesClient: ObservableObject {
         // this client's requests, and an integer id could otherwise collide
         // with (and wrongly settle) one of them.
         if let method = json.method, method != "event", let requestID = json.id {
+            // Hermes mints string ids only (like the reference client, any
+            // other id is ignored — never answered, never matched to a
+            // pending RPC of ours).
+            guard case .string = requestID else {
+                logger.debug("Ignored server request \(method, privacy: .public) with a non-string id")
+                return
+            }
             handleServerRequest(id: requestID, method: method, params: json.params?.objectValue ?? [:])
             return
         }
@@ -1025,15 +1032,7 @@ final class HermesClient: ObservableObject {
     ///   bridges) has no UI here and is declined at once with -32601, so the
     ///   tool fails fast instead of waiting out its deadline.
     private func handleServerRequest(id: JsonRpcID, method: String, params: [String: AnyCodable]) {
-        if case .other = id {
-            // A reply could not name the request; nothing to correlate.
-            logger.error("Dropped server request \(method, privacy: .public) with an unusable id")
-            return
-        }
-        guard case .string(let requestID) = id, !requestID.isEmpty else {
-            writeServerRequestReply(id: id, error: (Self.methodNotFoundCode, "unsupported server request id"))
-            return
-        }
+        guard case .string(let requestID) = id, !requestID.isEmpty else { return }
         let sessionId = params["session_id"]?.stringValue ?? ""
         logger.notice("Received server request \(method, privacy: .public) id \(requestID, privacy: .public)")
         switch method {
@@ -1813,6 +1812,7 @@ final class HermesClient: ObservableObject {
     ) async throws -> ClarifyResponseOutcome {
         guard let questionId, !questionId.isEmpty else {
             try await sendServerRequestResult(id: requestId, result: ["answer": answer])
+            clarifySessions.removeValue(forKey: requestId)
             return .accepted(remaining: nil)
         }
         let result = try await rpc(
@@ -1822,6 +1822,7 @@ final class HermesClient: ObservableObject {
         let status = result.objectValue?["status"]?.stringValue?.lowercased()
         if status == "expired" {
             openServerRequestIDs.remove(requestId)
+            clarifySessions.removeValue(forKey: requestId)
             return .expired
         }
         let remaining: [String]? = result.objectValue?["remaining"]?.arrayValue.map {
@@ -1829,6 +1830,7 @@ final class HermesClient: ObservableObject {
         }
         if remaining?.isEmpty == true {
             openServerRequestIDs.remove(requestId)
+            clarifySessions.removeValue(forKey: requestId)
         }
         return .accepted(remaining: remaining)
     }

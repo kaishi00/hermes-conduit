@@ -727,6 +727,37 @@ final class ClarifyBatchStateTests: XCTestCase {
         XCTAssertEqual(restored.status, .pending)
     }
 
+    func testResumeRestoresEveryOpenClarifyAsAnAnswerableCard() throws {
+        let (appState, _) = makeAppState()
+        func clarify(_ id: String, _ question: String) -> AnyCodable {
+            .object([
+                "request_id": .string(id),
+                "question": .string(question),
+                "choices": .array([.string("a"), .string("b")])
+            ])
+        }
+        let result = SessionResumeResult(
+            sessionId: "stored-a",
+            messages: [],
+            snapshot: SessionRuntimeSnapshot(object: [
+                "running": .bool(true),
+                "pending_clarify": clarify("srq-first0000001", "First?"),
+                "open_clarifies": .array([clarify("srq-second000002", "Second?")])
+            ])
+        )
+
+        XCTAssertTrue(appState.applyChatResume(result))
+
+        let first = try XCTUnwrap(clarifyCard(in: appState, requestId: "srq-first0000001"))
+        let second = try XCTUnwrap(
+            clarifyCard(in: appState, requestId: "srq-second000002"),
+            "A second open clarify must restore too, not only the oldest"
+        )
+        XCTAssertEqual(first.status, .pending)
+        XCTAssertEqual(second.status, .pending)
+        XCTAssertTrue(AppState.hasPendingDecision(in: appState.messages))
+    }
+
     func testSessionInfoSnapshotAlsoRestoresPendingClarify() throws {
         // Some gateway generations carry pending_clarify on session.info
         // snapshots too; wherever it appears it is the same authoritative
