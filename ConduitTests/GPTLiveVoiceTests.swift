@@ -575,7 +575,6 @@ extension VoiceConversationControllerTests {
         client providedClient: FakeGPTLiveClient? = nil,
         endPhrases: [String] = [],
         permission: Bool = true,
-        route: VoiceBargeInRoutePolicy = .fullDuplex,
         clock: @escaping () -> Date
     ) -> (GPTLiveConversationController, FakeGPTLiveSessionControl, VoiceBackgroundJobSupervisor, FakeVoiceJobBackend) {
         let client = providedClient ?? FakeGPTLiveClient()
@@ -589,8 +588,7 @@ extension VoiceConversationControllerTests {
             supervisor: supervisor,
             requestPermission: { permission },
             now: clock,
-            endConversationPhrases: { endPhrases },
-            routePolicy: { route }
+            endConversationPhrases: { endPhrases }
         )
         return (controller, session, supervisor, fake)
     }
@@ -607,51 +605,6 @@ extension VoiceConversationControllerTests {
         await denied.start()
         XCTAssertEqual(denied.phase, .failed(VoiceAudioError.microphonePermissionDenied.localizedDescription))
         XCTAssertEqual(deniedSession.started, 0)
-    }
-
-    func testGPTLiveOnAnOpenSpeakerClosesTheMicrophoneWhileTheModelTalksAndForAnEchoTail() async {
-        var current = Date(timeIntervalSince1970: 1_000)
-        let (controller, session, _, _) = makeGPTController(route: .speakerSafeHalfDuplex, clock: { current })
-        await controller.start()
-        session.becomeReady()
-        XCTAssertEqual(session.microphoneEnabled, true, "Nothing is playing yet")
-
-        session.onEvent?(.outputTranscript("Hey there."))
-        XCTAssertEqual(session.microphoneEnabled, false, "The model's own voice must not reach GPT-Live")
-        session.onEvent?(.turnDone(role: "assistant", transcript: "Hey there."))
-        XCTAssertEqual(session.microphoneEnabled, false, "The audio is still playing after the turn ends")
-
-        current = current.addingTimeInterval(GPTLiveConversationController.speakerEchoTail + 0.1)
-        controller.refreshMicrophone()
-        XCTAssertEqual(session.microphoneEnabled, true)
-
-        // A user mute still wins over the gate lifting.
-        controller.setMicrophoneMuted(true)
-        session.onEvent?(.outputTranscript("Sure."))
-        session.onEvent?(.turnDone(role: "assistant", transcript: "Sure."))
-        current = current.addingTimeInterval(5)
-        controller.refreshMicrophone()
-        XCTAssertEqual(session.microphoneEnabled, false)
-        controller.stop()
-    }
-
-    func testGPTLiveInterruptOpensTheMicrophoneForTheRestOfTheModelsTurn() async {
-        var current = Date(timeIntervalSince1970: 1_000)
-        let (controller, session, _, _) = makeGPTController(route: .speakerSafeHalfDuplex, clock: { current })
-        await controller.start()
-        session.becomeReady()
-        XCTAssertFalse(controller.canInterrupt, "Nothing to interrupt yet")
-
-        session.onEvent?(.outputTranscript("Let me tell you about"))
-        XCTAssertTrue(controller.canInterrupt)
-        controller.interruptSpeaking()
-        XCTAssertEqual(session.microphoneEnabled, true, "The user is talking over the model")
-        XCTAssertFalse(controller.canInterrupt)
-
-        session.onEvent?(.turnDone(role: "assistant", transcript: "Let me tell you about it."))
-        XCTAssertEqual(session.microphoneEnabled, false, "The next turn is gated again")
-        current = current.addingTimeInterval(5)
-        controller.stop()
     }
 
     func testGPTLiveTellsTheUserWhenTheHostDidNotUseTheChosenVoice() async {
@@ -699,15 +652,6 @@ extension VoiceConversationControllerTests {
             session.onEvent?(.outputTranscript(fragment))
         }
         XCTAssertEqual(controller.transcript.last?.text, "Hello there. How's it going?")
-        controller.stop()
-    }
-
-    func testGPTLiveWithAHeadsetStaysFullDuplex() async {
-        let (controller, session, _, _) = makeGPTController(route: .fullDuplex, clock: Date.init)
-        await controller.start()
-        session.becomeReady()
-        session.onEvent?(.outputTranscript("Hey there."))
-        XCTAssertEqual(session.microphoneEnabled, true, "The user can still barge in over a headset")
         controller.stop()
     }
 
@@ -980,8 +924,7 @@ extension AppStateVoiceCapabilityTests {
             availability: { try await client.availability() },
             briefing: { "[rules]" },
             supervisor: appState.voiceBackgroundJobSupervisor,
-            requestPermission: { true },
-            routePolicy: { .fullDuplex }
+            requestPermission: { true }
         )
         _ = appState.gptLiveController
         appState.gptLiveController = controller

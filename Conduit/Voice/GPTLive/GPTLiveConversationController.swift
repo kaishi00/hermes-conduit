@@ -121,7 +121,6 @@ final class GPTLiveConversationController: ObservableObject {
     private let requestPermission: @MainActor () async -> Bool
     private let now: () -> Date
     private let endConversationPhrases: @MainActor () -> [String]
-    private let routePolicy: @MainActor () -> VoiceBargeInRoutePolicy
     /// Closes the conversation's surface once a hands-free end finishes.
     var onEndConversation: (@MainActor () -> Void)?
 
@@ -147,16 +146,6 @@ final class GPTLiveConversationController: ObservableObject {
     private var endRequestedAt: Date?
     private var endTask: Task<Void, Never>?
     private var activeEndPhrases: [String] = []
-    private var microphoneGateTask: Task<Void, Never>?
-    /// The Interrupt button: the user chose to talk over the model, so the
-    /// speaker gate stays open until that model turn ends.
-    private var speakerGateOverridden = false
-    private var routeObserver: NSObjectProtocol?
-
-    /// After the model stops on an open speaker, the microphone stays closed
-    /// this long: its transcript and turn end run ahead of the audio still
-    /// playing, and the room's echo tail must not read as the user.
-    static let speakerEchoTail: TimeInterval = 1.2
 
     init(
         makeSession: @escaping @MainActor () -> GPTLiveSessionControlling,
@@ -165,8 +154,7 @@ final class GPTLiveConversationController: ObservableObject {
         supervisor: GeminiLiveJobSupervising,
         requestPermission: @escaping @MainActor () async -> Bool = { await AVAudioApplication.requestRecordPermission() },
         now: @escaping () -> Date = Date.init,
-        endConversationPhrases: @escaping @MainActor () -> [String] = { [] },
-        routePolicy: @escaping @MainActor () -> VoiceBargeInRoutePolicy = { VoiceBargeInRoutePolicy.current() }
+        endConversationPhrases: @escaping @MainActor () -> [String] = { [] }
     ) {
         self.makeSession = makeSession
         self.availability = availability
@@ -176,7 +164,6 @@ final class GPTLiveConversationController: ObservableObject {
         self.requestPermission = requestPermission
         self.now = now
         self.endConversationPhrases = endConversationPhrases
-        self.routePolicy = routePolicy
     }
 
     // MARK: Lifecycle
@@ -204,8 +191,6 @@ final class GPTLiveConversationController: ObservableObject {
         lastDelegatedEntry = nil
         closeOpenEntries()
         activeEndPhrases = endConversationPhrases()
-        speakerGateOverridden = false
-        observeRouteChanges()
         do {
             let status = try await availability()
             guard phase == .connecting else { return }
@@ -233,26 +218,7 @@ final class GPTLiveConversationController: ObservableObject {
         session.start()
     }
 
-    /// A headset plugged in or out changes whether the speaker gate applies.
-    private func observeRouteChanges() {
-        guard routeObserver == nil else { return }
-        routeObserver = NotificationCenter.default.addObserver(
-            forName: AVAudioSession.routeChangeNotification, object: nil, queue: nil
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in self?.refreshMicrophone() }
-        }
-    }
-
-    private func stopObservingRouteChanges() {
-        if let routeObserver { NotificationCenter.default.removeObserver(routeObserver) }
-        routeObserver = nil
-    }
-
     func stop() {
-        stopObservingRouteChanges()
-        speakerGateOverridden = false
-        microphoneGateTask?.cancel()
-        microphoneGateTask = nil
         idleFlushTask?.cancel()
         idleFlushTask = nil
         endTask?.cancel()
@@ -271,55 +237,8 @@ final class GPTLiveConversationController: ObservableObject {
     func setMicrophoneMuted(_ muted: Bool) {
         guard muted != isMicrophoneMuted else { return }
         isMicrophoneMuted = muted
-        refreshMicrophone()
-    }
-
-    /// Whether the microphone is closed only because the model is speaking
-    /// (or just was) on an open speaker. Its own voice reaches the mic there;
-    /// GPT-Live would hear it as the user barging in and cut itself off in a
-    /// loop, so the mic waits, as in Gemini Live and classic Voice. Headsets
-    /// stay full duplex.
-    var isMicrophoneGatedForSpeaker: Bool {
-        guard routePolicy() == .speakerSafeHalfDuplex, !speakerGateOverridden else { return false }
-        if modelTurnActive { return true }
-        return speakerTailRemaining() > 0
-    }
-
-    private func speakerTailRemaining() -> TimeInterval {
-        let last = [lastModelOutputAt, lastModelTurnEndedAt].compactMap { $0 }.max()
-        guard let last else { return 0 }
-        return max(0, Self.speakerEchoTail - now().timeIntervalSince(last))
-    }
-
-    /// Whether the Interrupt button applies: the model is speaking and only
-    /// the speaker gate keeps the user from talking over it.
-    var canInterrupt: Bool {
-        isActive && endRequestedAt == nil && !isMicrophoneMuted && isMicrophoneGatedForSpeaker && modelTurnActive
-    }
-
-    /// Opens the microphone for the rest of the model's turn, so the user can
-    /// talk over it on a speaker. GPT-Live cuts itself off when it hears them.
-    func interruptSpeaking() {
-        guard canInterrupt else { return }
-        speakerGateOverridden = true
-        refreshMicrophone()
-    }
-
-    /// Applies mute, a requested end and the speaker gate to the mic track,
-    /// and re-checks once the echo tail is over.
-    func refreshMicrophone() {
-        microphoneGateTask?.cancel()
-        microphoneGateTask = nil
-        guard let session else { return }
-        let gated = isMicrophoneGatedForSpeaker
-        session.setMicrophoneEnabled(!isMicrophoneMuted && endRequestedAt == nil && !gated)
-        guard gated, !modelTurnActive else { return }
-        let wait = speakerTailRemaining()
-        microphoneGateTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(wait + 0.05))
-            guard !Task.isCancelled else { return }
-            self?.refreshMicrophone()
-        }
+        guard endRequestedAt == nil else { return }
+        session?.setMicrophoneEnabled(!muted)
     }
 
     /// Background-job updates became pending (the supervisor's
@@ -378,15 +297,13 @@ final class GPTLiveConversationController: ObservableObject {
         switch state {
         case .ready:
             voiceNote = session?.voiceNote
-            // The briefing goes first, so the model never hears the room
-            // before it has its rules.
+            session?.setMicrophoneEnabled(!isMicrophoneMuted && endRequestedAt == nil)
             // Given with the call when the host takes it there: appended after
             // the call starts, the model answers each piece out loud.
             if session?.briefingApplied != true {
                 session?.appendContext(briefing(), channel: .commentary, delegationID: nil)
             }
             phase = endRequestedAt != nil ? .ending : modelTurnActive ? .speaking : .listening
-            refreshMicrophone()
             if endRequestedAt == nil { deliverPendingJobUpdates() }
             scheduleIdleFlush()
         case .failed(let message):
@@ -430,7 +347,6 @@ final class GPTLiveConversationController: ObservableObject {
             lastModelOutputAt = now()
             if endRequestedAt == nil { phase = .speaking }
             appendTranscript(text, speaker: .assistant)
-            refreshMicrophone()
         case .turnDone(let role, let text):
             switch role {
             case "user":
@@ -445,14 +361,12 @@ final class GPTLiveConversationController: ObservableObject {
             case "assistant":
                 modelTurnActive = false
                 lastModelTurnEndedAt = now()
-                speakerGateOverridden = false
                 if let finished = finishTurn(assistantTurnEntries, speaker: .assistant, text: text) {
                     finishedTurn = FinishedTurn(speaker: .assistant, text: finished)
                 }
                 openAssistantEntry = nil
                 assistantTurnEntries = []
                 if endRequestedAt == nil { phase = .listening }
-                refreshMicrophone()
                 scheduleIdleFlush()
             default:
                 // A role Conduit doesn't know is neither the user nor the model.
@@ -568,7 +482,6 @@ final class GPTLiveConversationController: ObservableObject {
             // The model speaks it next: wait for that turn before another.
             modelTurnActive = true
             lastModelOutputAt = now()
-            refreshMicrophone()
         } else {
             pendingContext.insert(item, at: 0)
         }
