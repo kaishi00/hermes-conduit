@@ -21,7 +21,7 @@
 # Semantics:
 #   * a lock exists with NO readable pid        -> BUSY (never stolen: it is
 #                                                  not provably stale)
-#   * a readable pid that is confirmed dead     -> steal, claimed by an atomic
+#   * a readable pid that does not exist        -> steal, claimed by an atomic
 #                                                  mkdir INSIDE that lock
 #                                                  instance, so no contender
 #                                                  can ever move a live lock
@@ -70,6 +70,19 @@ gate_is_main_process() {
     self="$(exec sh -c 'echo "$PPID"' 2>/dev/null)"
   fi
   [ -z "$self" ] || [ "$self" = "$$" ]
+}
+
+# Liveness for the steal path: a pid is dead only when it provably does not
+# exist. `kill -0` alone cannot say that: for a process owned by ANOTHER local
+# user it fails with EPERM, which a shell cannot tell apart from ESRCH, so a
+# contender on a multi-account build Mac would judge a live gate dead and
+# steal its lock - two owners. When `kill -0` fails, `ps -p` (POSIX; exit
+# status 0 only when the pid exists, whoever owns it) has the last word.
+# (Exit status, not `-o pid=`: Git Bash's ps rejects -o. A ps that cannot run
+# at all reads as "no such process" - no worse than `kill -0` alone.)
+gate_pid_alive() { # $1 = numeric pid
+  kill -0 "$1" 2>/dev/null && return 0
+  ps -p "$1" >/dev/null 2>&1
 }
 
 # Remove this process's steal marker - and only ours. The marker carries its
@@ -127,9 +140,16 @@ gate_lock_release() {
 #          1 could not create the temp directory.
 acquire_gate_lock() { # $1 = canonical lock dir
   local canonical="$1" temp holder
+  # This invocation's identity for its temp dir, steal marker and aside:
+  # `$$` is the parent's pid in a subshell, so two sibling contenders would
+  # otherwise share one. The lock's own pid file and the ownership check keep
+  # `$$` deliberately - that is the gate's top-level pid, which release and
+  # the gate's refusal message compare against. (bash 3.2 has no BASHPID; the
+  # gate acquires only from its top level, where the two agree.)
+  local me="${BASHPID:-$$}"
   GATE_LOCK_OWNER=""
   GATE_LOCK_STEAL_BLOCKED=""
-  temp="$canonical.new.$$"
+  temp="$canonical.new.$me"
   GATE_LOCK_TEMP="$temp"
   rm -rf "$temp" 2>/dev/null || true
   if ! mkdir -p "$temp" 2>/dev/null; then
@@ -158,7 +178,7 @@ acquire_gate_lock() { # $1 = canonical lock dir
         return 2
         ;;
     esac
-    if kill -0 "$holder" 2>/dev/null; then
+    if gate_pid_alive "$holder"; then
       rm -rf "$temp"; GATE_LOCK_TEMP=""
       GATE_LOCK_OWNER="$holder"
       return 2
@@ -207,11 +227,7 @@ acquire_gate_lock() { # $1 = canonical lock dir
     # stealer was SIGKILLed inside a millisecond-long window, which the BUSY
     # message names; the cost of reclaiming is two owners on one Mac.
     local marker="$canonical/steal"
-    # The marker names its creator by BASHPID where bash has it: `$$` is the
-    # parent's pid in a subshell, so two sibling stealers would otherwise
-    # claim the same identity. (bash 3.2 falls back to `$$`; the gate calls
-    # acquire_gate_lock only from its top level, where the two agree.)
-    local me="${BASHPID:-$$}"
+    # The marker names its creator by $me (see the top of this function).
     local mark_temp="$canonical.mark.$me"
     GATE_LOCK_MARKER="$marker"
     GATE_LOCK_MARK_TEMP="$mark_temp"
@@ -236,7 +252,7 @@ acquire_gate_lock() { # $1 = canonical lock dir
     GATE_LOCK_MARK_TEMP=""
     local judged="$holder"
     holder="$(cat "$canonical/pid" 2>/dev/null || true)"
-    if [ "$holder" != "$judged" ] || { [ -n "$holder" ] && kill -0 "$holder" 2>/dev/null; }; then
+    if [ "$holder" != "$judged" ] || { [ -n "$holder" ] && gate_pid_alive "$holder"; }; then
       # The marker landed in a newer lock than the one judged dead.
       gate_lock_drop_marker
       rm -rf "$temp"; GATE_LOCK_TEMP=""
@@ -245,7 +261,7 @@ acquire_gate_lock() { # $1 = canonical lock dir
       GATE_LOCK_OWNER=""
       case "$holder" in
         ''|*[!0-9]*) ;;
-        *) kill -0 "$holder" 2>/dev/null && GATE_LOCK_OWNER="$holder" ;;
+        *) gate_pid_alive "$holder" && GATE_LOCK_OWNER="$holder" ;;
       esac
       return 2
     fi

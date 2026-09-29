@@ -430,17 +430,21 @@ done
 # (d) The rename aside itself fails: BUSY, and the marker is withdrawn.
 mkdir -p "$LOCK13"
 printf '999999999\n' > "$LOCK13/pid"
-FAILED13_RC="$(
+# A named function run by command substitution (so the `mv` override stays in
+# that subshell): macOS /bin/bash 3.2 cannot parse a `case` written inline in
+# a command substitution - its pattern parentheses end the substitution.
+case13_failed_aside() {
   mv() {
     case "$2" in
       */steal) command mv "$@" ;;
       *) return 1 ;;
     esac
   }
-  rc=0
+  local rc=0
   acquire_gate_lock "$LOCK13" 2>/dev/null || rc=$?
   echo "$rc"
-)"
+}
+FAILED13_RC="$(case13_failed_aside)"
 assert_eq "a failed rename aside reports BUSY" "$FAILED13_RC" "2"
 assert_eq "and withdraws the stealer's marker" \
   "$([ -d "$LOCK13/steal" ] && echo yes || echo no)" "no"
@@ -479,6 +483,44 @@ assert_eq "without BASHPID or BASH_SUBSHELL, the pid probe still spots a subshel
   "$(PROBE_PATH="$WORK/probe-bin:$PATH" bash -c '. "$1"; unset BASHPID; ( BASH_SUBSHELL=0; PATH="$PROBE_PATH"; gate_is_main_process && echo main || echo sub )' _ "$MOD")|$(cat "$WORK/probe-ran" 2>/dev/null)" "sub|probed"
 assert_eq "an unanswerable pid probe fails toward the teardown (main)" \
   "$(bash -c '. "$1"; unset BASHPID; PATH=/nonexistent; gate_is_main_process && echo main || echo sub' _ "$MOD" 2>/dev/null)" "main"
+
+echo "--- case 15: a pid kill -0 cannot signal (EPERM) is not judged dead ---"
+# For a process owned by another local user, `kill -0` fails with EPERM - the
+# same failure as a dead pid. Simulated by overriding `kill` in a subshell: the
+# owner below is this test process, alive, so the lock must be BUSY and left
+# exactly as it was, not stolen.
+LOCK15="$WORK/lock-15"
+mkdir -p "$LOCK15"
+printf '%s\n' "$$" > "$LOCK15/pid"
+# A stolen lock would be rewritten with this same `$$`, so the pid alone
+# cannot prove the lock was left alone: the original directory carries a
+# sentinel a takeover would discard with it.
+touch "$LOCK15/sentinel"
+EPERM15="$( (
+  kill() { return 1; }
+  rc=0
+  acquire_gate_lock "$LOCK15" 2>/dev/null || rc=$?
+  echo "$rc|${GATE_LOCK_OWNER:-}"
+) )"
+assert_eq "a live owner kill -0 cannot signal is BUSY, named as the owner" \
+  "$EPERM15" "2|$$"
+assert_eq "and its lock is untouched" \
+  "$(cat "$LOCK15/pid" 2>/dev/null)|$([ -f "$LOCK15/sentinel" ] && echo kept || echo gone)" "$$|kept"
+assert_eq "with no steal marker left in it" \
+  "$([ -e "$LOCK15/steal" ] && echo yes || echo no)" "no"
+assert_eq "nor any aside or temp lock beside it" \
+  "$(ls -d "$LOCK15".stale.* "$LOCK15".new.* "$LOCK15".mark.* 2>/dev/null | wc -l | tr -d ' ')" "0"
+# The fallback must not make a genuinely dead owner unstealable.
+printf '999999999\n' > "$LOCK15/pid"
+DEAD15="$( (
+  kill() { return 1; }
+  rc=0
+  acquire_gate_lock "$LOCK15" 2>/dev/null || rc=$?
+  echo "$rc|$(cat "$LOCK15/pid" 2>/dev/null)"
+  gate_lock_release
+) )"
+assert_eq "a pid that does not exist is still taken over" "$DEAD15" "0|$$"
+rm -rf "$LOCK15"
 
 echo ""
 echo "=== $pass_count passed, $fail_count failed ==="

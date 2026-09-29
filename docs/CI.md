@@ -1103,8 +1103,21 @@ The gate takes a single-gate-per-Mac lock (a `mkdir`-based lock under the gate
 root) and refuses to start while another gate is running: two concurrent
 `xcodebuild` chains on one Mac corrupt each other's Simulator state, and a
 result from such a run would be meaningless. `--no-lock` exists and is
-documented as unsafe. Stale locks (dead holder pid) are taken over with a
-warning printed to stderr.
+documented as unsafe. Stale locks (a holder pid that no longer exists) are
+taken over with a warning printed to stderr. A pid `kill -0` cannot signal
+(another local user's process) is confirmed with `ps -p` before it is judged
+dead, so a gate run under a different account is never stolen from.
+
+One case needs manual recovery. A takeover first claims the dead lock with a
+marker directory, `$GATE_ROOT/gate.lock/steal`, and removes it on every exit
+path it can run - but a stealer that is SIGKILLed mid-takeover cannot, and the
+marker it leaves makes that lock unstealable. Every later gate then refuses
+with "the gate lock at … has a dead owner (pid N), and another contender is
+taking it over (…/steal)". Once you have confirmed no gate is running on the
+Mac, remove the lock directory (`rm -rf "$GATE_ROOT/gate.lock"`) and rerun.
+The marker is deliberately never reclaimed automatically: removing another
+contender's claim on the strength of a liveness check is the same race the
+marker exists to close.
 
 ## Adding a test
 
