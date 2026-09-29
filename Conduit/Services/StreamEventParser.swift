@@ -142,10 +142,12 @@ enum StreamEventParser {
             let requestId = (payload?["id"]?.stringValue ?? "")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             guard !requestId.isEmpty else { return nil }
+            // A missing reason is not a timeout: only the legacy
+            // clarify.expire (reason nil) or an explicit "timeout" says so.
             return .clarifyExpire(
                 sessionId: sessionId,
                 requestId: requestId,
-                reason: payload?["reason"]?.stringValue
+                reason: payload?["reason"]?.stringValue ?? ""
             )
 
         case "approval.request":

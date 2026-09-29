@@ -654,14 +654,17 @@ final class HermesClient: ObservableObject {
     private var requestId = 0
     private var pending = [Int: PendingRequest]()
     /// Server→client request ids this client has presented and not yet
-    /// answered (or seen withdrawn). Deliberately kept across reconnects: the
-    /// gateway keeps the request open and `session.resume` re-announces it
-    /// under the same id.
+    /// answered (or seen withdrawn). Not cleared by `connect()`, but AppState
+    /// builds a fresh client per reconnect, so in practice this is rebuilt
+    /// from `session.resume`'s `open_requests` (same ids) on each connection.
     private var openServerRequestIDs = Set<String>()
     /// Approval server request id (`srq-…`) → the approval queue
     /// `request_id` its card is keyed by (and the session the request named),
-    /// so `request.cancel` can reach it.
+    /// so `request.cancel` can reach it. Rebuilt like `openServerRequestIDs`.
     private var approvalQueueIDs = [String: (queueID: String, sessionId: String)]()
+    /// Clarify server request id → the session the request named, the
+    /// fallback for a `request.cancel` whose envelope omits `session_id`.
+    private var clarifySessions = [String: String]()
     /// The socket `client.capabilities` was sent on, so a repeated
     /// `gateway.ready` does not advertise twice on one connection.
     private weak var advertisedSocket: AnyObject?
@@ -943,6 +946,13 @@ final class HermesClient: ObservableObject {
                 let payload = eventObject?["payload"]?.objectValue
                 if let id = payload?["id"]?.stringValue {
                     openServerRequestIDs.remove(id)
+                    if let session = clarifySessions.removeValue(forKey: id),
+                       (eventObject?["session_id"]?.stringValue ?? "").isEmpty,
+                       var patched = eventObject {
+                        patched["session_id"] = .string(session)
+                        handleStreamEvent(params: .object(patched))
+                        return
+                    }
                     if let approval = approvalQueueIDs.removeValue(forKey: id) {
                         let envelopeSession = eventObject?["session_id"]?.stringValue ?? ""
                         onEvent?(.approvalWithdrawn(
@@ -1032,6 +1042,7 @@ final class HermesClient: ObservableObject {
                 return
             }
             openServerRequestIDs.insert(requestID)
+            clarifySessions[requestID] = sessionId
             onEvent?(.clarify(sessionId: sessionId, activity: activity))
         default:
             declineServerRequest(id: id, method: method)
@@ -1459,11 +1470,15 @@ final class HermesClient: ObservableObject {
         // `open_requests` under its original id. Feed it through the same
         // authoritative restore path (locked batch answers ride `answers`).
         let openClarifies = Self.openClarifyPayloads(in: object["open_requests"])
+        // The oldest rides `pending_clarify` only when the resume did not
+        // already carry one; every other open clarify rides `open_clarifies`.
         if snapshotObject["pending_clarify"] == nil, let oldest = openClarifies.first {
             snapshotObject["pending_clarify"] = .object(oldest)
-        }
-        if openClarifies.count > 1 {
-            snapshotObject["open_clarifies"] = .array(openClarifies.dropFirst().map { .object($0) })
+            if openClarifies.count > 1 {
+                snapshotObject["open_clarifies"] = .array(openClarifies.dropFirst().map { .object($0) })
+            }
+        } else if !openClarifies.isEmpty {
+            snapshotObject["open_clarifies"] = .array(openClarifies.map { .object($0) })
         }
         for id in Self.openRequestIDs(in: object["open_requests"]) {
             openServerRequestIDs.insert(id)
@@ -1486,6 +1501,13 @@ final class HermesClient: ObservableObject {
                   let queueID = params["request_id"]?.stringValue,
                   !queueID.isEmpty else { continue }
             approvalQueueIDs[id] = (queueID, params["session_id"]?.stringValue ?? "")
+        }
+        for entry in object["open_requests"]?.arrayValue ?? [] {
+            guard let request = entry.objectValue,
+                  request["method"]?.stringValue == "clarify",
+                  let id = request["id"]?.stringValue,
+                  let session = request["params"]?.objectValue?["session_id"]?.stringValue else { continue }
+            clarifySessions[id] = session
         }
         return SessionResumeResult(
             sessionId: resolvedId,
