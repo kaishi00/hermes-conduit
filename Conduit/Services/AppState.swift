@@ -18489,6 +18489,9 @@ final class AppState: ObservableObject {
         // Same ownership fence as respondToApproval: a completion from a
         // replaced client must not touch whatever card is current.
         let profile = activeProfile
+        // Whatever the completion path (including a rejected ownership
+        // fence), a mid-send withdrawal record never outlives this send.
+        defer { withdrawnInFlightInputPrompts.removeValue(forKey: current.requestId) }
         do {
             try await client.respondToInputPrompt(requestId: current.requestId, value: value ?? "")
             guard profile == activeProfile, self.client === client,
@@ -19081,6 +19084,10 @@ final class AppState: ObservableObject {
         cancelPendingResponseHapticConclusion()
         performResponseHapticEffects(responseHaptics.registerTool(at: Date()))
     }
+
+    #if DEBUG
+    var responseAwaitsUserInputForTesting: Bool { responseAwaitsUserInput }
+    #endif
 
     private var responseAwaitsUserInput: Bool {
         messages.contains { message in

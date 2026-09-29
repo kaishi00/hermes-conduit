@@ -1,6 +1,16 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Send gives Hermes this value. Skip lets it continue without one." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“发送”会把这个值交给 Hermes；“跳过”则让它在没有该值的情况下继续。"
+          }
+        }
+      }
+    },
     "This request was answered elsewhere." : {
       "localizations" : {
         "zh-Hans" : {

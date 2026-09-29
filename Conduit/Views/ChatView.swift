@@ -2471,6 +2471,7 @@ struct InputPromptCard: View {
                     // system keychain.
                     SecureField(placeholder(for: prompt.kind), text: $value)
                         .accessibilityLabel(placeholder(for: prompt.kind))
+                        .accessibilityHint(AppLocalization.string("Send gives Hermes this value. Skip lets it continue without one."))
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .focused($fieldFocused)
@@ -2487,7 +2488,7 @@ struct InputPromptCard: View {
                             Label(AppLocalization.string("Send"), systemImage: "paperplane.fill")
                         }
                         .buttonStyle(.borderedProminent)
-                        .disabled(!prompt.isAnswerable || value.isEmpty)
+                        .disabled(!prompt.isAnswerable || !hasValue)
 
                         Spacer(minLength: 0)
 
@@ -2518,10 +2519,17 @@ struct InputPromptCard: View {
     }
 
     private func submit(_ prompt: InputPromptActivity) {
-        guard prompt.isAnswerable, !value.isEmpty else { return }
+        guard prompt.isAnswerable, hasValue else { return }
+        // Sent untrimmed: a password may legitimately contain spaces.
         let answer = value
         fieldFocused = false
         Task { await appState.respondToInputPrompt(messageId: message.id, value: answer) }
+    }
+
+    /// Whitespace alone is not an answer (Hermes would store it as the
+    /// secret); only a real value enables Send.
+    private var hasValue: Bool {
+        !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private func skip(_ prompt: InputPromptActivity) {
