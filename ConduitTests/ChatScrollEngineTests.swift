@@ -48,6 +48,11 @@ private final class FakeChatScrollSurface: ChatScrollSurface {
 final class ChatScrollEngineTests: XCTestCase {
     private var clock: TimeInterval = 100
     private var events: [ChatScrollEngineEvent] = []
+    /// Every engine a test makes, alive until the test ends. The fake
+    /// surface holds its engine weakly (as the real one does), so a test that
+    /// keeps only the surface would otherwise talk to a freed engine and
+    /// pass without testing anything.
+    private var engines: [ChatScrollEngine] = []
 
     private let keyA = ChatScrollSessionKey(profile: "p", sessionID: "a")
     private let keyB = ChatScrollSessionKey(profile: "p", sessionID: "b")
@@ -56,6 +61,7 @@ final class ChatScrollEngineTests: XCTestCase {
         super.setUp()
         clock = 100
         events = []
+        engines = []
     }
 
     private func identity(_ sessionID: String) -> ChatScrollSessionIdentity {
@@ -86,6 +92,7 @@ final class ChatScrollEngineTests: XCTestCase {
     ) -> (ChatScrollEngine, FakeChatScrollSurface) {
         let surface = providedSurface ?? FakeChatScrollSurface()
         let engine = ChatScrollEngine(now: { [unowned self] in self.clock })
+        engines.append(engine)
         engine.onEvent = { [unowned self] event in self.events.append(event) }
         surface.engine = engine
         engine.renderedSessionChanged(
@@ -245,6 +252,56 @@ final class ChatScrollEngineTests: XCTestCase {
         surface.layOut(contentHeight: 4700)
         XCTAssertEqual(surface.contentOffsetY, 1050)
         XCTAssertNil(engine.prependAnchor)
+    }
+
+    /// SwiftUI can lay the prepended page out (content-size KVO) before its
+    /// onChange delivers the new transcript: the anchor must still hold.
+    func testPrependHoldsWhenLayoutArrivesBeforeTheTranscript() {
+        let (engine, surface) = makeEngine()
+        surface.userScroll(to: 500)
+        engine.olderPageBackfillRequested(sessionKey: keyA)
+
+        surface.layOut(contentHeight: 4600)
+        XCTAssertEqual(surface.contentOffsetY, 500, "nothing to hold before the prepend is known")
+        engine.transcriptChanged(
+            messages: Self.messages(-5..<10),
+            transcriptRevision: 2,
+            viewportTransitionGeneration: 1
+        )
+        XCTAssertEqual(surface.contentOffsetY, 1100, "the landing itself restores the distance from the bottom")
+
+        clock += 0.2
+        surface.layOut(contentHeight: 4550)
+        XCTAssertEqual(surface.contentOffsetY, 1050)
+    }
+
+    /// The bottom distance counts estimated heights of rows below the
+    /// reader; once the reader's row reports a believable frame it wins,
+    /// but a provisional frame far from the estimate never moves the reader.
+    func testPrependRefinesToTheReadersRowButIgnoresProvisionalFrames() {
+        let (engine, surface) = makeEngine()
+        surface.userScroll(to: 500)
+        // m2 is the top visible row, 10 pt below the viewport top.
+        engine.rowFramesChanged(["m2": ChatScrollRowFrame(minY: 492, maxY: 700, order: 2)])
+        engine.olderPageBackfillRequested(sessionKey: keyA)
+
+        engine.transcriptChanged(
+            messages: Self.messages(-5..<10),
+            transcriptRevision: 2,
+            viewportTransitionGeneration: 1
+        )
+        surface.layOut(contentHeight: 4600)
+        XCTAssertEqual(surface.contentOffsetY, 1100, "bottom distance first")
+
+        // A provisional frame more than a viewport off is ignored. It stays
+        // inside the scrollable range (target 2508 < max 3800), so the
+        // distance check rejects it, not clamping.
+        engine.rowFramesChanged(["m2": ChatScrollRowFrame(minY: 2500, maxY: 2700, order: 7)])
+        XCTAssertEqual(surface.contentOffsetY, 1100)
+
+        // The settled frame: the rows below were estimated 40 pt too tall.
+        engine.rowFramesChanged(["m2": ChatScrollRowFrame(minY: 1052, maxY: 1260, order: 7)])
+        XCTAssertEqual(surface.contentOffsetY, 1060, "the reader's row is back where it was")
     }
 
     func testPrependAnchorWaitsForTheActualPrepend() {

@@ -73,10 +73,11 @@ struct ChatView: View {
         ChatTitleScrollAnchor.id(for: activeOrFallbackScrollSessionKey)
     }
 
-    /// Read from the engine; `viewportInputs.renderedScrollScope` carries the
-    /// cache's rendering revision, so any target change re-runs the body.
+    /// Read from the engine; `viewportInputs.targetsRevision` is the cache's
+    /// rendering revision, so any target change re-runs the body (with or
+    /// without a rendered session).
     private var chatMessageScrollTargets: [ChatMessageScrollTarget] {
-        _ = viewportInputs.renderedScrollScope
+        _ = viewportInputs.targetsRevision
         return scrollEngine.targets
     }
 

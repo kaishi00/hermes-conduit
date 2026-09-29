@@ -5626,14 +5626,27 @@ final class AppStateChatResumeTests: XCTestCase {
         }
         defer { observer.cancel() }
 
+        let cancellationsBefore = harness.appState.composerEditCancellationCount
         harness.appState.noteComposerUserEdit()
+        // The first edit cancels the automatic return. Here that publishes
+        // nothing (the restoration request is already nil, and cancelling a
+        // nil request deliberately doesn't republish), so the latch is
+        // checked by its own cancellation count, not by publishes.
+        XCTAssertEqual(
+            harness.appState.composerEditCancellationCount, cancellationsBefore + 1,
+            "The first edit cancels this generation's automatic return"
+        )
+        XCTAssertEqual(harness.recoverySequence.currentPurpose, .preserveCurrent)
+        XCTAssertEqual(publishedCount, 0, "Cancelling an already-nil restoration request must not republish")
+
         harness.appState.noteComposerUserEdit()
         harness.appState.noteComposerUserEdit()
 
         XCTAssertEqual(
-            publishedCount, 1,
+            harness.appState.composerEditCancellationCount, cancellationsBefore + 1,
             "Exactly one cancellation may land per automatic-work generation"
         )
+        XCTAssertEqual(publishedCount, 0, "Later edits in the window publish nothing")
 
         mintGate.resume()
         await reconnect.value
