@@ -74,7 +74,8 @@ protocol GPTLiveSessionProviding: AnyObject {
     func availability() async throws -> GPTLiveAvailability
     /// Exchanges a WebRTC offer for GPT-Live's answer. `history` seeds the
     /// conversation (the host passes it as `initial_items`).
-    func createSession(offer: String, history: [[String: Any]]) async throws -> GPTLiveSessionAnswer
+    /// `voice` overrides the host's configured voice for this call.
+    func createSession(offer: String, history: [[String: Any]], voice: String?) async throws -> GPTLiveSessionAnswer
 }
 
 @MainActor
@@ -113,9 +114,10 @@ final class GPTLiveClient: GPTLiveSessionProviding {
         return Self.availability(from: response)
     }
 
-    func createSession(offer: String, history: [[String: Any]]) async throws -> GPTLiveSessionAnswer {
+    func createSession(offer: String, history: [[String: Any]], voice: String? = nil) async throws -> GPTLiveSessionAnswer {
         var body: [String: Any] = ["sdp": offer]
         if !history.isEmpty { body["history"] = history }
+        if let voice, !voice.isEmpty { body["voice"] = voice }
         let response: [String: Any]
         do {
             response = try await request(scoped(Self.sessionPath), "POST", body, Self.sessionTimeoutMilliseconds)

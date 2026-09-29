@@ -13,6 +13,9 @@ struct GPTLiveSettingsModel {
     var setEnabled: (Bool) -> Void
     /// Asks the Hermes host whether it can start GPT-Live.
     var checkAvailability: () async -> Result<GPTLiveAvailability, Error>
+    /// Voice name; nil is the voice set on the Hermes server.
+    var voice: String? = nil
+    var setVoice: (String?) -> Void = { _ in }
     var memory: Bool = false
     var setMemory: (Bool) -> Void = { _ in }
     var personality: Bool = false
@@ -22,6 +25,8 @@ struct GPTLiveSettingsModel {
 struct GPTLiveSettingsSection: View {
     let model: GPTLiveSettingsModel
     @State private var enabled: Bool
+    /// Empty is the host's voice (a Picker tag can't be nil).
+    @State private var voice: String
     @State private var memory: Bool
     @State private var personality: Bool
     @State private var status: String?
@@ -31,6 +36,7 @@ struct GPTLiveSettingsSection: View {
     init(model: GPTLiveSettingsModel) {
         self.model = model
         _enabled = State(initialValue: model.enabled)
+        _voice = State(initialValue: model.voice ?? "")
         _memory = State(initialValue: model.memory)
         _personality = State(initialValue: model.personality)
     }
@@ -68,7 +74,24 @@ struct GPTLiveSettingsSection: View {
                 }
                 .disabled(isChecking)
                 .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.14))
-                Text("The model and voice are set on your Hermes server (voice.gpt_live in the profile's config).")
+                Picker("Voice", selection: Binding(
+                    get: { voice },
+                    set: { chosen in
+                        voice = chosen
+                        model.setVoice(chosen.isEmpty ? nil : chosen)
+                    }
+                )) {
+                    Text("Server default").tag("")
+                    ForEach(GPTLiveVoice.all) { option in
+                        Text(verbatim: option.label).tag(option.name)
+                    }
+                    // A voice saved by a newer build that this one doesn't list.
+                    if !voice.isEmpty, !GPTLiveVoice.all.contains(where: { $0.name == voice }) {
+                        Text(verbatim: voice).tag(voice)
+                    }
+                }
+                .pickerStyle(.menu)
+                Text("The voice GPT-Live speaks with. Server default uses the voice set on your Hermes server (voice.gpt_live in the profile's config). The model is set there too. Applies to the next conversation.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Toggle("Use Hermes memory", isOn: Binding(
@@ -95,6 +118,7 @@ struct GPTLiveSettingsSection: View {
         }
         .task { if enabled { await check() } }
         .onChange(of: model.enabled) { _, newValue in enabled = newValue }
+        .onChange(of: model.voice) { _, newValue in voice = newValue ?? "" }
         .onChange(of: model.memory) { _, newValue in memory = newValue }
         .onChange(of: model.personality) { _, newValue in personality = newValue }
     }

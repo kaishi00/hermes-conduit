@@ -156,6 +156,9 @@ struct VoiceProfilePreferences: Codable, Equatable {
     /// Opt-in GPT-Live voice mode on the host's ChatGPT subscription (off by
     /// default; older blobs decode off). Never on together with Gemini Live.
     var gptLiveEnabled: Bool = false
+    /// GPT-Live's voice ("cove", "ember"…). Nil is the host's configured voice
+    /// (voice.gpt_live.subscription_voice, "cove" by default).
+    var gptLiveVoice: String? = nil
     /// Whether GPT-Live gets the Hermes host's memory. Nil is off.
     var gptLiveMemory: Bool? = nil
     /// Whether GPT-Live speaks as the profile's SOUL.md persona. Nil is off.
@@ -313,6 +316,34 @@ struct GeminiLiveVoice: Equatable, Identifiable {
             GeminiLiveVoice(name: "Sulafat", style: AppLocalization.string("Warm")),
         ]
     }
+}
+
+/// A GPT-Live voice: the name the host sends to GPT-Live, and how it sounds.
+/// The names are ChatGPT's voices; a voice the account doesn't have is
+/// refused by GPT-Live when the call starts.
+struct GPTLiveVoice: Equatable, Identifiable {
+    let name: String
+    let style: String
+
+    var id: String { name }
+
+    /// Computed so the descriptions follow the current app language.
+    static var all: [GPTLiveVoice] {
+        [
+            GPTLiveVoice(name: "arbor", style: AppLocalization.string("Easy-going")),
+            GPTLiveVoice(name: "breeze", style: AppLocalization.string("Animated")),
+            GPTLiveVoice(name: "cove", style: AppLocalization.string("Composed")),
+            GPTLiveVoice(name: "ember", style: AppLocalization.string("Confident")),
+            GPTLiveVoice(name: "juniper", style: AppLocalization.string("Open")),
+            GPTLiveVoice(name: "maple", style: AppLocalization.string("Cheerful")),
+            GPTLiveVoice(name: "sol", style: AppLocalization.string("Savvy")),
+            GPTLiveVoice(name: "spruce", style: AppLocalization.string("Calm")),
+            GPTLiveVoice(name: "vale", style: AppLocalization.string("Bright")),
+        ]
+    }
+
+    /// The name as shown in the picker ("Cove · Composed").
+    var label: String { "\(name.prefix(1).uppercased())\(name.dropFirst()) · \(style)" }
 }
 
 /// What a Gemini Live session actually searches with.

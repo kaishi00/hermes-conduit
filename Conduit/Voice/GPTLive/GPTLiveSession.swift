@@ -40,6 +40,8 @@ final class GPTLiveSession {
 
     private let client: GPTLiveSessionProviding
     private let history: [[String: Any]]
+    /// The voice for this call; nil keeps the host's configured voice.
+    private let voice: String?
     private let makePeer: @MainActor () -> GPTLivePeer
     private let startTimeout: Duration
     private let reconnectGrace: Duration
@@ -53,12 +55,14 @@ final class GPTLiveSession {
     init(
         client: GPTLiveSessionProviding,
         history: [[String: Any]] = [],
+        voice: String? = nil,
         makePeer: @escaping @MainActor () -> GPTLivePeer = { WebRTCGPTLivePeer() },
         startTimeout: Duration = GPTLiveSession.startTimeout,
         reconnectGrace: Duration = GPTLiveSession.reconnectGrace
     ) {
         self.client = client
         self.history = history
+        self.voice = voice
         self.makePeer = makePeer
         self.startTimeout = startTimeout
         self.reconnectGrace = reconnectGrace
@@ -139,7 +143,7 @@ final class GPTLiveSession {
         do {
             let offer = try await peer.makeOffer()
             guard isCurrent(peer) else { return }
-            let answer = try await client.createSession(offer: offer, history: history)
+            let answer = try await client.createSession(offer: offer, history: history, voice: voice)
             guard isCurrent(peer) else { return }
             sessionID = answer.sessionID
             try await peer.acceptAnswer(answer.sdp)
