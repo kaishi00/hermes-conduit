@@ -21,11 +21,13 @@ final class FakeGPTLiveClient: GPTLiveSessionProviding {
     var answerResult: Result<GPTLiveSessionAnswer, Error> = .success(GPTLiveSessionAnswer(sessionID: "rtc_1", sdp: "v=0 answer"))
     private(set) var offers: [String] = []
     private(set) var histories: [[[String: Any]]] = []
+    private(set) var voices: [String?] = []
 
     func availability() async throws -> GPTLiveAvailability { try availabilityResult.get() }
 
-    func createSession(offer: String, history: [[String: Any]]) async throws -> GPTLiveSessionAnswer {
+    func createSession(offer: String, history: [[String: Any]], voice: String?) async throws -> GPTLiveSessionAnswer {
         offers.append(offer)
+        voices.append(voice)
         histories.append(history)
         return try answerResult.get()
     }
@@ -227,6 +229,43 @@ extension HermesVoiceGatewayTimeoutTests {
         let peer = FakeGPTLivePeer()
         let session = GPTLiveSession(client: client, makePeer: { peer }, startTimeout: startTimeout, reconnectGrace: reconnectGrace)
         return (session, peer)
+    }
+
+    func testGPTLiveVoiceIsSentOnlyWhenChosenAndPassedThroughTheSession() async throws {
+        var bodies: [[String: Any]?] = []
+        let reply: [String: Any] = [
+            "ok": true, "auth": "subscription", "session": ["id": "rtc_abc"],
+            "transport": ["type": "webrtc", "sdp": "v=0 answer"], "source": "plugin",
+        ]
+        let client = GPTLiveClient(request: { _, _, body, _ in
+            bodies.append(body)
+            return reply
+        })
+        _ = try await client.createSession(offer: "v=0 offer", history: [])
+        _ = try await client.createSession(offer: "v=0 offer", history: [], voice: "")
+        _ = try await client.createSession(offer: "v=0 offer", history: [], voice: "ember")
+        XCTAssertNil(bodies[0]?["voice"], "No choice keeps the host's configured voice")
+        XCTAssertNil(bodies[1]?["voice"])
+        XCTAssertEqual(bodies[2]?["voice"] as? String, "ember")
+
+        let fake = FakeGPTLiveClient()
+        let peer = FakeGPTLivePeer()
+        let session = GPTLiveSession(client: fake, voice: "sol", makePeer: { peer })
+        session.start()
+        await settle()
+        XCTAssertEqual(fake.voices, ["sol"])
+    }
+
+    func testGPTLiveVoicePreferenceRoundTripsAndDefaultsToTheHostVoice() throws {
+        let missing = try JSONDecoder().decode(VoiceProfilePreferences.self, from: Data(#"{"gptLiveEnabled":true}"#.utf8))
+        XCTAssertNil(missing.gptLiveVoice)
+        var preferences = VoiceProfilePreferences()
+        preferences.gptLiveVoice = "ember"
+        let roundTrip = try JSONDecoder().decode(VoiceProfilePreferences.self, from: JSONEncoder().encode(preferences))
+        XCTAssertEqual(roundTrip.gptLiveVoice, "ember")
+        XCTAssertEqual(Set(GPTLiveVoice.all.map(\.name)).count, GPTLiveVoice.all.count)
+        XCTAssertTrue(GPTLiveVoice.all.contains { $0.name == "cove" }, "The host's default voice is pickable")
+        XCTAssertEqual(GPTLiveVoice.all.first { $0.name == "cove" }?.label.hasPrefix("Cove · "), true)
     }
 
     func testGPTLiveKeepsTheCallThroughABriefNetworkDropButNotALongOne() async throws {
@@ -704,6 +743,20 @@ extension AppStateVoiceCapabilityTests {
             appleSpeechAvailability: .ready(localeIdentifier: "en-US")
         )
         return appState
+    }
+
+    func testGPTLiveVoiceChoiceIsSavedAndClearedByServerDefault() {
+        let appState = makeGPTLiveAppState()
+        XCTAssertNil(appState.gptLiveVoice)
+        appState.setGPTLiveVoice("ember")
+        XCTAssertEqual(appState.gptLiveVoice, "ember")
+        // A name this build doesn't list is kept as it is.
+        appState.setGPTLiveVoice("newvoice")
+        XCTAssertEqual(appState.gptLiveVoice, "newvoice")
+        appState.setGPTLiveVoice("")
+        XCTAssertNil(appState.gptLiveVoice, "Server default clears the choice")
+        appState.setGPTLiveVoice(nil)
+        XCTAssertNil(appState.gptLiveVoice)
     }
 
     func testGPTLiveAndGeminiLiveAreNeverOnTogether() {

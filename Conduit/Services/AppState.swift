@@ -1520,6 +1520,22 @@ final class AppState: ObservableObject {
         CarPlayVoiceCoordinator.shared.voiceModeChanged(in: self)
     }
 
+    /// The voice GPT-Live speaks with on this profile; nil is the host's
+    /// configured voice.
+    var gptLiveVoice: String? {
+        loadVoiceProfilePreferences(profile: activeProfile).gptLiveVoice
+    }
+
+    /// Applies from the next GPT-Live conversation.
+    func setGPTLiveVoice(_ voice: String?) {
+        var preferences = loadVoiceProfilePreferences(profile: activeProfile)
+        let stored = voice.flatMap { $0.isEmpty ? nil : $0 }
+        guard preferences.gptLiveVoice != stored else { return }
+        objectWillChange.send()
+        preferences.gptLiveVoice = stored
+        saveVoiceProfilePreferences(preferences, profile: activeProfile)
+    }
+
     /// Whether GPT-Live gets the Hermes host's memory on this profile. Off
     /// until the user turns it on: it sends that memory to OpenAI.
     var gptLiveMemoryEnabled: Bool {
@@ -1600,7 +1616,7 @@ final class AppState: ObservableObject {
         // Memory and persona come from the same host routes Gemini Live reads.
         let hostContext = geminiLiveTokenClient
         let controller = GPTLiveConversationController(
-            makeSession: { GPTLiveSession(client: client) },
+            makeSession: { [weak self] in GPTLiveSession(client: client, voice: self?.gptLiveVoice) },
             availability: { [weak self] in
                 let status = try await client.availability()
                 if status.isAvailable, let self {

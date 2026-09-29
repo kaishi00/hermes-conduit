@@ -351,6 +351,86 @@
         }
       }
     },
+    "Server default" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "服务器默认"
+          }
+        }
+      }
+    },
+    "Animated" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "活泼"
+          }
+        }
+      }
+    },
+    "Composed" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "沉稳"
+          }
+        }
+      }
+    },
+    "Confident" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自信"
+          }
+        }
+      }
+    },
+    "Cheerful" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "愉快"
+          }
+        }
+      }
+    },
+    "Savvy" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "精明"
+          }
+        }
+      }
+    },
+    "Calm" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "平静"
+          }
+        }
+      }
+    },
+    "The voice GPT-Live speaks with. Server default uses the voice set on your Hermes server (voice.gpt_live in the profile's config). The model is set there too. Applies to the next conversation." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live 说话时使用的声音。“服务器默认”使用你的 Hermes 服务器上设置的声音（配置文件中的 voice.gpt_live）。模型也在那里设置。从下一次对话开始生效。"
+          }
+        }
+      }
+    },
     "Gemini default" : {
       "localizations" : {
         "zh-Hans" : {
@@ -17268,16 +17348,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "无法使用 GPT-Live 的通话应答。"
-          }
-        }
-      }
-    },
-    "The model and voice are set on your Hermes server (voice.gpt_live in the profile's config)." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "模型和声音在你的 Hermes 服务器上设置（配置文件中的 voice.gpt_live）。"
           }
         }
       }

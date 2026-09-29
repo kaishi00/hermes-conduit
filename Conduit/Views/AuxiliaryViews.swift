@@ -572,6 +572,8 @@ struct SettingsView: View {
                                 return .failure(error)
                             }
                         },
+                        voice: appState.gptLiveVoice,
+                        setVoice: { appState.setGPTLiveVoice($0) },
                         memory: appState.gptLiveMemoryEnabled,
                         setMemory: { appState.setGPTLiveMemoryEnabled($0) },
                         personality: appState.gptLivePersonalityEnabled,
