@@ -1265,6 +1265,14 @@ final class MessageNormalizerTests: XCTestCase {
             configured,
             "with no registration the configured relay applies"
         )
+        XCTAssertNil(
+            PushNotificationService.requestRelayURL(issuer: "", configured: configured),
+            "an issuer that doesn't parse sends the credential nowhere, never to the configured relay"
+        )
+        XCTAssertFalse(
+            RelayTransportPolicy.allowsCredentialTransport(PushNotificationService.unusableRelayURL),
+            "the stand-in for an unusable issuer must be refused before any request is sent"
+        )
     }
 
     func testSameRelayIgnoresCosmeticDifferences() {
