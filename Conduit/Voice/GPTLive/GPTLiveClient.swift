@@ -47,6 +47,10 @@ struct GPTLiveSessionAnswer: Equatable {
     /// The voice the host started the call with; nil from a host that
     /// doesn't report it (an older plugin).
     var voice: String? = nil
+    /// True when the host put Conduit's briefing into the session's
+    /// instructions; an older plugin ignores it and the briefing must be sent
+    /// as context after the call starts.
+    var briefingApplied: Bool = false
 }
 
 enum GPTLiveClientError: LocalizedError, Equatable {
@@ -78,7 +82,9 @@ protocol GPTLiveSessionProviding: AnyObject {
     /// Exchanges a WebRTC offer for GPT-Live's answer. `history` seeds the
     /// conversation (the host passes it as `initial_items`).
     /// `voice` overrides the host's configured voice for this call.
-    func createSession(offer: String, history: [[String: Any]], voice: String?) async throws -> GPTLiveSessionAnswer
+    /// `briefing` is Conduit's rules, persona and memory for this call: the
+    /// host adds it to the session's instructions.
+    func createSession(offer: String, history: [[String: Any]], voice: String?, briefing: String?) async throws -> GPTLiveSessionAnswer
 }
 
 @MainActor
@@ -117,8 +123,9 @@ final class GPTLiveClient: GPTLiveSessionProviding {
         return Self.availability(from: response)
     }
 
-    func createSession(offer: String, history: [[String: Any]], voice: String? = nil) async throws -> GPTLiveSessionAnswer {
+    func createSession(offer: String, history: [[String: Any]], voice: String? = nil, briefing: String? = nil) async throws -> GPTLiveSessionAnswer {
         var body: [String: Any] = ["sdp": offer]
+        if let briefing, !briefing.isEmpty { body["briefing"] = briefing }
         if !history.isEmpty { body["history"] = history }
         if let voice, !voice.isEmpty { body["voice"] = voice }
         let response: [String: Any]
@@ -167,6 +174,6 @@ final class GPTLiveClient: GPTLiveSessionProviding {
         }
         let sessionID = (response["session"] as? [String: Any])?["id"] as? String
         let voice = (response["voice"] as? String).flatMap { $0.isEmpty ? nil : $0 }
-        return GPTLiveSessionAnswer(sessionID: sessionID, sdp: sdp, voice: voice)
+        return GPTLiveSessionAnswer(sessionID: sessionID, sdp: sdp, voice: voice, briefingApplied: response["briefing_applied"] as? Bool == true)
     }
 }

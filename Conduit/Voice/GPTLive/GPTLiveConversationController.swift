@@ -25,6 +25,8 @@ protocol GPTLiveSessionControlling: AnyObject {
     var isReady: Bool { get }
     /// Set when the host didn't use the voice the user chose.
     var voiceNote: String? { get }
+    /// True when the host already gave the model the briefing.
+    var briefingApplied: Bool { get }
     func start()
     /// Ends the call (telling GPT-Live, when it can hear it).
     func stop()
@@ -378,7 +380,11 @@ final class GPTLiveConversationController: ObservableObject {
             voiceNote = session?.voiceNote
             // The briefing goes first, so the model never hears the room
             // before it has its rules.
-            session?.appendContext(briefing(), channel: .commentary, delegationID: nil)
+            // Given with the call when the host takes it there: appended after
+            // the call starts, the model answers each piece out loud.
+            if session?.briefingApplied != true {
+                session?.appendContext(briefing(), channel: .commentary, delegationID: nil)
+            }
             phase = endRequestedAt != nil ? .ending : modelTurnActive ? .speaking : .listening
             refreshMicrophone()
             if endRequestedAt == nil { deliverPendingJobUpdates() }

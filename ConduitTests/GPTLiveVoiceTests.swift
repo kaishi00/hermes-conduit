@@ -22,11 +22,13 @@ final class FakeGPTLiveClient: GPTLiveSessionProviding {
     private(set) var offers: [String] = []
     private(set) var histories: [[[String: Any]]] = []
     private(set) var voices: [String?] = []
+    private(set) var briefings: [String?] = []
 
     func availability() async throws -> GPTLiveAvailability { try availabilityResult.get() }
 
-    func createSession(offer: String, history: [[String: Any]], voice: String?) async throws -> GPTLiveSessionAnswer {
+    func createSession(offer: String, history: [[String: Any]], voice: String?, briefing: String?) async throws -> GPTLiveSessionAnswer {
         offers.append(offer)
+        briefings.append(briefing)
         voices.append(voice)
         histories.append(history)
         return try answerResult.get()
@@ -77,6 +79,7 @@ final class FakeGPTLiveSessionControl: GPTLiveSessionControlling {
     var onStateChange: (@MainActor (GPTLiveSession.State) -> Void)?
     var isReady = false
     var voiceNote: String?
+    var briefingApplied = false
     var failAppends = false
     private(set) var started = 0
     private(set) var stopped = 0
@@ -659,6 +662,33 @@ extension VoiceConversationControllerTests {
         session.becomeReady()
         XCTAssertEqual(controller.voiceNote, "Your Hermes server used the voice cove instead of sol.")
         controller.stop()
+    }
+
+    func testGPTLiveBriefingGoesWithTheCallAndIsNotAppendedWhenTheHostTookIt() async throws {
+        var bodies: [[String: Any]?] = []
+        let client = GPTLiveClient(request: { _, _, body, _ in
+            bodies.append(body)
+            return ["ok": true, "auth": "subscription", "session": ["id": "rtc_abc"],
+                    "transport": ["type": "webrtc", "sdp": "v=0 answer"], "briefing_applied": true]
+        })
+        let answer = try await client.createSession(offer: "v=0 offer", history: [], voice: nil, briefing: "[rules]")
+        XCTAssertEqual(bodies[0]?["briefing"] as? String, "[rules]")
+        XCTAssertTrue(answer.briefingApplied)
+        _ = try await client.createSession(offer: "v=0 offer", history: [])
+        XCTAssertNil(bodies[1]?["briefing"])
+
+        let (applied, appliedSession, _, _) = makeGPTController(clock: Date.init)
+        appliedSession.briefingApplied = true
+        await applied.start()
+        appliedSession.becomeReady()
+        XCTAssertTrue(appliedSession.appended.isEmpty, "The host already has it: no context appends to answer out loud")
+        applied.stop()
+
+        let (older, olderSession, _, _) = makeGPTController(clock: Date.init)
+        await older.start()
+        olderSession.becomeReady()
+        XCTAssertEqual(olderSession.appended.first?.text, "[rules]", "An older plugin still gets it as context")
+        older.stop()
     }
 
     func testGPTLiveTranscriptFragmentsAreJoinedAsTheyComeWithoutAddedSpaces() async {
