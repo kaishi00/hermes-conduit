@@ -196,6 +196,12 @@ struct GPTLiveVoiceSheet: View {
             Text(statusText)
                 .font(.headline)
                 .multilineTextAlignment(.center)
+            if let note = controller.voiceNote {
+                Text(note)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
         }
         .frame(maxWidth: .infinity)
         .accessibilityElement(children: .combine)

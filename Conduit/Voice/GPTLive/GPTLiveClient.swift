@@ -44,6 +44,9 @@ enum GPTLiveAvailability: Equatable {
 struct GPTLiveSessionAnswer: Equatable {
     let sessionID: String?
     let sdp: String
+    /// The voice the host started the call with; nil from a host that
+    /// doesn't report it (an older plugin).
+    var voice: String? = nil
 }
 
 enum GPTLiveClientError: LocalizedError, Equatable {
@@ -163,6 +166,7 @@ final class GPTLiveClient: GPTLiveSessionProviding {
             throw GPTLiveClientError.malformedResponse
         }
         let sessionID = (response["session"] as? [String: Any])?["id"] as? String
-        return GPTLiveSessionAnswer(sessionID: sessionID, sdp: sdp)
+        let voice = (response["voice"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        return GPTLiveSessionAnswer(sessionID: sessionID, sdp: sdp, voice: voice)
     }
 }

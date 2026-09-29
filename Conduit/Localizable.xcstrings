@@ -431,6 +431,26 @@
         }
       }
     },
+    "The Conduit plugin on your Hermes server didn't confirm the voice you chose. Update the plugin to pick a voice." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的 Hermes 服务器上的 Conduit 插件没有确认你选择的声音。请更新插件以选择声音。"
+          }
+        }
+      }
+    },
+    "Your Hermes server used the voice %@ instead of %@." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的 Hermes 服务器使用了声音 %1$@，而不是 %2$@。"
+          }
+        }
+      }
+    },
     "Gemini default" : {
       "localizations" : {
         "zh-Hans" : {

@@ -34,6 +34,8 @@ final class GPTLiveSession {
         didSet { if state != oldValue { onStateChange?(state) } }
     }
     private(set) var sessionID: String?
+    /// Set when the host did not start the call with the voice asked for.
+    private(set) var voiceNote: String?
 
     var onEvent: (@MainActor (GPTLiveProtocol.ServerEvent) -> Void)?
     var onStateChange: (@MainActor (State) -> Void)?
@@ -146,6 +148,7 @@ final class GPTLiveSession {
             let answer = try await client.createSession(offer: offer, history: history, voice: voice)
             guard isCurrent(peer) else { return }
             sessionID = answer.sessionID
+            voiceNote = Self.voiceNote(requested: voice, applied: answer.voice)
             try await peer.acceptAnswer(answer.sdp)
             guard isCurrent(peer) else { return }
         } catch {
@@ -160,6 +163,17 @@ final class GPTLiveSession {
             gptLiveLogger.error("GPT-Live never reported session.started")
             self.fail(AppLocalization.string("GPT-Live didn't start the conversation. Try again."))
         }
+    }
+
+    /// Explains a chosen voice the host didn't use. Nil when none was asked
+    /// for, or the host used it.
+    nonisolated static func voiceNote(requested: String?, applied: String?) -> String? {
+        guard let requested, !requested.isEmpty else { return nil }
+        guard let applied else {
+            return AppLocalization.string("The Conduit plugin on your Hermes server didn't confirm the voice you chose. Update the plugin to pick a voice.")
+        }
+        guard applied.lowercased() != requested.lowercased() else { return nil }
+        return AppLocalization.string("Your Hermes server used the voice \(applied) instead of \(requested).")
     }
 
     private func isCurrent(_ peer: GPTLivePeer) -> Bool {
