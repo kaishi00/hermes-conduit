@@ -128,7 +128,27 @@ enum StreamEventParser {
                 ?? payload?["requestId"]?.stringValue ?? "")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             guard !requestId.isEmpty else { return nil }
-            return .clarifyExpire(sessionId: sessionId, requestId: requestId)
+            return .clarifyExpire(sessionId: sessionId, requestId: requestId, reason: nil)
+
+        case "request.cancel":
+            // The gateway withdrew a server→client request (timeout,
+            // interrupt, shutdown). A clarify card is keyed by the server
+            // request id, so it expires exactly like `clarify.expire`. An
+            // approval card is keyed by its queue id, so HermesClient (which
+            // holds the srq → queue id mapping) emits `.approvalWithdrawn`.
+            // `resolved` means the request was answered, never an expiry.
+            guard payload?["method"]?.stringValue == "clarify",
+                  payload?["reason"]?.stringValue != "resolved" else { return nil }
+            let requestId = (payload?["id"]?.stringValue ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !requestId.isEmpty else { return nil }
+            // A missing reason is not a timeout: only the legacy
+            // clarify.expire (reason nil) or an explicit "timeout" says so.
+            return .clarifyExpire(
+                sessionId: sessionId,
+                requestId: requestId,
+                reason: payload?["reason"]?.stringValue ?? ""
+            )
 
         case "approval.request":
             guard let payload,

@@ -1384,6 +1384,529 @@ final class HermesClientTests: XCTestCase {
         }
     }
 
+    // MARK: - server→client requests (Hermes #110521 / #112548)
+
+    /// Connects a client whose receive loop is ready for the next frame.
+    private func connectedClientForServerRequests(
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async throws -> (HermesClient, FakeSocket) {
+        let transport = FakeTransport()
+        let socket = FakeSocket()
+        transport.nextSocket = { socket }
+        let client = makeClient(transport: transport)
+        let connectTask = Task { try? await client.connect() }
+        transport.open(socket)
+        try await awaitCompletion(of: connectTask, "connect() to complete", file: file, line: line)
+        return (client, socket)
+    }
+
+    /// Delivers `object` once the receive loop is suspended in `receive()`,
+    /// so the frame cannot be lost to a not-yet-started loop.
+    private func deliverFrame(
+        _ object: [String: Any],
+        to socket: FakeSocket,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async throws {
+        for _ in 0..<200 where !socket.isReceivePending {
+            await Task.yield()
+        }
+        XCTAssertTrue(socket.isReceivePending, "The receive loop never suspended", file: file, line: line)
+        let text = try XCTUnwrap(String(data: try JSONSerialization.data(withJSONObject: object), encoding: .utf8), file: file, line: line)
+        socket.deliver(text)
+        await flushMainActor()
+    }
+
+    /// Bounded wait until `socket` has sent at least `count` text frames.
+    private func waitForSends(
+        _ count: Int,
+        on socket: FakeSocket,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async {
+        for _ in 0..<500 where socket.sentTexts.count < count {
+            await Task.yield()
+        }
+        XCTAssertGreaterThanOrEqual(socket.sentTexts.count, count, "Expected \(count) outbound frames", file: file, line: line)
+    }
+
+    private func sentFrame(_ socket: FakeSocket, file: StaticString = #filePath, line: UInt = #line) throws -> [String: Any] {
+        try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(try XCTUnwrap(socket.sentTexts.last, file: file, line: line).utf8)) as? [String: Any],
+            file: file,
+            line: line
+        )
+    }
+
+    func testGatewayReadyAdvertisesServerRequestsCapability() async throws {
+        // Without this advertisement Hermes treats the socket as a client
+        // that predates server→client requests and withdraws every approval
+        // (kaishi00/hermes-conduit#239).
+        let (client, socket) = try await connectedClientForServerRequests()
+        let sent = Gate()
+        socket.onSend = { sent.signal() }
+        try await deliverFrame([
+            "jsonrpc": "2.0", "method": "event",
+            "params": ["type": "gateway.ready", "payload": ["change_events": true]]
+        ], to: socket)
+        try await sent.wait("client.capabilities to be sent after gateway.ready")
+
+        let request = try sentFrame(socket)
+        XCTAssertEqual(request["method"] as? String, "client.capabilities")
+        let params = try XCTUnwrap(request["params"] as? [String: Any])
+        XCTAssertEqual(params["server_requests"] as? Bool, true)
+        XCTAssertNotNil(request["id"] as? Int, "The advertisement is an ordinary RPC request")
+
+        // A repeated gateway.ready on the same socket must not advertise again.
+        try await deliverFrame([
+            "jsonrpc": "2.0", "method": "event",
+            "params": ["type": "gateway.ready", "payload": [String: Any]()]
+        ], to: socket)
+        XCTAssertEqual(socket.sentTexts.count, 1, "client.capabilities is sent once per connection")
+        client.disconnect()
+    }
+
+    func testApprovalServerRequestPresentsApprovalCardAndWritesNoReply() async throws {
+        let (client, socket) = try await connectedClientForServerRequests()
+        var events: [StreamEvent] = []
+        client.onEvent = { events.append($0) }
+        try await deliverFrame([
+            "jsonrpc": "2.0", "id": "srq-0123456789ab", "method": "approval",
+            "params": [
+                "session_id": "runtime-1",
+                "request_id": "queue-1",
+                "command": "rm -rf scratch",
+                "description": "recursive delete",
+                "choices": ["once", "session", "always", "deny"]
+            ]
+        ], to: socket)
+
+        XCTAssertEqual(events.count, 1)
+        guard case .approval(let sessionId, let activity)? = events.first else {
+            return XCTFail("Expected an approval event, got \(events)")
+        }
+        XCTAssertEqual(sessionId, "runtime-1")
+        XCTAssertEqual(
+            activity.requestId, "queue-1",
+            "The card must keep the approval queue id: approval.respond resolves the queue entry"
+        )
+        XCTAssertEqual(activity.command, "rm -rf scratch")
+        XCTAssertEqual(activity.choices, ["once", "session", "always", "deny"])
+        XCTAssertTrue(
+            socket.sentTexts.isEmpty,
+            "The approval stays open until the user answers; the gateway withdraws it once approval.respond resolves it"
+        )
+        client.disconnect()
+    }
+
+    func testApprovalRequestCancelIsTranslatedToTheQueueID() async throws {
+        let (client, socket) = try await connectedClientForServerRequests()
+        var events: [StreamEvent] = []
+        client.onEvent = { events.append($0) }
+        try await deliverFrame([
+            "jsonrpc": "2.0", "id": "srq-a1a1a1a1a1a1", "method": "approval",
+            "params": ["session_id": "runtime-1", "request_id": "queue-1", "command": "rm -rf scratch"]
+        ], to: socket)
+        try await deliverFrame([
+            "jsonrpc": "2.0", "method": "event",
+            "params": [
+                "type": "request.cancel", "session_id": "runtime-1",
+                "payload": ["id": "srq-a1a1a1a1a1a1", "method": "approval", "reason": "timeout"]
+            ]
+        ], to: socket)
+
+        let withdrawn = events.compactMap { event -> (String, String, String)? in
+            guard case .approvalWithdrawn(let sessionId, let requestId, let reason) = event else { return nil }
+            return (sessionId, requestId, reason)
+        }
+        XCTAssertEqual(withdrawn.count, 1)
+        XCTAssertEqual(withdrawn.first?.0, "runtime-1")
+        XCTAssertEqual(withdrawn.first?.1, "queue-1", "The card is keyed by the queue id, not the srq id")
+        XCTAssertEqual(withdrawn.first?.2, "timeout")
+        client.disconnect()
+    }
+
+    func testApprovalCancelWithoutEnvelopeSessionFallsBackToTheRequestSession() async throws {
+        let (client, socket) = try await connectedClientForServerRequests()
+        var events: [StreamEvent] = []
+        client.onEvent = { events.append($0) }
+        try await deliverFrame([
+            "jsonrpc": "2.0", "id": "srq-b2b2b2b2b2b2", "method": "approval",
+            "params": ["session_id": "runtime-1", "request_id": "queue-2", "command": "rm -rf scratch"]
+        ], to: socket)
+        try await deliverFrame([
+            "jsonrpc": "2.0", "method": "event",
+            "params": ["type": "request.cancel", "payload": ["id": "srq-b2b2b2b2b2b2", "method": "approval", "reason": "timeout"]]
+        ], to: socket)
+        let sessions = events.compactMap { event -> String? in
+            guard case .approvalWithdrawn(let sessionId, _, _) = event else { return nil }
+            return sessionId
+        }
+        XCTAssertEqual(sessions, ["runtime-1"], "An empty session id would be dropped by the active-session filter")
+        client.disconnect()
+    }
+
+    func testClarifyCancelWithoutEnvelopeSessionFallsBackToTheRequestSession() async throws {
+        let (client, socket) = try await connectedClientForServerRequests()
+        var events: [StreamEvent] = []
+        client.onEvent = { events.append($0) }
+        try await deliverFrame([
+            "jsonrpc": "2.0", "id": "srq-c3c3c3c3c3c3", "method": "clarify",
+            "params": ["session_id": "runtime-1", "question": "Which env?", "choices": ["a"]]
+        ], to: socket)
+        try await deliverFrame([
+            "jsonrpc": "2.0", "method": "event",
+            "params": ["type": "request.cancel", "payload": ["id": "srq-c3c3c3c3c3c3", "method": "clarify", "reason": "timeout"]]
+        ], to: socket)
+        let expiries = events.compactMap { event -> (String, String)? in
+            guard case .clarifyExpire(let sessionId, let requestId, _) = event else { return nil }
+            return (sessionId, requestId)
+        }
+        XCTAssertEqual(expiries.count, 1)
+        XCTAssertEqual(expiries.first?.0, "runtime-1", "An empty session id would be dropped by the active-session filter")
+        XCTAssertEqual(expiries.first?.1, "srq-c3c3c3c3c3c3")
+        client.disconnect()
+    }
+
+    func testFailedCapabilityAdvertisementRetriesOnNextGatewayReady() async throws {
+        let (client, socket) = try await connectedClientForServerRequests()
+        let ready: [String: Any] = [
+            "jsonrpc": "2.0", "method": "event",
+            "params": ["type": "gateway.ready", "payload": [String: Any]()]
+        ]
+        try await deliverFrame(ready, to: socket)
+        await waitForSends(1, on: socket)
+        let firstID = try XCTUnwrap(try sentFrame(socket)["id"] as? Int)
+        try await deliverFrame([
+            "jsonrpc": "2.0", "id": firstID, "error": ["code": -32603, "message": "transient"]
+        ], to: socket)
+
+        for _ in 0..<50 { await Task.yield() }  // let the failed RPC's catch clear the latch
+        try await deliverFrame(ready, to: socket)
+        await waitForSends(2, on: socket)
+        XCTAssertEqual(socket.sentTexts.count, 2, "A failed advertisement must not latch the socket as advertised")
+        XCTAssertEqual(try sentFrame(socket)["method"] as? String, "client.capabilities")
+        client.disconnect()
+    }
+
+    /// Advertises and answers `client.capabilities` with `result`.
+    private func advertise(
+        _ socket: FakeSocket,
+        result: [String: Any],
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async throws {
+        let before = socket.sentTexts.count
+        try await deliverFrame([
+            "jsonrpc": "2.0", "method": "event",
+            "params": ["type": "gateway.ready", "payload": [String: Any]()]
+        ], to: socket, file: file, line: line)
+        await waitForSends(before + 1, on: socket, file: file, line: line)
+        let id = try XCTUnwrap(try sentFrame(socket, file: file, line: line)["id"] as? Int, file: file, line: line)
+        try await deliverFrame(["jsonrpc": "2.0", "id": id, "result": result], to: socket, file: file, line: line)
+        for _ in 0..<50 { await Task.yield() }
+    }
+
+    func testWindowOwnedRequestGetsNotShownDeclineWhenTheGatewayCountsThem() async throws {
+        let (client, socket) = try await connectedClientForServerRequests()
+        try await advertise(socket, result: ["server_requests": ["tour"], "declines_not_shown": true])
+        let sentBefore = socket.sentTexts.count
+        try await deliverFrame([
+            "jsonrpc": "2.0", "id": "srq-7070707070aa", "method": "tour",
+            "params": ["session_id": "runtime-1", "action": "start"]
+        ], to: socket)
+        await waitForSends(sentBefore + 1, on: socket)
+        let reply = try sentFrame(socket)
+        XCTAssertEqual(reply["id"] as? String, "srq-7070707070aa")
+        XCTAssertEqual(
+            (reply["error"] as? [String: Any])?["code"] as? Int, 4404,
+            "A window-owned request is declined as not shown, never settled with -32601"
+        )
+        client.disconnect()
+    }
+
+    func testWindowOwnedRequestBeforeTheCapabilityReplyIsDeclinedOnceItArrives() async throws {
+        let (client, socket) = try await connectedClientForServerRequests()
+        try await deliverFrame([
+            "jsonrpc": "2.0", "method": "event",
+            "params": ["type": "gateway.ready", "payload": [String: Any]()]
+        ], to: socket)
+        await waitForSends(1, on: socket)
+        let capabilitiesID = try XCTUnwrap(try sentFrame(socket)["id"] as? Int)
+
+        // Arrives while the capability reply is still outstanding.
+        try await deliverFrame([
+            "jsonrpc": "2.0", "id": "srq-7070707070cc", "method": "tour",
+            "params": ["session_id": "runtime-1", "action": "start"]
+        ], to: socket)
+        XCTAssertEqual(socket.sentTexts.count, 1, "No decline before the gateway says whether it counts them")
+
+        try await deliverFrame([
+            "jsonrpc": "2.0", "id": capabilitiesID,
+            "result": ["server_requests": ["tour"], "declines_not_shown": true]
+        ], to: socket)
+        await waitForSends(2, on: socket)
+        let reply = try sentFrame(socket)
+        XCTAssertEqual(reply["id"] as? String, "srq-7070707070cc")
+        XCTAssertEqual((reply["error"] as? [String: Any])?["code"] as? Int, 4404)
+        client.disconnect()
+    }
+
+    func testWindowOwnedRequestStaysSilentWhenTheGatewayDoesNotCountDeclines() async throws {
+        let (client, socket) = try await connectedClientForServerRequests()
+        try await advertise(socket, result: ["server_requests": ["tour"]])
+        let sentBefore = socket.sentTexts.count
+        try await deliverFrame([
+            "jsonrpc": "2.0", "id": "srq-7070707070bb", "method": "preview.read",
+            "params": ["session_id": "runtime-1"]
+        ], to: socket)
+        XCTAssertEqual(
+            socket.sentTexts.count, sentBefore,
+            "Any error would settle the request there and take it from a Desktop window"
+        )
+        client.disconnect()
+    }
+
+    func testEventFrameCarryingAnIDIsStillAnEvent() async throws {
+        let (client, socket) = try await connectedClientForServerRequests()
+        var events: [StreamEvent] = []
+        client.onEvent = { events.append($0) }
+        try await deliverFrame([
+            "jsonrpc": "2.0", "id": "evt-1", "method": "event",
+            "params": ["type": "message.start", "session_id": "runtime-1"]
+        ], to: socket)
+        guard case .messageStart(let sessionId)? = events.first else {
+            return XCTFail("Expected the event to be delivered, got \(events)")
+        }
+        XCTAssertEqual(sessionId, "runtime-1")
+        XCTAssertTrue(socket.sentTexts.isEmpty, "An event is never answered")
+        client.disconnect()
+    }
+
+    func testResumeDeclinesReplayedRequestsItCannotPresent() async throws {
+        let (client, socket) = try await connectedClientForServerRequests()
+        let sent = Gate()
+        socket.onSend = { sent.signal() }
+        let openTask = Task<SessionResumeResult, Error> { try await client.openSession("runtime-1") }
+        try await sent.wait("the session.resume request to be sent")
+        let id = try XCTUnwrap(try sentFrame(socket)["id"] as? Int)
+        try await deliverFrame([
+            "jsonrpc": "2.0", "id": id,
+            "result": [
+                "session_id": "runtime-1", "running": true, "messages": [Any](), "info": [String: Any](),
+                "open_requests": [
+                    ["id": "srq-dec1dec1dec1", "method": "vault.code", "params": ["session_id": "runtime-1"]]
+                ]
+            ]
+        ], to: socket)
+        _ = try await awaitResult(of: openTask, "the session.resume response")
+        await waitForSends(2, on: socket)
+        let reply = try sentFrame(socket)
+        XCTAssertEqual(reply["id"] as? String, "srq-dec1dec1dec1")
+        XCTAssertEqual(
+            (reply["error"] as? [String: Any])?["code"] as? Int, -32601,
+            "A replayed request with no UI here must fail fast, like the live frame"
+        )
+        client.disconnect()
+    }
+
+    func testSingleClarifyServerRequestIsAnsweredWithResponseFrame() async throws {
+        let (client, socket) = try await connectedClientForServerRequests()
+        var events: [StreamEvent] = []
+        client.onEvent = { events.append($0) }
+        try await deliverFrame([
+            "jsonrpc": "2.0", "id": "srq-aaaaaaaaaaaa", "method": "clarify",
+            "params": ["session_id": "runtime-1", "question": "Which env?", "choices": ["staging", "prod"]]
+        ], to: socket)
+        guard case .clarify(let sessionId, let activity)? = events.first else {
+            return XCTFail("Expected a clarify event, got \(events)")
+        }
+        XCTAssertEqual(sessionId, "runtime-1")
+        XCTAssertEqual(activity.requestId, "srq-aaaaaaaaaaaa", "The card is keyed by the server request id")
+        XCTAssertEqual(activity.questions.count, 1)
+
+        let outcome = try await client.respondToClarification(
+            requestId: "srq-aaaaaaaaaaaa",
+            answer: "staging",
+            questionId: nil
+        )
+        XCTAssertEqual(outcome, .accepted(remaining: nil))
+        let reply = try sentFrame(socket)
+        XCTAssertEqual(reply["id"] as? String, "srq-aaaaaaaaaaaa")
+        XCTAssertNil(reply["method"], "A response frame never carries a method")
+        let result = try XCTUnwrap(reply["result"] as? [String: Any])
+        XCTAssertEqual(result["answer"] as? String, "staging")
+        client.disconnect()
+    }
+
+    func testBatchClarifyServerRequestLocksEachQuestion() async throws {
+        let (client, socket) = try await connectedClientForServerRequests()
+        let sent = Gate()
+        socket.onSend = { sent.signal() }
+        let respondTask = Task<HermesClient.ClarifyResponseOutcome, Error> {
+            try await client.respondToClarification(
+                requestId: "srq-bbbbbbbbbbbb",
+                answer: "unit",
+                questionId: "tests"
+            )
+        }
+        try await sent.wait("the clarify.lock request to be sent")
+        let request = try sentFrame(socket)
+        XCTAssertEqual(request["method"] as? String, "clarify.lock")
+        let params = try XCTUnwrap(request["params"] as? [String: Any])
+        XCTAssertEqual(params["request_id"] as? String, "srq-bbbbbbbbbbbb")
+        XCTAssertEqual(params["question_id"] as? String, "tests")
+        XCTAssertEqual(params["answer"] as? String, "unit")
+
+        let id = try XCTUnwrap(request["id"] as? Int)
+        try await deliverFrame(["jsonrpc": "2.0", "id": id, "result": ["status": "ok", "remaining": []]], to: socket)
+        let outcome = try await awaitResult(of: respondTask, "the clarify.lock response")
+        XCTAssertEqual(outcome, .accepted(remaining: []))
+        client.disconnect()
+    }
+
+    func testUnsupportedServerRequestIsDeclinedWithMethodNotFound() async throws {
+        let (client, socket) = try await connectedClientForServerRequests()
+        var events: [StreamEvent] = []
+        client.onEvent = { events.append($0) }
+        let sent = Gate()
+        socket.onSend = { sent.signal() }
+        try await deliverFrame([
+            "jsonrpc": "2.0", "id": "srq-cccccccccccc", "method": "sudo",
+            "params": ["session_id": "runtime-1", "command": "sudo ls"]
+        ], to: socket)
+        try await sent.wait("the decline to be sent")
+
+        let reply = try sentFrame(socket)
+        XCTAssertEqual(reply["id"] as? String, "srq-cccccccccccc")
+        let error = try XCTUnwrap(reply["error"] as? [String: Any])
+        XCTAssertEqual(error["code"] as? Int, -32601)
+        XCTAssertTrue(events.isEmpty)
+        client.disconnect()
+    }
+
+    func testServerRequestDoesNotSettlePendingRPCWithCollidingID() async throws {
+        let (client, socket) = try await connectedClientForServerRequests()
+        let sent = Gate()
+        socket.onSend = { sent.signal() }
+        let respondTask = Task<Bool, Error> {
+            try await client.respondToApproval(sessionId: "runtime-1", requestId: "queue-1", choice: "once")
+        }
+        try await sent.wait("the approval.respond request to be sent")
+        let id = try XCTUnwrap(try sentFrame(socket)["id"] as? Int)
+
+        // A request frame reusing the pending integer id must never settle
+        // that RPC. Hermes mints string ids only, so it is ignored outright.
+        try await deliverFrame([
+            "jsonrpc": "2.0", "id": id, "method": "vault.code", "params": ["session_id": "runtime-1"]
+        ], to: socket)
+        XCTAssertEqual(socket.sentTexts.count, 1, "An integer-id request is neither answered nor matched")
+
+        try await deliverFrame(["jsonrpc": "2.0", "id": id, "result": ["resolved": 1]], to: socket)
+        let accepted = try await awaitResult(of: respondTask, "the real approval.respond response")
+        XCTAssertTrue(accepted)
+        client.disconnect()
+    }
+
+    func testResumeRestoresClarifyFromOpenRequests() async throws {
+        let (client, socket) = try await connectedClientForServerRequests()
+        let sent = Gate()
+        socket.onSend = { sent.signal() }
+        let openTask = Task<SessionResumeResult, Error> { try await client.openSession("runtime-1") }
+        try await sent.wait("the session.resume request to be sent")
+        let id = try XCTUnwrap(try sentFrame(socket)["id"] as? Int)
+        try await deliverFrame([
+            "jsonrpc": "2.0", "id": id,
+            "result": [
+                "session_id": "runtime-1",
+                "running": true,
+                "messages": [Any](),
+                "info": [String: Any](),
+                "open_requests": [[
+                    "id": "srq-dddddddddddd",
+                    "method": "clarify",
+                    "params": [
+                        "session_id": "runtime-1",
+                        "questions": [
+                            ["qid": "environment", "question": "Which environment?", "choices": ["staging"], "multi_select": false],
+                            ["qid": "tests", "question": "Which tests?", "choices": ["unit", "ui"], "multi_select": true]
+                        ],
+                        "answers": ["environment": "staging"]
+                    ]
+                ]]
+            ]
+        ], to: socket)
+        let result = try await awaitResult(of: openTask, "the session.resume response")
+        let pending = try XCTUnwrap(result.snapshot.pendingClarify, "open_requests must restore the clarify card")
+        XCTAssertEqual(pending.requestId, "srq-dddddddddddd")
+        XCTAssertEqual(pending.questions.count, 2)
+        XCTAssertEqual(pending.questions[0].status, .answered, "Answers locked before the reconnect stay locked")
+        XCTAssertEqual(pending.questions[1].status, .pending)
+        XCTAssertTrue(client.isServerRequestID("srq-dddddddddddd"))
+        XCTAssertTrue(result.snapshot.additionalPendingClarifies.isEmpty)
+        client.disconnect()
+    }
+
+    func testResumeKeepsAnOpenClarifyWhenPendingClarifyIsAlsoPresent() async throws {
+        let (client, socket) = try await connectedClientForServerRequests()
+        let sent = Gate()
+        socket.onSend = { sent.signal() }
+        let openTask = Task<SessionResumeResult, Error> { try await client.openSession("runtime-1") }
+        try await sent.wait("the session.resume request to be sent")
+        let id = try XCTUnwrap(try sentFrame(socket)["id"] as? Int)
+        try await deliverFrame([
+            "jsonrpc": "2.0", "id": id,
+            "result": [
+                "session_id": "runtime-1", "running": true, "messages": [Any](), "info": [String: Any](),
+                "pending_clarify": ["request_id": "req-legacy", "question": "Legacy?", "choices": ["x"]],
+                "open_requests": [
+                    ["id": "srq-c4c4c4c4c4c4", "method": "clarify",
+                     "params": ["session_id": "runtime-1", "question": "Open?", "choices": ["y"]]]
+                ]
+            ]
+        ], to: socket)
+        let result = try await awaitResult(of: openTask, "the session.resume response")
+        XCTAssertEqual(result.snapshot.pendingClarify?.requestId, "req-legacy")
+        XCTAssertEqual(
+            result.snapshot.additionalPendingClarifies.map(\.requestId), ["srq-c4c4c4c4c4c4"],
+            "An open clarify must not be dropped because pending_clarify was already taken"
+        )
+        client.disconnect()
+    }
+
+    func testResumeRestoresEveryOpenClarify() async throws {
+        let (client, socket) = try await connectedClientForServerRequests()
+        let sent = Gate()
+        socket.onSend = { sent.signal() }
+        let openTask = Task<SessionResumeResult, Error> { try await client.openSession("runtime-1") }
+        try await sent.wait("the session.resume request to be sent")
+        let id = try XCTUnwrap(try sentFrame(socket)["id"] as? Int)
+        try await deliverFrame([
+            "jsonrpc": "2.0", "id": id,
+            "result": [
+                "session_id": "runtime-1", "running": true, "messages": [Any](), "info": [String: Any](),
+                "open_requests": [
+                    ["id": "srq-c1c1c1c1c1c1", "method": "clarify",
+                     "params": ["session_id": "runtime-1", "question": "First?", "choices": ["a"]]],
+                    ["id": "srq-c2c2c2c2c2c2", "method": "clarify",
+                     "params": ["session_id": "runtime-1", "question": "Second?", "choices": ["b"]]]
+                ]
+            ]
+        ], to: socket)
+        let result = try await awaitResult(of: openTask, "the session.resume response")
+        XCTAssertEqual(result.snapshot.pendingClarify?.requestId, "srq-c1c1c1c1c1c1", "The oldest rides pendingClarify")
+        XCTAssertEqual(result.snapshot.additionalPendingClarifies.map(\.requestId), ["srq-c2c2c2c2c2c2"])
+        client.disconnect()
+    }
+
+    func testIsServerRequestIDRecognisesOnlyServerRequestIDs() async throws {
+        let (client, _) = try await connectedClientForServerRequests()
+        XCTAssertFalse(client.isServerRequestID("req-1"))
+        XCTAssertTrue(client.isServerRequestID("srq-eeeeeeeeeeee"))
+        client.disconnect()
+    }
+
     // MARK: - pending_clarify restore
 
     func testResumeSnapshotParsesPendingClarifyBatchWithLockedAnswers() throws {
@@ -1880,6 +2403,9 @@ private final class FakeSocket: HermesWebSocket {
             onReceivePending?()
         }
     }
+
+    /// True while the receive loop is suspended waiting for a frame.
+    var isReceivePending: Bool { receiveContinuation != nil }
 
     // Test hooks
     func deliver(_ text: String) {

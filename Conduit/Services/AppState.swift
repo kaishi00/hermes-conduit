@@ -7861,6 +7861,9 @@ final class AppState: ObservableObject {
         if let pendingClarify = result.snapshot.pendingClarify {
             applyClarifyActivity(pendingClarify, source: .authoritativeSnapshot)
         }
+        for clarify in result.snapshot.additionalPendingClarifies {
+            applyClarifyActivity(clarify, source: .authoritativeSnapshot)
+        }
         let authoritativePendingApproval = result.snapshot.pendingApprovalPayload.flatMap {
             MessageNormalizer.approvalActivity(from: $0, sessionId: result.sessionId)
         }
@@ -7880,6 +7883,9 @@ final class AppState: ObservableObject {
         var gatewayPendingDecisionKeys = SessionPresentationCache.pendingDecisionKeys(in: result.messages)
         if let pendingClarify = result.snapshot.pendingClarify {
             gatewayPendingDecisionKeys.insert("clarify:\(pendingClarify.requestId)")
+        }
+        for clarify in result.snapshot.additionalPendingClarifies {
+            gatewayPendingDecisionKeys.insert("clarify:\(clarify.requestId)")
         }
         if let pendingApproval = authoritativePendingApproval,
            let key = SessionPresentationCache.pendingDecisionKey(for: ChatMessage(
@@ -17763,8 +17769,8 @@ final class AppState: ObservableObject {
                 .messageInterrupted(let sessionId), .sessionBusy(let sessionId, _),
                 .sessionInfo(let sessionId, _), .sessionTitle(let sessionId, _, _),
                 .toolStart(let sessionId, _, _, _),
-                .toolComplete(let sessionId, _, _, _), .reviewSummary(let sessionId, _), .clarify(let sessionId, _), .clarifyExpire(let sessionId, _),
-                .approval(let sessionId, _),
+                .toolComplete(let sessionId, _, _, _), .reviewSummary(let sessionId, _), .clarify(let sessionId, _), .clarifyExpire(let sessionId, _, _),
+                .approval(let sessionId, _), .approvalWithdrawn(let sessionId, _, _),
                 .contextUpdate(let sessionId, _, _, _), .cwdUpdate(let sessionId, _),
                 .modelUpdate(let sessionId, _, _), .agentCount(let sessionId, _),
                 .delegateAgent(let sessionId, _), .statusUpdate(let sessionId, _, _):
@@ -18070,12 +18076,15 @@ final class AppState: ObservableObject {
             applyClarifyActivity(activity, source: .streamEvent)
             setRunning(true)
 
-        case .clarifyExpire(_, let requestId):
-            expireClarifyRequest(requestId: requestId)
+        case .clarifyExpire(_, let requestId, let reason):
+            expireClarifyRequest(requestId: requestId, reason: reason)
 
         case .approval(_, let activity):
             applyApprovalActivity(activity, authoritative: false)
             setRunning(true)
+
+        case .approvalWithdrawn(_, let requestId, let reason):
+            withdrawApproval(requestId: requestId, reason: reason)
 
         case .contextUpdate(_, let percent, let used, let max):
             runtime.contextPercent = normalizedContextPercent(percent, used: used, max: max)
@@ -18412,7 +18421,7 @@ final class AppState: ObservableObject {
     /// presenting answer controls and a late response can no longer make the
     /// request read as answered. Request identity — never question text —
     /// decides which card is torn down, so unrelated clarifies are untouched.
-    private func expireClarifyRequest(requestId: String) {
+    private func expireClarifyRequest(requestId: String, reason: String? = nil) {
         guard let index = messages.firstIndex(where: { $0.clarify?.requestId == requestId }),
               var activity = messages[index].clarify,
               !activity.isExpired else { return }
@@ -18422,9 +18431,38 @@ final class AppState: ObservableObject {
             activity.questions[questionIndex].status = .expired
             activity.questions[questionIndex].error = nil
         }
-        activity.error = Self.clarifyExpiredNotice(for: activity.questions.count)
+        activity.error = Self.clarifyExpiredNotice(for: activity.questions.count, reason: reason)
         messages[index].clarify = activity
         cacheMessagePresentation()
+    }
+
+    /// Applies `request.cancel` for an approval server request. Only a card
+    /// still waiting on this user changes: an in-flight or settled answer
+    /// from this device already owns the card's outcome.
+    private func withdrawApproval(requestId: String, reason: String) {
+        guard let index = messages.lastIndex(where: { $0.approval?.requestId == requestId }),
+              let current = messages[index].approval,
+              current.status == .pending || current.status == .error else { return }
+        messages[index].approval?.status = .expired
+        messages[index].approval?.choice = nil
+        switch reason {
+        case "resolved":
+            messages[index].approval?.error = AppLocalization.string("This approval was answered elsewhere.")
+        case "timeout":
+            messages[index].approval?.error = AppLocalization.string("This approval is no longer active — Hermes timed it out and continued.")
+        default:
+            messages[index].approval?.error = AppLocalization.string("This approval is no longer active.")
+        }
+        cacheMessagePresentation()
+    }
+
+    /// Only a timeout (or the legacy `clarify.expire`, which is always one)
+    /// may claim Hermes timed out; an interrupt or closed session must not.
+    private static func clarifyExpiredNotice(for questionCount: Int, reason: String?) -> String {
+        guard let reason, reason != "timeout" else { return clarifyExpiredNotice(for: questionCount) }
+        return questionCount > 1
+            ? AppLocalization.string("These questions are no longer active.")
+            : AppLocalization.string("This question is no longer active.")
     }
 
     private static func clarifyExpiredNotice(for questionCount: Int) -> String {

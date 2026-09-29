@@ -1,6 +1,46 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "These questions are no longer active." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这些问题已失效。"
+          }
+        }
+      }
+    },
+    "This approval is no longer active." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此批准请求已失效。"
+          }
+        }
+      }
+    },
+    "This approval was answered elsewhere." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此批准已在其他地方处理。"
+          }
+        }
+      }
+    },
+    "This question is no longer active." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此问题已失效。"
+          }
+        }
+      }
+    },
     "Couldn't cancel %@. It may still be running." : {
       "localizations" : {
         "zh-Hans" : {

@@ -330,6 +330,73 @@ final class ClarifyBatchStateTests: XCTestCase {
         XCTAssertNil(untouched.error)
     }
 
+    func testInterruptedRequestCancelDoesNotClaimATimeout() async throws {
+        let (appState, _) = makeAppState()
+        appState.messages = [
+            ChatMessage(id: "clarify-srq-1", role: .clarify, content: "q", timestamp: "1", clarify: ClarifyActivity(requestId: "srq-1", question: "Pick", choices: [ClarifyChoice(label: "a", value: "a")]))
+        ]
+
+        appState.handleStreamEvent(.clarifyExpire(sessionId: "stored-a", requestId: "srq-1", reason: "interrupted"))
+
+        let expired = try XCTUnwrap(clarifyCard(in: appState, requestId: "srq-1"))
+        XCTAssertEqual(expired.status, .expired)
+        XCTAssertEqual(
+            expired.error, AppLocalization.string("This question is no longer active."),
+            "An interrupted turn must not read as Hermes timing out"
+        )
+    }
+
+    // MARK: - Approval withdrawal (request.cancel)
+
+    private func approvalCard(_ appState: AppState, _ requestId: String) -> ApprovalActivity? {
+        appState.messages.last(where: { $0.approval?.requestId == requestId })?.approval
+    }
+
+    private func pendingApprovalMessage(_ requestId: String, status: ApprovalActivity.Status = .pending) -> ChatMessage {
+        ChatMessage(
+            id: "approval-\(requestId)", role: .approval, content: "d", timestamp: "1",
+            approval: ApprovalActivity(
+                sessionId: "stored-a", requestId: requestId, command: "rm -rf scratch", description: "d",
+                allowPermanent: true, smartDenied: false, status: status
+            )
+        )
+    }
+
+    func testApprovalWithdrawnByTimeoutExpiresThePendingCard() throws {
+        let (appState, _) = makeAppState()
+        appState.messages = [pendingApprovalMessage("queue-1"), pendingApprovalMessage("queue-2")]
+
+        appState.handleStreamEvent(.approvalWithdrawn(sessionId: "stored-a", requestId: "queue-1", reason: "timeout"))
+
+        let expired = try XCTUnwrap(approvalCard(appState, "queue-1"))
+        XCTAssertEqual(expired.status, .expired, "A withdrawn approval must stop offering Run / Reject")
+        XCTAssertEqual(expired.error, AppLocalization.string("This approval is no longer active — Hermes timed it out and continued."))
+        XCTAssertEqual(approvalCard(appState, "queue-2")?.status, .pending, "Only the withdrawn request changes")
+    }
+
+    func testApprovalResolvedElsewhereSaysSo() throws {
+        let (appState, _) = makeAppState()
+        appState.messages = [pendingApprovalMessage("queue-1")]
+
+        appState.handleStreamEvent(.approvalWithdrawn(sessionId: "stored-a", requestId: "queue-1", reason: "resolved"))
+
+        let settled = try XCTUnwrap(approvalCard(appState, "queue-1"))
+        XCTAssertEqual(settled.status, .expired)
+        XCTAssertEqual(settled.error, AppLocalization.string("This approval was answered elsewhere."))
+    }
+
+    func testApprovalWithdrawalLeavesThisDevicesInFlightAnswerAlone() throws {
+        let (appState, _) = makeAppState()
+        appState.messages = [pendingApprovalMessage("queue-1", status: .submitting)]
+
+        // The gateway settles the request as soon as this device's own
+        // approval.respond resolves the queue — possibly before the RPC reply.
+        appState.handleStreamEvent(.approvalWithdrawn(sessionId: "stored-a", requestId: "queue-1", reason: "resolved"))
+
+        XCTAssertEqual(approvalCard(appState, "queue-1")?.status, .submitting)
+        XCTAssertNil(approvalCard(appState, "queue-1")?.error)
+    }
+
     // MARK: - Duplicate / replay identity
 
     func testLegacyScalarCardAnswersAtRequestLevelWithoutQuestionID() async throws {
@@ -620,6 +687,37 @@ final class ClarifyBatchStateTests: XCTestCase {
         XCTAssertEqual(restored.questions[0].answer, "staging")
         XCTAssertEqual(restored.questions[1].status, .pending, "Remaining questions stay answerable")
         XCTAssertEqual(restored.status, .pending)
+    }
+
+    func testResumeRestoresEveryOpenClarifyAsAnAnswerableCard() throws {
+        let (appState, _) = makeAppState()
+        func clarify(_ id: String, _ question: String) -> AnyCodable {
+            .object([
+                "request_id": .string(id),
+                "question": .string(question),
+                "choices": .array([.string("a"), .string("b")])
+            ])
+        }
+        let result = SessionResumeResult(
+            sessionId: "stored-a",
+            messages: [],
+            snapshot: SessionRuntimeSnapshot(object: [
+                "running": .bool(true),
+                "pending_clarify": clarify("srq-first0000001", "First?"),
+                "open_clarifies": .array([clarify("srq-second000002", "Second?")])
+            ])
+        )
+
+        XCTAssertTrue(appState.applyChatResume(result))
+
+        let first = try XCTUnwrap(clarifyCard(in: appState, requestId: "srq-first0000001"))
+        let second = try XCTUnwrap(
+            clarifyCard(in: appState, requestId: "srq-second000002"),
+            "A second open clarify must restore too, not only the oldest"
+        )
+        XCTAssertEqual(first.status, .pending)
+        XCTAssertEqual(second.status, .pending)
+        XCTAssertTrue(AppState.hasPendingDecision(in: appState.messages))
     }
 
     func testSessionInfoSnapshotAlsoRestoresPendingClarify() throws {
