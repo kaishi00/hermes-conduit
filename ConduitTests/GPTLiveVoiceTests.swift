@@ -807,22 +807,32 @@ extension AppStateVoiceCapabilityTests {
 
     func testCarPlayGoingAwayDropsTheHostTextOfACallThatAlreadyFailed() {
         let appState = makeGPTLiveAppState()
-        appState.liveVoiceHostContextForTesting = (gemini: true, gpt: true)
+        let all = ["geminiMemory", "geminiPersona", "gptMemory", "gptPersona"]
+        appState.installLiveVoiceHostContextForTesting()
 
         appState.showGPTLiveSheet = true
         appState.showGeminiLiveSheet = true
         appState.releaseCarPlayGPTLive()
         appState.releaseCarPlayGeminiLive()
-        XCTAssertEqual(appState.liveVoiceHostContextForTesting.gpt, true, "the phone's sheet still presents it")
-        XCTAssertEqual(appState.liveVoiceHostContextForTesting.gemini, true)
+        XCTAssertEqual(appState.liveVoiceHostContextForTesting, all, "the phone's sheets still present them")
 
         appState.showGPTLiveSheet = false
         appState.showGeminiLiveSheet = false
         appState.releaseCarPlayGPTLive()
-        XCTAssertEqual(appState.liveVoiceHostContextForTesting.gpt, false, "nothing presents a failed CarPlay call, so its memory and persona go")
-        XCTAssertEqual(appState.liveVoiceHostContextForTesting.gemini, true)
+        XCTAssertEqual(appState.liveVoiceHostContextForTesting, ["geminiMemory", "geminiPersona"], "nothing presents a failed CarPlay call, so its memory and persona go")
         appState.releaseCarPlayGeminiLive()
-        XCTAssertEqual(appState.liveVoiceHostContextForTesting.gemini, false)
+        XCTAssertEqual(appState.liveVoiceHostContextForTesting, [])
+    }
+
+    func testDisconnectDropsTheHostTextOfALiveCallThatAlreadyFailed() {
+        let appState = makeGPTLiveAppState()
+        appState.installLiveVoiceHostContextForTesting()
+        XCTAssertFalse(appState.showGPTLiveSheet)
+        XCTAssertFalse(appState.showGeminiLiveSheet)
+
+        appState.disconnect()
+
+        XCTAssertEqual(appState.liveVoiceHostContextForTesting, [], "no sheet and no running call still leaves nothing behind at the boundary")
     }
 
     func testCarPlayEndClosesTheGPTLiveCall() async {

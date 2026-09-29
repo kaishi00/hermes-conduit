@@ -1466,15 +1466,19 @@ final class AppState: ObservableObject {
         if isGeminiLiveActive {
             closeGeminiLiveConversation()
         } else {
-            geminiLiveMemoryContext = nil
-            geminiLivePersonality = nil
+            dropGeminiLiveHostContext()
         }
     }
 
     func closeGeminiLiveConversation() {
         if geminiLiveControllerCreated { geminiLiveController.stop() }
         showGeminiLiveSheet = false
-        // Personal text isn't kept around between conversations.
+        dropGeminiLiveHostContext()
+    }
+
+    /// Personal text (the host's memory and persona) isn't kept around
+    /// between conversations, nor once nothing presents one.
+    private func dropGeminiLiveHostContext() {
         geminiLiveMemoryContext = nil
         geminiLivePersonality = nil
     }
@@ -1482,7 +1486,12 @@ final class AppState: ObservableObject {
     /// Boundary teardown (disconnect, server/profile change, forced
     /// sign-out). Background jobs are retired by the same boundaries.
     private func stopGeminiLiveConversation() {
-        guard showGeminiLiveSheet || isGeminiLiveActive else { return }
+        // A conversation that already failed with no sheet up has nothing
+        // to close, but its host text still goes at the boundary.
+        guard showGeminiLiveSheet || isGeminiLiveActive else {
+            dropGeminiLiveHostContext()
+            return
+        }
         closeGeminiLiveConversation()
     }
 
@@ -1548,19 +1557,24 @@ final class AppState: ObservableObject {
     private var gptLivePersonality: String?
     private var gptLiveMemoryContext: GeminiLiveMemoryContext?
 
-    /// The host text the live modes hold between a call's start and close.
-    var liveVoiceHostContextForTesting: (gemini: Bool, gpt: Bool) {
-        get {
-            (geminiLiveMemoryContext != nil || geminiLivePersonality != nil,
-             gptLiveMemoryContext != nil || gptLivePersonality != nil)
-        }
-        set {
-            let memory = GeminiLiveMemoryContext(text: "memory", canRecall: false)
-            geminiLiveMemoryContext = newValue.gemini ? memory : nil
-            geminiLivePersonality = newValue.gemini ? "persona" : nil
-            gptLiveMemoryContext = newValue.gpt ? memory : nil
-            gptLivePersonality = newValue.gpt ? "persona" : nil
-        }
+    /// The host text the live modes hold between a call's start and close,
+    /// by field.
+    var liveVoiceHostContextForTesting: [String] {
+        [
+            geminiLiveMemoryContext != nil ? "geminiMemory" : nil,
+            geminiLivePersonality != nil ? "geminiPersona" : nil,
+            gptLiveMemoryContext != nil ? "gptMemory" : nil,
+            gptLivePersonality != nil ? "gptPersona" : nil,
+        ].compactMap { $0 }
+    }
+
+    /// Fills every live mode's host text, as a call's start would.
+    func installLiveVoiceHostContextForTesting() {
+        let memory = GeminiLiveMemoryContext(text: "memory", canRecall: false)
+        geminiLiveMemoryContext = memory
+        geminiLivePersonality = "persona"
+        gptLiveMemoryContext = memory
+        gptLivePersonality = "persona"
     }
 
     /// GPT-Live calls start on the Hermes host (the conduit_push plugin),
@@ -1647,15 +1661,19 @@ final class AppState: ObservableObject {
         if isGPTLiveActive {
             closeGPTLiveConversation()
         } else {
-            gptLiveMemoryContext = nil
-            gptLivePersonality = nil
+            dropGPTLiveHostContext()
         }
     }
 
     func closeGPTLiveConversation() {
         if gptLiveControllerCreated { gptLiveController.stop() }
         showGPTLiveSheet = false
-        // Personal text isn't kept around between conversations.
+        dropGPTLiveHostContext()
+    }
+
+    /// Personal text (the host's memory and persona) isn't kept around
+    /// between conversations, nor once nothing presents one.
+    private func dropGPTLiveHostContext() {
         gptLiveMemoryContext = nil
         gptLivePersonality = nil
     }
@@ -1663,7 +1681,12 @@ final class AppState: ObservableObject {
     /// Boundary teardown (disconnect, server/profile change, sign-out, or
     /// another voice mode taking over).
     private func stopGPTLiveConversation() {
-        guard showGPTLiveSheet || isGPTLiveActive else { return }
+        // A conversation that already failed with no sheet up has nothing
+        // to close, but its host text still goes at the boundary.
+        guard showGPTLiveSheet || isGPTLiveActive else {
+            dropGPTLiveHostContext()
+            return
+        }
         closeGPTLiveConversation()
     }
 
