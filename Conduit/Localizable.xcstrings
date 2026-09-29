@@ -17531,6 +17531,166 @@
           }
         }
       }
+    },
+    "Add a Gemini API key" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加 Gemini API 密钥"
+          }
+        }
+      }
+    },
+    "Add a Gemini API key on your Hermes server." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在 Hermes 服务器上添加 Gemini API 密钥。"
+          }
+        }
+      }
+    },
+    "Choose OpenAI Codex when prompted. The sign-in stays on your Hermes server." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "出现提示时请选择 OpenAI Codex。登录信息保留在 Hermes 服务器上。"
+          }
+        }
+      }
+    },
+    "Hermes notifier repository" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 通知插件仓库"
+          }
+        }
+      }
+    },
+    "Install or update the Hermes notifier plugin on your Hermes server." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在 Hermes 服务器上安装或更新 Hermes 通知插件。"
+          }
+        }
+      }
+    },
+    "Install the notifier if it is missing, or update your existing installation. Both commands target the Hermes gateway used by this profile." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "如果尚未安装，请安装通知插件；如果已安装，请更新现有版本。两个命令都针对此配置使用的 Hermes 网关。"
+          }
+        }
+      }
+    },
+    "Live voice setup" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "实时语音设置"
+          }
+        }
+      }
+    },
+    "Opens live voice setup instructions" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开实时语音设置说明"
+          }
+        }
+      }
+    },
+    "Opens the notifier project on GitHub" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 GitHub 上打开通知插件项目"
+          }
+        }
+      }
+    },
+    "Requires Hermes notifier ·" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要 Hermes 通知插件 ·"
+          }
+        }
+      }
+    },
+    "Return to Voice settings, enable this mode if it is off, and tap %@ to check availability." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "返回“语音”设置；如果此模式尚未启用，请先启用，然后轻点 %@ 检查是否可用。"
+          }
+        }
+      }
+    },
+    "Set GEMINI_API_KEY in the active Hermes profile’s .env file. Keep the key on your Hermes server." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在当前 Hermes 配置的 .env 文件中设置 GEMINI_API_KEY。请将密钥保留在 Hermes 服务器上。"
+          }
+        }
+      }
+    },
+    "Set up Gemini Live" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "设置 Gemini Live"
+          }
+        }
+      }
+    },
+    "Set up GPT-Live" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "设置 GPT-Live"
+          }
+        }
+      }
+    },
+    "Sign in to OpenAI Codex" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "登录 OpenAI Codex"
+          }
+        }
+      }
+    },
+    "Setup" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "设置"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

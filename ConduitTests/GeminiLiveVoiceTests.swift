@@ -285,6 +285,55 @@ extension HermesVoiceGatewayTimeoutTests {
             XCTAssertEqual(error as? GeminiLiveTokenError, .unavailable(.pluginMissing))
         }
     }
+
+    func testGeminiLiveNoAPIKeyStatusHasActionablePresentationWhilePreservingOtherHostReasons() {
+        let defaults = UserDefaults.standard
+        let previousLanguage = defaults.string(forKey: AppLanguageStore.defaultsKey)
+        defaults.set(AppLanguage.english.rawValue, forKey: AppLanguageStore.defaultsKey)
+        defer {
+            if let previousLanguage {
+                defaults.set(previousLanguage, forKey: AppLanguageStore.defaultsKey)
+            } else {
+                defaults.removeObject(forKey: AppLanguageStore.defaultsKey)
+            }
+        }
+
+        let missingKey = GeminiLiveTokenClient.availability(from: [
+            "ok": true, "available": false, "reason": "no_api_key",
+        ])
+        XCTAssertEqual(missingKey, .unavailable(reason: "no_api_key"))
+        XCTAssertEqual(missingKey.userFacingReason, "Add a Gemini API key on your Hermes server.")
+
+        let hostExplanation = GeminiLiveTokenClient.availability(from: [
+            "ok": true, "available": false, "reason": "Gemini is disabled for this profile",
+        ])
+        XCTAssertEqual(
+            hostExplanation.userFacingReason,
+            "Gemini Live is not available on this Hermes server: Gemini is disabled for this profile"
+        )
+    }
+
+    func testGeminiLiveMissingEndpointHasActionableNotifierSetupMessage() async throws {
+        let defaults = UserDefaults.standard
+        let previousLanguage = defaults.string(forKey: AppLanguageStore.defaultsKey)
+        defaults.set(AppLanguage.english.rawValue, forKey: AppLanguageStore.defaultsKey)
+        defer {
+            if let previousLanguage {
+                defaults.set(previousLanguage, forKey: AppLanguageStore.defaultsKey)
+            } else {
+                defaults.removeObject(forKey: AppLanguageStore.defaultsKey)
+            }
+        }
+
+        let missing = GeminiLiveTokenClient(request: { _, _, _ in
+            throw DashboardTicketBridgeError.http(status: 404, detail: "Not Found")
+        })
+
+        let status = try await missing.availability()
+
+        XCTAssertEqual(status, .pluginMissing)
+        XCTAssertEqual(status.userFacingReason, "Install or update the Hermes notifier plugin on your Hermes server.")
+    }
 }
 
 // MARK: - Session, tools, controller
