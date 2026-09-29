@@ -1626,6 +1626,33 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
+    func testWindowOwnedRequestBeforeTheCapabilityReplyIsDeclinedOnceItArrives() async throws {
+        let (client, socket) = try await connectedClientForServerRequests()
+        try await deliverFrame([
+            "jsonrpc": "2.0", "method": "event",
+            "params": ["type": "gateway.ready", "payload": [String: Any]()]
+        ], to: socket)
+        await waitForSends(1, on: socket)
+        let capabilitiesID = try XCTUnwrap(try sentFrame(socket)["id"] as? Int)
+
+        // Arrives while the capability reply is still outstanding.
+        try await deliverFrame([
+            "jsonrpc": "2.0", "id": "srq-7070707070cc", "method": "tour",
+            "params": ["session_id": "runtime-1", "action": "start"]
+        ], to: socket)
+        XCTAssertEqual(socket.sentTexts.count, 1, "No decline before the gateway says whether it counts them")
+
+        try await deliverFrame([
+            "jsonrpc": "2.0", "id": capabilitiesID,
+            "result": ["server_requests": ["tour"], "declines_not_shown": true]
+        ], to: socket)
+        await waitForSends(2, on: socket)
+        let reply = try sentFrame(socket)
+        XCTAssertEqual(reply["id"] as? String, "srq-7070707070cc")
+        XCTAssertEqual((reply["error"] as? [String: Any])?["code"] as? Int, 4404)
+        client.disconnect()
+    }
+
     func testWindowOwnedRequestStaysSilentWhenTheGatewayDoesNotCountDeclines() async throws {
         let (client, socket) = try await connectedClientForServerRequests()
         try await advertise(socket, result: ["server_requests": ["tour"]])
