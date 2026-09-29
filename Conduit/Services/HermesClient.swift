@@ -39,8 +39,34 @@ private struct JsonRpcRequest: Encodable {
     let params: [String: AnyCodable]?
 }
 
+/// A JSON-RPC `id` as it appears on an inbound frame. Responses to this
+/// client's own requests echo its integer ids; server→client requests
+/// (`tui_gateway/server_requests.py`) carry string ids (`srq-<hex>`), so a
+/// string id must decode instead of dropping the whole frame.
+private enum JsonRpcID: Decodable, Equatable {
+    case int(Int)
+    case string(String)
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let value = try? container.decode(Int.self) {
+            self = .int(value)
+        } else {
+            self = .string(try container.decode(String.self))
+        }
+    }
+
+    /// The id exactly as it must be echoed back in a response frame.
+    var wireValue: Any {
+        switch self {
+        case .int(let value): return value
+        case .string(let value): return value
+        }
+    }
+}
+
 private struct JsonRpcResponse: Decodable {
-    let id: Int?
+    let id: JsonRpcID?
     let result: AnyCodable?
     let error: RpcError?
     let method: String?
@@ -594,6 +620,11 @@ final class HermesClient: ObservableObject {
     private let transportFactory: @MainActor () -> any HermesWebSocketTransport
     private var requestId = 0
     private var pending = [Int: PendingRequest]()
+    /// Server→client request ids this client has presented and not yet
+    /// answered (or seen withdrawn). Deliberately kept across reconnects: the
+    /// gateway keeps the request open and `session.resume` re-announces it
+    /// under the same id.
+    private var openServerRequestIDs = Set<String>()
     private var closedIntentionally = false
     private var receiveTask: Task<Void, Never>?
     private var socketHasOpened = false
@@ -825,10 +856,20 @@ final class HermesClient: ObservableObject {
             return
         }
 
+        // Server→client request: carries both `method` and `id`. It must be
+        // routed before response matching — it is not an answer to any of
+        // this client's requests, and an integer id could otherwise collide
+        // with (and wrongly settle) one of them.
+        if let method = json.method, let requestID = json.id {
+            handleServerRequest(id: requestID, method: method, params: json.params?.objectValue ?? [:])
+            return
+        }
+
         // Handle RPC response (has id)
-        if let id = json.id {
-            guard let pending = pending.removeValue(forKey: id) else {
-                logger.debug("Received unmatched RPC response id \(id)")
+        if let requestID = json.id {
+            guard case .int(let id) = requestID,
+                  let pending = pending.removeValue(forKey: id) else {
+                logger.debug("Received unmatched RPC response id \(String(describing: requestID.wireValue), privacy: .public)")
                 return
             }
             logger.notice("Received RPC response id \(id)")
@@ -843,10 +884,171 @@ final class HermesClient: ObservableObject {
 
         // Handle stream event notification
         if json.method == "event", let params = json.params {
+            let eventObject = params.objectValue
+            switch eventObject?["type"]?.stringValue {
+            case "gateway.ready":
+                advertiseClientCapabilities()
+            case "request.cancel":
+                if let id = eventObject?["payload"]?.objectValue?["id"]?.stringValue {
+                    openServerRequestIDs.remove(id)
+                }
+            default:
+                break
+            }
             handleStreamEvent(params: params)
         } else {
             logger.debug("Received non-event WebSocket notification without an RPC id")
         }
+    }
+
+    // MARK: - Server→client requests
+
+    /// Tells the gateway, once per connection, that this client answers
+    /// server→client JSON-RPC requests. Hermes (#112548) never sends an
+    /// approval / clarify / sudo / secret request to a WebSocket client that
+    /// has not said so: it withdraws the approval ("the attached client
+    /// cannot answer approval requests") and the command is blocked. Sent on
+    /// `gateway.ready`, which the gateway writes first on every new socket.
+    /// A gateway that predates server requests answers -32601; ignored.
+    private func advertiseClientCapabilities() {
+        guard let socket = self.socket else { return }
+        Task { @MainActor [weak self] in
+            guard let self, self.socket === socket else { return }
+            do {
+                _ = try await self.rpc("client.capabilities", params: ["server_requests": true], scoped: false)
+                self.logger.notice("Advertised server_requests capability")
+            } catch {
+                self.logger.notice("client.capabilities not accepted: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+    }
+
+    /// One inbound server→client request (`tui_gateway/server_requests.py`).
+    ///
+    /// - `approval` becomes the existing approval card. Its params carry the
+    ///   approval queue's own `request_id`, and the card still answers through
+    ///   `approval.respond`: resolving the queue entry makes the gateway
+    ///   withdraw this request itself (`request.cancel`, reason `resolved`),
+    ///   so no response frame is written for it.
+    /// - `clarify` becomes the existing clarify card keyed by the server
+    ///   request id; `respondToClarification` answers it with a response
+    ///   frame (single question) or `clarify.lock` (batch questions).
+    /// - Everything else (sudo, secret, vault prompts, desktop-only bridges)
+    ///   has no UI here and is declined at once with -32601, so the tool
+    ///   fails fast instead of waiting out its deadline.
+    private func handleServerRequest(id: JsonRpcID, method: String, params: [String: AnyCodable]) {
+        guard case .string(let requestID) = id, !requestID.isEmpty else {
+            writeServerRequestReply(id: id, error: (Self.methodNotFoundCode, "unsupported server request id"))
+            return
+        }
+        let sessionId = params["session_id"]?.stringValue ?? ""
+        logger.notice("Received server request \(method, privacy: .public) id \(requestID, privacy: .public)")
+        switch method {
+        case "approval":
+            guard let activity = MessageNormalizer.approvalActivity(from: params, sessionId: sessionId) else {
+                writeServerRequestReply(id: id, error: (Self.invalidParamsCode, "approval request without a session"))
+                return
+            }
+            openServerRequestIDs.insert(requestID)
+            onEvent?(.approval(sessionId: sessionId, activity: activity))
+        case "clarify":
+            guard let activity = MessageNormalizer.pendingClarifyActivity(
+                from: Self.clarifyPayload(serverRequestID: requestID, params: params)
+            ) else {
+                writeServerRequestReply(id: id, error: (Self.invalidParamsCode, "clarify request without a question"))
+                return
+            }
+            openServerRequestIDs.insert(requestID)
+            onEvent?(.clarify(sessionId: sessionId, activity: activity))
+        default:
+            writeServerRequestReply(id: id, error: (Self.methodNotFoundCode, "no handler for server request: \(method)"))
+        }
+    }
+
+    /// The legacy `clarify.request` payload shape for a `clarify` server
+    /// request: its params, keyed by the server request id (which the
+    /// response frame and `clarify.lock` both address).
+    static func clarifyPayload(serverRequestID: String, params: [String: AnyCodable]) -> [String: AnyCodable] {
+        var payload = params
+        payload["request_id"] = .string(serverRequestID)
+        return payload
+    }
+
+    /// Whether `requestId` names a server→client request rather than a
+    /// legacy `clarify.request` id. Hermes mints `srq-<hex>` ids; the prefix
+    /// check covers a card restored before this connection saw the request.
+    func isServerRequestID(_ requestId: String) -> Bool {
+        openServerRequestIDs.contains(requestId) || requestId.hasPrefix("srq-")
+    }
+
+    /// The oldest `clarify` entry of a resume's `open_requests`, as a
+    /// legacy clarify payload.
+    static func openClarifyPayload(in openRequests: AnyCodable?) -> [String: AnyCodable]? {
+        for entry in openRequests?.arrayValue ?? [] {
+            guard let object = entry.objectValue,
+                  object["method"]?.stringValue == "clarify",
+                  let id = object["id"]?.stringValue, !id.isEmpty else { continue }
+            return clarifyPayload(serverRequestID: id, params: object["params"]?.objectValue ?? [:])
+        }
+        return nil
+    }
+
+    static func openRequestIDs(in openRequests: AnyCodable?) -> [String] {
+        (openRequests?.arrayValue ?? []).compactMap { entry in
+            guard let object = entry.objectValue,
+                  let method = object["method"]?.stringValue,
+                  method == "clarify" || method == "approval",
+                  let id = object["id"]?.stringValue, !id.isEmpty else { return nil }
+            return id
+        }
+    }
+
+    static let methodNotFoundCode = -32601
+    static let invalidParamsCode = -32602
+
+    private func serverRequestReplyText(id: JsonRpcID, result: [String: Any]?, error: (code: Int, message: String)?) -> String? {
+        var frame: [String: Any] = ["jsonrpc": "2.0", "id": id.wireValue]
+        if let error {
+            frame["error"] = ["code": error.code, "message": error.message]
+        } else {
+            frame["result"] = result ?? [:]
+        }
+        guard let data = try? JSONSerialization.data(withJSONObject: frame) else { return nil }
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    /// Fire-and-forget reply (used for declines): the gateway withdraws the
+    /// request itself if the frame is lost with the socket.
+    private func writeServerRequestReply(id: JsonRpcID, error: (code: Int, message: String)) {
+        guard let socket, socket.closeCode == .invalid, isConnected,
+              let text = serverRequestReplyText(id: id, result: nil, error: error) else { return }
+        socket.send(.string(text)) { [weak self] sendError in
+            if let sendError {
+                self?.logger.error("Server request reply failed: \(sendError.localizedDescription, privacy: .public)")
+            }
+        }
+    }
+
+    /// Answers an open server request with `result`. Throws when the frame
+    /// cannot be written so the card can offer a retry; the gateway sends no
+    /// acknowledgement for a response frame.
+    private func sendServerRequestResult(id requestID: String, result: [String: Any]) async throws {
+        guard let socket, socket.closeCode == .invalid, isConnected else {
+            throw HermesError.notConnected
+        }
+        guard let text = serverRequestReplyText(id: .string(requestID), result: result, error: nil) else {
+            throw HermesError.invalidResponse
+        }
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            socket.send(.string(text)) { error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume()
+                }
+            }
+        }
+        openServerRequestIDs.remove(requestID)
     }
 
     private func handleStreamEvent(params: AnyCodable) {
@@ -1140,6 +1342,17 @@ final class HermesClient: ObservableObject {
                 snapshotObject[key] = value
             }
         }
+        // Current Hermes no longer sends `pending_clarify`: an unanswered
+        // clarify is a server→client request, re-announced in
+        // `open_requests` under its original id. Feed it through the same
+        // authoritative restore path (locked batch answers ride `answers`).
+        if snapshotObject["pending_clarify"] == nil,
+           let clarify = Self.openClarifyPayload(in: object["open_requests"]) {
+            snapshotObject["pending_clarify"] = .object(clarify)
+        }
+        for id in Self.openRequestIDs(in: object["open_requests"]) {
+            openServerRequestIDs.insert(id)
+        }
         return SessionResumeResult(
             sessionId: resolvedId,
             storedSessionId: storedId,
@@ -1377,6 +1590,13 @@ final class HermesClient: ObservableObject {
         answer: String,
         questionId: String? = nil
     ) async throws -> ClarifyResponseOutcome {
+        if isServerRequestID(requestId) {
+            return try await respondToClarifyServerRequest(
+                requestId: requestId,
+                answer: answer,
+                questionId: questionId
+            )
+        }
         var params: [String: Any] = [
             "request_id": requestId,
             "answer": answer
@@ -1393,6 +1613,40 @@ final class HermesClient: ObservableObject {
         // different protocol states.
         let remaining: [String]? = result.objectValue?["remaining"]?.arrayValue.map {
             $0.compactMap(\.stringValue)
+        }
+        return .accepted(remaining: remaining)
+    }
+
+    /// Answers a `clarify` server request (Hermes #110521). A batch
+    /// question locks through `clarify.lock`, whose reply has the same
+    /// `{status, remaining}` shape as the legacy `clarify.respond`; the last
+    /// lock resolves the request server-side. A single question is answered
+    /// with the response frame itself — `{answer}` under the request's id —
+    /// which the gateway never acknowledges, so the outcome carries no
+    /// `remaining` list.
+    private func respondToClarifyServerRequest(
+        requestId: String,
+        answer: String,
+        questionId: String?
+    ) async throws -> ClarifyResponseOutcome {
+        guard let questionId, !questionId.isEmpty else {
+            try await sendServerRequestResult(id: requestId, result: ["answer": answer])
+            return .accepted(remaining: nil)
+        }
+        let result = try await rpc(
+            "clarify.lock",
+            params: ["request_id": requestId, "question_id": questionId, "answer": answer]
+        )
+        let status = result.objectValue?["status"]?.stringValue?.lowercased()
+        if status == "expired" {
+            openServerRequestIDs.remove(requestId)
+            return .expired
+        }
+        let remaining: [String]? = result.objectValue?["remaining"]?.arrayValue.map {
+            $0.compactMap(\.stringValue)
+        }
+        if remaining?.isEmpty == true {
+            openServerRequestIDs.remove(requestId)
         }
         return .accepted(remaining: remaining)
     }

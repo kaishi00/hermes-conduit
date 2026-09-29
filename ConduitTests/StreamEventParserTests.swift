@@ -585,6 +585,25 @@ final class StreamEventParserTests: XCTestCase {
         XCTAssertEqual(requestId, "req-7")
     }
 
+    func testRequestCancelForClarifyExpiresTheServerRequestCard() {
+        let event = parse(#"""
+        {"type": "request.cancel", "session_id": "s1", "payload": {"id": "srq-0123456789ab", "method": "clarify", "reason": "timeout"}}
+        """#)
+        guard case .clarifyExpire(let sessionId, let requestId) = event else {
+            return XCTFail("Expected clarifyExpire")
+        }
+        XCTAssertEqual(sessionId, "s1")
+        XCTAssertEqual(requestId, "srq-0123456789ab")
+    }
+
+    func testRequestCancelForApprovalIsIgnored() {
+        // Approval cards are keyed by the queue id, not the server request id.
+        let event = parse(#"""
+        {"type": "request.cancel", "session_id": "s1", "payload": {"id": "srq-0123456789ab", "method": "approval", "reason": "resolved"}}
+        """#)
+        XCTAssertNil(event)
+    }
+
     func testClarifyExpireWithoutRequestIDReturnsNil() {
         let event = parse(#"""
         {"type": "clarify.expire", "session_id": "s1", "payload": {}}

@@ -130,6 +130,18 @@ enum StreamEventParser {
             guard !requestId.isEmpty else { return nil }
             return .clarifyExpire(sessionId: sessionId, requestId: requestId)
 
+        case "request.cancel":
+            // The gateway withdrew a server→client request (timeout,
+            // interrupt, shutdown). A clarify card is keyed by the server
+            // request id, so it expires exactly like `clarify.expire`. An
+            // approval card is keyed by its queue id and reconciles through
+            // `approval.respond` / `approval.pending` as before.
+            guard payload?["method"]?.stringValue == "clarify" else { return nil }
+            let requestId = (payload?["id"]?.stringValue ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !requestId.isEmpty else { return nil }
+            return .clarifyExpire(sessionId: sessionId, requestId: requestId)
+
         case "approval.request":
             guard let payload,
                   let approval = MessageNormalizer.approvalActivity(from: payload, sessionId: sessionId) else { return nil }
