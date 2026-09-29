@@ -46,13 +46,18 @@ private struct JsonRpcRequest: Encodable {
 private enum JsonRpcID: Decodable, Equatable {
     case int(Int)
     case string(String)
+    /// Any other scalar (JSON-RPC forbids them): kept so the frame is not
+    /// dropped, but it can never match a request of ours.
+    case other
 
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         if let value = try? container.decode(Int.self) {
             self = .int(value)
+        } else if let value = try? container.decode(String.self) {
+            self = .string(value)
         } else {
-            self = .string(try container.decode(String.self))
+            self = .other
         }
     }
 
@@ -61,7 +66,23 @@ private enum JsonRpcID: Decodable, Equatable {
         switch self {
         case .int(let value): return value
         case .string(let value): return value
+        case .other: return NSNull()
         }
+    }
+}
+
+/// First-caller-wins latch for racing a completion handler against a
+/// deadline; exactly one side resumes the continuation.
+private final class ResumeOnce: @unchecked Sendable {
+    private let lock = NSLock()
+    private var claimed = false
+
+    func claim() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        if claimed { return false }
+        claimed = true
+        return true
     }
 }
 
@@ -651,6 +672,10 @@ final class HermesClient: ObservableObject {
     /// The socket `client.capabilities` was sent on, so a repeated
     /// `gateway.ready` does not advertise twice on one connection.
     private weak var advertisedSocket: AnyObject?
+    /// `client.capabilities` → `declines_not_shown`: the gateway counts a
+    /// 4404 "not shown here" as one client declining a window-owned request
+    /// rather than as its answer.
+    private var backendCountsDeclines = false
     private var closedIntentionally = false
     private var receiveTask: Task<Void, Never>?
     private var socketHasOpened = false
@@ -753,6 +778,11 @@ final class HermesClient: ObservableObject {
         openContinuation = nil
         isConnected = false
         failAllPendingRequests(with: HermesError.connectionClosed)
+        // Per-connection capability state. Open request ids and the approval
+        // id map deliberately survive: the gateway keeps those requests open
+        // and re-announces them under the same ids on resume.
+        advertisedSocket = nil
+        backendCountsDeclines = false
 
         closedIntentionally = false
         socketHasOpened = false
@@ -886,13 +916,13 @@ final class HermesClient: ObservableObject {
         // routed before response matching — it is not an answer to any of
         // this client's requests, and an integer id could otherwise collide
         // with (and wrongly settle) one of them.
-        if let method = json.method, let requestID = json.id {
+        if let method = json.method, method != "event", let requestID = json.id {
             handleServerRequest(id: requestID, method: method, params: json.params?.objectValue ?? [:])
             return
         }
 
-        // Handle RPC response (has id)
-        if let requestID = json.id {
+        // Handle RPC response (has id, no method)
+        if json.method == nil, let requestID = json.id {
             guard case .int(let id) = requestID,
                   let pending = pending.removeValue(forKey: id) else {
                 logger.debug("Received unmatched RPC response id \(String(describing: requestID.wireValue), privacy: .public)")
@@ -952,7 +982,9 @@ final class HermesClient: ObservableObject {
         Task { @MainActor [weak self] in
             guard let self, self.socket === socket else { return }
             do {
-                _ = try await self.rpc("client.capabilities", params: ["server_requests": true], scoped: false)
+                let result = try await self.rpc("client.capabilities", params: ["server_requests": true], scoped: false)
+                guard self.socket === socket else { return }
+                self.backendCountsDeclines = result.objectValue?["declines_not_shown"]?.boolValue == true
                 self.logger.notice("Advertised server_requests capability")
             } catch {
                 self.logger.notice("client.capabilities not accepted: \(error.localizedDescription, privacy: .public)")
@@ -1010,6 +1042,33 @@ final class HermesClient: ObservableObject {
             openServerRequestIDs.insert(requestID)
             onEvent?(.inputPrompt(sessionId: sessionId, activity: activity))
         default:
+            declineServerRequest(id: id, method: method)
+        }
+    }
+
+    /// Methods this client presents (anything else is declined).
+    static func handlesServerRequest(_ method: String) -> Bool {
+        method == "clarify" || method == "approval"
+    }
+
+    /// Requests only the Hermes Desktop window showing the session can
+    /// answer (`server_requests.py`, "window-owned bridges").
+    static let windowOwnedServerRequests: Set<String> = [
+        "preview.read", "preview.act", "terminal.read", "window.read", "tour"
+    ]
+
+    /// Declines a request this client has no UI for, so the tool fails fast
+    /// instead of waiting out its deadline. A window-owned request gets the
+    /// 4404 "not shown here" decline, which settles only once every attached
+    /// client declined — a -32601 would settle it at once and take it away
+    /// from a Desktop window on the same session. A gateway that does not
+    /// count declines would settle on any error, so there it gets none
+    /// (reference: `apps/shared/src/json-rpc-channel.ts`).
+    private func declineServerRequest(id: JsonRpcID, method: String) {
+        if Self.windowOwnedServerRequests.contains(method) {
+            guard backendCountsDeclines else { return }
+            writeServerRequestReply(id: id, error: (Self.notShownCode, "no Conduit window shows this session"))
+        } else {
             writeServerRequestReply(id: id, error: (Self.methodNotFoundCode, "no handler for server request: \(method)"))
         }
     }
@@ -1053,6 +1112,7 @@ final class HermesClient: ObservableObject {
     }
 
     static let methodNotFoundCode = -32601
+    static let notShownCode = 4404
     static let invalidParamsCode = -32602
 
     private func serverRequestReplyText(id: JsonRpcID, result: [String: Any]?, error: (code: Int, message: String)?) -> String? {
@@ -1088,8 +1148,20 @@ final class HermesClient: ObservableObject {
         guard let text = serverRequestReplyText(id: .string(requestID), result: result, error: nil) else {
             throw HermesError.invalidResponse
         }
+        // Bounded like rpc(): a send completion that never fires must not
+        // leave the card submitting forever.
+        let once = ResumeOnce()
+        let deadline = Self.requestTimeout
+        var deadlineTask: Task<Void, Never>?
+        defer { deadlineTask?.cancel() }
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            deadlineTask = Task {
+                try? await Task.sleep(for: .seconds(deadline))
+                guard !Task.isCancelled, once.claim() else { return }
+                continuation.resume(throwing: HermesError.timeout("server request reply"))
+            }
             socket.send(.string(text)) { error in
+                guard once.claim() else { return }
                 if let error {
                     continuation.resume(throwing: error)
                 } else {
@@ -1404,6 +1476,16 @@ final class HermesClient: ObservableObject {
         }
         for id in Self.openRequestIDs(in: object["open_requests"]) {
             openServerRequestIDs.insert(id)
+        }
+        // Anything replayed that this client cannot present is declined
+        // exactly like the live frame, or it would stall the agent until its
+        // deadline after every reconnect.
+        for entry in object["open_requests"]?.arrayValue ?? [] {
+            guard let request = entry.objectValue,
+                  let method = request["method"]?.stringValue,
+                  !Self.handlesServerRequest(method),
+                  let id = request["id"]?.stringValue, !id.isEmpty else { continue }
+            declineServerRequest(id: .string(id), method: method)
         }
         for entry in object["open_requests"]?.arrayValue ?? [] {
             guard let request = entry.objectValue,
