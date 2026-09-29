@@ -578,11 +578,71 @@ final class StreamEventParserTests: XCTestCase {
         let event = parse(#"""
         {"type": "clarify.expire", "session_id": "s1", "payload": {"request_id": "req-7"}}
         """#)
-        guard case .clarifyExpire(let sessionId, let requestId) = event else {
+        guard case .clarifyExpire(let sessionId, let requestId, let reason) = event else {
             return XCTFail("Expected clarifyExpire")
         }
         XCTAssertEqual(sessionId, "s1")
         XCTAssertEqual(requestId, "req-7")
+        XCTAssertNil(reason, "The legacy event carries no reason (it is always a timeout)")
+    }
+
+    func testRequestCancelForClarifyExpiresTheServerRequestCard() {
+        let event = parse(#"""
+        {"type": "request.cancel", "session_id": "s1", "payload": {"id": "srq-0123456789ab", "method": "clarify", "reason": "timeout"}}
+        """#)
+        guard case .clarifyExpire(let sessionId, let requestId, let reason) = event else {
+            return XCTFail("Expected clarifyExpire")
+        }
+        XCTAssertEqual(sessionId, "s1")
+        XCTAssertEqual(requestId, "srq-0123456789ab")
+        XCTAssertEqual(reason, "timeout")
+    }
+
+    func testRequestCancelWithoutReasonIsNotATimeout() {
+        let event = parse(#"""
+        {"type": "request.cancel", "session_id": "s1", "payload": {"id": "srq-0123456789ab", "method": "clarify"}}
+        """#)
+        guard case .clarifyExpire(_, _, let reason) = event else {
+            return XCTFail("Expected clarifyExpire")
+        }
+        XCTAssertEqual(reason, "", "Only the legacy clarify.expire (nil) or an explicit timeout reads as timed out")
+    }
+
+    func testRequestCancelResolvedDoesNotExpireClarify() {
+        let event = parse(#"""
+        {"type": "request.cancel", "session_id": "s1", "payload": {"id": "srq-0123456789ab", "method": "clarify", "reason": "resolved"}}
+        """#)
+        XCTAssertNil(event, "An answered request must never read as timed out")
+    }
+
+    func testRequestCancelForMaskedPromptExpiresIt() {
+        let event = parse(#"""
+        {"type": "request.cancel", "session_id": "s1", "payload": {"id": "srq-0123456789ab", "method": "sudo", "reason": "timeout"}}
+        """#)
+        guard case .inputPromptExpire(let sessionId, let requestId, let reason) = event else {
+            return XCTFail("Expected inputPromptExpire")
+        }
+        XCTAssertEqual(reason, "timeout")
+        XCTAssertEqual(sessionId, "s1")
+        XCTAssertEqual(requestId, "srq-0123456789ab")
+    }
+
+    func testRequestCancelResolvedStillReachesAMaskedPrompt() {
+        let event = parse(#"""
+        {"type": "request.cancel", "session_id": "s1", "payload": {"id": "srq-0123456789ab", "method": "secret", "reason": "resolved"}}
+        """#)
+        guard case .inputPromptExpire(_, _, let reason) = event else {
+            return XCTFail("Another surface answering a prompt must still reach its card")
+        }
+        XCTAssertEqual(reason, "resolved")
+    }
+
+    func testRequestCancelForApprovalIsIgnored() {
+        // Approval cards are keyed by the queue id, not the server request id.
+        let event = parse(#"""
+        {"type": "request.cancel", "session_id": "s1", "payload": {"id": "srq-0123456789ab", "method": "approval", "reason": "resolved"}}
+        """#)
+        XCTAssertNil(event)
     }
 
     func testClarifyExpireWithoutRequestIDReturnsNil() {

@@ -420,7 +420,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 jobs[index].status = .running
                 jobs[index].inputRequestDelivered = false
             }
-        case .approval, .clarify:
+        case .approval, .clarify, .inputPrompt:
             jobs[index].status = .needsInput
             jobs[index].inputRequestDelivered = false
         case .messageComplete(_, _, let content, _):
@@ -447,7 +447,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         case .messageStart(let id), .messageDelta(let id, _), .reasoningDelta(let id, _),
              .messageComplete(let id, _, _, _), .messageError(let id, _), .messageInterrupted(let id),
              .toolStart(let id, _, _, _), .toolComplete(let id, _, _, _),
-             .approval(let id, _), .clarify(let id, _):
+             .approval(let id, _), .clarify(let id, _), .inputPrompt(let id, _):
             return id
         default:
             return nil

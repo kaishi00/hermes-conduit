@@ -854,7 +854,11 @@ final class SessionPresentationCache {
         guard !ids.isEmpty else { return }
 
         var store = load()
-        let freshRecords = messages.suffix(maxMessagesPerSession).map { CachedMessage($0) }
+        // Masked input prompts are live-only: never written to disk.
+        let freshRecords = messages
+            .filter { $0.role != .inputPrompt }
+            .suffix(maxMessagesPerSession)
+            .map { CachedMessage($0) }
         guard !freshRecords.isEmpty else {
             guard !preservePendingDecisionCards || !unconfirmedPendingDecisionKeys.isEmpty else { return }
             var changed = false
