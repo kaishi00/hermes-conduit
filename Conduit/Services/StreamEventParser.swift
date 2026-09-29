@@ -143,19 +143,14 @@ enum StreamEventParser {
             let requestId = (payload?["id"]?.stringValue ?? "")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             guard !requestId.isEmpty else { return nil }
+            // A missing reason is not a timeout: only the legacy
+            // clarify.expire (reason nil) or an explicit "timeout" says so.
+            let reason = payload?["reason"]?.stringValue ?? ""
             if method == "clarify" {
-                return .clarifyExpire(
-                    sessionId: sessionId,
-                    requestId: requestId,
-                    reason: payload?["reason"]?.stringValue
-                )
+                return .clarifyExpire(sessionId: sessionId, requestId: requestId, reason: reason)
             }
             if InputPromptActivity.Kind(rawValue: method) != nil {
-                return .inputPromptExpire(
-                    sessionId: sessionId,
-                    requestId: requestId,
-                    reason: payload?["reason"]?.stringValue
-                )
+                return .inputPromptExpire(sessionId: sessionId, requestId: requestId, reason: reason)
             }
             return nil
 

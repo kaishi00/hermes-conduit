@@ -1547,6 +1547,28 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
+    func testClarifyCancelWithoutEnvelopeSessionFallsBackToTheRequestSession() async throws {
+        let (client, socket) = try await connectedClientForServerRequests()
+        var events: [StreamEvent] = []
+        client.onEvent = { events.append($0) }
+        try await deliverFrame([
+            "jsonrpc": "2.0", "id": "srq-c3c3c3c3c3c3", "method": "clarify",
+            "params": ["session_id": "runtime-1", "question": "Which env?", "choices": ["a"]]
+        ], to: socket)
+        try await deliverFrame([
+            "jsonrpc": "2.0", "method": "event",
+            "params": ["type": "request.cancel", "payload": ["id": "srq-c3c3c3c3c3c3", "method": "clarify", "reason": "timeout"]]
+        ], to: socket)
+        let expiries = events.compactMap { event -> (String, String)? in
+            guard case .clarifyExpire(let sessionId, let requestId, _) = event else { return nil }
+            return (sessionId, requestId)
+        }
+        XCTAssertEqual(expiries.count, 1)
+        XCTAssertEqual(expiries.first?.0, "runtime-1", "An empty session id would be dropped by the active-session filter")
+        XCTAssertEqual(expiries.first?.1, "srq-c3c3c3c3c3c3")
+        client.disconnect()
+    }
+
     func testFailedCapabilityAdvertisementRetriesOnNextGatewayReady() async throws {
         let (client, socket) = try await connectedClientForServerRequests()
         let ready: [String: Any] = [
@@ -1879,6 +1901,33 @@ final class HermesClientTests: XCTestCase {
         XCTAssertEqual(pending.questions[1].status, .pending)
         XCTAssertTrue(client.isServerRequestID("srq-dddddddddddd"))
         XCTAssertTrue(result.snapshot.additionalPendingClarifies.isEmpty)
+        client.disconnect()
+    }
+
+    func testResumeKeepsAnOpenClarifyWhenPendingClarifyIsAlsoPresent() async throws {
+        let (client, socket) = try await connectedClientForServerRequests()
+        let sent = Gate()
+        socket.onSend = { sent.signal() }
+        let openTask = Task<SessionResumeResult, Error> { try await client.openSession("runtime-1") }
+        try await sent.wait("the session.resume request to be sent")
+        let id = try XCTUnwrap(try sentFrame(socket)["id"] as? Int)
+        try await deliverFrame([
+            "jsonrpc": "2.0", "id": id,
+            "result": [
+                "session_id": "runtime-1", "running": true, "messages": [Any](), "info": [String: Any](),
+                "pending_clarify": ["request_id": "req-legacy", "question": "Legacy?", "choices": ["x"]],
+                "open_requests": [
+                    ["id": "srq-c4c4c4c4c4c4", "method": "clarify",
+                     "params": ["session_id": "runtime-1", "question": "Open?", "choices": ["y"]]]
+                ]
+            ]
+        ], to: socket)
+        let result = try await awaitResult(of: openTask, "the session.resume response")
+        XCTAssertEqual(result.snapshot.pendingClarify?.requestId, "req-legacy")
+        XCTAssertEqual(
+            result.snapshot.additionalPendingClarifies.map(\.requestId), ["srq-c4c4c4c4c4c4"],
+            "An open clarify must not be dropped because pending_clarify was already taken"
+        )
         client.disconnect()
     }
 

@@ -598,6 +598,16 @@ final class StreamEventParserTests: XCTestCase {
         XCTAssertEqual(reason, "timeout")
     }
 
+    func testRequestCancelWithoutReasonIsNotATimeout() {
+        let event = parse(#"""
+        {"type": "request.cancel", "session_id": "s1", "payload": {"id": "srq-0123456789ab", "method": "clarify"}}
+        """#)
+        guard case .clarifyExpire(_, _, let reason) = event else {
+            return XCTFail("Expected clarifyExpire")
+        }
+        XCTAssertEqual(reason, "", "Only the legacy clarify.expire (nil) or an explicit timeout reads as timed out")
+    }
+
     func testRequestCancelResolvedDoesNotExpireClarify() {
         let event = parse(#"""
         {"type": "request.cancel", "session_id": "s1", "payload": {"id": "srq-0123456789ab", "method": "clarify", "reason": "resolved"}}
