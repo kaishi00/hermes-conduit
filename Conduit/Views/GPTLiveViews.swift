@@ -79,6 +79,8 @@ struct GPTLiveSettingsSection: View {
                     set: { chosen in
                         voice = chosen
                         model.setVoice(chosen.isEmpty ? nil : chosen)
+                        // The status line names the voice in use.
+                        if status != nil { Task { await check() } }
                     }
                 )) {
                     Text("Server default").tag("")

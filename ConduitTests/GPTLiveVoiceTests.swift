@@ -745,6 +745,20 @@ extension AppStateVoiceCapabilityTests {
         return appState
     }
 
+    func testGPTLiveVoiceChoiceIsSavedAndClearedByServerDefault() {
+        let appState = makeGPTLiveAppState()
+        XCTAssertNil(appState.gptLiveVoice)
+        appState.setGPTLiveVoice("ember")
+        XCTAssertEqual(appState.gptLiveVoice, "ember")
+        // A name this build doesn't list is kept as it is.
+        appState.setGPTLiveVoice("newvoice")
+        XCTAssertEqual(appState.gptLiveVoice, "newvoice")
+        appState.setGPTLiveVoice("")
+        XCTAssertNil(appState.gptLiveVoice, "Server default clears the choice")
+        appState.setGPTLiveVoice(nil)
+        XCTAssertNil(appState.gptLiveVoice)
+    }
+
     func testGPTLiveAndGeminiLiveAreNeverOnTogether() {
         let appState = makeGPTLiveAppState()
         XCTAssertFalse(appState.isGPTLiveEnabled, "Off by default")
