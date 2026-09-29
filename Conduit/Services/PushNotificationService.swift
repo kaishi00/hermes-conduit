@@ -408,11 +408,12 @@ final class PushNotificationService: ObservableObject {
     nonisolated static let defaultRelayURL = URL(string: "https://push.milim.dev")!
 
     /// The relay a saved Settings value points at. Blank (or
-    /// whitespace-only) means the default relay.
+    /// whitespace-only) means the default relay, and so does anything
+    /// without a host, which Settings would never have saved.
     nonisolated static func configuredRelayURL(from saved: String?) -> URL {
         if let trimmed = saved?.trimmingCharacters(in: .whitespacesAndNewlines),
            !trimmed.isEmpty,
-           let url = URL(string: trimmed) {
+           let url = usableRelayURL(trimmed) {
             return url
         }
         return defaultRelayURL
@@ -426,9 +427,9 @@ final class PushNotificationService: ObservableObject {
     nonisolated static func isValidRelayInput(_ value: String) -> Bool {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty { return true }
-        guard let components = URLComponents(string: trimmed),
-              let host = components.host, !host.isEmpty,
-              let url = components.url else {
+        // Same check as `configuredRelayURL(from:)`, so a value that
+        // passes here is exactly the relay that will be used.
+        guard let url = usableRelayURL(trimmed) else {
             return false
         }
         return RelayTransportPolicy.allowsCredentialTransport(url)
@@ -442,19 +443,36 @@ final class PushNotificationService: ObservableObject {
     /// Where relay requests go: the relay that issued this phone's
     /// credential, so editing the Settings field never sends that
     /// credential to a different host. Only with no registration (nothing
-    /// to leak) does the configured relay apply.
-    nonisolated static func requestRelayURL(issuer: String?, configured: URL) -> URL {
-        if let issuer, let url = URL(string: issuer) {
-            return url
-        }
-        return configured
+    /// to leak) does the configured relay apply. An issuer that isn't a
+    /// usable relay URL yields nil: its credential must not go anywhere,
+    /// least of all to the configured relay.
+    nonisolated static func requestRelayURL(issuer: String?, configured: URL) -> URL? {
+        guard let issuer else { return configured }
+        return usableRelayURL(issuer)
     }
+
+    /// The one check for "is this a relay URL": it parses and names a
+    /// host. Used for the configured relay, Settings input and stored
+    /// issuers alike; anything else (e.g. "https:") is unusable.
+    nonisolated static func usableRelayURL(_ value: String) -> URL? {
+        guard let url = URL(string: value), let host = url.host, !host.isEmpty else {
+            return nil
+        }
+        return url
+    }
+
+    /// Stands in for an unusable issuer. It fails the transport policy, so
+    /// every credential-bearing request is refused before it is sent.
+    nonisolated static let unusableRelayURL = URL(string: "unusable-relay:refused")!
 
     /// Whether two relay URLs name the same relay, ignoring cosmetic
     /// differences (case of scheme and host, default port, trailing
     /// slash) so an edit like adding "/" doesn't force a move and re-pair.
+    /// An unusable issuer is never "the same", so Settings offers a move,
+    /// which registers afresh and recovers.
     nonisolated static func isSameRelay(_ issuer: String?, _ configured: URL) -> Bool {
-        guard let issuer, let lhs = URLComponents(string: issuer),
+        guard let issuer, let issuerURL = usableRelayURL(issuer),
+              let lhs = URLComponents(url: issuerURL, resolvingAgainstBaseURL: false),
               let rhs = URLComponents(url: configured, resolvingAgainstBaseURL: false) else {
             return false
         }
@@ -473,6 +491,7 @@ final class PushNotificationService: ObservableObject {
     /// relay changes.
     private var relayURL: URL {
         Self.requestRelayURL(issuer: registration?.relayURL, configured: configuredRelayURL)
+            ?? Self.unusableRelayURL
     }
     private let bundleID = "com.milim.relay"
     private var registration: StoredRegistration?
@@ -714,6 +733,9 @@ final class PushNotificationService: ObservableObject {
     }
 
     func enable() async {
+        // The Enable button is disabled while working, but a second tap can
+        // land before that state reaches the view.
+        guard !isWorking else { return }
         lastError = nil
         relayNotice = nil
         preferences.enabled = true
@@ -733,6 +755,11 @@ final class PushNotificationService: ObservableObject {
     }
 
     func disable() async {
+        // Same one-operation-at-a-time rule as enable(), so a revoke never
+        // interleaves with an in-flight registration. A tap that lands
+        // mid-operation is dropped rather than queued; the button is
+        // disabled while working, so this only catches the race window.
+        guard !isWorking else { return }
         lastError = nil
         relayNotice = nil
         isWorking = true
@@ -809,8 +836,10 @@ final class PushNotificationService: ObservableObject {
 
     /// Best-effort DELETE of `installation` on the relay that issued it.
     private func revokeInstallation(_ installation: StoredRegistration) async {
-        let url = Self.requestRelayURL(issuer: installation.relayURL, configured: configuredRelayURL)
-            .appending(path: "/v1/installations/\(installation.installationID)")
+        guard let base = Self.requestRelayURL(issuer: installation.relayURL, configured: configuredRelayURL) else {
+            return
+        }
+        let url = base.appending(path: "/v1/installations/\(installation.installationID)")
         guard RelayTransportPolicy.allowsCredentialTransport(url) else { return }
         var request = authorizedRequest(url: url, credential: installation.credential)
         request.httpMethod = "DELETE"
@@ -833,6 +862,9 @@ final class PushNotificationService: ObservableObject {
     /// pairings remain routable through the legacy compatibility policy —
     /// Conduit just never creates new ones.)
     func createPairingCode(dashboardID: UUID) async {
+        // Not mid-move: a code created against the old relay would be
+        // cleared (and useless) once the move lands.
+        guard !isWorking else { return }
         pairingCode = nil
         pairingExpiry = nil
         lastError = nil
@@ -1114,6 +1146,11 @@ final class PushNotificationService: ObservableObject {
 
     private func requestDeviceToken(timeout: Duration = .seconds(20)) async throws -> String {
         if let deviceToken { return deviceToken }
+        // One request at a time: a second would overwrite the pending
+        // continuation and leave its caller waiting forever.
+        guard tokenContinuation == nil else {
+            throw PushNotificationError.tokenRequestPending
+        }
         // APNs can stay silent. Without a timeout, callers that hold
         // `isWorking` would keep the notification controls, including the
         // relay field, disabled until relaunch.
@@ -1237,11 +1274,13 @@ private struct RelayError: Decodable { let message: String? }
 private enum PushNotificationError: LocalizedError {
     case permissionDenied
     case tokenTimeout
+    case tokenRequestPending
     case relay(String)
     var errorDescription: String? {
         switch self {
         case .permissionDenied: return "Allow notifications in Settings to continue."
         case .tokenTimeout: return "Apple didn't return a push token in time. Check your connection and try again."
+        case .tokenRequestPending: return "Still waiting for a push token from Apple. Try again in a moment."
         case .relay(let message): return message
         }
     }

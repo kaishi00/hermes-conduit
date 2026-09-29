@@ -1247,6 +1247,7 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertEqual(PushNotificationService.configuredRelayURL(from: nil), fallback)
         XCTAssertEqual(PushNotificationService.configuredRelayURL(from: ""), fallback)
         XCTAssertEqual(PushNotificationService.configuredRelayURL(from: "  \n"), fallback)
+        XCTAssertEqual(PushNotificationService.configuredRelayURL(from: "https:"), fallback, "a value with no host is never used as the relay")
         XCTAssertEqual(
             PushNotificationService.configuredRelayURL(from: " https://relay.example.com "),
             URL(string: "https://relay.example.com")!
@@ -1264,6 +1265,22 @@ final class MessageNormalizerTests: XCTestCase {
             PushNotificationService.requestRelayURL(issuer: nil, configured: configured),
             configured,
             "with no registration the configured relay applies"
+        )
+        XCTAssertNil(
+            PushNotificationService.requestRelayURL(issuer: "", configured: configured),
+            "an issuer that doesn't parse sends the credential nowhere, never to the configured relay"
+        )
+        XCTAssertNil(
+            PushNotificationService.requestRelayURL(issuer: "https:", configured: configured),
+            "an issuer that parses but names no host is just as unusable"
+        )
+        XCTAssertFalse(
+            PushNotificationService.isSameRelay("https:", configured),
+            "an unusable issuer never matches, so Settings offers a move that recovers"
+        )
+        XCTAssertFalse(
+            RelayTransportPolicy.allowsCredentialTransport(PushNotificationService.unusableRelayURL),
+            "the stand-in for an unusable issuer must be refused before any request is sent"
         )
     }
 
