@@ -172,6 +172,9 @@ struct GPTLiveVoiceSheet: View {
             .onChange(of: controller.phase) { _, _ in
                 AccessibilityNotification.Announcement(statusText).post()
             }
+            .onChange(of: controller.voiceNote) { _, note in
+                if let note { AccessibilityNotification.Announcement(note).post() }
+            }
             // Each turn once, with its final text (not the first fragment).
             .onChange(of: controller.finishedTurn) { _, turn in
                 guard let turn else { return }
@@ -246,6 +249,17 @@ struct GPTLiveVoiceSheet: View {
             }
             .disabled(!controller.isActive || controller.isEnding)
             .conduitGlassControl(cornerRadius: 18, tint: .conduitAccent.opacity(0.14))
+            // On a speaker the mic is closed while GPT-Live talks: this is how to cut in.
+            if controller.canInterrupt {
+                Button {
+                    controller.interruptSpeaking()
+                } label: {
+                    Label("Interrupt", systemImage: "hand.raised.fill")
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 50)
+                }
+                .conduitGlassControl(cornerRadius: 18, tint: .conduitAccent.opacity(0.14))
+            }
         }
     }
 

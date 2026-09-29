@@ -632,6 +632,35 @@ extension VoiceConversationControllerTests {
         controller.stop()
     }
 
+    func testGPTLiveInterruptOpensTheMicrophoneForTheRestOfTheModelsTurn() async {
+        var current = Date(timeIntervalSince1970: 1_000)
+        let (controller, session, _, _) = makeGPTController(route: .speakerSafeHalfDuplex, clock: { current })
+        await controller.start()
+        session.becomeReady()
+        XCTAssertFalse(controller.canInterrupt, "Nothing to interrupt yet")
+
+        session.onEvent?(.outputTranscript("Let me tell you about"))
+        XCTAssertTrue(controller.canInterrupt)
+        controller.interruptSpeaking()
+        XCTAssertEqual(session.microphoneEnabled, true, "The user is talking over the model")
+        XCTAssertFalse(controller.canInterrupt)
+
+        session.onEvent?(.turnDone(role: "assistant", transcript: "Let me tell you about it."))
+        XCTAssertEqual(session.microphoneEnabled, false, "The next turn is gated again")
+        current = current.addingTimeInterval(5)
+        controller.stop()
+    }
+
+    func testGPTLiveTellsTheUserWhenTheHostDidNotUseTheChosenVoice() async {
+        let (controller, session, _, _) = makeGPTController(clock: Date.init)
+        session.voiceNote = "Your Hermes server used the voice cove instead of sol."
+        await controller.start()
+        XCTAssertNil(controller.voiceNote)
+        session.becomeReady()
+        XCTAssertEqual(controller.voiceNote, "Your Hermes server used the voice cove instead of sol.")
+        controller.stop()
+    }
+
     func testGPTLiveWithAHeadsetStaysFullDuplex() async {
         let (controller, session, _, _) = makeGPTController(route: .fullDuplex, clock: Date.init)
         await controller.start()

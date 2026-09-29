@@ -146,6 +146,10 @@ final class GPTLiveConversationController: ObservableObject {
     private var endTask: Task<Void, Never>?
     private var activeEndPhrases: [String] = []
     private var microphoneGateTask: Task<Void, Never>?
+    /// The Interrupt button: the user chose to talk over the model, so the
+    /// speaker gate stays open until that model turn ends.
+    private var speakerGateOverridden = false
+    private var routeObserver: NSObjectProtocol?
 
     /// After the model stops on an open speaker, the microphone stays closed
     /// this long: its transcript and turn end run ahead of the audio still
@@ -198,6 +202,8 @@ final class GPTLiveConversationController: ObservableObject {
         lastDelegatedEntry = nil
         closeOpenEntries()
         activeEndPhrases = endConversationPhrases()
+        speakerGateOverridden = false
+        observeRouteChanges()
         do {
             let status = try await availability()
             guard phase == .connecting else { return }
@@ -225,7 +231,24 @@ final class GPTLiveConversationController: ObservableObject {
         session.start()
     }
 
+    /// A headset plugged in or out changes whether the speaker gate applies.
+    private func observeRouteChanges() {
+        guard routeObserver == nil else { return }
+        routeObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.routeChangeNotification, object: nil, queue: nil
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.refreshMicrophone() }
+        }
+    }
+
+    private func stopObservingRouteChanges() {
+        if let routeObserver { NotificationCenter.default.removeObserver(routeObserver) }
+        routeObserver = nil
+    }
+
     func stop() {
+        stopObservingRouteChanges()
+        speakerGateOverridden = false
         microphoneGateTask?.cancel()
         microphoneGateTask = nil
         idleFlushTask?.cancel()
@@ -255,7 +278,7 @@ final class GPTLiveConversationController: ObservableObject {
     /// loop, so the mic waits, as in Gemini Live and classic Voice. Headsets
     /// stay full duplex.
     var isMicrophoneGatedForSpeaker: Bool {
-        guard routePolicy() == .speakerSafeHalfDuplex else { return false }
+        guard routePolicy() == .speakerSafeHalfDuplex, !speakerGateOverridden else { return false }
         if modelTurnActive { return true }
         return speakerTailRemaining() > 0
     }
@@ -264,6 +287,20 @@ final class GPTLiveConversationController: ObservableObject {
         let last = [lastModelOutputAt, lastModelTurnEndedAt].compactMap { $0 }.max()
         guard let last else { return 0 }
         return max(0, Self.speakerEchoTail - now().timeIntervalSince(last))
+    }
+
+    /// Whether the Interrupt button applies: the model is speaking and only
+    /// the speaker gate keeps the user from talking over it.
+    var canInterrupt: Bool {
+        isActive && endRequestedAt == nil && !isMicrophoneMuted && isMicrophoneGatedForSpeaker && modelTurnActive
+    }
+
+    /// Opens the microphone for the rest of the model's turn, so the user can
+    /// talk over it on a speaker. GPT-Live cuts itself off when it hears them.
+    func interruptSpeaking() {
+        guard canInterrupt else { return }
+        speakerGateOverridden = true
+        refreshMicrophone()
     }
 
     /// Applies mute, a requested end and the speaker gate to the mic track,
@@ -402,6 +439,7 @@ final class GPTLiveConversationController: ObservableObject {
             case "assistant":
                 modelTurnActive = false
                 lastModelTurnEndedAt = now()
+                speakerGateOverridden = false
                 if let finished = finishTurn(assistantTurnEntries, speaker: .assistant, text: text) {
                     finishedTurn = FinishedTurn(speaker: .assistant, text: finished)
                 }
@@ -524,6 +562,7 @@ final class GPTLiveConversationController: ObservableObject {
             // The model speaks it next: wait for that turn before another.
             modelTurnActive = true
             lastModelOutputAt = now()
+            refreshMicrophone()
         } else {
             pendingContext.insert(item, at: 0)
         }
