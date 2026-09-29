@@ -418,6 +418,21 @@ final class PushNotificationService: ObservableObject {
         return defaultRelayURL
     }
 
+    /// Whether a Settings value can be saved: blank (the default relay) or
+    /// an absolute http(s) URL with a host. Anything else would silently
+    /// fall back to the default in `configuredRelayURL(from:)`.
+    nonisolated static func isValidRelayInput(_ value: String) -> Bool {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return true }
+        guard let components = URLComponents(string: trimmed),
+              let scheme = components.scheme?.lowercased(),
+              scheme == "https" || scheme == "http",
+              let host = components.host, !host.isEmpty else {
+            return false
+        }
+        return true
+    }
+
     /// The relay chosen in Settings > Notifications.
     var configuredRelayURL: URL {
         Self.configuredRelayURL(from: UserDefaults.standard.string(forKey: Self.relayURLDefaultsKey))
@@ -725,57 +740,80 @@ final class PushNotificationService: ObservableObject {
         preferences.enabled = false
     }
 
+    /// True while this phone is registered with a relay other than the one
+    /// saved in Settings, i.e. a move was saved but hasn't succeeded yet.
+    var relayMovePending: Bool {
+        guard let registration else { return false }
+        return !Self.isSameRelay(registration.relayURL, configuredRelayURL)
+    }
+
     /// Moves this phone to the configured relay after the user changes it
-    /// in Settings (#255): revokes the installation on the relay that
-    /// issued it, then registers with the new one. With notifications off
-    /// there is nothing to move; the next `enable()` uses the new relay.
+    /// in Settings (#255). It registers with the new relay first and only
+    /// then revokes the installation on the old one, so a relay that is
+    /// unreachable or refused leaves the working registration in place.
+    /// With notifications off there is nothing to move; the next
+    /// `enable()` uses the new relay.
     func applyRelayChange() async {
+        // One move at a time: overlapping moves would each register, and
+        // all but the last installation would be orphaned on the new relay.
+        guard !isWorking else { return }
         // A failure against the previous relay no longer describes the
         // current setup, whether or not there is a registration to move.
         lastError = nil
-        guard let registration,
-              !Self.isSameRelay(registration.relayURL, configuredRelayURL) else {
+        guard let previous = registration, relayMovePending else {
             await refreshMeta()
+            return
+        }
+        guard RelayTransportPolicy.allowsCredentialTransport(configuredRelayURL) else {
+            lastError = RelayDecisionError.insecureTransport.localizedDescription
             return
         }
         relayNotice = nil
         isWorking = true
         defer { isWorking = false }
-        await revokeRegistration()
+        do {
+            let token = try await requestDeviceToken()
+            // Cleared so `register` creates an installation on the
+            // configured relay instead of updating the old one.
+            registration = nil
+            try await register(deviceToken: token)
+        } catch {
+            // Still registered with the old relay, which keeps working;
+            // Settings offers the move again.
+            registration = previous
+            lastError = error.localizedDescription
+            return
+        }
+        await revokeInstallation(previous)
         relayMeta = nil
         pairingCode = nil
         pairingExpiry = nil
         // Gateway discriminators belong to the old relay; echoing one to
         // the new relay could only fail or mis-route.
         relayGatewayIDsByRequestID.removeAll()
-        do {
-            let token = try await requestDeviceToken()
-            try await register(deviceToken: token)
-            relayNotice = AppLocalization.string("Moved to the new relay. Pair each Hermes profile again to keep receiving notifications.")
-        } catch {
-            // Left unregistered: Settings shows notifications as off with
-            // this error, and enabling again retries against the new relay.
-            lastError = error.localizedDescription
-        }
+        relayNotice = AppLocalization.string("Moved to the new relay. Pair each Hermes profile again to keep receiving notifications.")
         await refreshMeta()
     }
 
-    /// Best-effort revoke on the issuing relay. The local credential is
-    /// dropped either way: a later enable creates a fresh, revocable
+    /// Best-effort revoke on the issuing relay, then drop the local
+    /// credential either way: a later enable creates a fresh, revocable
     /// installation rather than retaining stale state.
     private func revokeRegistration() async {
         if let registration {
-            do {
-                var request = authorizedRequest(
-                    url: try authenticatedRelayURL("/v1/installations/\(registration.installationID)"),
-                    credential: registration.credential
-                )
-                request.httpMethod = "DELETE"
-                _ = try await URLSession.shared.data(for: request)
-            } catch {}
+            await revokeInstallation(registration)
         }
         registration = nil
         KeychainHelper.clearPushRegistration()
+    }
+
+    /// Best-effort DELETE of `installation` on the relay that issued it.
+    private func revokeInstallation(_ installation: StoredRegistration) async {
+        let url = Self.requestRelayURL(issuer: installation.relayURL, configured: configuredRelayURL)
+            .appending(path: "/v1/installations/\(installation.installationID)")
+        guard RelayTransportPolicy.allowsCredentialTransport(url) else { return }
+        var request = authorizedRequest(url: url, credential: installation.credential)
+        request.httpMethod = "DELETE"
+        _ = try? await URLSession.shared.data(for: request)
     }
 
     func setPreference(_ keyPath: WritableKeyPath<ConduitNotificationPreferences, Bool>, enabled: Bool) async {
@@ -1088,6 +1126,11 @@ final class PushNotificationService: ObservableObject {
         }
         // No registration yet, so `relayURL` is the configured relay.
         let issuer = relayURL
+        // The credential it issues could never be used over a transport
+        // the policy refuses, so don't register there at all.
+        guard RelayTransportPolicy.allowsCredentialTransport(issuer) else {
+            throw RelayDecisionError.insecureTransport
+        }
         let body = RegistrationRequest(bundleID: bundleID, deviceToken: deviceToken, environment: "production", preferences: preferences)
         var request = try jsonRequest(path: "/v1/installations", method: "POST", body: body)
         let (data, response) = try await URLSession.shared.data(for: request)

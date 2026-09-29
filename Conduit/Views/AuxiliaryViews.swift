@@ -1679,6 +1679,7 @@ private struct NotificationsSettingsDetail: View {
     @EnvironmentObject private var appState: AppState
     @AppStorage(PushNotificationService.relayURLDefaultsKey) private var customRelayURL: String = ""
     @State private var relayDraft = ""
+    @State private var relayDraftInvalid = false
 
     private func trimmed(_ value: String) -> String {
         value.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1689,11 +1690,23 @@ private struct NotificationsSettingsDetail: View {
     }
 
     private func saveRelay(_ value: String) {
+        // Return in the field reaches here too, so this mirrors the
+        // disabled buttons: never start a second move mid-move.
+        guard !notifications.isWorking else { return }
         let value = trimmed(value)
+        guard PushNotificationService.isValidRelayInput(value) else {
+            relayDraftInvalid = true
+            Haptics.error()
+            return
+        }
+        relayDraftInvalid = false
         relayDraft = value
-        guard value != customRelayURL else { return }
-        customRelayURL = value
-        Haptics.light()
+        if value != customRelayURL {
+            customRelayURL = value
+            Haptics.light()
+        }
+        // Runs even when the value is unchanged, so a move that failed
+        // earlier can be retried.
         Task { await notifications.applyRelayChange() }
     }
 
@@ -1868,7 +1881,14 @@ private struct NotificationsSettingsDetail: View {
                     .keyboardType(.URL)
                     .submitLabel(.done)
                     .accessibilityLabel(AppLocalization.string("Push relay URL"))
+                    .disabled(notifications.isWorking)
                     .onSubmit { saveRelay(relayDraft) }
+                    .onChange(of: relayDraft) { _, _ in relayDraftInvalid = false }
+                if relayDraftInvalid {
+                    Label(AppLocalization.string("Enter a full relay URL, like https://push.example.com."), systemImage: "exclamationmark.triangle.fill")
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                }
                 Text("Leave blank to use the default relay. Change this if you run your own push relay server.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
@@ -1877,11 +1897,16 @@ private struct NotificationsSettingsDetail: View {
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
-                if relayDraftIsUnsaved {
+                // A failed move leaves the phone on the old relay with the
+                // new one saved; the same button retries it.
+                if relayDraftIsUnsaved || notifications.relayMovePending {
                     Button {
                         saveRelay(relayDraft)
                     } label: {
-                        Label(AppLocalization.string("Save relay"), systemImage: "checkmark")
+                        Label(
+                            relayDraftIsUnsaved ? AppLocalization.string("Save relay") : AppLocalization.string("Retry relay move"),
+                            systemImage: relayDraftIsUnsaved ? "checkmark" : "arrow.clockwise"
+                        )
                             .frame(maxWidth: .infinity)
                             .frame(height: 44)
                     }

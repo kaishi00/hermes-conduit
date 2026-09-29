@@ -1282,6 +1282,17 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertFalse(PushNotificationService.isSameRelay(nil, URL(string: "https://relay.example.com")!))
     }
 
+    func testRelayInputValidationRejectsValuesThatWouldFallBackSilently() {
+        XCTAssertTrue(PushNotificationService.isValidRelayInput(""), "blank means the default relay")
+        XCTAssertTrue(PushNotificationService.isValidRelayInput("  "))
+        XCTAssertTrue(PushNotificationService.isValidRelayInput("https://relay.example.com"))
+        XCTAssertTrue(PushNotificationService.isValidRelayInput(" http://localhost:8080 "))
+        XCTAssertFalse(PushNotificationService.isValidRelayInput("my relay.com"))
+        XCTAssertFalse(PushNotificationService.isValidRelayInput("relay.example.com"), "a bare host has no scheme")
+        XCTAssertFalse(PushNotificationService.isValidRelayInput("ftp://relay.example.com"))
+        XCTAssertFalse(PushNotificationService.isValidRelayInput("https://"))
+    }
+
     func testApprovalActivityNormalizesGatewayChoices() {
         let activity = MessageNormalizer.approvalActivity(
             from: [
