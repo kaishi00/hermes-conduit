@@ -132,9 +132,10 @@ struct GPTLiveSettingsSection: View {
         case .success(let availability):
             isAvailable = availability.isAvailable
             switch availability {
-            case .available(let modelName, let voice?):
-                status = AppLocalization.string("Available (\(modelName), voice \(voice))")
-            case .available(let modelName, nil):
+            // The host reports its own voice; a voice chosen here overrides it.
+            case .available(let modelName, let hostVoice?) where voice.isEmpty:
+                status = AppLocalization.string("Available (\(modelName), voice \(hostVoice))")
+            case .available(let modelName, _):
                 status = AppLocalization.string("Available (\(modelName))")
             default:
                 status = availability.userFacingReason

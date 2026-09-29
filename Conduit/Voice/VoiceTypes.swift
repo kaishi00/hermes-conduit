@@ -335,7 +335,7 @@ struct GPTLiveVoice: Equatable, Identifiable {
             GPTLiveVoice(name: "breeze", style: AppLocalization.string("Animated")),
             GPTLiveVoice(name: "cove", style: AppLocalization.string("Composed")),
             GPTLiveVoice(name: "ember", style: AppLocalization.string("Confident")),
-            GPTLiveVoice(name: "juniper", style: AppLocalization.string("Open")),
+            GPTLiveVoice(name: "juniper", style: AppLocalization.string("Upbeat")),
             GPTLiveVoice(name: "maple", style: AppLocalization.string("Cheerful")),
             GPTLiveVoice(name: "sol", style: AppLocalization.string("Savvy")),
             GPTLiveVoice(name: "spruce", style: AppLocalization.string("Calm")),
