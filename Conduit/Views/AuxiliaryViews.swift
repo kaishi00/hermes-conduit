@@ -1867,6 +1867,7 @@ private struct NotificationsSettingsDetail: View {
                     .textInputAutocapitalization(.never)
                     .keyboardType(.URL)
                     .submitLabel(.done)
+                    .accessibilityLabel(AppLocalization.string("Push relay URL"))
                     .onSubmit { saveRelay(relayDraft) }
                 Text("Leave blank to use the default relay. Change this if you run your own push relay server.")
                     .font(.footnote)

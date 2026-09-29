@@ -425,13 +425,38 @@ final class PushNotificationService: ObservableObject {
 
     /// Where relay requests go: the relay that issued this phone's
     /// credential, so editing the Settings field never sends that
-    /// credential to a different host. `applyRelayChange()` moves the
-    /// registration when the configured relay changes.
-    private var relayURL: URL {
-        if let issuer = registration?.relayURL, let url = URL(string: issuer) {
+    /// credential to a different host. Only with no registration (nothing
+    /// to leak) does the configured relay apply.
+    nonisolated static func requestRelayURL(issuer: String?, configured: URL) -> URL {
+        if let issuer, let url = URL(string: issuer) {
             return url
         }
-        return configuredRelayURL
+        return configured
+    }
+
+    /// Whether two relay URLs name the same relay, ignoring cosmetic
+    /// differences (case of scheme and host, default port, trailing
+    /// slash) so an edit like adding "/" doesn't force a move and re-pair.
+    nonisolated static func isSameRelay(_ issuer: String?, _ configured: URL) -> Bool {
+        guard let issuer, let lhs = URLComponents(string: issuer),
+              let rhs = URLComponents(url: configured, resolvingAgainstBaseURL: false) else {
+            return false
+        }
+        func key(_ c: URLComponents) -> String {
+            let scheme = c.scheme?.lowercased() ?? ""
+            let defaultPort = scheme == "https" ? 443 : scheme == "http" ? 80 : nil
+            let port = c.port ?? defaultPort
+            var path = c.path
+            while path.hasSuffix("/") { path.removeLast() }
+            return "\(scheme)://\(c.host?.lowercased() ?? ""):\(port.map(String.init) ?? "")\(path)"
+        }
+        return key(lhs) == key(rhs)
+    }
+
+    /// `applyRelayChange()` moves the registration when the configured
+    /// relay changes.
+    private var relayURL: URL {
+        Self.requestRelayURL(issuer: registration?.relayURL, configured: configuredRelayURL)
     }
     private let bundleID = "com.milim.relay"
     private var registration: StoredRegistration?
@@ -454,9 +479,13 @@ final class PushNotificationService: ObservableObject {
         self.retryDelay = retryDelay
         if let data = KeychainHelper.loadPushRegistration(),
            var saved = try? JSONDecoder().decode(StoredRegistration.self, from: data) {
-            // Registrations saved before the relay was recorded were made
-            // against whatever relay is configured, which is also where
-            // their requests have been going.
+            // Registrations saved before the relay was recorded don't say
+            // which relay issued them, and that can't be recovered. The
+            // configured relay is where their requests have been going, so
+            // it's the best guess; forcing a move instead would make every
+            // existing user re-pair. If an older build changed the relay
+            // after registering, the installation on the original relay
+            // stays orphaned, as it already was.
             let needsRelayStamp = saved.relayURL == nil
             if needsRelayStamp {
                 saved.relayURL = configuredRelayURL.absoluteString
@@ -705,16 +734,20 @@ final class PushNotificationService: ObservableObject {
         // current setup, whether or not there is a registration to move.
         lastError = nil
         guard let registration,
-              registration.relayURL != configuredRelayURL.absoluteString else {
+              !Self.isSameRelay(registration.relayURL, configuredRelayURL) else {
             await refreshMeta()
             return
         }
         relayNotice = nil
         isWorking = true
+        defer { isWorking = false }
         await revokeRegistration()
         relayMeta = nil
         pairingCode = nil
         pairingExpiry = nil
+        // Gateway discriminators belong to the old relay; echoing one to
+        // the new relay could only fail or mis-route.
+        relayGatewayIDsByRequestID.removeAll()
         do {
             let token = try await requestDeviceToken()
             try await register(deviceToken: token)
@@ -724,7 +757,6 @@ final class PushNotificationService: ObservableObject {
             // this error, and enabling again retries against the new relay.
             lastError = error.localizedDescription
         }
-        isWorking = false
         await refreshMeta()
     }
 

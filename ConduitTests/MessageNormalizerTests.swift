@@ -1253,6 +1253,35 @@ final class MessageNormalizerTests: XCTestCase {
         )
     }
 
+    func testCredentialRequestsGoToIssuingRelayNotConfiguredOne() {
+        let configured = URL(string: "https://relay-b.example.com")!
+        XCTAssertEqual(
+            PushNotificationService.requestRelayURL(issuer: "https://relay-a.example.com", configured: configured),
+            URL(string: "https://relay-a.example.com")!,
+            "a registration's credential never follows an edited Settings value"
+        )
+        XCTAssertEqual(
+            PushNotificationService.requestRelayURL(issuer: nil, configured: configured),
+            configured,
+            "with no registration the configured relay applies"
+        )
+    }
+
+    func testSameRelayIgnoresCosmeticDifferences() {
+        func same(_ issuer: String, _ configured: String) -> Bool {
+            PushNotificationService.isSameRelay(issuer, URL(string: configured)!)
+        }
+        XCTAssertTrue(same("https://relay.example.com", "https://relay.example.com/"))
+        XCTAssertTrue(same("https://relay.example.com", "HTTPS://Relay.Example.com"))
+        XCTAssertTrue(same("https://relay.example.com", "https://relay.example.com:443"))
+        XCTAssertTrue(same("https://relay.example.com/push", "https://relay.example.com/push/"))
+        XCTAssertFalse(same("https://relay.example.com", "https://other.example.com"))
+        XCTAssertFalse(same("https://relay.example.com", "http://relay.example.com"))
+        XCTAssertFalse(same("https://relay.example.com", "https://relay.example.com:8443"))
+        XCTAssertFalse(same("https://relay.example.com", "https://relay.example.com/push"))
+        XCTAssertFalse(PushNotificationService.isSameRelay(nil, URL(string: "https://relay.example.com")!))
+    }
+
     func testApprovalActivityNormalizesGatewayChoices() {
         let activity = MessageNormalizer.approvalActivity(
             from: [
