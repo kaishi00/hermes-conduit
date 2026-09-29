@@ -206,13 +206,19 @@ enum StreamEvent {
     /// parser must not flatten `questions[]` back into scalar fields, or a
     /// parsed batch would be discarded at the AppState boundary.
     case clarify(sessionId: String, activity: ClarifyActivity)
-    /// `clarify.expire { request_id }` — the gateway timed the request out.
-    case clarifyExpire(sessionId: String, requestId: String)
+    /// `clarify.expire { request_id }` (legacy, always a timeout) or a
+    /// `request.cancel` for a clarify server request, carrying its `reason`
+    /// (`timeout`, `interrupted`, `shutdown`, `session_closed`).
+    case clarifyExpire(sessionId: String, requestId: String, reason: String? = nil)
     case approval(sessionId: String, activity: ApprovalActivity)
     /// A `sudo` / `secret` / `vault.unlock_prompt` server request.
     case inputPrompt(sessionId: String, activity: InputPromptActivity)
     /// `request.cancel` for one of those: the gateway withdrew it.
     case inputPromptExpire(sessionId: String, requestId: String)
+    /// `request.cancel` for an approval server request, translated to the
+    /// approval queue id the card is keyed by. `resolved` means a choice was
+    /// committed — by this device or another surface.
+    case approvalWithdrawn(sessionId: String, requestId: String, reason: String)
     case contextUpdate(sessionId: String, percent: Double, used: Int, max: Int)
     case cwdUpdate(sessionId: String, cwd: String)
     case modelUpdate(sessionId: String, model: String, provider: String)
@@ -265,6 +271,9 @@ struct SessionRuntimeSnapshot {
     /// is not sufficient for restore: it may have fired while the app was
     /// backgrounded or disconnected.
     let pendingClarify: ClarifyActivity?
+    /// Further unanswered clarify server requests from `open_requests`
+    /// (after the oldest, which rides `pendingClarify`).
+    let additionalPendingClarifies: [ClarifyActivity]
     /// Raw authoritative approval still blocking the session. AppState adds
     /// the enclosing runtime session id when normalizing the card.
     let pendingApprovalPayload: [String: AnyCodable]?
@@ -329,6 +338,9 @@ struct SessionRuntimeSnapshot {
             ?? object["approvals"]?.objectValue?["mode"]?.stringValue
         pendingClarify = object["pending_clarify"]?.objectValue
             .flatMap { MessageNormalizer.pendingClarifyActivity(from: $0) }
+        additionalPendingClarifies = (object["open_clarifies"]?.arrayValue ?? []).compactMap {
+            $0.objectValue.flatMap { MessageNormalizer.pendingClarifyActivity(from: $0) }
+        }
         pendingApprovalPayload = object["pending_approval"]?.objectValue
         pendingInputPrompts = InputPromptActivity.pending(inOpenRequests: object["open_requests"])
         self.inflight = inflight
@@ -633,6 +645,9 @@ final class HermesClient: ObservableObject {
     /// gateway keeps the request open and `session.resume` re-announces it
     /// under the same id.
     private var openServerRequestIDs = Set<String>()
+    /// Approval server request id (`srq-…`) → the approval queue
+    /// `request_id` its card is keyed by, so `request.cancel` can reach it.
+    private var approvalQueueIDs = [String: String]()
     /// The socket `client.capabilities` was sent on, so a repeated
     /// `gateway.ready` does not advertise twice on one connection.
     private weak var advertisedSocket: AnyObject?
@@ -900,8 +915,18 @@ final class HermesClient: ObservableObject {
             case "gateway.ready":
                 advertiseClientCapabilities()
             case "request.cancel":
-                if let id = eventObject?["payload"]?.objectValue?["id"]?.stringValue {
+                // Bookkeeping only: the request is closed whatever the
+                // reason. What the card shows is decided by the event.
+                let payload = eventObject?["payload"]?.objectValue
+                if let id = payload?["id"]?.stringValue {
                     openServerRequestIDs.remove(id)
+                    if let queueID = approvalQueueIDs.removeValue(forKey: id) {
+                        onEvent?(.approvalWithdrawn(
+                            sessionId: eventObject?["session_id"]?.stringValue ?? "",
+                            requestId: queueID,
+                            reason: payload?["reason"]?.stringValue ?? ""
+                        ))
+                    }
                 }
             default:
                 break
@@ -931,6 +956,8 @@ final class HermesClient: ObservableObject {
                 self.logger.notice("Advertised server_requests capability")
             } catch {
                 self.logger.notice("client.capabilities not accepted: \(error.localizedDescription, privacy: .public)")
+                // Let a later gateway.ready on this socket try again.
+                if self.advertisedSocket === socket { self.advertisedSocket = nil }
             }
         }
     }
@@ -964,6 +991,7 @@ final class HermesClient: ObservableObject {
                 return
             }
             openServerRequestIDs.insert(requestID)
+            if let queueID = activity.requestId { approvalQueueIDs[requestID] = queueID }
             onEvent?(.approval(sessionId: sessionId, activity: activity))
         case "clarify":
             guard let activity = MessageNormalizer.pendingClarifyActivity(
@@ -1002,16 +1030,15 @@ final class HermesClient: ObservableObject {
         openServerRequestIDs.contains(requestId) || requestId.hasPrefix("srq-")
     }
 
-    /// The oldest `clarify` entry of a resume's `open_requests`, as a
-    /// legacy clarify payload.
-    static func openClarifyPayload(in openRequests: AnyCodable?) -> [String: AnyCodable]? {
-        for entry in openRequests?.arrayValue ?? [] {
+    /// Every `clarify` entry of a resume's `open_requests`, oldest first, as
+    /// legacy clarify payloads (locked batch answers ride `answers`).
+    static func openClarifyPayloads(in openRequests: AnyCodable?) -> [[String: AnyCodable]] {
+        (openRequests?.arrayValue ?? []).compactMap { entry in
             guard let object = entry.objectValue,
                   object["method"]?.stringValue == "clarify",
-                  let id = object["id"]?.stringValue, !id.isEmpty else { continue }
+                  let id = object["id"]?.stringValue, !id.isEmpty else { return nil }
             return clarifyPayload(serverRequestID: id, params: object["params"]?.objectValue ?? [:])
         }
-        return nil
     }
 
     static func openRequestIDs(in openRequests: AnyCodable?) -> [String] {
@@ -1368,12 +1395,23 @@ final class HermesClient: ObservableObject {
         // clarify is a server→client request, re-announced in
         // `open_requests` under its original id. Feed it through the same
         // authoritative restore path (locked batch answers ride `answers`).
-        if snapshotObject["pending_clarify"] == nil,
-           let clarify = Self.openClarifyPayload(in: object["open_requests"]) {
-            snapshotObject["pending_clarify"] = .object(clarify)
+        let openClarifies = Self.openClarifyPayloads(in: object["open_requests"])
+        if snapshotObject["pending_clarify"] == nil, let oldest = openClarifies.first {
+            snapshotObject["pending_clarify"] = .object(oldest)
+        }
+        if openClarifies.count > 1 {
+            snapshotObject["open_clarifies"] = .array(openClarifies.dropFirst().map { .object($0) })
         }
         for id in Self.openRequestIDs(in: object["open_requests"]) {
             openServerRequestIDs.insert(id)
+        }
+        for entry in object["open_requests"]?.arrayValue ?? [] {
+            guard let request = entry.objectValue,
+                  request["method"]?.stringValue == "approval",
+                  let id = request["id"]?.stringValue,
+                  let queueID = request["params"]?.objectValue?["request_id"]?.stringValue,
+                  !queueID.isEmpty else { continue }
+            approvalQueueIDs[id] = queueID
         }
         if let openRequests = object["open_requests"] {
             snapshotObject["open_requests"] = openRequests

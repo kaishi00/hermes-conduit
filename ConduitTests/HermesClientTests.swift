@@ -1418,6 +1418,19 @@ final class HermesClientTests: XCTestCase {
         await flushMainActor()
     }
 
+    /// Bounded wait until `socket` has sent at least `count` text frames.
+    private func waitForSends(
+        _ count: Int,
+        on socket: FakeSocket,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async {
+        for _ in 0..<500 where socket.sentTexts.count < count {
+            await Task.yield()
+        }
+        XCTAssertGreaterThanOrEqual(socket.sentTexts.count, count, "Expected \(count) outbound frames", file: file, line: line)
+    }
+
     private func sentFrame(_ socket: FakeSocket, file: StaticString = #filePath, line: UInt = #line) throws -> [String: Any] {
         try XCTUnwrap(
             JSONSerialization.jsonObject(with: Data(try XCTUnwrap(socket.sentTexts.last, file: file, line: line).utf8)) as? [String: Any],
@@ -1484,6 +1497,54 @@ final class HermesClientTests: XCTestCase {
             socket.sentTexts.isEmpty,
             "The approval stays open until the user answers; the gateway withdraws it once approval.respond resolves it"
         )
+        client.disconnect()
+    }
+
+    func testApprovalRequestCancelIsTranslatedToTheQueueID() async throws {
+        let (client, socket) = try await connectedClientForServerRequests()
+        var events: [StreamEvent] = []
+        client.onEvent = { events.append($0) }
+        try await deliverFrame([
+            "jsonrpc": "2.0", "id": "srq-a1a1a1a1a1a1", "method": "approval",
+            "params": ["session_id": "runtime-1", "request_id": "queue-1", "command": "rm -rf scratch"]
+        ], to: socket)
+        try await deliverFrame([
+            "jsonrpc": "2.0", "method": "event",
+            "params": [
+                "type": "request.cancel", "session_id": "runtime-1",
+                "payload": ["id": "srq-a1a1a1a1a1a1", "method": "approval", "reason": "timeout"]
+            ]
+        ], to: socket)
+
+        let withdrawn = events.compactMap { event -> (String, String, String)? in
+            guard case .approvalWithdrawn(let sessionId, let requestId, let reason) = event else { return nil }
+            return (sessionId, requestId, reason)
+        }
+        XCTAssertEqual(withdrawn.count, 1)
+        XCTAssertEqual(withdrawn.first?.0, "runtime-1")
+        XCTAssertEqual(withdrawn.first?.1, "queue-1", "The card is keyed by the queue id, not the srq id")
+        XCTAssertEqual(withdrawn.first?.2, "timeout")
+        client.disconnect()
+    }
+
+    func testFailedCapabilityAdvertisementRetriesOnNextGatewayReady() async throws {
+        let (client, socket) = try await connectedClientForServerRequests()
+        let ready: [String: Any] = [
+            "jsonrpc": "2.0", "method": "event",
+            "params": ["type": "gateway.ready", "payload": [String: Any]()]
+        ]
+        try await deliverFrame(ready, to: socket)
+        await waitForSends(1, on: socket)
+        let firstID = try XCTUnwrap(try sentFrame(socket)["id"] as? Int)
+        try await deliverFrame([
+            "jsonrpc": "2.0", "id": firstID, "error": ["code": -32603, "message": "transient"]
+        ], to: socket)
+
+        for _ in 0..<50 { await Task.yield() }  // let the failed RPC's catch clear the latch
+        try await deliverFrame(ready, to: socket)
+        await waitForSends(2, on: socket)
+        XCTAssertEqual(socket.sentTexts.count, 2, "A failed advertisement must not latch the socket as advertised")
+        XCTAssertEqual(try sentFrame(socket)["method"] as? String, "client.capabilities")
         client.disconnect()
     }
 
@@ -1698,6 +1759,32 @@ final class HermesClientTests: XCTestCase {
         XCTAssertEqual(pending.questions[0].status, .answered, "Answers locked before the reconnect stay locked")
         XCTAssertEqual(pending.questions[1].status, .pending)
         XCTAssertTrue(client.isServerRequestID("srq-dddddddddddd"))
+        XCTAssertTrue(result.snapshot.additionalPendingClarifies.isEmpty)
+        client.disconnect()
+    }
+
+    func testResumeRestoresEveryOpenClarify() async throws {
+        let (client, socket) = try await connectedClientForServerRequests()
+        let sent = Gate()
+        socket.onSend = { sent.signal() }
+        let openTask = Task<SessionResumeResult, Error> { try await client.openSession("runtime-1") }
+        try await sent.wait("the session.resume request to be sent")
+        let id = try XCTUnwrap(try sentFrame(socket)["id"] as? Int)
+        try await deliverFrame([
+            "jsonrpc": "2.0", "id": id,
+            "result": [
+                "session_id": "runtime-1", "running": true, "messages": [Any](), "info": [String: Any](),
+                "open_requests": [
+                    ["id": "srq-c1c1c1c1c1c1", "method": "clarify",
+                     "params": ["session_id": "runtime-1", "question": "First?", "choices": ["a"]]],
+                    ["id": "srq-c2c2c2c2c2c2", "method": "clarify",
+                     "params": ["session_id": "runtime-1", "question": "Second?", "choices": ["b"]]]
+                ]
+            ]
+        ], to: socket)
+        let result = try await awaitResult(of: openTask, "the session.resume response")
+        XCTAssertEqual(result.snapshot.pendingClarify?.requestId, "srq-c1c1c1c1c1c1", "The oldest rides pendingClarify")
+        XCTAssertEqual(result.snapshot.additionalPendingClarifies.map(\.requestId), ["srq-c2c2c2c2c2c2"])
         client.disconnect()
     }
 
