@@ -18481,6 +18481,8 @@ final class AppState: ObservableObject {
         let skipped = value == nil
         messages[index].inputPrompt?.status = .submitting
         messages[index].inputPrompt?.error = nil
+        // Same as approvals and clarifies: answering resumes the turn.
+        setRunning(true)
         guard let client else {
             messages[index].inputPrompt?.status = .error
             messages[index].inputPrompt?.error = AppLocalization.string("Gateway connection is unavailable.")

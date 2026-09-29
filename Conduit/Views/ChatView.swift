@@ -2470,7 +2470,6 @@ struct InputPromptCard: View {
                     // a sudo or password-manager master password to the
                     // system keychain.
                     SecureField(placeholder(for: prompt.kind), text: $value)
-                        .accessibilityLabel(placeholder(for: prompt.kind))
                         .accessibilityHint(AppLocalization.string("Send gives Hermes this value. Skip lets it continue without one."))
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
@@ -2527,7 +2526,9 @@ struct InputPromptCard: View {
     }
 
     /// Whitespace alone is not an answer (Hermes would store it as the
-    /// secret); only a real value enables Send.
+    /// secret); only a real value enables Send. Deliberate trade-off: an
+    /// all-space password cannot be entered here, while one merely
+    /// containing spaces is sent untrimmed.
     private var hasValue: Bool {
         !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
