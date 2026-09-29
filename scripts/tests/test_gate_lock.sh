@@ -460,11 +460,14 @@ assert_eq "a subshell is not" \
 wait "$!"
 assert_eq "nor a background subshell" "$(cat "$WORK/bg14" 2>/dev/null)" "sub"
 # The macOS /bin/bash 3.2 path: no BASHPID (unset strips it on newer bash).
+# At the top level this drives the sh PPID probe; a real subshell is still
+# answered by the BASH_SUBSHELL check before the probe is reached.
 assert_eq "without BASHPID (bash 3.2), a top-level script is still main" \
   "$(bash -c '. "$1"; unset BASHPID; gate_is_main_process && echo main || echo sub' _ "$MOD")" "main"
 assert_eq "and a background subshell still is not" \
   "$(bash -c '. "$1"; unset BASHPID; ( gate_is_main_process && echo main || echo sub ) & wait' _ "$MOD")" "sub"
-# The probe path in a child: BASH_SUBSHELL is forced back to 0 so only the
+# The probe path in a child (probe-path-only coverage, bash 4+: it relies on
+# BASH_SUBSHELL being assignable): BASH_SUBSHELL is forced back to 0 so only the
 # PPID probe can tell the subshell from the top level. A recording `sh` on
 # PATH proves the probe actually ran: a shell that ignored the BASH_SUBSHELL
 # assignment would answer "sub" from the first check and never reach it.

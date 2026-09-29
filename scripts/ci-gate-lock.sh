@@ -117,10 +117,6 @@ gate_lock_release() {
   if [ -n "$owner" ] && [ "$owner" = "$$" ]; then
     rm -rf "$GATE_LOCK_HELD_DIR" 2>/dev/null || true
   fi
-  # An interrupt during acquisition leaves a temp directory: clean ours up.
-  if [ -n "$GATE_LOCK_TEMP" ] && [ -d "$GATE_LOCK_TEMP" ]; then
-    rm -rf "$GATE_LOCK_TEMP" 2>/dev/null || true
-  fi
   GATE_LOCK_HELD=0
   GATE_LOCK_HELD_DIR=""
   GATE_LOCK_TEMP=""
@@ -255,8 +251,8 @@ acquire_gate_lock() { # $1 = canonical lock dir
     fi
     # Unique per attempt: a leftover aside from a killed steal must never be
     # THIS steal's target (mv into an existing directory nests instead of
-    # failing).
-    local aside="$canonical.stale.$$.$RANDOM.$(date +%s)"
+    # failing). Named by the same identity as the marker.
+    local aside="$canonical.stale.$me.$RANDOM.$(date +%s)"
     GATE_LOCK_ASIDE="$aside"
     if ! mv "$canonical" "$aside" 2>/dev/null; then
       gate_lock_drop_marker
