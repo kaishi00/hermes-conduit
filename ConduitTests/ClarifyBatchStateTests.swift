@@ -427,6 +427,10 @@ final class ClarifyBatchStateTests: XCTestCase {
             "An interrupt must not claim Hermes carried on without the value"
         )
 
+        appState.messages = [try inputPromptMessage(status: .pending)]
+        appState.handleStreamEvent(.inputPromptExpire(sessionId: "stored-a", requestId: "srq-sudo00000001", reason: "resolved"))
+        XCTAssertEqual(appState.messages.first?.inputPrompt?.error, AppLocalization.string("This request was answered elsewhere."))
+
         appState.messages = [try inputPromptMessage(status: .submitting)]
         appState.handleStreamEvent(.inputPromptExpire(sessionId: "stored-a", requestId: "srq-sudo00000001"))
         XCTAssertEqual(

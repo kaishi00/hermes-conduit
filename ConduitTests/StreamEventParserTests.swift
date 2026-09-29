@@ -627,6 +627,16 @@ final class StreamEventParserTests: XCTestCase {
         XCTAssertEqual(requestId, "srq-0123456789ab")
     }
 
+    func testRequestCancelResolvedStillReachesAMaskedPrompt() {
+        let event = parse(#"""
+        {"type": "request.cancel", "session_id": "s1", "payload": {"id": "srq-0123456789ab", "method": "secret", "reason": "resolved"}}
+        """#)
+        guard case .inputPromptExpire(_, _, let reason) = event else {
+            return XCTFail("Another surface answering a prompt must still reach its card")
+        }
+        XCTAssertEqual(reason, "resolved")
+    }
+
     func testRequestCancelForApprovalIsIgnored() {
         // Approval cards are keyed by the queue id, not the server request id.
         let event = parse(#"""

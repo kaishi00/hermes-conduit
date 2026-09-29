@@ -2461,9 +2461,8 @@ struct InputPromptCard: View {
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(.secondary)
                 case .expired:
-                    Text(prompt.error?.isEmpty == false
-                         ? prompt.error!
-                         : AppLocalization.string("This request is no longer active."))
+                    Text(prompt.error.flatMap { $0.isEmpty ? nil : $0 }
+                         ?? AppLocalization.string("This request is no longer active."))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 case .pending, .submitting, .error:

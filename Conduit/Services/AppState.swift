@@ -18116,6 +18116,10 @@ final class AppState: ObservableObject {
     /// This state is ephemeral and never persisted. Restored approval cards
     /// from disk without an active RPC in flight yield to authoritative replays.
     private var liveApprovalSubmissions = Set<ApprovalSubmissionIdentity>()
+    /// Input prompts withdrawn (`request.cancel`) while this device's answer
+    /// was in flight, with the cancel reason. The gateway drops an answer for
+    /// a closed request, so the send's completion must not claim "Sent".
+    private var withdrawnInFlightInputPrompts = [String: String]()
 
     private func hasLiveApprovalSubmission(
         for activity: ApprovalActivity,
@@ -18432,15 +18436,39 @@ final class AppState: ObservableObject {
     /// the card's outcome.
     private func expireInputPrompt(requestId: String, reason: String? = nil) {
         guard let index = messages.firstIndex(where: { $0.inputPrompt?.requestId == requestId }),
-              var activity = messages[index].inputPrompt,
-              activity.isAnswerable else { return }
+              var activity = messages[index].inputPrompt else { return }
+        if activity.status == .submitting {
+            // The in-flight send owns the card; its completion reports the
+            // withdrawal instead of a success Hermes never received.
+            withdrawnInFlightInputPrompts[requestId] = reason ?? ""
+            return
+        }
+        guard activity.isAnswerable else { return }
         activity.status = .expired
-        // Only a timeout may claim Hermes stopped waiting and carried on; an
-        // interrupt or closed session gets neutral copy.
-        activity.error = reason == "timeout"
-            ? AppLocalization.string("This request is no longer active — Hermes stopped waiting and continued.")
-            : AppLocalization.string("This request is no longer active.")
+        activity.error = Self.inputPromptWithdrawnNotice(reason: reason)
         messages[index].inputPrompt = activity
+    }
+
+    /// Only a timeout may claim Hermes stopped waiting and carried on; a
+    /// request another surface answered says so; anything else is neutral.
+    private static func inputPromptWithdrawnNotice(reason: String?) -> String {
+        switch reason {
+        case "timeout":
+            return AppLocalization.string("This request is no longer active — Hermes stopped waiting and continued.")
+        case "resolved":
+            return AppLocalization.string("This request was answered elsewhere.")
+        default:
+            return AppLocalization.string("This request is no longer active.")
+        }
+    }
+
+    /// Settles a card whose request was withdrawn mid-send; false when it
+    /// was not.
+    private func settleWithdrawnInFlightInputPrompt(at index: Int, requestId: String) -> Bool {
+        guard let reason = withdrawnInFlightInputPrompts.removeValue(forKey: requestId) else { return false }
+        messages[index].inputPrompt?.status = .expired
+        messages[index].inputPrompt?.error = Self.inputPromptWithdrawnNotice(reason: reason)
+        return true
     }
 
     /// Sends the value typed into a masked input card, or `nil` to skip.
@@ -18466,11 +18494,13 @@ final class AppState: ObservableObject {
             guard profile == activeProfile, self.client === client,
                   let updated = messages.firstIndex(where: { $0.id == messageId }),
                   messages[updated].inputPrompt?.status == .submitting else { return }
+            if settleWithdrawnInFlightInputPrompt(at: updated, requestId: current.requestId) { return }
             messages[updated].inputPrompt?.status = skipped ? .skipped : .submitted
         } catch {
             guard profile == activeProfile, self.client === client,
                   let updated = messages.firstIndex(where: { $0.id == messageId }),
                   messages[updated].inputPrompt?.status == .submitting else { return }
+            if settleWithdrawnInFlightInputPrompt(at: updated, requestId: current.requestId) { return }
             messages[updated].inputPrompt?.status = .error
             messages[updated].inputPrompt?.error = AppLocalization.string("Hermes did not receive that answer.")
             errorMessage = error.localizedDescription
@@ -19056,7 +19086,7 @@ final class AppState: ObservableObject {
         messages.contains { message in
             message.clarify.map { $0.status == .pending || $0.status == .submitting } == true
                 || message.approval.map { $0.status == .pending || $0.status == .submitting } == true
-                || message.inputPrompt.map { $0.status == .pending || $0.status == .submitting } == true
+                || message.inputPrompt.map { $0.isAnswerable || $0.status == .submitting } == true
         }
     }
 

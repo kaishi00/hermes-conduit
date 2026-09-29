@@ -136,10 +136,10 @@ enum StreamEventParser {
             // request id, so it expires exactly like `clarify.expire`. An
             // approval card is keyed by its queue id, so HermesClient (which
             // holds the srq → queue id mapping) emits `.approvalWithdrawn`.
-            // `resolved` means the request was answered, never an expiry.
-            // Masked input prompts expire the same way.
+            // For a clarify, `resolved` means it was answered, never an
+            // expiry. Masked input prompts expire the same way, and keep
+            // `resolved` so a card another surface answered says so.
             let method = payload?["method"]?.stringValue ?? ""
-            guard payload?["reason"]?.stringValue != "resolved" else { return nil }
             let requestId = (payload?["id"]?.stringValue ?? "")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             guard !requestId.isEmpty else { return nil }
@@ -147,6 +147,7 @@ enum StreamEventParser {
             // clarify.expire (reason nil) or an explicit "timeout" says so.
             let reason = payload?["reason"]?.stringValue ?? ""
             if method == "clarify" {
+                guard reason != "resolved" else { return nil }
                 return .clarifyExpire(sessionId: sessionId, requestId: requestId, reason: reason)
             }
             if InputPromptActivity.Kind(rawValue: method) != nil {
