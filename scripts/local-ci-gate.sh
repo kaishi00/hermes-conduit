@@ -502,13 +502,29 @@ EOF
 
 cleanup() {
   local status=$?
-  # Reap the lease-acquisition watchdog first: a TERM landing in the small
-  # window between its spawn and the post-exec kill would otherwise leave a 60s
-  # orphaned sleep behind. The variable is cleared once reaped so no later
-  # signal can reach a reused PID.
+  # The teardown belongs to the GATE process alone. A `( ... ) &` subshell
+  # (the lease watchdog, the static phase, a worker) that is signalled in the
+  # window right after its fork - before bash has reset the traps it inherited
+  # - runs the gate's INT/TERM/HUP trap: a teardown TERMing a just-launched
+  # worker, or a Ctrl-C reaching the whole foreground group. The lease
+  # watchdog used to be TERMed within milliseconds of its spawn, and under CPU
+  # load its copy of this function - holding the gate's copy of every pid and
+  # flag - waited out the lease holder and SIGKILLed it while the gate was
+  # still starting (the gate then refused to run: "the lease holder exited
+  # immediately after granting"), and its gate_lock_release saw the gate's
+  # `$$` in the lock and deleted the LIVE gate lock. A subshell therefore just
+  # leaves with its trap's exit status, as if the signal had found the
+  # default disposition it was meant to. (gate_is_main_process lives in
+  # ci-gate-lock.sh, whose suite also covers its bash 3.2 fallback.)
+  if ! gate_is_main_process; then
+    return "$status"
+  fi
+  # Stop the lease-acquisition watchdog first (a TERM can land between its
+  # spawn and the gate's own cancellation): cancelled through its file, it
+  # exits within one poll interval, and it is reaped before anything else.
   if [ -n "${HOST_LEASE_WATCHDOG:-}" ]; then
-    if kill -0 "$HOST_LEASE_WATCHDOG" 2>/dev/null; then
-      kill "$HOST_LEASE_WATCHDOG" 2>/dev/null || true
+    if [ -n "${HOST_LEASE_WATCHDOG_CANCEL:-}" ]; then
+      : > "$HOST_LEASE_WATCHDOG_CANCEL" 2>/dev/null || true
     fi
     wait "$HOST_LEASE_WATCHDOG" 2>/dev/null || true
     HOST_LEASE_WATCHDOG=""
@@ -634,6 +650,9 @@ if [ "$USE_LOCK" -eq 1 ]; then
       if [ -n "${GATE_LOCK_OWNER:-}" ]; then
         echo "local-ci-gate: another gate is running (pid $GATE_LOCK_OWNER): refusing to run two xcodebuild chains on one Mac" >&2
         echo "local-ci-gate: if that process is gone, remove $LOCK_DIR" >&2
+      elif [ -n "${GATE_LOCK_STEAL_BLOCKED:-}" ]; then
+        echo "local-ci-gate: the gate lock at $LOCK_DIR has a dead owner (pid $GATE_LOCK_STEAL_BLOCKED), and another contender is taking it over ($LOCK_DIR/steal)" >&2
+        echo "local-ci-gate: a takeover takes milliseconds; if no other gate is starting, that contender was killed mid-takeover: remove $LOCK_DIR" >&2
       else
         echo "local-ci-gate: the gate lock at $LOCK_DIR exists with no readable owner, so it is BUSY - not provably stale" >&2
         echo "local-ci-gate: if you are certain no gate is running, remove $LOCK_DIR" >&2
@@ -895,11 +914,33 @@ HOST_LEASE_HOLDER=$!
 # open(2); this watchdog turns that into a clean refusal. It fires on the
 # MISSING VERDICT alone - a dead helper fails `kill -0`, so conditioning on
 # liveness would miss exactly the deadlock this exists to break.
+#
+# The gate cancels the watchdog through a FILE, never a signal. A signal to a
+# subshell this young is a race either way: one that lands before bash has
+# reset the traps the subshell inherited runs the gate's own TERM trap (see
+# cleanup()), and one that lands before the subshell has forked its sleep
+# leaves that sleep running for the rest of its minute - a stray process on
+# the host after the run, and a gate blocked in `wait` until it expires. A
+# short poll ends on its own within one interval of the cancellation, whatever
+# the timing. The minute is counted in ticks, not read off the wall clock: an
+# NTP step must not fire the watchdog early on a healthy acquisition.
+HOST_LEASE_WATCHDOG_CANCEL="$HOST_LEASE_DIR/watchdog.cancel"
+rm -f "$HOST_LEASE_WATCHDOG_CANCEL"
 (
-  # The sleep must not inherit the gate's stdio: killing THIS subshell does
-  # not kill the sleep child, and an orphaned sleep holding stdout/stderr
-  # keeps an SSH channel open until it expires.
-  sleep 60 </dev/null >/dev/null 2>&1
+  _ticks=0
+  while [ "$_ticks" -lt 300 ]; do  # 300 x 0.2s: at least 60s
+    _ticks=$(( _ticks + 1 ))
+    [ -e "$HOST_LEASE_WATCHDOG_CANCEL" ] && exit 0
+    # The sleep must not inherit the gate's stdio: a sleep holding
+    # stdout/stderr keeps an SSH channel open until it expires.
+    sleep 0.2 </dev/null >/dev/null 2>&1
+  done
+  # One grace second before acting: the minute can run out in the instant
+  # between the helper opening the FIFO (the gate's exec returning) and the
+  # gate writing the cancel file or the helper its verdict - a helper that
+  # is progressing must not be killed on that boundary.
+  sleep 1 </dev/null >/dev/null 2>&1
+  [ -e "$HOST_LEASE_WATCHDOG_CANCEL" ] && exit 0
   if [ ! -s "$HOST_LEASE_JSON" ]; then
     echo "local-ci-gate: the host-lease helper never completed acquisition (is ios-ci-host functional?)" >&2
     kill -TERM "$HOST_LEASE_HOLDER" 2>/dev/null || true
@@ -908,7 +949,7 @@ HOST_LEASE_HOLDER=$!
 ) &
 HOST_LEASE_WATCHDOG=$!
 exec 3>"$HOST_LEASE_FIFO"
-kill "$HOST_LEASE_WATCHDOG" 2>/dev/null || true
+: > "$HOST_LEASE_WATCHDOG_CANCEL"
 wait "$HOST_LEASE_WATCHDOG" 2>/dev/null || true
 HOST_LEASE_WATCHDOG=""
 # The helper prints exactly one flushed JSON line before holding; wait for

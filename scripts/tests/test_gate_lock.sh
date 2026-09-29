@@ -258,28 +258,41 @@ printf '999999999
 ' > "$LOCK11/pid"
 _racers=0
 while [ "$_racers" -lt 4 ]; do
+  # A winner holds the lock (bounded) until EVERY racer has made its attempt:
+  # a winner that exits early leaves a dead-owner lock that a late-starting
+  # racer then takes over legitimately - a second, sequential winner that says
+  # nothing about the race. Winners APPEND, so two concurrent owners show up
+  # as two lines instead of one overwritten file.
   bash -c '
     . "$1"
-    if acquire_gate_lock "$2"; then
-      printf "%s
-" "$$" > "$2.winner"
-      sleep 1
+    if acquire_gate_lock "$2" 2>/dev/null; then
+      printf "%s\n" "$$" >> "$2.winner"
+      : > "$2.tried.$$"
+      _held=0
+      while [ "$(ls "$2".tried.* 2>/dev/null | wc -l | tr -d " ")" -lt 4 ] \
+          && [ "$_held" -lt 600 ]; do
+        sleep 0.1
+        _held=$(( _held + 1 ))
+      done
+    else
+      : > "$2.tried.$$"
     fi' _ "$MOD" "$LOCK11" &
   _racers=$(( _racers + 1 ))
 done
 wait
-# Diagnosis first: this is the suite's only genuine RACE, and a failure here
-# has been seen once on a loaded hosted runner (never locally, and not in the
-# same commit's self-test job). If it ever goes red again, the shape of the
-# failure - was the lock left behind, was an aside left behind, is the winner
-# file present but empty - is what says which contender went wrong.
-if [ "$(ls "$LOCK11.winner" 2>/dev/null | wc -l | tr -d ' ')" != "1" ]; then
-  echo "  (race diagnosis: $(ls -ld "$LOCK11" "$LOCK11".stale.* "$LOCK11.winner" 2>&1 | tr '\n' '|'))"
-  echo "  (lock pid: $(cat "$LOCK11/pid" 2>/dev/null || echo none))"
+# Diagnosis first: this is the suite's only genuine RACE. If it ever goes red
+# again, the shape of the failure - was the lock left behind, was an aside or a
+# steal marker left behind, how many winners were recorded - is what says
+# which contender went wrong.
+if [ "$(wc -l < "$LOCK11.winner" 2>/dev/null | tr -d ' ')" != "1" ]; then
+  echo "  (race diagnosis: $(ls -ld "$LOCK11" "$LOCK11"/* "$LOCK11".stale.* "$LOCK11.winner" 2>&1 | tr '\n' '|'))"
+  echo "  (lock pid: $(cat "$LOCK11/pid" 2>/dev/null || echo none); winners: $(tr '\n' ' ' < "$LOCK11.winner" 2>/dev/null))"
 fi
-assert_eq "exactly one contender wins the race"   "$(ls "$LOCK11.winner" 2>/dev/null | wc -l | tr -d ' ')" "1"
-assert_eq "and the lock carries the winner's pid"   "$(cat "$LOCK11/pid")" "$(cat "$LOCK11.winner" 2>/dev/null)"
-rm -rf "$LOCK11" "$LOCK11.winner"
+assert_eq "exactly one contender wins the race" \
+  "$(wc -l < "$LOCK11.winner" 2>/dev/null | tr -d ' ')" "1"
+assert_eq "and the lock carries the winner's pid" \
+  "$(cat "$LOCK11/pid" 2>/dev/null)" "$(cat "$LOCK11.winner" 2>/dev/null)"
+rm -rf "$LOCK11" "$LOCK11.winner" "$LOCK11".tried.*
 
 echo "--- case 12: a leftover rename-aside is never the steal's target ---"
 # A steal that was SIGKILLed after the rename-aside leaves that directory
@@ -301,6 +314,171 @@ assert_eq "the leftover aside is untouched (not nested into)"   "$(cat "$LEFTOVE
 assert_eq "and the leftover was not mistaken for the lock"   "$([ -d "$LOCK12" ] && echo yes || echo no)" "yes"
 gate_lock_release
 rm -rf "$LOCK12" "$LEFTOVER"
+
+echo "--- case 13: a steal in progress is BUSY and leaves no marker behind ---"
+# The steal of a dead-owner lock is claimed by a marker INSIDE that lock
+# instance.
+LOCK13="$WORK/lock-13"
+# (a) A second stealer that finds another contender's marker backs off.
+mkdir -p "$LOCK13/steal"
+printf '999999999\n' > "$LOCK13/pid"
+MARKED_RC=0
+acquire_gate_lock "$LOCK13" 2>/dev/null || MARKED_RC=$?
+assert_eq "a dead-owner lock that is being stolen refuses a second stealer" "$MARKED_RC" "2"
+assert_eq "and the lock and the other stealer's marker are untouched" \
+  "$(cat "$LOCK13/pid" 2>/dev/null)|$([ -d "$LOCK13/steal" ] && echo marker)" "999999999|marker"
+assert_eq "the refusal names the dead owner as blocked, not as unreadable" \
+  "${GATE_LOCK_STEAL_BLOCKED:-}" "999999999"
+assert_eq "no rename-aside was made" \
+  "$(ls -d "$LOCK13".stale.* 2>/dev/null | wc -l | tr -d ' ')" "0"
+rm -rf "$LOCK13"
+
+# (b) The lock is REPLACED by a live one between the liveness check and the
+# marker: `kill` is overridden (in a subshell) so that the liveness probe of
+# the dead pid swaps a live owner in, exactly the interleaving of a faster
+# contender. The marker then lands in the live lock; the stealer must see
+# the new pid, withdraw its marker and never move that lock.
+mkdir -p "$LOCK13"
+printf '999999999\n' > "$LOCK13/pid"
+LIVE_OWNER="$$"
+REPLACED_RC="$(
+  kill() {
+    if [ "$1" = "-0" ] && [ "$2" = "999999999" ]; then
+      printf '%s\n' "$LIVE_OWNER" > "$LOCK13/pid"
+      return 1
+    fi
+    command kill "$@"
+  }
+  rc=0
+  acquire_gate_lock "$LOCK13" 2>/dev/null || rc=$?
+  echo "$rc"
+)"
+assert_eq "a marker that lands in a replaced, live lock reports BUSY" "$REPLACED_RC" "2"
+assert_eq "and the live lock is neither moved nor changed" \
+  "$(cat "$LOCK13/pid" 2>/dev/null)" "$LIVE_OWNER"
+assert_eq "and the stealer withdrew its marker" \
+  "$([ -d "$LOCK13/steal" ] && echo yes || echo no)" "no"
+assert_eq "and made no rename-aside" \
+  "$(ls -d "$LOCK13".stale.* 2>/dev/null | wc -l | tr -d ' ')" "0"
+rm -rf "$LOCK13"
+
+# (b2) The same interleaving, but the newer owner has died by the re-read:
+# BUSY for this race, yet it must not be reported as a running gate.
+mkdir -p "$LOCK13"
+printf '999999999\n' > "$LOCK13/pid"
+DEAD_REPLACED_OWNER="$(
+  kill() {
+    if [ "$1" = "-0" ] && [ "$2" = "999999999" ]; then
+      printf '999999998\n' > "$LOCK13/pid"
+      return 1
+    fi
+    command kill "$@"
+  }
+  acquire_gate_lock "$LOCK13" 2>/dev/null
+  echo "rc=$? owner=${GATE_LOCK_OWNER:-none}"
+)"
+assert_eq "a dead newer owner is not reported as a running gate" \
+  "$DEAD_REPLACED_OWNER" "rc=2 owner=none"
+rm -rf "$LOCK13"
+
+# (c) An interrupt around the marker: the stealer's trap releases, and it
+# must leave nothing behind that makes the lock unstealable. `mv` is
+# overridden to deliver a TERM right after a given rename has completed
+# (sh's PPID is the subshell, which keeps this bash 3.2 compatible); bash
+# runs the trap as soon as the override returns.
+#   claim: right after the rename that CREATES the marker - the one-command
+#          window a separate mkdir + bookkeeping assignment used to leave
+#          open. The dead lock must still be there, marker-free.
+#   aside: right after the dead lock (marker inside) was renamed aside. The
+#          aside must be removed, and the canonical path left free.
+for _when in claim aside; do
+  mkdir -p "$LOCK13"
+  printf '999999999\n' > "$LOCK13/pid"
+  ( trap 'gate_lock_release; exit 143' TERM
+    mv() {
+      command mv "$@"; _rc=$?
+      case "$2" in
+        */steal) [ "$_when" = claim ] && sh -c 'kill -TERM "$PPID"' ;;
+        *.stale.*) [ "$_when" = aside ] && sh -c 'kill -TERM "$PPID"' ;;
+      esac
+      return "$_rc"
+    }
+    acquire_gate_lock "$LOCK13" 2>/dev/null
+    exit 0 ) &
+  INTERRUPTED13=$!
+  wait "$INTERRUPTED13" 2>/dev/null
+  INTERRUPTED13_RC=$?
+  assert_eq "setup ($_when): the stealer was interrupted mid-steal" "$INTERRUPTED13_RC" "143"
+  assert_eq "an interrupt after the $_when rename leaves no marker behind" \
+    "$([ -d "$LOCK13/steal" ] && echo yes || echo no)" "no"
+  assert_eq "nor a half-built marker or aside ($_when)" \
+    "$(ls -d "$LOCK13".mark.* "$LOCK13".stale.* 2>/dev/null | wc -l | tr -d ' ')" "0"
+  if [ "$_when" = claim ]; then
+    assert_eq "and the dead lock is still there to be taken over (claim)" \
+      "$(cat "$LOCK13/pid" 2>/dev/null)" "999999999"
+  else
+    assert_eq "and the canonical path is free (aside)" \
+      "$([ -e "$LOCK13" ] && echo taken || echo free)" "free"
+  fi
+  AFTER13_RC=0
+  acquire_gate_lock "$LOCK13" 2>/dev/null || AFTER13_RC=$?
+  assert_eq "so the next contender acquires the lock ($_when)" "$AFTER13_RC" "0"
+  gate_lock_release
+  rm -rf "$LOCK13"
+done
+
+# (d) The rename aside itself fails: BUSY, and the marker is withdrawn.
+mkdir -p "$LOCK13"
+printf '999999999\n' > "$LOCK13/pid"
+FAILED13_RC="$(
+  mv() {
+    case "$2" in
+      */steal) command mv "$@" ;;
+      *) return 1 ;;
+    esac
+  }
+  rc=0
+  acquire_gate_lock "$LOCK13" 2>/dev/null || rc=$?
+  echo "$rc"
+)"
+assert_eq "a failed rename aside reports BUSY" "$FAILED13_RC" "2"
+assert_eq "and withdraws the stealer's marker" \
+  "$([ -d "$LOCK13/steal" ] && echo yes || echo no)" "no"
+rm -rf "$LOCK13" "$LOCK13".stale.* "$LOCK13".mark.*
+
+echo "--- case 14: only the top-level process counts as the lock's process ---"
+# A subshell's `$$` is its parent's pid, so a teardown trap a subshell
+# inherits would otherwise release the parent's lock and resources.
+if gate_is_main_process; then
+  ok "the top-level process is the main process"
+else
+  bad "the top-level process was not recognized as the main process"
+fi
+assert_eq "a subshell is not" \
+  "$( ( gate_is_main_process && echo main || echo sub ) )" "sub"
+( gate_is_main_process && echo main > "$WORK/bg14" || echo sub > "$WORK/bg14" ) &
+wait "$!"
+assert_eq "nor a background subshell" "$(cat "$WORK/bg14" 2>/dev/null)" "sub"
+# The macOS /bin/bash 3.2 path: no BASHPID (unset strips it on newer bash).
+# At the top level this drives the sh PPID probe; a real subshell is still
+# answered by the BASH_SUBSHELL check before the probe is reached.
+assert_eq "without BASHPID (bash 3.2), a top-level script is still main" \
+  "$(bash -c '. "$1"; unset BASHPID; gate_is_main_process && echo main || echo sub' _ "$MOD")" "main"
+assert_eq "and a background subshell still is not" \
+  "$(bash -c '. "$1"; unset BASHPID; ( gate_is_main_process && echo main || echo sub ) & wait' _ "$MOD")" "sub"
+# The probe path in a child (probe-path-only coverage, bash 4+: it relies on
+# BASH_SUBSHELL being assignable): BASH_SUBSHELL is forced back to 0 so only the
+# PPID probe can tell the subshell from the top level. A recording `sh` on
+# PATH proves the probe actually ran: a shell that ignored the BASH_SUBSHELL
+# assignment would answer "sub" from the first check and never reach it.
+mkdir -p "$WORK/probe-bin"
+printf '#!/bin/sh\necho probed >> "%s"\nexec /bin/sh "$@"\n' "$WORK/probe-ran" > "$WORK/probe-bin/sh"
+chmod +x "$WORK/probe-bin/sh"
+rm -f "$WORK/probe-ran"
+assert_eq "without BASHPID or BASH_SUBSHELL, the pid probe still spots a subshell" \
+  "$(PROBE_PATH="$WORK/probe-bin:$PATH" bash -c '. "$1"; unset BASHPID; ( BASH_SUBSHELL=0; PATH="$PROBE_PATH"; gate_is_main_process && echo main || echo sub )' _ "$MOD")|$(cat "$WORK/probe-ran" 2>/dev/null)" "sub|probed"
+assert_eq "an unanswerable pid probe fails toward the teardown (main)" \
+  "$(bash -c '. "$1"; unset BASHPID; PATH=/nonexistent; gate_is_main_process && echo main || echo sub' _ "$MOD" 2>/dev/null)" "main"
 
 echo ""
 echo "=== $pass_count passed, $fail_count failed ==="
