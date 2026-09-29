@@ -805,6 +805,26 @@ extension AppStateVoiceCapabilityTests {
         withExtendedLifetime(spy) {}
     }
 
+    func testCarPlayGoingAwayDropsTheHostTextOfACallThatAlreadyFailed() {
+        let appState = makeGPTLiveAppState()
+        appState.liveVoiceHostContextForTesting = (gemini: true, gpt: true)
+
+        appState.showGPTLiveSheet = true
+        appState.showGeminiLiveSheet = true
+        appState.releaseCarPlayGPTLive()
+        appState.releaseCarPlayGeminiLive()
+        XCTAssertEqual(appState.liveVoiceHostContextForTesting.gpt, true, "the phone's sheet still presents it")
+        XCTAssertEqual(appState.liveVoiceHostContextForTesting.gemini, true)
+
+        appState.showGPTLiveSheet = false
+        appState.showGeminiLiveSheet = false
+        appState.releaseCarPlayGPTLive()
+        XCTAssertEqual(appState.liveVoiceHostContextForTesting.gpt, false, "nothing presents a failed CarPlay call, so its memory and persona go")
+        XCTAssertEqual(appState.liveVoiceHostContextForTesting.gemini, true)
+        appState.releaseCarPlayGeminiLive()
+        XCTAssertEqual(appState.liveVoiceHostContextForTesting.gemini, false)
+    }
+
     func testCarPlayEndClosesTheGPTLiveCall() async {
         let appState = makeGPTLiveAppState()
         appState.setGPTLiveEnabled(true)

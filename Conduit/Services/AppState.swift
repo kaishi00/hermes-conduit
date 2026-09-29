@@ -1458,10 +1458,17 @@ final class AppState: ObservableObject {
     }
 
     /// CarPlay went away. A Gemini Live conversation only CarPlay was
-    /// presenting ends; one the phone's sheet shows keeps going.
+    /// presenting ends; one the phone's sheet shows keeps going. A
+    /// conversation that already failed drops its memory and persona too:
+    /// nothing presents it, so nothing would close it.
     func releaseCarPlayGeminiLive() {
-        guard isGeminiLiveActive, !(isSceneActive && showGeminiLiveSheet) else { return }
-        closeGeminiLiveConversation()
+        guard !(isSceneActive && showGeminiLiveSheet) else { return }
+        if isGeminiLiveActive {
+            closeGeminiLiveConversation()
+        } else {
+            geminiLiveMemoryContext = nil
+            geminiLivePersonality = nil
+        }
     }
 
     func closeGeminiLiveConversation() {
@@ -1541,6 +1548,21 @@ final class AppState: ObservableObject {
     private var gptLivePersonality: String?
     private var gptLiveMemoryContext: GeminiLiveMemoryContext?
 
+    /// The host text the live modes hold between a call's start and close.
+    var liveVoiceHostContextForTesting: (gemini: Bool, gpt: Bool) {
+        get {
+            (geminiLiveMemoryContext != nil || geminiLivePersonality != nil,
+             gptLiveMemoryContext != nil || gptLivePersonality != nil)
+        }
+        set {
+            let memory = GeminiLiveMemoryContext(text: "memory", canRecall: false)
+            geminiLiveMemoryContext = newValue.gemini ? memory : nil
+            geminiLivePersonality = newValue.gemini ? "persona" : nil
+            gptLiveMemoryContext = newValue.gpt ? memory : nil
+            gptLivePersonality = newValue.gpt ? "persona" : nil
+        }
+    }
+
     /// GPT-Live calls start on the Hermes host (the conduit_push plugin),
     /// through whichever dashboard bridge is current at call time.
     lazy var gptLiveClient = GPTLiveClient(profile: { [weak self] in
@@ -1617,10 +1639,17 @@ final class AppState: ObservableObject {
     }
 
     /// CarPlay went away. A GPT-Live call only CarPlay was presenting ends;
-    /// one the phone's sheet shows keeps going.
+    /// one the phone's sheet shows keeps going. A call that already failed
+    /// drops its memory and persona too: nothing presents it, so nothing
+    /// would close it.
     func releaseCarPlayGPTLive() {
-        guard isGPTLiveActive, !(isSceneActive && showGPTLiveSheet) else { return }
-        closeGPTLiveConversation()
+        guard !(isSceneActive && showGPTLiveSheet) else { return }
+        if isGPTLiveActive {
+            closeGPTLiveConversation()
+        } else {
+            gptLiveMemoryContext = nil
+            gptLivePersonality = nil
+        }
     }
 
     func closeGPTLiveConversation() {
