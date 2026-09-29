@@ -46,8 +46,9 @@ private struct JsonRpcRequest: Encodable {
 private enum JsonRpcID: Decodable, Equatable {
     case int(Int)
     case string(String)
-    /// Any other scalar (JSON-RPC forbids them): kept so the frame is not
-    /// dropped, but it can never match a request of ours.
+    /// Any other scalar (JSON-RPC forbids them): decoded so the rest of the
+    /// frame is not lost. It never matches a request of ours and is never
+    /// answered (requests need a string id).
     case other
 
     init(from decoder: Decoder) throws {
@@ -672,6 +673,12 @@ final class HermesClient: ObservableObject {
     /// 4404 "not shown here" as one client declining a window-owned request
     /// rather than as its answer.
     private var backendCountsDeclines = false
+    /// True between sending `client.capabilities` and its reply, while
+    /// `backendCountsDeclines` is not yet known.
+    private var capabilityReplyPending = false
+    /// Window-owned request ids that arrived while `capabilityReplyPending`:
+    /// declined (or not) once the reply says whether declines are counted.
+    private var deferredWindowOwnedDeclines: [String] = []
     private var closedIntentionally = false
     private var receiveTask: Task<Void, Never>?
     private var socketHasOpened = false
@@ -774,11 +781,13 @@ final class HermesClient: ObservableObject {
         openContinuation = nil
         isConnected = false
         failAllPendingRequests(with: HermesError.connectionClosed)
-        // Per-connection capability state. Open request ids and the approval
-        // id map deliberately survive: the gateway keeps those requests open
-        // and re-announces them under the same ids on resume.
+        // Per-connection capability state. The open-request bookkeeping is
+        // not cleared here; AppState builds a fresh client per reconnect, so
+        // it is rebuilt from `session.resume` on that client.
         advertisedSocket = nil
         backendCountsDeclines = false
+        capabilityReplyPending = false
+        deferredWindowOwnedDeclines = []
 
         closedIntentionally = false
         socketHasOpened = false
@@ -987,9 +996,16 @@ final class HermesClient: ObservableObject {
     /// cannot answer approval requests") and the command is blocked. Sent on
     /// `gateway.ready`, which the gateway writes first on every new socket.
     /// A gateway that predates server requests answers -32601; ignored.
+    ///
+    /// Ordering: nothing waits for this before `session.resume`, and nothing
+    /// needs to. The gateway computes a resume's `open_requests` whatever the
+    /// client advertised, and those replays arrive in the resume response.
+    /// The capability only gates *new* live requests, and it goes out on the
+    /// first frame of the connection, like the reference `json-rpc-channel`.
     private func advertiseClientCapabilities() {
         guard let socket = self.socket, advertisedSocket !== socket else { return }
         advertisedSocket = socket
+        capabilityReplyPending = true
         Task { @MainActor [weak self] in
             guard let self, self.socket === socket else { return }
             do {
@@ -1001,6 +1017,15 @@ final class HermesClient: ObservableObject {
                 self.logger.notice("client.capabilities not accepted: \(error.localizedDescription, privacy: .public)")
                 // Let a later gateway.ready on this socket try again.
                 if self.advertisedSocket === socket { self.advertisedSocket = nil }
+            }
+            guard self.socket === socket else { return }
+            self.capabilityReplyPending = false
+            let deferred = self.deferredWindowOwnedDeclines
+            self.deferredWindowOwnedDeclines = []
+            if self.backendCountsDeclines {
+                for id in deferred {
+                    self.writeServerRequestReply(id: .string(id), error: (Self.notShownCode, "no Conduit window shows this session"))
+                }
             }
         }
     }
@@ -1068,7 +1093,14 @@ final class HermesClient: ObservableObject {
     /// (reference: `apps/shared/src/json-rpc-channel.ts`).
     private func declineServerRequest(id: JsonRpcID, method: String) {
         if Self.windowOwnedServerRequests.contains(method) {
-            guard backendCountsDeclines else { return }
+            guard backendCountsDeclines else {
+                // Until the capability reply says whether declines are
+                // counted, hold the decline rather than drop it.
+                if capabilityReplyPending, case .string(let requestID) = id {
+                    deferredWindowOwnedDeclines.append(requestID)
+                }
+                return
+            }
             writeServerRequestReply(id: id, error: (Self.notShownCode, "no Conduit window shows this session"))
         } else {
             writeServerRequestReply(id: id, error: (Self.methodNotFoundCode, "no handler for server request: \(method)"))
@@ -1842,6 +1874,11 @@ final class HermesClient: ObservableObject {
         }
         guard let resolved = Self.exactIntValue(rawResolved), resolved >= 0 else {
             throw HermesError.invalidResponse
+        }
+        if let trimmedRequestId, hasRequestId {
+            // Settled here; the gateway's `resolved` cancel would only find
+            // a card that is no longer pending.
+            approvalQueueIDs = approvalQueueIDs.filter { $0.value.queueID != trimmedRequestId }
         }
         return resolved > 0
     }
