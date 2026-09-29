@@ -74,6 +74,10 @@ enum CarPlayVoiceState: String, CaseIterable, Equatable {
 /// duplex (GPT-Live's own turn detection handles barge-in and WebRTC cancels
 /// the car speakers' echo), so there is nothing to interrupt: the driver
 /// just talks.
+///
+/// The template shows Listen only at Ready and Error (idle and failed), so
+/// from the car only `.start` is reached today; the other phases are mapped
+/// so the table stays total if Listen ever appears mid-call.
 enum CarPlayGPTLiveListenAction: Equatable {
     /// Nothing running (or it failed): start a call.
     case start
