@@ -1048,7 +1048,7 @@ final class HermesClient: ObservableObject {
 
     /// Methods this client presents (anything else is declined).
     static func handlesServerRequest(_ method: String) -> Bool {
-        method == "clarify" || method == "approval"
+        method == "clarify" || method == "approval" || InputPromptActivity.Kind(rawValue: method) != nil
     }
 
     /// Requests only the Hermes Desktop window showing the session can

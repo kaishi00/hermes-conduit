@@ -1782,6 +1782,11 @@ final class HermesClientTests: XCTestCase {
         XCTAssertEqual(prompts.first?.prompt, "Paste your key")
         XCTAssertEqual(prompts.last?.kind, .vaultUnlock)
         XCTAssertEqual(prompts.last?.displayName, "Bitwarden")
+        for _ in 0..<50 { await Task.yield() }
+        XCTAssertEqual(
+            socket.sentTexts.count, 1,
+            "Presented prompts are never declined, and a window-owned request gets no reply from a gateway that does not count declines"
+        )
         client.disconnect()
     }
 
