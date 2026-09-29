@@ -330,6 +330,73 @@ final class ClarifyBatchStateTests: XCTestCase {
         XCTAssertNil(untouched.error)
     }
 
+    func testInterruptedRequestCancelDoesNotClaimATimeout() async throws {
+        let (appState, _) = makeAppState()
+        appState.messages = [
+            ChatMessage(id: "clarify-srq-1", role: .clarify, content: "q", timestamp: "1", clarify: ClarifyActivity(requestId: "srq-1", question: "Pick", choices: [ClarifyChoice(label: "a", value: "a")]))
+        ]
+
+        appState.handleStreamEvent(.clarifyExpire(sessionId: "stored-a", requestId: "srq-1", reason: "interrupted"))
+
+        let expired = try XCTUnwrap(clarifyCard(in: appState, requestId: "srq-1"))
+        XCTAssertEqual(expired.status, .expired)
+        XCTAssertEqual(
+            expired.error, AppLocalization.string("This question is no longer active."),
+            "An interrupted turn must not read as Hermes timing out"
+        )
+    }
+
+    // MARK: - Approval withdrawal (request.cancel)
+
+    private func approvalCard(_ appState: AppState, _ requestId: String) -> ApprovalActivity? {
+        appState.messages.last(where: { $0.approval?.requestId == requestId })?.approval
+    }
+
+    private func pendingApprovalMessage(_ requestId: String, status: ApprovalActivity.Status = .pending) -> ChatMessage {
+        ChatMessage(
+            id: "approval-\(requestId)", role: .approval, content: "d", timestamp: "1",
+            approval: ApprovalActivity(
+                sessionId: "stored-a", requestId: requestId, command: "rm -rf scratch", description: "d",
+                allowPermanent: true, smartDenied: false, status: status
+            )
+        )
+    }
+
+    func testApprovalWithdrawnByTimeoutExpiresThePendingCard() throws {
+        let (appState, _) = makeAppState()
+        appState.messages = [pendingApprovalMessage("queue-1"), pendingApprovalMessage("queue-2")]
+
+        appState.handleStreamEvent(.approvalWithdrawn(sessionId: "stored-a", requestId: "queue-1", reason: "timeout"))
+
+        let expired = try XCTUnwrap(approvalCard(appState, "queue-1"))
+        XCTAssertEqual(expired.status, .expired, "A withdrawn approval must stop offering Run / Reject")
+        XCTAssertEqual(expired.error, AppLocalization.string("This approval is no longer active — Hermes timed it out and continued."))
+        XCTAssertEqual(approvalCard(appState, "queue-2")?.status, .pending, "Only the withdrawn request changes")
+    }
+
+    func testApprovalResolvedElsewhereSaysSo() throws {
+        let (appState, _) = makeAppState()
+        appState.messages = [pendingApprovalMessage("queue-1")]
+
+        appState.handleStreamEvent(.approvalWithdrawn(sessionId: "stored-a", requestId: "queue-1", reason: "resolved"))
+
+        let settled = try XCTUnwrap(approvalCard(appState, "queue-1"))
+        XCTAssertEqual(settled.status, .expired)
+        XCTAssertEqual(settled.error, AppLocalization.string("This approval was answered elsewhere."))
+    }
+
+    func testApprovalWithdrawalLeavesThisDevicesInFlightAnswerAlone() throws {
+        let (appState, _) = makeAppState()
+        appState.messages = [pendingApprovalMessage("queue-1", status: .submitting)]
+
+        // The gateway settles the request as soon as this device's own
+        // approval.respond resolves the queue — possibly before the RPC reply.
+        appState.handleStreamEvent(.approvalWithdrawn(sessionId: "stored-a", requestId: "queue-1", reason: "resolved"))
+
+        XCTAssertEqual(approvalCard(appState, "queue-1")?.status, .submitting)
+        XCTAssertNil(approvalCard(appState, "queue-1")?.error)
+    }
+
     // MARK: - Duplicate / replay identity
 
     func testLegacyScalarCardAnswersAtRequestLevelWithoutQuestionID() async throws {

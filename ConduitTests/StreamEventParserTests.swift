@@ -578,22 +578,24 @@ final class StreamEventParserTests: XCTestCase {
         let event = parse(#"""
         {"type": "clarify.expire", "session_id": "s1", "payload": {"request_id": "req-7"}}
         """#)
-        guard case .clarifyExpire(let sessionId, let requestId) = event else {
+        guard case .clarifyExpire(let sessionId, let requestId, let reason) = event else {
             return XCTFail("Expected clarifyExpire")
         }
         XCTAssertEqual(sessionId, "s1")
         XCTAssertEqual(requestId, "req-7")
+        XCTAssertNil(reason, "The legacy event carries no reason (it is always a timeout)")
     }
 
     func testRequestCancelForClarifyExpiresTheServerRequestCard() {
         let event = parse(#"""
         {"type": "request.cancel", "session_id": "s1", "payload": {"id": "srq-0123456789ab", "method": "clarify", "reason": "timeout"}}
         """#)
-        guard case .clarifyExpire(let sessionId, let requestId) = event else {
+        guard case .clarifyExpire(let sessionId, let requestId, let reason) = event else {
             return XCTFail("Expected clarifyExpire")
         }
         XCTAssertEqual(sessionId, "s1")
         XCTAssertEqual(requestId, "srq-0123456789ab")
+        XCTAssertEqual(reason, "timeout")
     }
 
     func testRequestCancelResolvedDoesNotExpireClarify() {
