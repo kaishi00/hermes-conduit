@@ -1677,7 +1677,40 @@ private struct NotificationsSettingsDetail: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @ObservedObject private var notifications = PushNotificationService.shared
     @EnvironmentObject private var appState: AppState
-    @AppStorage("conduit.relayURL") private var customRelayURL: String = ""
+    @AppStorage(PushNotificationService.relayURLDefaultsKey) private var customRelayURL: String = ""
+    // Seeded from the saved value so the first render doesn't read as an
+    // unsaved edit (and flash Save or the re-pair warning).
+    @State private var relayDraft = UserDefaults.standard.string(forKey: PushNotificationService.relayURLDefaultsKey) ?? ""
+    @State private var relayDraftInvalid = false
+
+    private func trimmed(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var relayDraftIsUnsaved: Bool {
+        trimmed(relayDraft) != trimmed(customRelayURL)
+    }
+
+    private func saveRelay(_ value: String) {
+        // Return in the field reaches here too, so this mirrors the
+        // disabled buttons: never start a second move mid-move.
+        guard !notifications.isWorking else { return }
+        let value = trimmed(value)
+        guard PushNotificationService.isValidRelayInput(value) else {
+            relayDraftInvalid = true
+            Haptics.error()
+            return
+        }
+        relayDraftInvalid = false
+        relayDraft = value
+        if value != customRelayURL {
+            customRelayURL = value
+            Haptics.light()
+        }
+        // Runs even when the value is unchanged, so a move that failed
+        // earlier can be retried.
+        Task { await notifications.applyRelayChange() }
+    }
 
     var body: some View {
         SettingsDetailContainer {
@@ -1833,18 +1866,70 @@ private struct NotificationsSettingsDetail: View {
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
-                ConduitSettingsSection(title: AppLocalization.string("Push relay"), symbol: "server.rack", tint: .conduitAura) {
-                    TextField("https://push.milim.dev", text: $customRelayURL)
-                        .textFieldStyle(.plain)
-                        .font(.body.monospaced())
-                        .padding(.vertical, 4)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                        .keyboardType(.URL)
-                        .onSubmit {
-                            Task { await notifications.refreshMeta() }
-                        }
-                    Text("Leave blank to use the default relay. Change this if you run your own push relay server.")
+            }
+
+            // Always visible (#255): an unreachable custom relay makes
+            // enabling fail, so the field must stay editable while
+            // notifications are off — otherwise there is no way back.
+            ConduitSettingsSection(title: AppLocalization.string("Push relay"), symbol: "server.rack", tint: .conduitAura) {
+                // Edits stay a draft until saved, so a half-typed URL never
+                // becomes the relay; saving moves an active registration.
+                TextField("https://push.milim.dev", text: $relayDraft)
+                    .textFieldStyle(.plain)
+                    .font(.body.monospaced())
+                    .padding(.vertical, 4)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .keyboardType(.URL)
+                    .submitLabel(.done)
+                    .accessibilityLabel(AppLocalization.string("Push relay URL"))
+                    .disabled(notifications.isWorking)
+                    .onSubmit { saveRelay(relayDraft) }
+                    .onChange(of: relayDraft) { _, _ in relayDraftInvalid = false }
+                if relayDraftInvalid {
+                    Label(AppLocalization.string("Enter a full HTTPS relay URL, like https://push.example.com."), systemImage: "exclamationmark.triangle.fill")
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                }
+                Text("Leave blank to use the default relay. Change this if you run your own push relay server.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                if notifications.isEnabled && relayDraftIsUnsaved {
+                    Text("Saving moves this iPhone to the new relay. You'll need to pair each Hermes profile again.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                // A failed move leaves the phone on the old relay with the
+                // new one saved; the same button retries it.
+                if relayDraftIsUnsaved || notifications.relayMovePending {
+                    Button {
+                        saveRelay(relayDraft)
+                    } label: {
+                        Label(
+                            relayDraftIsUnsaved ? AppLocalization.string("Save relay") : AppLocalization.string("Retry relay move"),
+                            systemImage: relayDraftIsUnsaved ? "checkmark" : "arrow.clockwise"
+                        )
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 44)
+                    }
+                    .disabled(notifications.isWorking)
+                    .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.16))
+                }
+                // Raw, not trimmed: a whitespace-only value saved by an
+                // older build can still be cleared.
+                if !customRelayURL.isEmpty {
+                    Button {
+                        saveRelay("")
+                    } label: {
+                        Label(AppLocalization.string("Reset to default relay"), systemImage: "arrow.counterclockwise")
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 44)
+                    }
+                    .disabled(notifications.isWorking)
+                    .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.16))
+                }
+                if let notice = notifications.relayNotice {
+                    Label(notice, systemImage: "info.circle.fill")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
