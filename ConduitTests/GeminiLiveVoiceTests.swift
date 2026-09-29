@@ -673,6 +673,20 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(session.stopped, 1)
     }
 
+    func testGeminiLiveNewConversationStartsWithTheMicrophoneOpen() async {
+        let (controller, session, input, _, _) = makeGeminiController(clock: Date.init)
+        await controller.start()
+        session.becomeReady()
+        controller.setMicrophoneMuted(true)
+        controller.stop()
+
+        await controller.start()
+        session.becomeReady()
+        XCTAssertFalse(controller.isMicrophoneMuted, "a mute belongs to the conversation it was set in")
+        XCTAssertTrue(input.running)
+        controller.stop()
+    }
+
     func testGeminiLiveMuteStopsTheMicrophoneAndEndsTheUsersTurn() async {
         let (controller, session, input, _, _) = makeGeminiController(clock: Date.init)
         await controller.start()

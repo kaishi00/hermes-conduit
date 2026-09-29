@@ -77,19 +77,13 @@ enum CarPlayVoiceState: String, CaseIterable, Equatable {
 enum CarPlayGPTLiveListenAction: Equatable {
     /// Nothing running (or it failed): start a call.
     case start
-    /// The microphone was muted on the phone: open it so the driver can speak.
-    case unmute
     /// Already in a call the driver can talk into, or connecting/ending.
     case nothing
 
-    static func forPhase(
-        _ phase: GPTLiveConversationController.Phase,
-        microphoneMuted: Bool
-    ) -> CarPlayGPTLiveListenAction {
+    static func forPhase(_ phase: GPTLiveConversationController.Phase) -> CarPlayGPTLiveListenAction {
         switch phase {
         case .idle, .failed: return .start
-        case .listening, .speaking: return microphoneMuted ? .unmute : .nothing
-        case .connecting, .ending: return .nothing
+        case .connecting, .listening, .speaking, .ending: return .nothing
         }
     }
 }

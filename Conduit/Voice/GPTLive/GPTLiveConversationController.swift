@@ -169,6 +169,9 @@ final class GPTLiveConversationController: ObservableObject {
         guard !isActive else { return }
         phase = .connecting
         transcript = []
+        // A mute belongs to the call it was set in: a new call (one started
+        // from CarPlay, which has no mute control, included) is heard.
+        isMicrophoneMuted = false
         endTask?.cancel()
         endTask = nil
         endRequestedAt = nil

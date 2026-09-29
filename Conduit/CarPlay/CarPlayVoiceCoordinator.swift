@@ -54,6 +54,19 @@ enum CarPlayVoiceMode: Equatable {
     }
 }
 
+/// The live modes CarPlay starts itself, after waiting for Hermes.
+enum CarPlayLiveVoiceMode: Equatable {
+    case geminiLive
+    case gptLive
+
+    var voiceMode: CarPlayVoiceMode {
+        switch self {
+        case .geminiLive: return .geminiLive
+        case .gptLive: return .gptLive
+        }
+    }
+}
+
 @MainActor
 final class CarPlayVoiceCoordinator {
     static let shared = CarPlayVoiceCoordinator()
@@ -324,9 +337,8 @@ final class CarPlayVoiceCoordinator {
             return
         case .gptLive:
             let gpt = appState.gptLiveController
-            switch CarPlayGPTLiveListenAction.forPhase(gpt.phase, microphoneMuted: gpt.isMicrophoneMuted) {
+            switch CarPlayGPTLiveListenAction.forPhase(gpt.phase) {
             case .start: await establishLiveVoice(.gptLive, appState: appState, generation: generation)
-            case .unmute: gpt.setMicrophoneMuted(false)
             case .nothing: break
             }
             return
@@ -380,7 +392,15 @@ final class CarPlayVoiceCoordinator {
             await establishLiveVoice(.geminiLive, appState: appState, generation: generation)
             return
         case .gptLive:
-            guard !appState.gptLiveController.isActive else { return }
+            let gpt = appState.gptLiveController
+            guard !gpt.isActive else {
+                // A call running on the phone is shown, not restarted. The
+                // car has no mute control, so a call muted on the phone is
+                // opened up for the driver (End and Listen would otherwise
+                // be the only way back to a call they can be heard on).
+                gpt.setMicrophoneMuted(false)
+                return
+            }
             await establishLiveVoice(.gptLive, appState: appState, generation: generation)
             return
         }
@@ -399,7 +419,7 @@ final class CarPlayVoiceCoordinator {
     /// Starts a live mode (Gemini Live or GPT-Live) for this CarPlay surface
     /// once Hermes is connected (both start through the host), waiting the
     /// same bounded time as the classic prepare path.
-    func establishLiveVoice(_ mode: CarPlayVoiceMode, appState: AppState, generation: UInt64) async {
+    func establishLiveVoice(_ mode: CarPlayLiveVoiceMode, appState: AppState, generation: UInt64) async {
         if !appState.isConnected {
             appState.recoverTransportForCarPlayIfNeeded()
             forward(.processing)
@@ -420,10 +440,8 @@ final class CarPlayVoiceCoordinator {
         }
         // The setting may have changed while Hermes was being reached; the
         // controls start whichever mode is current on the next tap.
-        guard isCurrent(generation), isConnected, CarPlayVoiceMode.current(in: appState) == mode else { return }
+        guard isCurrent(generation), isConnected, CarPlayVoiceMode.current(in: appState) == mode.voiceMode else { return }
         switch mode {
-        case .classic:
-            return
         case .geminiLive:
             await appState.startGeminiLiveForCarPlay()
             // The surface went away while connecting: nothing presents it now.
