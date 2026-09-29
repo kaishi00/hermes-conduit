@@ -769,15 +769,15 @@ extension AppStateVoiceCapabilityTests {
         coordinator.appStateProvider = { appState }
         coordinator.autoEstablishOnConnect = false
         coordinator.handleConnect(InterfacingSpy())
-        XCTAssertEqual(coordinator.observesGeminiLive, false)
+        XCTAssertEqual(coordinator.observedVoiceMode, .classic)
 
         appState.setGeminiLiveEnabled(true)
         coordinator.voiceModeChanged(in: appState)
-        XCTAssertEqual(coordinator.observesGeminiLive, true, "the car shows the controller now in use")
+        XCTAssertEqual(coordinator.observedVoiceMode, .geminiLive, "the car shows the controller now in use")
 
         appState.setGeminiLiveEnabled(false)
         coordinator.voiceModeChanged(in: appState)
-        XCTAssertEqual(coordinator.observesGeminiLive, false)
+        XCTAssertEqual(coordinator.observedVoiceMode, .classic)
         coordinator.handleDisconnect()
     }
 }

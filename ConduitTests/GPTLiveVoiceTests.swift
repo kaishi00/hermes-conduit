@@ -736,4 +736,69 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertFalse(appState.showGPTLiveSheet)
         XCTAssertFalse(appState.gptLiveController.isActive)
     }
+
+    func testCarPlayFollowsTheGPTLiveSettingWhileConnected() {
+        let appState = makeGPTLiveAppState()
+        let coordinator = CarPlayVoiceCoordinator()
+        coordinator.appStateProvider = { appState }
+        coordinator.autoEstablishOnConnect = false
+        coordinator.handleConnect(InterfacingSpy())
+        XCTAssertEqual(coordinator.observedVoiceMode, .classic)
+
+        appState.setGPTLiveEnabled(true)
+        coordinator.voiceModeChanged(in: appState)
+        XCTAssertEqual(coordinator.observedVoiceMode, .gptLive, "the car shows the controller now in use")
+
+        appState.setGeminiLiveEnabled(true)
+        coordinator.voiceModeChanged(in: appState)
+        XCTAssertEqual(coordinator.observedVoiceMode, .geminiLive, "Gemini Live takes over from GPT-Live")
+
+        appState.setGPTLiveEnabled(true)
+        coordinator.voiceModeChanged(in: appState)
+        appState.setGPTLiveEnabled(false)
+        coordinator.voiceModeChanged(in: appState)
+        XCTAssertEqual(coordinator.observedVoiceMode, .classic)
+        coordinator.handleDisconnect()
+    }
+
+    func testCarPlayEndClosesTheGPTLiveCall() {
+        let appState = makeGPTLiveAppState()
+        appState.setGPTLiveEnabled(true)
+        let coordinator = CarPlayVoiceCoordinator()
+        coordinator.appStateProvider = { appState }
+        coordinator.autoEstablishOnConnect = false
+        coordinator.handleConnect(InterfacingSpy())
+        appState.showGPTLiveSheet = true
+
+        coordinator.endConversation()
+
+        XCTAssertFalse(appState.showGPTLiveSheet, "End converges on the GPT-Live Close teardown")
+        XCTAssertFalse(appState.gptLiveController.isActive)
+        coordinator.handleDisconnect()
+    }
+}
+
+// MARK: - CarPlay
+
+@MainActor
+extension VoiceConversationControllerTests {
+    func testCarPlayShowsTheGPTLivePhase() {
+        XCTAssertEqual(CarPlayVoiceState.map(gptLive: .idle), .ready)
+        XCTAssertEqual(CarPlayVoiceState.map(gptLive: .connecting), .processing)
+        XCTAssertEqual(CarPlayVoiceState.map(gptLive: .listening), .listening)
+        XCTAssertEqual(CarPlayVoiceState.map(gptLive: .speaking), .responding)
+        XCTAssertEqual(CarPlayVoiceState.map(gptLive: .ending), .processing)
+        XCTAssertEqual(CarPlayVoiceState.map(gptLive: .failed("x")), .error)
+    }
+
+    func testCarPlayListenStartsUnmutesOrLeavesGPTLiveAlone() {
+        XCTAssertEqual(CarPlayGPTLiveListenAction.forPhase(.idle, microphoneMuted: false), .start)
+        XCTAssertEqual(CarPlayGPTLiveListenAction.forPhase(.failed("x"), microphoneMuted: false), .start)
+        XCTAssertEqual(CarPlayGPTLiveListenAction.forPhase(.listening, microphoneMuted: false), .nothing)
+        XCTAssertEqual(CarPlayGPTLiveListenAction.forPhase(.speaking, microphoneMuted: false), .nothing, "Full duplex: the driver just talks over it")
+        XCTAssertEqual(CarPlayGPTLiveListenAction.forPhase(.listening, microphoneMuted: true), .unmute)
+        XCTAssertEqual(CarPlayGPTLiveListenAction.forPhase(.speaking, microphoneMuted: true), .unmute)
+        XCTAssertEqual(CarPlayGPTLiveListenAction.forPhase(.connecting, microphoneMuted: true), .nothing)
+        XCTAssertEqual(CarPlayGPTLiveListenAction.forPhase(.ending, microphoneMuted: true), .nothing)
+    }
 }
