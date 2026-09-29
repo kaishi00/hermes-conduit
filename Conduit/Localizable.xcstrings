@@ -6942,6 +6942,16 @@
         }
       }
     },
+    "Enter a full HTTPS relay URL, like https://push.example.com." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请输入完整的 HTTPS 中继地址，例如 https://push.example.com。"
+          }
+        }
+      }
+    },
     "Enter a replacement only if needed." : {
       "localizations" : {
         "zh-Hans" : {
@@ -9546,6 +9556,16 @@
         }
       }
     },
+    "Moved to the new relay. Pair each Hermes profile again to keep receiving notifications." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已切换到新的中继。请重新配对每个 Hermes 配置档，以继续接收通知。"
+          }
+        }
+      }
+    },
     "Mutes assistant audio without changing chat messages" : {
       "localizations" : {
         "zh-Hans" : {
@@ -11524,6 +11544,16 @@
         }
       }
     },
+    "Push relay URL" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "推送中继地址"
+          }
+        }
+      }
+    },
     "Queue a prompt for the next turn" : {
       "localizations" : {
         "zh-Hans" : {
@@ -12098,6 +12128,16 @@
         }
       }
     },
+    "Reset to default relay" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重置为默认中继"
+          }
+        }
+      }
+    },
     "Responding…" : {
       "localizations" : {
         "zh-Hans" : {
@@ -12200,6 +12240,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "重试连接"
+          }
+        }
+      }
+    },
+    "Retry relay move" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重试切换中继"
           }
         }
       }
@@ -12480,6 +12530,16 @@
         }
       }
     },
+    "Save relay" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存中继"
+          }
+        }
+      }
+    },
     "Save the current transcript" : {
       "localizations" : {
         "zh-Hans" : {
@@ -12562,6 +12622,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "将 %@ 保存到此 Hermes 档案。"
+          }
+        }
+      }
+    },
+    "Saving moves this iPhone to the new relay. You'll need to pair each Hermes profile again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存后，此 iPhone 将切换到新的中继，你需要重新配对每个 Hermes 配置档。"
           }
         }
       }

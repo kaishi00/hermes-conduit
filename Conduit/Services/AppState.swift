@@ -1458,16 +1458,27 @@ final class AppState: ObservableObject {
     }
 
     /// CarPlay went away. A Gemini Live conversation only CarPlay was
-    /// presenting ends; one the phone's sheet shows keeps going.
+    /// presenting ends; one the phone's sheet shows keeps going. A
+    /// conversation that already failed drops its memory and persona too:
+    /// nothing presents it, so nothing would close it.
     func releaseCarPlayGeminiLive() {
-        guard isGeminiLiveActive, !(isSceneActive && showGeminiLiveSheet) else { return }
-        closeGeminiLiveConversation()
+        guard !(isSceneActive && showGeminiLiveSheet) else { return }
+        if isGeminiLiveActive {
+            closeGeminiLiveConversation()
+        } else {
+            dropGeminiLiveHostContext()
+        }
     }
 
     func closeGeminiLiveConversation() {
         if geminiLiveControllerCreated { geminiLiveController.stop() }
         showGeminiLiveSheet = false
-        // Personal text isn't kept around between conversations.
+        dropGeminiLiveHostContext()
+    }
+
+    /// Personal text (the host's memory and persona) isn't kept around
+    /// between conversations, nor once nothing presents one.
+    private func dropGeminiLiveHostContext() {
         geminiLiveMemoryContext = nil
         geminiLivePersonality = nil
     }
@@ -1475,7 +1486,12 @@ final class AppState: ObservableObject {
     /// Boundary teardown (disconnect, server/profile change, forced
     /// sign-out). Background jobs are retired by the same boundaries.
     private func stopGeminiLiveConversation() {
-        guard showGeminiLiveSheet || isGeminiLiveActive else { return }
+        // A conversation that already failed with no sheet up has nothing
+        // to close, but its host text still goes at the boundary.
+        guard showGeminiLiveSheet || isGeminiLiveActive else {
+            dropGeminiLiveHostContext()
+            return
+        }
         closeGeminiLiveConversation()
     }
 
@@ -1540,6 +1556,26 @@ final class AppState: ObservableObject {
     /// starts and dropped when it closes.
     private var gptLivePersonality: String?
     private var gptLiveMemoryContext: GeminiLiveMemoryContext?
+
+    /// The host text the live modes hold between a call's start and close,
+    /// by field.
+    var liveVoiceHostContextForTesting: [String] {
+        [
+            geminiLiveMemoryContext != nil ? "geminiMemory" : nil,
+            geminiLivePersonality != nil ? "geminiPersona" : nil,
+            gptLiveMemoryContext != nil ? "gptMemory" : nil,
+            gptLivePersonality != nil ? "gptPersona" : nil,
+        ].compactMap { $0 }
+    }
+
+    /// Fills every live mode's host text, as a call's start would.
+    func installLiveVoiceHostContextForTesting() {
+        let memory = GeminiLiveMemoryContext(text: "memory", canRecall: false)
+        geminiLiveMemoryContext = memory
+        geminiLivePersonality = "persona"
+        gptLiveMemoryContext = memory
+        gptLivePersonality = "persona"
+    }
 
     /// GPT-Live calls start on the Hermes host (the conduit_push plugin),
     /// through whichever dashboard bridge is current at call time.
@@ -1617,16 +1653,27 @@ final class AppState: ObservableObject {
     }
 
     /// CarPlay went away. A GPT-Live call only CarPlay was presenting ends;
-    /// one the phone's sheet shows keeps going.
+    /// one the phone's sheet shows keeps going. A call that already failed
+    /// drops its memory and persona too: nothing presents it, so nothing
+    /// would close it.
     func releaseCarPlayGPTLive() {
-        guard isGPTLiveActive, !(isSceneActive && showGPTLiveSheet) else { return }
-        closeGPTLiveConversation()
+        guard !(isSceneActive && showGPTLiveSheet) else { return }
+        if isGPTLiveActive {
+            closeGPTLiveConversation()
+        } else {
+            dropGPTLiveHostContext()
+        }
     }
 
     func closeGPTLiveConversation() {
         if gptLiveControllerCreated { gptLiveController.stop() }
         showGPTLiveSheet = false
-        // Personal text isn't kept around between conversations.
+        dropGPTLiveHostContext()
+    }
+
+    /// Personal text (the host's memory and persona) isn't kept around
+    /// between conversations, nor once nothing presents one.
+    private func dropGPTLiveHostContext() {
         gptLiveMemoryContext = nil
         gptLivePersonality = nil
     }
@@ -1634,7 +1681,12 @@ final class AppState: ObservableObject {
     /// Boundary teardown (disconnect, server/profile change, sign-out, or
     /// another voice mode taking over).
     private func stopGPTLiveConversation() {
-        guard showGPTLiveSheet || isGPTLiveActive else { return }
+        // A conversation that already failed with no sheet up has nothing
+        // to close, but its host text still goes at the boundary.
+        guard showGPTLiveSheet || isGPTLiveActive else {
+            dropGPTLiveHostContext()
+            return
+        }
         closeGPTLiveConversation()
     }
 
