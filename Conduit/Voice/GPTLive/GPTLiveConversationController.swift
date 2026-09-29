@@ -53,9 +53,10 @@ final class GPTLiveConversationController: ObservableObject {
         case failed(String)
     }
 
-    /// Conduit's rules for the live model, sent as session context when the
-    /// call starts (the host sets GPT-Live's own instructions). Written for
-    /// the model, not shown as UI copy, so not localized.
+    /// Conduit's rules for the live model. They travel with the session
+    /// request and the host adds them to GPT-Live's instructions; a host
+    /// that doesn't take them gets them as session context when the call
+    /// starts. Written for the model, not shown as UI copy, so not localized.
     static func briefing(memory: GeminiLiveMemoryContext? = nil, personality: String? = nil) -> String {
         var text = """
         [Conduit voice app rules. You are the voice of the user's Hermes agent, speaking with them through the Conduit iPhone app. Keep replies short and conversational.
