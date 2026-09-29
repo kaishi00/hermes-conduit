@@ -157,7 +157,7 @@ struct VoiceProfilePreferences: Codable, Equatable {
     /// default; older blobs decode off). Never on together with Gemini Live.
     var gptLiveEnabled: Bool = false
     /// GPT-Live's voice ("cove", "ember"…). Nil is the host's configured voice
-    /// (voice.gpt_live.subscription_voice, "cove" by default).
+    /// (voice.gpt_live in the profile's config, "cove" by default).
     var gptLiveVoice: String? = nil
     /// Whether GPT-Live gets the Hermes host's memory. Nil is off.
     var gptLiveMemory: Bool? = nil
@@ -215,6 +215,7 @@ struct VoiceProfilePreferences: Codable, Equatable {
         geminiLiveMemory = (try? container.decodeIfPresent(Bool.self, forKey: .geminiLiveMemory)) ?? nil
         geminiLivePersonality = (try? container.decodeIfPresent(Bool.self, forKey: .geminiLivePersonality)) ?? nil
         gptLiveEnabled = (try? container.decodeIfPresent(Bool.self, forKey: .gptLiveEnabled)) ?? false
+        gptLiveVoice = (try? container.decodeIfPresent(String.self, forKey: .gptLiveVoice)) ?? nil
         gptLiveMemory = (try? container.decodeIfPresent(Bool.self, forKey: .gptLiveMemory)) ?? nil
         gptLivePersonality = (try? container.decodeIfPresent(Bool.self, forKey: .gptLivePersonality)) ?? nil
         voiceJobModel = try container.decodeIfPresent(String.self, forKey: .voiceJobModel)

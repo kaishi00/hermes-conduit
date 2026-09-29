@@ -82,11 +82,12 @@ struct GPTLiveSettingsSection: View {
                     }
                 )) {
                     Text("Server default").tag("")
-                    ForEach(GPTLiveVoice.all) { option in
+                    let options = GPTLiveVoice.all
+                    ForEach(options) { option in
                         Text(verbatim: option.label).tag(option.name)
                     }
                     // A voice saved by a newer build that this one doesn't list.
-                    if !voice.isEmpty, !GPTLiveVoice.all.contains(where: { $0.name == voice }) {
+                    if !voice.isEmpty, !options.contains(where: { $0.name == voice }) {
                         Text(verbatim: voice).tag(voice)
                     }
                 }
