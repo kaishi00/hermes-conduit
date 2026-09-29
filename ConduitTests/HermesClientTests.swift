@@ -1444,6 +1444,13 @@ final class HermesClientTests: XCTestCase {
         let params = try XCTUnwrap(request["params"] as? [String: Any])
         XCTAssertEqual(params["server_requests"] as? Bool, true)
         XCTAssertNotNil(request["id"] as? Int, "The advertisement is an ordinary RPC request")
+
+        // A repeated gateway.ready on the same socket must not advertise again.
+        try await deliverFrame([
+            "jsonrpc": "2.0", "method": "event",
+            "params": ["type": "gateway.ready", "payload": [String: Any]()]
+        ], to: socket)
+        XCTAssertEqual(socket.sentTexts.count, 1, "client.capabilities is sent once per connection")
         client.disconnect()
     }
 
@@ -1616,7 +1623,7 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
-    func testLegacyClarifyIDsKeepTheLegacyRespondPath() async throws {
+    func testIsServerRequestIDRecognisesOnlyServerRequestIDs() async throws {
         let (client, _) = try await connectedClientForServerRequests()
         XCTAssertFalse(client.isServerRequestID("req-1"))
         XCTAssertTrue(client.isServerRequestID("srq-eeeeeeeeeeee"))

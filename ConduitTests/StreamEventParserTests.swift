@@ -596,6 +596,13 @@ final class StreamEventParserTests: XCTestCase {
         XCTAssertEqual(requestId, "srq-0123456789ab")
     }
 
+    func testRequestCancelResolvedDoesNotExpireClarify() {
+        let event = parse(#"""
+        {"type": "request.cancel", "session_id": "s1", "payload": {"id": "srq-0123456789ab", "method": "clarify", "reason": "resolved"}}
+        """#)
+        XCTAssertNil(event, "An answered request must never read as timed out")
+    }
+
     func testRequestCancelForApprovalIsIgnored() {
         // Approval cards are keyed by the queue id, not the server request id.
         let event = parse(#"""

@@ -135,8 +135,10 @@ enum StreamEventParser {
             // interrupt, shutdown). A clarify card is keyed by the server
             // request id, so it expires exactly like `clarify.expire`. An
             // approval card is keyed by its queue id and reconciles through
-            // `approval.respond` / `approval.pending` as before.
-            guard payload?["method"]?.stringValue == "clarify" else { return nil }
+            // `approval.respond` / `approval.pending` as before. `resolved`
+            // means the request was answered, never an expiry.
+            guard payload?["method"]?.stringValue == "clarify",
+                  payload?["reason"]?.stringValue != "resolved" else { return nil }
             let requestId = (payload?["id"]?.stringValue ?? "")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             guard !requestId.isEmpty else { return nil }

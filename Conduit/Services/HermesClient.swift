@@ -625,6 +625,9 @@ final class HermesClient: ObservableObject {
     /// gateway keeps the request open and `session.resume` re-announces it
     /// under the same id.
     private var openServerRequestIDs = Set<String>()
+    /// The socket `client.capabilities` was sent on, so a repeated
+    /// `gateway.ready` does not advertise twice on one connection.
+    private weak var advertisedSocket: AnyObject?
     private var closedIntentionally = false
     private var receiveTask: Task<Void, Never>?
     private var socketHasOpened = false
@@ -911,7 +914,8 @@ final class HermesClient: ObservableObject {
     /// `gateway.ready`, which the gateway writes first on every new socket.
     /// A gateway that predates server requests answers -32601; ignored.
     private func advertiseClientCapabilities() {
-        guard let socket = self.socket else { return }
+        guard let socket = self.socket, advertisedSocket !== socket else { return }
+        advertisedSocket = socket
         Task { @MainActor [weak self] in
             guard let self, self.socket === socket else { return }
             do {
