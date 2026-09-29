@@ -7864,6 +7864,12 @@ final class AppState: ObservableObject {
         for clarify in result.snapshot.additionalPendingClarifies {
             applyClarifyActivity(clarify, source: .authoritativeSnapshot)
         }
+        // Masked input prompts are live-only (never cached), so the rebuilt
+        // transcript holds none: the gateway's open requests are the whole
+        // truth, and a prompt withdrawn while detached simply stays gone.
+        for prompt in result.snapshot.pendingInputPrompts {
+            applyInputPromptActivity(prompt)
+        }
         let authoritativePendingApproval = result.snapshot.pendingApprovalPayload.flatMap {
             MessageNormalizer.approvalActivity(from: $0, sessionId: result.sessionId)
         }
@@ -8056,7 +8062,10 @@ final class AppState: ObservableObject {
             let approvalPending = message.approval.map {
                 SessionPresentationCache.isPendingDecision($0.status)
             } ?? false
-            return clarifyPending || approvalPending
+            let inputPending = message.inputPrompt.map {
+                $0.isAnswerable || $0.status == .submitting
+            } ?? false
+            return clarifyPending || approvalPending || inputPending
         }
     }
 
@@ -17771,6 +17780,7 @@ final class AppState: ObservableObject {
                 .toolStart(let sessionId, _, _, _),
                 .toolComplete(let sessionId, _, _, _), .reviewSummary(let sessionId, _), .clarify(let sessionId, _), .clarifyExpire(let sessionId, _, _),
                 .approval(let sessionId, _), .approvalWithdrawn(let sessionId, _, _),
+                .inputPrompt(let sessionId, _), .inputPromptExpire(let sessionId, _, _),
                 .contextUpdate(let sessionId, _, _, _), .cwdUpdate(let sessionId, _),
                 .modelUpdate(let sessionId, _, _), .agentCount(let sessionId, _),
                 .delegateAgent(let sessionId, _), .statusUpdate(let sessionId, _, _):
@@ -17887,6 +17897,11 @@ final class AppState: ObservableObject {
             // authoritative state as the resume copy.
             if let pendingClarify = snapshot.pendingClarify {
                 applyClarifyActivity(pendingClarify, source: .authoritativeSnapshot)
+            }
+            // Empty from current Hermes (open requests ride session.resume
+            // only); applied for parity should a gateway include them.
+            for prompt in snapshot.pendingInputPrompts {
+                applyInputPromptActivity(prompt)
             }
             if let payload = snapshot.pendingApprovalPayload,
                let pendingApproval = MessageNormalizer.approvalActivity(
@@ -18083,6 +18098,13 @@ final class AppState: ObservableObject {
             applyApprovalActivity(activity, authoritative: false)
             setRunning(true)
 
+        case .inputPrompt(_, let activity):
+            applyInputPromptActivity(activity)
+            setRunning(true)
+
+        case .inputPromptExpire(_, let requestId, let reason):
+            expireInputPrompt(requestId: requestId, reason: reason)
+
         case .approvalWithdrawn(_, let requestId, let reason):
             withdrawApproval(requestId: requestId, reason: reason)
 
@@ -18146,6 +18168,10 @@ final class AppState: ObservableObject {
     /// This state is ephemeral and never persisted. Restored approval cards
     /// from disk without an active RPC in flight yield to authoritative replays.
     private var liveApprovalSubmissions = Set<ApprovalSubmissionIdentity>()
+    /// Input prompts withdrawn (`request.cancel`) while this device's answer
+    /// was in flight, with the cancel reason. The gateway drops an answer for
+    /// a closed request, so the send's completion must not claim "Sent".
+    private var withdrawnInFlightInputPrompts = [String: String]()
 
     private func hasLiveApprovalSubmission(
         for activity: ApprovalActivity,
@@ -18434,6 +18460,108 @@ final class AppState: ObservableObject {
         activity.error = Self.clarifyExpiredNotice(for: activity.questions.count, reason: reason)
         messages[index].clarify = activity
         cacheMessagePresentation()
+    }
+
+    /// Upserts one masked input card keyed by its server request id. A
+    /// re-delivery (resume replay) never re-arms a card this device already
+    /// answered, skipped or has in flight.
+    private func applyInputPromptActivity(_ activity: InputPromptActivity) {
+        if let index = messages.firstIndex(where: { $0.inputPrompt?.requestId == activity.requestId }) {
+            guard let existing = messages[index].inputPrompt, existing.isAnswerable else { return }
+            messages[index].content = activity.title
+            messages[index].inputPrompt = activity
+            return
+        }
+        settleReasoningSegmentIntoTranscript()
+        messages.append(ChatMessage(
+            id: "input-prompt-\(activity.requestId)",
+            role: .inputPrompt,
+            content: activity.title,
+            timestamp: Self.localTimestamp(),
+            inputPrompt: activity
+        ))
+    }
+
+    /// Applies `request.cancel` for a masked input prompt: the gateway
+    /// stopped waiting, so the card stops offering input. Like
+    /// `withdrawApproval`, an answer this device already has in flight owns
+    /// the card's outcome.
+    private func expireInputPrompt(requestId: String, reason: String? = nil) {
+        guard let index = messages.firstIndex(where: { $0.inputPrompt?.requestId == requestId }),
+              var activity = messages[index].inputPrompt else { return }
+        if activity.status == .submitting {
+            // The in-flight send owns the card; its completion reports the
+            // withdrawal instead of a success Hermes never received.
+            withdrawnInFlightInputPrompts[requestId] = reason ?? ""
+            return
+        }
+        guard activity.isAnswerable else { return }
+        activity.status = .expired
+        activity.error = Self.inputPromptWithdrawnNotice(reason: reason)
+        messages[index].inputPrompt = activity
+    }
+
+    /// Only a timeout may claim Hermes stopped waiting and carried on; a
+    /// request another surface answered says so; anything else is neutral.
+    private static func inputPromptWithdrawnNotice(reason: String?) -> String {
+        switch reason {
+        case "timeout":
+            return AppLocalization.string("This request is no longer active — Hermes stopped waiting and continued.")
+        case "resolved":
+            return AppLocalization.string("This request was answered elsewhere.")
+        default:
+            return AppLocalization.string("This request is no longer active.")
+        }
+    }
+
+    /// Settles a card whose request was withdrawn mid-send; false when it
+    /// was not.
+    private func settleWithdrawnInFlightInputPrompt(at index: Int, requestId: String) -> Bool {
+        guard let reason = withdrawnInFlightInputPrompts.removeValue(forKey: requestId) else { return false }
+        messages[index].inputPrompt?.status = .expired
+        messages[index].inputPrompt?.error = Self.inputPromptWithdrawnNotice(reason: reason)
+        return true
+    }
+
+    /// Sends the value typed into a masked input card, or `nil` to skip.
+    /// The value is handed to the client and dropped; only the card's
+    /// status is recorded.
+    func respondToInputPrompt(messageId: String, value: String?) async {
+        guard let index = messages.firstIndex(where: { $0.id == messageId }),
+              let current = messages[index].inputPrompt,
+              current.isAnswerable else { return }
+        let skipped = value == nil
+        messages[index].inputPrompt?.status = .submitting
+        messages[index].inputPrompt?.error = nil
+        // Same as approvals and clarifies: answering resumes the turn.
+        setRunning(true)
+        guard let client else {
+            messages[index].inputPrompt?.status = .error
+            messages[index].inputPrompt?.error = AppLocalization.string("Gateway connection is unavailable.")
+            return
+        }
+        // Same ownership fence as respondToApproval: a completion from a
+        // replaced client must not touch whatever card is current.
+        let profile = activeProfile
+        // Whatever the completion path (including a rejected ownership
+        // fence), a mid-send withdrawal record never outlives this send.
+        defer { withdrawnInFlightInputPrompts.removeValue(forKey: current.requestId) }
+        do {
+            try await client.respondToInputPrompt(requestId: current.requestId, value: value ?? "")
+            guard profile == activeProfile, self.client === client,
+                  let updated = messages.firstIndex(where: { $0.id == messageId }),
+                  messages[updated].inputPrompt?.status == .submitting else { return }
+            if settleWithdrawnInFlightInputPrompt(at: updated, requestId: current.requestId) { return }
+            messages[updated].inputPrompt?.status = skipped ? .skipped : .submitted
+        } catch {
+            guard profile == activeProfile, self.client === client,
+                  let updated = messages.firstIndex(where: { $0.id == messageId }),
+                  messages[updated].inputPrompt?.status == .submitting else { return }
+            if settleWithdrawnInFlightInputPrompt(at: updated, requestId: current.requestId) { return }
+            messages[updated].inputPrompt?.status = .error
+            messages[updated].inputPrompt?.error = AppLocalization.string("Hermes did not receive that answer.")
+            errorMessage = error.localizedDescription
+        }
     }
 
     /// Applies `request.cancel` for an approval server request. Only a card
@@ -19011,10 +19139,15 @@ final class AppState: ObservableObject {
         performResponseHapticEffects(responseHaptics.registerTool(at: Date()))
     }
 
+    #if DEBUG
+    var responseAwaitsUserInputForTesting: Bool { responseAwaitsUserInput }
+    #endif
+
     private var responseAwaitsUserInput: Bool {
         messages.contains { message in
             message.clarify.map { $0.status == .pending || $0.status == .submitting } == true
                 || message.approval.map { $0.status == .pending || $0.status == .submitting } == true
+                || message.inputPrompt.map { $0.isAnswerable || $0.status == .submitting } == true
         }
     }
 

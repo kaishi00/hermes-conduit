@@ -233,6 +233,11 @@ enum StreamEvent {
     /// (`timeout`, `interrupted`, `shutdown`, `session_closed`).
     case clarifyExpire(sessionId: String, requestId: String, reason: String? = nil)
     case approval(sessionId: String, activity: ApprovalActivity)
+    /// A `sudo` / `secret` / `vault.unlock_prompt` server request.
+    case inputPrompt(sessionId: String, activity: InputPromptActivity)
+    /// `request.cancel` for one of those: the gateway withdrew it, with its
+    /// `reason` (`timeout`, `interrupted`, `shutdown`, `session_closed`).
+    case inputPromptExpire(sessionId: String, requestId: String, reason: String? = nil)
     /// `request.cancel` for an approval server request, translated to the
     /// approval queue id the card is keyed by. `resolved` means a choice was
     /// committed — by this device or another surface.
@@ -295,6 +300,10 @@ struct SessionRuntimeSnapshot {
     /// Raw authoritative approval still blocking the session. AppState adds
     /// the enclosing runtime session id when normalizing the card.
     let pendingApprovalPayload: [String: AnyCodable]?
+    /// Unanswered sudo / secret / vault-unlock requests re-announced by
+    /// `session.resume` (`open_requests`), oldest first. Upstream never puts
+    /// `open_requests` in `session.info`, so a live snapshot parses none.
+    let pendingInputPrompts: [InputPromptActivity]
 
     /// `session.resume` may include an in-flight or queued projection that is
     /// newer than the persisted database transcript. Keep that projection for
@@ -357,6 +366,7 @@ struct SessionRuntimeSnapshot {
             $0.objectValue.flatMap { MessageNormalizer.pendingClarifyActivity(from: $0) }
         }
         pendingApprovalPayload = object["pending_approval"]?.objectValue
+        pendingInputPrompts = InputPromptActivity.pending(inOpenRequests: object["open_requests"])
         self.inflight = inflight
         self.queued = queued
     }
@@ -663,8 +673,9 @@ final class HermesClient: ObservableObject {
     /// `request_id` its card is keyed by (and the session the request named),
     /// so `request.cancel` can reach it. Rebuilt like `openServerRequestIDs`.
     private var approvalQueueIDs = [String: (queueID: String, sessionId: String)]()
-    /// Clarify server request id → the session the request named, the
-    /// fallback for a `request.cancel` whose envelope omits `session_id`.
+    /// Clarify / input-prompt server request id → the session the request
+    /// named, the fallback for a `request.cancel` whose envelope omits
+    /// `session_id`.
     private var clarifySessions = [String: String]()
     /// The socket `client.capabilities` was sent on, so a repeated
     /// `gateway.ready` does not advertise twice on one connection.
@@ -1040,9 +1051,11 @@ final class HermesClient: ObservableObject {
     /// - `clarify` becomes the existing clarify card keyed by the server
     ///   request id; `respondToClarification` answers it with a response
     ///   frame (single question) or `clarify.lock` (batch questions).
-    /// - Everything else (sudo, secret, vault prompts, desktop-only bridges)
-    ///   has no UI here and is declined at once with -32601, so the tool
-    ///   fails fast instead of waiting out its deadline.
+    /// - `sudo`, `secret` and `vault.unlock_prompt` become a masked input
+    ///   card; `respondToInputPrompt` answers `{value}` ('' = skip).
+    /// - Everything else (`vault.save_login`, `vault.code`, desktop-only
+    ///   bridges) has no UI here and is declined at once with -32601, so the
+    ///   tool fails fast instead of waiting out its deadline.
     private func handleServerRequest(id: JsonRpcID, method: String, params: [String: AnyCodable]) {
         guard case .string(let requestID) = id, !requestID.isEmpty else { return }
         let sessionId = params["session_id"]?.stringValue ?? ""
@@ -1068,6 +1081,14 @@ final class HermesClient: ObservableObject {
             openServerRequestIDs.insert(requestID)
             clarifySessions[requestID] = sessionId
             onEvent?(.clarify(sessionId: sessionId, activity: activity))
+        case _ where InputPromptActivity.Kind(rawValue: method) != nil:
+            guard let activity = InputPromptActivity.from(requestId: requestID, method: method, params: params) else {
+                writeServerRequestReply(id: id, error: (Self.invalidParamsCode, "\(method) request without a session"))
+                return
+            }
+            openServerRequestIDs.insert(requestID)
+            clarifySessions[requestID] = sessionId
+            onEvent?(.inputPrompt(sessionId: sessionId, activity: activity))
         default:
             declineServerRequest(id: id, method: method)
         }
@@ -1075,7 +1096,7 @@ final class HermesClient: ObservableObject {
 
     /// Methods this client presents (anything else is declined).
     static func handlesServerRequest(_ method: String) -> Bool {
-        method == "clarify" || method == "approval"
+        method == "clarify" || method == "approval" || InputPromptActivity.Kind(rawValue: method) != nil
     }
 
     /// Requests only the Hermes Desktop window showing the session can
@@ -1138,7 +1159,8 @@ final class HermesClient: ObservableObject {
         (openRequests?.arrayValue ?? []).compactMap { entry in
             guard let object = entry.objectValue,
                   let method = object["method"]?.stringValue,
-                  method == "clarify" || method == "approval",
+                  method == "clarify" || method == "approval"
+                      || InputPromptActivity.Kind(rawValue: method) != nil,
                   let id = object["id"]?.stringValue, !id.isEmpty else { return nil }
             return id
         }
@@ -1535,10 +1557,14 @@ final class HermesClient: ObservableObject {
         }
         for entry in object["open_requests"]?.arrayValue ?? [] {
             guard let request = entry.objectValue,
-                  request["method"]?.stringValue == "clarify",
+                  let method = request["method"]?.stringValue,
+                  method == "clarify" || InputPromptActivity.Kind(rawValue: method) != nil,
                   let id = request["id"]?.stringValue,
                   let session = request["params"]?.objectValue?["session_id"]?.stringValue else { continue }
             clarifySessions[id] = session
+        }
+        if let openRequests = object["open_requests"] {
+            snapshotObject["open_requests"] = openRequests
         }
         return SessionResumeResult(
             sessionId: resolvedId,
@@ -1839,6 +1865,14 @@ final class HermesClient: ObservableObject {
             clarifySessions.removeValue(forKey: requestId)
         }
         return .accepted(remaining: remaining)
+    }
+
+    /// Answers a sudo / secret / vault-unlock server request. `value` is
+    /// sent once and never retained; an empty string tells Hermes the user
+    /// skipped (the tool then proceeds without the value).
+    func respondToInputPrompt(requestId: String, value: String) async throws {
+        try await sendServerRequestResult(id: requestId, result: ["value": value])
+        clarifySessions.removeValue(forKey: requestId)
     }
 
     func respondToApproval(

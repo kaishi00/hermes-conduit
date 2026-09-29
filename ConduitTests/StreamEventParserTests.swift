@@ -615,6 +615,28 @@ final class StreamEventParserTests: XCTestCase {
         XCTAssertNil(event, "An answered request must never read as timed out")
     }
 
+    func testRequestCancelForMaskedPromptExpiresIt() {
+        let event = parse(#"""
+        {"type": "request.cancel", "session_id": "s1", "payload": {"id": "srq-0123456789ab", "method": "sudo", "reason": "timeout"}}
+        """#)
+        guard case .inputPromptExpire(let sessionId, let requestId, let reason) = event else {
+            return XCTFail("Expected inputPromptExpire")
+        }
+        XCTAssertEqual(reason, "timeout")
+        XCTAssertEqual(sessionId, "s1")
+        XCTAssertEqual(requestId, "srq-0123456789ab")
+    }
+
+    func testRequestCancelResolvedStillReachesAMaskedPrompt() {
+        let event = parse(#"""
+        {"type": "request.cancel", "session_id": "s1", "payload": {"id": "srq-0123456789ab", "method": "secret", "reason": "resolved"}}
+        """#)
+        guard case .inputPromptExpire(_, _, let reason) = event else {
+            return XCTFail("Another surface answering a prompt must still reach its card")
+        }
+        XCTAssertEqual(reason, "resolved")
+    }
+
     func testRequestCancelForApprovalIsIgnored() {
         // Approval cards are keyed by the queue id, not the server request id.
         let event = parse(#"""

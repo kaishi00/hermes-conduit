@@ -397,6 +397,85 @@ final class ClarifyBatchStateTests: XCTestCase {
         XCTAssertNil(approvalCard(appState, "queue-1")?.error)
     }
 
+    // MARK: - Masked input prompts
+
+    private func inputPromptMessage(status: InputPromptActivity.Status) throws -> ChatMessage {
+        var prompt = try XCTUnwrap(InputPromptActivity.from(
+            requestId: "srq-sudo00000001", method: "sudo",
+            params: ["session_id": .string("stored-a"), "command": .string("sudo ls")]
+        ))
+        prompt.status = status
+        return ChatMessage(id: "input-prompt-srq-sudo00000001", role: .inputPrompt, content: prompt.title,
+                           timestamp: "1", inputPrompt: prompt)
+    }
+
+    func testPendingInputPromptCountsAsAPendingDecision() throws {
+        XCTAssertTrue(AppState.hasPendingDecision(in: [try inputPromptMessage(status: .pending)]),
+                      "An answerable sudo card keeps an omitted `running` reading as active")
+        XCTAssertTrue(AppState.hasPendingDecision(in: [try inputPromptMessage(status: .submitting)]))
+        XCTAssertFalse(AppState.hasPendingDecision(in: [try inputPromptMessage(status: .submitted)]))
+        XCTAssertFalse(AppState.hasPendingDecision(in: [try inputPromptMessage(status: .expired)]))
+    }
+
+    func testInputPromptWithdrawnMidSendSettlesAsWithdrawnNotSent() async throws {
+        for sendFails in [false, true] {
+            let (appState, _) = makeAppState()
+            let socket = ClarifyFakeSocket()
+            _ = try await installConnectedClient(appState, socket: socket, transport: ClarifyFakeTransport())
+            socket.holdSendCompletion = true
+            let message = try inputPromptMessage(status: .pending)
+            appState.messages = [message]
+
+            let answer = Task { @MainActor in
+                await appState.respondToInputPrompt(messageId: message.id, value: "hunter2")
+            }
+            for _ in 0..<500 where socket.heldSendCount == 0 { await Task.yield() }
+            XCTAssertEqual(socket.heldSendCount, 1, "The reply frame must be in flight")
+            XCTAssertEqual(appState.messages.first?.inputPrompt?.status, .submitting)
+
+            appState.handleStreamEvent(.inputPromptExpire(sessionId: "stored-a", requestId: "srq-sudo00000001", reason: "timeout"))
+            XCTAssertEqual(appState.messages.first?.inputPrompt?.status, .submitting,
+                           "The in-flight send owns the card until it completes")
+
+            socket.releaseSends(error: sendFails ? URLError(.networkConnectionLost) : nil)
+            await answer.value
+
+            let settled = try XCTUnwrap(appState.messages.first?.inputPrompt)
+            XCTAssertEqual(settled.status, .expired,
+                           "A withdrawn request never reads as Sent (or as a retryable error) — sendFails=\(sendFails)")
+            XCTAssertEqual(settled.error, AppLocalization.string("This request is no longer active — Hermes stopped waiting and continued."))
+        }
+    }
+
+    func testRetryableInputPromptStillAwaitsUserInput() throws {
+        let (appState, _) = makeAppState()
+        appState.messages = [try inputPromptMessage(status: .error)]
+        XCTAssertTrue(appState.responseAwaitsUserInputForTesting,
+                      "A failed send the user can retry is still a card waiting on them")
+    }
+
+    func testInputPromptCancelExpiresOnlyAnAnswerableCard() throws {
+        let (appState, _) = makeAppState()
+        appState.messages = [try inputPromptMessage(status: .pending)]
+        appState.handleStreamEvent(.inputPromptExpire(sessionId: "stored-a", requestId: "srq-sudo00000001", reason: "interrupted"))
+        XCTAssertEqual(appState.messages.first?.inputPrompt?.status, .expired)
+        XCTAssertEqual(
+            appState.messages.first?.inputPrompt?.error, AppLocalization.string("This request is no longer active."),
+            "An interrupt must not claim Hermes carried on without the value"
+        )
+
+        appState.messages = [try inputPromptMessage(status: .pending)]
+        appState.handleStreamEvent(.inputPromptExpire(sessionId: "stored-a", requestId: "srq-sudo00000001", reason: "resolved"))
+        XCTAssertEqual(appState.messages.first?.inputPrompt?.error, AppLocalization.string("This request was answered elsewhere."))
+
+        appState.messages = [try inputPromptMessage(status: .submitting)]
+        appState.handleStreamEvent(.inputPromptExpire(sessionId: "stored-a", requestId: "srq-sudo00000001"))
+        XCTAssertEqual(
+            appState.messages.first?.inputPrompt?.status, .submitting,
+            "An answer this device has in flight owns the card's outcome"
+        )
+    }
+
     // MARK: - Duplicate / replay identity
 
     func testLegacyScalarCardAnswersAtRequestLevelWithoutQuestionID() async throws {
@@ -1314,12 +1393,28 @@ final class ClarifyFakeSocket: HermesWebSocket {
         receiveContinuation = nil
     }
 
+    /// When true, send completions are held until `releaseSends` — lets a
+    /// test land an event while a reply frame is still in flight.
+    var holdSendCompletion = false
+    private var heldCompletions: [@Sendable (Error?) -> Void] = []
+    var heldSendCount: Int { heldCompletions.count }
+
+    func releaseSends(error: Error? = nil) {
+        let held = heldCompletions
+        heldCompletions = []
+        held.forEach { $0(error) }
+    }
+
     func send(_ message: URLSessionWebSocketTask.Message, completionHandler: @escaping @Sendable (Error?) -> Void) {
         if case .string(let text) = message {
             sentTexts.append(text)
             onSend?()
         }
-        completionHandler(nil)
+        if holdSendCompletion {
+            heldCompletions.append(completionHandler)
+        } else {
+            completionHandler(nil)
+        }
     }
 
     func receive() async throws -> URLSessionWebSocketTask.Message {
