@@ -1833,20 +1833,37 @@ private struct NotificationsSettingsDetail: View {
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
-                ConduitSettingsSection(title: AppLocalization.string("Push relay"), symbol: "server.rack", tint: .conduitAura) {
-                    TextField("https://push.milim.dev", text: $customRelayURL)
-                        .textFieldStyle(.plain)
-                        .font(.body.monospaced())
-                        .padding(.vertical, 4)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                        .keyboardType(.URL)
-                        .onSubmit {
-                            Task { await notifications.refreshMeta() }
-                        }
-                    Text("Leave blank to use the default relay. Change this if you run your own push relay server.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+            }
+
+            // Always visible (#255): an unreachable custom relay makes
+            // enabling fail, so the field must stay editable while
+            // notifications are off — otherwise there is no way back.
+            ConduitSettingsSection(title: AppLocalization.string("Push relay"), symbol: "server.rack", tint: .conduitAura) {
+                TextField("https://push.milim.dev", text: $customRelayURL)
+                    .textFieldStyle(.plain)
+                    .font(.body.monospaced())
+                    .padding(.vertical, 4)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .keyboardType(.URL)
+                    .onSubmit {
+                        Task { await notifications.refreshMeta() }
+                    }
+                Text("Leave blank to use the default relay. Change this if you run your own push relay server.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                if !customRelayURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Button {
+                        customRelayURL = ""
+                        Haptics.light()
+                        Task { await notifications.refreshMeta() }
+                    } label: {
+                        Label(AppLocalization.string("Reset to default relay"), systemImage: "arrow.counterclockwise")
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 44)
+                    }
+                    .disabled(notifications.isWorking)
+                    .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.16))
                 }
             }
         }

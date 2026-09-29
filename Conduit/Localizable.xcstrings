@@ -11868,6 +11868,16 @@
         }
       }
     },
+    "Reset to default relay" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重置为默认中继"
+          }
+        }
+      }
+    },
     "Responding…" : {
       "localizations" : {
         "zh-Hans" : {

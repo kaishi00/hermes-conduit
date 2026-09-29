@@ -402,7 +402,10 @@ final class PushNotificationService: ObservableObject {
     }
 
     private var relayURL: URL {
-        if let saved = UserDefaults.standard.string(forKey: "conduit.relayURL"),
+        // Blank (or whitespace-only) means "use the default relay".
+        if let saved = UserDefaults.standard.string(forKey: "conduit.relayURL")?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !saved.isEmpty,
            let url = URL(string: saved) {
             return url
         }
