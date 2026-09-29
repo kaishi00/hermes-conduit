@@ -37,11 +37,51 @@ GATE_LOCK_TEMP=""
 GATE_LOCK_HELD=0
 GATE_LOCK_HELD_DIR=""
 GATE_LOCK_OWNER=""
+# The steal marker this process created inside a dead lock, and the aside it
+# renamed that lock to, while a steal is in flight: an interrupt landing
+# between them must not leave the marker behind (it would make the dead lock
+# unstealable) or the aside (a stray directory next to the lock).
+GATE_LOCK_MARKER=""
+GATE_LOCK_ASIDE=""
+# Set on BUSY when the lock's owner is dead but another contender holds its
+# steal marker: the pid is readable, so "no readable owner" would mislead.
+GATE_LOCK_STEAL_BLOCKED=""
+
+# True only in the process that sourced this module at top level - never in
+# one of its `( ... ) &` subshells, where `$$` is still the PARENT's pid. A
+# teardown trap a subshell inherits (a signal that beats bash's post-fork trap
+# reset) must not run the parent's teardown there. BASH_SUBSHELL answers
+# without a fork; BASHPID confirms where bash has it (4.0+). macOS /bin/bash
+# 3.2 has neither BASHPID nor a fork-free alternative, so a child that `exec`s
+# straight into sh reports its PPID - the shell asking. If even that cannot
+# answer, the answer is "main": failing toward the teardown leaks nothing,
+# while failing away from it would leak the very resources it releases.
+gate_is_main_process() {
+  case "${BASH_SUBSHELL:-0}" in
+    0) ;;
+    *) return 1 ;;
+  esac
+  local self="${BASHPID:-}"
+  if [ -z "$self" ]; then
+    self="$(exec sh -c 'echo "$PPID"' 2>/dev/null)"
+  fi
+  [ -z "$self" ] || [ "$self" = "$$" ]
+}
 
 gate_lock_release() {
   # Never remove a lock we do not own: if another process took ownership
   # between our acquisition and this release, its pid must survive.
   local owner=""
+  # An interrupted steal: our marker (only ever ours - nobody else can create
+  # it while it exists) and the dead lock we had already renamed aside.
+  if [ -n "$GATE_LOCK_MARKER" ]; then
+    rmdir "$GATE_LOCK_MARKER" 2>/dev/null || true
+    GATE_LOCK_MARKER=""
+  fi
+  if [ -n "$GATE_LOCK_ASIDE" ]; then
+    rm -rf "$GATE_LOCK_ASIDE" 2>/dev/null || true
+    GATE_LOCK_ASIDE=""
+  fi
   # An interrupt during acquisition leaves a temp directory: clear ours first,
   # whether or not we ever took ownership (otherwise a mid-acquisition trap
   # returns here and leaks it).
@@ -68,6 +108,7 @@ gate_lock_release() {
 #          1 could not create the temp directory.
 acquire_gate_lock() { # $1 = canonical lock dir
   local canonical="$1" temp holder
+  GATE_LOCK_STEAL_BLOCKED=""
   temp="$canonical.new.$$"
   GATE_LOCK_TEMP="$temp"
   rm -rf "$temp" 2>/dev/null || true
@@ -126,22 +167,26 @@ acquire_gate_lock() { # $1 = canonical lock dir
     # the liveness check and the mkdir) sees a different pid on the re-read,
     # removes itself and reports BUSY; no live lock is ever moved.
     #
-    # A stealer SIGKILLed while holding the marker leaves that dead lock
-    # unstealable: BUSY, never stolen, like a lock with no readable pid - an
-    # operator removes it.
+    # The marker is removed on every way out of the steal, an interrupt
+    # included (gate_lock_release). Only a stealer SIGKILLed while holding it
+    # can leave a dead lock unstealable: BUSY, never stolen, and reported as
+    # such (GATE_LOCK_STEAL_BLOCKED) so an operator can remove it.
     local marker="$canonical/steal"
     if ! mkdir "$marker" 2>/dev/null; then
       # Another contender is stealing this instance (or the lock is gone):
       # its claim path decides the outcome.
       rm -rf "$temp"; GATE_LOCK_TEMP=""
       GATE_LOCK_OWNER=""
+      [ -d "$marker" ] && GATE_LOCK_STEAL_BLOCKED="$holder"
       return 2
     fi
+    GATE_LOCK_MARKER="$marker"
     local judged="$holder"
     holder="$(cat "$canonical/pid" 2>/dev/null || true)"
     if [ "$holder" != "$judged" ] || { [ -n "$holder" ] && kill -0 "$holder" 2>/dev/null; }; then
       # The marker landed in a newer lock than the one judged dead.
       rmdir "$marker" 2>/dev/null || true
+      GATE_LOCK_MARKER=""
       rm -rf "$temp"; GATE_LOCK_TEMP=""
       GATE_LOCK_OWNER="$holder"
       case "$holder" in ''|*[!0-9]*) GATE_LOCK_OWNER="" ;; esac
@@ -151,12 +196,19 @@ acquire_gate_lock() { # $1 = canonical lock dir
     # THIS steal's target (mv into an existing directory nests instead of
     # failing).
     local aside="$canonical.stale.$$.$RANDOM.$(date +%s)"
+    GATE_LOCK_ASIDE="$aside"
     if ! mv "$canonical" "$aside" 2>/dev/null; then
+      rmdir "$marker" 2>/dev/null || true
+      GATE_LOCK_MARKER=""
+      GATE_LOCK_ASIDE=""
       rm -rf "$temp"; GATE_LOCK_TEMP=""
       GATE_LOCK_OWNER=""
       return 2
     fi
+    # The marker moved with the dead lock: it goes with the aside.
+    GATE_LOCK_MARKER=""
     rm -rf "$aside" 2>/dev/null || true
+    GATE_LOCK_ASIDE=""
     # The takeover is an event an operator debugging a lock must SEE: the
     # docs promise a warning, and a silent steal leaves "why did my lock
     # disappear" unanswerable. (stderr only: stdout is the caller's report.)

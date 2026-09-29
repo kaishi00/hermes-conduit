@@ -500,22 +500,6 @@ EOF
   return 0
 }
 
-# The gate's pid, recorded before any trap exists. `$$` cannot tell the gate
-# from its own subshells (a subshell's `$$` is its PARENT's pid in bash), and
-# that difference is what the teardown below depends on.
-GATE_MAIN_PID=$$
-
-# True only in the gate's own top-level process. BASHPID where bash provides
-# it; macOS /bin/bash 3.2 does not, and there the pid comes from a child that
-# `exec`s straight into sh, so its PPID is the shell asking.
-gate_is_main_process() {
-  local self="${BASHPID:-}"
-  if [ -z "$self" ]; then
-    self="$(exec sh -c 'echo "$PPID"' 2>/dev/null)"
-  fi
-  [ "$self" = "$GATE_MAIN_PID" ]
-}
-
 cleanup() {
   local status=$?
   # The teardown belongs to the GATE process alone. A `( ... ) &` subshell
@@ -530,7 +514,8 @@ cleanup() {
   # immediately after granting"), and its gate_lock_release saw the gate's
   # `$$` in the lock and deleted the LIVE gate lock. A subshell therefore just
   # leaves with its trap's exit status, as if the signal had found the
-  # default disposition it was meant to.
+  # default disposition it was meant to. (gate_is_main_process lives in
+  # ci-gate-lock.sh, whose suite also covers its bash 3.2 fallback.)
   if ! gate_is_main_process; then
     return "$status"
   fi
@@ -538,7 +523,9 @@ cleanup() {
   # spawn and the gate's own cancellation): cancelled through its file, it
   # exits within one poll interval, and it is reaped before anything else.
   if [ -n "${HOST_LEASE_WATCHDOG:-}" ]; then
-    : > "$HOST_LEASE_WATCHDOG_CANCEL" 2>/dev/null || true
+    if [ -n "${HOST_LEASE_WATCHDOG_CANCEL:-}" ]; then
+      : > "$HOST_LEASE_WATCHDOG_CANCEL" 2>/dev/null || true
+    fi
     wait "$HOST_LEASE_WATCHDOG" 2>/dev/null || true
     HOST_LEASE_WATCHDOG=""
   fi
@@ -663,6 +650,9 @@ if [ "$USE_LOCK" -eq 1 ]; then
       if [ -n "${GATE_LOCK_OWNER:-}" ]; then
         echo "local-ci-gate: another gate is running (pid $GATE_LOCK_OWNER): refusing to run two xcodebuild chains on one Mac" >&2
         echo "local-ci-gate: if that process is gone, remove $LOCK_DIR" >&2
+      elif [ -n "${GATE_LOCK_STEAL_BLOCKED:-}" ]; then
+        echo "local-ci-gate: the gate lock at $LOCK_DIR has a dead owner (pid $GATE_LOCK_STEAL_BLOCKED), and another contender is taking it over ($LOCK_DIR/steal)" >&2
+        echo "local-ci-gate: a takeover takes milliseconds; if no other gate is starting, that contender was killed mid-takeover: remove $LOCK_DIR" >&2
       else
         echo "local-ci-gate: the gate lock at $LOCK_DIR exists with no readable owner, so it is BUSY - not provably stale" >&2
         echo "local-ci-gate: if you are certain no gate is running, remove $LOCK_DIR" >&2
@@ -931,13 +921,15 @@ HOST_LEASE_HOLDER=$!
 # cleanup()), and one that lands before the subshell has forked its sleep
 # leaves that sleep running for the rest of its minute - a stray process on
 # the host after the run, and a gate blocked in `wait` until it expires. A
-# short poll against a deadline ends on its own within one interval of the
-# cancellation, whatever the timing.
+# short poll ends on its own within one interval of the cancellation, whatever
+# the timing. The minute is counted in ticks, not read off the wall clock: an
+# NTP step must not fire the watchdog early on a healthy acquisition.
 HOST_LEASE_WATCHDOG_CANCEL="$HOST_LEASE_DIR/watchdog.cancel"
 rm -f "$HOST_LEASE_WATCHDOG_CANCEL"
 (
-  _deadline=$(( $(date +%s) + 60 ))
-  while [ "$(date +%s)" -lt "$_deadline" ]; do
+  _ticks=0
+  while [ "$_ticks" -lt 300 ]; do  # 300 x 0.2s: at least 60s
+    _ticks=$(( _ticks + 1 ))
     [ -e "$HOST_LEASE_WATCHDOG_CANCEL" ] && exit 0
     # The sleep must not inherit the gate's stdio: a sleep holding
     # stdout/stderr keeps an SSH channel open until it expires.
