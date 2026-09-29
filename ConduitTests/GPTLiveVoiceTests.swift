@@ -661,6 +661,17 @@ extension VoiceConversationControllerTests {
         controller.stop()
     }
 
+    func testGPTLiveTranscriptFragmentsAreJoinedAsTheyComeWithoutAddedSpaces() async {
+        let (controller, session, _, _) = makeGPTController(clock: Date.init)
+        await controller.start()
+        session.becomeReady()
+        for fragment in ["Hel", "lo", " the", "re. How", "'s it go", "ing?"] {
+            session.onEvent?(.outputTranscript(fragment))
+        }
+        XCTAssertEqual(controller.transcript.last?.text, "Hello there. How's it going?")
+        controller.stop()
+    }
+
     func testGPTLiveWithAHeadsetStaysFullDuplex() async {
         let (controller, session, _, _) = makeGPTController(route: .fullDuplex, clock: Date.init)
         await controller.start()

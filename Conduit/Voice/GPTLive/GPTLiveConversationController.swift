@@ -600,7 +600,10 @@ final class GPTLiveConversationController: ObservableObject {
     private func appendTranscript(_ text: String, speaker: VoiceConversationTranscriptEntry.Speaker) {
         let openID = speaker == .user ? openUserEntry : openAssistantEntry
         if let openID, let index = transcript.firstIndex(where: { $0.id == openID }) {
-            transcript[index].text = GeminiLiveConversationController.joinTranscriptChunk(transcript[index].text, text)
+            // GPT-Live's fragments carry their own spaces, and may split a
+            // word: joined as they come (Gemini's space repair would add
+            // spaces inside words).
+            transcript[index].text += text
             return
         }
         let trimmed = text.trimmingCharacters(in: .whitespaces)
