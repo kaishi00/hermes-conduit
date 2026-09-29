@@ -1241,6 +1241,18 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertTrue(RelayTransportPolicy.allowsCredentialTransport(url("http://[::1]:8080/v1/meta")))
     }
 
+    func testConfiguredRelayURLFallsBackToDefaultWhenBlank() {
+        let fallback = PushNotificationService.defaultRelayURL
+        XCTAssertEqual(fallback.absoluteString, "https://push.milim.dev")
+        XCTAssertEqual(PushNotificationService.configuredRelayURL(from: nil), fallback)
+        XCTAssertEqual(PushNotificationService.configuredRelayURL(from: ""), fallback)
+        XCTAssertEqual(PushNotificationService.configuredRelayURL(from: "  \n"), fallback)
+        XCTAssertEqual(
+            PushNotificationService.configuredRelayURL(from: " https://relay.example.com "),
+            URL(string: "https://relay.example.com")!
+        )
+    }
+
     func testApprovalActivityNormalizesGatewayChoices() {
         let activity = MessageNormalizer.approvalActivity(
             from: [

@@ -81,6 +81,36 @@
         }
       }
     },
+    "Moved to the new relay. Pair each Hermes profile again to keep receiving notifications." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已切换到新的中继。请重新配对每个 Hermes 配置档，以继续接收通知。"
+          }
+        }
+      }
+    },
+    "Save relay" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存中继"
+          }
+        }
+      }
+    },
+    "Saving moves this iPhone to the new relay. You'll need to pair each Hermes profile again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存后，此 iPhone 将切换到新的中继，你需要重新配对每个 Hermes 配置档。"
+          }
+        }
+      }
+    },
     "Web lookups" : {
       "localizations" : {
         "zh-Hans" : {

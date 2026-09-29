@@ -1677,7 +1677,25 @@ private struct NotificationsSettingsDetail: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @ObservedObject private var notifications = PushNotificationService.shared
     @EnvironmentObject private var appState: AppState
-    @AppStorage("conduit.relayURL") private var customRelayURL: String = ""
+    @AppStorage(PushNotificationService.relayURLDefaultsKey) private var customRelayURL: String = ""
+    @State private var relayDraft = ""
+
+    private func trimmed(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var relayDraftIsUnsaved: Bool {
+        trimmed(relayDraft) != trimmed(customRelayURL)
+    }
+
+    private func saveRelay(_ value: String) {
+        let value = trimmed(value)
+        relayDraft = value
+        guard value != trimmed(customRelayURL) else { return }
+        customRelayURL = value
+        Haptics.light()
+        Task { await notifications.applyRelayChange() }
+    }
 
     var body: some View {
         SettingsDetailContainer {
@@ -1839,24 +1857,39 @@ private struct NotificationsSettingsDetail: View {
             // enabling fail, so the field must stay editable while
             // notifications are off — otherwise there is no way back.
             ConduitSettingsSection(title: AppLocalization.string("Push relay"), symbol: "server.rack", tint: .conduitAura) {
-                TextField("https://push.milim.dev", text: $customRelayURL)
+                // Edits stay a draft until saved, so a half-typed URL never
+                // becomes the relay; saving moves an active registration.
+                TextField("https://push.milim.dev", text: $relayDraft)
                     .textFieldStyle(.plain)
                     .font(.body.monospaced())
                     .padding(.vertical, 4)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
                     .keyboardType(.URL)
-                    .onSubmit {
-                        Task { await notifications.refreshMeta() }
-                    }
+                    .submitLabel(.done)
+                    .onSubmit { saveRelay(relayDraft) }
                 Text("Leave blank to use the default relay. Change this if you run your own push relay server.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
-                if !customRelayURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                if notifications.isEnabled && relayDraftIsUnsaved {
+                    Text("Saving moves this iPhone to the new relay. You'll need to pair each Hermes profile again.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                if relayDraftIsUnsaved {
                     Button {
-                        customRelayURL = ""
-                        Haptics.light()
-                        Task { await notifications.refreshMeta() }
+                        saveRelay(relayDraft)
+                    } label: {
+                        Label(AppLocalization.string("Save relay"), systemImage: "checkmark")
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 44)
+                    }
+                    .disabled(notifications.isWorking)
+                    .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.16))
+                }
+                if !trimmed(customRelayURL).isEmpty {
+                    Button {
+                        saveRelay("")
                     } label: {
                         Label(AppLocalization.string("Reset to default relay"), systemImage: "arrow.counterclockwise")
                             .frame(maxWidth: .infinity)
@@ -1865,9 +1898,15 @@ private struct NotificationsSettingsDetail: View {
                     .disabled(notifications.isWorking)
                     .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.16))
                 }
+                if let notice = notifications.relayNotice {
+                    Label(notice, systemImage: "info.circle.fill")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .navigationTitle("Notifications")
+        .onAppear { relayDraft = customRelayURL }
         .task {
             await notifications.refresh()
             await notifications.refreshMeta()

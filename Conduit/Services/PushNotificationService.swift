@@ -372,6 +372,9 @@ final class PushNotificationService: ObservableObject {
     @Published var preferences = ConduitNotificationPreferences()
     @Published private(set) var relayMeta: RelayMetaInfo?
     @Published private(set) var isFetchingMeta = false
+    /// Set after this phone moves to a different relay: pairings live on
+    /// the relay, so every Hermes profile has to pair again.
+    @Published private(set) var relayNotice: String?
 
     /// Relay decision-routing discriminators retained from parsed pushes:
     /// request id → the authenticated relay gateway id the push arrived
@@ -401,15 +404,34 @@ final class PushNotificationService: ObservableObject {
         return body
     }
 
-    private var relayURL: URL {
-        // Blank (or whitespace-only) means "use the default relay".
-        if let saved = UserDefaults.standard.string(forKey: "conduit.relayURL")?
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-           !saved.isEmpty,
-           let url = URL(string: saved) {
+    nonisolated static let relayURLDefaultsKey = "conduit.relayURL"
+    nonisolated static let defaultRelayURL = URL(string: "https://push.milim.dev")!
+
+    /// The relay a saved Settings value points at. Blank (or
+    /// whitespace-only) means the default relay.
+    nonisolated static func configuredRelayURL(from saved: String?) -> URL {
+        if let trimmed = saved?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !trimmed.isEmpty,
+           let url = URL(string: trimmed) {
             return url
         }
-        return URL(string: "https://push.milim.dev")!
+        return defaultRelayURL
+    }
+
+    /// The relay chosen in Settings > Notifications.
+    var configuredRelayURL: URL {
+        Self.configuredRelayURL(from: UserDefaults.standard.string(forKey: Self.relayURLDefaultsKey))
+    }
+
+    /// Where relay requests go: the relay that issued this phone's
+    /// credential, so editing the Settings field never sends that
+    /// credential to a different host. `applyRelayChange()` moves the
+    /// registration when the configured relay changes.
+    private var relayURL: URL {
+        if let issuer = registration?.relayURL, let url = URL(string: issuer) {
+            return url
+        }
+        return configuredRelayURL
     }
     private let bundleID = "com.milim.relay"
     private var registration: StoredRegistration?
@@ -431,9 +453,17 @@ final class PushNotificationService: ObservableObject {
     init(retryDelay: Duration = .seconds(1.5)) {
         self.retryDelay = retryDelay
         if let data = KeychainHelper.loadPushRegistration(),
-           let saved = try? JSONDecoder().decode(StoredRegistration.self, from: data) {
+           var saved = try? JSONDecoder().decode(StoredRegistration.self, from: data) {
+            // Registrations saved before the relay was recorded were made
+            // against whatever relay is configured, which is also where
+            // their requests have been going.
+            let needsRelayStamp = saved.relayURL == nil
+            if needsRelayStamp {
+                saved.relayURL = configuredRelayURL.absoluteString
+            }
             registration = saved
             preferences = saved.preferences
+            if needsRelayStamp { persistRegistration() }
         }
     }
 
@@ -640,6 +670,7 @@ final class PushNotificationService: ObservableObject {
 
     func enable() async {
         lastError = nil
+        relayNotice = nil
         preferences.enabled = true
         isWorking = true
         defer { isWorking = false }
@@ -658,8 +689,47 @@ final class PushNotificationService: ObservableObject {
 
     func disable() async {
         lastError = nil
+        relayNotice = nil
         isWorking = true
         defer { isWorking = false }
+        await revokeRegistration()
+        preferences.enabled = false
+    }
+
+    /// Moves this phone to the configured relay after the user changes it
+    /// in Settings (#255): revokes the installation on the relay that
+    /// issued it, then registers with the new one. With notifications off
+    /// there is nothing to move; the next `enable()` uses the new relay.
+    func applyRelayChange() async {
+        guard let registration,
+              registration.relayURL != configuredRelayURL.absoluteString else {
+            await refreshMeta()
+            return
+        }
+        lastError = nil
+        relayNotice = nil
+        isWorking = true
+        await revokeRegistration()
+        relayMeta = nil
+        pairingCode = nil
+        pairingExpiry = nil
+        do {
+            let token = try await requestDeviceToken()
+            try await register(deviceToken: token)
+            relayNotice = AppLocalization.string("Moved to the new relay. Pair each Hermes profile again to keep receiving notifications.")
+        } catch {
+            // Left unregistered: Settings shows notifications as off with
+            // this error, and enabling again retries against the new relay.
+            lastError = error.localizedDescription
+        }
+        isWorking = false
+        await refreshMeta()
+    }
+
+    /// Best-effort revoke on the issuing relay. The local credential is
+    /// dropped either way: a later enable creates a fresh, revocable
+    /// installation rather than retaining stale state.
+    private func revokeRegistration() async {
         if let registration {
             do {
                 var request = authorizedRequest(
@@ -668,13 +738,9 @@ final class PushNotificationService: ObservableObject {
                 )
                 request.httpMethod = "DELETE"
                 _ = try await URLSession.shared.data(for: request)
-            } catch {
-                // The local credential is still removed: a later enable creates
-                // a fresh, revocable installation rather than retaining stale state.
-            }
+            } catch {}
         }
         registration = nil
-        preferences.enabled = false
         KeychainHelper.clearPushRegistration()
     }
 
@@ -986,12 +1052,14 @@ final class PushNotificationService: ObservableObject {
             try await updateRegistration(deviceToken: deviceToken)
             return
         }
+        // No registration yet, so `relayURL` is the configured relay.
+        let issuer = relayURL
         let body = RegistrationRequest(bundleID: bundleID, deviceToken: deviceToken, environment: "production", preferences: preferences)
         var request = try jsonRequest(path: "/v1/installations", method: "POST", body: body)
         let (data, response) = try await URLSession.shared.data(for: request)
         try validate(response: response, data: data)
         let responseBody = try JSONDecoder().decode(RegistrationResponse.self, from: data)
-        registration = StoredRegistration(credential: responseBody.credential, installationID: responseBody.installation.id, preferences: responseBody.installation.preferences ?? preferences)
+        registration = StoredRegistration(credential: responseBody.credential, installationID: responseBody.installation.id, preferences: responseBody.installation.preferences ?? preferences, relayURL: issuer.absoluteString)
         preferences = registration!.preferences
         persistRegistration()
     }
@@ -1040,6 +1108,9 @@ private struct StoredRegistration: Codable {
     let credential: String
     let installationID: String
     var preferences: ConduitNotificationPreferences
+    /// The relay that issued `credential`. Optional so registrations saved
+    /// before it was recorded still decode.
+    var relayURL: String?
 }
 
 private struct RegistrationRequest: Encodable {
