@@ -1527,6 +1527,26 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
+    func testApprovalCancelWithoutEnvelopeSessionFallsBackToTheRequestSession() async throws {
+        let (client, socket) = try await connectedClientForServerRequests()
+        var events: [StreamEvent] = []
+        client.onEvent = { events.append($0) }
+        try await deliverFrame([
+            "jsonrpc": "2.0", "id": "srq-b2b2b2b2b2b2", "method": "approval",
+            "params": ["session_id": "runtime-1", "request_id": "queue-2", "command": "rm -rf scratch"]
+        ], to: socket)
+        try await deliverFrame([
+            "jsonrpc": "2.0", "method": "event",
+            "params": ["type": "request.cancel", "payload": ["id": "srq-b2b2b2b2b2b2", "method": "approval", "reason": "timeout"]]
+        ], to: socket)
+        let sessions = events.compactMap { event -> String? in
+            guard case .approvalWithdrawn(let sessionId, _, _) = event else { return nil }
+            return sessionId
+        }
+        XCTAssertEqual(sessions, ["runtime-1"], "An empty session id would be dropped by the active-session filter")
+        client.disconnect()
+    }
+
     func testFailedCapabilityAdvertisementRetriesOnNextGatewayReady() async throws {
         let (client, socket) = try await connectedClientForServerRequests()
         let ready: [String: Any] = [
