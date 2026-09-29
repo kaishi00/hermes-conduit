@@ -510,6 +510,7 @@ final class GPTLiveConversationController: ObservableObject {
     private func retireSession() {
         guard let old = session else { return }
         session = nil
+        voiceNote = nil
         old.onEvent = nil
         old.onStateChange = nil
         old.stop()
