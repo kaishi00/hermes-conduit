@@ -659,8 +659,9 @@ final class HermesClient: ObservableObject {
     /// under the same id.
     private var openServerRequestIDs = Set<String>()
     /// Approval server request id (`srq-…`) → the approval queue
-    /// `request_id` its card is keyed by, so `request.cancel` can reach it.
-    private var approvalQueueIDs = [String: String]()
+    /// `request_id` its card is keyed by (and the session the request named),
+    /// so `request.cancel` can reach it.
+    private var approvalQueueIDs = [String: (queueID: String, sessionId: String)]()
     /// The socket `client.capabilities` was sent on, so a repeated
     /// `gateway.ready` does not advertise twice on one connection.
     private weak var advertisedSocket: AnyObject?
@@ -942,10 +943,11 @@ final class HermesClient: ObservableObject {
                 let payload = eventObject?["payload"]?.objectValue
                 if let id = payload?["id"]?.stringValue {
                     openServerRequestIDs.remove(id)
-                    if let queueID = approvalQueueIDs.removeValue(forKey: id) {
+                    if let approval = approvalQueueIDs.removeValue(forKey: id) {
+                        let envelopeSession = eventObject?["session_id"]?.stringValue ?? ""
                         onEvent?(.approvalWithdrawn(
-                            sessionId: eventObject?["session_id"]?.stringValue ?? "",
-                            requestId: queueID,
+                            sessionId: envelopeSession.isEmpty ? approval.sessionId : envelopeSession,
+                            requestId: approval.queueID,
                             reason: payload?["reason"]?.stringValue ?? ""
                         ))
                     }
@@ -1000,6 +1002,11 @@ final class HermesClient: ObservableObject {
     ///   has no UI here and is declined at once with -32601, so the tool
     ///   fails fast instead of waiting out its deadline.
     private func handleServerRequest(id: JsonRpcID, method: String, params: [String: AnyCodable]) {
+        if case .other = id {
+            // A reply could not name the request; nothing to correlate.
+            logger.error("Dropped server request \(method, privacy: .public) with an unusable id")
+            return
+        }
         guard case .string(let requestID) = id, !requestID.isEmpty else {
             writeServerRequestReply(id: id, error: (Self.methodNotFoundCode, "unsupported server request id"))
             return
@@ -1013,7 +1020,9 @@ final class HermesClient: ObservableObject {
                 return
             }
             openServerRequestIDs.insert(requestID)
-            if let queueID = activity.requestId { approvalQueueIDs[requestID] = queueID }
+            if let queueID = activity.requestId {
+                approvalQueueIDs[requestID] = (queueID, sessionId)
+            }
             onEvent?(.approval(sessionId: sessionId, activity: activity))
         case "clarify":
             guard let activity = MessageNormalizer.pendingClarifyActivity(
@@ -1473,9 +1482,10 @@ final class HermesClient: ObservableObject {
             guard let request = entry.objectValue,
                   request["method"]?.stringValue == "approval",
                   let id = request["id"]?.stringValue,
-                  let queueID = request["params"]?.objectValue?["request_id"]?.stringValue,
+                  let params = request["params"]?.objectValue,
+                  let queueID = params["request_id"]?.stringValue,
                   !queueID.isEmpty else { continue }
-            approvalQueueIDs[id] = queueID
+            approvalQueueIDs[id] = (queueID, params["session_id"]?.stringValue ?? "")
         }
         return SessionResumeResult(
             sessionId: resolvedId,
