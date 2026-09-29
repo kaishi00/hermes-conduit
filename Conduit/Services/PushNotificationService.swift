@@ -408,11 +408,12 @@ final class PushNotificationService: ObservableObject {
     nonisolated static let defaultRelayURL = URL(string: "https://push.milim.dev")!
 
     /// The relay a saved Settings value points at. Blank (or
-    /// whitespace-only) means the default relay.
+    /// whitespace-only) means the default relay, and so does anything
+    /// without a host, which Settings would never have saved.
     nonisolated static func configuredRelayURL(from saved: String?) -> URL {
         if let trimmed = saved?.trimmingCharacters(in: .whitespacesAndNewlines),
            !trimmed.isEmpty,
-           let url = URL(string: trimmed) {
+           let url = usableRelayURL(trimmed) {
             return url
         }
         return defaultRelayURL
@@ -426,10 +427,9 @@ final class PushNotificationService: ObservableObject {
     nonisolated static func isValidRelayInput(_ value: String) -> Bool {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty { return true }
-        // Same parser as `configuredRelayURL(from:)`, so a value that
+        // Same check as `configuredRelayURL(from:)`, so a value that
         // passes here is exactly the relay that will be used.
-        guard let url = URL(string: trimmed),
-              let host = url.host, !host.isEmpty else {
+        guard let url = usableRelayURL(trimmed) else {
             return false
         }
         return RelayTransportPolicy.allowsCredentialTransport(url)
@@ -448,14 +448,14 @@ final class PushNotificationService: ObservableObject {
     /// least of all to the configured relay.
     nonisolated static func requestRelayURL(issuer: String?, configured: URL) -> URL? {
         guard let issuer else { return configured }
-        return usableIssuerURL(issuer)
+        return usableRelayURL(issuer)
     }
 
-    /// A stored issuer as a relay URL: it must parse with the same parser
-    /// as `configuredRelayURL(from:)` and name a host, as saved relays
-    /// must. Anything else (e.g. "https:") is unusable.
-    nonisolated static func usableIssuerURL(_ issuer: String) -> URL? {
-        guard let url = URL(string: issuer), let host = url.host, !host.isEmpty else {
+    /// The one check for "is this a relay URL": it parses and names a
+    /// host. Used for the configured relay, Settings input and stored
+    /// issuers alike; anything else (e.g. "https:") is unusable.
+    nonisolated static func usableRelayURL(_ value: String) -> URL? {
+        guard let url = URL(string: value), let host = url.host, !host.isEmpty else {
             return nil
         }
         return url
@@ -471,7 +471,7 @@ final class PushNotificationService: ObservableObject {
     /// An unusable issuer is never "the same", so Settings offers a move,
     /// which registers afresh and recovers.
     nonisolated static func isSameRelay(_ issuer: String?, _ configured: URL) -> Bool {
-        guard let issuer, let issuerURL = usableIssuerURL(issuer),
+        guard let issuer, let issuerURL = usableRelayURL(issuer),
               let lhs = URLComponents(url: issuerURL, resolvingAgainstBaseURL: false),
               let rhs = URLComponents(url: configured, resolvingAgainstBaseURL: false) else {
             return false
@@ -755,9 +755,10 @@ final class PushNotificationService: ObservableObject {
     }
 
     func disable() async {
-        // Same one-operation-at-a-time rule as enable(): otherwise an
-        // in-flight enable() could re-register after the user turned
-        // notifications off.
+        // Same one-operation-at-a-time rule as enable(), so a revoke never
+        // interleaves with an in-flight registration. A tap that lands
+        // mid-operation is dropped rather than queued; the button is
+        // disabled while working, so this only catches the race window.
         guard !isWorking else { return }
         lastError = nil
         relayNotice = nil
