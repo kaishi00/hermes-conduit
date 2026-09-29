@@ -35,11 +35,14 @@ enum GeminiLiveAvailability: Equatable {
             return nil
         case .unavailable(let reason):
             if let reason, !reason.isEmpty {
+                if reason == "no_api_key" {
+                    return AppLocalization.string("Add a Gemini API key on your Hermes server.")
+                }
                 return AppLocalization.string("Gemini Live is not available on this Hermes server: \(reason)")
             }
             return AppLocalization.string("Gemini Live is not available on this Hermes server.")
         case .pluginMissing:
-            return AppLocalization.string("Gemini Live is not available: the Conduit plugin on this Hermes server does not support it yet.")
+            return AppLocalization.string("Install or update the Hermes notifier plugin on your Hermes server.")
         }
     }
 }

@@ -1996,7 +1996,7 @@ private struct NotificationsSettingsDetail: View {
     }
 }
 
-private struct NotificationSetupCommand: View {
+struct NotificationSetupCommand: View {
     let step: Int
     let title: String
     let command: String

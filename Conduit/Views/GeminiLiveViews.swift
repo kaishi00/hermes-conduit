@@ -58,6 +58,7 @@ struct GeminiLiveSettingsSection: View {
             Text("Talk with Gemini Live instead of the Hermes speech pipeline. Hermes still does the work: Gemini starts background jobs on this profile and tells you their results. The API key stays on your Hermes server. Approvals are never given by voice.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            LiveVoiceSetupLink(mode: .gemini)
             if enabled {
                 HStack(spacing: 10) {
                     Circle()

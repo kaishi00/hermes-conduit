@@ -35,7 +35,7 @@ enum GPTLiveAvailability: Equatable {
             }
             return AppLocalization.string("GPT-Live is not available on this Hermes server.")
         case .pluginMissing:
-            return AppLocalization.string("GPT-Live is not available: the Conduit plugin on this Hermes server does not support it yet.")
+            return AppLocalization.string("Install or update the Hermes notifier plugin on your Hermes server.")
         }
     }
 }

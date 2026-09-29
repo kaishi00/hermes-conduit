@@ -180,6 +180,36 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertFalse(GPTLiveClient.availability(from: ["ok": true, "available": true]).isAvailable, "A host that doesn't say it's the subscription isn't trusted")
     }
 
+    func testGPTLiveAvailabilityKeepsHostExplanationsAndExplainsMissingNotifierSetup() async throws {
+        let defaults = UserDefaults.standard
+        let previousLanguage = defaults.string(forKey: AppLanguageStore.defaultsKey)
+        defaults.set(AppLanguage.english.rawValue, forKey: AppLanguageStore.defaultsKey)
+        defer {
+            if let previousLanguage {
+                defaults.set(previousLanguage, forKey: AppLanguageStore.defaultsKey)
+            } else {
+                defaults.removeObject(forKey: AppLanguageStore.defaultsKey)
+            }
+        }
+
+        let hostExplanation = GPTLiveClient.availability(from: [
+            "ok": true, "auth": "subscription", "available": false,
+            "reason": "Codex sign-in expired",
+        ])
+        XCTAssertEqual(
+            hostExplanation.userFacingReason,
+            "GPT-Live is not available on this Hermes server: Codex sign-in expired"
+        )
+
+        let missing = GPTLiveClient(request: { _, _, _, _ in
+            throw DashboardTicketBridgeError.http(status: 404, detail: "Not Found")
+        })
+        let status = try await missing.availability()
+
+        XCTAssertEqual(status, .pluginMissing)
+        XCTAssertEqual(status.userFacingReason, "Install or update the Hermes notifier plugin on your Hermes server.")
+    }
+
     func testGPTLiveSessionPostsTheOfferToTheProfileScopedRouteAndSurfacesHostErrorsAsIs() async throws {
         var requests: [(path: String, method: String, body: [String: Any]?, timeout: Int)] = []
         var reply: Result<[String: Any], Error> = .success([

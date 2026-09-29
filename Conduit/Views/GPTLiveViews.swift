@@ -54,6 +54,7 @@ struct GPTLiveSettingsSection: View {
             Text("Talk with GPT-Live on the ChatGPT subscription your Hermes server is signed in to, instead of the Hermes speech pipeline. Hermes still does the work: GPT-Live hands requests to background jobs on this profile. The sign-in stays on your Hermes server, and it never falls back to API billing. Turning this on turns Gemini Live off.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            LiveVoiceSetupLink(mode: .gpt)
             if enabled {
                 HStack(spacing: 10) {
                     Circle()
